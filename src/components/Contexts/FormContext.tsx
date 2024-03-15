@@ -172,7 +172,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id } : ProviderProps
           application: {
             _id: newState?.data?.["_id"] === "new" ? undefined : newState?.data?.["_id"],
             programName: data?.program?.name,
-            studyAbbreviation: data?.study?.abbreviation,
+            studyAbbreviation: data?.study?.abbreviation || data?.study?.name,
             questionnaireData: JSON.stringify(data),
           }
         }

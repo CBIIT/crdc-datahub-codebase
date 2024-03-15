@@ -379,7 +379,6 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           readOnly={readOnlyInputs}
           hideValidation={readOnlyInputs}
           tooltipText="Provide a short abbreviation or acronym (e.g., NCI-MATCH) for the study."
-          required
         />
         <TextInput
           id="section-b-study-description"

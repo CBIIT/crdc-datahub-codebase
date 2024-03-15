@@ -110,3 +110,43 @@ export const programToSelectOption = (program: ProgramOption): SelectOption => (
   label: `${program.name || ""}${program.abbreviation ? ` (${program.abbreviation})` : ""}`?.trim(),
   value: program.name || ""
 });
+
+/**
+ * Formats an Approved Study Name and Abbreviation into a single string.
+ * If the abbreviation is provided and not equal to the name, it will be included in parentheses.
+ *
+ * @example Alphabetic Study (AS)
+ * @example Alphabetic Study
+ * @param studyName The full name of the study
+ * @param studyAbbreviation The abbreviation of the study
+ * @returns The formatted study name
+ */
+export const formatFullStudyName = (studyName: string, studyAbbreviation: string): string => {
+  if (studyAbbreviation === studyName) {
+    return studyName.trim();
+  }
+  if (studyAbbreviation && studyAbbreviation.length > 0) {
+    return `${studyName.trim()} (${studyAbbreviation.trim()})`;
+  }
+
+  return studyName.trim();
+};
+
+/**
+ * Attempts to map a study name + abbreviation combination to an approved study ID.
+ *
+ * - Will return the first match found
+ * - If no match is found, an empty string is returned
+ *
+ * @param Study information from Organization object
+ * @param studies List of approved studies
+ * @returns The ID of the study if found, otherwise an empty string
+ */
+export const mapOrganizationStudyToId = (
+  orgStudy: Pick<ApprovedStudy, "studyName" | "studyAbbreviation">,
+  studies: Pick<ApprovedStudy, "_id" | "studyName" | "studyAbbreviation">[]
+): ApprovedStudy["_id"] => {
+  const { studyName, studyAbbreviation } = orgStudy || {};
+
+  return studies?.find((study) => study?.studyName === studyName && study?.studyAbbreviation === studyAbbreviation)?._id || "";
+};

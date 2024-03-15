@@ -9,10 +9,10 @@ import {
 import { Link, LinkProps, useLocation } from "react-router-dom";
 import { Controller, useForm } from 'react-hook-form';
 import PageBanner from "../../components/PageBanner";
-import Tooltip from '../../components/Tooltip';
 import { useOrganizationListContext, Status } from '../../components/Contexts/OrganizationListContext';
 import SuspenseLoader from '../../components/SuspenseLoader';
 import usePageTitle from '../../hooks/usePageTitle';
+import StudyTooltip from '../../components/Organizations/StudyTooltip';
 
 type T = Partial<Organization>;
 
@@ -162,12 +162,6 @@ const StyledTablePagination = styled(TablePagination)<{ component: React.Element
   background: "#F5F7F8",
 });
 
-const StyledStudyCount = styled(Typography)<{ component: ElementType }>(({ theme }) => ({
-  textDecoration: "underline",
-  cursor: "pointer",
-  color: theme.palette.primary.main,
-}));
-
 const columns: Column[] = [
   {
     label: "Name",
@@ -188,24 +182,9 @@ const columns: Column[] = [
 
       return (
         <>
-          {studies[0].studyAbbreviation}
+          {studies[0].studyAbbreviation || studies[0].studyName}
           {studies.length > 1 && " and "}
-          {studies.length > 1 && (
-            <Tooltip
-              title={<StudyContent _id={_id} studies={studies} />}
-              placement="top"
-              open={undefined}
-              onBlur={undefined}
-              disableHoverListener={false}
-              arrow
-            >
-              <StyledStudyCount variant="body2" component="span">
-                other
-                {" "}
-                {studies.length - 1}
-              </StyledStudyCount>
-            </Tooltip>
-          )}
+          {studies.length > 1 && (<StudyTooltip _id={_id} studies={studies} />)}
         </>
       );
     },
@@ -226,20 +205,6 @@ const columns: Column[] = [
     ),
   },
 ];
-
-const StudyContent: FC<{ _id: Organization["_id"], studies: Organization["studies"] }> = ({ _id, studies }) => (
-  <Typography variant="body1">
-    {studies?.map(({ studyName, studyAbbreviation }) => (
-      <React.Fragment key={`${_id}_study_${studyName}`}>
-        {studyName}
-        {" ("}
-        {studyAbbreviation}
-        {") "}
-        <br />
-      </React.Fragment>
-    ))}
-  </Typography>
-);
 
 /**
  * View for List of Organizations

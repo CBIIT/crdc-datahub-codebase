@@ -9,7 +9,6 @@ type ApprovedStudy = {
     studyName: string;
     /**
      * Study Abbreviation
-     * This is a unique constraint across all studies
      *
      * @example GIS
      */

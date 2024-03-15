@@ -22,16 +22,14 @@ import {
 } from '../../graphql';
 import ConfirmDialog from '../../components/Organizations/ConfirmDialog';
 import usePageTitle from '../../hooks/usePageTitle';
+import { formatFullStudyName, mapOrganizationStudyToId } from '../../utils';
 
 type Props = {
   _id: Organization["_id"] | "new";
 };
 
 type FormInput = Omit<EditOrganizationInput, "studies"> & {
-  /**
-   * Select boxes cannot contain objects, using `studyAbbreviation` instead
-   */
-  studies: ApprovedStudy["studyAbbreviation"][];
+  studies: ApprovedStudy["_id"][];
 };
 
 const StyledContainer = styled(Container)({
@@ -172,6 +170,7 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
     const activeSubs = dataSubmissions?.filter((ds) => !inactiveSubmissionStatus.includes(ds?.status));
 
     organization?.studies?.forEach((s) => {
+      // NOTE: The `Submission` type only has `studyAbbreviation`, we cannot compare IDs
       if (activeSubs?.some((ds) => ds?.studyAbbreviation === s?.studyAbbreviation)) {
         activeStudies[s?.studyAbbreviation] = true;
       }
@@ -193,7 +192,7 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
     fetchPolicy: "cache-and-network",
   });
 
-  const { data: approvedStudies } = useQuery<ListApprovedStudiesResp>(LIST_APPROVED_STUDIES, {
+  const { data: approvedStudies, refetch: refetchStudies } = useQuery<ListApprovedStudiesResp>(LIST_APPROVED_STUDIES, {
     context: { clientName: 'backend' },
     fetchPolicy: "cache-and-network",
   });
@@ -239,14 +238,14 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
   const onSubmit = async (data: FormInput) => {
     setSaving(true);
 
-    const studyAbbrToName: { [studyAbbreviation: string]: Pick<ApprovedStudy, "studyName" | "studyAbbreviation"> } = {};
-    approvedStudies?.listApprovedStudies?.forEach(({ studyName, studyAbbreviation }) => {
-      studyAbbrToName[studyAbbreviation] = { studyName, studyAbbreviation };
+    const studyMap: { [_id: string]: Pick<ApprovedStudy, "studyName" | "studyAbbreviation"> } = {};
+    approvedStudies?.listApprovedStudies?.forEach(({ _id, studyName, studyAbbreviation }) => {
+      studyMap[_id] = { studyName, studyAbbreviation };
     });
 
     const variables = {
       ...data,
-      studies: data.studies.map((abbr) => (studyAbbrToName[abbr])).filter((s) => !!s?.studyName && !!s?.studyAbbreviation),
+      studies: data.studies.map((_id) => (studyMap[_id]))?.filter((s) => !!s?.studyName) || [],
     };
 
     if (_id === "new" && !organization?._id) {
@@ -313,17 +312,25 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
 
     (async () => {
       const { data, error } = await getOrganization({ variables: { orgID: _id, organization: _id } });
-
       if (error || !data?.getOrganization) {
         navigate("/organizations", { state: { error: "Unable to fetch organization" } });
         return;
+      }
+
+      // No studies or original request did not complete. Refetch
+      let studyList: ApprovedStudy[] = approvedStudies?.listApprovedStudies;
+      if (!studyList?.length) {
+        const { data } = await refetchStudies();
+        studyList = data?.listApprovedStudies;
       }
 
       setOrganization(data?.getOrganization);
       setDataSubmissions(data?.listSubmissions?.submissions);
       setFormValues({
         ...data?.getOrganization,
-        studies: data?.getOrganization?.studies?.filter((s) => !!s?.studyName && !!s?.studyAbbreviation).map(({ studyAbbreviation }) => studyAbbreviation) || [],
+        studies: data?.getOrganization?.studies
+          ?.map((s) => mapOrganizationStudyToId(s, studyList || []))
+          ?.filter((_id) => !!_id) || [],
       });
     })();
   }, [_id]);
@@ -413,12 +420,9 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
                       inputProps={{ "aria-labelledby": "studiesLabel" }}
                       multiple
                     >
-                      {approvedStudies?.listApprovedStudies?.map(({ studyName, studyAbbreviation }) => (
-                        <MenuItem key={studyAbbreviation} value={studyAbbreviation}>
-                          {studyName}
-                          {" ("}
-                          {studyAbbreviation}
-                          {") "}
+                      {approvedStudies?.listApprovedStudies?.map(({ _id, studyName, studyAbbreviation }) => (
+                        <MenuItem key={_id} value={_id}>
+                          {formatFullStudyName(studyName, studyAbbreviation)}
                         </MenuItem>
                       ))}
                     </StyledSelect>
