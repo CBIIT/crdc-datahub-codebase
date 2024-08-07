@@ -120,7 +120,7 @@ class DataRecordService {
         // total should be orphaned files(s3) + db file nodes
         const missingFiles = fileRecords.filter(({file}) => file?.s3FileInfo?.status !== VALIDATION_STATUS.NEW);
         const total = orphanedFiles.length + missingFiles.length;
-        if (stat.total > 0 && total > 0) {
+        if (total > 0) {
             stat.total = total
             submissionStats.addStats(stat);
         }
