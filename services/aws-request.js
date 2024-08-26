@@ -153,10 +153,10 @@ class AWSService {
      * @throws {Error} - Throws an error if the username is missing or invalid.
      */
     async getQuickInsightURL(username, dashboardID, sessionTimeout) {
-        if (!username || username?.trim().length === 0) {
-            throw new Error(ERROR.MISSING_QUICKSIGHT_USER_NAME);
-
-        }
+        // if (!username || username?.trim().length === 0) {
+        //     throw new Error(ERROR.MISSING_QUICKSIGHT_USER_NAME);
+        //
+        // }
         const accountID = await this.#getAccountID();
         const params = {
             AwsAccountId: accountID,
