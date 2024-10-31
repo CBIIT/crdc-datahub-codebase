@@ -182,3 +182,9 @@ ENTITY_TYPE = "entityType"
 
 SUBMISSION_HISTORY = "history"
 RELEASE_AT = "releasedAt"
+
+QC_RESULT_ID = "qcResultID"
+QC_COLLECTION = "qcResults"
+VALIDATION_TYPE_METADATA = "metadata"
+VALIDATION_TYPE_FILE= "data file"
+BATCH_IDS = "batchIDs"
