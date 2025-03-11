@@ -203,28 +203,15 @@ class Organization {
       }
 
       // If the primary contact(concierge) is not available in approved studies, the provided primary contact should be updated in the data submissions.
-      if (updatedOrg.conciergeID) {
-          const submissions = await this.submissionCollection.aggregate([{"$match": { "organization._id": orgID}}]);
-          const studyIDs = submissions?.map((submission) => submission?.studyID).filter(Boolean);
-          const approvedStudies = await this.approvedStudiesCollection.aggregate([{
-              $match: {
-                  _id: {$in: studyIDs},
-                  primaryContactID: { $in: [null, undefined] }}}, {
-              $project: { _id: 1 }}
-          ]);
-
-          const noContactStudyIDSet = new Set(approvedStudies?.map((s) => s?._id));
-          const noPrimaryContactSubmissionIDs = submissions
-              ?.filter((s) => noContactStudyIDSet.has(s?.studyID) && (s.conciergeName !== updatedOrg.conciergeName || s.conciergeEmail !== updatedOrg.conciergeEmail))
-              ?.map((s) => s?._id);
-          if (noPrimaryContactSubmissionIDs.length > 0) {
-              const updateSubmission = this.submissionCollection.updateMany(
-                  {_id: {$in: noPrimaryContactSubmissionIDs}},
-                  { conciergeName: updatedOrg.conciergeName, conciergeEmail: updatedOrg.conciergeEmail, updatedAt: getCurrentTime()}
-              );
-
-              if (!updateSubmission.acknowledged) {
-                  console.error("Failed to update the primary contact in submissions");
+      if (updatedOrg.studies?.length > 0) {
+          const conciergeID = updatedOrg.conciergeID || currentOrg?.conciergeID;
+          if (conciergeID) {
+              const primaryContact = await this.userCollection.aggregate([{ "$match": {
+                  _id: conciergeID, role: USER.ROLES.DATA_COMMONS_PERSONNEL, userStatus: USER.STATUSES.ACTIVE } }, { "$limit": 1 }]);
+              if (primaryContact.length > 0) {
+                  const {firstName, lastName, email: conciergeEmail} = primaryContact[0];
+                  const studyIDs = updatedOrg?.studies.map(study => study?._id);
+                  await this.#updatePrimaryContact(studyIDs, `${firstName} ${lastName}`?.trim(), conciergeEmail);
               }
           }
       }
@@ -258,6 +245,40 @@ class Organization {
       }
       return { ...currentOrg, ...updatedOrg };
   }
+
+  // If the primary contact is not available in the submission,
+  // It will update the conciergeName/conciergeEmail at the program level if available.
+  async #updatePrimaryContact(studyIDs, conciergeName, conciergeEmail) {
+      const noPrimaryContactSubmissions = await this.submissionCollection.aggregate([{"$match": {
+              "studyID": {$in: studyIDs},
+              "$or": [{conciergeName: { $in: [null, undefined, ""] }}, {conciergeEmail: { $in: [null, undefined, ""] }}]
+          }}
+      ]);
+      const withPrimaryContactStudies = await this.approvedStudiesCollection.aggregate([{
+          $match: {
+              _id: {$in: studyIDs},
+              primaryContactID: { $ne: null, $exists: true }}}, {
+          $project: { _id: 1 }}
+      ]);
+
+      const primaryContactStudyIDSet = new Set(withPrimaryContactStudies?.map((s) => s?._id));
+      const withoutContactSubmissionIDs = noPrimaryContactSubmissions
+          .filter((aSubmission) => !primaryContactStudyIDSet.has(aSubmission?.studyID));
+
+      // update the primary contact at the program level
+      if (withoutContactSubmissionIDs.length > 0) {
+          const submissionIDs = withoutContactSubmissionIDs?.map((s) => s?._id);
+          const updateSubmission = this.submissionCollection.updateMany(
+              {_id: {$in: submissionIDs}, conciergeName: { "$ne": conciergeName }, conciergeEmail: { "$ne": conciergeEmail }},
+              { conciergeName: conciergeName, conciergeEmail: conciergeEmail, updatedAt: getCurrentTime()}
+          );
+
+          if (!updateSubmission.acknowledged) {
+              console.error("Failed to update the primary contact in submissions at program level");
+          }
+      }
+  }
+
 
   /**
    * Get an organization by it's name
