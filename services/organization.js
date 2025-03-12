@@ -249,9 +249,8 @@ class Organization {
   // If the primary contact is not available in the submission,
   // It will update the conciergeName/conciergeEmail at the program level if available.
   async #updatePrimaryContact(studyIDs, conciergeName, conciergeEmail) {
-      const noPrimaryContactSubmissions = await this.submissionCollection.aggregate([{"$match": {
-              "studyID": {$in: studyIDs},
-              "$or": [{conciergeName: { $in: [null, undefined, ""] }}, {conciergeEmail: { $in: [null, undefined, ""] }}]
+      const primaryContactSubmissions = await this.submissionCollection.aggregate([{"$match": {
+              "studyID": {$in: studyIDs}
           }}
       ]);
       const withPrimaryContactStudies = await this.approvedStudiesCollection.aggregate([{
@@ -262,14 +261,14 @@ class Organization {
       ]);
 
       const primaryContactStudyIDSet = new Set(withPrimaryContactStudies?.map((s) => s?._id));
-      const withoutContactSubmissionIDs = noPrimaryContactSubmissions
+      const withoutContactSubmissionIDs = primaryContactSubmissions
           .filter((aSubmission) => !primaryContactStudyIDSet.has(aSubmission?.studyID));
 
       // update the primary contact at the program level
       if (withoutContactSubmissionIDs.length > 0) {
           const submissionIDs = withoutContactSubmissionIDs?.map((s) => s?._id);
-          const updateSubmission = this.submissionCollection.updateMany(
-              {_id: {$in: submissionIDs}, conciergeName: { "$ne": conciergeName }, conciergeEmail: { "$ne": conciergeEmail }},
+          const updateSubmission = await this.submissionCollection.updateMany(
+              {_id: {$in: submissionIDs}, $or: [{conciergeName: { "$ne": conciergeName }}, {conciergeEmail: { "$ne": conciergeEmail }}]},
               { conciergeName: conciergeName, conciergeEmail: conciergeEmail, updatedAt: getCurrentTime()}
           );
 
