@@ -268,7 +268,12 @@ class Organization {
       if (withoutContactSubmissionIDs.length > 0) {
           const submissionIDs = withoutContactSubmissionIDs?.map((s) => s?._id);
           const updateSubmission = await this.submissionCollection.updateMany(
-              {_id: {$in: submissionIDs}, $or: [{conciergeName: { "$ne": conciergeName }}, {conciergeEmail: { "$ne": conciergeEmail }}]},
+              // conditions to match
+              {
+                  _id: {$in: submissionIDs},
+                  $or: [{conciergeName: { "$ne": conciergeName }}, {conciergeEmail: { "$ne": conciergeEmail }}]
+              },
+              // properties to be updated
               { conciergeName: conciergeName, conciergeEmail: conciergeEmail, updatedAt: getCurrentTime()}
           );
 
