@@ -5,4 +5,10 @@ module.exports = Object.freeze({
             INACTIVE: "Inactive",
         },
     },
+    INSTITUTION: {
+        STATUSES: {
+            ACTIVE: "Active",
+            INACTIVE: "Inactive",
+        },
+    },
 });
