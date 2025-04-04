@@ -46,6 +46,7 @@ module.exports = Object.freeze({
         MANAGE_USER : "user:manage",
         MANAGE_PROGRAMS: "program:manage",
         MANAGE_STUDIES: "study:manage",
-        VIEW_DASHBOARD: "dashboard:view"
+        VIEW_DASHBOARD: "dashboard:view",
+        MANAGE_INSTITUTIONS : "institution:manage",
     }
 });
