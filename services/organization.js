@@ -4,6 +4,7 @@ const {ORGANIZATION} = require("../constants/organization-constants");
 const {getCurrentTime} = require("../utility/time-utility");
 const { APPROVED_STUDIES_COLLECTION } = require("../database-constants");
 const {ADMIN} = require("../constants/user-permission-constants");
+const {getDataCommonsDisplayNamesForUserOrganization} = require("../../utility/data-commons-remapper");
 
 class Organization {
   constructor(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection) {
@@ -32,7 +33,8 @@ class Organization {
         throw new Error(ERROR.INVALID_ORG_ID);
     }
 
-    return this.getOrganizationByID(params.orgID, false);
+    let userOrganization = await this.getOrganizationByID(params.orgID, false);
+    return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
   }
 
   /**
@@ -80,7 +82,10 @@ class Organization {
         throw new Error(ERROR.NOT_LOGGED_IN)
     }
 
-    return this.listOrganizations({});
+    let userOrganizationList = await this.listOrganizations({});
+    return userOrganizationList.map((userOrganization) => {
+        return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
+    });
   }
 
   /**
@@ -128,7 +133,8 @@ class Organization {
         throw new Error(ERROR.INVALID_ORG_ID);
     }
 
-    return this.editOrganization(params.orgID, params);
+    let userOrganization = await this.editOrganization(params.orgID, params);
+    return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
   }
 
   /**
@@ -333,7 +339,8 @@ class Organization {
         throw new Error(ERROR.ORGANIZATION_INVALID_ABBREVIATION);
     }
 
-    return this.createOrganization(params);
+    let userOrganization = await this.createOrganization(params);
+    return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
   }
 
   /**
