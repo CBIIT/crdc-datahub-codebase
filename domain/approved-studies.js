@@ -29,6 +29,7 @@ class ApprovedStudies {
             this.programName = programName?.trim();
         }
         this.createdAt = this.updatedAt = getCurrentTime();
+        this.useProgramPC = true;
     }
 
     static createApprovedStudies(studyName, studyAbbreviation, dbGaPID, organization, controlledAccess, ORCID, PI, openAccess, programName) {
