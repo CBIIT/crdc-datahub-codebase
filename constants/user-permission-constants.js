@@ -9,7 +9,7 @@ module.exports = Object.freeze({
             REJECT: "data_submission:rejected",
             WITHDRAW: "data_submission:withdrawn",
             REMIND_EXPIRE: "data_submission:expiring",
-            MISSING_CONTACT: "data_submission:missing_primary_contact"
+            CREATE: "data_submission:created"
         },
         SUBMISSION_REQUEST: {
             REQUEST_SUBMIT: "submission_request:submitted",
