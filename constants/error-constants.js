@@ -26,6 +26,7 @@ module.exports = Object.freeze({
         INVALID_NO_STUDIES: "The user's organization has no approved studies.",
         INVALID_NOT_APPROVED_STUDIES:  "Parameter studies contain studies are not approved.",
         ORGANIZATION_INVALID_ABBREVIATION: "Abbreviation is required for the organization.",
-        APPROVED_STUDIES_REQUIRED: "Approved studies are required for the user with the role"
+        APPROVED_STUDIES_REQUIRED: "Approved studies are required for the user with the role",
+        INVALID_PROGRAM_STATUS: "Requested organization status $item$ is not valid."
     },
 });

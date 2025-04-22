@@ -76,9 +76,9 @@ class Organization {
    * Any authenticated users can retrieve all organizations, no matter what role a user has or what organization a user is associated with.
    *
    * @api
-   * @param {Object} params Endpoint parameters
+   * @param { first: Integer, offset: Integer, orderBy: String, sortDirection: String, status: String } params Endpoint parameters
    * @param {{ cookie: Object, userInfo: Object }} context request context
-   * @returns {Promise<Object>} Total, and An array of Programs
+   * @returns {Promise<Object>} Total and an array of Programs
    */
   async listPrograms(params, context) {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
@@ -90,12 +90,12 @@ class Organization {
         throw new Error(replaceErrorString(ERROR.INVALID_PROGRAM_STATUS, status));
     }
 
-    const statusCondition = status && !status !== this.#ALL ?
+    const statusCondition = status && status !== this.#ALL ?
         { status: status } : { status: { $in: validStatuses } };
 
     const pagination = new MongoPagination(first, offset, orderBy, sortDirection);
     const paginationPipeline = pagination.getPaginationPipeline();
-    const organizations = await this.organizationCollection.aggregate([
+    const programs = await this.organizationCollection.aggregate([
         { "$match": statusCondition },
         {
             $facet: {
@@ -113,11 +113,10 @@ class Organization {
             }
         }
     ]);
-
-    const programList = organizations.length > 0 ? organizations[0] : {}
+    const programList = programs.length > 0 ? programs[0] : {}
     return {
         total: programList?.total || 0,
-        programs: programList?.map((program) => {
+        programs: programList?.results?.map((program) => {
             return getDataCommonsDisplayNamesForUserOrganization(program);
         }) || []};
   }
