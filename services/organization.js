@@ -5,8 +5,11 @@ const {getCurrentTime} = require("../utility/time-utility");
 const { APPROVED_STUDIES_COLLECTION } = require("../database-constants");
 const {ADMIN} = require("../constants/user-permission-constants");
 const {getDataCommonsDisplayNamesForUserOrganization} = require("../../utility/data-commons-remapper");
+const {MongoPagination} = require("../domain/mongo-pagination");
+const {replaceErrorString} = require("../../utility/string-util");
 
 class Organization {
+  #ALL = "All";
   constructor(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection) {
       this.organizationCollection = organizationCollection;
       this.userCollection = userCollection;
@@ -68,52 +71,56 @@ class Organization {
   }
 
   /**
-   * List Organizations API Interface.
+   * List Programs API Interface.
    *
    * Any authenticated users can retrieve all organizations, no matter what role a user has or what organization a user is associated with.
    *
    * @api
    * @param {Object} params Endpoint parameters
    * @param {{ cookie: Object, userInfo: Object }} context request context
-   * @returns {Promise<Object[]>} An array of Organizations
+   * @returns {Promise<Object>} Total, and An array of Programs
    */
-  async listOrganizationsAPI(params, context) {
+  async listPrograms(params, context) {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
         throw new Error(ERROR.NOT_LOGGED_IN)
     }
-
-    let userOrganizationList = await this.listOrganizations({});
-    return userOrganizationList.map((userOrganization) => {
-        return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
-    });
-  }
-
-  /**
-   * List organizations by an optional set of filters
-   *
-   * @typedef {Object<string, any>} Filters K:V pairs of filters
-   * @param {Filters} [filters] Filters to apply to the query
-   * @param {boolean} [omitStudyLookup] Whether to omit the study lookup in the pipeline. Default is false
-   * @returns {Promise<Object[]>} An array of Organizations
-   */
-    async listOrganizations(filters = {}, omitStudyLookup = false) {
-        const pipeline = [];
-        if (!omitStudyLookup) {
-            pipeline.push(
-                {
-                    $lookup: {
-                        from: APPROVED_STUDIES_COLLECTION,
-                        localField: "studies._id",
-                        foreignField: "_id",
-                        as: "studies"
-                    }
-                },
-            );
-        }
-
-        pipeline.push({ "$match": filters });
-        return await this.organizationCollection.aggregate(pipeline);
+    const {first, offset, orderBy, sortDirection, status} = params;
+    const validStatuses = [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE];
+    if (status!== this.#ALL && !validStatuses.includes(status)) {
+        throw new Error(replaceErrorString(ERROR.INVALID_PROGRAM_STATUS, status));
     }
+
+    const statusCondition = status && !status !== this.#ALL ?
+        { status: status } : { status: { $in: validStatuses } };
+
+    const pagination = new MongoPagination(first, offset, orderBy, sortDirection);
+    const paginationPipeline = pagination.getPaginationPipeline();
+    const organizations = await this.organizationCollection.aggregate([
+        { "$match": statusCondition },
+        {
+            $facet: {
+                total: [{
+                    $count: "total"
+                }],
+                results: paginationPipeline
+            }
+        },
+        {
+            $set: {
+                total: {
+                    $first: "$total.total",
+                }
+            }
+        }
+    ]);
+
+    const programList = organizations.length > 0 ? organizations[0] : {}
+    return {
+        total: programList?.total || 0,
+        programs: programList?.map((program) => {
+            return getDataCommonsDisplayNamesForUserOrganization(program);
+        }) || []};
+  }
 
   /**
    * Edit Organization API Interface.
