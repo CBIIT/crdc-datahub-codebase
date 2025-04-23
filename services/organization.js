@@ -208,7 +208,7 @@ class Organization {
           throw new Error(ERROR.UPDATE_FAILED);
       }
 
-      // If the primary contact(concierge) is not available in approved studies, the provided primary contact should be updated in the data submissions.
+      // If data concierge is not available in approved studies, the provided data concierge should be updated in the data submissions.
       if (updatedOrg.studies?.length > 0) {
           const conciergeID = updatedOrg.conciergeID || currentOrg?.conciergeID;
           if (conciergeID) {
@@ -252,7 +252,7 @@ class Organization {
       return { ...currentOrg, ...updatedOrg };
   }
 
-  // If the primary contact is not available in the submission,
+  // If data concierge is not available in the submission,
   // It will update the conciergeName/conciergeEmail at the program level if available.
   async #updatePrimaryContact(studyIDs, conciergeName, conciergeEmail) {
       const primaryContactSubmissions = await this.submissionCollection.aggregate([{"$match": {
@@ -270,7 +270,7 @@ class Organization {
       const withoutContactSubmissionIDs = primaryContactSubmissions
           .filter((aSubmission) => !primaryContactStudyIDSet.has(aSubmission?.studyID));
 
-      // update the primary contact at the program level
+      // update data concierge at the program level
       if (withoutContactSubmissionIDs.length > 0) {
           const submissionIDs = withoutContactSubmissionIDs?.map((s) => s?._id);
           const updateSubmission = await this.submissionCollection.updateMany(
@@ -284,7 +284,7 @@ class Organization {
           );
 
           if (!updateSubmission.acknowledged) {
-              console.error("Failed to update the primary contact in submissions at program level");
+              console.error("Failed to update the data concierge in submissions at program level");
           }
       }
   }
