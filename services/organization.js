@@ -96,6 +96,14 @@ class Organization {
     const pagination = new MongoPagination(first, offset, orderBy, sortDirection);
     const paginationPipeline = pagination.getPaginationPipeline();
     const programs = await this.organizationCollection.aggregate([
+        {
+            $lookup: {
+                from: APPROVED_STUDIES_COLLECTION,
+                localField: "studies._id",
+                foreignField: "_id",
+                as: "studies"
+            }
+        },
         { "$match": statusCondition },
         {
             $facet: {
