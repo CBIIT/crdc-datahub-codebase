@@ -163,6 +163,9 @@ class Organization {
    */
   async editOrganization(orgID, params) {
       const currentOrg = await this.getOrganizationByID(orgID);
+      if (currentOrg?.readOnly){
+          throw new Error(ERROR.CANNOT_UPDATE_READ_ONLY_PROGRAM);
+      }
       const updatedOrg = { updateAt: getCurrentTime() };
       if (!currentOrg) {
           throw new Error(ERROR.ORG_NOT_FOUND);

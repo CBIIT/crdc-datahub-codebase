@@ -27,6 +27,7 @@ module.exports = Object.freeze({
         INVALID_NOT_APPROVED_STUDIES:  "Parameter studies contain studies are not approved.",
         ORGANIZATION_INVALID_ABBREVIATION: "Abbreviation is required for the organization.",
         APPROVED_STUDIES_REQUIRED: "Approved studies are required for the user with the role",
-        INVALID_PROGRAM_STATUS: "Requested organization status $item$ is not valid."
+        INVALID_PROGRAM_STATUS: "Requested organization status $item$ is not valid.",
+        CANNOT_UPDATE_READ_ONLY_PROGRAM: "This program is read only and cannot be updated.",
     },
 });
