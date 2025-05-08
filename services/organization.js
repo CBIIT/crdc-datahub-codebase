@@ -10,6 +10,7 @@ const {replaceErrorString} = require("../../utility/string-util");
 
 class Organization {
   #ALL = "All";
+  #READ_ONLY_FIELDS = ["name", "abbreviation", "description", "status"];
   constructor(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection) {
       this.organizationCollection = organizationCollection;
       this.userCollection = userCollection;
@@ -163,7 +164,8 @@ class Organization {
    */
   async editOrganization(orgID, params) {
       const currentOrg = await this.getOrganizationByID(orgID);
-      if (currentOrg?.readOnly){
+      // Check for read-only violation
+      if (this.checkForReadOnlyViolation(currentOrg, params)) {
           throw new Error(ERROR.CANNOT_UPDATE_READ_ONLY_PROGRAM);
       }
       const updatedOrg = { updateAt: getCurrentTime() };
@@ -499,6 +501,24 @@ class Organization {
     async findOneByStudyID(studyID) {
         return await this.organizationCollection.aggregate([{ "$match": {"studies._id": { "$in": [studyID?.trim()] }}}, { "$limit": 1 }]);
     }
+
+    /**
+     * Checks if the target organization/program has a read only flag set and if the update parameters violate the
+     * violate this read only protection.
+     * @param organization the target organization/program
+     * @param params the update parameters
+     * @returns {*|boolean} true if a read only violation is detected
+     */
+    checkForReadOnlyViolation(organization, params){
+        if (organization?.readOnly) {
+            for (const key of this.#READ_ONLY_FIELDS){
+                if (!!params?.[key] && params?.[key] !== organization?.[key]) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 }
 
 class ProgramData {
@@ -525,5 +545,5 @@ class ProgramData {
 }
 
 module.exports = {
-  Organization
+    Organization
 };
