@@ -1,6 +1,6 @@
 const {ERROR} = require("../constants/error-constants");
 const {USER} = require("../constants/user-constants");
-const {ORGANIZATION} = require("../constants/organization-constants");
+const {ORGANIZATION, NA_PROGRAM} = require("../constants/organization-constants");
 const {getCurrentTime} = require("../utility/time-utility");
 const {APPROVED_STUDIES_COLLECTION} = require("../database-constants");
 const {ADMIN} = require("../constants/user-permission-constants");
@@ -281,7 +281,36 @@ class Organization {
         console.error("Failed to update the organization name in submission requests");
       }
     }
-    return {...currentOrg, ...updatedOrg};
+    await this.#checkRemovedStudies(currentOrg.studies, updatedOrg.studies);
+    return { ...currentOrg, ...updatedOrg };
+  }
+
+  /**
+   * #checkRemovedStudies: private method to check removed studies
+   * @param {*} existing_studies 
+   * @param {*} updated_studies 
+   */
+  async #checkRemovedStudies(existing_studies, updated_studies){
+    const existing_study_ids = existing_studies.map(study => study._id);
+    const updated_study_ids = updated_studies.map(study => study._id);
+    const removed_studies_ids = existing_study_ids.filter(study_id => updated_study_ids.includes(study_id));
+    const naOrg = await this.getOrganizationByName(NA_PROGRAM);
+    if (!naOrg || !naOrg?._id) {
+      console.error("NA program not found");
+      return
+    }
+    for (let studyID of removed_studies_ids) {
+        const organization = await this.findOneByStudyID(studyID);
+        if (organization.length == 0) {
+            await this.storeApprovedStudies(org._id, studyID);
+        }
+    }
+    const naOrgStudies = naOrg.studies;
+    // remove updated studyID from NA program since they are added to the edited org.
+    const filteredStudies = naOrgStudies.filter(study => !removed_studies_ids.includes(study._id));
+    if (filteredStudies.length !== naOrgStudies.length) {
+      await this.organizationCollection.updateOne({"_id": naOrg._id}, {"studies": filteredStudies, "updateAt": getCurrentTime()});
+    }
   }
 
   // If data concierge is not available in the submission,
