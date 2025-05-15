@@ -307,7 +307,7 @@ class Organization {
     }
     const naOrgStudies = naOrg.studies;
     // remove updated studyID from NA program since they are added to the edited org.
-    const filteredStudies = naOrgStudies.filter(study => !removed_studies_ids.includes(study._id));
+    const filteredStudies = naOrgStudies.filter(study => !updated_study_ids.includes(study._id));
     if (filteredStudies.length !== naOrgStudies.length) {
       await this.organizationCollection.updateOne({"_id": naOrg._id}, {"studies": filteredStudies, "updateAt": getCurrentTime()});
     }
