@@ -302,7 +302,7 @@ class Organization {
     for (let studyID of removed_studies_ids) {
         const organization = await this.findOneByStudyID(studyID);
         if (organization.length == 0) {
-            await this.storeApprovedStudies(org._id, studyID);
+            await this.storeApprovedStudies(naOrg._id, studyID);
         }
     }
     const naOrgStudies = naOrg.studies;
