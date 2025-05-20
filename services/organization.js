@@ -31,9 +31,7 @@ class Organization {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
       throw new Error(ERROR.NOT_LOGGED_IN);
     }
-    if (!context?.userInfo?.permissions?.includes(ADMIN.MANAGE_PROGRAMS)) {
-      throw new Error(ERROR.INVALID_ROLE);
-    }
+
     if (!params?.orgID) {
       throw new Error(ERROR.INVALID_ORG_ID);
     }
@@ -143,9 +141,7 @@ class Organization {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
       throw new Error(ERROR.NOT_LOGGED_IN);
     }
-    if (!context?.userInfo?.permissions?.includes(ADMIN.MANAGE_PROGRAMS)) {
-      throw new Error(ERROR.INVALID_ROLE);
-    }
+
     if (!params?.orgID) {
       throw new Error(ERROR.INVALID_ORG_ID);
     }
@@ -367,9 +363,6 @@ class Organization {
   async createOrganizationAPI(params, context) {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
       throw new Error(ERROR.NOT_LOGGED_IN);
-    }
-    if (!context?.userInfo?.permissions?.includes(ADMIN.MANAGE_PROGRAMS)) {
-      throw new Error(ERROR.INVALID_ROLE);
     }
 
     if (!params?.abbreviation?.trim()) {
