@@ -288,7 +288,7 @@ class Organization {
           studyID: { $in: studyIDs }
       }},
       {$lookup: {
-          from: 'approvedStudies', // adjust if the actual collection name is different
+          from: APPROVED_STUDIES_COLLECTION, // adjust if the actual collection name is different
           localField: 'studyID',
           foreignField: '_id',
           as: 'studyInfo'
