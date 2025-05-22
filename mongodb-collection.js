@@ -105,10 +105,10 @@ class MongoDBCollection {
     }
 
     async updateMany(query, document, option) {
-        const updateDoc = {
-            $set: document,
-            ...option
-        };
+        const updateDoc = Array.isArray(document)
+            ? document
+            : { $set: document, ...option };
+
         try{
             return await this.collection.updateMany(query, updateDoc);
         }
