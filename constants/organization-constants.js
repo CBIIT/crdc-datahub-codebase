@@ -11,4 +11,5 @@ module.exports = Object.freeze({
             INACTIVE: "Inactive",
         },
     },
+    NA_PROGRAM: "NA"
 });
