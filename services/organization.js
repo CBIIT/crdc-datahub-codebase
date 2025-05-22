@@ -283,37 +283,35 @@ class Organization {
   // If data concierge is not available in the submission,
   // It will update the conciergeName/conciergeEmail at the program level if available.
   async #updatePrimaryContact(studyIDs, conciergeName, conciergeEmail) {
-    const primaryContactSubmissions = await this.submissionCollection.aggregate([{
-      "$match": {
-        "studyID": {$in: studyIDs}
-      }
-    }
-    ]);
-    const withPrimaryContactStudies = await this.approvedStudiesCollection.aggregate([{
-      $match: {
-        _id: {$in: studyIDs},
-        primaryContactID: {$ne: null, $exists: true}
-      }
-    }, {
-      $project: {_id: 1}
-    }
-    ]);
+    const programLevelSubmissions = await this.submissionCollection.aggregate([
+      {$match: {
+          studyID: { $in: studyIDs }
+      }},
+      {$lookup: {
+          from: APPROVED_STUDIES_COLLECTION, // adjust if the actual collection name is different
+          localField: 'studyID',
+          foreignField: '_id',
+          as: 'studyInfo'
+      }},
+      {$unwind: '$studyInfo'},
+      {$match: {
+          // This flag indicates the program level primary contact(data concierge)
+          'studyInfo.useProgramPC': true
+      }},
+      {$project: {
+          _id: 1
+      }}]);
 
-    const primaryContactStudyIDSet = new Set(withPrimaryContactStudies?.map((s) => s?._id));
-    const withoutContactSubmissionIDs = primaryContactSubmissions
-      .filter((aSubmission) => !primaryContactStudyIDSet.has(aSubmission?.studyID));
-
-    // update data concierge at the program level
-    if (withoutContactSubmissionIDs.length > 0) {
-      const submissionIDs = withoutContactSubmissionIDs?.map((s) => s?._id);
+    const submissionIDs = programLevelSubmissions?.map((s) => s?._id);
+    if (submissionIDs?.length > 0) {
       const updateSubmission = await this.submissionCollection.updateMany(
-        // conditions to match
-        {
-          _id: {$in: submissionIDs},
-          $or: [{conciergeName: {"$ne": conciergeName}}, {conciergeEmail: {"$ne": conciergeEmail}}]
-        },
-        // properties to be updated
-        {conciergeName: conciergeName, conciergeEmail: conciergeEmail, updatedAt: getCurrentTime()}
+          // conditions to match
+          {
+            _id: {$in: submissionIDs},
+            $or: [{conciergeName: {"$ne": conciergeName}}, {conciergeEmail: {"$ne": conciergeEmail}}]
+          },
+          // properties to be updated
+          {conciergeName: conciergeName, conciergeEmail: conciergeEmail, updatedAt: getCurrentTime()}
       );
 
       if (!updateSubmission.acknowledged) {
