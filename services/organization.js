@@ -246,34 +246,50 @@ class Organization {
       }
     }
 
-    if (updatedOrg.name) {
-      const [updatedSubmission, updateUser, updatedApplication] = await Promise.all([
-        this.submissionCollection.updateMany(
-          {"organization._id": orgID, "organization.name": {"$ne": updatedOrg.name}},
-          {"organization.name": updatedOrg.name, updatedAt: getCurrentTime()}
-        ),
-        this.userCollection.updateMany(
-          {"organization.orgID": orgID, "organization.orgName": {"$ne": updatedOrg.name}},
-          {
-            "organization.orgName": updatedOrg.name,
-            "organization.updateAt": updatedOrg.updateAt,
-            updateAt: getCurrentTime()
-          }
-        ),
-        this.applicationCollection.updateMany(
-          {"organization._id": orgID, "organization.name": {"$ne": updatedOrg.name}},
-          {"organization.name": updatedOrg.name, updatedAt: getCurrentTime()}
-        )
-      ]);
-      if (!updatedSubmission.acknowledged) {
+    if (updatedOrg.name || updatedOrg?.abbreviation) {
+      const promises = [];
+      const submissionUpdateCondition = {"organization._id": orgID, $or: [
+          updatedOrg.name ? {"organization.name": {"$ne": updatedOrg.name}} : {},
+          updatedOrg?.abbreviation? {"organization.abbreviation": {"$ne": updatedOrg.abbreviation}} : {}
+        ]}
+      promises.push(
+          this.submissionCollection.updateMany(
+              submissionUpdateCondition,
+              {
+                ...(updatedOrg.name ? {"organization.name": updatedOrg.name} : {}),
+                ...(updatedOrg.abbreviation ? {"organization.abbreviation": updatedOrg.abbreviation} : {}),
+                updatedAt: getCurrentTime()}
+          )
+      );
+      if (updatedOrg.name) {
+        promises.push(
+            this.userCollection.updateMany(
+                {"organization.orgID": orgID, "organization.orgName": {"$ne": updatedOrg.name}},
+                {
+                  "organization.orgName": updatedOrg.name,
+                  "organization.updateAt": updatedOrg.updateAt,
+                  updateAt: getCurrentTime()
+                }
+            )
+        );
+        promises.push(
+            this.applicationCollection.updateMany(
+                {"organization._id": orgID, "organization.name": {"$ne": updatedOrg.name}},
+                {"organization.name": updatedOrg.name, updatedAt: getCurrentTime()}
+            )
+        );
+      }
+
+      const [updatedSubmission, updateUser, updatedApplication] = await Promise.all(promises);
+      if ((updatedOrg?.name || updatedOrg?.abbreviation) && !updatedSubmission.acknowledged) {
         console.error("Failed to update the organization name in submissions");
       }
 
-      if (!updateUser.acknowledged) {
+      if (updatedOrg.name && !updateUser.acknowledged) {
         console.error("Failed to update the organization name in users");
       }
 
-      if (!updatedApplication.acknowledged) {
+      if (updatedOrg.name && !updatedApplication.acknowledged) {
         console.error("Failed to update the organization name in submission requests");
       }
     }
