@@ -231,8 +231,9 @@ class Organization {
 
     // If data concierge is not available in approved studies, the provided data concierge should be updated in the data submissions.
     if (updatedOrg.studies?.length > 0) {
-      const conciergeID = updatedOrg.conciergeID || currentOrg?.conciergeID;
-      if (conciergeID) {
+      const conciergeID = updatedOrg?.conciergeID || currentOrg?.conciergeID;
+      const studyIDs = updatedOrg?.studies.map(study => study?._id);
+      if (conciergeID && updatedOrg?.conciergeID !== null) {
         const primaryContact = await this.userCollection.aggregate([{
           "$match": {
             _id: conciergeID, role: USER.ROLES.DATA_COMMONS_PERSONNEL, userStatus: USER.STATUSES.ACTIVE
@@ -240,9 +241,11 @@ class Organization {
         }, {"$limit": 1}]);
         if (primaryContact.length > 0) {
           const {firstName, lastName, email: conciergeEmail} = primaryContact[0];
-          const studyIDs = updatedOrg?.studies.map(study => study?._id);
           await this.#updatePrimaryContact(studyIDs, `${firstName} ${lastName}`?.trim(), conciergeEmail);
         }
+      } else if (conciergeProvided && params?.conciergeID === null) {
+        // Removing the data concierge from the program.
+        await this.#updatePrimaryContact(studyIDs, "", "");
       }
     }
 
@@ -313,7 +316,7 @@ class Organization {
     }
     for (let studyID of removed_studies_ids) {
         const organization = await this.findOneByStudyID(studyID);
-        if (organization.length == 0) {
+        if (organization?.length === 0) {
             await this.storeApprovedStudies(naOrg._id, studyID);
         }
     }
