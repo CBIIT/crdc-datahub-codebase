@@ -305,27 +305,39 @@ class Organization {
    * @param {*} existing_studies 
    * @param {*} updated_studies 
    */
-  async #checkRemovedStudies(existing_studies, updated_studies){
-    const existing_study_ids = existing_studies.map(study => study._id);
-    const updated_study_ids = updated_studies.map(study => study._id);
-    const removed_studies_ids = existing_study_ids.filter(study_id => !updated_study_ids.includes(study_id));
+  async #checkRemovedStudies(existingStudies, updatedStudies){
+    if (!updatedStudies || updatedStudies.length === 0) {
+      return;
+    }
+    const updatedStudyIds = updatedStudies.map(study => study._id);
     const naOrg = await this.getOrganizationByName(NA_PROGRAM);
     if (!naOrg || !naOrg?._id) {
       console.error("NA program not found");
       return
     }
-    for (let studyID of removed_studies_ids) {
-        const organization = await this.findOneByStudyID(studyID);
-        if (organization?.length === 0) {
-            await this.storeApprovedStudies(naOrg._id, studyID);
-        }
-    }
     const naOrgStudies = naOrg.studies;
+    let changed = false;
     // remove updated studyID from NA program since they are added to the edited org.
-    const filteredStudies = naOrgStudies.filter(study => !updated_study_ids.includes(study._id));
-    if (filteredStudies.length !== naOrgStudies.length) {
-      await this.organizationCollection.updateOne({"_id": naOrg._id}, {"studies": filteredStudies, "updateAt": getCurrentTime()});
+    const filteredStudies = naOrgStudies.filter(study => !updatedStudyIds.includes(study._id));
+    changed = (filteredStudies.length !== naOrgStudies.length);
+    if (existingStudies && existingStudies.length > 0) {
+      const existingStudyIds = existingStudies.map(study => study._id);
+      const removedStudiesIds = existingStudyIds.filter(study_id => !updatedStudyIds.includes(study_id));
+      if (removedStudiesIds.length > 0) {
+        for (let studyID of removedStudiesIds) {
+          const organization = await this.findOneByStudyID(studyID);
+          if (organization.length == 0) {
+              // add removed studyID back to NA program
+              changed = true;
+              filteredStudies.push({_id: studyID});
+          }
+        }
+      }
     }
+    if (!changed) {
+      return;
+    }
+    await this.organizationCollection.updateOne({"_id": naOrg._id}, {"studies": filteredStudies, "updateAt": getCurrentTime()});
   }
 
   // If data concierge is not available in the submission,
@@ -473,7 +485,7 @@ class Organization {
     if (!res?.value) {
       throw new Error(ERROR.CREATE_FAILED);
     }
-
+    await this.#checkRemovedStudies([], newOrg.studies)
     return res?.value;
   }
 
