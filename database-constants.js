@@ -5,6 +5,7 @@ module.exports = Object.freeze({
     APPLICATION_COLLECTION: 'applications',
     SUBMISSIONS_COLLECTION: 'submissions',
     APPROVED_STUDIES_COLLECTION: 'approvedStudies',
+    DATA_COMMONS_COLLECTION: 'dataCommons',
     USER_COLLECTION: 'users',
     ORGANIZATION_COLLECTION: 'organization',
     BATCH_COLLECTION: 'batch',

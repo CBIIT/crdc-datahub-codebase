@@ -296,7 +296,10 @@ class Organization {
         console.error("Failed to update the organization name in submission requests");
       }
     }
-    await this.#checkRemovedStudies(currentOrg.studies, updatedOrg.studies);
+    // Skip removing the studies from the NA program if the NA program is the one being edited
+    if (currentOrg.name !== NA_PROGRAM){
+      await this.#checkRemovedStudies(currentOrg.studies, updatedOrg.studies);
+    }
     return { ...currentOrg, ...updatedOrg };
   }
 
