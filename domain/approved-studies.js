@@ -30,7 +30,7 @@ class ApprovedStudies {
         }
         this.createdAt = this.updatedAt = getCurrentTime();
         this.useProgramPC = isTrue(useProgramPC);
-        this.pendingModelChange = isTrue(pendingModelChange || true);
+        this.pendingModelChange = isTrue(pendingModelChange ?? true);
         if (primaryContactID) {
             this.primaryContactID = primaryContactID;
         }
