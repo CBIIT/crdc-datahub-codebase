@@ -9,8 +9,8 @@ const {MongoPagination} = require("../domain/mongo-pagination");
 const {replaceErrorString} = require("../../utility/string-util");
 
 class Organization {
-  #ALL = "All";
-  #READ_ONLY_FIELDS = ["name", "abbreviation", "description", "status"];
+  _ALL = "All";
+  _READ_ONLY_FIELDS = ["name", "abbreviation", "description", "status"];
 
   constructor(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection) {
     this.organizationCollection = organizationCollection;
@@ -86,11 +86,11 @@ class Organization {
     }
     const {first, offset, orderBy, sortDirection, status} = params;
     const validStatuses = [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE];
-    if (status !== this.#ALL && !validStatuses.includes(status)) {
+    if (status !== this._ALL && !validStatuses.includes(status)) {
       throw new Error(replaceErrorString(ERROR.INVALID_PROGRAM_STATUS, status));
     }
 
-    const statusCondition = status && status !== this.#ALL ?
+    const statusCondition = status && status !== this._ALL ?
       {status: status} : {status: {$in: validStatuses}};
 
     const pagination = new MongoPagination(first, offset, orderBy, sortDirection);
@@ -207,7 +207,7 @@ class Organization {
     }
 
     if (params.studies && Array.isArray(params.studies)) {
-      updatedOrg.studies = await this.#getApprovedStudies(params.studies);
+      updatedOrg.studies = await this._getApprovedStudies(params.studies);
     } else {
       updatedOrg.studies = [];
     }
@@ -241,11 +241,11 @@ class Organization {
         }, {"$limit": 1}]);
         if (primaryContact.length > 0) {
           const {firstName, lastName, email: conciergeEmail} = primaryContact[0];
-          await this.#updatePrimaryContact(studyIDs, `${firstName} ${lastName}`?.trim(), conciergeEmail);
+          await this._updatePrimaryContact(studyIDs, `${firstName} ${lastName}`?.trim(), conciergeEmail);
         }
       } else if (conciergeProvided && params?.conciergeID === null) {
         // Removing the data concierge from the program.
-        await this.#updatePrimaryContact(studyIDs, "", "");
+        await this._updatePrimaryContact(studyIDs, "", "");
       }
     }
 
@@ -298,17 +298,17 @@ class Organization {
     }
     // Skip removing the studies from the NA program if the NA program is the one being edited
     if (currentOrg.name !== NA_PROGRAM){
-      await this.#checkRemovedStudies(currentOrg.studies, updatedOrg.studies);
+      await this._checkRemovedStudies(currentOrg.studies, updatedOrg.studies);
     }
     return { ...currentOrg, ...updatedOrg };
   }
 
   /**
-   * #checkRemovedStudies: private method to check removed studies
+   * _checkRemovedStudies: private method to check removed studies
    * @param {*} existing_studies 
    * @param {*} updated_studies 
    */
-  async #checkRemovedStudies(existingStudies, updatedStudies){
+  async _checkRemovedStudies(existingStudies, updatedStudies){
     if (!updatedStudies || updatedStudies.length === 0) {
       return;
     }
@@ -345,7 +345,7 @@ class Organization {
 
   // If data concierge is not available in the submission,
   // It will update the conciergeName/conciergeEmail at the program level if available.
-  async #updatePrimaryContact(studyIDs, conciergeName, conciergeEmail) {
+  async _updatePrimaryContact(studyIDs, conciergeName, conciergeEmail) {
     const programLevelSubmissions = await this.submissionCollection.aggregate([
       {$match: {
           studyID: { $in: studyIDs }
@@ -477,7 +477,7 @@ class Organization {
 
     if (params.studies && Array.isArray(params.studies)) {
       // @ts-ignore Incorrect linting type assertion
-      newOrg.studies = await this.#getApprovedStudies(params.studies);
+      newOrg.studies = await this._getApprovedStudies(params.studies);
     }
 
     const newProgram = ProgramData.create(newOrg.name, newOrg.conciergeID, newOrg.conciergeName, newOrg.conciergeEmail, newOrg.abbreviation, newOrg?.description, newOrg.studies)
@@ -488,7 +488,7 @@ class Organization {
     if (!res?.value) {
       throw new Error(ERROR.CREATE_FAILED);
     }
-    await this.#checkRemovedStudies([], newOrg.studies)
+    await this._checkRemovedStudies([], newOrg.studies)
     return res?.value;
   }
 
@@ -537,7 +537,7 @@ class Organization {
    * @param {object} studies - The studies object with studyID.
    * @returns {Promise<Object>} The approved studies
    */
-  async #getApprovedStudies(studies) {
+  async _getApprovedStudies(studies) {
     const studyIDs = studies
       .filter((study) => study?.studyID)
       .map((study) => study.studyID);
@@ -593,7 +593,7 @@ class Organization {
    */
   checkForReadOnlyViolation(organization, params) {
     if (organization?.readOnly) {
-      for (const key of this.#READ_ONLY_FIELDS) {
+      for (const key of this._READ_ONLY_FIELDS) {
         if (!!params?.[key] && params?.[key] !== organization?.[key]) {
           return true;
         }
