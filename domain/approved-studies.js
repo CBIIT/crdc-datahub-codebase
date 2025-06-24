@@ -3,7 +3,7 @@ const {isTrue} = require("../utility/string-utility");
 
 
 class ApprovedStudies {
-    constructor(studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName) {
+    constructor(studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID) {
         this.studyName = studyName;
         this.studyAbbreviation = studyAbbreviation;
         if (dbGaPID) {
@@ -29,11 +29,15 @@ class ApprovedStudies {
             this.programName = programName?.trim();
         }
         this.createdAt = this.updatedAt = getCurrentTime();
-        this.useProgramPC = true;
+        this.useProgramPC = isTrue(useProgramPC);
+        this.pendingModelChange = isTrue(pendingModelChange ?? true);
+        if (primaryContactID) {
+            this.primaryContactID = primaryContactID;
+        }
     }
 
-    static createApprovedStudies(studyName, studyAbbreviation, dbGaPID, organization, controlledAccess, ORCID, PI, openAccess, programName) {
-        return new ApprovedStudies(studyName, studyAbbreviation, dbGaPID, organization, controlledAccess, ORCID, PI, openAccess, programName);
+    static createApprovedStudies(studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID) {
+        return new ApprovedStudies(studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID);
     }
 }
 
