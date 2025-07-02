@@ -18,5 +18,5 @@ module.exports = Object.freeze({
     DATA_RECORDS_ARCHIVE_COLLECTION: 'dataRecordsArchived',
     QC_RESULTS_COLLECTION: 'qcResults',
     RELEASE_DATA_RECORDS_COLLECTION: "release",
-    PENDING_PVS: "pendingPvs"
+    PENDING_PVS_COLLECTION: "pendingPvs"
 });
