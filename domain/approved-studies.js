@@ -3,7 +3,7 @@ const {isTrue} = require("../utility/string-utility");
 
 
 class ApprovedStudies {
-    constructor(studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID) {
+    constructor(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID) {
         this.studyName = studyName;
         this.studyAbbreviation = studyAbbreviation;
         if (dbGaPID) {
@@ -31,13 +31,18 @@ class ApprovedStudies {
         this.createdAt = this.updatedAt = getCurrentTime();
         this.useProgramPC = isTrue(useProgramPC);
         this.pendingModelChange = isTrue(pendingModelChange ?? true);
+
+        if (this.pendingModelChange === true) {
+            this.pendingApplicationID = applicationID
+        }
+
         if (primaryContactID) {
             this.primaryContactID = primaryContactID;
         }
     }
 
-    static createApprovedStudies(studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID) {
-        return new ApprovedStudies(studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID);
+    static createApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID) {
+        return new ApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID);
     }
 }
 
