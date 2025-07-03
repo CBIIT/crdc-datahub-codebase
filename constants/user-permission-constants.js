@@ -18,7 +18,7 @@ module.exports = Object.freeze({
             REQUEST_REVIEW: "submission_request:reviewed",
             REQUEST_DELETE: "submission_request:deleted",
             REQUEST_EXPIRING: "submission_request:expiring",
-            REQUEST_CANCEL : "submission_request:canceled",
+            REQUEST_CANCEL: "submission_request:canceled",
             REQUEST_PENDING_CLEARED: "submission_request:pending_cleared"
         },
         USER_ACCOUNT: {
