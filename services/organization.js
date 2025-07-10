@@ -8,7 +8,7 @@ const ProgramDAO = require("../../dao/program");
 const SubmissionDAO = require("../../dao/submission");
 const UserDAO = require("../../dao/user");
 const ApplicationDAO = require("../../dao/application");
-const {ApprovedStudyDAO} = require("../../dao/approvedStudy");
+const ApprovedStudyDAO = require("../../dao/approvedStudy");
 
 class Organization {
   _ALL = "All";
