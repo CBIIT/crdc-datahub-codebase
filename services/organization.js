@@ -316,7 +316,7 @@ class Organization {
             updatedAt: getCurrentTime(),
           }
       )
-      if (!updateSubmission) {
+      if (!(updateSubmission?.count >= 0)) {
         console.error("Failed to update the data concierge in submissions at program level");
       }
     }
