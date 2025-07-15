@@ -2,11 +2,13 @@ const {ERROR} = require("../constants/error-constants");
 const {USER} = require("../constants/user-constants");
 const {ORGANIZATION, NA_PROGRAM} = require("../constants/organization-constants");
 const {getCurrentTime} = require("../utility/time-utility");
-const {APPROVED_STUDIES_COLLECTION} = require("../database-constants");
-const {ADMIN} = require("../constants/user-permission-constants");
 const {getDataCommonsDisplayNamesForUserOrganization} = require("../../utility/data-commons-remapper");
-const {MongoPagination} = require("../domain/mongo-pagination");
 const {replaceErrorString} = require("../../utility/string-util");
+const ProgramDAO = require("../../dao/program");
+const SubmissionDAO = require("../../dao/submission");
+const UserDAO = require("../../dao/user");
+const ApplicationDAO = require("../../dao/application");
+const ApprovedStudyDAO = require("../../dao/approvedStudy");
 
 class Organization {
   _ALL = "All";
@@ -14,10 +16,11 @@ class Organization {
 
   constructor(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection) {
     this.organizationCollection = organizationCollection;
-    this.userCollection = userCollection;
-    this.submissionCollection = submissionCollection;
-    this.applicationCollection = applicationCollection;
-    this.approvedStudiesCollection = approvedStudiesCollection;
+    this.programDAO = new ProgramDAO(organizationCollection);
+    this.approvedStudyDAO = new ApprovedStudyDAO();
+    this.submissionDAO = new SubmissionDAO(submissionCollection);
+    this.userDAO = new UserDAO();
+    this.applicationDAO = new ApplicationDAO(applicationCollection);
   }
 
   /**
@@ -49,25 +52,7 @@ class Organization {
    * @returns {Promise<Object | null>} The organization with the given `id` or null if not found
    */
   async getOrganizationByID(id, omitStudyLookup = false) {
-    const pipeline = [];
-
-    if (!omitStudyLookup) {
-      pipeline.push(
-        {
-          $lookup: {
-            from: APPROVED_STUDIES_COLLECTION,
-            localField: "studies._id",
-            foreignField: "_id",
-            as: "studies"
-          }
-        },
-      );
-    }
-
-    pipeline.push({"$match": {_id: id}});
-    pipeline.push({"$limit": 1});
-    const result = await this.organizationCollection.aggregate(pipeline);
-    return result?.length > 0 ? result[0] : null;
+    return await this.programDAO.getOrganizationByID(id, omitStudyLookup);
   }
 
   /**
@@ -93,35 +78,7 @@ class Organization {
     const statusCondition = status && status !== this._ALL ?
       {status: status} : {status: {$in: validStatuses}};
 
-    const pagination = new MongoPagination(first, offset, orderBy, sortDirection);
-    const paginationPipeline = pagination.getPaginationPipeline();
-    const programs = await this.organizationCollection.aggregate([
-      {
-        $lookup: {
-          from: APPROVED_STUDIES_COLLECTION,
-          localField: "studies._id",
-          foreignField: "_id",
-          as: "studies"
-        }
-      },
-      {"$match": statusCondition},
-      {
-        $facet: {
-          total: [{
-            $count: "total"
-          }],
-          results: paginationPipeline
-        }
-      },
-      {
-        $set: {
-          total: {
-            $first: "$total.total",
-          }
-        }
-      }
-    ]);
-    const programList = programs.length > 0 ? programs[0] : {}
+    const programList = await this.programDAO.listPrograms(first, offset, orderBy, sortDirection, statusCondition);
     return {
       total: programList?.total || 0,
       programs: programList?.results?.map((program) => {
@@ -186,13 +143,12 @@ class Organization {
     const conciergeProvided = typeof params.conciergeID !== "undefined";
     // Only update the concierge if it is provided and different from the currently assigned concierge
     if (conciergeProvided && !!params.conciergeID && params.conciergeID !== currentOrg.conciergeID) {
-      const filters = {
-        _id: params.conciergeID,
-        role: USER.ROLES.DATA_COMMONS_PERSONNEL,
-        userStatus: USER.STATUSES.ACTIVE
-      };
-      const result = await this.userCollection.aggregate([{"$match": filters}, {"$limit": 1}]);
-      const conciergeUser = result?.[0];
+      const conciergeUser = await this.userDAO.findFirst({
+          id: params.conciergeID, // assuming _id maps to Prisma's `id`
+          role: USER.ROLES.DATA_COMMONS_PERSONNEL,
+          userStatus: USER.STATUSES.ACTIVE,
+      });
+
       if (!conciergeUser) {
         throw new Error(ERROR.INVALID_ROLE_ASSIGNMENT);
       }
@@ -224,8 +180,20 @@ class Organization {
       updatedOrg.description = params.description.trim();
     }
 
-    const updateResult = await this.organizationCollection.update({_id: orgID, ...updatedOrg});
-    if (updateResult?.matchedCount !== 1) {
+    const updateResult = await this.programDAO.updateMany(
+        {id: orgID},
+      updatedOrg, // only these fields will be changed
+    );
+
+    // prisma can't return _id should be mapped
+    if (updatedOrg.studies?.length > 0) {
+      updatedOrg.studies = updatedOrg.studies.map(study => ({
+        ...study,
+        _id: study?.id
+      }));
+    }
+
+    if (!updateResult) {
       throw new Error(ERROR.UPDATE_FAILED);
     }
 
@@ -234,13 +202,12 @@ class Organization {
       const conciergeID = updatedOrg?.conciergeID || currentOrg?.conciergeID;
       const studyIDs = updatedOrg?.studies.map(study => study?._id);
       if (conciergeID && updatedOrg?.conciergeID !== null) {
-        const primaryContact = await this.userCollection.aggregate([{
-          "$match": {
-            _id: conciergeID, role: USER.ROLES.DATA_COMMONS_PERSONNEL, userStatus: USER.STATUSES.ACTIVE
-          }
-        }, {"$limit": 1}]);
-        if (primaryContact.length > 0) {
-          const {firstName, lastName, email: conciergeEmail} = primaryContact[0];
+        const primaryContact = await this.userDAO.findFirst({
+            id: conciergeID, role: USER.ROLES.DATA_COMMONS_PERSONNEL, userStatus: USER.STATUSES.ACTIVE
+        });
+
+        if (primaryContact) {
+          const {firstName, lastName, email: conciergeEmail} = primaryContact;
           await this._updatePrimaryContact(studyIDs, `${firstName} ${lastName}`?.trim(), conciergeEmail);
         }
       } else if (conciergeProvided && params?.conciergeID === null) {
@@ -251,35 +218,15 @@ class Organization {
 
     if (updatedOrg.name || updatedOrg?.abbreviation) {
       const promises = [];
-      const submissionUpdateCondition = {"organization._id": orgID, $or: [
-          updatedOrg.name ? {"organization.name": {"$ne": updatedOrg.name}} : {},
-          updatedOrg?.abbreviation? {"organization.abbreviation": {"$ne": updatedOrg.abbreviation}} : {}
-        ]}
       promises.push(
-          this.submissionCollection.updateMany(
-              submissionUpdateCondition,
-              {
-                ...(updatedOrg.name ? {"organization.name": updatedOrg.name} : {}),
-                ...(updatedOrg.abbreviation ? {"organization.abbreviation": updatedOrg.abbreviation} : {}),
-                updatedAt: getCurrentTime()}
-          )
+          this.submissionDAO.updateSubmissionOrg(orgID, updatedOrg)
       );
       if (updatedOrg.name) {
         promises.push(
-            this.userCollection.updateMany(
-                {"organization.orgID": orgID, "organization.orgName": {"$ne": updatedOrg.name}},
-                {
-                  "organization.orgName": updatedOrg.name,
-                  "organization.updateAt": updatedOrg.updateAt,
-                  updateAt: getCurrentTime()
-                }
-            )
+            this.userDAO.updateUserOrg(orgID, updatedOrg)
         );
         promises.push(
-            this.applicationCollection.updateMany(
-                {"organization._id": orgID, "organization.name": {"$ne": updatedOrg.name}},
-                {"organization.name": updatedOrg.name, updatedAt: getCurrentTime()}
-            )
+            this.applicationDAO.updateApplicationOrg(orgID, updatedOrg)
         );
       }
 
@@ -305,8 +252,8 @@ class Organization {
 
   /**
    * _checkRemovedStudies: private method to check removed studies
-   * @param {*} existing_studies 
-   * @param {*} updated_studies 
+   * @param {*} existingStudies
+   * @param {*} updatedStudies
    */
   async _checkRemovedStudies(existingStudies, updatedStudies){
     if (!updatedStudies || updatedStudies.length === 0) {
@@ -340,44 +287,36 @@ class Organization {
     if (!changed) {
       return;
     }
-    await this.organizationCollection.updateOne({"_id": naOrg._id}, {"studies": filteredStudies, "updateAt": getCurrentTime()});
+
+    await this.programDAO.update(
+        naOrg._id, {
+        studies: filteredStudies,
+        updateAt: getCurrentTime()
+    });
   }
 
   // If data concierge is not available in the submission,
   // It will update the conciergeName/conciergeEmail at the program level if available.
   async _updatePrimaryContact(studyIDs, conciergeName, conciergeEmail) {
-    const programLevelSubmissions = await this.submissionCollection.aggregate([
-      {$match: {
-          studyID: { $in: studyIDs }
-      }},
-      {$lookup: {
-          from: APPROVED_STUDIES_COLLECTION, // adjust if the actual collection name is different
-          localField: 'studyID',
-          foreignField: '_id',
-          as: 'studyInfo'
-      }},
-      {$unwind: '$studyInfo'},
-      {$match: {
-          // This flag indicates the program level primary contact(data concierge)
-          'studyInfo.useProgramPC': true
-      }},
-      {$project: {
-          _id: 1
-      }}]);
-
+    const programLevelSubmissions = await this.submissionDAO.programLevelSubmissions(studyIDs);
     const submissionIDs = programLevelSubmissions?.map((s) => s?._id);
     if (submissionIDs?.length > 0) {
-      const updateSubmission = await this.submissionCollection.updateMany(
-          // conditions to match
-          {
-            _id: {$in: submissionIDs},
-            $or: [{conciergeName: {"$ne": conciergeName}}, {conciergeEmail: {"$ne": conciergeEmail}}]
-          },
-          // properties to be updated
-          {conciergeName: conciergeName, conciergeEmail: conciergeEmail, updatedAt: getCurrentTime()}
-      );
 
-      if (!updateSubmission.acknowledged) {
+      const updateSubmission = await this.submissionDAO.updateMany(
+          {
+            id: { in: submissionIDs }, // assuming `_id` maps to `id`
+            OR: [
+              { conciergeName: { not: conciergeName } },
+              { conciergeEmail: { not: conciergeEmail } },
+            ],
+          },
+          {
+            conciergeName: conciergeName,
+            conciergeEmail: conciergeEmail,
+            updatedAt: getCurrentTime(),
+          }
+      )
+      if (!(updateSubmission?.count >= 0)) {
         console.error("Failed to update the data concierge in submissions at program level");
       }
     }
@@ -393,25 +332,7 @@ class Organization {
    * @returns {Promise<Object | null>} The organization with the given `name` or null if not found
    */
   async getOrganizationByName(name, omitStudyLookup = true) {
-    const pipeline = [];
-
-    if (!omitStudyLookup) {
-      pipeline.push(
-        {
-          $lookup: {
-            from: APPROVED_STUDIES_COLLECTION,
-            localField: "studies._id",
-            foreignField: "_id",
-            as: "studies"
-          }
-        },
-      );
-    }
-
-    pipeline.push({"$match": {name}});
-    pipeline.push({"$limit": 1});
-    const result = await this.organizationCollection.aggregate(pipeline);
-    return result?.length > 0 ? result[0] : null;
+    return await this.programDAO.getOrganizationByName(name, omitStudyLookup);
   }
 
   /**
@@ -460,13 +381,12 @@ class Organization {
     }
 
     if (!!params?.conciergeID) {
-      const filters = {
-        _id: params.conciergeID,
-        role: USER.ROLES.DATA_COMMONS_PERSONNEL,
-        userStatus: USER.STATUSES.ACTIVE
-      };
-      const result = await this.userCollection.aggregate([{"$match": filters}, {"$limit": 1}]);
-      const conciergeUser = result?.[0];
+      const conciergeUser = await this.userDAO.findFirst({
+          _id: params.conciergeID,
+          role: USER.ROLES.DATA_COMMONS_PERSONNEL,
+          userStatus: USER.STATUSES.ACTIVE
+      });
+
       if (!conciergeUser) {
         throw new Error(ERROR.INVALID_ROLE_ASSIGNMENT);
       }
@@ -481,15 +401,13 @@ class Organization {
     }
 
     const newProgram = ProgramData.create(newOrg.name, newOrg.conciergeID, newOrg.conciergeName, newOrg.conciergeEmail, newOrg.abbreviation, newOrg?.description, newOrg.studies)
-    const res = await this.organizationCollection.findOneAndUpdate({name: newOrg.name}, newProgram, {
-      returnDocument: 'after',
-      upsert: true
-    });
-    if (!res?.value) {
+    const res = await this.programDAO.create(newProgram);
+
+    if (!res) {
       throw new Error(ERROR.CREATE_FAILED);
     }
     await this._checkRemovedStudies([], newOrg.studies)
-    return res?.value;
+    return res;
   }
 
   /**
@@ -514,8 +432,8 @@ class Organization {
       aOrg.studies = aOrg.studies || [];
       aOrg.studies = aOrg.studies.concat(newStudies);
       aOrg.updateAt = getCurrentTime();
-      const res = await this.organizationCollection.update(aOrg);
-      if (res?.modifiedCount !== 1) {
+      const res = await this.programDAO.update(orgID, aOrg)
+      if (!res) {
         console.error(ERROR.ORGANIZATION_APPROVED_STUDIES_INSERTION + ` orgID: ${orgID}`);
       }
     }
@@ -528,7 +446,7 @@ class Organization {
    * @returns {Promise<String[]>} An array of Organization ID
    */
   async findByStudyID(studyID) {
-    return await this.organizationCollection.distinct("_id", {"studies._id": studyID});
+    return await this.programDAO.getOrganizationIDsByStudyID(studyID);
   }
 
   /**
@@ -541,15 +459,15 @@ class Organization {
     const studyIDs = studies
       .filter((study) => study?.studyID)
       .map((study) => study.studyID);
-    const approvedStudies = await Promise.all(studyIDs.map(async (id) => {
-      const study = (await this.approvedStudiesCollection.find(id))?.pop();
-      if (!study) {
-        throw new Error(ERROR.INVALID_APPROVED_STUDY_ID);
-      }
-      return study;
-    }));
+    const approvedStudies = await this.approvedStudyDAO.findMany({
+        id: { in: studyIDs },
+    });
 
-    return approvedStudies?.map((study) => ({_id: study?._id}));
+    if (approvedStudies.length !== studyIDs.length) {
+      throw new Error(ERROR.INVALID_APPROVED_STUDY_ID);
+    }
+
+    return approvedStudies?.map((study) => ({id: study?._id}));
   }
 
   async upsertByProgramName(programName, abbreviation, description, studies) {
