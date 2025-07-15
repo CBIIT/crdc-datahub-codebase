@@ -17,7 +17,7 @@ class Organization {
   constructor(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection) {
     this.organizationCollection = organizationCollection;
     this.programDAO = new ProgramDAO(organizationCollection);
-    this.approvedStudyDAO = new ApprovedStudyDAO();
+    this.approvedStudyDAO = new ApprovedStudyDAO(approvedStudiesCollection);
     this.submissionDAO = new SubmissionDAO(submissionCollection);
     this.userDAO = new UserDAO();
     this.applicationDAO = new ApplicationDAO(applicationCollection);
