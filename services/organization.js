@@ -279,7 +279,7 @@ class Organization {
           if (organization.length == 0) {
               // add removed studyID back to NA program
               changed = true;
-              filteredStudies.push({_id: studyID});
+              filteredStudies.push({id: studyID});
           }
         }
       }
@@ -431,6 +431,9 @@ class Organization {
     if (newStudies.length > 0) {
       aOrg.studies = aOrg.studies || [];
       aOrg.studies = aOrg.studies.concat(newStudies);
+      aOrg.studies = aOrg.studies
+          .map(study => study?._id ? { id: study._id } : null)
+          .filter(Boolean);
       aOrg.updateAt = getCurrentTime();
       const res = await this.programDAO.update(orgID, aOrg)
       if (!res) {
