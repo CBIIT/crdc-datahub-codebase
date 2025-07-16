@@ -288,7 +288,7 @@ class Organization {
       return;
     }
 
-    const studies = filteredStudies.map(study => ({id: study?._id || study?._id}));
+    const studies = filteredStudies.map(study => ({id: study?.id || study?._id}));
     await this.programDAO.update(
         naOrg._id, {
         studies: studies,
