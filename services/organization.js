@@ -19,7 +19,7 @@ class Organization {
     this.programDAO = new ProgramDAO(organizationCollection);
     this.approvedStudyDAO = new ApprovedStudyDAO(approvedStudiesCollection);
     this.submissionDAO = new SubmissionDAO(submissionCollection);
-    this.userDAO = new UserDAO();
+    this.userDAO = new UserDAO(userCollection);
     this.applicationDAO = new ApplicationDAO(applicationCollection);
   }
 
