@@ -227,16 +227,13 @@ class Organization {
         );
       }
 
-      const [updatedSubmission, updateUser, updatedApplication] = await Promise.all(promises);
-      if ((updatedOrg?.name || updatedOrg?.abbreviation) && !updatedSubmission.acknowledged) {
-        console.error("Failed to update the organization name in submissions");
-      }
+      const [updateUser, updatedApplication] = await Promise.all(promises);
 
-      if (updatedOrg.name && !updateUser.acknowledged) {
+      if (updatedOrg.name && !updateUser?.acknowledged) {
         console.error("Failed to update the organization name in users");
       }
 
-      if (updatedOrg.name && !updatedApplication.acknowledged) {
+      if (updatedOrg.name && !updatedApplication?.acknowledged) {
         console.error("Failed to update the organization name in submission requests");
       }
     }
