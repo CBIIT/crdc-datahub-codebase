@@ -218,9 +218,6 @@ class Organization {
 
     if (updatedOrg.name || updatedOrg?.abbreviation) {
       const promises = [];
-      promises.push(
-          this.submissionDAO.updateSubmissionOrg(orgID, updatedOrg)
-      );
       if (updatedOrg.name) {
         promises.push(
             this.userDAO.updateUserOrg(orgID, updatedOrg)
