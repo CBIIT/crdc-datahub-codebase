@@ -297,7 +297,11 @@ class Organization {
     }
 
   }
-
+  /**
+   * _updateOrganizationInSubmissions: private method to update organization in submissions related with updated studies
+   * @param {*} updatedOrg
+   * @param {*} updatedStudies
+   */
   async _updateOrganizationInSubmissions(orgID, updatedStudyIDs) {
     if (!updatedStudyIDs || updatedStudyIDs.length === 0) {
       return;
@@ -331,21 +335,6 @@ class Organization {
         console.error("Failed to update the data concierge in submissions at program level");
       }
     }
-  await this._updateOrganizationInSubmissions(naOrg._id, newOpenedStudyIDs);
-  }
-
-  /**
-   * _updateOrganizationInSubmissions: private method to update organization in submissions related with updated studies
-   * @param {*} updatedOrg
-   * @param {*} updatedStudies
-   */
-  async _updateOrganizationInSubmissions(orgID, updatedStudies) {
-    if (!updatedStudies || updatedStudies.length === 0) {
-      return;
-    }
-    const updatedStudyIds = updatedStudies.map(study => study._id);
-    // await this.submissionDAO.updateSubmissionOrgByStudyIDs(updatedStudyIds, updatedOrg);
-    await this.submissionDAO.updateMany({studyID: {in: updatedStudyIds}}, {programID: orgID});
   }
 
   /**
