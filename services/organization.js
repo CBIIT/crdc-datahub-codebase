@@ -276,7 +276,7 @@ class Organization {
               // add removed studyID back to NA program
               changed = true;
               filteredStudies.push({id: studyID});
-              newOpenedStudyIDs.push(studyID);
+              newOrphanedStudyIDs.push(studyID);
           }
         }
       }
