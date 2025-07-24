@@ -264,7 +264,7 @@ class Organization {
     let changed = false;
     // remove updated studyID from NA program since they are added to the edited org.
     const filteredStudies = naOrgStudies.filter(study => !updatedStudyIds.includes(study._id));
-    const newOpenedStudyIDs = [];
+    const newOrphanedStudyIDs = [];
     changed = (filteredStudies.length !== naOrgStudies.length);
     if (existingStudies && existingStudies.length > 0) {
       const existingStudyIds = existingStudies.map(study => study._id);
@@ -289,11 +289,11 @@ class Organization {
     await this.programDAO.update(
         naOrg._id, {
         studies: studies,
-        updatedAt: getCurrentTime()
+        updateAt: getCurrentTime()
     });
 
-    if (newOpenedStudyIDs.length > 0) {
-      await this._updateOrganizationInSubmissions(naOrg._id, newOpenedStudyIDs);
+    if (newOrphanedStudyIDs.length > 0) {
+      await this._updateOrganizationInSubmissions(naOrg._id, newOrphanedStudyIDs);
     }
 
   }
