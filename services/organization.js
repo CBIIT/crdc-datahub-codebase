@@ -132,7 +132,7 @@ class Organization {
       throw new Error(ERROR.ORGANIZATION_INVALID_ABBREVIATION);
     }
 
-    if (params.name && params.name !== currentOrg.name) {
+    if (params.name && params?.name?.toLowerCase() !== currentOrg.name?.toLowerCase()) {
       const existingOrg = await this.getOrganizationByName(params.name);
       if (existingOrg) {
         throw new Error(ERROR.DUPLICATE_ORG_NAME);
