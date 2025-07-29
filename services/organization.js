@@ -240,6 +240,7 @@ class Organization {
     // Skip removing the studies from the NA program if the NA program is the one being edited
     if (currentOrg.name !== NA_PROGRAM){
       await this._checkRemovedStudies(currentOrg.studies, updatedOrg.studies);
+      await this._updateOrganizationInSubmissions(currentOrg._id, updatedOrg.studies);
     }
     return { ...currentOrg, ...updatedOrg };
   }
@@ -263,6 +264,7 @@ class Organization {
     let changed = false;
     // remove updated studyID from NA program since they are added to the edited org.
     const filteredStudies = naOrgStudies.filter(study => !updatedStudyIds.includes(study._id));
+    const newOrphanedStudyIDs = [];
     changed = (filteredStudies.length !== naOrgStudies.length);
     if (existingStudies && existingStudies.length > 0) {
       const existingStudyIds = existingStudies.map(study => study._id);
@@ -274,6 +276,7 @@ class Organization {
               // add removed studyID back to NA program
               changed = true;
               filteredStudies.push({id: studyID});
+              newOrphanedStudyIDs.push(studyID);
           }
         }
       }
@@ -288,6 +291,23 @@ class Organization {
         studies: studies,
         updateAt: getCurrentTime()
     });
+
+    if (newOrphanedStudyIDs.length > 0) {
+      await this._updateOrganizationInSubmissions(naOrg._id, newOrphanedStudyIDs);
+    }
+
+  }
+  /**
+   * _updateOrganizationInSubmissions: private method to update organization in submissions related with updated studies
+   * @param {*} updatedOrg
+   * @param {*} updatedStudies
+   */
+  async _updateOrganizationInSubmissions(orgID, updatedStudyIDs) {
+    if (!updatedStudyIDs || updatedStudyIDs.length === 0) {
+      return;
+    }
+    const updatedStudyIds = updatedStudyIDs.map(study => study._id);
+    await this.submissionDAO.updateMany({studyID: {in: updatedStudyIds}}, {programID: orgID});
   }
 
   // If data concierge is not available in the submission,
@@ -316,7 +336,6 @@ class Organization {
       }
     }
   }
-
 
   /**
    * Get an organization by it's name
