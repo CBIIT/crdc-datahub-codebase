@@ -496,7 +496,6 @@ class Organization {
    * @param {string} studyID
    * @returns {Promise<Organization[]>} An array of Organization
    */
-  // TODO verify
   async findOneByStudyID(studyID) {
     return this.programDAO.findFirst({
       studies: {
