@@ -519,7 +519,7 @@ class Organization {
     return this.programDAO.findFirst({
       studies: {
         some: {
-          id: studyID?.trim(), // or _id if your Prisma model uses _id
+          id: studyID?.trim(),
         },
       },
     });
