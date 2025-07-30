@@ -306,7 +306,7 @@ class Organization {
     if (!updatedStudyIDs || updatedStudyIDs.length === 0) {
       return;
     }
-    const updatedStudyIds = updatedStudyIDs.map(study => study._id);
+    const updatedStudyIds = typeof updatedStudyIDs[0] === 'string' ? updatedStudyIDs : updatedStudyIDs.map(study => study?._id);
     await this.submissionDAO.updateMany({studyID: {in: updatedStudyIds}}, {programID: orgID});
   }
 
