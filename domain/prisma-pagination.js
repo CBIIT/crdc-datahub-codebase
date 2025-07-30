@@ -11,7 +11,7 @@ class PrismaPagination {
     getPagination() {
         let pagination = {};
         if (this._orderBy) {
-            pagination[this._orderBy] = this._getSortDirection();
+            pagination.orderBy = {[this._orderBy]: this._getSortDirection()};
         }
 
         if (this._offset) {
