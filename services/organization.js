@@ -272,7 +272,7 @@ class Organization {
       if (removedStudiesIds.length > 0) {
         for (let studyID of removedStudiesIds) {
           const organization = await this.findOneByStudyID(studyID);
-          if (organization.length == 0) {
+          if (organization.length === 0) {
               // add removed studyID back to NA program
               changed = true;
               filteredStudies.push({id: studyID});
