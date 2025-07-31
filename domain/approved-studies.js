@@ -40,7 +40,7 @@ class ApprovedStudies {
             this.primaryContactID = primaryContactID;
         }
 
-        if (pendingGPA.isPendingGPA) {
+        if (pendingGPA?.isPendingGPA) {
             this.isPendingGPA = pendingGPA.isPendingGPA
             this.GPAName = pendingGPA.GPAName;
             this.GPAEmail = pendingGPA.GPAEmail;
