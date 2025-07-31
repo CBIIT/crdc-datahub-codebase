@@ -240,7 +240,10 @@ class Organization {
     // Skip removing the studies from the NA program if the NA program is the one being edited
     if (currentOrg.name !== NA_PROGRAM){
       await this._checkRemovedStudies(currentOrg.studies, updatedOrg.studies);
-      await this._updateOrganizationInSubmissions(currentOrg._id, updatedOrg.studies);
+      if (updatedOrg.studies?.length > 0) {
+        const updatedStudyIds = updatedOrg.studies.map(study => study?._id);
+        await this._updateOrganizationInSubmissions(currentOrg._id, updatedStudyIds);
+      }
     }
     return { ...currentOrg, ...updatedOrg };
   }
@@ -306,8 +309,7 @@ class Organization {
     if (!updatedStudyIDs || updatedStudyIDs.length === 0) {
       return;
     }
-    const updatedStudyIds = typeof updatedStudyIDs[0] === 'string' ? updatedStudyIDs : updatedStudyIDs.map(study => study?._id);
-    await this.submissionDAO.updateMany({studyID: {in: updatedStudyIds}}, {programID: orgID});
+    await this.submissionDAO.updateMany({studyID: {in: updatedStudyIDs}}, {programID: orgID});
   }
 
   // If data concierge is not available in the submission,
