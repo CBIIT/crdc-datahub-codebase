@@ -41,9 +41,9 @@ class ApprovedStudies {
         }
 
         if (pendingGPA?.isPendingGPA) {
-            this.isPendingGPA = pendingGPA.isPendingGPA
-            this.GPAName = pendingGPA.GPAName;
-            this.GPAEmail = pendingGPA.GPAEmail;
+            this.isPendingGPA = pendingGPA?.isPendingGPA
+            this.GPAName = pendingGPA?.GPAName;
+            this.GPAEmail = pendingGPA?.GPAEmail;
         }
     }
 
