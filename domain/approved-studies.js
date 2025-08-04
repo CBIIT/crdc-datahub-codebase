@@ -32,7 +32,8 @@ class ApprovedStudies {
         this.useProgramPC = isTrue(useProgramPC);
         this.pendingModelChange = isTrue(pendingModelChange ?? true);
 
-        if (this.pendingModelChange === true) {
+        // store application ID when the application is approved(setting PendingGPA) or model version change
+        if (applicationID && (pendingGPA?.isPendingGPA || this.pendingModelChange === true)) {
             this.pendingApplicationID = applicationID
         }
 
