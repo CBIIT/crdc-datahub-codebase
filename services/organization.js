@@ -518,7 +518,13 @@ class Organization {
    * @returns {Promise<Organization[]>} An array of Organization
    */
   async findOneByStudyID(studyID) {
-    return await this.organizationCollection.aggregate([{"$match": {"studies._id": {"$in": [studyID?.trim()]}}}, {"$limit": 1}]);
+    return this.programDAO.findFirst({
+      studies: {
+        some: {
+          id: studyID?.trim(),
+        },
+      },
+    });
   }
 
   /**
