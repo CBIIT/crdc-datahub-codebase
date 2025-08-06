@@ -43,7 +43,7 @@ const LoginEvent = class extends AbstractLog {
 const UpdateSubmissionNameEvent = class extends AbstractLog {
     constructor(userID, userEmail, userIDP, submissionID, prevName, newName) {
         super();
-        this.setUser(userID, userEmail);
+        this.setUser(userID, userEmail, userIDP);
         this.setEventType(EDIT_SUBMISSION_NAME);
         this.submissionID = submissionID;
         this.prevName = prevName;
