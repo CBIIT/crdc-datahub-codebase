@@ -10,7 +10,8 @@ module.exports = Object.freeze({
             WITHDRAW: "data_submission:withdrawn",
             REMIND_EXPIRE: "data_submission:expiring",
             CREATE: "data_submission:created",
-            PENDING_PV: "data_submission:pv_requested"
+            PENDING_PV: "data_submission:pv_requested",
+            CHANGE_CONFIGURATION: "data_submission:cfg_changed"
         },
         SUBMISSION_REQUEST: {
             REQUEST_SUBMIT: "submission_request:submitted",
