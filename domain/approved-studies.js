@@ -50,7 +50,7 @@ class ApprovedStudies {
         }
 
         if (pendingGPA?.isPendingGPA && this.controlledAccess) {
-            this.isPendingGPA = pendingGPA?.isPendingGPA
+            this.isPendingGPA = pendingGPA?.isPendingGPA;
         }
     }
 
