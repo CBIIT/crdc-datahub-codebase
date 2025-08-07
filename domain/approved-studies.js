@@ -48,10 +48,7 @@ class ApprovedStudies {
         if (pendingGPA?.GPAEmail) {
             this.GPAEmail = pendingGPA?.GPAEmail;
         }
-
-        if (pendingGPA?.isPendingGPA && this.controlledAccess) {
-            this.isPendingGPA = pendingGPA?.isPendingGPA;
-        }
+        this.isPendingGPA = isTrue(pendingGPA?.isPendingGPA && this.controlledAccess);
     }
 
     static createApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID, pendingGPA) {
