@@ -10,5 +10,6 @@ module.exports = Object.freeze({
     CREATE_BATCH: 'Create_Batch',
     UPDATE_BATCH: 'Update_Batch',
     SUBMISSION_ACTION: 'Submission_Action',
+    EDIT_SUBMISSION_NAME: 'Edit_Submission_Name',
     DELETE_DATA: 'Delete_Data'
 });
