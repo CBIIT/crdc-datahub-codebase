@@ -41,10 +41,16 @@ class ApprovedStudies {
             this.primaryContactID = primaryContactID;
         }
 
-        if (pendingGPA?.isPendingGPA) {
-            this.isPendingGPA = pendingGPA?.isPendingGPA
+        if (pendingGPA?.GPAName) {
             this.GPAName = pendingGPA?.GPAName;
+        }
+
+        if (pendingGPA?.GPAEmail) {
             this.GPAEmail = pendingGPA?.GPAEmail;
+        }
+
+        if (pendingGPA?.isPendingGPA && this.controlledAccess) {
+            this.isPendingGPA = pendingGPA?.isPendingGPA
         }
     }
 
