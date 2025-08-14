@@ -8,7 +8,6 @@ module.exports = Object.freeze({
     DATA_COMMONS_COLLECTION: 'dataCommons',
     USER_COLLECTION: 'users',
     ORGANIZATION_COLLECTION: 'organization',
-    BATCH_COLLECTION: 'batch',
     LOG_COLLECTION: 'logs',
     DATA_RECORDS_COLLECTION: 'dataRecords',
     INSTITUTION_COLLECTION: 'institutions',
