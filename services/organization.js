@@ -257,7 +257,7 @@ class Organization {
     if (!updatedStudies || updatedStudies.length === 0) {
       return;
     }
-    const updatedStudyIds = updatedStudies.map(study => study._id);
+    const updatedStudyIds = updatedStudies.map(study => study?._id).filter(id => id != null);
     const naOrg = await this.getOrganizationByName(NA_PROGRAM);
     if (!naOrg || !naOrg?._id) {
       console.error("NA program not found");
@@ -270,7 +270,7 @@ class Organization {
     const newOrphanedStudyIDs = [];
     changed = (filteredStudies.length !== naOrgStudies.length);
     if (existingStudies && existingStudies.length > 0) {
-      const existingStudyIds = existingStudies.map(study => study._id);
+      const existingStudyIds = existingStudies.map(study => study?._id).filter(id => id != null);
       const removedStudiesIds = existingStudyIds.filter(study_id => !updatedStudyIds.includes(study_id));
       if (removedStudiesIds.length > 0) {
         for (let studyID of removedStudiesIds) {
