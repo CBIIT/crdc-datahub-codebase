@@ -1,5 +1,6 @@
 const {LOGIN, LOGOUT, PROFILE_UPDATE, CREATE_ACCESS_TOKEN, CREATE_APPLICATION, UPDATE_APPLICATION_STATE, CREATE_BATCH,
-    UPDATE_BATCH, REGISTRATION, SUBMISSION_ACTION, REACTIVATE_USER, DELETE_DATA, EDIT_SUBMISSION_NAME
+    UPDATE_BATCH, REGISTRATION, SUBMISSION_ACTION, REACTIVATE_USER, DELETE_DATA, EDIT_SUBMISSION_NAME,
+    EDIT_SUBMISSION_CONFIGURATION
 } = require("../constants/event-constants");
 
 const {v4} = require("uuid");
@@ -51,6 +52,28 @@ const UpdateSubmissionNameEvent = class extends AbstractLog {
     }
     static create(userID, userEmail, userIDP, submissionID, prevName, newName) {
         return new UpdateSubmissionNameEvent(userID, userEmail, userIDP, submissionID, prevName, newName);
+    }
+}
+
+const UpdateSubmissionConfEvent = class extends AbstractLog {
+    constructor(userID, userEmail, userIDP, submissionID, prevModelVersion, newModelVersion, prevSubmitterID, newSubmitterID) {
+        super();
+        this.setUser(userID, userEmail, userIDP);
+        this.setEventType(EDIT_SUBMISSION_CONFIGURATION);
+        this.submissionID = submissionID;
+
+        if (newModelVersion && prevModelVersion !== newModelVersion) {
+            this.prevModelVersion = prevModelVersion;
+            this.newModelVersion = newModelVersion;
+        }
+
+        if (newSubmitterID && prevSubmitterID !== newSubmitterID) {
+            this.prevSubmitterID = prevSubmitterID;
+            this.newSubmitterID = newSubmitterID;
+        }
+    }
+    static create(userID, userEmail, userIDP, submissionID, prevModelVersion, newModelVersion, prevSubmitterID, newSubmitterID) {
+        return new UpdateSubmissionConfEvent(userID, userEmail, userIDP, submissionID, prevModelVersion, newModelVersion, prevSubmitterID, newSubmitterID);
     }
 }
 
@@ -209,5 +232,6 @@ module.exports = {
     SubmissionActionEvent,
     ReactivateUserEvent,
     DeleteRecordEvent,
-    UpdateSubmissionNameEvent
+    UpdateSubmissionNameEvent,
+    UpdateSubmissionConfEvent
 }
