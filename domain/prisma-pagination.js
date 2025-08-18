@@ -5,7 +5,7 @@ class PrismaPagination {
         this._first = first;
         this._offset = offset;
         this._orderBy = orderBy;
-        this._sortDirection = sortDirection || SORT.DESC;
+        this._sortDirection = sortDirection || SORT.ASC;
     }
 
     getPagination() {
@@ -53,7 +53,7 @@ class PrismaPagination {
 
     _getSortDirection() {
         const direction = this._sortDirection?.toLowerCase();
-        return direction === SORT.ASC ? SORT.ASC : SORT.DESC;
+        return direction === SORT.DESC ? SORT.DESC : SORT.ASC;
     }
 }
 
