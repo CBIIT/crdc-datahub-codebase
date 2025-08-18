@@ -35,6 +35,10 @@ class PrismaPagination {
         // Handle nested sorting (e.g., "organization.name" -> { organization: { name: "ASC" } })
         if (this._orderBy.includes('.')) {
             const parts = this._orderBy.split('.');
+            // Validate: no empty parts (consecutive, leading, or trailing dots)
+            if (parts.some(part => part === "")) {
+                throw new Error(`Invalid orderBy value: "${this._orderBy}". Dot notation cannot contain consecutive, leading, or trailing dots.`);
+            }
             let orderByObj = {};
             let current = orderByObj;
             
