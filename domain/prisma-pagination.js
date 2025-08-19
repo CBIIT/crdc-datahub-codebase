@@ -29,15 +29,13 @@ class PrismaPagination {
         return (this._orderBy) ? this._buildOrderBy() : {};
     }
 
-    _buildOrderBy() {
-        if (!this._orderBy) return {};
-        
+    _buildSingleOrderBy(field, sortDirection) {
         // Handle nested sorting (e.g., "organization.name" -> { organization: { name: "ASC" } })
-        if (this._orderBy.includes('.')) {
-            const parts = this._orderBy.split('.');
+        if (field.includes('.')) {
+            const parts = field.split('.');
             // Validate: no empty parts (consecutive, leading, or trailing dots)
             if (parts.some(part => part === "")) {
-                throw new Error(`Invalid orderBy value: "${this._orderBy}". Dot notation cannot contain consecutive, leading, or trailing dots.`);
+                throw new Error(`Invalid orderBy value: "${field}". Dot notation cannot contain consecutive, leading, or trailing dots.`);
             }
             let orderByObj = {};
             let current = orderByObj;
@@ -46,13 +44,25 @@ class PrismaPagination {
                 current[parts[i]] = {};
                 current = current[parts[i]];
             }
-            
-            current[parts[parts.length - 1]] = this._getSortDirection();
+
+            current[parts[parts.length - 1]] = sortDirection;
             return orderByObj;
         }
-        
         // Handle direct field sorting
-        return { [this._orderBy]: this._getSortDirection() };
+        return { [field]: sortDirection };
+    }
+
+    _buildOrderBy() {
+        if (!this._orderBy) return {};
+
+        const sortDirection = this._getSortDirection();
+
+        if (Array.isArray(this._orderBy)) {
+            // Accept multiple fields, return array of orderBy objects
+            return this._orderBy.map(field => this._buildSingleOrderBy(field, sortDirection));
+        } else {
+            return this._buildSingleOrderBy(this._orderBy, sortDirection);
+        }
     }
 
     _getSortDirection() {
