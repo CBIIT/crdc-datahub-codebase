@@ -45,9 +45,6 @@ class ApprovedStudies {
             this.GPAName = pendingGPA?.GPAName;
         }
 
-        if (pendingGPA?.GPAEmail) {
-            this.GPAEmail = pendingGPA?.GPAEmail;
-        }
         this.isPendingGPA = isTrue(pendingGPA?.isPendingGPA && this.controlledAccess);
     }
 
