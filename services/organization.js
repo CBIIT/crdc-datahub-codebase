@@ -207,12 +207,11 @@ class Organization {
         });
 
         if (primaryContact) {
-          const {firstName, lastName, email: conciergeEmail} = primaryContact;
-          await this._updatePrimaryContact(studyIDs, `${firstName} ${lastName}`?.trim(), conciergeEmail);
+          await this._updatePrimaryContact(studyIDs, primaryContact?.id);
         }
       } else if (conciergeProvided && params?.conciergeID === null) {
         // Removing the data concierge from the program.
-        await this._updatePrimaryContact(studyIDs, "", "");
+        await this._updatePrimaryContact(studyIDs, "");
       }
     }
 
@@ -314,22 +313,17 @@ class Organization {
 
   // If data concierge is not available in the submission,
   // It will update the conciergeName/conciergeEmail at the program level if available.
-  async _updatePrimaryContact(studyIDs, conciergeName, conciergeEmail) {
+  async _updatePrimaryContact(studyIDs, conciergeID) {
     const programLevelSubmissions = await this.submissionDAO.programLevelSubmissions(studyIDs);
     const submissionIDs = programLevelSubmissions?.map((s) => s?._id);
     if (submissionIDs?.length > 0) {
-
       const updateSubmission = await this.submissionDAO.updateMany(
           {
             id: { in: submissionIDs }, // assuming `_id` maps to `id`
-            OR: [
-              { conciergeName: { not: conciergeName } },
-              { conciergeEmail: { not: conciergeEmail } },
-            ],
+            conciergeID: { not: conciergeID},
           },
           {
-            conciergeName: conciergeName,
-            conciergeEmail: conciergeEmail,
+            conciergeID: conciergeID,
             updatedAt: getCurrentTime(),
           }
       )
