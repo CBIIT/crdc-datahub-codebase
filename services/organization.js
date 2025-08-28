@@ -509,7 +509,7 @@ class Organization {
             programName?.trim()?.toLowerCase()
           ]
       }
-    }}, {"$limit": 1}]) || [];
+    }}, {"$limit": 1}]);
   }
 
   /**
