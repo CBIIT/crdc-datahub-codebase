@@ -502,7 +502,14 @@ class Organization {
    * @returns {Promise<Organization[]>} An array of Organization
    */
   async findOneByProgramName(programName) {
-    return await this.organizationCollection.aggregate([{"$match": {name: programName?.trim()}}, {"$limit": 1}]);
+    return await this.organizationCollection.aggregate([{"$match": {
+      $expr: {
+          $eq: [
+            { $toLower: "$name" },
+            programName?.trim()?.toLowerCase()
+          ]
+      }
+    }}, {"$limit": 1}]);
   }
 
   /**
