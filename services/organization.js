@@ -324,7 +324,7 @@ class Organization {
           },
           {
             conciergeID: conciergeID,
-            updateAt: getCurrentTime(),
+            updatedAt: getCurrentTime(),
           }
       )
       if (!(updateSubmission?.count >= 0)) {
