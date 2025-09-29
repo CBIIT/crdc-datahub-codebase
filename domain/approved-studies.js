@@ -31,9 +31,7 @@ class ApprovedStudies {
         this.createdAt = this.updatedAt = getCurrentTime();
         this.useProgramPC = isTrue(useProgramPC);
         this.pendingModelChange = isTrue(pendingModelChange ?? true);
-
-        // store application ID when the application is approved(setting PendingGPA) or model version change
-        if (applicationID && (pendingGPA?.isPendingGPA || this.pendingModelChange === true)) {
+        if (applicationID) {
             this.pendingApplicationID = applicationID
         }
 
