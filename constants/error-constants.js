@@ -29,5 +29,7 @@ module.exports = Object.freeze({
         APPROVED_STUDIES_REQUIRED: "Approved studies are required for the user with the role",
         INVALID_PROGRAM_STATUS: "Requested organization status $item$ is not valid.",
         CANNOT_UPDATE_READ_ONLY_PROGRAM: "This program is read only and cannot be updated or deactivated.",
+        UPDATE_FAILED_STUDY_IDS_NOT_EXIST: "Update failed, these provided study IDs do not exist",
+        NOT_ALL_STUDIES_UPDATED: "Not all studies were updated successfully, please see the logs for additional information.",
     },
 });
