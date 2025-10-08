@@ -369,13 +369,18 @@ class Organization {
     }
 
     if (updateResult.count !== studyIDs.length) {
-      const failedCount = studyIDs.length - updateResult.count;
-      const successfulStudyIDs = studyIDs.slice(0, updateResult.count);
-      const failedStudyIDs = studyIDs.slice(updateResult.count);
+      // Re-query to determine which studies were not updated
+      const updatedStudies = await this.approvedStudyDAO.findMany({ id: { in: studyIDs } });
+      const actuallyUpdatedStudyIDs = updatedStudies
+        .filter(study => study.programID === orgID)
+        .map(study => study.id);
+      const failedStudyIDs = studyIDs.filter(id => !actuallyUpdatedStudyIDs.includes(id));
+      const successfulStudyIDs = actuallyUpdatedStudyIDs;
+      const failedCount = failedStudyIDs.length;
       
       console.error(`Partial update failure for organization ${orgID}:`, {
         totalStudies: studyIDs.length,
-        successfulUpdates: updateResult.count,
+        successfulUpdates: successfulStudyIDs.length,
         failedUpdates: failedCount,
         successfulStudyIDs: successfulStudyIDs,
         failedStudyIDs: failedStudyIDs
