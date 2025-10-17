@@ -374,6 +374,10 @@ class Submission {
         if (isNotPermitted) {
           throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
+        // Check if the user is the submitter and still has valid assigned studies
+        if (!userHasValidScope(context?.userInfo?._id, context?.userInfo?.role, context?.userInfo?.studies, context?.userInfo?.dataCommons, aSubmission)){
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
 
         await Promise.all([
             // Store data file size into submission document
@@ -769,6 +773,10 @@ class Submission {
         const isNotPermitted = !this._isCollaborator(userInfo, aSubmission) && createScope.isNoneScope() && reviewScope.isNoneScope();
         if (isNotPermitted) {
             throw new Error(ERROR.INVALID_VALIDATE_METADATA)
+        }
+        // Check if the user has valid scope to validate the submission
+        if (!userHasValidScope(userInfo?._id, userInfo?.role, userInfo?.studies, userInfo?.dataCommons, aSubmission)) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
         // if the user has review permission, and the submission status is "Submitted", and aSubmission?.crossSubmissionStatus is "Error",
         // and params.types not contains CROSS_SUBMISSION, add CROSS_SUBMISSION. User story CRDCDH-2830
@@ -1178,7 +1186,8 @@ class Submission {
         if (!aSubmission.collaborators) 
             aSubmission.collaborators = [];
 
-        if (aSubmission.submitterID !== context?.userInfo?._id) {
+        // Check if the user has valid scope to edit the submission collaborators
+        if (!userHasValidScope(context?.userInfo?._id, context?.userInfo?.role, context?.userInfo?.studies, context?.userInfo?.dataCommons, aSubmission)) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
@@ -1494,6 +1503,10 @@ class Submission {
         const isNotPermitted = !this._isCollaborator(context?.userInfo, aSubmission) && createScope.isNoneScope();
         if (isNotPermitted) {
             throw new Error(ERROR.INVALID_DELETE_DATA_RECORDS_PERMISSION)
+        }
+        // Check if the user has valid scope to delete the data records
+        if (!userHasValidScope(context?.userInfo?._id, context?.userInfo?.role, context?.userInfo?.studies, context?.userInfo?.dataCommons, aSubmission)) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
         if (params?.nodeType === VALIDATION.TYPES.DATA_FILE) {
