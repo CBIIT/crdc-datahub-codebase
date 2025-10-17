@@ -1444,7 +1444,7 @@ class Submission {
          if (aSubmitter?.notifications?.includes(EN.DATA_SUBMISSION.DELETE)) {
              const filteredBCCUsers = BCCUsers.filter((u) =>
                  u?._id !== aSubmitter?._id &&
-                 isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+                 userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
              await this.notificationService.deleteSubmissionNotification(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
                  firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`}, {
                  submissionName: `${aSubmission?.name},`,
@@ -2641,7 +2641,7 @@ const sendEmails = {
         if (aSubmitter?.notifications?.includes(EN.DATA_SUBMISSION.SUBMIT)) {
             const filteredBCCUsers = BCCUsers.filter((u) =>
                 u?._id !== aSubmitter?._id &&
-                isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+                userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
             await notificationService.submitDataSubmissionNotification(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`
                 }, {
@@ -2668,7 +2668,7 @@ const sendEmails = {
             return;
         }
 
-        const filteredBCCUsers = BCCUsers.filter((u) => isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+        const filteredBCCUsers = BCCUsers.filter((u) => userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
         if (aSubmitter?.notifications?.includes(EN.DATA_SUBMISSION.COMPLETE)) {
             await notificationsService.completeSubmissionNotification(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
                 firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`
@@ -2698,7 +2698,7 @@ const sendEmails = {
 
         const filteredBCCUsers = BCCUsers.filter((u) =>
             u?._id !== aSubmitter?._id &&
-            isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+            userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
         if (aSubmitter?.notifications?.includes(EN.DATA_SUBMISSION.CANCEL)) {
             await notificationService.cancelSubmissionNotification(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
                 firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`
@@ -2722,14 +2722,14 @@ const sendEmails = {
         ]);
         const filteredDCPUsers = DCPRoleUsers.filter((u) =>
             u?.notifications?.includes(EN.DATA_SUBMISSION.WITHDRAW) &&
-            isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+            userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
 
         if (filteredDCPUsers.length === 0) {
             console.error(ERROR.NO_SUBMISSION_RECEIVER, "Withdraw" ,`id=${aSubmission?._id}`);
             return;
         }
 
-        const filteredBCCUsers = BCCUsers.filter((u) => isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+        const filteredBCCUsers = BCCUsers.filter((u) => userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
         await notificationsService.withdrawSubmissionNotification(getUserEmails(filteredDCPUsers), getUserEmails(filteredBCCUsers), {
             firstName: `${aSubmission?.dataCommons} Data Commons Personnel`
         }, {
@@ -2751,7 +2751,7 @@ const sendEmails = {
         ]);
         const filteredDCPUsers = DCPRoleUsers.filter((u) =>
             u?.notifications?.includes(EN.DATA_SUBMISSION.RELEASE) &&
-            isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+            userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
 
         if (filteredDCPUsers.length === 0) {
             console.error(ERROR.NO_SUBMISSION_RECEIVER, "Release", `id=${aSubmission?._id}`);
@@ -2766,7 +2766,7 @@ const sendEmails = {
             [DATA_SUBMISSION_TYPE, aSubmission?.intention],
             [DESTINATION_LOCATION, `${dataCommonBucket}`]];
 
-        const filteredBCCUsers = BCCUsers.filter((u) => isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+        const filteredBCCUsers = BCCUsers.filter((u) => userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
         await notificationsService.releaseDataSubmissionNotification(getUserEmails(filteredDCPUsers), getUserEmails(filteredBCCUsers), {
             firstName: `${aSubmission?.dataCommonsDisplayName} team`,
             additionalInfo: additionalInfo}, {
@@ -2793,7 +2793,7 @@ const sendEmails = {
 
         const filteredBCCUsers = BCCUsers.filter((u) =>
             u?._id !== aSubmitter?._id &&
-            isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+            userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
 
         if (aSubmitter?.notifications?.includes(EN.DATA_SUBMISSION.REJECT)) {
             await notificationService.rejectSubmissionNotification(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
@@ -2822,7 +2822,7 @@ const sendEmails = {
 
         const filteredBCCUsers = BCCUsers.filter((u) =>
             u?._id !== aSubmitter?._id &&
-            isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+            userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
         if (aSubmitter?.notifications?.includes(EN.DATA_SUBMISSION.REMIND_EXPIRE)) {
             await notificationService.inactiveSubmissionNotification(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
                 firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`
@@ -2851,7 +2851,7 @@ const sendEmails = {
 
         const filteredBCCUsers = BCCUsers.filter((u) =>
             u?._id !== aSubmitter?._id &&
-            isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
+            userHasValidScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
         if (aSubmitter?.notifications?.includes(EN.DATA_SUBMISSION.REMIND_EXPIRE)) {
             await notificationService.finalInactiveSubmissionNotification(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
                 firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`
@@ -2866,7 +2866,7 @@ const sendEmails = {
     }
 }
 
-const isUserScope = (userID, userRole, userStudies, userDataCommons, aSubmission) => {
+const userHasValidScope = (userID, userRole, userStudies, userDataCommons, aSubmission) => {
     if (!aSubmission)
         return false;
     switch (userRole) {
