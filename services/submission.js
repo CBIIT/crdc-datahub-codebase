@@ -2869,18 +2869,19 @@ const sendEmails = {
 const userHasValidScope = (userID, userRole, userStudies, userDataCommons, aSubmission) => {
     if (!aSubmission)
         return false;
+    const studies = Array.isArray(userStudies) && userStudies.length > 0 ? userStudies : [];
     switch (userRole) {
         case ROLES.ADMIN:
             return true; // Admin has access to all data submissions.
         case ROLES.FEDERAL_LEAD:
-            const studies = Array.isArray(userStudies) && userStudies.length > 0 ? userStudies : [];
             return isAllStudy(studies) ? true : studies.find(study =>
                 study._id === aSubmission.studyID
             );
         case ROLES.DATA_COMMONS_PERSONNEL:
             return userDataCommons.includes(aSubmission.dataCommons); // Access to assigned data commons.
         case ROLES.SUBMITTER:
-            return aSubmission.submitterID === userID // Access to own submissions.
+            // Access to own submissions and the submission is within the user's assigned studies
+            return aSubmission.submitterID === userID && studies.find(study => study._id === aSubmission.studyID); 
         default:
             return false; // No access for other roles.
     }
