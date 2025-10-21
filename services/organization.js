@@ -51,8 +51,8 @@ class Organization {
    * @param {boolean} [omitStudyLookup] Whether to omit the study lookup in the pipeline. For backward compatibility, default is false.
    * @returns {Promise<Object | null>} The organization with the given `id` or null if not found
    */
-  async getOrganizationByID(id, omitStudyLookup = false) {
-    return await this.programDAO.getOrganizationByID(id, omitStudyLookup);
+  async getOrganizationByID(id) {
+    return await this.programDAO.getOrganizationByID(id);
   }
 
   /**
@@ -162,12 +162,6 @@ class Organization {
       updatedOrg.conciergeEmail = null;
     }
 
-    if (params.studies && Array.isArray(params.studies)) {
-      updatedOrg.studies = await this._getApprovedStudies(params.studies);
-    } else {
-      updatedOrg.studies = [];
-    }
-
     if (params.status && Object.values(ORGANIZATION.STATUSES).includes(params.status)) {
       updatedOrg.status = params.status;
     }
@@ -185,34 +179,8 @@ class Organization {
       updatedOrg, // only these fields will be changed
     );
 
-    // prisma can't return _id should be mapped
-    if (updatedOrg.studies?.length > 0) {
-      updatedOrg.studies = updatedOrg.studies.map(study => ({
-        ...study,
-        _id: study?.id
-      }));
-    }
-
     if (!updateResult) {
       throw new Error(ERROR.UPDATE_FAILED);
-    }
-
-    // If data concierge is not available in approved studies, the provided data concierge should be updated in the data submissions.
-    if (updatedOrg.studies?.length > 0) {
-      const conciergeID = updatedOrg?.conciergeID || currentOrg?.conciergeID;
-      const studyIDs = updatedOrg?.studies.map(study => study?._id);
-      if (conciergeID && updatedOrg?.conciergeID !== null) {
-        const primaryContact = await this.userDAO.findFirst({
-            id: conciergeID, role: USER.ROLES.DATA_COMMONS_PERSONNEL, userStatus: USER.STATUSES.ACTIVE
-        });
-
-        if (primaryContact) {
-          await this._updatePrimaryContact(studyIDs, primaryContact?.id);
-        }
-      } else if (conciergeProvided && params?.conciergeID === null) {
-        // Removing the data concierge from the program.
-        await this._updatePrimaryContact(studyIDs, "");
-      }
     }
 
     if (updatedOrg.name || updatedOrg?.abbreviation) {
@@ -236,80 +204,15 @@ class Organization {
         console.error("Failed to update the organization name in submission requests");
       }
     }
-    // Skip removing the studies from the NA program if the NA program is the one being edited
-    if (currentOrg.name !== NA_PROGRAM){
-      await this._checkRemovedStudies(currentOrg.studies, updatedOrg.studies);
-      if (updatedOrg.studies?.length > 0) {
-        const updatedStudyIds = updatedOrg.studies.map(study => study?._id);
-        await this._updateOrganizationInSubmissions(currentOrg._id, updatedStudyIds);
-      }
+
+    // Update studies to reference this organization via programID
+    if (params?.studies) {
+      await this._updateStudiesProgramID(orgID, params.studies);
     }
+
     return { ...currentOrg, ...updatedOrg };
   }
 
-  /**
-   * _checkRemovedStudies: private method to check removed studies
-   * @param {*} existingStudies
-   * @param {*} updatedStudies
-   */
-  async _checkRemovedStudies(existingStudies, updatedStudies){
-    if (!updatedStudies || updatedStudies.length === 0) {
-      return;
-    }
-    const updatedStudyIds = updatedStudies.map(study => study?._id).filter(id => id != null);
-    const naOrg = await this.getOrganizationByName(NA_PROGRAM);
-    if (!naOrg || !naOrg?._id) {
-      console.error("NA program not found");
-      return
-    }
-    const naOrgStudies = naOrg.studies;
-    let changed = false;
-    // remove updated studyID from NA program since they are added to the edited org.
-    const filteredStudies = naOrgStudies.filter(study => !updatedStudyIds.includes(study._id));
-    const newOrphanedStudyIDs = [];
-    changed = (filteredStudies.length !== naOrgStudies.length);
-    if (existingStudies && existingStudies.length > 0) {
-      const existingStudyIds = existingStudies.map(study => study?._id).filter(id => id != null);
-      const removedStudiesIds = existingStudyIds.filter(study_id => !updatedStudyIds.includes(study_id));
-      if (removedStudiesIds.length > 0) {
-        for (let studyID of removedStudiesIds) {
-          const organization = await this.findOneByStudyID(studyID);
-          if (!organization) {
-              // add removed studyID back to NA program
-              changed = true;
-              filteredStudies.push({id: studyID});
-              newOrphanedStudyIDs.push(studyID);
-          }
-        }
-      }
-    }
-    if (!changed) {
-      return;
-    }
-
-    const studies = filteredStudies.map(study => ({id: study?.id || study?._id}));
-    await this.programDAO.update(
-        naOrg._id, {
-        studies: studies,
-        updateAt: getCurrentTime()
-    });
-
-    if (newOrphanedStudyIDs.length > 0) {
-      await this._updateOrganizationInSubmissions(naOrg._id, newOrphanedStudyIDs);
-    }
-
-  }
-  /**
-   * _updateOrganizationInSubmissions: private method to update organization in submissions related with updated studies
-   * @param {*} updatedOrg
-   * @param {*} updatedStudies
-   */
-  async _updateOrganizationInSubmissions(orgID, updatedStudyIDs) {
-    if (!updatedStudyIDs || updatedStudyIDs.length === 0) {
-      return;
-    }
-    await this.submissionDAO.updateMany({studyID: {in: updatedStudyIDs}}, {programID: orgID});
-  }
 
   // If data concierge is not available in the submission,
   // It will update the conciergeName/conciergeEmail at the program level if available.
@@ -341,8 +244,8 @@ class Organization {
    * @param {boolean} [omitStudyLookup] Whether to omit the study lookup in the pipeline. Default is true
    * @returns {Promise<Object | null>} The organization with the given `name` or null if not found
    */
-  async getOrganizationByName(name, omitStudyLookup = true) {
-    return await this.programDAO.getOrganizationByName(name, omitStudyLookup);
+  async getOrganizationByName(name) {
+    return await this.programDAO.getOrganizationByName(name);
   }
 
   /**
@@ -405,62 +308,88 @@ class Organization {
       newOrg.conciergeEmail = conciergeUser.email;
     }
 
-    if (params.studies && Array.isArray(params.studies)) {
-      // @ts-ignore Incorrect linting type assertion
-      newOrg.studies = await this._getApprovedStudies(params.studies);
-    }
-
-    const newProgram = ProgramData.create(newOrg.name, newOrg.conciergeID, newOrg.conciergeName, newOrg.conciergeEmail, newOrg.abbreviation, newOrg?.description, newOrg.studies)
+    const newProgram = ProgramData.create(newOrg.name, newOrg.conciergeID, newOrg.conciergeName, newOrg.conciergeEmail, newOrg.abbreviation, newOrg?.description)
     const res = await this.programDAO.create(newProgram);
 
     if (!res) {
       throw new Error(ERROR.CREATE_FAILED);
     }
-    await this._checkRemovedStudies([], newOrg.studies)
+
+    // Update studies to reference this new organization via programID
+    if (params?.studies && params.studies.length > 0) {
+      await this._updateStudiesProgramID(res._id, params.studies);
+    }
+
     return res;
   }
 
   /**
-   * Stores approved studies in the organization's collection.
-   *
-   * @param {string} orgID - The organization ID.
-   * @param {object} studyID - The approved study ID
-   * @returns {Promise<void>}
+   * Update studies to reference the specified organization via programID
+   * @param {string} orgID The organization ID to assign to studies
+   * @param {Array} studies Array of study objects with studyID
+   * @throws {Error} If any study updates fail or if studyIDs don't exist
    */
-  async storeApprovedStudies(orgID, studyID) {
-    const aOrg = await this.getOrganizationByID(orgID, true);
-    if (!aOrg || !studyID) {
+  async _updateStudiesProgramID(orgID, studies) {
+    if (!studies || studies.length === 0) {
       return;
     }
-    const newStudies = [];
-    const matchingStudy = aOrg?.studies.find((study) => studyID === study?._id);
-    if (!matchingStudy) {
-      newStudies.push({_id: studyID});
+
+    const studyIDs = studies.map(study => study?.studyID).filter(id => id != null);
+    
+    if (studyIDs.length === 0) {
+      return;
     }
 
-    if (newStudies.length > 0) {
-      aOrg.studies = aOrg.studies || [];
-      aOrg.studies = aOrg.studies.concat(newStudies);
-      aOrg.studies = aOrg.studies
-          .map(study => study?._id ? { id: study._id } : null)
-          .filter(Boolean);
-      aOrg.updateAt = getCurrentTime();
-      const res = await this.programDAO.update(orgID, aOrg)
-      if (!res) {
-        console.error(ERROR.ORGANIZATION_APPROVED_STUDIES_INSERTION + ` orgID: ${orgID}`);
-      }
+    // First, verify that all provided studyIDs exist
+    const existingStudies = await this.approvedStudyDAO.findMany({ id: { in: studyIDs } });
+    const existingStudyIDs = existingStudies.map(study => study.id);
+    const nonExistentStudyIDs = studyIDs.filter(id => !existingStudyIDs.includes(id));
+
+    if (nonExistentStudyIDs.length > 0) {
+      console.error(`Study ID validation failed for organization ${orgID}:`, {
+        existingStudyIDs: existingStudyIDs,
+        nonExistentStudyIDs: nonExistentStudyIDs,
+        totalExisting: existingStudyIDs.length,
+        totalNonExistent: nonExistentStudyIDs.length
+      });
+      
+      throw new Error(`${ERROR.UPDATE_FAILED_STUDY_IDS_NOT_EXIST}: ${nonExistentStudyIDs.join(', ')}`);
+    }
+
+    // Update each study's programID to reference this organization
+    const updateResult = await this.approvedStudyDAO.updateMany(
+      { id: { in: studyIDs } },
+      { programID: orgID, updatedAt: getCurrentTime() }
+    );
+
+    // Verify all studies were updated successfully
+    if (!updateResult) {
+      console.error(`No response when updating ${studyIDs.length} studies to reference organization ${orgID}: ${studyIDs.join(', ')}`);
+      throw new Error(ERROR.DATABASE_OPERATION_FAILED);
+    }
+
+    if (updateResult.count !== studyIDs.length) {
+      // Re-query to determine which studies were not updated
+      const updatedStudies = await this.approvedStudyDAO.findMany({ id: { in: studyIDs } });
+      const actuallyUpdatedStudyIDs = updatedStudies
+        .filter(study => study.programID === orgID)
+        .map(study => study.id);
+      const failedStudyIDs = studyIDs.filter(id => !actuallyUpdatedStudyIDs.includes(id));
+      const successfulStudyIDs = actuallyUpdatedStudyIDs;
+      const failedCount = failedStudyIDs.length;
+      
+      console.error(`Partial update failure for organization ${orgID}:`, {
+        totalStudies: studyIDs.length,
+        successfulUpdates: successfulStudyIDs.length,
+        failedUpdates: failedCount,
+        successfulStudyIDs: successfulStudyIDs,
+        failedStudyIDs: failedStudyIDs
+      });
+      
+      throw new Error(ERROR.NOT_ALL_STUDIES_UPDATED);
     }
   }
 
-  /**
-   * List Organization IDs by a studyName API.
-   * @api
-   * @param {string} studyID
-   * @returns {Promise<String[]>} An array of Organization ID
-   */
-  async findByStudyID(studyID) {
-    return await this.programDAO.getOrganizationIDsByStudyID(studyID);
-  }
 
   /**
    * Retrieves approved studies in the approved studies collection.
@@ -483,8 +412,8 @@ class Organization {
     return approvedStudies?.map((study) => ({id: study?._id}));
   }
 
-  async upsertByProgramName(programName, abbreviation, description, studies) {
-    const newProgram = ProgramData.create(programName, "", "", "", abbreviation, description, studies)
+  async upsertByProgramName(programName, abbreviation, description) {
+    const newProgram = ProgramData.create(programName, "", "", "", abbreviation, description)
     const res = await this.organizationCollection.findOneAndUpdate({name: programName}, newProgram, {
       returnDocument: 'after',
       upsert: true
@@ -513,19 +442,20 @@ class Organization {
   }
 
   /**
-   * List Organization by a studyID.
+   * Find One Organization/Program by Study ID using the new programID reference model.
    * @api
    * @param {string} studyID
-   * @returns {Promise<Organization[]>} An array of Organization
+   * @returns {Promise<Object|null>} The organization/program or null if not found
    */
   async findOneByStudyID(studyID) {
-    return this.programDAO.findFirst({
-      studies: {
-        some: {
-          id: studyID?.trim(),
-        },
-      },
-    });
+    // Get the approved study first to find its programID
+    const approvedStudy = await this.approvedStudyDAO.findFirst({ id: studyID?.trim() });
+    if (!approvedStudy?.programID) {
+      return null;
+    }
+    
+    // Get the program by programID
+    return await this.getOrganizationByID(approvedStudy?.programID);
   }
 
   /**
@@ -548,7 +478,7 @@ class Organization {
 }
 
 class ProgramData {
-  constructor(name, conciergeID, conciergeName, conciergeEmail, abbreviation, description, studies) {
+  constructor(name, conciergeID, conciergeName, conciergeEmail, abbreviation, description) {
     this.name = name;
     this.status = ORGANIZATION.STATUSES.ACTIVE;
     this.conciergeID = conciergeID ? conciergeID : "";
@@ -560,13 +490,12 @@ class ProgramData {
     if (description) {
       this.description = description;
     }
-    this.studies = studies && Array.isArray(studies) ? studies : [];
     this.createdAt = getCurrentTime();
     this.updateAt = getCurrentTime();
   }
 
-  static create(name, conciergeID, conciergeName, conciergeEmail, abbreviation, description, studies) {
-    return new ProgramData(name, conciergeID, conciergeName, conciergeEmail, abbreviation, description, studies);
+  static create(name, conciergeID, conciergeName, conciergeEmail, abbreviation, description) {
+    return new ProgramData(name, conciergeID, conciergeName, conciergeEmail, abbreviation, description);
   }
 }
 

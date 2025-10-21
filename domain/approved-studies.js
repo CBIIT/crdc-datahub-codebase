@@ -3,7 +3,7 @@ const {isTrue} = require("../utility/string-utility");
 
 
 class ApprovedStudies {
-    constructor(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID, pendingGPA) {
+    constructor(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID) {
         this.studyName = studyName;
         this.studyAbbreviation = studyAbbreviation;
         if (dbGaPID) {
@@ -24,10 +24,6 @@ class ApprovedStudies {
         }
 
         this.openAccess = isTrue(openAccess);
-
-        if (programName !== undefined) {
-            this.programName = programName?.trim();
-        }
         this.createdAt = this.updatedAt = getCurrentTime();
         this.useProgramPC = isTrue(useProgramPC);
         this.pendingModelChange = isTrue(pendingModelChange ?? true);
@@ -44,10 +40,11 @@ class ApprovedStudies {
         }
 
         this.isPendingGPA = isTrue(pendingGPA?.isPendingGPA && this.controlledAccess);
+        this.programID = programID;
     }
 
-    static createApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID, pendingGPA) {
-        return new ApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, programName, useProgramPC, pendingModelChange, primaryContactID, pendingGPA);
+        static createApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID) {
+        return new ApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID);
     }
 }
 
