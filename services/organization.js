@@ -52,6 +52,9 @@ class Organization {
    * @returns {Promise<Object | null>} The organization with the given `id` or null if not found
    */
   async getOrganizationByID(id) {
+    if (!id) {
+      return null;
+    }
     return await this.programDAO.getOrganizationByID(id);
   }
 
