@@ -52,6 +52,9 @@ class Organization {
    * @returns {Promise<Object | null>} The organization with the given `id` or null if not found
    */
   async getOrganizationByID(id) {
+    if (!id) {
+      return null;
+    }
     return await this.programDAO.getOrganizationByID(id);
   }
 
@@ -425,13 +428,13 @@ class Organization {
   }
 
   /**
-   * List Organization by a program name.
+   * Find One Organization by a program name.
    * @api
    * @param {string} programName
-   * @returns {Promise<Organization[]>} An array of Organization
+   * @returns {Promise<Organization|null>} A single Organization or null if not found
    */
   async findOneByProgramName(programName) {
-    return await this.organizationCollection.aggregate([{"$match": {
+    const results = await this.organizationCollection.aggregate([{"$match": {
       $expr: {
           $eq: [
             { $toLower: "$name" },
@@ -439,6 +442,7 @@ class Organization {
           ]
       }
     }}, {"$limit": 1}]);
+    return results?.length > 0 ? results[0] : null;
   }
 
   /**
