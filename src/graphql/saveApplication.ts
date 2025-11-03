@@ -13,6 +13,8 @@ export const mutation: TypedDocumentNode<Response, Input> = gql`
       openAccess
       controlledAccess
       PI
+      programName
+      studyAbbreviation
       history {
         status
         reviewComment
@@ -99,5 +101,5 @@ export type Input = {
 };
 
 export type Response = {
-  saveApplication: Omit<Application, "programName" | "studyAbbreviation" | "questionnaireData">;
+  saveApplication: Omit<Application, "questionnaireData">;
 };

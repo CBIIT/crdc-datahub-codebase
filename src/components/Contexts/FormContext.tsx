@@ -264,6 +264,8 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
 
     newState.data = {
       ...newState.data,
+      programName: d?.saveApplication?.programName,
+      studyAbbreviation: d?.saveApplication?.studyAbbreviation,
       status: d?.saveApplication?.status,
       updatedAt: d?.saveApplication?.updatedAt,
       createdAt: d?.saveApplication?.createdAt,
