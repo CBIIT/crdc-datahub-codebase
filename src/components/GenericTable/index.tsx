@@ -430,17 +430,27 @@ const GenericTable = <T,>(
     fetchData();
   }, [page, perPage, sortDirection, orderBy, paramsInitialized]);
 
-  useImperativeHandle(ref, () => ({
-    refresh: () => {
-      fetchData(true);
-    },
-    setPage: (newPage: number, forceRefetch = false) => {
-      handlePageChange(newPage);
-      if (newPage === page && forceRefetch) {
+  useImperativeHandle(
+    ref,
+    () => ({
+      refresh: () => {
         fetchData(true);
-      }
-    },
-  }));
+      },
+      setPage: (newPage: number, forceRefetch = false) => {
+        handlePageChange(newPage);
+        if (newPage === page && forceRefetch) {
+          fetchData(true);
+        }
+      },
+      tableParams: {
+        page,
+        perPage,
+        sortDirection,
+        orderBy,
+      },
+    }),
+    [fetchData, handlePageChange, page, perPage, sortDirection, orderBy]
+  );
 
   const Pagination = useCallback(
     ({
