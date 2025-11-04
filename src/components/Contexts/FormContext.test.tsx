@@ -16,8 +16,11 @@ import {
   REOPEN_APP,
   RejectAppResp,
   ReopenAppResp,
+  SAVE_APP,
+  SaveAppInput,
+  SaveAppResp,
 } from "../../graphql";
-import { query as GET_APP } from "../../graphql/getApplication";
+import { query as GET_APP, GetAppInput } from "../../graphql/getApplication";
 import { query as GET_LAST_APP } from "../../graphql/getMyLastApplication";
 import { act, render, renderHook, waitFor } from "../../test-utils";
 
@@ -748,5 +751,185 @@ describe("reopenForm Tests", () => {
       const reviewResp = await result.current.reopenForm();
       expect(reviewResp).toEqual(false);
     });
+  });
+});
+
+describe("saveApp Tests", () => {
+  it("should propagate top level attributes from saveApplication response", async () => {
+    const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
+
+    const mockGetApp: MockedResponse<GetAppResp, GetAppInput> = {
+      request: {
+        query: GET_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getApplication: {
+            ...applicationFactory.build({
+              _id: appId,
+              programName: "original program name",
+              studyAbbreviation: "original study abbreviation",
+              status: "In Progress",
+            }),
+            questionnaireData: JSON.stringify(
+              questionnaireDataFactory.build({
+                sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+              })
+            ),
+          },
+        },
+      },
+    };
+
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          saveApplication: applicationFactory.build({
+            _id: appId,
+            programName: "updated program name",
+            studyAbbreviation: "updated study abbreviation",
+            status: "New",
+          }),
+        },
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[mockGetApp, mockSave]} appId={appId}>
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(questionnaireDataFactory.build());
+      expect(saveResp.status).toEqual("success");
+    });
+
+    expect(result.current.data?.programName).toEqual("updated program name");
+    expect(result.current.data?.studyAbbreviation).toEqual("updated study abbreviation");
+    expect(result.current.data?.status).toEqual("New");
+  });
+
+  it("should propagate API errors from the saveApplication response", async () => {
+    const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
+
+    const mockGetApp: MockedResponse<GetAppResp, GetAppInput> = {
+      request: {
+        query: GET_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getApplication: {
+            ...applicationFactory.build({
+              _id: appId,
+            }),
+            questionnaireData: JSON.stringify(
+              questionnaireDataFactory.build({
+                sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+              })
+            ),
+          },
+        },
+      },
+    };
+
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        errors: [new GraphQLError("Test SaveApplication GraphQL error")],
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[mockGetApp, mockSave]} appId={appId}>
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(questionnaireDataFactory.build());
+      expect(saveResp.status).toEqual("failed");
+    });
+
+    expect(result.current.status).toEqual(FormStatus.ERROR);
+    expect(result.current.error).toEqual("Test SaveApplication GraphQL error");
+  });
+
+  it("should skip the API call if opts.skipSave is set", async () => {
+    const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
+
+    const mockGetApp: MockedResponse<GetAppResp, GetAppInput> = {
+      request: {
+        query: GET_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getApplication: {
+            ...applicationFactory.build({
+              _id: appId,
+            }),
+            questionnaireData: JSON.stringify(
+              questionnaireDataFactory.build({
+                sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+              })
+            ),
+          },
+        },
+      },
+    };
+
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: mockMatcher,
+      result: {
+        errors: [new GraphQLError("This api should not be called")],
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[mockGetApp, mockSave]} appId={appId}>
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(questionnaireDataFactory.build(), {
+        skipSave: true,
+      });
+      expect(saveResp.status).toEqual("success");
+    });
+
+    expect(mockMatcher).not.toHaveBeenCalled();
   });
 });

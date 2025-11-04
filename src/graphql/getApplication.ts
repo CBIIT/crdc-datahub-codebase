@@ -1,7 +1,7 @@
 import { TypedDocumentNode } from "@apollo/client";
 import gql from "graphql-tag";
 
-export const query: TypedDocumentNode<Response> = gql`
+export const query: TypedDocumentNode<Response, GetAppInput> = gql`
   query getApplication($id: ID!) {
     getApplication(_id: $id) {
       _id
@@ -35,6 +35,13 @@ export const query: TypedDocumentNode<Response> = gql`
     }
   }
 `;
+
+export type GetAppInput = {
+  /**
+   * The unique ID of the Application to retrieve
+   */
+  id: string;
+};
 
 export type Response = {
   getApplication: Omit<Application, "questionnaireData"> & {
