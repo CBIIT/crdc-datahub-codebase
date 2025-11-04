@@ -222,6 +222,8 @@ type AggregatedQCResult = {
   severity: "Error" | "Warning";
   title: string;
   count: number;
+  property: string;
+  value: string;
 };
 
 /**

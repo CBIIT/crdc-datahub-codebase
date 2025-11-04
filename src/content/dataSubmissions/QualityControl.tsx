@@ -151,6 +151,16 @@ const aggregatedColumns: Column<AggregatedQCResult>[] = [
     field: "title",
   },
   {
+    label: "Property",
+    renderValue: (data) => <TruncatedText text={data.property} maxCharacters={50} />,
+    field: "property",
+  },
+  {
+    label: "Value",
+    renderValue: (data) => <TruncatedText text={data.value} maxCharacters={50} />,
+    field: "value",
+  },
+  {
     label: "Severity",
     renderValue: (data) => (
       <StyledSeverity color={data?.severity === "Error" ? "#B54717" : "#8D5809"}>
