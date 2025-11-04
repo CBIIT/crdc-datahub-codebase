@@ -81,7 +81,6 @@ export type Response<PartialResponse = false> = {
         | "openAccess"
         | "PI"
         | "ORCID"
-        | "programID"
         | "createdAt"
         | "useProgramPC"
         | "pendingModelChange"

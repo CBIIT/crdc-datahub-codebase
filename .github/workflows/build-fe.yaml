@@ -85,7 +85,7 @@ jobs:
  
       - name: Setup Node
         uses: actions/setup-node@v4
-        if: github.event.inputs.unit_test == 'true'
+        if: github.event_name == 'pull_request' && github.event.pull_request.merged == true || (github.event_name == 'workflow_dispatch' && inputs.unit_test == 'true')
         with:
           node-version: "22.x"
           cache: "npm"

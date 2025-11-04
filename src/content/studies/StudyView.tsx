@@ -306,7 +306,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
           PI,
           dbGaPID,
           ORCID,
-          programID,
+          program,
           openAccess,
           controlledAccess,
           useProgramPC,
@@ -317,7 +317,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
         setSameAsProgramPrimaryContact(useProgramPC);
 
         const defaultProgram = programOptions?.[0] as Organization;
-        const program = activePrograms?.find((p) => p._id === programID) as Organization;
+        const foundProgram = programOptions?.find((p) => p?._id === program?._id) as Organization;
 
         resetForm({
           studyName,
@@ -325,7 +325,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
           PI,
           dbGaPID,
           ORCID,
-          program: program || defaultProgram || null,
+          program: foundProgram || defaultProgram || null,
           openAccess,
           controlledAccess,
           useProgramPC,
