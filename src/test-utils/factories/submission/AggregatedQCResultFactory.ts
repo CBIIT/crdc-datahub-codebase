@@ -8,6 +8,8 @@ export const baseAggregatedQCResult: AggregatedQCResult = {
   severity: "Error",
   title: "",
   count: 0,
+  property: "",
+  value: "",
 };
 
 /**

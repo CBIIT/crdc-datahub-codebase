@@ -14,6 +14,8 @@ const FullAggregatedQCResultFragment = gql`
   fragment AggregatedQCResultFragment on aggregatedQCResult {
     severity
     count
+    property
+    value
   }
 `;
 
