@@ -4,6 +4,9 @@ import { isEqual } from "lodash";
 import { FC, useCallback, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
+import ExportApplicationsButton, {
+  ExportApplicationsButtonProps,
+} from "@/components/ExportApplicationsButton";
 import ExportTemplateButton from "@/components/ExportTemplateButton";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
@@ -390,6 +393,23 @@ const ListingView: FC = () => {
     [navigate, reviewApp]
   );
 
+  const exportScope: ExportApplicationsButtonProps["scope"] = {
+    ...filtersRef.current,
+    submitterName: filtersRef?.current?.submitterName || undefined,
+    programName: filtersRef?.current?.programName || "All",
+    studyName: filtersRef?.current?.studyName || undefined,
+    ...tableRef.current?.tableParams,
+  };
+
+  const Actions = useMemo<React.ReactNode>(
+    () => (
+      <Stack direction="row" alignItems="center" gap="8px" marginRight="37px">
+        <ExportApplicationsButton scope={exportScope} disabled={!data?.total} />
+      </Stack>
+    ),
+    [exportScope, data?.total]
+  );
+
   const providerValue = useMemo(
     () => ({ user, handleOnReviewClick, tableRef }),
     [user, handleOnReviewClick, tableRef.current]
@@ -434,7 +454,7 @@ const ListingView: FC = () => {
               loading={loading || authStatus === AuthStatus.LOADING}
               defaultRowsPerPage={20}
               defaultOrder="desc"
-              position="bottom"
+              position="both"
               noContentText="You either do not have the appropriate permissions to view submission requests, or there are no submission requests associated with your account."
               onFetchData={handleFetchData}
               containerProps={{
@@ -443,7 +463,12 @@ const ListingView: FC = () => {
                   border: 0,
                   borderTopLeftRadius: 0,
                   borderTopRightRadius: 0,
+                  borderTop: "1px solid #6CACDA",
                 },
+              }}
+              AdditionalActions={{
+                top: { after: Actions },
+                bottom: { after: Actions },
               }}
               CustomTableHead={StyledTableHead}
               CustomTableHeaderCell={StyledHeaderCell}
