@@ -520,12 +520,14 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                     setValueAs: (val) => val?.trim(),
                     validate: { utf8: validateUTF8 },
                   })}
+                  placeholder="1,000 characters allowed"
                   size="small"
                   required
                   disabled={retrievingStudy}
                   readOnly={saving}
                   error={!!errors.studyName}
                   inputProps={{
+                    maxLength: 1000,
                     "aria-labelledby": "studyNameLabel",
                     "data-testid": "studyName-input",
                   }}
