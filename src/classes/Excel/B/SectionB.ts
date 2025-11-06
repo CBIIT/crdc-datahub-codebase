@@ -24,7 +24,7 @@ const DEFAULT_CHARACTER_LIMITS: CharacterLimitsMap<BKeys> = {
   "program.name": 100,
   "program.abbreviation": 100,
   "program.description": 500,
-  "study.name": 100,
+  "study.name": 1_000,
   "study.abbreviation": 20,
   "study.description": 2_500,
   // "study.funding.agency": 0,

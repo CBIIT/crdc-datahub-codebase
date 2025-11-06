@@ -295,7 +295,7 @@ export const studySchema = z
     /**
      * The full study title.
      */
-    name: z.string().max(100).nonempty(),
+    name: z.string().max(1_000).nonempty(),
     /**
      * The short study title.
      */
