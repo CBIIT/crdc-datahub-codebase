@@ -479,20 +479,20 @@ describe("PHS_OK", () => {
       "AND(" +
       'LEFT(TRIM($A$1),3)="phs",' +
       "IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),4,6))),FALSE)," +
-      'MID(TRIM($A$1),10,2)=".v",' +
+      'LOWER(MID(TRIM($A$1),10,2))=".v",' +
       "LEN(TRIM($A$1))>11," +
       "IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),12,LEN(TRIM($A$1))-11))),FALSE)," +
-      'NOT(IFERROR(FIND(".p",TRIM($A$1)),0)>0)' +
+      'NOT(IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)>0)' +
       ")," +
       "AND(" +
       'LEFT(TRIM($A$1),3)="phs",' +
       "IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),4,6))),FALSE)," +
-      'MID(TRIM($A$1),10,2)=".v",' +
-      'IFERROR(FIND(".p",TRIM($A$1)),0)>12,' +
-      'IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),12,IFERROR(FIND(".p",TRIM($A$1)),0)-12))),FALSE),' +
-      'IFERROR(MID(TRIM($A$1),IFERROR(FIND(".p",TRIM($A$1)),0),2),"")=".p",' +
-      'LEN(TRIM($A$1))>IFERROR(FIND(".p",TRIM($A$1)),0)+1,' +
-      'IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),IFERROR(FIND(".p",TRIM($A$1)),0)+2,LEN(TRIM($A$1))-IFERROR(FIND(".p",TRIM($A$1)),0)))),FALSE)' +
+      'LOWER(MID(TRIM($A$1),10,2))=".v",' +
+      'IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)>12,' +
+      'IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),12,IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)-12))),FALSE),' +
+      'LOWER(IFERROR(MID(TRIM($A$1),IFERROR(FIND(".p",LOWER(TRIM($A$1))),0),2),""))=".p",' +
+      'LEN(TRIM($A$1))>IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)+1,' +
+      'IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)+2,LEN(TRIM($A$1))-IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)))),FALSE)' +
       ")" +
       ")";
 
