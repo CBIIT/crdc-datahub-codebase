@@ -3224,6 +3224,49 @@ describe("Parsing", () => {
     expect(output.targetedReleaseDate).toEqual("12/25/2033");
   });
 
+  it("should allow current date for target dates", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2000, 0, 1, 4, 4, 4));
+
+    const mockForm = questionnaireDataFactory.build({
+      targetedSubmissionDate: "01/01/2000",
+      targetedReleaseDate: "01/01/2000",
+      dataTypes: [],
+      imagingDataDeIdentified: null,
+      otherDataTypes: "",
+      clinicalData: {
+        dataTypes: [],
+        otherDataTypes: "",
+        futureDataTypes: null,
+      },
+      files: [],
+      dataDeIdentified: null,
+      cellLines: null,
+      modelSystems: null,
+      submitterComment: null,
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionD();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionD();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+    expect(output.targetedSubmissionDate).toEqual("01/01/2000");
+    expect(output.targetedReleaseDate).toEqual("01/01/2000");
+
+    vi.useRealTimers();
+  });
+
   it("should not allow past dates for target dates", async () => {
     const mockForm = questionnaireDataFactory.build({
       targetedSubmissionDate: "01/01/2000",

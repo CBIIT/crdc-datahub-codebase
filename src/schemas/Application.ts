@@ -447,8 +447,10 @@ export const questionnaireDataSchema = z
      * Must be a future date.
      */
     targetedSubmissionDate: z.string().refine((val) => {
-      const date = dayjs(val, "MM/DD/YYYY", true);
-      return date?.isValid() && date?.isAfter(new Date());
+      const date = dayjs(val, "MM/DD/YYYY", true)?.startOf("day");
+      const dateIsTodayOrAfter =
+        date?.isSame(dayjs().startOf("day")) || date?.isAfter(dayjs().startOf("day"));
+      return date?.isValid() && dateIsTodayOrAfter;
     }),
     /**
      * Targeted public release date.
@@ -457,7 +459,9 @@ export const questionnaireDataSchema = z
      */
     targetedReleaseDate: z.string().refine((val) => {
       const date = dayjs(val, "MM/DD/YYYY", true);
-      return date?.isValid() && date?.isAfter(new Date());
+      const dateIsTodayOrAfter =
+        date?.isSame(dayjs().startOf("day")) || date?.isAfter(dayjs().startOf("day"));
+      return date?.isValid() && dateIsTodayOrAfter;
     }),
     /**
      * The submission time constraints.
