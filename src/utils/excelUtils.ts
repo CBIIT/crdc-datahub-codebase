@@ -572,14 +572,14 @@ export const isErrorValue = (v: ExcelJS.CellValue): v is ExcelJS.CellErrorValue 
  */
 export const PHS_OK = (c: ExcelJS.Cell | string) => {
   const x = TRIM(CELL(c));
-  const pIdx = `IFERROR(FIND(".p",${x}),0)`;
+  const pIdx = `IFERROR(FIND(".p",LOWER(${x})),0)`;
 
   return OR(
     AND(`LEN(${x})=9`, `LEFT(${x},3)="phs"`, `IFERROR(ISNUMBER(VALUE(RIGHT(${x},6))),FALSE)`),
     AND(
       `LEFT(${x},3)="phs"`,
       `IFERROR(ISNUMBER(VALUE(MID(${x},4,6))),FALSE)`,
-      `MID(${x},10,2)=".v"`,
+      `LOWER(MID(${x},10,2))=".v"`,
       `LEN(${x})>11`,
       `IFERROR(ISNUMBER(VALUE(MID(${x},12,LEN(${x})-11))),FALSE)`,
       `NOT(${pIdx}>0)`
@@ -587,10 +587,10 @@ export const PHS_OK = (c: ExcelJS.Cell | string) => {
     AND(
       `LEFT(${x},3)="phs"`,
       `IFERROR(ISNUMBER(VALUE(MID(${x},4,6))),FALSE)`,
-      `MID(${x},10,2)=".v"`,
+      `LOWER(MID(${x},10,2))=".v"`,
       `${pIdx}>12`,
       `IFERROR(ISNUMBER(VALUE(MID(${x},12,${pIdx}-12))),FALSE)`,
-      `IFERROR(MID(${x},${pIdx},2),"")=".p"`,
+      `LOWER(IFERROR(MID(${x},${pIdx},2),""))=".p"`,
       `LEN(${x})>${pIdx}+1`,
       `IFERROR(ISNUMBER(VALUE(MID(${x},${pIdx}+2,LEN(${x})-${pIdx}))),FALSE)`
     )
