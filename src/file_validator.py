@@ -188,12 +188,6 @@ class FileValidator:
                 msg = f"Line {line_num}: File name {file_name} is not unique in the manifest!"
                 is_valid = False
                 self.log.error(msg)
-        
-            # check if file name only contain ASCII characters
-            if not file_name.isascii():
-                msg = f"Line {line_num}: File name {file_name} contains non-ASCII characters!"
-                is_valid = False
-                self.log.error(msg)
 
             # check file name is a absolute path
             if os.path.isabs(file_name):
