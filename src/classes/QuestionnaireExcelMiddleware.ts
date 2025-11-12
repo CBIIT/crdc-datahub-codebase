@@ -35,7 +35,7 @@ import { SectionCtxBase } from "./Excel/SectionBase";
 /**
  * An internal template version identifier.
  */
-export const TEMPLATE_VERSION = "1.0";
+export const TEMPLATE_VERSION = "1.5";
 
 /**
  * The names of the HIDDEN sheets used in the Excel workbook.
