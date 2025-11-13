@@ -599,4 +599,81 @@ describe("QualityControlFilters", () => {
     expect(queryByTestId("quality-control-batchID-filter")).not.toBeInTheDocument();
     expect(queryByTestId("quality-control-nodeType-filter")).not.toBeInTheDocument();
   });
+
+  it("displays only unique issue types in dropdown", async () => {
+    const issueTypesMock: MockedResponse<
+      AggregatedSubmissionQCResultsResp,
+      AggregatedSubmissionQCResultsInput
+    > = {
+      request: {
+        query: AGGREGATED_SUBMISSION_QC_RESULTS,
+        variables: {
+          submissionID: "sub123",
+          partial: true,
+          first: -1,
+          orderBy: "title",
+          sortDirection: "asc",
+        },
+        context: { clientName: "backend" },
+      },
+      result: {
+        data: {
+          aggregatedSubmissionQCResults: {
+            total: 3,
+            results: [
+              ...aggregatedQCResultFactory
+                .build(3, (index) => ({
+                  code: `ISSUE${index + 1}`,
+                  title: `Issue Title ${index + 1}`,
+                  count: 100,
+                  desdescription: "",
+                  severity: "Error",
+                }))
+                .withTypename("aggregatedQCResult"),
+
+              // Duplicate
+              ...aggregatedQCResultFactory
+                .build(3, (index) => ({
+                  code: `ISSUE${index + 1}`,
+                  title: `Issue Title ${index + 1}`,
+                  count: 100,
+                  desdescription: "",
+                  severity: "Error",
+                }))
+                .withTypename("aggregatedQCResult"),
+            ],
+          },
+        },
+      },
+    };
+
+    const onChange = vi.fn();
+    const { getByTestId } = render(
+      <TestParent
+        onChange={onChange}
+        mocks={[issueTypesMock, batchDataMock, submissionStatsMock]}
+        isAggregated={false}
+      />
+    );
+
+    const issueTypeSelect = within(getByTestId("quality-control-issueType-filter")).getByRole(
+      "button"
+    );
+
+    userEvent.click(issueTypeSelect);
+
+    await waitFor(() => {
+      const muiSelectList = within(getByTestId("quality-control-issueType-filter")).getByRole(
+        "listbox",
+        {
+          hidden: true,
+        }
+      );
+      expect(muiSelectList.childNodes.length).toBe(4);
+      expect(within(muiSelectList).getByTestId("issueType-all")).toBeInTheDocument();
+      expect(within(muiSelectList).getByTestId("issueType-ISSUE1")).toBeInTheDocument();
+      expect(within(muiSelectList).getByTestId("issueType-ISSUE2")).toBeInTheDocument();
+      expect(within(muiSelectList).getByTestId("issueType-ISSUE3")).toBeInTheDocument();
+    });
+  });
 });
