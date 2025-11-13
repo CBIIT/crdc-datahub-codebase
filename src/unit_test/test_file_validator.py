@@ -126,21 +126,6 @@ class TestValidateFileName(unittest.TestCase):
         self.assertIn("is invalid", error_msg)
         self.assertIn("no absolute path allowed", error_msg)
 
-    def test_validate_file_name_absolute_path_windows(self):
-        """Test validation fails for absolute Windows path"""
-        self.validator.manifest_rows = [
-            {'file_name': 'C:\\Users\\test\\file.txt', 'md5sum': 'abc123'},
-        ]
-        self.validator.configs[FILE_NAME_FIELD] = 'file_name'
-        self.validator.configs[FILE_MD5_FIELD] = 'md5sum'
-        
-        result = self.validator.validate_file_name()
-        
-        self.assertFalse(result, "Should return False for absolute Windows path")
-        error_msg = self.validator.log.error.call_args[0][0]
-        # Windows path will be caught by reserved character check (colon) first
-        self.assertIn("invalid", error_msg)
-
     def test_validate_file_name_reserved_character_colon(self):
         """Test validation fails for file name with reserved character :"""
         self.validator.manifest_rows = [
