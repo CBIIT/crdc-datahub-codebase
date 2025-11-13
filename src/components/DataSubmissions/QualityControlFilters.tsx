@@ -147,6 +147,20 @@ const QualityControlFilters = ({ issueType, isAggregated, onChange }: Props) => 
     [submissionStats?.submissionStats?.stats]
   );
 
+  const dedupedIssueTypes = useMemo(() => {
+    const types = issueTypes?.aggregatedSubmissionQCResults?.results;
+    const seen = new Set<string>();
+
+    return types?.filter((item) => {
+      if (seen.has(item.code)) {
+        return false;
+      }
+
+      seen.add(item.code);
+      return true;
+    });
+  }, [issueTypes?.aggregatedSubmissionQCResults?.results]);
+
   return (
     <StyledFilterContainer data-testid="quality-control-filters">
       {!isAggregated ? (
@@ -172,7 +186,7 @@ const QualityControlFilters = ({ issueType, isAggregated, onChange }: Props) => 
                     <MenuItem value="All" data-testid="issueType-all">
                       All
                     </MenuItem>
-                    {issueTypes?.aggregatedSubmissionQCResults?.results?.map((issue, idx) => (
+                    {dedupedIssueTypes?.map((issue, idx) => (
                       <MenuItem
                         // eslint-disable-next-line react/no-array-index-key
                         key={`issue_${idx}_${issue.code}`}
