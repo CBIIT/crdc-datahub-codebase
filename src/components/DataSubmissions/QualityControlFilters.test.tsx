@@ -122,7 +122,7 @@ const issueTypesMock: MockedResponse<
             code: `ISSUE${index + 1}`,
             title: `Issue Title ${index + 1}`,
             count: 100,
-            desdescription: "",
+            description: "",
             severity: "Error",
           }))
           .withTypename("aggregatedQCResult"),
@@ -626,7 +626,7 @@ describe("QualityControlFilters", () => {
                   code: `ISSUE${index + 1}`,
                   title: `Issue Title ${index + 1}`,
                   count: 100,
-                  desdescription: "",
+                  description: "",
                   severity: "Error",
                 }))
                 .withTypename("aggregatedQCResult"),
@@ -637,7 +637,7 @@ describe("QualityControlFilters", () => {
                   code: `ISSUE${index + 1}`,
                   title: `Issue Title ${index + 1}`,
                   count: 100,
-                  desdescription: "",
+                  description: "",
                   severity: "Error",
                 }))
                 .withTypename("aggregatedQCResult"),
