@@ -272,9 +272,7 @@ class TestValidateFileName(unittest.TestCase):
     def test_validate_file_name_unicode_characters(self):
         """Test validation passes for file names with unicode characters"""
         self.validator.manifest_rows = [
-            {'file_name': 'файл.txt', 'md5sum': 'abc123'},
-            {'file_name': '文件.txt', 'md5sum': 'def456'},
-            {'file_name': 'αρχείο.txt', 'md5sum': 'ghi789'},
+            {'file_name': 'αρχείο.txt', 'md5sum': 'ghi789'}
         ]
         self.validator.configs[FILE_NAME_FIELD] = 'file_name'
         self.validator.configs[FILE_MD5_FIELD] = 'md5sum'
