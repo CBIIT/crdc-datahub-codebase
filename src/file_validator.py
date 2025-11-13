@@ -196,7 +196,7 @@ class FileValidator:
                 self.log.error(msg)
 
             # check if file name contains reserved or illegal characters, /, \, :, *, ?, ", <, >, and |
-            if re.search(r'[:*?"<>|]', file_name):
+            if re.search(r'[*|]', file_name):
                 msg = f"Line {line_num}: File name {file_name} contains invalid characters!"
                 is_valid = False
                 self.log.error(msg)

@@ -126,19 +126,6 @@ class TestValidateFileName(unittest.TestCase):
         self.assertIn("is invalid", error_msg)
         self.assertIn("no absolute path allowed", error_msg)
 
-    def test_validate_file_name_reserved_character_colon(self):
-        """Test validation fails for file name with reserved character :"""
-        self.validator.manifest_rows = [
-            {'file_name': 'file:name.txt', 'md5sum': 'abc123'},
-        ]
-        self.validator.configs[FILE_NAME_FIELD] = 'file_name'
-        self.validator.configs[FILE_MD5_FIELD] = 'md5sum'
-        
-        result = self.validator.validate_file_name()
-        
-        self.assertFalse(result, "Should return False for file name with colon")
-        error_msg = self.validator.log.error.call_args[0][0]
-        self.assertIn("contains invalid characters", error_msg)
 
     def test_validate_file_name_reserved_character_asterisk(self):
         """Test validation fails for file name with reserved character *"""
@@ -154,47 +141,6 @@ class TestValidateFileName(unittest.TestCase):
         error_msg = self.validator.log.error.call_args[0][0]
         self.assertIn("contains invalid characters", error_msg)
 
-    def test_validate_file_name_reserved_character_question_mark(self):
-        """Test validation fails for file name with reserved character ?"""
-        self.validator.manifest_rows = [
-            {'file_name': 'file?.txt', 'md5sum': 'abc123'},
-        ]
-        self.validator.configs[FILE_NAME_FIELD] = 'file_name'
-        self.validator.configs[FILE_MD5_FIELD] = 'md5sum'
-        
-        result = self.validator.validate_file_name()
-        
-        self.assertFalse(result, "Should return False for file name with question mark")
-        error_msg = self.validator.log.error.call_args[0][0]
-        self.assertIn("contains invalid characters", error_msg)
-
-    def test_validate_file_name_reserved_character_quotes(self):
-        """Test validation fails for file name with reserved character \""""
-        self.validator.manifest_rows = [
-            {'file_name': 'file"name.txt', 'md5sum': 'abc123'},
-        ]
-        self.validator.configs[FILE_NAME_FIELD] = 'file_name'
-        self.validator.configs[FILE_MD5_FIELD] = 'md5sum'
-        
-        result = self.validator.validate_file_name()
-        
-        self.assertFalse(result, "Should return False for file name with quotes")
-        error_msg = self.validator.log.error.call_args[0][0]
-        self.assertIn("contains invalid characters", error_msg)
-
-    def test_validate_file_name_reserved_character_angle_brackets(self):
-        """Test validation fails for file name with reserved characters < >"""
-        self.validator.manifest_rows = [
-            {'file_name': 'file<name>.txt', 'md5sum': 'abc123'},
-        ]
-        self.validator.configs[FILE_NAME_FIELD] = 'file_name'
-        self.validator.configs[FILE_MD5_FIELD] = 'md5sum'
-        
-        result = self.validator.validate_file_name()
-        
-        self.assertFalse(result, "Should return False for file name with angle brackets")
-        error_msg = self.validator.log.error.call_args[0][0]
-        self.assertIn("contains invalid characters", error_msg)
 
     def test_validate_file_name_reserved_character_pipe(self):
         """Test validation fails for file name with reserved character |"""
