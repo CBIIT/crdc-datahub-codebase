@@ -1502,4 +1502,28 @@ describe("Implementation Requirements", () => {
     expect(pendingGpaCheckbox.checked).toBe(false);
     expect(pendingGpaCheckbox).toBeDisabled();
   });
+
+  it("should not allow a study name larger than 1000 characters", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <TestParent>
+        <StudyView _id="new" />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(queryByTestId("study-view-suspense-loader")).not.toBeInTheDocument();
+    });
+
+    const programAutocomplete = getByTestId("program-input") as HTMLInputElement;
+    const openAccessCheckbox = getByTestId("openAccess-checkbox") as HTMLInputElement;
+    const studyNameInput = getByTestId("studyName-input") as HTMLInputElement;
+
+    userEvent.click(openAccessCheckbox);
+    userEvent.paste(programAutocomplete, "Not Applicable");
+    userEvent.paste(studyNameInput, "x".repeat(2000));
+
+    // Input only keeps first 1000 chars
+    expect(studyNameInput.value.length).toBe(1000);
+    expect(studyNameInput).toHaveValue("x".repeat(1000));
+  });
 });

@@ -2444,6 +2444,33 @@ describe("Parsing", () => {
     expect(output.program.description).toBe(InitialQuestionnaire.program.description);
   });
 
+  it("should allow study name to be 1000 characters", async () => {
+    const mockForm = questionnaireDataFactory.build();
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionB();
+
+    // Reset data before parsing
+    // @ts-expect-error Private member
+    middleware.data = {
+      ...InitialQuestionnaire,
+      study: { ...InitialQuestionnaire.study, name: "A".repeat(1_000) },
+      sections: [...InitialSections],
+    };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionB();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+
+    expect(output.study.name).toBe("A".repeat(1_000));
+  });
+
   it("should allow selecting existing program", async () => {
     const _id = v4();
     const mockForm = questionnaireDataFactory.build({
