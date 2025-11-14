@@ -9,6 +9,7 @@ const BaseQCResultFragment = gql`
       title
       description
     }
+    issueCount
   }
 `;
 
@@ -38,7 +39,6 @@ const FullQCResultFragment = gql`
       offendingProperty
       offendingValue
     }
-    issueCount
   }
 `;
 

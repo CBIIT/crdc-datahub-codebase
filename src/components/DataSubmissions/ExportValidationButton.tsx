@@ -187,6 +187,7 @@ export const ExportValidationButton: React.FC<Props> = ({
           orderBy: "displayID",
           first: -1,
           offset: 0,
+          severities: "All",
         },
       });
 
