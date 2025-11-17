@@ -96,6 +96,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             orderBy: "displayID",
             first: -1,
             offset: 0,
+            severities: "All",
           },
         },
         result: () => {
@@ -156,6 +157,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
               orderBy: "displayID",
               first: -1,
               offset: 0,
+              severities: "All",
             },
           },
           result: {
@@ -226,6 +228,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             orderBy: "displayID",
             first: -1,
             offset: 0,
+            severities: "All",
           },
         },
         result: {
@@ -285,6 +288,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             orderBy: "displayID",
             first: -1,
             offset: 0,
+            severities: "All",
           },
         },
         result: {
@@ -342,6 +346,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             orderBy: "displayID",
             first: -1,
             offset: 0,
+            severities: "All",
           },
         },
         error: new Error("Simulated network error"),
@@ -383,6 +388,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             orderBy: "displayID",
             first: -1,
             offset: 0,
+            severities: "All",
           },
         },
         result: {
@@ -426,6 +432,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             orderBy: "displayID",
             first: -1,
             offset: 0,
+            severities: "All",
           },
         },
         result: {
