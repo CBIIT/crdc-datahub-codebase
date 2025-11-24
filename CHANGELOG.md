@@ -1,5 +1,16 @@
 # Release Notes
 
+## 3.4.1 (Released 11/24/2025)
+
+This production patch includes critical fixes to resolve data submission issues affecting metadata display and validation.
+
+#### Bug Fixes
+
+- **Resolved Metadata Row Count Display Issue**\
+  Fixed incorrect rounding of metadata entries to thousands in donut charts and Data View tables, ensuring accurate display and download of participant, program, and study node data.
+- **Resolved False Duplicate ID Validation Errors**\
+  Corrected validation service to properly handle many-to-many relationship data, preventing false "Duplicated IDs" errors during data submission validation.
+
 ## 3.4.0 (Released 10/24/2025)
 
 #### Submission Request
