@@ -365,13 +365,14 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
   );
 
   useEffect(() => {
-    if (!programField?._id && programOptions?.length > 0) {
-      const NAProgram = programOptions?.find(
-        (p) => p.readOnly && p.name === "Not Applicable"
-      ) as Organization;
+    const NAProgram = programOptions?.find(
+      (p) => p.readOnly && p.name === "Not Applicable"
+    ) as Organization;
+
+    if (!programField?._id && NAProgram) {
       setValue("program", NAProgram);
     }
-  }, [programOptions, programField?._id]);
+  }, [programOptions, programField?._id, setValue]);
 
   /**
    * Reset the form values, and preventing invalid
