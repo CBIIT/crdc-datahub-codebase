@@ -366,7 +366,10 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
 
   useEffect(() => {
     if (!programField?._id && programOptions?.length > 0) {
-      setValue("program", programOptions[0] as Organization);
+      const NAProgram = programOptions?.find(
+        (p) => p.readOnly && p.name === "Not Applicable"
+      ) as Organization;
+      setValue("program", NAProgram);
     }
   }, [programOptions, programField?._id]);
 
