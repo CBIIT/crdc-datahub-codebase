@@ -419,10 +419,7 @@ export const parseSchemaObject = <S extends z.ZodObject>(
       Logger.info(`parseSchemaObject: Persisting value for column key ${columnKey}.`, {
         value: narrowedData,
       });
-      break;
-    }
-
-    if (!unset(clonedData, path)) {
+    } else if (!unset(clonedData, path)) {
       Logger.error(`parseSchemaObject: Failed to unset path ${JSON.stringify(path)} in object.`);
     }
   }
