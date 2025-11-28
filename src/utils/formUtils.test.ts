@@ -12,6 +12,7 @@ import { questionnaireDataFactory } from "@/factories/application/QuestionnaireD
 import { repositoryFactory } from "@/factories/application/RepositoryFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
 
+import * as PersistentColumns from "../classes/Excel/PersistentColumns";
 import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
 
 import * as utils from "./formUtils";
@@ -684,13 +685,17 @@ describe("parseSchemaObject", () => {
   });
 
   let loggerErrorSpy: ReturnType<typeof vi.spyOn>;
+  let loggerInfoSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     loggerErrorSpy = vi.spyOn(Logger, "error").mockImplementation(() => {});
+    loggerInfoSpy = vi.spyOn(Logger, "info").mockImplementation(() => {});
   });
 
   afterEach(() => {
     loggerErrorSpy.mockRestore();
+    loggerInfoSpy.mockRestore();
+    vi.restoreAllMocks();
   });
 
   it("should return passed=true and data if validation succeeds", () => {
@@ -756,6 +761,35 @@ describe("parseSchemaObject", () => {
     const result = utils.parseSchemaObject(schema, {});
     expect(result.passed).toBe(false);
     expect(result.data).toEqual({});
+    expect(loggerErrorSpy).toHaveBeenCalled();
+  });
+
+  it("should persist value for a column key when shouldPersistColumnValue returns true", () => {
+    const persistSchema = z.object({
+      targetedSubmissionDate: z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/),
+    });
+
+    const data = {
+      targetedSubmissionDate: "invalid-date", // fails regex
+    };
+
+    const shouldPersistSpy = vi
+      .spyOn(PersistentColumns, "shouldPersistColumnValue")
+      .mockImplementation((_columnKey, _value) => true);
+
+    const result = utils.parseSchemaObject(persistSchema, data);
+
+    expect(result.passed).toBe(false);
+    expect(result.data).toEqual(data);
+
+    expect(shouldPersistSpy).toHaveBeenCalledWith("targetedSubmissionDate", "invalid-date");
+
+    expect(loggerInfoSpy).toHaveBeenCalledWith(
+      "parseSchemaObject: Persisting value for column key targetedSubmissionDate.",
+      { value: "invalid-date" }
+    );
+
+    // Still expect an error log since validation failed
     expect(loggerErrorSpy).toHaveBeenCalled();
   });
 });

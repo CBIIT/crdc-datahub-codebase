@@ -1,5 +1,7 @@
-import { cloneDeep, mergeWith, has, unset, some, values } from "lodash";
+import { cloneDeep, mergeWith, has, unset, some, values, get } from "lodash";
 import type * as z from "zod";
+
+import { ColumnKey, shouldPersistColumnValue } from "@/classes/Excel/PersistentColumns";
 
 import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
 
@@ -408,6 +410,15 @@ export const parseSchemaObject = <S extends z.ZodObject>(
   const clonedData = cloneDeep(data);
   for (const path of errorFields) {
     if (!has(clonedData, path)) {
+      break;
+    }
+
+    const narrowedData = get(clonedData, path);
+    const columnKey = path?.filter((p) => typeof p === "string")?.join(".") as ColumnKey;
+    if (shouldPersistColumnValue(columnKey, narrowedData)) {
+      Logger.info(`parseSchemaObject: Persisting value for column key ${columnKey}.`, {
+        value: narrowedData,
+      });
       break;
     }
 
