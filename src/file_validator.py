@@ -195,11 +195,20 @@ class FileValidator:
                 is_valid = False
                 self.log.error(msg)
 
-            # check if file name contains reserved or illegal characters, /, \, :, *, ?, ", <, >, and |
+            # check if file name contains reserved or illegal characters *, and |
             if re.search(r'[*|]', file_name):
                 msg = f"Line {line_num}: File name {file_name} contains invalid characters!"
                 is_valid = False
                 self.log.error(msg)
+
+            # check if file name contains non-unicode characters
+            try:
+                file_name.encode('utf-8')
+                return True
+            except UnicodeEncodeError:
+                is_valid = False
+                msg = f"Line {line_num}: File name {file_name} contains non-unicode characters!"
+
 
             line_num += 1
         self.log.info("Completed validating file names listed in pre-manifest.")
