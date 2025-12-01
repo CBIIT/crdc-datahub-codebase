@@ -255,7 +255,12 @@ describe("Implementation Requirements", () => {
   });
 
   it("should disable dialog when isUploading is true", async () => {
-    const setData = vi.fn();
+    const setData = vi.fn().mockReturnValue({ status: "success" });
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockImplementation(
+      () => new Promise(() => {}) // Never resolves to keep isUploading true
+    );
+
     const { getByTestId } = render(
       <TestParent formCtxState={{ data: {}, setData }}>
         <ImportApplicationButton />
@@ -267,6 +272,12 @@ describe("Implementation Requirements", () => {
     const file = new File(["test"], "test.xlsx", {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
+
+    // Mock the arrayBuffer method
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
     const input = getByTestId("import-upload-file-input") as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
 
@@ -491,5 +502,59 @@ describe("Implementation Requirements", () => {
         { variant: "success" }
       );
     });
+  });
+
+  it("should display an error snackbar when QuestionnaireExcelMiddleware.parse throws an exception", async () => {
+    const setData = vi.fn();
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockRejectedValue(
+      new Error("Invalid file format")
+    );
+
+    const { getByTestId, getByDisplayValue, queryByTestId } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    // Mock the arrayBuffer method
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    const confirmButton = getByTestId("import-dialog-confirm-button");
+    expect(confirmButton).toBeEnabled();
+
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(QuestionnaireExcelMiddleware.parse).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "Import failed. Your data could not be imported. Please check the file format and template, then try again.",
+        { variant: "error" }
+      );
+    });
+
+    await waitFor(() => {
+      expect(queryByTestId("import-dialog")).not.toBeInTheDocument();
+    });
+
+    expect(setData).not.toHaveBeenCalled();
   });
 });

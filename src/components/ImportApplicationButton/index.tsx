@@ -137,10 +137,25 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
         `ImportApplicationButton: File does not have arrayBuffer method`,
         dataTransferFile
       );
+      setOpenDialog(false);
+      setIsUploading(false);
       return;
     }
 
-    const parsedForm = await QuestionnaireExcelMiddleware.parse(dataTransferFile, {});
+    let parsedForm: QuestionnaireData;
+    try {
+      parsedForm = await QuestionnaireExcelMiddleware.parse(dataTransferFile, {});
+    } catch (error) {
+      Logger.error(`ImportApplicationButton: Failed to parse file`, error);
+      enqueueSnackbar(
+        "Import failed. Your data could not be imported. Please check the file format and template, then try again.",
+        { variant: "error" }
+      );
+      setOpenDialog(false);
+      setIsUploading(false);
+      return;
+    }
+
     const isCompleted = parsedForm?.sections?.every((section) => section.status === "Completed");
     const res = await setData(parsedForm, { skipSave: false });
 
@@ -161,6 +176,17 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
     setTimeout(() => formRef?.current?.reportValidity(), 200);
     setOpenDialog(false);
     setIsUploading(false);
+  };
+
+  /**
+   * Handles the error callback from the ImportDialog.
+   *
+   * @param message The error message to display.
+   * @returns void
+   */
+  const handleImportError = (message: string) => {
+    enqueueSnackbar(message, { variant: "error" });
+    setOpenDialog(false);
   };
 
   if (!isFormOwner) {
@@ -198,6 +224,7 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
         open={openDialog}
         onClose={() => setOpenDialog(false)}
         onConfirm={handleImport}
+        onError={handleImportError}
         disabled={isUploading}
       />
     </>

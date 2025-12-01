@@ -110,7 +110,8 @@ type Props = {
   disabled?: boolean;
   onClose?: () => void;
   onConfirm?: (file: File) => void;
-} & Omit<DialogProps, "onClose" | "title">;
+  onError?: (message: string) => void;
+} & Omit<DialogProps, "onClose" | "onError" | "title">;
 
 /**
  * ImportDialog component for uploading Excel files.
@@ -118,7 +119,14 @@ type Props = {
  * @param param Props for the dialog component.
  * @returns JSX.Element
  */
-const ImportDialog = ({ disabled, onClose, onConfirm, open, ...rest }: Props): JSX.Element => {
+const ImportDialog = ({
+  disabled,
+  onClose,
+  onConfirm,
+  onError,
+  open,
+  ...rest
+}: Props): JSX.Element => {
   const [file, setFile] = useState<File>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const acceptedExtensions = [".xlsx"];
@@ -161,6 +169,9 @@ const ImportDialog = ({ disabled, onClose, onConfirm, open, ...rest }: Props): J
     );
     if (!isCorrectFormat) {
       Logger.error(`ImportApplicationButton: Unsupported file format`);
+      onError?.(
+        "Import failed. Your data could not be imported. Please check the file format and template, then try again."
+      );
       return;
     }
 

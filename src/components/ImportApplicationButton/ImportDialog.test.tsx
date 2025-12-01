@@ -237,4 +237,26 @@ describe("Implementation Requirements", () => {
     expect(loggerSpy).toHaveBeenCalledWith("ImportApplicationButton: No file selected");
     loggerSpy.mockRestore();
   });
+
+  it("should call onError when invalid file type is selected", () => {
+    const onError = vi.fn();
+    const loggerSpy = vi.spyOn(Logger, "error").mockImplementation(() => {});
+    const { getByTestId, getByPlaceholderText } = render(
+      <TestParent>
+        <ImportDialog open onError={onError} />
+      </TestParent>
+    );
+
+    const file = new File(["test"], "invalid.txt", { type: "text/plain" });
+
+    const input = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(loggerSpy).toHaveBeenCalledWith("ImportApplicationButton: Unsupported file format");
+    expect(onError).toHaveBeenCalledWith(
+      "Import failed. Your data could not be imported. Please check the file format and template, then try again."
+    );
+    expect(getByPlaceholderText("Choose Excel Files")).toHaveValue("");
+    loggerSpy.mockRestore();
+  });
 });
