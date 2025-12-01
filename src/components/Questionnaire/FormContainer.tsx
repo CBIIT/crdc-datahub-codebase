@@ -71,7 +71,7 @@ const FormContainer = forwardRef<HTMLDivElement, Props>(
         <div data-pdf-print-region="true">
           <StyledTitleGroup>
             <StyledSectionTitle variant="h2">{description}</StyledSectionTitle>
-            {descriptionAdornment}
+            <span data-print="false">{descriptionAdornment}</span>
           </StyledTitleGroup>
           <StyledForm id={id} ref={formRef} onSubmit={(e) => e.preventDefault()}>
             {children}
