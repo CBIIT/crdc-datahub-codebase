@@ -21,6 +21,7 @@ import {
   Status as FormStatus,
 } from "../Contexts/FormContext";
 
+import { IMPORT_ERROR_MESSAGE } from "./ImportDialog";
 import ImportApplicationButton from "./index";
 
 vi.mock("@/hooks/useFormMode", async () => ({
@@ -383,10 +384,7 @@ describe("Implementation Requirements", () => {
     });
 
     await waitFor(() => {
-      expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Import failed. Your data could not be imported. Please check the file format and template, then try again.",
-        { variant: "error" }
-      );
+      expect(global.mockEnqueue).toHaveBeenCalledWith(IMPORT_ERROR_MESSAGE, { variant: "error" });
     });
   });
 
@@ -545,10 +543,7 @@ describe("Implementation Requirements", () => {
     });
 
     await waitFor(() => {
-      expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Import failed. Your data could not be imported. Please check the file format and template, then try again.",
-        { variant: "error" }
-      );
+      expect(global.mockEnqueue).toHaveBeenCalledWith(IMPORT_ERROR_MESSAGE, { variant: "error" });
     });
 
     await waitFor(() => {

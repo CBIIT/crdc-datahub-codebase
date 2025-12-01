@@ -18,7 +18,7 @@ import {
   Status as FormStatus,
 } from "../Contexts/FormContext";
 
-import ImportDialog from "./ImportDialog";
+import ImportDialog, { IMPORT_ERROR_MESSAGE } from "./ImportDialog";
 
 type ParentProps = {
   mocks?: MockedResponse[];
@@ -253,9 +253,7 @@ describe("Implementation Requirements", () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     expect(loggerSpy).toHaveBeenCalledWith("ImportApplicationButton: Unsupported file format");
-    expect(onError).toHaveBeenCalledWith(
-      "Import failed. Your data could not be imported. Please check the file format and template, then try again."
-    );
+    expect(onError).toHaveBeenCalledWith(IMPORT_ERROR_MESSAGE);
     expect(getByPlaceholderText("Choose Excel Files")).toHaveValue("");
     loggerSpy.mockRestore();
   });

@@ -11,7 +11,7 @@ import { useAuthContext } from "../Contexts/AuthContext";
 import { useFormContext } from "../Contexts/FormContext";
 import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
 
-import ImportDialog from "./ImportDialog";
+import ImportDialog, { IMPORT_ERROR_MESSAGE } from "./ImportDialog";
 
 const StyledImportIcon = styled(ImportIconSvg)({
   width: "27px",
@@ -112,6 +112,16 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
   };
 
   /**
+   * Resets the import state by closing the dialog and resetting the uploading flag.
+   *
+   * @returns void
+   */
+  const resetImportState = () => {
+    setOpenDialog(false);
+    setIsUploading(false);
+  };
+
+  /**
    * Handles the import of the selected file and uses middleware
    * to parse only the valid values from the Excel file. Finally,
    * it updates the form data to the new imported data.
@@ -137,8 +147,7 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
         `ImportApplicationButton: File does not have arrayBuffer method`,
         dataTransferFile
       );
-      setOpenDialog(false);
-      setIsUploading(false);
+      resetImportState();
       return;
     }
 
@@ -147,12 +156,8 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
       parsedForm = await QuestionnaireExcelMiddleware.parse(dataTransferFile, {});
     } catch (error) {
       Logger.error(`ImportApplicationButton: Failed to parse file`, error);
-      enqueueSnackbar(
-        "Import failed. Your data could not be imported. Please check the file format and template, then try again.",
-        { variant: "error" }
-      );
-      setOpenDialog(false);
-      setIsUploading(false);
+      enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
+      resetImportState();
       return;
     }
 
@@ -167,15 +172,11 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
         { variant: "success" }
       );
     } else {
-      enqueueSnackbar(
-        "Import failed. Your data could not be imported. Please check the file format and template, then try again.",
-        { variant: "error" }
-      );
+      enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
     }
 
     setTimeout(() => formRef?.current?.reportValidity(), 200);
-    setOpenDialog(false);
-    setIsUploading(false);
+    resetImportState();
   };
 
   /**

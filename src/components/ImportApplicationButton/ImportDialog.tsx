@@ -7,6 +7,12 @@ import { Logger } from "@/utils";
 import CloseIconSvg from "../../assets/icons/close_icon.svg?react";
 import StyledFormOutlinedInput from "../StyledFormComponents/StyledOutlinedInput";
 
+/**
+ * Error message shown when import fails.
+ */
+export const IMPORT_ERROR_MESSAGE =
+  "Import failed. Your data could not be imported. Please check the file format and template, then try again.";
+
 const StyledDialog = styled(Dialog)({
   "& .MuiDialog-paper": {
     maxWidth: "none",
@@ -169,9 +175,7 @@ const ImportDialog = ({
     );
     if (!isCorrectFormat) {
       Logger.error(`ImportApplicationButton: Unsupported file format`);
-      onError?.(
-        "Import failed. Your data could not be imported. Please check the file format and template, then try again."
-      );
+      onError?.(IMPORT_ERROR_MESSAGE);
       return;
     }
 
