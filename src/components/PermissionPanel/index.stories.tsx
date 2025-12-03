@@ -8,6 +8,9 @@ import {
   RetrievePBACDefaultsInput,
   RETRIEVE_PBAC_DEFAULTS,
   EditUserInput,
+  GET_TOOLTIPS,
+  GetTooltipsResp,
+  GetTooltipsInput,
 } from "../../graphql";
 
 import PermissionPanel from "./index";
@@ -159,10 +162,38 @@ const mockWithData: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefault
   },
 };
 
+const mockTooltips: MockedResponse<GetTooltipsResp, GetTooltipsInput> = {
+  request: {
+    query: GET_TOOLTIPS,
+  },
+  result: {
+    data: {
+      getTooltips: [
+        // Permissions
+        { key: "submission_request:view", value: "View Submission Request" },
+        { key: "submission_request:create", value: "Create Submission Request" },
+        { key: "data_submission:view", value: "View Data Submission" },
+        { key: "data_submission:create", value: "Create Data Submission" },
+        { key: "data_submission:cancel", value: "Cancel Data Submission" },
+        { key: "data_submission:review", value: "Review Data Submission" },
+        { key: "access:request", value: "Request Access" },
+
+        // Notifications
+        { key: "submission_request:submitted", value: "Submission Request Submitted" },
+        { key: "data_submission:cancelled", value: "Data Submission Cancelled" },
+        { key: "data_submission:completed", value: "Data Submission Completed" },
+        { key: "data_submission:created", value: "Data Submission Created" },
+        { key: "account:disabled", value: "Account Disabled" },
+        { key: "access:requested", value: "Access Requested" },
+      ],
+    },
+  },
+};
+
 export const Default: Story = {
   parameters: {
     apolloClient: {
-      mocks: [mockWithData],
+      mocks: [mockWithData, mockTooltips],
     },
   },
 };
@@ -173,8 +204,35 @@ export const Readonly: Story = {
   },
   parameters: {
     apolloClient: {
-      mocks: [mockWithData],
+      mocks: [mockWithData, mockTooltips],
     },
+  },
+};
+
+export const TooltipHover: Story = {
+  args: {
+    readOnly: false,
+  },
+  parameters: {
+    apolloClient: {
+      mocks: [mockWithData, mockTooltips],
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.click(within(canvas.getByTestId("permissions-accordion")).getByRole("button"));
+
+    await userEvent.click(
+      within(canvas.getByTestId("notifications-accordion")).getByRole("button")
+    );
+
+    // Remove focus from the accordion button
+    await userEvent.click(canvasElement);
+
+    await userEvent.hover(canvas.getByTestId("permission-data_submission:view-label"));
+
+    await canvas.findByText("Request Access");
   },
 };
 
