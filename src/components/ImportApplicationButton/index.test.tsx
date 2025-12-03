@@ -509,7 +509,7 @@ describe("Implementation Requirements", () => {
       new Error("Invalid file format")
     );
 
-    const { getByTestId, getByDisplayValue, queryByTestId } = render(
+    const { getByTestId, getByDisplayValue } = render(
       <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
         <ImportApplicationButton />
       </TestParent>
@@ -546,8 +546,9 @@ describe("Implementation Requirements", () => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(IMPORT_ERROR_MESSAGE, { variant: "error" });
     });
 
+    // Dialog should remain open on error
     await waitFor(() => {
-      expect(queryByTestId("import-dialog")).not.toBeInTheDocument();
+      expect(getByTestId("import-dialog")).toBeInTheDocument();
     });
 
     expect(setData).not.toHaveBeenCalled();

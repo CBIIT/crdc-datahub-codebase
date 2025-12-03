@@ -113,6 +113,7 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
 
   /**
    * Resets the import state by closing the dialog and resetting the uploading flag.
+   * Used after successful import.
    *
    * @returns void
    */
@@ -147,7 +148,7 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
         `ImportApplicationButton: File does not have arrayBuffer method`,
         dataTransferFile
       );
-      resetImportState();
+      setIsUploading(false);
       return;
     }
 
@@ -157,7 +158,7 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
     } catch (error) {
       Logger.error(`ImportApplicationButton: Failed to parse file`, error);
       enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
-      resetImportState();
+      setIsUploading(false);
       return;
     }
 
@@ -171,23 +172,23 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
           : "Your data has been imported, but some pages contain validation errors. Please review each page and resolve before submitting.",
         { variant: "success" }
       );
+      setTimeout(() => formRef?.current?.reportValidity(), 200);
+      resetImportState();
     } else {
       enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
+      setIsUploading(false);
     }
-
-    setTimeout(() => formRef?.current?.reportValidity(), 200);
-    resetImportState();
   };
 
   /**
    * Handles the error callback from the ImportDialog.
+   * Shows the error notification but keeps the dialog open.
    *
    * @param message The error message to display.
    * @returns void
    */
   const handleImportError = (message: string) => {
     enqueueSnackbar(message, { variant: "error" });
-    setOpenDialog(false);
   };
 
   if (!isFormOwner) {
