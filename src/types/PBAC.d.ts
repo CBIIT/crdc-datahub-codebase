@@ -36,9 +36,12 @@ type SubmissionRequestNotifications =
   | "submission_request:reviewed"
   | "submission_request:canceled"
   | "submission_request:expiring"
-  | "submission_request:deleted";
+  | "submission_request:deleted"
+  | "submission_request:pending_cleared"
+  | "submission_request:to_be_reviewed";
 
 type DataSubmissionNotifications =
+  | "data_submission:created"
   | "data_submission:submitted"
   | "data_submission:cancelled"
   | "data_submission:withdrawn"
@@ -46,7 +49,9 @@ type DataSubmissionNotifications =
   | "data_submission:rejected"
   | "data_submission:completed"
   | "data_submission:expiring"
-  | "data_submission:deleted";
+  | "data_submission:deleted"
+  | "data_submission:cfg_changed"
+  | "data_submission:pv_requested";
 
 type MiscNotifications =
   | "access:requested"

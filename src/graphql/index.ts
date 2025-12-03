@@ -200,6 +200,9 @@ export type {
   Response as RetrievePBACDefaultsResp,
 } from "./retrievePBACDefaults";
 
+export { query as GET_TOOLTIPS } from "./getTooltips";
+export type { Input as GetTooltipsInput, Response as GetTooltipsResp } from "./getTooltips";
+
 export { query as USER_IS_PRIMARY_CONTACT } from "./userIsPrimaryContact";
 export type {
   Input as UserIsPrimaryContactInput,
