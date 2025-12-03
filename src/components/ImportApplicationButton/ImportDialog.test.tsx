@@ -18,7 +18,7 @@ import {
   Status as FormStatus,
 } from "../Contexts/FormContext";
 
-import ImportDialog from "./ImportDialog";
+import ImportDialog, { IMPORT_ERROR_MESSAGE } from "./ImportDialog";
 
 type ParentProps = {
   mocks?: MockedResponse[];
@@ -235,6 +235,26 @@ describe("Implementation Requirements", () => {
     fireEvent.change(input, { target: { files: [] } });
 
     expect(loggerSpy).toHaveBeenCalledWith("ImportApplicationButton: No file selected");
+    loggerSpy.mockRestore();
+  });
+
+  it("should call onError when invalid file type is selected", () => {
+    const onError = vi.fn();
+    const loggerSpy = vi.spyOn(Logger, "error").mockImplementation(() => {});
+    const { getByTestId, getByPlaceholderText } = render(
+      <TestParent>
+        <ImportDialog open onError={onError} />
+      </TestParent>
+    );
+
+    const file = new File(["test"], "invalid.txt", { type: "text/plain" });
+
+    const input = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(loggerSpy).toHaveBeenCalledWith("ImportApplicationButton: Unsupported file format");
+    expect(onError).toHaveBeenCalledWith(IMPORT_ERROR_MESSAGE);
+    expect(getByPlaceholderText("Choose Excel Files")).toHaveValue("");
     loggerSpy.mockRestore();
   });
 });

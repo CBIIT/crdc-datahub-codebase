@@ -11,7 +11,7 @@ import { useAuthContext } from "../Contexts/AuthContext";
 import { useFormContext } from "../Contexts/FormContext";
 import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
 
-import ImportDialog from "./ImportDialog";
+import ImportDialog, { IMPORT_ERROR_MESSAGE } from "./ImportDialog";
 
 const StyledImportIcon = styled(ImportIconSvg)({
   width: "27px",
@@ -112,6 +112,17 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
   };
 
   /**
+   * Resets the import state by closing the dialog and resetting the uploading flag.
+   * Used after successful import.
+   *
+   * @returns void
+   */
+  const resetImportState = () => {
+    setOpenDialog(false);
+    setIsUploading(false);
+  };
+
+  /**
    * Handles the import of the selected file and uses middleware
    * to parse only the valid values from the Excel file. Finally,
    * it updates the form data to the new imported data.
@@ -137,10 +148,20 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
         `ImportApplicationButton: File does not have arrayBuffer method`,
         dataTransferFile
       );
+      setIsUploading(false);
       return;
     }
 
-    const parsedForm = await QuestionnaireExcelMiddleware.parse(dataTransferFile, {});
+    let parsedForm: QuestionnaireData;
+    try {
+      parsedForm = await QuestionnaireExcelMiddleware.parse(dataTransferFile, {});
+    } catch (error) {
+      Logger.error(`ImportApplicationButton: Failed to parse file`, error);
+      enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
+      setIsUploading(false);
+      return;
+    }
+
     const isCompleted = parsedForm?.sections?.every((section) => section.status === "Completed");
     const res = await setData(parsedForm, { skipSave: false });
 
@@ -151,16 +172,23 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
           : "Your data has been imported, but some pages contain validation errors. Please review each page and resolve before submitting.",
         { variant: "success" }
       );
+      setTimeout(() => formRef?.current?.reportValidity(), 200);
+      resetImportState();
     } else {
-      enqueueSnackbar(
-        "Import failed. Your data could not be imported. Please check the file format and template, then try again.",
-        { variant: "error" }
-      );
+      enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
+      setIsUploading(false);
     }
+  };
 
-    setTimeout(() => formRef?.current?.reportValidity(), 200);
-    setOpenDialog(false);
-    setIsUploading(false);
+  /**
+   * Handles the error callback from the ImportDialog.
+   * Shows the error notification but keeps the dialog open.
+   *
+   * @param message The error message to display.
+   * @returns void
+   */
+  const handleImportError = (message: string) => {
+    enqueueSnackbar(message, { variant: "error" });
   };
 
   if (!isFormOwner) {
@@ -198,6 +226,7 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
         open={openDialog}
         onClose={() => setOpenDialog(false)}
         onConfirm={handleImport}
+        onError={handleImportError}
         disabled={isUploading}
       />
     </>
