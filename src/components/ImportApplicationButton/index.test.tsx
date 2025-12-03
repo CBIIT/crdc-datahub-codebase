@@ -553,4 +553,57 @@ describe("Implementation Requirements", () => {
 
     expect(setData).not.toHaveBeenCalled();
   });
+
+  it("should log an error and reset state when file does not have arrayBuffer method", async () => {
+    const setData = vi.fn();
+    const { Logger } = await import("@/utils");
+    const loggerSpy = vi.spyOn(Logger, "error").mockImplementation(() => {});
+
+    // Mock DataTransfer to return a file without arrayBuffer
+    const originalDataTransfer = global.DataTransfer;
+    const mockFile = { name: "test.xlsx", arrayBuffer: undefined };
+    global.DataTransfer = vi.fn().mockImplementation(() => ({
+      items: {
+        add: vi.fn(),
+      },
+      files: [mockFile],
+    })) as unknown as typeof DataTransfer;
+
+    const { getByTestId, getByDisplayValue } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    const confirmButton = getByTestId("import-dialog-confirm-button");
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(loggerSpy).toHaveBeenCalledWith(
+        "ImportApplicationButton: File does not have arrayBuffer method",
+        mockFile
+      );
+    });
+
+    // Dialog should remain open
+    expect(getByTestId("import-dialog")).toBeInTheDocument();
+    expect(setData).not.toHaveBeenCalled();
+
+    // Restore original DataTransfer
+    global.DataTransfer = originalDataTransfer;
+    loggerSpy.mockRestore();
+  });
 });
