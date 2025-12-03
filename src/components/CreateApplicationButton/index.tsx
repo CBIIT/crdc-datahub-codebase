@@ -140,6 +140,7 @@ const CreateApplicationButton: FC<CreateApplicationButtonProps> = ({
             },
           },
         }}
+        aria-labelledby="dialog-description"
       />
     </>
   );
