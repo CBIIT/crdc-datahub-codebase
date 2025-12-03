@@ -1,6 +1,6 @@
 import { MockedResponse } from "@apollo/client/testing";
 import type { Meta, StoryObj } from "@storybook/react";
-import { userEvent, within } from "@storybook/test";
+import { screen, userEvent, waitFor, within } from "@storybook/test";
 import { FormProvider, useForm } from "react-hook-form";
 
 import {
@@ -232,7 +232,9 @@ export const TooltipHover: Story = {
 
     await userEvent.hover(canvas.getByTestId("permission-data_submission:view-label"));
 
-    await canvas.findByText("Request Access");
+    await waitFor(async () => {
+      await screen.findByText("View Data Submission");
+    });
   },
 };
 
