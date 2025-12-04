@@ -1526,4 +1526,22 @@ describe("Implementation Requirements", () => {
     expect(studyNameInput.value.length).toBe(1000);
     expect(studyNameInput).toHaveValue("x".repeat(1000));
   });
+
+  it("should default to 'Not Applicable' instead of empty program field", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <TestParent>
+        <StudyView _id="new" />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(queryByTestId("study-view-suspense-loader")).not.toBeInTheDocument();
+    });
+
+    const programAutocomplete = getByTestId("program-input") as HTMLInputElement;
+
+    await waitFor(() => {
+      expect(programAutocomplete.value).toBe("Not Applicable");
+    });
+  });
 });

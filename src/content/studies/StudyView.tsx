@@ -13,7 +13,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useSnackbar } from "notistack";
-import { FC, useMemo, useRef, useState } from "react";
+import { FC, useEffect, useMemo, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
@@ -363,6 +363,16 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       fetchPolicy: "no-cache",
     }
   );
+
+  useEffect(() => {
+    const NAProgram = programOptions?.find(
+      (p) => p.readOnly && p.name === "Not Applicable"
+    ) as Organization;
+
+    if (!programField?._id && NAProgram) {
+      setValue("program", NAProgram);
+    }
+  }, [programOptions, programField?._id, setValue]);
 
   /**
    * Reset the form values, and preventing invalid
