@@ -1,7 +1,7 @@
 import type ExcelJS from "exceljs";
 import { CellValue } from "exceljs";
 
-import { Logger } from "@/utils";
+import { Logger } from "@/utils/logger";
 
 import { ErrorCatalog } from "./ErrorCatalog";
 

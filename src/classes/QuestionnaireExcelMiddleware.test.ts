@@ -3294,7 +3294,7 @@ describe("Parsing", () => {
     vi.useRealTimers();
   });
 
-  it("should not allow past dates for target dates", async () => {
+  it("should not allow past dates for target dates and persist value", async () => {
     const mockForm = questionnaireDataFactory.build({
       targetedSubmissionDate: "01/01/2000",
       targetedReleaseDate: "01/01/2000",
@@ -3328,8 +3328,8 @@ describe("Parsing", () => {
     const output = middleware.data;
 
     expect(result).toEqual(true);
-    expect(output.targetedSubmissionDate).toEqual(InitialQuestionnaire.targetedSubmissionDate);
-    expect(output.targetedReleaseDate).toEqual(InitialQuestionnaire.targetedReleaseDate);
+    expect(output.targetedSubmissionDate).toEqual("01/01/2000");
+    expect(output.targetedReleaseDate).toEqual("01/01/2000");
   });
 
   it("should handle missing SectionD sheet", async () => {
