@@ -204,10 +204,10 @@ class FileValidator:
             # check if file name contains non-unicode characters
             try:
                 file_name.encode('utf-8')
-                return True
             except UnicodeEncodeError:
-                is_valid = False
                 msg = f"Line {line_num}: File name {file_name} contains non-unicode characters!"
+                is_valid = False
+                self.log.error(msg)
 
 
             line_num += 1

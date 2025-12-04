@@ -109,6 +109,9 @@ class S3Bucket:
     def get_object_size(self, key):
         try:
             res = self.client.head_object(Bucket=self.bucket_name, Key=key)
+            if res['ContentLength'] == 0:
+                msg = f'File {key} file size is 0.'
+                return None, msg
             return res['ContentLength'], None
         except ClientError as e:
             msg = None
