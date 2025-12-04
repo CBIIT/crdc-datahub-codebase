@@ -17,13 +17,19 @@ import { useSnackbar } from "notistack";
 import { FC, memo, useEffect, useMemo, useRef } from "react";
 import { useFormContext } from "react-hook-form";
 
+import { useLocalStorage } from "@/hooks/useLocalStorage";
+
 import {
   EditUserInput,
   RetrievePBACDefaultsResp,
   RetrievePBACDefaultsInput,
   RETRIEVE_PBAC_DEFAULTS,
+  GetTooltipsResp,
+  GetTooltipsInput,
+  GET_TOOLTIPS,
 } from "../../graphql";
 import { ColumnizedPBACGroups, columnizePBACGroups, Logger } from "../../utils";
+import StyledTooltip from "../StyledFormComponents/StyledTooltip";
 
 const StyledBox = styled(Box)({
   width: "957px",
@@ -113,6 +119,11 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
   const { enqueueSnackbar } = useSnackbar();
   const { setValue, watch } = useFormContext<EditUserInput>();
 
+  const [storedTooltips, setStoredTooltips] = useLocalStorage<GetTooltipsResp["getTooltips"]>(
+    "profile-tooltips",
+    []
+  );
+
   const { data, loading } = useQuery<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput>(
     RETRIEVE_PBAC_DEFAULTS,
     {
@@ -125,6 +136,23 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
       },
     }
   );
+
+  useQuery<GetTooltipsResp, GetTooltipsInput>(GET_TOOLTIPS, {
+    context: { clientName: "backend" },
+    fetchPolicy: "cache-first",
+    onCompleted: (data) => {
+      if (!data?.getTooltips) {
+        return;
+      }
+
+      setStoredTooltips(data.getTooltips.map((t) => ({ key: t.key, value: t.value })));
+    },
+    onError: (error) => {
+      Logger.error("Failed to retrieve PBAC tooltips", { error });
+      enqueueSnackbar("Failed to retrieve PBAC tooltips", { variant: "error" });
+    },
+    skip: storedTooltips?.length > 0,
+  });
 
   const selectedRole = watch("role");
   const permissionsValue = watch("permissions");
@@ -274,6 +302,15 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
     }
   }, [notificationsValue]);
 
+  const getTooltip = (_id: string) => {
+    if (!_id || !storedTooltips?.length) {
+      return null;
+    }
+
+    const baseKey = _id.split(":", 2)?.join(":");
+    return storedTooltips.find((t) => t.key === baseKey)?.value || null;
+  };
+
   return (
     <StyledBox>
       <StyledAccordion elevation={0} data-testid="permissions-accordion">
@@ -294,7 +331,18 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
                       {data.map(({ _id, checked, disabled, name }) => (
                         <StyledFormControlLabel
                           key={_id}
-                          label={name}
+                          label={
+                            <StyledTooltip
+                              key={_id}
+                              title={getTooltip(_id)}
+                              placement="top"
+                              data-testid="permission-tooltip"
+                              disableInteractive
+                              arrow
+                            >
+                              <span data-testid={`permission-${_id}-label`}>{name}</span>
+                            </StyledTooltip>
+                          }
                           onChange={() => handlePermissionChange(_id)}
                           control={<Checkbox name={_id} checked={checked} />}
                           data-testid={`permission-${_id}`}
@@ -332,7 +380,18 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
                       {data.map(({ _id, checked, disabled, name }) => (
                         <StyledFormControlLabel
                           key={_id}
-                          label={name}
+                          label={
+                            <StyledTooltip
+                              key={_id}
+                              title={getTooltip(_id)}
+                              placement="top"
+                              data-testid="notification-tooltip"
+                              disableInteractive
+                              arrow
+                            >
+                              <span data-testid={`notification-${_id}-label`}>{name}</span>
+                            </StyledTooltip>
+                          }
                           onChange={() => handleNotificationChange(_id)}
                           control={<Checkbox name={_id} checked={checked} />}
                           data-testid={`notification-${_id}`}
