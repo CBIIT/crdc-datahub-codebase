@@ -1,6 +1,6 @@
 # Release Notes
 
-## 3.5.0
+## 3.5.0 (Released 12/19/2025)
 
 #### Submission Request
 
