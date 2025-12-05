@@ -406,6 +406,197 @@ describe("Implementation Requirements", () => {
     });
   });
 
+  it("should use deleteAll API when selectAllActive is true with no exclusions", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const mocks: MockedResponse<DeleteDataRecordsResp, DeleteDataRecordsInput>[] = [
+      {
+        request: {
+          query: DELETE_DATA_RECORDS,
+        },
+        variableMatcher: mockMatcher,
+        result: {
+          data: {
+            deleteDataRecords: {
+              success: true,
+              message: "",
+            },
+          },
+        },
+      },
+    ];
+
+    const { getByTestId, getByRole } = render(
+      <Button nodeType="test-node-type" selectedItems={[]} selectAllActive totalData={100} />,
+      {
+        wrapper: (props) => (
+          <TestParent {...props} mocks={mocks} submission={{ _id: "mock-submission-id" }} />
+        ),
+      }
+    );
+
+    expect(mockMatcher).not.toHaveBeenCalled();
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const button = await within(getByRole("dialog")).findByRole("button", { name: /confirm/i });
+    userEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _id: "mock-submission-id",
+          nodeType: "test-node-type",
+          deleteAll: true,
+        })
+      );
+      // nodeIds should not be provided when deleteAll is true
+      expect(mockMatcher).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodeIds: expect.anything(),
+        })
+      );
+    });
+  });
+
+  it("should use deleteAll with exclusiveIDs when selectAllActive is true with exclusions", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const mocks: MockedResponse<DeleteDataRecordsResp, DeleteDataRecordsInput>[] = [
+      {
+        request: {
+          query: DELETE_DATA_RECORDS,
+        },
+        variableMatcher: mockMatcher,
+        result: {
+          data: {
+            deleteDataRecords: {
+              success: true,
+              message: "",
+            },
+          },
+        },
+      },
+    ];
+
+    const { getByTestId, getByRole } = render(
+      <Button
+        nodeType="test-node-type"
+        selectedItems={["excluded-id-1", "excluded-id-2"]}
+        selectAllActive
+        totalData={100}
+      />,
+      {
+        wrapper: (props) => (
+          <TestParent {...props} mocks={mocks} submission={{ _id: "mock-submission-id" }} />
+        ),
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const button = await within(getByRole("dialog")).findByRole("button", { name: /confirm/i });
+    userEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _id: "mock-submission-id",
+          nodeType: "test-node-type",
+          deleteAll: true,
+          exclusiveIDs: ["excluded-id-1", "excluded-id-2"],
+        })
+      );
+    });
+  });
+
+  it("should show error when exclusiveIDs exceed the 2000 limit", async () => {
+    const { getByTestId } = render(
+      <Button
+        nodeType="test-node-type"
+        selectedItems={Array(2001).fill("excluded-id")}
+        selectAllActive
+        totalData={5000}
+      />,
+      {
+        wrapper: TestParent,
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "Cannot delete with more than 2000 exclusions. Please adjust your selection.",
+        {
+          variant: "error",
+        }
+      );
+    });
+  });
+
+  it("should show error when nodeIds exceed the 2000 limit (non-selectAll mode)", async () => {
+    const { getByTestId } = render(
+      <Button
+        nodeType="test-node-type"
+        selectedItems={Array(2001).fill("node-id")}
+        selectAllActive={false}
+        totalData={5000}
+      />,
+      {
+        wrapper: TestParent,
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        'Cannot delete more than 2000 items at once. Please use "Select All" or reduce your selection.',
+        {
+          variant: "error",
+        }
+      );
+    });
+  });
+
+  it("should show correct item count in dialog when selectAllActive is true", async () => {
+    const { getByTestId, getByRole } = render(
+      <Button
+        nodeType="test-node"
+        selectedItems={["excluded-1", "excluded-2"]}
+        selectAllActive
+        totalData={100}
+      />,
+      {
+        wrapper: TestParent,
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const dialog = getByRole("dialog");
+    // Should show 98 items (100 total - 2 excluded)
+    expect(within(dialog).getByTestId("delete-dialog-description")).toHaveTextContent(
+      "You have selected to delete 98 test-node nodes"
+    );
+  });
+
+  it("should be disabled when selectAllActive is true but all items are excluded", () => {
+    const { getByTestId } = render(
+      <Button
+        nodeType="test-node"
+        selectedItems={["id-1", "id-2", "id-3"]}
+        selectAllActive
+        totalData={3}
+      />,
+      {
+        wrapper: TestParent,
+      }
+    );
+
+    // Effective count is 0 (3 total - 3 excluded)
+    expect(getByTestId("delete-node-data-button")).toBeDisabled();
+  });
+
   it("should dismiss the dialog when the 'Cancel' button is clicked", async () => {
     const { getByTestId, getByRole } = render(
       <Button nodeType="test" selectedItems={["1 item ID"]} />,

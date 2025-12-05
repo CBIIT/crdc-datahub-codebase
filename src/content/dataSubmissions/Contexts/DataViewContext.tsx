@@ -2,7 +2,9 @@ import React from "react";
 
 const DataViewContext = React.createContext<{
   /**
-   * An array of the currently selected items
+   * An array of the currently selected items.
+   * When selectAllActive is true, this contains IDs to EXCLUDE from deletion.
+   * When selectAllActive is false, this contains IDs to include in deletion.
    */
   selectedItems?: string[];
   /**
@@ -14,17 +16,20 @@ const DataViewContext = React.createContext<{
    */
   isFetchingAllData?: React.MutableRefObject<boolean>;
   /**
+   * Indicates if "select all" (inverse selection) mode is active.
+   * When true, selectedItems contains exclusions instead of inclusions.
+   */
+  selectAllActive?: boolean;
+  /**
    * Toggle the current row selection
    *
    * @param nodeIds The node IDs to toggle selection for
    */
   handleToggleRow?: (nodeIds: string[]) => void;
   /**
-   * Select all items
-   *
-   * @returns A promise that resolves when all items are selected
+   * Toggle select all mode
    */
-  handleToggleAll?: () => Promise<void>;
+  handleToggleAll?: () => void;
 }>({});
 
 export default DataViewContext;

@@ -34,22 +34,46 @@ const DisabledStatuses: SubmissionStatus[] = [
   "Deleted",
 ];
 
+/**
+ * Maximum number of IDs that can be sent in a single request
+ */
+const MAX_IDS_LIMIT = 2000;
+
 type Props = {
   /**
    * The name of the node type currently selected
    */
   nodeType: string;
   /**
-   * An array of the selected node IDs
+   * An array of the selected node IDs.
+   * When selectAllActive is true, these are the EXCLUDED IDs.
+   * When selectAllActive is false, these are the INCLUDED IDs.
    */
   selectedItems: string[];
+  /**
+   * Indicates if "select all" (inverse selection) mode is active.
+   * When true, selectedItems contains exclusions instead of inclusions.
+   */
+  selectAllActive?: boolean;
+  /**
+   * Total number of items matching the current filters (used for count display in deleteAll mode)
+   */
+  totalData?: number;
   /**
    * Optional callback function for when successful deletion occurs
    */
   onDelete?: (message: string) => void;
 } & Omit<IconButtonProps, "onClick">;
 
-const DeleteNodeDataButton = ({ nodeType, selectedItems, disabled, onDelete, ...rest }: Props) => {
+const DeleteNodeDataButton = ({
+  nodeType,
+  selectedItems,
+  selectAllActive = false,
+  totalData = 0,
+  disabled,
+  onDelete,
+  ...rest
+}: Props) => {
   const { enqueueSnackbar } = useSnackbar();
   const { data } = useSubmissionContext();
   const { user } = useAuthContext();
@@ -71,29 +95,37 @@ const DeleteNodeDataButton = ({ nodeType, selectedItems, disabled, onDelete, ...
     return "Delete all the selected records from this data submission";
   }, [deletingData, nodeType]);
 
+  // Calculate the effective count of items to be deleted
+  const effectiveItemCount = useMemo<number>(() => {
+    if (selectAllActive) {
+      // When selectAllActive, we're deleting all EXCEPT selectedItems
+      return totalData - selectedItems.length;
+    }
+    return selectedItems.length;
+  }, [selectAllActive, totalData, selectedItems]);
+
   const content = useMemo(() => {
-    const nodeTerm: string = selectedItems.length > 1 ? "nodes" : "node";
-    const itemCount: number = selectedItems.length;
+    const nodeTerm: string = effectiveItemCount > 1 ? "nodes" : "node";
     const isDataFile: boolean = nodeType.toLowerCase() === "data file";
-    const isMultiple: boolean = itemCount !== 1;
+    const isMultiple: boolean = effectiveItemCount !== 1;
 
     return {
       snackbarError: "An error occurred while deleting the selected rows.",
       snackbarSuccess: isDataFile
-        ? `${itemCount} ${nodeType}${
+        ? `${effectiveItemCount} ${nodeType}${
             isMultiple ? "s" : ""
           } have been deleted from this data submission`
-        : `${itemCount} ${nodeType} ${nodeTerm} and their associated child nodes have been deleted from this data submission`,
+        : `${effectiveItemCount} ${nodeType} ${nodeTerm} and their associated child nodes have been deleted from this data submission`,
       dialogTitle: isDataFile
         ? `Delete Data File${isMultiple ? "s" : ""}`
         : `Delete ${titleCase(nodeType)} ${titleCase(nodeTerm)}`,
       dialogBody: isDataFile
-        ? `You have selected to delete ${itemCount} ${nodeType}${
+        ? `You have selected to delete ${effectiveItemCount} ${nodeType}${
             isMultiple ? "s" : ""
           } from this data submission. This action is irreversible. Are you sure you want to continue?`
-        : `You have selected to delete ${itemCount} ${nodeType} ${nodeTerm}. This action is irreversible. Are you sure you want to delete them and their associated children from this data submission?`,
+        : `You have selected to delete ${effectiveItemCount} ${nodeType} ${nodeTerm}. This action is irreversible. Are you sure you want to delete them and their associated children from this data submission?`,
     };
-  }, [nodeType, selectedItems]);
+  }, [nodeType, effectiveItemCount]);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
@@ -106,6 +138,24 @@ const DeleteNodeDataButton = ({ nodeType, selectedItems, disabled, onDelete, ...
   );
 
   const onClickIcon = async () => {
+    // When selectAllActive, check if exclusiveIDs exceeds the limit
+    if (selectAllActive && selectedItems.length > MAX_IDS_LIMIT) {
+      enqueueSnackbar(
+        `Cannot delete with more than ${MAX_IDS_LIMIT} exclusions. Please adjust your selection.`,
+        { variant: "error" }
+      );
+      return;
+    }
+
+    // When not selectAllActive, check if nodeIds exceeds the limit
+    if (!selectAllActive && selectedItems.length > MAX_IDS_LIMIT) {
+      enqueueSnackbar(
+        `Cannot delete more than ${MAX_IDS_LIMIT} items at once. Please use "Select All" or reduce your selection.`,
+        { variant: "error" }
+      );
+      return;
+    }
+
     setConfirmOpen(true);
   };
 
@@ -115,13 +165,25 @@ const DeleteNodeDataButton = ({ nodeType, selectedItems, disabled, onDelete, ...
 
   const onConfirmDialog = async () => {
     try {
-      const { data: d, errors } = await deleteDataRecords({
-        variables: {
-          _id,
-          nodeType,
-          nodeIds: selectedItems,
-        },
-      });
+      setLoading(true);
+
+      const variables: DeleteDataRecordsInput = {
+        _id,
+        nodeType,
+      };
+
+      if (selectAllActive) {
+        // Use deleteAll with optional exclusiveIDs
+        variables.deleteAll = true;
+        if (selectedItems.length > 0) {
+          variables.exclusiveIDs = selectedItems;
+        }
+      } else {
+        // Use traditional nodeIds selection
+        variables.nodeIds = selectedItems;
+      }
+
+      const { data: d, errors } = await deleteDataRecords({ variables });
 
       if (errors || !d?.deleteDataRecords?.success) {
         throw new Error("Unable to delete selected rows.");
@@ -142,6 +204,9 @@ const DeleteNodeDataButton = ({ nodeType, selectedItems, disabled, onDelete, ...
     return null;
   }
 
+  // Determine if button should be disabled based on effective selection
+  const hasNoSelection = selectAllActive ? effectiveItemCount === 0 : selectedItems.length === 0;
+
   return (
     <>
       <StyledTooltip
@@ -157,7 +222,7 @@ const DeleteNodeDataButton = ({ nodeType, selectedItems, disabled, onDelete, ...
               loading ||
               disabled ||
               deletingData === true ||
-              selectedItems.length === 0 ||
+              hasNoSelection ||
               DisabledStatuses.includes(status) ||
               (collaborator && collaborator.permission !== "Can Edit")
             }
