@@ -139,20 +139,25 @@ class S3Bucket:
                 file_size, msg = self.get_object_size(key)
                 task_id = progress.add_task("Downloading object...", total=file_size)
                 progress_callback = ProgressCallback(file_size, progress, task_id)
-                self.bucket.download_file(key, local_file_path,
-                                          Callback=progress_callback)
+                # Use download_fileobj instead of download_file to avoid Windows path issues
+                # with temporary file rename operations on files with special characters
+                s3_object = self.s3.Object(self.bucket_name, key)
+                # Create parent directories if they don't exist
+                os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                with open(local_file_path, 'wb') as f:
+                    s3_object.download_fileobj(f, Callback=progress_callback)
             return True, None
         except ClientError as ce:
             msg = None
-            if e.response['Error']['Code'] in ['404', '412']:
+            if ce.response['Error']['Code'] in ['404', '412']:
                 msg = f'File {key} does not exist in the specified S3 bucket path.'
                 return False, msg
-            if e.response['Error']['Code'] in ['403']:
+            if ce.response['Error']['Code'] in ['403']:
                 msg = f'Access Denied: Unable to access files in the specified S3 bucket path: {key}'
                 return False, msg
             else:
                 msg = f'Unknown S3 client error!'
-                self.log.exception(e)
+                self.log.exception(ce)
                 return False, msg  
         except Exception as e:
             msg = f'Unknown error!'

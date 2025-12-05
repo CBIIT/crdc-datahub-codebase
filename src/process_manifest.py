@@ -99,7 +99,7 @@ def add_file_id(file_id_name, file_name_name, final_manifest_path, file_infos, m
         row[file_id_name] = file[FILE_ID_DEFAULT]
         output.append(row.values())
     manifest_columns = manifest_rows[0].keys()
-    with open(final_manifest_path, 'w', newline='') as f: 
+    with open(final_manifest_path, 'w', newline='', encoding="utf8") as f: 
         writer = csv.writer(f, delimiter='\t')
         writer.writerow(manifest_columns)
         writer.writerows(output)
