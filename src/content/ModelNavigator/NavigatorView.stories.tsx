@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { userEvent, waitFor, within, expect } from "@storybook/test";
 
 import { DataCommonProvider } from "../../components/Contexts/DataCommonContext";
 import ErrorBoundary from "../../components/ErrorBoundary";
@@ -60,10 +61,56 @@ const meta: Meta<CustomStoryProps> = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const ModelNavigator: Story = {
+export const ModelNavigatorGraph: Story = {
+  name: "Graph View",
   args: {
     model: "GC",
     version: "9.0.0",
     tier: "dev",
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const graphTab = await canvas.findByText("Graph View");
+    await userEvent.click(graphTab);
+
+    await waitFor(() => {
+      expect(graphTab.closest("button")).toHaveAttribute("aria-selected", "true");
+    });
+  },
+};
+
+export const ModelNavigatorTable: Story = {
+  name: "Table View",
+  args: {
+    model: "GC",
+    version: "9.0.0",
+    tier: "dev",
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const tableTab = await canvas.findByText("Table View");
+    await userEvent.click(tableTab);
+
+    await waitFor(() => {
+      expect(tableTab.closest("button")).toHaveAttribute("aria-selected", "true");
+    });
+  },
+};
+
+export const ModelNavigatorVersionHistory: Story = {
+  name: "Version History View",
+  args: {
+    model: "GC",
+    version: "9.0.0",
+    tier: "dev",
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const versionTab = await canvas.findByText("Version History");
+    await userEvent.click(versionTab);
+
+    await waitFor(() => {
+      expect(versionTab.closest("button")).toHaveAttribute("aria-selected", "true");
+    });
   },
 };
