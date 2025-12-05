@@ -110,6 +110,8 @@ def insert_file_id_2_children(log, configs, manifest_rows, final_file_path_list,
      # check if any tsv files in the dir of manifest file
     manifest_file = configs.get(PRE_MANIFEST)
     is_s3 = configs.get(FROM_S3, False)
+    if manifest_s3_url is None:
+        is_s3 = False
     dir = os.path.dirname(manifest_file) if not is_s3 else TEMP_DOWNLOAD_DIR
     s3_bucket = None
     try:
