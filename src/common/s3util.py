@@ -110,7 +110,7 @@ class S3Bucket:
         try:
             res = self.client.head_object(Bucket=self.bucket_name, Key=key)
             if res['ContentLength'] == 0:
-                msg = f'File {key} file size is 0.'
+                msg = f'File size is 0 for {key}'
                 return None, msg
             return res['ContentLength'], None
         except ClientError as e:
