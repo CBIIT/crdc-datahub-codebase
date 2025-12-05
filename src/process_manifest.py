@@ -99,7 +99,7 @@ def add_file_id(file_id_name, file_name_name, final_manifest_path, file_infos, m
         row[file_id_name] = file[FILE_ID_DEFAULT]
         output.append(row.values())
     manifest_columns = manifest_rows[0].keys()
-    with open(final_manifest_path, 'w', newline='') as f: 
+    with open(final_manifest_path, 'w', newline='', encoding="utf8") as f: 
         writer = csv.writer(f, delimiter='\t')
         writer.writerow(manifest_columns)
         writer.writerows(output)
@@ -110,6 +110,8 @@ def insert_file_id_2_children(log, configs, manifest_rows, final_file_path_list,
      # check if any tsv files in the dir of manifest file
     manifest_file = configs.get(PRE_MANIFEST)
     is_s3 = configs.get(FROM_S3, False)
+    if manifest_s3_url is None:
+        is_s3 = False
     dir = os.path.dirname(manifest_file) if not is_s3 else TEMP_DOWNLOAD_DIR
     s3_bucket = None
     try:

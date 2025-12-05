@@ -45,7 +45,7 @@ def dump_dict_to_tsv(dict_list, file_path):
     if not dict_list or len(dict_list) == 0:
         return False 
     keys = dict_list[0].keys()
-    with open(file_path, 'w') as output_file:
+    with open(file_path, 'w', encoding='utf-8') as output_file:
         dict_writer = csv.DictWriter(output_file, fieldnames=keys, delimiter='\t')
         dict_writer.writeheader()
         dict_writer.writerows(dict_list) 

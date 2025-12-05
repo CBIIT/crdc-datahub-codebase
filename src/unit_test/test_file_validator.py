@@ -226,6 +226,22 @@ class TestValidateFileName(unittest.TestCase):
         result = self.validator.validate_file_name()
         
         self.assertTrue(result, "Should pass for file names with unicode characters")
+    
+    def test_validate_file_name_non_unicode_characters(self):
+        """Test validation passes for file names with unicode characters"""
+        # Construct an unpaired surrogate (low surrogate) character which
+        # will raise on utf-8 encoding in Python 3. This reliably simulates
+        # a non-unicode/invalid filename for the validator's check.
+        bad_char = chr(0xDC80)
+        self.validator.manifest_rows = [
+            {'file_name': bad_char + 'a.txt', 'md5sum': 'ghi789'}
+        ]
+        self.validator.configs[FILE_NAME_FIELD] = 'file_name'
+        self.validator.configs[FILE_MD5_FIELD] = 'md5sum'
+        
+        result = self.validator.validate_file_name()
+        
+        self.assertFalse(result, "Should not pass for file names with non-unicode characters")
 
     def test_validate_file_name_long_filename(self):
         """Test validation passes for very long file names"""
