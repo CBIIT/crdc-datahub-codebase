@@ -527,7 +527,7 @@ export const questionnaireDataSchema = z
     /**
      * Confirms imaging data have been de-identified.
      */
-    imagingDataDeIdentified: z.boolean().optional(),
+    imagingDataDeIdentified: z.boolean().nullable(),
     /**
      * Confirms non-imaging data have been de-identified.
      */
