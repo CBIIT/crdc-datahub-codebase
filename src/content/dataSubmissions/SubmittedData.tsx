@@ -12,7 +12,6 @@ import { visuallyHidden } from "@mui/utils";
 import { isEqual } from "lodash";
 import { useSnackbar } from "notistack";
 import React, { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 
 import { useAuthContext } from "../../components/Contexts/AuthContext";
 import { useSubmissionContext } from "../../components/Contexts/SubmissionContext";
@@ -51,20 +50,34 @@ type HeaderCheckboxProps = CheckboxProps;
 
 const HeaderCheckbox = (props: HeaderCheckboxProps) => (
   <DataViewContext.Consumer>
-    {({ selectedItems, totalData, isFetchingAllData, handleToggleAll, handleToggleRow }) => {
-      const isChecked = selectedItems.length === totalData;
-      const isIntermediate = selectedItems.length > 0 && selectedItems.length < totalData;
+    {({
+      selectedItems,
+      totalData,
+      isFetchingAllData,
+      selectAllActive,
+      handleToggleAll,
+      handleToggleRow,
+    }) => {
+      // When selectAllActive is true, selectedItems contains exclusions
+      // When selectAllActive is false, selectedItems contains selections
+      // isChecked = (selectAllActive AND no exclusions) OR (not selectAllActive AND all items selected)
+      const isChecked = selectAllActive
+        ? selectedItems.length === 0
+        : selectedItems.length === totalData;
+      const hasPartialSelection = selectAllActive
+        ? selectedItems.length > 0
+        : selectedItems.length > 0 && selectedItems.length < totalData;
 
       const handleOnChange = () => {
-        // Completely unchecked. Check all
-        if (!isChecked && !isIntermediate) {
+        // Not checked and not intermediate -> toggle select all ON
+        if (!isChecked && !hasPartialSelection) {
           isFetchingAllData.current = true;
           handleToggleAll();
           return;
         }
 
-        // Partially or fully checked. Uncheck all
-        handleToggleRow(selectedItems);
+        // Fully or partially checked -> turn off select all (reset)
+        handleToggleAll();
       };
 
       return (
@@ -75,7 +88,7 @@ const HeaderCheckbox = (props: HeaderCheckboxProps) => (
                 {...props}
                 onChange={handleOnChange}
                 checked={isChecked || isFetchingAllData.current}
-                indeterminate={isIntermediate && !isFetchingAllData.current}
+                indeterminate={hasPartialSelection && !isFetchingAllData.current}
               />
             }
             label={<span style={visuallyHidden}>Select All</span>}
@@ -127,6 +140,7 @@ const SubmittedData: FC = () => {
   const [prevListing, setPrevListing] = useState<FetchListing<T>>(null);
   const [totalData, setTotalData] = useState<number>(0);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [selectAllActive, setSelectAllActive] = useState<boolean>(false);
   const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<T>(null);
 
@@ -224,22 +238,30 @@ const SubmittedData: FC = () => {
       ),
       renderValue: (d) => (
         <DataViewContext.Consumer>
-          {({ selectedItems, handleToggleRow }) => (
-            <Stack direction="row" spacing={1}>
-              <FormControlLabel
-                control={
-                  <StyledCheckbox
-                    checked={selectedItems?.includes(d.nodeID)}
-                    onChange={() => handleToggleRow([d.nodeID])}
-                    disabled={collaborator && collaborator.permission !== "Can Edit"}
-                    data-testid="row-checkbox"
-                  />
-                }
-                label={<span style={visuallyHidden}>Select Row</span>}
-                sx={{ margin: 0 }}
-              />
-            </Stack>
-          )}
+          {({ selectedItems, selectAllActive, handleToggleRow }) => {
+            // When selectAllActive, row is checked if NOT in selectedItems (exclusions)
+            // When not selectAllActive, row is checked if IN selectedItems (selections)
+            const isChecked = selectAllActive
+              ? !selectedItems?.includes(d.nodeID)
+              : selectedItems?.includes(d.nodeID);
+
+            return (
+              <Stack direction="row" spacing={1}>
+                <FormControlLabel
+                  control={
+                    <StyledCheckbox
+                      checked={isChecked}
+                      onChange={() => handleToggleRow([d.nodeID])}
+                      disabled={collaborator && collaborator.permission !== "Can Edit"}
+                      data-testid="row-checkbox"
+                    />
+                  }
+                  label={<span style={visuallyHidden}>Select Row</span>}
+                  sx={{ margin: 0 }}
+                />
+              </Stack>
+            );
+          }}
         </DataViewContext.Consumer>
       ),
       sortDisabled: true,
@@ -329,6 +351,7 @@ const SubmittedData: FC = () => {
   const handleFilterChange = useCallback(
     (filters: FilterForm) => {
       setSelectedItems([]);
+      setSelectAllActive(false);
       filterRef.current = filters;
       tableRef.current?.setPage(0, true);
     },
@@ -352,43 +375,18 @@ const SubmittedData: FC = () => {
     [setSelectedItems]
   );
 
-  const handleToggleAll = useCallback(async () => {
-    // NOTE: Force immediate update of selectedItems for the current page
-    flushSync(() => {
-      setSelectedItems(data?.map((node) => node.nodeID) || []);
-    });
-
-    // If all rows are already visible, no need to fetch data
-    if (data?.length === totalData) {
-      isFetchingAllData.current = false;
-      return;
-    }
-
-    const { data: d, error } = await getSubmissionNodes({
-      variables: {
-        _id,
-        first: -1,
-        partial: true,
-        ...filterRef.current,
-      },
-    }).catch((e) => ({ error: e, data: null }));
-
-    if (error || !d?.getSubmissionNodes) {
-      enqueueSnackbar("Cannot select all rows. Unable to retrieve node data.", {
-        variant: "error",
-      });
-      setSelectedItems([]);
-      isFetchingAllData.current = false;
-      return;
-    }
-
-    setSelectedItems(d.getSubmissionNodes.nodes.map((node) => node.nodeID));
+  const handleToggleAll = useCallback(() => {
+    // Toggle selectAllActive - when turning ON, clear selectedItems (no exclusions)
+    // When turning OFF, clear selectedItems (no selections)
+    setSelectAllActive((prev) => !prev);
+    setSelectedItems([]);
     isFetchingAllData.current = false;
-  }, [_id, filterRef, data, totalData, isFetchingAllData, setSelectedItems]);
+  }, [isFetchingAllData, setSelectedItems, setSelectAllActive]);
 
   const handleOnDelete = (successMessage: string) => {
     setDeleteSuccessMessage(successMessage);
     setSelectedItems([]);
+    setSelectAllActive(false);
 
     updateQuery((prev) => ({
       ...prev,
@@ -413,18 +411,37 @@ const SubmittedData: FC = () => {
         />
         <DeleteNodeDataButton
           selectedItems={selectedItems}
+          selectAllActive={selectAllActive}
+          totalData={totalData}
           nodeType={filterRef.current.nodeType}
           disabled={loading}
           onDelete={handleOnDelete}
         />
       </Stack>
     ),
-    [handleOnDelete, _id, name, filterRef.current?.nodeType, selectedItems, loading, data.length]
+    [
+      handleOnDelete,
+      _id,
+      name,
+      filterRef.current?.nodeType,
+      selectedItems,
+      selectAllActive,
+      totalData,
+      loading,
+      data.length,
+    ]
   );
 
   const providerValue = useMemo(
-    () => ({ handleToggleRow, handleToggleAll, selectedItems, totalData, isFetchingAllData }),
-    [handleToggleRow, handleToggleAll, selectedItems, totalData, isFetchingAllData]
+    () => ({
+      handleToggleRow,
+      handleToggleAll,
+      selectedItems,
+      totalData,
+      isFetchingAllData,
+      selectAllActive,
+    }),
+    [handleToggleRow, handleToggleAll, selectedItems, totalData, isFetchingAllData, selectAllActive]
   );
 
   useEffect(() => {
