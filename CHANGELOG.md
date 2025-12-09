@@ -5,36 +5,30 @@
 #### Submission Request
 
 - Users can now enter study titles up to 1,000 characters.
-- The system now validates dbGaP IDs when creating a submission
-  request.
+- The system now validates dbGaP IDs when creating a submission request.
 - Added a Download option for the submission request list.
-- Excel imports now include full data validation to catch input errors
-  during import.
+- Excel imports now include full data validation to catch input errors during import.
+- \[Bug Fix\]: Study abbreviation now correctly appears in XLSX exports.
 
 #### Data Submission
 
 - Added support for PSDC Data Models and Submissions.
 - The Data Model Navigator now displays node relationship properties
-- Users can now download selective submission templates from the Data
-  Model Navigator.
-- The system now supports permissive values for Null CDEs.
-- The system now supports permissive values for Draft New CDEs.
-- The system now supports permissive values for CDE alternate
-  values.
-- Improved how aggregated validation results are grouped and
-  displayed.
+- Users can now download selective submission templates from the Data Model Navigator.
+- Improved how aggregated validation results are grouped and displayed.
 - CDE synchronization from MDB now happens automatically.
+- \[Bug Fix\]: Resolved issue where the Validate button became disabled after deleting data from submissions.
+- \[Bug Fix\]: Fixed issue where the Submit action was disabled for metadata-only submissions after changing the data model version.
+- \[Bug Fix\]: Resolved large data download issues in Data Submission/Data View.
 
 #### User Account Management
 
-- Added tooltips explaining PBAC permissions and email settings for
-  better usability.
+- Added tooltips explaining PBAC permissions and email settings for better usability.
 
 #### Administrative Tools
 
 - Added dbGaP ID validation in the Manage Study admin tool.
-- Moved the Program/Study assignment feature from Manage Program to
-  Manage Study for easier administration.
+- Moved the Program/Study assignment feature from Manage Program to Manage Study for easier administration.
 
 ## 3.4.1 (Released 11/24/2025)
 
