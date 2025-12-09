@@ -86,8 +86,6 @@ export const ExportNodeDataButton: React.FC<Props> = ({
           first: 1,
           offset: 0,
         },
-        context: { clientName: "backend" },
-        fetchPolicy: "no-cache",
       });
 
       if (
