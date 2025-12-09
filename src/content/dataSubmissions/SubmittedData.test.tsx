@@ -933,6 +933,99 @@ describe("SubmittedData > Table", () => {
     });
   });
 
+  it("should check the header checkbox when all rows are manually selected", async () => {
+    const submissionID = "example-manual-select-all-id";
+
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+      maxUsageCount: 2, // initial query + orderBy bug
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 3,
+            properties: ["col-xyz"],
+            IDPropName: "col-xyz",
+            nodes: [
+              {
+                nodeType: "example-node",
+                nodeID: "example-node-id-1",
+                props: JSON.stringify({
+                  "col-xyz": "value-1",
+                }),
+                status: "New",
+              },
+              {
+                nodeType: "example-node",
+                nodeID: "example-node-id-2",
+                props: JSON.stringify({
+                  "col-xyz": "value-2",
+                }),
+                status: "New",
+              },
+              {
+                nodeType: "example-node",
+                nodeID: "example-node-id-3",
+                props: JSON.stringify({
+                  "col-xyz": "value-3",
+                }),
+                status: "New",
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const { getAllByRole } = render(
+      <TestParent
+        mocks={[mockSubmissionQuery, getNodesMock]}
+        submissionId={submissionID}
+        submissionName={undefined}
+      >
+        <SubmittedData />
+      </TestParent>
+    );
+
+    // Wait for the table to render
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(4); // header + 3 rows
+    });
+
+    // Initially, header should not be checked
+    expect(getAllByRole("checkbox")[0]).not.toBeChecked();
+
+    // Manually select first row
+    userEvent.click(getAllByRole("checkbox")[1]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[1]).toBeChecked();
+      // Header should be indeterminate (partial selection)
+      expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "true");
+    });
+
+    // Manually select second row
+    userEvent.click(getAllByRole("checkbox")[2]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[2]).toBeChecked();
+      // Header should still be indeterminate
+      expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "true");
+    });
+
+    // Manually select third row (all rows now selected)
+    userEvent.click(getAllByRole("checkbox")[3]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[3]).toBeChecked();
+      // Header should now be checked (all rows manually selected)
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
+      expect(getAllByRole("checkbox")[0]).not.toHaveAttribute("data-indeterminate", "true");
+    });
+  });
+
   // NOTE: With inverse selection, "Select All" never fetches all nodes regardless of count.
   // This test verifies that behavior.
   it("should not fetch all nodes when 'Select All' is clicked (inverse selection)", async () => {

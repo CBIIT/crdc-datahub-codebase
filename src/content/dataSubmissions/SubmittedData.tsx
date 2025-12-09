@@ -59,9 +59,11 @@ const HeaderCheckbox = (props: HeaderCheckboxProps) => (
       handleToggleRow,
     }) => {
       // When selectAllActive is true, selectedItems contains exclusions
-      // isChecked = all selected = selectAllActive AND no exclusions
-      // isIntermediate = some selected = (selectAllActive AND some exclusions) OR (not selectAllActive AND some selections)
-      const isChecked = selectAllActive && selectedItems.length === 0;
+      // When selectAllActive is false, selectedItems contains selections
+      // isChecked = (selectAllActive AND no exclusions) OR (not selectAllActive AND all items selected)
+      const isChecked = selectAllActive
+        ? selectedItems.length === 0
+        : selectedItems.length === totalData;
       const hasPartialSelection = selectAllActive
         ? selectedItems.length > 0
         : selectedItems.length > 0 && selectedItems.length < totalData;
