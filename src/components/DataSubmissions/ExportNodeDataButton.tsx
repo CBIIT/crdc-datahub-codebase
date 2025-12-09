@@ -11,7 +11,7 @@ import {
   GetSubmissionNodesInput,
   GetSubmissionNodesResp,
 } from "../../graphql";
-import { downloadBlob, filterAlphaNumeric } from "../../utils";
+import { downloadBlob, fetchAllData, filterAlphaNumeric, Logger } from "../../utils";
 import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
 
 export type Props = {
@@ -73,56 +73,67 @@ export const ExportNodeDataButton: React.FC<Props> = ({
   const handleClick = async () => {
     setLoading(true);
 
-    const { data: d, error } = await getSubmissionNodes({
-      variables: {
-        _id: submission?._id,
-        sortDirection: "asc",
-        nodeType,
-        status: "All",
-        first: -1,
-        offset: 0,
-      },
-      context: { clientName: "backend" },
-      fetchPolicy: "no-cache",
+    enqueueSnackbar("Downloading the requested metadata file. This may take a moment...", {
+      variant: "default",
     });
 
-    if (error || !d?.getSubmissionNodes?.nodes) {
-      enqueueSnackbar("Unable to retrieve data for the selected node.", {
-        variant: "error",
-      });
-      setLoading(false);
-      return;
-    }
-
-    if (
-      !d?.getSubmissionNodes?.total ||
-      !d?.getSubmissionNodes?.nodes.length ||
-      !("properties" in d.getSubmissionNodes) ||
-      !d.getSubmissionNodes.properties?.length
-    ) {
-      enqueueSnackbar("There is no data to export for the selected node.", {
-        variant: "error",
-      });
-      setLoading(false);
-      return;
-    }
-
     try {
+      const { data: nodeDetails, error } = await getSubmissionNodes({
+        variables: {
+          _id: submission?._id,
+          nodeType,
+          status: "All",
+          first: 1,
+          offset: 0,
+        },
+      });
+
+      if (
+        error ||
+        !nodeDetails?.getSubmissionNodes?.total ||
+        !nodeDetails?.getSubmissionNodes?.nodes.length ||
+        !("properties" in nodeDetails.getSubmissionNodes) ||
+        !nodeDetails.getSubmissionNodes.properties?.length
+      ) {
+        Logger.error("Fetching getSubmissionNodes returned an unexpected response", {
+          nodeDetails,
+          error,
+        });
+        enqueueSnackbar("There is no data to export for the selected node.", {
+          variant: "error",
+        });
+        setLoading(false);
+        return;
+      }
+
+      const d = await fetchAllData<
+        GetSubmissionNodesResp,
+        GetSubmissionNodesInput,
+        Pick<SubmissionNode, "nodeType" | "nodeID" | "props" | "status">
+      >(
+        getSubmissionNodes,
+        { _id: submission?._id, nodeType, status: "All" },
+        (data) => data.getSubmissionNodes.nodes,
+        (data) => data.getSubmissionNodes.total,
+        { pageSize: 5000, total: Infinity }
+      );
+
       const filteredName = filterAlphaNumeric(submission.name?.trim()?.replaceAll(" ", "-"), "-");
       const filename = `${filteredName}_${nodeType}_${dayjs().format("YYYYMMDDHHmm")}.tsv`;
-      const mappedFields = d.getSubmissionNodes.properties.reduce(
+      const mappedFields = nodeDetails.getSubmissionNodes.properties.reduce(
         (acc, key) => ({ ...acc, [key]: "" }),
         {}
       );
-      const csvArray = d.getSubmissionNodes.nodes.map((node) => ({
+      const csvArray = d.map((node) => ({
         type: nodeType,
         ...mappedFields,
-        ...JSON.parse(node.props),
+        ...JSON.parse(node.props || "{}"),
         status: node.status,
       }));
 
       downloadBlob(unparse(csvArray, { delimiter: "\t" }), filename, "text/tab-separated-values");
     } catch (err) {
+      Logger.error("Error during submission TSV generation", err);
       enqueueSnackbar("Failed to export TSV for the selected node.", {
         variant: "error",
       });
