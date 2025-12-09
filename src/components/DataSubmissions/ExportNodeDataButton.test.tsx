@@ -138,7 +138,7 @@ describe("Basic Functionality", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve data for the selected node.",
+        "There is no data to export for the selected node.",
         {
           variant: "error",
         }
@@ -174,7 +174,7 @@ describe("Basic Functionality", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve data for the selected node.",
+        "There is no data to export for the selected node.",
         {
           variant: "error",
         }
@@ -273,6 +273,445 @@ describe("Basic Functionality", () => {
         }
       );
     });
+  });
+});
+
+describe("Batching Behavior (CRDCDH-3374)", () => {
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should fetch metadata with first: 1 parameter initially", async () => {
+    const submissionID = "batch-metadata-test-id";
+    const nodeType = "participant";
+    let metadataCallMade = false;
+
+    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => {
+          if (vars.first === 1 && vars.offset === 0) {
+            metadataCallMade = true;
+            return true;
+          }
+          return false;
+        },
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 1,
+              IDPropName: "id",
+              properties: ["id", "name"],
+              nodes: [
+                {
+                  nodeType,
+                  nodeID: "node-1",
+                  props: JSON.stringify({ id: 1, name: "Test" }),
+                  status: "Passed",
+                },
+              ],
+            },
+          },
+        },
+      },
+    ];
+
+    const { getByTestId } = render(
+      <TestParent mocks={mocks}>
+        <ExportNodeDataButton
+          submission={{ _id: submissionID, name: "batch-test" }}
+          nodeType={nodeType}
+        />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("export-node-data-button"));
+
+    await waitFor(() => {
+      expect(metadataCallMade).toBe(true);
+    });
+  });
+
+  it("should use pageSize of 5000 when batching data", async () => {
+    const submissionID = "batch-pagesize-test-id";
+    const nodeType = "sample";
+    const batchCallsMade: number[] = [];
+
+    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+      // Initial metadata query
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 1 && vars.offset === 0,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 10000,
+              IDPropName: "id",
+              properties: ["id"],
+              nodes: [{ nodeType, nodeID: "node-1", props: '{"id":1}', status: "Passed" }],
+            },
+          },
+        },
+      },
+      // First batch query
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => {
+          if (vars.first === 5000 && vars.offset === 0) {
+            batchCallsMade.push(0);
+            return true;
+          }
+          return false;
+        },
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 10000,
+              IDPropName: "id",
+              properties: ["id"],
+              nodes: Array.from({ length: 5000 }, (_, i) => ({
+                nodeType,
+                nodeID: `node-${i}`,
+                props: `{"id":${i}}`,
+                status: "Passed",
+              })),
+            },
+          },
+        },
+      },
+      // Second batch query
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => {
+          if (vars.first === 5000 && vars.offset === 5000) {
+            batchCallsMade.push(5000);
+            return true;
+          }
+          return false;
+        },
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 10000,
+              IDPropName: "id",
+              properties: ["id"],
+              nodes: Array.from({ length: 5000 }, (_, i) => ({
+                nodeType,
+                nodeID: `node-${i + 5000}`,
+                props: `{"id":${i + 5000}}`,
+                status: "Passed",
+              })),
+            },
+          },
+        },
+      },
+    ];
+
+    const { getByTestId } = render(
+      <TestParent mocks={mocks}>
+        <ExportNodeDataButton
+          submission={{ _id: submissionID, name: "batch-pagesize" }}
+          nodeType={nodeType}
+        />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("export-node-data-button"));
+
+    await waitFor(
+      () => {
+        expect(batchCallsMade).toEqual([0, 5000]);
+      },
+      { timeout: 5000 }
+    );
+
+    expect(mockDownloadBlob).toHaveBeenCalled();
+  });
+
+  it("should handle multiple batches of data correctly", async () => {
+    const submissionID = "multi-batch-test-id";
+    const nodeType = "genomic_info";
+
+    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+      // Initial metadata query
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 1,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 7500,
+              IDPropName: "sample_id",
+              properties: ["sample_id", "data"],
+              nodes: [
+                {
+                  nodeType,
+                  nodeID: "node-0",
+                  props: '{"sample_id":"S0","data":"test"}',
+                  status: "Passed",
+                },
+              ],
+            },
+          },
+        },
+      },
+      // First batch (5000 records)
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 0,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 7500,
+              IDPropName: "sample_id",
+              properties: ["sample_id", "data"],
+              nodes: Array.from({ length: 5000 }, (_, i) => ({
+                nodeType,
+                nodeID: `node-${i}`,
+                props: `{"sample_id":"S${i}","data":"batch1"}`,
+                status: "Passed",
+              })),
+            },
+          },
+        },
+      },
+      // Second batch (2500 records)
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 5000,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 7500,
+              IDPropName: "sample_id",
+              properties: ["sample_id", "data"],
+              nodes: Array.from({ length: 2500 }, (_, i) => ({
+                nodeType,
+                nodeID: `node-${i + 5000}`,
+                props: `{"sample_id":"S${i + 5000}","data":"batch2"}`,
+                status: "Passed",
+              })),
+            },
+          },
+        },
+      },
+    ];
+
+    const { getByTestId } = render(
+      <TestParent mocks={mocks}>
+        <ExportNodeDataButton
+          submission={{ _id: submissionID, name: "multi-batch" }}
+          nodeType={nodeType}
+        />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("export-node-data-button"));
+
+    await waitFor(
+      () => {
+        expect(mockDownloadBlob).toHaveBeenCalled();
+      },
+      { timeout: 5000 }
+    );
+
+    // Verify the downloaded data contains all records
+    const downloadedContent = mockDownloadBlob.mock.calls[0][0];
+    expect(downloadedContent).toContain("S0");
+    expect(downloadedContent).toContain("S4999");
+    expect(downloadedContent).toContain("S5000");
+    expect(downloadedContent).toContain("S7499");
+  });
+
+  it("should handle errors during batch fetching gracefully", async () => {
+    const submissionID = "batch-error-test-id";
+    const nodeType = "participant";
+
+    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+      // Initial metadata query succeeds
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 1,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 10000,
+              IDPropName: "id",
+              properties: ["id"],
+              nodes: [{ nodeType, nodeID: "node-1", props: '{"id":1}', status: "Passed" }],
+            },
+          },
+        },
+      },
+      // First batch succeeds
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 0,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 10000,
+              IDPropName: "id",
+              properties: ["id"],
+              nodes: Array.from({ length: 5000 }, (_, i) => ({
+                nodeType,
+                nodeID: `node-${i}`,
+                props: `{"id":${i}}`,
+                status: "Passed",
+              })),
+            },
+          },
+        },
+      },
+      // Second batch fails
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 5000,
+        error: new Error("Network error during batch fetch"),
+      },
+    ];
+
+    const { getByTestId } = render(
+      <TestParent mocks={mocks}>
+        <ExportNodeDataButton
+          submission={{ _id: submissionID, name: "batch-error" }}
+          nodeType={nodeType}
+        />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("export-node-data-button"));
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "Failed to export TSV for the selected node.",
+        {
+          variant: "error",
+        }
+      );
+    });
+
+    // Should not have called downloadBlob
+    expect(mockDownloadBlob).not.toHaveBeenCalled();
+  });
+
+  it("should aggregate all batched data before generating TSV", async () => {
+    const submissionID = "batch-aggregate-test-id";
+    const nodeType = "sample";
+
+    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+      // Initial metadata query
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 1,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 6,
+              IDPropName: "id",
+              properties: ["id", "value"],
+              nodes: [
+                { nodeType, nodeID: "node-1", props: '{"id":"A","value":"1"}', status: "Passed" },
+              ],
+            },
+          },
+        },
+      },
+      // First batch (5 records)
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 0,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 6,
+              IDPropName: "id",
+              properties: ["id", "value"],
+              nodes: [
+                { nodeType, nodeID: "node-1", props: '{"id":"A","value":"1"}', status: "Passed" },
+                { nodeType, nodeID: "node-2", props: '{"id":"B","value":"2"}', status: "Passed" },
+                { nodeType, nodeID: "node-3", props: '{"id":"C","value":"3"}', status: "Error" },
+                { nodeType, nodeID: "node-4", props: '{"id":"D","value":"4"}', status: "Passed" },
+                { nodeType, nodeID: "node-5", props: '{"id":"E","value":"5"}', status: "Passed" },
+              ],
+            },
+          },
+        },
+      },
+      // Second batch (1 record)
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 5000,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 6,
+              IDPropName: "id",
+              properties: ["id", "value"],
+              nodes: [
+                {
+                  nodeType,
+                  nodeID: "node-6",
+                  props: '{"id":"F","value":"6"}',
+                  status: "Warning",
+                },
+              ],
+            },
+          },
+        },
+      },
+    ];
+
+    const { getByTestId } = render(
+      <TestParent mocks={mocks}>
+        <ExportNodeDataButton
+          submission={{ _id: submissionID, name: "batch-aggregate" }}
+          nodeType={nodeType}
+        />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("export-node-data-button"));
+
+    await waitFor(() => {
+      expect(mockDownloadBlob).toHaveBeenCalled();
+    });
+
+    const downloadedContent = mockDownloadBlob.mock.calls[0][0];
+
+    // Verify all 6 records are in the final TSV
+    expect(downloadedContent).toContain("A\t1\tPassed");
+    expect(downloadedContent).toContain("B\t2\tPassed");
+    expect(downloadedContent).toContain("C\t3\tError");
+    expect(downloadedContent).toContain("D\t4\tPassed");
+    expect(downloadedContent).toContain("E\t5\tPassed");
+    expect(downloadedContent).toContain("F\t6\tWarning");
   });
 });
 
@@ -399,11 +838,36 @@ describe("Implementation Requirements", () => {
       vi.useFakeTimers().setSystemTime(date);
 
       const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+        // Initial metadata query with first: 1
         {
           request: {
             query: GET_SUBMISSION_NODES,
           },
-          variableMatcher: () => true,
+          variableMatcher: (vars) => vars.first === 1 && vars.offset === 0,
+          result: {
+            data: {
+              getSubmissionNodes: {
+                total: 1,
+                IDPropName: "a",
+                properties: ["a"],
+                nodes: [
+                  {
+                    nodeType,
+                    nodeID: "example-node-id",
+                    props: JSON.stringify({ a: 1 }),
+                    status: null,
+                  },
+                ],
+              },
+            },
+          },
+        },
+        // Batch query with first: 5000
+        {
+          request: {
+            query: GET_SUBMISSION_NODES,
+          },
+          variableMatcher: (vars) => vars.first === 5000 && vars.offset === 0,
           result: {
             data: {
               getSubmissionNodes: {
@@ -451,12 +915,40 @@ describe("Implementation Requirements", () => {
   it("should include the `type` column in the TSV export", async () => {
     const nodeType = "a_unique_node_type";
 
+    const metadataMatcher = vi.fn().mockReturnValue(true);
+    const batchMatcher = vi.fn().mockReturnValue(true);
+
     const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+      // Initial metadata query
       {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: () => true,
+        variableMatcher: metadataMatcher,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 1,
+              IDPropName: "a",
+              properties: ["a"],
+              nodes: [
+                {
+                  nodeType,
+                  nodeID: "example-node-id",
+                  props: JSON.stringify({ a: 1 }),
+                  status: "Passed",
+                },
+              ],
+            },
+          },
+        },
+      },
+      // Batch query
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: batchMatcher,
         result: {
           data: {
             getSubmissionNodes: {
@@ -503,11 +995,37 @@ describe("Implementation Requirements", () => {
     const nodeType = "a_prop_with_varying_data";
 
     const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+      // Initial metadata query
       {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: () => true,
+        variableMatcher: (vars) => vars.first === 1 && vars.offset === 0,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              total: 2,
+              IDPropName: "dev.property",
+              properties: ["dev.property", "another.property", "abc123", "pdx.pdx_id"],
+              nodes: [
+                // This only has 2 of the 4 props
+                {
+                  nodeType,
+                  nodeID: "example-node-id",
+                  props: JSON.stringify({ "dev.property": "yes", abc123: 5 }),
+                  status: "Passed",
+                },
+              ],
+            },
+          },
+        },
+      },
+      // Batch query
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 0,
         result: {
           data: {
             getSubmissionNodes: {
