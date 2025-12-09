@@ -59,20 +59,16 @@ export type Input = {
    * Optional fuzzy-filter for the submitted Node ID
    */
   submittedID?: string;
-  first?: number;
-  offset?: number;
-  orderBy?: string;
-  sortDirection?: string;
   /**
    * If true, only return the `total`, and `nodes.nodeID` fields
    * will be returned.
    */
   partial?: boolean;
-};
+} & BasePaginationParams;
 
-export type Response =
-  | {
-      getSubmissionNodes: {
+export type Response<IsPartial = false> = {
+  getSubmissionNodes: IsPartial extends false
+    ? {
         /**
          * Total number of nodes in the submission.
          */
@@ -92,11 +88,9 @@ export type Response =
          * @note Unused values are omitted from the query. See the type definition for additional fields.
          */
         nodes: Pick<SubmissionNode, "nodeType" | "nodeID" | "props" | "status">[];
-      };
-    }
-  | {
-      getSubmissionNodes: {
+      }
+    : {
         total: number;
         nodes: Pick<SubmissionNode, "nodeID">[];
       };
-    };
+};
