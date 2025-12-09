@@ -274,12 +274,12 @@ class FileValidator:
             files_info  =  list(files_dict.values())
 
         except UnicodeDecodeError as ue:
-            # self.log.debug(ue)
-            self.log.exception(f"Reading manifest failed - manifest file contains non-ASCII characters.")
+            self.log.debug(ue)
+            self.log.error(f"Reading the manifest {os.path.basename(pre_manifest)} failed - manifest file contains non-unicode characters.")
             return [], []
         except Exception as e:
-            # self.log.debug(e)
-            self.log.exception(f"Reading manifest failed - internal error. Please try again and contact the helpdesk if this error persists.")
+            self.log.debug(e)
+            self.log.error(f"Reading the manifest {os.path.basename(pre_manifest)} failed - internal error. Please try again and contact the helpdesk if this error persists.")
             return [], []
         return files_info, manifest_rows
     
