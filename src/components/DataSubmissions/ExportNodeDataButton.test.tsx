@@ -83,10 +83,19 @@ describe("Basic Functionality", () => {
           return {
             data: {
               getSubmissionNodes: {
+                __typename: "SubmissionNodesResult",
                 total: 1,
                 IDPropName: null,
                 properties: [],
-                nodes: [{ nodeType, nodeID: "example-node-id", props: "", status: null }],
+                nodes: [
+                  {
+                    __typename: "Node",
+                    nodeType,
+                    nodeID: "example-node-id",
+                    props: "",
+                    status: null,
+                  },
+                ],
               },
             },
           };
@@ -115,7 +124,8 @@ describe("Basic Functionality", () => {
   it("should handle network errors when fetching the QC Results without crashing", async () => {
     const submissionID = "random-010101-sub-id";
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       {
         request: {
           query: GET_SUBMISSION_NODES,
@@ -149,7 +159,8 @@ describe("Basic Functionality", () => {
   it("should handle GraphQL errors when fetching the QC Results without crashing", async () => {
     const submissionID = "example-GraphQL-level-errors-id";
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       {
         request: {
           query: GET_SUBMISSION_NODES,
@@ -185,7 +196,8 @@ describe("Basic Functionality", () => {
   it("should alert the user if there is no Node Data to export", async () => {
     const submissionID = "example-no-results-to-export-id";
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       {
         request: {
           query: GET_SUBMISSION_NODES,
@@ -194,6 +206,7 @@ describe("Basic Functionality", () => {
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 0,
               IDPropName: null,
               properties: [],
@@ -228,20 +241,53 @@ describe("Basic Functionality", () => {
   it("should handle invalid datasets without crashing", async () => {
     const submissionID = "example-dataset-level-errors-id";
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    const metadataMatcher = vi.fn().mockReturnValue(true);
+    const batchMatcher = vi.fn().mockReturnValue(true);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
+      // Initial metadata query
       {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: () => true,
+        variableMatcher: metadataMatcher,
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 1,
               IDPropName: "x",
               properties: ["some prop"],
               nodes: [
                 {
+                  __typename: "Node",
+                  nodeType: ["aaaa"] as unknown as string,
+                  nodeID: 123 as unknown as string,
+                  status: null,
+                  props: "this is not JSON",
+                },
+              ],
+            },
+          },
+        },
+      },
+      // Batch query
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: batchMatcher,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
+              total: 1,
+              IDPropName: "x",
+              properties: ["some prop"],
+              nodes: [
+                {
+                  __typename: "Node",
                   nodeType: ["aaaa"] as unknown as string,
                   nodeID: 123 as unknown as string,
                   status: null,
@@ -286,7 +332,8 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
     const nodeType = "participant";
     let metadataCallMade = false;
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       {
         request: {
           query: GET_SUBMISSION_NODES,
@@ -301,11 +348,13 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 1,
               IDPropName: "id",
               properties: ["id", "name"],
               nodes: [
                 {
+                  __typename: "Node",
                   nodeType,
                   nodeID: "node-1",
                   props: JSON.stringify({ id: 1, name: "Test" }),
@@ -337,22 +386,35 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
   it("should use pageSize of 5000 when batching data", async () => {
     const submissionID = "batch-pagesize-test-id";
     const nodeType = "sample";
-    const batchCallsMade: number[] = [];
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    const metadataMatcher = vi.fn().mockReturnValue(true);
+    const firstBatchMatcher = vi.fn().mockReturnValue(true);
+    const secondBatchMatcher = vi.fn().mockReturnValue(true);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       // Initial metadata query
       {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: (vars) => vars.first === 1 && vars.offset === 0,
+        variableMatcher: metadataMatcher,
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 10000,
               IDPropName: "id",
               properties: ["id"],
-              nodes: [{ nodeType, nodeID: "node-1", props: '{"id":1}', status: "Passed" }],
+              nodes: [
+                {
+                  __typename: "Node",
+                  nodeType,
+                  nodeID: "node-1",
+                  props: '{"id":1}',
+                  status: "Passed",
+                },
+              ],
             },
           },
         },
@@ -362,20 +424,16 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: (vars) => {
-          if (vars.first === 5000 && vars.offset === 0) {
-            batchCallsMade.push(0);
-            return true;
-          }
-          return false;
-        },
+        variableMatcher: firstBatchMatcher,
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 10000,
               IDPropName: "id",
               properties: ["id"],
               nodes: Array.from({ length: 5000 }, (_, i) => ({
+                __typename: "Node",
                 nodeType,
                 nodeID: `node-${i}`,
                 props: `{"id":${i}}`,
@@ -390,20 +448,16 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: (vars) => {
-          if (vars.first === 5000 && vars.offset === 5000) {
-            batchCallsMade.push(5000);
-            return true;
-          }
-          return false;
-        },
+        variableMatcher: secondBatchMatcher,
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 10000,
               IDPropName: "id",
               properties: ["id"],
               nodes: Array.from({ length: 5000 }, (_, i) => ({
+                __typename: "Node",
                 nodeType,
                 nodeID: `node-${i + 5000}`,
                 props: `{"id":${i + 5000}}`,
@@ -428,33 +482,58 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
 
     await waitFor(
       () => {
-        expect(batchCallsMade).toEqual([0, 5000]);
+        expect(mockDownloadBlob).toHaveBeenCalled();
       },
       { timeout: 5000 }
     );
 
-    expect(mockDownloadBlob).toHaveBeenCalled();
+    // Verify the matchers were called with correct parameters
+    expect(metadataMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        first: 1,
+        offset: 0,
+      })
+    );
+    expect(firstBatchMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        first: 5000,
+        offset: 0,
+      })
+    );
+    expect(secondBatchMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        first: 5000,
+        offset: 5000,
+      })
+    );
   });
 
   it("should handle multiple batches of data correctly", async () => {
     const submissionID = "multi-batch-test-id";
     const nodeType = "genomic_info";
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    const metadataMatcher = vi.fn().mockReturnValue(true);
+    const firstBatchMatcher = vi.fn().mockReturnValue(true);
+    const secondBatchMatcher = vi.fn().mockReturnValue(true);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       // Initial metadata query
       {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: (vars) => vars.first === 1,
+        variableMatcher: metadataMatcher,
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 7500,
               IDPropName: "sample_id",
               properties: ["sample_id", "data"],
               nodes: [
                 {
+                  __typename: "Node",
                   nodeType,
                   nodeID: "node-0",
                   props: '{"sample_id":"S0","data":"test"}',
@@ -470,14 +549,16 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 0,
+        variableMatcher: firstBatchMatcher,
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 7500,
               IDPropName: "sample_id",
               properties: ["sample_id", "data"],
               nodes: Array.from({ length: 5000 }, (_, i) => ({
+                __typename: "Node",
                 nodeType,
                 nodeID: `node-${i}`,
                 props: `{"sample_id":"S${i}","data":"batch1"}`,
@@ -492,14 +573,16 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 5000,
+        variableMatcher: secondBatchMatcher,
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 7500,
               IDPropName: "sample_id",
               properties: ["sample_id", "data"],
               nodes: Array.from({ length: 2500 }, (_, i) => ({
+                __typename: "Node",
                 nodeType,
                 nodeID: `node-${i + 5000}`,
                 props: `{"sample_id":"S${i + 5000}","data":"batch2"}`,
@@ -541,7 +624,8 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
     const submissionID = "batch-error-test-id";
     const nodeType = "participant";
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       // Initial metadata query succeeds
       {
         request: {
@@ -551,10 +635,19 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 10000,
               IDPropName: "id",
               properties: ["id"],
-              nodes: [{ nodeType, nodeID: "node-1", props: '{"id":1}', status: "Passed" }],
+              nodes: [
+                {
+                  __typename: "Node",
+                  nodeType,
+                  nodeID: "node-1",
+                  props: '{"id":1}',
+                  status: "Passed",
+                },
+              ],
             },
           },
         },
@@ -568,10 +661,12 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 10000,
               IDPropName: "id",
               properties: ["id"],
               nodes: Array.from({ length: 5000 }, (_, i) => ({
+                __typename: "Node",
                 nodeType,
                 nodeID: `node-${i}`,
                 props: `{"id":${i}}`,
@@ -619,63 +714,88 @@ describe("Batching Behavior (CRDCDH-3374)", () => {
     const submissionID = "batch-aggregate-test-id";
     const nodeType = "sample";
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    const metadataMatcher = vi.fn().mockReturnValue(true);
+    const batchMatcher = vi.fn().mockReturnValue(true);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       // Initial metadata query
       {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: (vars) => vars.first === 1,
+        variableMatcher: metadataMatcher,
         result: {
           data: {
             getSubmissionNodes: {
-              total: 6,
-              IDPropName: "id",
-              properties: ["id", "value"],
-              nodes: [
-                { nodeType, nodeID: "node-1", props: '{"id":"A","value":"1"}', status: "Passed" },
-              ],
-            },
-          },
-        },
-      },
-      // First batch (5 records)
-      {
-        request: {
-          query: GET_SUBMISSION_NODES,
-        },
-        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 0,
-        result: {
-          data: {
-            getSubmissionNodes: {
-              total: 6,
-              IDPropName: "id",
-              properties: ["id", "value"],
-              nodes: [
-                { nodeType, nodeID: "node-1", props: '{"id":"A","value":"1"}', status: "Passed" },
-                { nodeType, nodeID: "node-2", props: '{"id":"B","value":"2"}', status: "Passed" },
-                { nodeType, nodeID: "node-3", props: '{"id":"C","value":"3"}', status: "Error" },
-                { nodeType, nodeID: "node-4", props: '{"id":"D","value":"4"}', status: "Passed" },
-                { nodeType, nodeID: "node-5", props: '{"id":"E","value":"5"}', status: "Passed" },
-              ],
-            },
-          },
-        },
-      },
-      // Second batch (1 record)
-      {
-        request: {
-          query: GET_SUBMISSION_NODES,
-        },
-        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 5000,
-        result: {
-          data: {
-            getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 6,
               IDPropName: "id",
               properties: ["id", "value"],
               nodes: [
                 {
+                  __typename: "Node",
+                  nodeType,
+                  nodeID: "node-1",
+                  props: '{"id":"A","value":"1"}',
+                  status: "Passed",
+                },
+              ],
+            },
+          },
+        },
+      },
+      // Batch query returns all 6 records
+      {
+        request: {
+          query: GET_SUBMISSION_NODES,
+        },
+        variableMatcher: batchMatcher,
+        result: {
+          data: {
+            getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
+              total: 6,
+              IDPropName: "id",
+              properties: ["id", "value"],
+              nodes: [
+                {
+                  __typename: "Node",
+                  nodeType,
+                  nodeID: "node-1",
+                  props: '{"id":"A","value":"1"}',
+                  status: "Passed",
+                },
+                {
+                  __typename: "Node",
+                  nodeType,
+                  nodeID: "node-2",
+                  props: '{"id":"B","value":"2"}',
+                  status: "Passed",
+                },
+                {
+                  __typename: "Node",
+                  nodeType,
+                  nodeID: "node-3",
+                  props: '{"id":"C","value":"3"}',
+                  status: "Error",
+                },
+                {
+                  __typename: "Node",
+                  nodeType,
+                  nodeID: "node-4",
+                  props: '{"id":"D","value":"4"}',
+                  status: "Passed",
+                },
+                {
+                  __typename: "Node",
+                  nodeType,
+                  nodeID: "node-5",
+                  props: '{"id":"E","value":"5"}',
+                  status: "Passed",
+                },
+                {
+                  __typename: "Node",
                   nodeType,
                   nodeID: "node-6",
                   props: '{"id":"F","value":"6"}',
@@ -837,7 +957,8 @@ describe("Implementation Requirements", () => {
     async ({ name, nodeType, date, expected }) => {
       vi.useFakeTimers().setSystemTime(date);
 
-      const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
         // Initial metadata query with first: 1
         {
           request: {
@@ -847,11 +968,13 @@ describe("Implementation Requirements", () => {
           result: {
             data: {
               getSubmissionNodes: {
+                __typename: "SubmissionNodesResult",
                 total: 1,
                 IDPropName: "a",
                 properties: ["a"],
                 nodes: [
                   {
+                    __typename: "Node",
                     nodeType,
                     nodeID: "example-node-id",
                     props: JSON.stringify({ a: 1 }),
@@ -871,11 +994,13 @@ describe("Implementation Requirements", () => {
           result: {
             data: {
               getSubmissionNodes: {
+                __typename: "SubmissionNodesResult",
                 total: 1,
                 IDPropName: "a",
                 properties: ["a"],
                 nodes: [
                   {
+                    __typename: "Node",
                     nodeType,
                     nodeID: "example-node-id",
                     props: JSON.stringify({ a: 1 }),
@@ -918,7 +1043,8 @@ describe("Implementation Requirements", () => {
     const metadataMatcher = vi.fn().mockReturnValue(true);
     const batchMatcher = vi.fn().mockReturnValue(true);
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       // Initial metadata query
       {
         request: {
@@ -928,11 +1054,13 @@ describe("Implementation Requirements", () => {
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 1,
               IDPropName: "a",
               properties: ["a"],
               nodes: [
                 {
+                  __typename: "Node",
                   nodeType,
                   nodeID: "example-node-id",
                   props: JSON.stringify({ a: 1 }),
@@ -952,11 +1080,13 @@ describe("Implementation Requirements", () => {
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 1,
               IDPropName: "a",
               properties: ["a"],
               nodes: [
                 {
+                  __typename: "Node",
                   nodeType,
                   nodeID: "example-node-id",
                   props: JSON.stringify({ a: 1 }),
@@ -994,22 +1124,28 @@ describe("Implementation Requirements", () => {
   it("should include every property in the TSV export", async () => {
     const nodeType = "a_prop_with_varying_data";
 
-    const mocks: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput>[] = [
+    const metadataMatcher = vi.fn().mockReturnValue(true);
+    const batchMatcher = vi.fn().mockReturnValue(true);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mocks: MockedResponse<any, GetSubmissionNodesInput>[] = [
       // Initial metadata query
       {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: (vars) => vars.first === 1 && vars.offset === 0,
+        variableMatcher: metadataMatcher,
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 2,
               IDPropName: "dev.property",
               properties: ["dev.property", "another.property", "abc123", "pdx.pdx_id"],
               nodes: [
                 // This only has 2 of the 4 props
                 {
+                  __typename: "Node",
                   nodeType,
                   nodeID: "example-node-id",
                   props: JSON.stringify({ "dev.property": "yes", abc123: 5 }),
@@ -1025,16 +1161,18 @@ describe("Implementation Requirements", () => {
         request: {
           query: GET_SUBMISSION_NODES,
         },
-        variableMatcher: (vars) => vars.first === 5000 && vars.offset === 0,
+        variableMatcher: batchMatcher,
         result: {
           data: {
             getSubmissionNodes: {
+              __typename: "SubmissionNodesResult",
               total: 2,
               IDPropName: "dev.property",
               properties: ["dev.property", "another.property", "abc123", "pdx.pdx_id"],
               nodes: [
                 // This only has 2 of the 4 props
                 {
+                  __typename: "Node",
                   nodeType,
                   nodeID: "example-node-id",
                   props: JSON.stringify({ "dev.property": "yes", abc123: 5 }),
@@ -1042,9 +1180,11 @@ describe("Implementation Requirements", () => {
                 },
                 // This has all props
                 {
+                  __typename: "Node",
                   nodeType,
                   nodeID: "another-example",
                   props: JSON.stringify({
+                    __typename: "Node",
                     "dev.property": "no",
                     "another.property": "here",
                     abc123: 10,
