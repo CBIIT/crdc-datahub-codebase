@@ -251,7 +251,7 @@ describe("SubmittedData > General", () => {
   // This is to support the deletion functionality, where the user may have selected
   // to delete all rows.
   it("should not show an error message when the selected node has 0 results", async () => {
-    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp<false>, GetSubmissionNodesInput> = {
       request: {
         query: GET_SUBMISSION_NODES,
       },
@@ -260,6 +260,7 @@ describe("SubmittedData > General", () => {
         data: {
           getSubmissionNodes: {
             total: 0,
+            IDPropName: "",
             properties: [],
             nodes: [],
           },
@@ -357,6 +358,7 @@ describe("SubmittedData > General", () => {
           getSubmissionNodes: {
             total: 20,
             properties: ["col-xyz"],
+            IDPropName: "col-xyz",
             nodes: Array(20).fill({
               nodeType: "example-node",
               nodeID: "example-node-id",
@@ -818,7 +820,7 @@ describe("SubmittedData > Table", () => {
     };
 
     const mockMatcherAllNodes = vi.fn().mockImplementation(() => true);
-    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp<true>, GetSubmissionNodesInput> = {
       maxUsageCount: 1,
       request: {
         query: GET_SUBMISSION_NODES,
@@ -1026,7 +1028,7 @@ describe("SubmittedData > Table", () => {
     };
 
     const mockMatcherAllNodes = vi.fn().mockImplementation(() => true);
-    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp<true>, GetSubmissionNodesInput> = {
       request: {
         query: GET_SUBMISSION_NODES,
       },
