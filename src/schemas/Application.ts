@@ -170,21 +170,21 @@ export const programInputSchema = z
     description: z.string().max(500).optional(),
   })
   .superRefine((val, ctx) => {
-    if (val._id !== "Not Applicable" && !val.name) {
+    if (val._id === "Other" && !val.name) {
       ctx.addIssue({
         code: "custom",
         path: ["name"],
         message: FIELD_IS_REQUIRED,
       });
     }
-    if (val._id !== "Not Applicable" && !val.abbreviation) {
+    if (val._id === "Other" && !val.abbreviation) {
       ctx.addIssue({
         code: "custom",
         path: ["abbreviation"],
         message: FIELD_IS_REQUIRED,
       });
     }
-    if (val._id !== "Not Applicable" && !val.description) {
+    if (val._id === "Other" && !val.description) {
       ctx.addIssue({
         code: "custom",
         path: ["description"],
