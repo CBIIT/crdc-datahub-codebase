@@ -275,11 +275,11 @@ class FileValidator:
 
         except UnicodeDecodeError as ue:
             self.log.debug(ue)
-            self.log.error(f"Reading the manifest {os.path.basename(pre_manifest)} failed - manifest file contains non-unicode characters.")
+            self.log.error(f"Reading manifest file {os.path.basename(pre_manifest)} failed - non-unicode character(s) detected.")
             return [], []
         except Exception as e:
             self.log.debug(e)
-            self.log.error(f"Reading the manifest {os.path.basename(pre_manifest)} failed - internal error. Please try again and contact the helpdesk if this error persists.")
+            self.log.error(f"Reading manifest file {os.path.basename(pre_manifest)} failed - internal error. Please try again and contact the helpdesk if this error persists.")
             return [], []
         return files_info, manifest_rows
     
