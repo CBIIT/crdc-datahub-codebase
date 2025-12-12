@@ -416,7 +416,7 @@ def validate_zip_file(archived_files_info, file_path, md5_cache, log):
     try:
         # create temp dir for unzip and validate if not existing
         os.makedirs(TEMP_UNZIP_DIR, exist_ok=True)
-        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        with zipfile.ZipFile(file_path, 'r', metadata_encoding='utf-8') as zip_ref:
             zip_ref.extractall(TEMP_UNZIP_DIR)
         # list dir under TEMP_UNZIP_DIR and remove __MACOSX dir and contents
         if os.path.isdir(os.path.join(TEMP_UNZIP_DIR, '__MACOSX')):
