@@ -1,0 +1,88 @@
+import { Box, Typography, styled } from "@mui/material";
+import React, { useEffect, useRef } from "react";
+
+import BotTypingIndicator from "./BotTypingIndicator";
+import ChatMessageItem from "./ChatMessageItem";
+
+const MessagesContainer = styled(Box)({
+  flex: 1,
+  overflowY: "auto",
+  paddingInline: "16px",
+  paddingBottom: "16px",
+  overscrollBehavior: "contain",
+});
+
+const ChatHeader = styled(Box)({
+  textAlign: "center",
+  paddingInline: "16px",
+  paddingBlock: "16px",
+});
+
+const ChatTitle = styled(Typography)({
+  fontWeight: 700,
+  marginBottom: 0,
+});
+
+const ChatSubtitle = styled(Typography)({
+  fontSize: "12px",
+  color: "rgba(0,0,0,0.54)",
+});
+
+const formatGreetingDateTime = (date: Date): string =>
+  new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+
+export type Props = {
+  /**
+   * The timestamp when the chat session started, displayed in the greeting header.
+   */
+  greetingTimestamp: Date;
+  /**
+   * Array of chat messages to display in the message list.
+   */
+  messages: readonly ChatMessage[];
+  /**
+   * Indicates whether the bot is currently typing a response.
+   */
+  isBotTyping: boolean;
+};
+
+/**
+ * Displays a scrollable list of chat messages with automatic scrolling to the latest message.
+ */
+const MessageList = ({ greetingTimestamp, messages, isBotTyping }: Props): JSX.Element => {
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  const lastMessageId = messages?.length > 0 ? messages[messages.length - 1]?.id : null;
+
+  useEffect(() => {
+    const element = messagesContainerRef.current;
+    if (!element) {
+      return;
+    }
+
+    element.scrollTo({
+      top: element.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [lastMessageId, isBotTyping]);
+
+  return (
+    <MessagesContainer ref={messagesContainerRef}>
+      <ChatHeader>
+        <ChatTitle variant="h6">Welcome to Support!</ChatTitle>
+        <ChatSubtitle>{formatGreetingDateTime(greetingTimestamp)}</ChatSubtitle>
+      </ChatHeader>
+
+      {messages?.map((message) => <ChatMessageItem key={message.id} message={message} />)}
+
+      {isBotTyping ? <BotTypingIndicator /> : null}
+    </MessagesContainer>
+  );
+};
+
+export default React.memo<Props>(MessageList);
