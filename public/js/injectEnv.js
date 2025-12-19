@@ -12,4 +12,6 @@ window.injectedEnv = {
   VITE_FE_VERSION: "",
   VITE_BACKEND_API: "",
   VITE_HIDDEN_MODELS: "",
+  VITE_CHATBOT_ENABLED: null,
+  VITE_KNOWLEDGE_BASE_URL: "",
 };

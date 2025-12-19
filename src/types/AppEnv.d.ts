@@ -74,6 +74,17 @@ type AppEnv = {
    */
   VITE_HIDDEN_MODELS: string;
   /**
+   * Knowledge Base URL
+   */
+  VITE_KNOWLEDGE_BASE_URL: string;
+  /**
+   * Enable or disable the chatbot feature
+   *
+   * @default "true"
+   * @note Set to "false" to disable the chatbot
+   */
+  VITE_CHATBOT_ENABLED: string;
+  /**
    * The deployment environment the app is running in
    */
   NODE_ENV?: "test" | "development" | "production";
