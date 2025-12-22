@@ -4,7 +4,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
-import { IconButton, Paper, Typography, styled } from "@mui/material";
+import { Button, IconButton, Paper, Typography, styled } from "@mui/material";
 import React from "react";
 
 const StyledChatDrawer = styled(Paper, {
@@ -84,6 +84,27 @@ const StyledChatBody = styled("div")({
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
+  position: "relative",
+  minHeight: 0,
+});
+
+const ConfirmOverlay = styled("div")({
+  position: "absolute",
+  inset: 0,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "16px",
+  padding: "24px",
+  backgroundColor: "#FFFFFF",
+  zIndex: 1,
+});
+
+const ConfirmActions = styled("div")({
+  display: "flex",
+  gap: 12,
+  justifyContent: "center",
 });
 
 const StyledChatTitle = styled(Typography)({
@@ -137,10 +158,24 @@ export type Props = {
    * Callback fired when user minimizes the drawer.
    */
   onMinimize: () => void;
+
   /**
-   * Callback fired when user ends the conversation.
+   * Indicates whether the end-conversation confirmation UI is showing.
    */
-  onEndConversation: () => void;
+  isConfirmingEndConversation: boolean;
+  /**
+   * Callback fired when user clicks the close icon to start confirmation.
+   */
+  onRequestEndConversation: () => void;
+  /**
+   * Callback fired when user confirms ending the conversation.
+   */
+  onConfirmEndConversation: () => void;
+  /**
+   * Callback fired when user cancels ending the conversation.
+   */
+  onCancelEndConversation: () => void;
+
   /**
    * Child content rendered in the drawer body.
    */
@@ -162,7 +197,10 @@ const ChatDrawer = (
     onToggleExpand,
     onToggleFullscreen,
     onMinimize,
-    onEndConversation,
+    isConfirmingEndConversation,
+    onRequestEndConversation,
+    onConfirmEndConversation,
+    onCancelEndConversation,
     children,
   }: Props,
   ref: React.ForwardedRef<HTMLDivElement>
@@ -218,14 +256,54 @@ const ChatDrawer = (
             <HorizontalRuleIcon fontSize="small" />
           </StyledIconButton>
 
-          <StyledIconButton size="small" onClick={onEndConversation} aria-label="End conversation">
+          <StyledIconButton
+            size="small"
+            onClick={onRequestEndConversation}
+            aria-label="End conversation"
+          >
             <CloseIcon fontSize="small" />
           </StyledIconButton>
         </StyledHeaderActions>
       </StyledChatHeader>
     </StyledChatHeaderContainer>
 
-    <StyledChatBody>{children}</StyledChatBody>
+    <StyledChatBody>
+      {children}
+
+      {isConfirmingEndConversation ? (
+        <ConfirmOverlay role="alertdialog" aria-label="End Conversation">
+          <Typography variant="h6" component="div">
+            End Conversation
+          </Typography>
+
+          <ConfirmActions>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                onConfirmEndConversation();
+              }}
+              aria-label="Yes"
+            >
+              Yes
+            </Button>
+
+            <Button
+              variant="contained"
+              color="info"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelEndConversation();
+              }}
+              aria-label="No"
+            >
+              No
+            </Button>
+          </ConfirmActions>
+        </ConfirmOverlay>
+      ) : null}
+    </StyledChatBody>
   </StyledChatDrawer>
 );
 

@@ -37,12 +37,14 @@ const ChatBot = ({ label = "Chat", title = "Chat" }: Props): JSX.Element => {
 
   const [isMinimized, setIsMinimized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isConfirmingEndConversation, setIsConfirmingEndConversation] = useState(false);
 
   /**
    * Opens the chat drawer and removes the minimized state when the floating button is clicked.
    */
   const handleOpenDrawer = useCallback((): void => {
     setIsMinimized(false);
+    setIsConfirmingEndConversation(false);
 
     if (!isOpen) {
       openDrawer();
@@ -68,10 +70,25 @@ const ChatBot = ({ label = "Chat", title = "Chat" }: Props): JSX.Element => {
   }, []);
 
   /**
+   * Begins the "End Conversation" confirmation flow.
+   */
+  const handleRequestEndConversation = useCallback((): void => {
+    setIsConfirmingEndConversation(true);
+  }, []);
+
+  /**
+   * Cancels the "End Conversation" confirmation flow.
+   */
+  const handleCancelEndConversation = useCallback((): void => {
+    setIsConfirmingEndConversation(false);
+  }, []);
+
+  /**
    * Closes the chat drawer, clears the session, and resets state when the conversation ends.
    */
   const handleEndConversation = useCallback((): void => {
     endConversation();
+    setIsConfirmingEndConversation(false);
     setIsMinimized(false);
     setIsFullscreen(false);
     closeDrawer();
@@ -94,7 +111,10 @@ const ChatBot = ({ label = "Chat", title = "Chat" }: Props): JSX.Element => {
           onToggleExpand={toggleExpand}
           onToggleFullscreen={handleToggleFullscreen}
           onMinimize={handleMinimizeDrawer}
-          onEndConversation={handleEndConversation}
+          onRequestEndConversation={handleRequestEndConversation}
+          isConfirmingEndConversation={isConfirmingEndConversation}
+          onConfirmEndConversation={handleEndConversation}
+          onCancelEndConversation={handleCancelEndConversation}
         >
           <ChatPanel />
         </ChatDrawer>
