@@ -22,26 +22,25 @@ export const formatAccessTypes = (controlledAccess: boolean, openAccess: boolean
 };
 
 /**
- * Determines whether any of the given studies would end up belonging to more than one program
- * after assigning them to the specified program.  System-managed `"NA"` programs are ignored.
+ *  Loosely validates a dbGaP PHS accession number, with optional versioning and participant identifiers.
  *
- * @param {ApprovedStudy[]} studies - Array of approved studies.
- * @param {string} newProgramId - The ID of the program under which each study is about to be saved.
- * @returns `true` if at least one study would have more than one program (excluding `"NA"`);
- *          otherwise `false`.
+ * @param input - The PHS accession number to validate.
+ * @returns True if the input is a valid PHS accession number, false otherwise.
+ * @example
+ * validatePHSNumber("phs001234.v1.p1"); // true
+ * validatePHSNumber("phs001234.v1"); // true
+ * validatePHSNumber("phs001234"); // true
+ * validatePHSNumber("phs00123"); // false
+ * validatePHSNumber("phs001234.p1"); // false
  */
-export const hasStudyWithMultiplePrograms = (
-  studies: ApprovedStudy[],
-  newProgramId: string
-): boolean => {
-  if (!studies?.length || !newProgramId) {
+export const validatePHSNumber = (input: string): boolean => {
+  const trimmedInput = input?.trim();
+  const BASE_DIGIT_COUNT = 6;
+  const pattern = new RegExp(`^phs\\d{${BASE_DIGIT_COUNT}}(?:\\.v\\d+(?:\\.p\\d+)?)?$`, "i");
+
+  if (!trimmedInput?.length) {
     return false;
   }
 
-  return studies.some((study) => {
-    const validPrograms = study.programs?.filter((p) => p.name !== "NA") || [];
-    const distinctProgramIds = new Set<string>([...validPrograms.map((p) => p._id), newProgramId]);
-
-    return distinctProgramIds.size > 1;
-  });
+  return pattern.test(trimmedInput);
 };

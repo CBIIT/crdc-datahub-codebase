@@ -6,6 +6,7 @@ import { axe } from "vitest-axe";
 
 import { applicantFactory } from "@/factories/application/ApplicantFactory";
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
+import { formContextStateFactory } from "@/factories/application/FormContextStateFactory";
 
 import { CANCEL_APP, CancelAppInput, CancelAppResp } from "../../graphql";
 import { render, waitFor, within } from "../../test-utils";
@@ -40,8 +41,10 @@ const TestParent: React.FC<TestParentProps> = ({
 
   const formCtxValue = useMemo<FormContextState>(
     () => ({
-      status: FormStatus.LOADED,
-      data: application,
+      ...formContextStateFactory.build({
+        status: FormStatus.LOADED,
+        data: application,
+      }),
     }),
     [application]
   );

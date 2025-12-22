@@ -2,6 +2,7 @@ import { Stack } from "@mui/material";
 import type { Meta, StoryObj } from "@storybook/react";
 
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
+import { formContextStateFactory } from "@/factories/application/FormContextStateFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 
 import { Context as FormContext, Status as FormStatus } from "../Contexts/FormContext";
@@ -40,8 +41,10 @@ const meta: Meta<CustomStoryProps> = {
     (Story, context) => (
       <FormContext.Provider
         value={{
-          status: context.args.FormStatus,
-          data: context.args.application,
+          ...formContextStateFactory.build({
+            status: context.args.FormStatus,
+            data: context.args.application,
+          }),
         }}
       >
         <Story />

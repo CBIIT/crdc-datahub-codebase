@@ -1,18 +1,9 @@
 import { useLazyQuery, useMutation, useQuery } from "@apollo/client";
 import { LoadingButton } from "@mui/lab";
-import {
-  Alert,
-  Box,
-  Container,
-  MenuItem,
-  Stack,
-  TextField,
-  Typography,
-  styled,
-} from "@mui/material";
+import { Alert, Box, Container, MenuItem, Stack, Typography, styled } from "@mui/material";
 import { cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
-import { FC, useEffect, useMemo, useRef, useState } from "react";
+import { FC, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
@@ -20,11 +11,7 @@ import bannerSvg from "../../assets/banner/profile_banner.png";
 import programIcon from "../../assets/icons/program_icon.svg?url";
 import ConfirmDialog from "../../components/AdminPortal/Organizations/ConfirmDialog";
 import { useSearchParamsContext } from "../../components/Contexts/SearchParamsContext";
-import BaseDialog from "../../components/DeleteDialog";
 import BaseAsterisk from "../../components/StyledFormComponents/StyledAsterisk";
-import BaseAutocomplete, {
-  StyledPaper as BasePaper,
-} from "../../components/StyledFormComponents/StyledAutocomplete";
 import BaseOutlinedInput from "../../components/StyledFormComponents/StyledOutlinedInput";
 import BaseSelect from "../../components/StyledFormComponents/StyledSelect";
 import SuspenseLoader from "../../components/SuspenseLoader";
@@ -35,23 +22,14 @@ import {
   EditOrgResp,
   GET_ORG,
   GetOrgResp,
-  LIST_APPROVED_STUDIES,
-  ListApprovedStudiesResp,
   LIST_ACTIVE_DCPS,
   ListActiveDCPsResp,
   EditOrgInput,
   CreateOrgInput,
-  ListApprovedStudiesInput,
   GetOrgInput,
 } from "../../graphql";
 import usePageTitle from "../../hooks/usePageTitle";
-import {
-  filterAlphaNumeric,
-  formatFullStudyName,
-  hasStudyWithMultiplePrograms,
-  mapOrganizationStudyToId,
-  validateUTF8,
-} from "../../utils";
+import { filterAlphaNumeric, validateUTF8 } from "../../utils";
 
 type Props = {
   /**
@@ -60,9 +38,7 @@ type Props = {
   _id: string;
 };
 
-type FormInput = Omit<EditOrgInput, "orgID" | "studies"> & {
-  studies: string[];
-};
+type FormInput = Omit<EditOrgInput, "orgID">;
 
 const StyledContainer = styled(Container)({
   marginBottom: "90px",
@@ -125,22 +101,6 @@ const StyledTextField = styled(BaseOutlinedInput)({
   },
 });
 const StyledSelect = styled(BaseSelect)(BaseInputStyling);
-const StyledAutocomplete = styled(BaseAutocomplete)(BaseInputStyling);
-
-const StyledPaper = styled(BasePaper)({
-  maxHeight: "300px",
-  "& .MuiAutocomplete-listbox": { width: "fit-content", minWidth: "100%", maxHeight: "unset" },
-  "& .MuiAutocomplete-option": { whiteSpace: "nowrap" },
-});
-
-const StyledTag = styled("div")({
-  position: "absolute",
-  paddingLeft: "12px",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  maxWidth: "calc(100% - 24px)",
-  textOverflow: "ellipsis",
-});
 
 const StyledButtonStack = styled(Stack)({
   marginTop: "50px",
@@ -169,11 +129,6 @@ const StyledTitleBox = styled(Box)({
 });
 
 /**
- * Data Submission statuses that reflect an inactive submission
- */
-const inactiveSubmissionStatus: SubmissionStatus[] = ["Completed"];
-
-/**
  * Edit/Create Organization View Component
  *
  * @param {Props} props
@@ -188,54 +143,21 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
   const { lastSearchParams } = useSearchParamsContext();
 
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [dataSubmissions, setDataSubmissions] = useState<Partial<Submission>[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
   const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
-  const [studyOptions, setStudyOptions] = useState<string[]>([]);
-  const [showMultipleProgramsWarning, setShowMultipleProgramsWarning] = useState<boolean>(false);
-  const [autocompleteMinWidth, setAutocompleteMinWidth] = useState<number | null>(null);
-  const autocompleteRef = useRef<HTMLElement | null>(null);
 
   const manageOrgPageUrl = `/programs${lastSearchParams?.["/programs"] ?? ""}`;
-
-  const assignedStudies: string[] = useMemo(() => {
-    const activeStudies = {};
-    const activeSubs = dataSubmissions?.filter(
-      (ds) => !inactiveSubmissionStatus.includes(ds?.status)
-    );
-
-    organization?.studies?.forEach((s) => {
-      // NOTE: The `Submission` type only has `studyAbbreviation`, we cannot compare IDs
-      if (activeSubs?.some((ds) => ds?.studyAbbreviation === s?.studyAbbreviation)) {
-        activeStudies[s?.studyAbbreviation] = true;
-      }
-    });
-
-    return Object.keys(activeStudies) || [];
-  }, [organization, dataSubmissions]);
 
   const {
     handleSubmit,
     register,
     reset,
-    watch,
     formState: { errors },
     control,
   } = useForm<FormInput>();
-  const studiesField = watch("studies");
 
   const { data: activeDCPs } = useQuery<ListActiveDCPsResp>(LIST_ACTIVE_DCPS, {
-    context: { clientName: "backend" },
-    fetchPolicy: "cache-and-network",
-  });
-
-  const {
-    data: approvedStudies,
-    loading: approvedStudiesLoading,
-    refetch: refetchStudies,
-  } = useQuery<ListApprovedStudiesResp, ListApprovedStudiesInput>(LIST_APPROVED_STUDIES, {
-    variables: { first: -1, orderBy: "studyName", sortDirection: "asc" },
     context: { clientName: "backend" },
     fetchPolicy: "cache-and-network",
   });
@@ -255,36 +177,6 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
     fetchPolicy: "no-cache",
   });
 
-  const formattedStudyMap = useMemo<Record<string, string>>(() => {
-    if (!approvedStudies?.listApprovedStudies?.studies) {
-      return {};
-    }
-
-    const studyIdMap = approvedStudies.listApprovedStudies.studies.reduce(
-      (acc, { _id, studyName, studyAbbreviation }) => ({
-        ...acc,
-        [_id]: formatFullStudyName(studyName, studyAbbreviation),
-      }),
-      {}
-    );
-
-    return studyIdMap;
-  }, [approvedStudies?.listApprovedStudies?.studies]);
-
-  const sortStudyOptions = () => {
-    const options = Object.keys(formattedStudyMap);
-
-    const selectedOptions =
-      studiesField
-        ?.filter((v) => options.includes(v))
-        ?.sort((a, b) => formattedStudyMap[a]?.localeCompare(formattedStudyMap?.[b])) || [];
-    const unselectedOptions = options
-      .filter((o) => !selectedOptions.includes(o))
-      .sort((a, b) => formattedStudyMap[a]?.localeCompare(formattedStudyMap?.[b]));
-
-    setStudyOptions([...selectedOptions, ...unselectedOptions]);
-  };
-
   /**
    * Updates the default form values after save or initial fetch
    *
@@ -296,7 +188,6 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
       "abbreviation",
       "description",
       "conciergeID",
-      "studies",
       "status",
     ];
     const resetData = {};
@@ -313,7 +204,6 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
 
     const variables = {
       ...data,
-      studies: data.studies.map((studyID) => ({ studyID })),
     };
 
     if (_id === "new" && !organization?._id) {
@@ -329,7 +219,6 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
       }
 
       setOrganization(null);
-      setDataSubmissions(null);
       enqueueSnackbar("This program has been successfully added.", {
         variant: "default",
       });
@@ -347,10 +236,6 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
 
       enqueueSnackbar("All changes have been saved", { variant: "default" });
       setFormValues(data);
-      setOrganization((prev: Organization) => ({
-        ...prev,
-        studies: d.editOrganization.studies,
-      }));
     }
 
     setError(null);
@@ -361,42 +246,11 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
     if (confirmOpen) {
       setConfirmOpen(false);
     }
-    if (showMultipleProgramsWarning) {
-      setShowMultipleProgramsWarning(false);
-    }
 
     handleSubmit(onSubmit)();
   };
 
   const handlePreSubmit = (data: FormInput) => {
-    if (_id !== "new") {
-      const studyMap: { [_id: string]: ApprovedStudy["studyAbbreviation"] } = {};
-      approvedStudies?.listApprovedStudies?.studies?.forEach(({ _id, studyAbbreviation }) => {
-        studyMap[_id] = studyAbbreviation;
-      });
-
-      const newStudies = data.studies.map((_id) => studyMap[_id]);
-      const previousStudies = organization?.studies?.map((s) => s?.studyAbbreviation) || [];
-      const removedActiveStudies = previousStudies
-        .filter((studyAbbr) => !newStudies?.includes(studyAbbr))
-        .filter((studyAbbr) => assignedStudies.includes(studyAbbr)).length;
-
-      // If there are active submissions for a study being removed, show a warning
-      if (removedActiveStudies) {
-        setConfirmOpen(true);
-        return;
-      }
-    }
-
-    const studies = approvedStudies?.listApprovedStudies?.studies?.filter(
-      (s) => data?.studies?.includes(s._id)
-    );
-
-    if (hasStudyWithMultiplePrograms(studies, organization?._id)) {
-      setShowMultipleProgramsWarning(true);
-      return;
-    }
-
     onSubmit(data);
   };
 
@@ -405,13 +259,11 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
 
     if (_id === "new") {
       setOrganization(null);
-      setDataSubmissions(null);
       setFormValues({
         name: "",
         abbreviation: "",
         description: "",
         conciergeID: "",
-        studies: [],
         status: "Active",
       });
       return;
@@ -419,7 +271,7 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
 
     (async () => {
       const { data, error } = await getOrganization({
-        variables: { orgID: _id, organization: _id },
+        variables: { orgID: _id },
       });
       if (error || !data?.getOrganization) {
         navigate(manageOrgPageUrl, {
@@ -428,28 +280,10 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
         return;
       }
 
-      // No studies or original request did not complete. Refetch
-      let studyList: ApprovedStudy[] = approvedStudies?.listApprovedStudies?.studies;
-      if (!studyList?.length) {
-        const { data } = await refetchStudies();
-        studyList = data?.listApprovedStudies?.studies;
-      }
-
       setOrganization(data?.getOrganization);
-      setDataSubmissions(data?.listSubmissions?.submissions);
-      setFormValues({
-        ...data?.getOrganization,
-        studies:
-          data?.getOrganization?.studies
-            ?.map((s) => mapOrganizationStudyToId(s, studyList || []))
-            ?.filter((_id) => !!_id) || [],
-      });
+      setFormValues({ ...data?.getOrganization });
     })();
   }, [_id]);
-
-  useEffect(() => {
-    sortStudyOptions();
-  }, [formattedStudyMap, organization?.studies]);
 
   if (!organization && _id !== "new") {
     return <SuspenseLoader />;
@@ -566,60 +400,6 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
                 />
               </StyledField>
               <StyledField>
-                <StyledLabel id="studiesLabel">Studies</StyledLabel>
-                <Controller
-                  name="studies"
-                  control={control}
-                  rules={{ required: false }}
-                  render={({ field }) => (
-                    <StyledAutocomplete
-                      {...field}
-                      ref={autocompleteRef}
-                      renderInput={({ inputProps, ...params }) => (
-                        <TextField
-                          {...params}
-                          placeholder={studiesField?.length > 0 ? undefined : "Select studies"}
-                          inputProps={{ "aria-labelledby": "studiesLabel", ...inputProps }}
-                          onBlur={sortStudyOptions}
-                        />
-                      )}
-                      renderTags={(value: string[], _, state) => {
-                        if (value?.length === 0 || state.focused) {
-                          return null;
-                        }
-
-                        if (value?.length === 1) {
-                          return <StyledTag>{formattedStudyMap[value[0]]}</StyledTag>;
-                        }
-
-                        return <StyledTag>{value?.length} studies selected</StyledTag>;
-                      }}
-                      onOpen={(event) => {
-                        setAutocompleteMinWidth(
-                          autocompleteRef.current ? autocompleteRef.current?.offsetWidth : null
-                        );
-                      }}
-                      slotProps={{
-                        popper: {
-                          sx: {
-                            width: autocompleteMinWidth
-                              ? `${autocompleteMinWidth}px !important`
-                              : "auto !important",
-                          },
-                        },
-                      }}
-                      options={studyOptions}
-                      getOptionLabel={(option: string) => formattedStudyMap[option]}
-                      onChange={(_, data: string[]) => field.onChange(data)}
-                      loading={approvedStudiesLoading}
-                      PaperComponent={StyledPaper}
-                      disableCloseOnSelect
-                      multiple
-                    />
-                  )}
-                />
-              </StyledField>
-              <StyledField>
                 <StyledLabel id="statusLabel">
                   Status <BaseAsterisk />
                 </StyledLabel>
@@ -668,19 +448,6 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
         open={confirmOpen}
         onSubmit={handleBypassWarning}
         onClose={() => setConfirmOpen(false)}
-      />
-      <BaseDialog
-        scroll="body"
-        open={showMultipleProgramsWarning}
-        onClose={() => setShowMultipleProgramsWarning(false)}
-        header="Warning: Multiple Program Assignments"
-        description="Saving this change will assign the study to multiple programs. If this was unintentional, please review and remove any unnecessary program associations. Do you want to proceed?"
-        confirmText="Confirm"
-        onConfirm={handleBypassWarning}
-        confirmButtonProps={{
-          disabled: saving,
-          color: "success",
-        }}
       />
     </>
   );

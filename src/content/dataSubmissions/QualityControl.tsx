@@ -151,6 +151,16 @@ const aggregatedColumns: Column<AggregatedQCResult>[] = [
     field: "title",
   },
   {
+    label: "Property",
+    renderValue: (data) => <TruncatedText text={data.property} maxCharacters={50} />,
+    field: "property",
+  },
+  {
+    label: "Value",
+    renderValue: (data) => <TruncatedText text={data.value} maxCharacters={50} />,
+    field: "value",
+  },
+  {
     label: "Severity",
     renderValue: (data) => (
       <StyledSeverity color={data?.severity === "Error" ? "#B54717" : "#8D5809"}>
@@ -320,7 +330,9 @@ export const csvColumns = {
   "Submitted Identifier": (d: QCResult) => d.submittedID,
   Severity: (d: QCResult) => d.severity,
   "Validated Date": (d: QCResult) => FormatDate(d?.validatedDate, "MM-DD-YYYY [at] hh:mm A", ""),
-  Issues: (d: QCResult) => {
+  "Issue Count": (d: QCResult) =>
+    Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(d.issueCount || 0),
+  "Issue(s)": (d: QCResult) => {
     const value = d.errors[0]?.description ?? d.warnings[0]?.description;
 
     // NOTE: The ErrorMessage descriptions contain non-standard double quotes
@@ -331,8 +343,11 @@ export const csvColumns = {
 
 export const aggregatedCSVColumns = {
   "Issue Type": (d: AggregatedQCResult) => d.title,
+  Property: (d: AggregatedQCResult) => d.property,
+  Value: (d: AggregatedQCResult) => d.value,
   Severity: (d: AggregatedQCResult) => d.severity,
-  Count: (d: AggregatedQCResult) => d.count,
+  "Record Count": (d: AggregatedQCResult) =>
+    Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(d.count || 0),
 };
 
 const QualityControl: FC = () => {

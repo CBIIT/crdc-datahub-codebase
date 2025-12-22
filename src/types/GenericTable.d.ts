@@ -13,6 +13,7 @@ type FetchListing<T> = {
 type TableMethods = {
   refresh: () => void;
   setPage: (page: number, forceRefetch?: boolean) => void;
+  tableParams: TableParams;
 };
 
 type TableParams = {

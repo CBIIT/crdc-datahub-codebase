@@ -87,7 +87,7 @@ const writeHeader = (doc: JsPDF, request: Application): number => {
   });
 
   const computedNameLines = doc.splitTextToSize(formattedName, maxNameWidth);
-  y += (computedNameLines?.length || 1) * 8 + 11;
+  y += (computedNameLines?.length || 1) * 10 + 8;
 
   // Submitted Date
   doc.setFont("Nunito", "normal", 600);

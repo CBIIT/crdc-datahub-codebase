@@ -3,6 +3,7 @@ import { FC, useMemo } from "react";
 import { axe } from "vitest-axe";
 
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
+import { formContextStateFactory } from "@/factories/application/FormContextStateFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
 
@@ -59,14 +60,18 @@ const TestParent: FC<TestParentProps> = ({
 }: TestParentProps) => {
   const formValue = useMemo<FormContextState>(
     () => ({
-      status: formStatus,
-      data:
-        formStatus === FormStatus.LOADED
-          ? applicationFactory.build({
-              ...formData,
-              questionnaireData: questionnaireDataFactory.build({ ...formData?.questionnaireData }),
-            })
-          : null,
+      ...formContextStateFactory.build({
+        status: formStatus,
+        data:
+          formStatus === FormStatus.LOADED
+            ? applicationFactory.build({
+                ...formData,
+                questionnaireData: questionnaireDataFactory.build({
+                  ...formData?.questionnaireData,
+                }),
+              })
+            : null,
+      }),
     }),
     [formStatus, formData]
   );

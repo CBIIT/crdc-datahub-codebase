@@ -30,7 +30,7 @@ export { query as LAST_APP } from "./getMyLastApplication";
 export type { Response as LastAppResp } from "./getMyLastApplication";
 
 export { query as GET_APP } from "./getApplication";
-export type { Response as GetAppResp } from "./getApplication";
+export type { GetAppInput, Response as GetAppResp } from "./getApplication";
 
 export { mutation as UPDATE_MY_USER } from "./updateMyUser";
 export type { Input as UpdateMyUserInput, Response as UpdateMyUserResp } from "./updateMyUser";
@@ -199,6 +199,9 @@ export type {
   Input as RetrievePBACDefaultsInput,
   Response as RetrievePBACDefaultsResp,
 } from "./retrievePBACDefaults";
+
+export { query as GET_TOOLTIPS } from "./getTooltips";
+export type { Input as GetTooltipsInput, Response as GetTooltipsResp } from "./getTooltips";
 
 export { query as USER_IS_PRIMARY_CONTACT } from "./userIsPrimaryContact";
 export type {

@@ -21,6 +21,7 @@ import {
   Status as FormStatus,
 } from "../Contexts/FormContext";
 
+import { IMPORT_ERROR_MESSAGE } from "./ImportDialog";
 import ImportApplicationButton from "./index";
 
 vi.mock("@/hooks/useFormMode", async () => ({
@@ -38,7 +39,7 @@ vi.mock("@/classes/QuestionnaireExcelMiddleware", async () => ({
 type ParentProps = {
   mocks?: MockedResponse[];
   authCtxState?: AuthCtxState;
-  formCtxState?: RecursivePartial<FormContextState>;
+  formCtxState?: Partial<Omit<FormContextState, "data">> & { data?: RecursivePartial<Application> };
   children: React.ReactNode;
 };
 
@@ -188,10 +189,7 @@ describe("Basic Functionality", () => {
     });
 
     await waitFor(() => {
-      expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Your data for this Submission Request has been imported. Please review each page and confirm all fields before submitting.",
-        { variant: "success" }
-      );
+      expect(global.mockEnqueue).toHaveBeenCalled();
     });
   });
 
@@ -258,7 +256,12 @@ describe("Implementation Requirements", () => {
   });
 
   it("should disable dialog when isUploading is true", async () => {
-    const setData = vi.fn();
+    const setData = vi.fn().mockReturnValue({ status: "success" });
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockImplementation(
+      () => new Promise(() => {}) // Never resolves to keep isUploading true
+    );
+
     const { getByTestId } = render(
       <TestParent formCtxState={{ data: {}, setData }}>
         <ImportApplicationButton />
@@ -270,6 +273,12 @@ describe("Implementation Requirements", () => {
     const file = new File(["test"], "test.xlsx", {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
+
+    // Mock the arrayBuffer method
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
     const input = getByTestId("import-upload-file-input") as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
 
@@ -328,5 +337,273 @@ describe("Implementation Requirements", () => {
     );
 
     expect(getByTestId("import-application-excel-button")).toBeEnabled();
+  });
+
+  it("should display an error snackbar if parsing fails", async () => {
+    const setData = vi.fn().mockReturnValue({ status: "failed" });
+    const parsedData = { some: "data" };
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockResolvedValue(parsedData);
+
+    const { getByTestId, getByDisplayValue } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    // Mock the arrayBuffer method
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    const confirmButton = getByTestId("import-dialog-confirm-button");
+    expect(confirmButton).toBeEnabled();
+
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(getByTestId("import-dialog-confirm-button")).toBeDisabled();
+    });
+
+    await waitFor(() => {
+      expect(QuestionnaireExcelMiddleware.parse).toHaveBeenCalled();
+      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false });
+    });
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(IMPORT_ERROR_MESSAGE, { variant: "error" });
+    });
+  });
+
+  it("should display a success snackbar if the imported data fully passed validation", async () => {
+    const setData = vi.fn().mockReturnValue({ status: "success", id: "success-id" });
+    const parsedData: Partial<QuestionnaireData> = {
+      sections: [
+        { name: "A", status: "Completed" },
+        { name: "B", status: "Completed" },
+      ],
+    };
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockResolvedValue(parsedData);
+
+    const { getByTestId, getByDisplayValue } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    // Mock the arrayBuffer method
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    const confirmButton = getByTestId("import-dialog-confirm-button");
+    expect(confirmButton).toBeEnabled();
+
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(getByTestId("import-dialog-confirm-button")).toBeDisabled();
+    });
+
+    await waitFor(() => {
+      expect(QuestionnaireExcelMiddleware.parse).toHaveBeenCalled();
+      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false });
+    });
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "Your data has been imported and all passed validation. You may proceed to Review & Submit.",
+        { variant: "success" }
+      );
+    });
+  });
+
+  it("should display a success snackbar if the imported data partially passed validation", async () => {
+    const setData = vi.fn().mockReturnValue({ status: "success", id: "success-id" });
+    const parsedData: Partial<QuestionnaireData> = {
+      sections: [
+        { name: "B", status: "Not Started" },
+        { name: "C", status: "Completed" },
+      ],
+    };
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockResolvedValue(parsedData);
+
+    const { getByTestId, getByDisplayValue } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    // Mock the arrayBuffer method
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    const confirmButton = getByTestId("import-dialog-confirm-button");
+    expect(confirmButton).toBeEnabled();
+
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(getByTestId("import-dialog-confirm-button")).toBeDisabled();
+    });
+
+    await waitFor(() => {
+      expect(QuestionnaireExcelMiddleware.parse).toHaveBeenCalled();
+      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false });
+    });
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "Your data has been imported, but some pages contain validation errors. Please review each page and resolve before submitting.",
+        { variant: "success" }
+      );
+    });
+  });
+
+  it("should display an error snackbar when QuestionnaireExcelMiddleware.parse throws an exception", async () => {
+    const setData = vi.fn();
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockRejectedValue(
+      new Error("Invalid file format")
+    );
+
+    const { getByTestId, getByDisplayValue } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    // Mock the arrayBuffer method
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    const confirmButton = getByTestId("import-dialog-confirm-button");
+    expect(confirmButton).toBeEnabled();
+
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(QuestionnaireExcelMiddleware.parse).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(IMPORT_ERROR_MESSAGE, { variant: "error" });
+    });
+
+    // Dialog should remain open on error
+    await waitFor(() => {
+      expect(getByTestId("import-dialog")).toBeInTheDocument();
+    });
+
+    expect(setData).not.toHaveBeenCalled();
+  });
+
+  it("should log an error and reset state when file does not have arrayBuffer method", async () => {
+    const setData = vi.fn();
+    const { Logger } = await import("@/utils");
+    const loggerSpy = vi.spyOn(Logger, "error").mockImplementation(() => {});
+
+    // Mock DataTransfer to return a file without arrayBuffer
+    const originalDataTransfer = global.DataTransfer;
+    const mockFile = { name: "test.xlsx", arrayBuffer: undefined };
+    global.DataTransfer = vi.fn().mockImplementation(() => ({
+      items: {
+        add: vi.fn(),
+      },
+      files: [mockFile],
+    })) as unknown as typeof DataTransfer;
+
+    const { getByTestId, getByDisplayValue } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    const confirmButton = getByTestId("import-dialog-confirm-button");
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(loggerSpy).toHaveBeenCalledWith(
+        "ImportApplicationButton: File does not have arrayBuffer method",
+        mockFile
+      );
+    });
+
+    // Dialog should remain open
+    expect(getByTestId("import-dialog")).toBeInTheDocument();
+    expect(setData).not.toHaveBeenCalled();
+
+    // Restore original DataTransfer
+    global.DataTransfer = originalDataTransfer;
+    loggerSpy.mockRestore();
   });
 });

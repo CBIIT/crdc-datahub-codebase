@@ -59,6 +59,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   const {
     status,
     data: { questionnaireData: data },
+    formRef,
   } = useFormContext();
   const { data: institutionList } = useAggregatedInstitutions();
   const location = useLocation();
@@ -75,7 +76,6 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   );
 
   const formContainerRef = useRef<HTMLDivElement>();
-  const formRef = useRef<HTMLFormElement>();
   const { getFormObjectRef } = refs;
 
   const togglePrimaryPI = () => {

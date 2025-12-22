@@ -9,7 +9,7 @@ import { LIST_FORMULA, toYesNo } from "../../../utils/excelUtils";
 import { ErrorCatalog } from "../ErrorCatalog";
 import { CharacterLimitsMap, SectionBase, SectionCtxBase } from "../SectionBase";
 
-import { COLUMNS, DKeys, SCHEMA } from "./Columns";
+import { COLUMNS, DKeys } from "./Columns";
 
 /**
  * List of options for Yes/No validation.
@@ -35,9 +35,11 @@ type SectionDDeps = {
 export class SectionD extends SectionBase<DKeys, SectionDDeps> {
   static SHEET_NAME = "Data Types";
 
+  static SHEET_ID: SectionKey = "D";
+
   constructor(deps: SectionDDeps) {
     super({
-      id: "D",
+      id: SectionD.SHEET_ID,
       sheetName: SectionD.SHEET_NAME,
       columns: COLUMNS,
       headerColor: "D9EAD3",
@@ -63,7 +65,7 @@ export class SectionD extends SectionBase<DKeys, SectionDDeps> {
       "dataTypes.genomics": toYesNo(data?.dataTypes?.includes("genomics") || false),
       "dataTypes.imaging": toYesNo(data?.dataTypes?.includes("imaging") || false),
       "dataTypes.proteomics": toYesNo(data?.dataTypes?.includes("proteomics") || false),
-      imagingDataDeIdentified: toYesNo(data?.imagingDataDeIdentified || null),
+      imagingDataDeIdentified: toYesNo(data?.imagingDataDeIdentified ?? null),
       otherDataTypes: data?.otherDataTypes || "",
       "clinicalData.dataTypes.demographicData": toYesNo(
         data?.clinicalData?.dataTypes?.includes("demographicData") || false
@@ -85,7 +87,7 @@ export class SectionD extends SectionBase<DKeys, SectionDDeps> {
       ),
       "clinicalData.otherDataTypes": data?.clinicalData?.otherDataTypes || "",
       "clinicalData.futureDataTypes": toYesNo(data?.clinicalData?.futureDataTypes || false),
-      dataDeIdentified: toYesNo(data?.dataDeIdentified || null),
+      dataDeIdentified: toYesNo(data?.dataDeIdentified ?? null),
       cellLines: toYesNo(data?.cellLines || false),
       modelSystems: toYesNo(data?.modelSystems || false),
       submitterComment: data?.submitterComment || "",
@@ -437,6 +439,10 @@ export class SectionD extends SectionBase<DKeys, SectionDDeps> {
       }
     });
 
+    const dataDeIdentified = yesNoOptions.includes(toString(data.get("dataDeIdentified")?.[0]))
+      ? data.get("dataDeIdentified")?.[0] === "Yes"
+      : null;
+
     return {
       targetedSubmissionDate: FormatDate(
         toString(data.get("targetedSubmissionDate")?.[0]).trim(),
@@ -459,7 +465,7 @@ export class SectionD extends SectionBase<DKeys, SectionDDeps> {
       },
       otherDataTypes: toString(data.get("otherDataTypes")?.[0]).trim(),
       files,
-      dataDeIdentified: toString(data.get("dataDeIdentified")?.[0]) === "Yes",
+      dataDeIdentified,
       cellLines: toString(data.get("cellLines")?.[0]) === "Yes",
       modelSystems: toString(data.get("modelSystems")?.[0]) === "Yes",
       submitterComment: toString(data.get("submitterComment")?.[0]).trim(),
@@ -467,4 +473,4 @@ export class SectionD extends SectionBase<DKeys, SectionDDeps> {
   }
 }
 
-export { COLUMNS as SectionDColumns, SCHEMA as SectionDSchema };
+export { COLUMNS as SectionDColumns };

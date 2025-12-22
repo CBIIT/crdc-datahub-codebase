@@ -1,13 +1,4 @@
-import { questionnaireDataSchema } from "@/schemas/Application";
-
 import { CharacterLimitsMap, ColumnDef } from "../SectionBase";
-
-export const SCHEMA = questionnaireDataSchema.pick({
-  pi: true,
-  piAsPrimaryContact: true,
-  primaryContact: true,
-  additionalContacts: true,
-});
 
 export type AKeys =
   | "pi.firstName"

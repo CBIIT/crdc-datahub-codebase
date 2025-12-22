@@ -1,24 +1,4 @@
-import * as z from "zod";
-
-import { questionnaireDataSchema } from "@/schemas/Application";
-
 import { ColumnDef } from "../SectionBase";
-
-export const SCHEMA = z
-  .object({
-    targetedSubmissionDate: questionnaireDataSchema.shape.targetedSubmissionDate,
-    targetedReleaseDate: questionnaireDataSchema.shape.targetedReleaseDate,
-    dataTypes: questionnaireDataSchema.shape.dataTypes,
-    imagingDataDeIdentified: questionnaireDataSchema.shape.imagingDataDeIdentified,
-    otherDataTypes: questionnaireDataSchema.shape.otherDataTypes,
-    clinicalData: questionnaireDataSchema.shape.clinicalData,
-    files: questionnaireDataSchema.shape.files,
-    dataDeIdentified: questionnaireDataSchema.shape.dataDeIdentified,
-    cellLines: questionnaireDataSchema.shape.cellLines,
-    modelSystems: questionnaireDataSchema.shape.modelSystems,
-    submitterComment: questionnaireDataSchema.shape.submitterComment,
-  })
-  .strict();
 
 export type DKeys =
   | "targetedSubmissionDate"

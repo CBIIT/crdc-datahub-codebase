@@ -1,12 +1,22 @@
 import { cloneDeep } from "lodash";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { z } from "zod";
 
+import { contactFactory } from "@/factories/application/ContactFactory";
+import { fileInfoFactory } from "@/factories/application/FileInfoFactory";
 import { fundingFactory } from "@/factories/application/FundingFactory";
+import { plannedPublicationFactory } from "@/factories/application/PlannedPublicationFactory";
+import { programInputFactory } from "@/factories/application/ProgramInputFactory";
+import { publicationFactory } from "@/factories/application/PublicationFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
+import { repositoryFactory } from "@/factories/application/RepositoryFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
 
+import * as PersistentColumns from "../classes/Excel/PersistentColumns";
 import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
 
 import * as utils from "./formUtils";
+import { Logger } from "./logger";
 
 describe("filterNonNumeric cases", () => {
   it("should filter non-numerics", () => {
@@ -593,5 +603,787 @@ describe("combineQuestionnaireData cases", () => {
     const result = utils.combineQuestionnaireData(base, form);
 
     expect(result.tags).toEqual([]);
+  });
+});
+
+describe("isValidDbGaPID cases", () => {
+  it("should return true for a valid dbGaPID", () => {
+    expect(utils.isValidDbGaPID("phs123456")).toBe(true);
+  });
+
+  it("should return true for a valid dbGaPID with different case", () => {
+    expect(utils.isValidDbGaPID("PHS123456")).toBe(true);
+    expect(utils.isValidDbGaPID("Phs123456")).toBe(true);
+  });
+
+  it("should return false for dbGaPID with less than 6 digits", () => {
+    expect(utils.isValidDbGaPID("phs12345")).toBe(false);
+  });
+
+  it("should return false for dbGaPID with more than 6 digits", () => {
+    expect(utils.isValidDbGaPID("phs1234567")).toBe(false);
+  });
+
+  it("should return false for dbGaPID without 'phs' prefix", () => {
+    expect(utils.isValidDbGaPID("123456")).toBe(false);
+  });
+
+  it("should return false for dbGaPID with wrong prefix", () => {
+    expect(utils.isValidDbGaPID("abc123456")).toBe(false);
+  });
+
+  it("should return false for strings that are too short", () => {
+    expect(utils.isValidDbGaPID("phs123")).toBe(false);
+    expect(utils.isValidDbGaPID("")).toBe(false);
+  });
+
+  it("should return false for non-string values", () => {
+    expect(utils.isValidDbGaPID(null as unknown as string)).toBe(false);
+    expect(utils.isValidDbGaPID(undefined as unknown as string)).toBe(false);
+    expect(utils.isValidDbGaPID(123456789 as unknown as string)).toBe(false);
+  });
+
+  it("should return false for dbGaPID with letters in digit section", () => {
+    expect(utils.isValidDbGaPID("phs12345a")).toBe(false);
+  });
+
+  it("should return false for dbGaPID with special characters", () => {
+    expect(utils.isValidDbGaPID("phs123-456")).toBe(false);
+    expect(utils.isValidDbGaPID("phs123.456")).toBe(false);
+  });
+
+  it("should return false for a dbGaPID with version or participant suffix", () => {
+    expect(utils.isValidDbGaPID("phs123456.v1")).toBe(false);
+    expect(utils.isValidDbGaPID("phs123456.p1")).toBe(false);
+    expect(utils.isValidDbGaPID("phs123456.v1.p1")).toBe(false);
+  });
+});
+
+describe("determineSectionStatus", () => {
+  it('should return "Completed" if passed is true', () => {
+    expect(utils.determineSectionStatus(true, true)).toBe("Completed");
+    expect(utils.determineSectionStatus(true, false)).toBe("Completed");
+  });
+
+  it('should return "In Progress" if passed is false and hasData is true', () => {
+    expect(utils.determineSectionStatus(false, true)).toBe("In Progress");
+  });
+
+  it('should return "Not Started" if both passed and hasData are false', () => {
+    expect(utils.determineSectionStatus(false, false)).toBe("Not Started");
+  });
+});
+
+describe("parseSchemaObject", () => {
+  const schema = z.object({
+    name: z.string(),
+    age: z.number().int().min(0),
+    nested: z.object({
+      foo: z.string(),
+      bar: z.number().optional(),
+    }),
+  });
+
+  let loggerErrorSpy: ReturnType<typeof vi.spyOn>;
+  let loggerInfoSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    loggerErrorSpy = vi.spyOn(Logger, "error").mockImplementation(() => {});
+    loggerInfoSpy = vi.spyOn(Logger, "info").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    loggerErrorSpy.mockRestore();
+    loggerInfoSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it("should return passed=true and data if validation succeeds", () => {
+    const data = {
+      name: "Alice",
+      age: 30,
+      nested: { foo: "bar", bar: 1 },
+    };
+    const result = utils.parseSchemaObject(schema, data);
+
+    expect(result.passed).toBe(true);
+    expect(result.data).toEqual(data);
+    expect(loggerErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("should remove invalid fields and return passed=false if validation fails", () => {
+    const data = {
+      name: "Alice",
+      age: "not-a-number",
+      nested: { foo: 123, bar: 1 },
+      extra: "should be removed",
+    };
+
+    const result = utils.parseSchemaObject(schema, data);
+    expect(result.passed).toBe(false);
+    // Should remove 'age' and 'nested.foo', but keep 'name', 'nested.bar', and 'extra'
+    expect(result.data).toMatchObject({
+      name: "Alice",
+      nested: { bar: 1 },
+      extra: "should be removed",
+    });
+    expect(result.data).not.toHaveProperty("age");
+    expect(result.data.nested).not.toHaveProperty("foo");
+    expect(loggerErrorSpy).toHaveBeenCalled();
+  });
+
+  it("should handle deeply nested invalid fields", () => {
+    const deepSchema = z.object({
+      a: z.object({
+        b: z.object({
+          c: z.string(),
+        }),
+      }),
+    });
+    const data = { a: { b: { c: 123, d: "extra" } } };
+    const result = utils.parseSchemaObject(deepSchema, data);
+
+    expect(result.passed).toBe(false);
+    expect(result.data).toEqual({ a: { b: { d: "extra" } } });
+    expect(loggerErrorSpy).toHaveBeenCalled();
+  });
+
+  it("should not unset anything if all fields are valid", () => {
+    const data = { name: "Bob", age: 42, nested: { foo: "baz" } };
+    const result = utils.parseSchemaObject(schema, data);
+
+    expect(result.passed).toBe(true);
+    expect(result.data).toEqual({ name: "Bob", age: 42, nested: { foo: "baz" } });
+    expect(loggerErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("should handle empty data object", () => {
+    const result = utils.parseSchemaObject(schema, {});
+    expect(result.passed).toBe(false);
+    expect(result.data).toEqual({});
+    expect(loggerErrorSpy).toHaveBeenCalled();
+  });
+
+  it("should persist value for a column key when shouldPersistColumnValue returns true", () => {
+    const persistSchema = z.object({
+      targetedSubmissionDate: z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/),
+    });
+
+    const data = {
+      targetedSubmissionDate: "invalid-date", // fails regex
+    };
+
+    const shouldPersistSpy = vi
+      .spyOn(PersistentColumns, "shouldPersistColumnValue")
+      .mockImplementation((_columnKey, _value) => true);
+
+    const result = utils.parseSchemaObject(persistSchema, data);
+
+    expect(result.passed).toBe(false);
+    expect(result.data).toEqual(data);
+
+    expect(shouldPersistSpy).toHaveBeenCalledWith("targetedSubmissionDate", "invalid-date");
+
+    expect(loggerInfoSpy).toHaveBeenCalledWith(
+      "parseSchemaObject: Persisting value for column key targetedSubmissionDate.",
+      { value: "invalid-date" }
+    );
+
+    // Still expect an error log since validation failed
+    expect(loggerErrorSpy).toHaveBeenCalled();
+  });
+});
+
+describe("sectionHasData", () => {
+  describe("Section A", () => {
+    it("should return true for any PI data", () => {
+      expect(
+        utils.sectionHasData(
+          "A",
+          questionnaireDataFactory.build({
+            pi: { ...contactFactory.build({ firstName: "smith" }), address: "" },
+            primaryContact: null,
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "A",
+          questionnaireDataFactory.build({
+            pi: { ...contactFactory.build(), address: "some data" },
+            primaryContact: null,
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "A",
+          questionnaireDataFactory.build({
+            pi: { ...contactFactory.build({ phone: "123-456-7890" }), address: "" },
+            primaryContact: null,
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for any primary contact data", () => {
+      expect(
+        utils.sectionHasData(
+          "A",
+          questionnaireDataFactory.build({
+            primaryContact: contactFactory.build({ firstName: "jane" }),
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "A",
+          questionnaireDataFactory.build({
+            primaryContact: contactFactory.build({ institution: "a mock institution" }),
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for any additional contact data", () => {
+      expect(
+        utils.sectionHasData(
+          "A",
+          questionnaireDataFactory.build({
+            additionalContacts: [contactFactory.build({ firstName: "jane" })],
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "A",
+          questionnaireDataFactory.build({
+            additionalContacts: [contactFactory.build({ phone: "240-989-0123" })],
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return false for no data", () => {
+      expect(utils.sectionHasData("A", null)).toBe(false);
+      expect(
+        utils.sectionHasData(
+          "A",
+          questionnaireDataFactory.build({
+            pi: null,
+            primaryContact: null,
+            additionalContacts: [],
+          })
+        )
+      ).toBe(false);
+      expect(
+        utils.sectionHasData(
+          "A",
+          questionnaireDataFactory.build({
+            pi: null,
+            primaryContact: null,
+            additionalContacts: null,
+          })
+        )
+      ).toBe(false);
+    });
+  });
+
+  describe("Section B", () => {
+    it("should return true for any program data", () => {
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            program: programInputFactory.build({
+              name: "a mock program",
+              abbreviation: null,
+              description: null,
+            }),
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            program: programInputFactory.build({
+              name: null,
+              abbreviation: "mock",
+              description: null,
+            }),
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            program: programInputFactory.build({
+              name: null,
+              abbreviation: null,
+              description: "mock",
+            }),
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            program: programInputFactory.build({
+              _id: "12345",
+              name: null,
+              abbreviation: null,
+              description: null,
+            }),
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for study name, abbreviation, and description", () => {
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({ name: "mock", abbreviation: null, description: null }),
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({ name: null, abbreviation: "mock", description: null }),
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({ name: null, abbreviation: null, description: "mock" }),
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for funding agency data", () => {
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({
+              funding: [
+                fundingFactory.build({
+                  agency: "mock",
+                  grantNumbers: null,
+                  nciProgramOfficer: null,
+                }),
+              ],
+            }),
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({
+              funding: [
+                fundingFactory.build({
+                  agency: null,
+                  grantNumbers: "mock",
+                  nciProgramOfficer: null,
+                }),
+              ],
+            }),
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({
+              funding: [
+                fundingFactory.build({
+                  agency: null,
+                  grantNumbers: null,
+                  nciProgramOfficer: "mock",
+                }),
+              ],
+            }),
+          })
+        )
+      ).toBe(true);
+      // NOTE: Multiple funding entries with partial data should also return true
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({
+              funding: [
+                fundingFactory.build({
+                  agency: null,
+                  grantNumbers: null,
+                  nciProgramOfficer: null,
+                }),
+                fundingFactory.build({
+                  agency: "mock",
+                  grantNumbers: null,
+                  nciProgramOfficer: null,
+                }),
+              ],
+            }),
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for publications", () => {
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({
+              publications: [publicationFactory.build({ title: "mock" })],
+            }),
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for planned publications", () => {
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({
+              plannedPublications: [plannedPublicationFactory.build({ title: "mock" })],
+            }),
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for repositories", () => {
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({
+              repositories: [repositoryFactory.build({ name: "mock" })],
+            }),
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return false for no data", () => {
+      expect(utils.sectionHasData("B", null)).toBe(false);
+      expect(
+        utils.sectionHasData(
+          "B",
+          questionnaireDataFactory.build({
+            program: null,
+            study: null,
+          })
+        )
+      ).toBe(false);
+    });
+  });
+
+  describe("Section C", () => {
+    it("should return true for access types", () => {
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            accessTypes: ["Controlled Access"],
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for dbGaP ID or GPA name data", () => {
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({
+              isDbGapRegistered: null,
+              dbGaPPPHSNumber: "phs000001",
+              GPAName: null,
+            }),
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            study: studyFactory.build({
+              isDbGapRegistered: null,
+              dbGaPPPHSNumber: null,
+              GPAName: "Sam Bird",
+            }),
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Cancer Types", () => {
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            cancerTypes: ["Type 1"],
+            study: null, // Clearing default study data
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Other Cancer Types", () => {
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            otherCancerTypes: "Some mock data here",
+            study: null, // Clearing default study data
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Pre-Cancer Types", () => {
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            preCancerTypes: "Some other type",
+            study: null, // Clearing default study data
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Species", () => {
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            species: ["option 1", "option 2"],
+            study: null, // Clearing default study data
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Other Species", () => {
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            otherSpeciesOfSubjects: "some other species",
+            study: null, // Clearing default study data
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Number of Participants", () => {
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            numberOfParticipants: 999,
+            study: null, // Clearing default study data
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return false for no data", () => {
+      expect(utils.sectionHasData("C", null)).toBe(false);
+      expect(
+        utils.sectionHasData(
+          "C",
+          questionnaireDataFactory.build({
+            study: null, // Clearing default study data
+          })
+        )
+      ).toBe(false);
+    });
+  });
+
+  describe("Section D", () => {
+    it("should return true for Submission and Release dates", () => {
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            targetedReleaseDate: "02/19/2029",
+            dataDeIdentified: null, // Reset factory default
+            files: null,
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            targetedSubmissionDate: "02/19/2029",
+            dataDeIdentified: null, // Reset factory default
+            files: null,
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Data Types", () => {
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            dataTypes: ["clinicalTrial"],
+            dataDeIdentified: null, // Reset factory default
+            files: null,
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Other Data Types", () => {
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            otherDataTypes: "lorem | ipsum",
+            dataDeIdentified: null, // Reset factory default
+            files: null,
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Files", () => {
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            files: [fileInfoFactory.build({ type: "PDF" })],
+            dataDeIdentified: null, // Reset factory default
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            files: [fileInfoFactory.build({ extension: ".pdf" })],
+            dataDeIdentified: null, // Reset factory default
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            files: [fileInfoFactory.build({ count: 9 })],
+            dataDeIdentified: null, // Reset factory default
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            files: [fileInfoFactory.build({ amount: "90mb" })],
+            dataDeIdentified: null, // Reset factory default
+          })
+        )
+      ).toBe(true);
+      // NOTE: Multiple files with partial data should also return true
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            files: [
+              fileInfoFactory.build({ type: null, extension: null, count: null, amount: null }),
+              fileInfoFactory.build({ type: "PDF", extension: null, count: null, amount: null }),
+            ],
+            dataDeIdentified: null, // Reset factory default
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Data De-identified", () => {
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            dataDeIdentified: false,
+            files: null,
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            dataDeIdentified: true,
+            files: null,
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Additional Comments", () => {
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            submitterComment: "lorem ipsum this is my comment",
+            dataDeIdentified: null,
+            files: null,
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return true for Cell Lines or Model Systems data", () => {
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            cellLines: true,
+            dataDeIdentified: null,
+            files: null,
+          })
+        )
+      ).toBe(true);
+      expect(
+        utils.sectionHasData(
+          "D",
+          questionnaireDataFactory.build({
+            modelSystems: true,
+            dataDeIdentified: null,
+            files: null,
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("should return false for no data", () => {
+      expect(utils.sectionHasData("D", null)).toBe(false);
+    });
+  });
+
+  it("should return false for an uncovered section", () => {
+    expect(utils.sectionHasData("REVIEW", null)).toBe(false);
   });
 });

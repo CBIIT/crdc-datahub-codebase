@@ -55,6 +55,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   const {
     status,
     data: { questionnaireData: data },
+    formRef,
   } = useFormContext();
   const { data: programs } = useOrganizationListContext();
   const { readOnlyInputs } = useFormMode();
@@ -78,7 +79,6 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   const customProgramIds: string[] = [NotApplicableProgram._id, OtherProgram._id];
   const programKeyRef = useRef(new Date().getTime());
   const formContainerRef = useRef<HTMLDivElement>();
-  const formRef = useRef<HTMLFormElement>();
   const { getFormObjectRef } = refs;
 
   useEffect(() => {
@@ -435,8 +435,8 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           label="Study Title"
           name="study[name]"
           value={study.name}
-          maxLength={100}
-          placeholder="100 characters allowed"
+          maxLength={1000}
+          placeholder="1,000 characters allowed"
           validate={(input: string) => !validateUTF8(input)}
           readOnly={readOnlyInputs}
           hideValidation={readOnlyInputs}

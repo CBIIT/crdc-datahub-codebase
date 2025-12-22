@@ -18,7 +18,7 @@ import { Context as FormCtx } from "../Contexts/FormContext";
 
 import ProgressBar from "./ProgressBar";
 
-const keys = Object.keys(config);
+const keys = Object.keys(config) as SectionKey[];
 
 const institutionsMock: MockedResponse = {
   request: {

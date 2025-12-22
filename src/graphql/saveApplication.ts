@@ -2,8 +2,8 @@ import { TypedDocumentNode } from "@apollo/client";
 import gql from "graphql-tag";
 
 export const mutation: TypedDocumentNode<Response, Input> = gql`
-  mutation saveApplication($application: AppInput!) {
-    saveApplication(application: $application) {
+  mutation saveApplication($application: AppInput!, $status: String) {
+    saveApplication(application: $application, status: $status) {
       _id
       status
       createdAt
@@ -13,6 +13,8 @@ export const mutation: TypedDocumentNode<Response, Input> = gql`
       openAccess
       controlledAccess
       PI
+      programName
+      studyAbbreviation
       history {
         status
         reviewComment
@@ -92,8 +94,12 @@ export type Input = {
      */
     GPAName: string;
   };
+  /**
+   * The status to save the application as
+   */
+  status?: Extends<ApplicationStatus, "New" | "In Progress">;
 };
 
 export type Response = {
-  saveApplication: Omit<Application, "programName" | "studyAbbreviation" | "questionnaireData">;
+  saveApplication: Omit<Application, "questionnaireData">;
 };

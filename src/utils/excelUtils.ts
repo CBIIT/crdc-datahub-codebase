@@ -562,3 +562,37 @@ export const isRichTextValue = (v: ExcelJS.CellValue): v is ExcelJS.CellRichText
  */
 export const isErrorValue = (v: ExcelJS.CellValue): v is ExcelJS.CellErrorValue =>
   typeof v === "object" && v !== null && "error" in v;
+
+/**
+ * Checks if a cell contains a valid PHS identifier.
+ *
+ * @note Aims to match validatePHSNumber loose implementation.
+ * @param {ExcelJS.Cell} c The cell to check.
+ * @returns The formula string for the validation.
+ */
+export const PHS_OK = (c: ExcelJS.Cell | string) => {
+  const x = TRIM(CELL(c));
+  const pIdx = `IFERROR(FIND(".p",LOWER(${x})),0)`;
+
+  return OR(
+    AND(`LEN(${x})=9`, `LEFT(${x},3)="phs"`, `IFERROR(ISNUMBER(VALUE(RIGHT(${x},6))),FALSE)`),
+    AND(
+      `LEFT(${x},3)="phs"`,
+      `IFERROR(ISNUMBER(VALUE(MID(${x},4,6))),FALSE)`,
+      `LOWER(MID(${x},10,2))=".v"`,
+      `LEN(${x})>11`,
+      `IFERROR(ISNUMBER(VALUE(MID(${x},12,LEN(${x})-11))),FALSE)`,
+      `NOT(${pIdx}>0)`
+    ),
+    AND(
+      `LEFT(${x},3)="phs"`,
+      `IFERROR(ISNUMBER(VALUE(MID(${x},4,6))),FALSE)`,
+      `LOWER(MID(${x},10,2))=".v"`,
+      `${pIdx}>12`,
+      `IFERROR(ISNUMBER(VALUE(MID(${x},12,${pIdx}-12))),FALSE)`,
+      `LOWER(IFERROR(MID(${x},${pIdx},2),""))=".p"`,
+      `LEN(${x})>${pIdx}+1`,
+      `IFERROR(ISNUMBER(VALUE(MID(${x},${pIdx}+2,LEN(${x})-${pIdx}))),FALSE)`
+    )
+  );
+};

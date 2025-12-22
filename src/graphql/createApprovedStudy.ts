@@ -1,6 +1,7 @@
+import { TypedDocumentNode } from "@apollo/client";
 import gql from "graphql-tag";
 
-export const mutation = gql`
+export const mutation: TypedDocumentNode<Response, Input> = gql`
   mutation createApprovedStudy(
     $name: String!
     $acronym: String
@@ -8,6 +9,7 @@ export const mutation = gql`
     $openAccess: Boolean
     $dbGaPID: String
     $ORCID: String
+    $programID: ID
     $PI: String
     $primaryContactID: String
     $useProgramPC: Boolean!
@@ -22,6 +24,7 @@ export const mutation = gql`
       openAccess: $openAccess
       dbGaPID: $dbGaPID
       ORCID: $ORCID
+      programID: $programID
       PI: $PI
       primaryContactID: $primaryContactID
       useProgramPC: $useProgramPC
@@ -41,6 +44,7 @@ export type Input = {
   openAccess: boolean;
   dbGaPID: string;
   ORCID: string;
+  programID: string;
   PI: string;
   primaryContactID: string;
   useProgramPC: boolean;

@@ -5,6 +5,7 @@ import { repositoryDataTypesOptions } from "@/components/Questionnaire/Repositor
 import accessTypeOptions from "@/config/AccessTypesConfig";
 import cancerTypeOptions from "@/config/CancerTypesConfig";
 import DataTypes from "@/config/DataTypesConfig";
+import { validatePHSNumber } from "@/utils";
 
 const FIELD_IS_REQUIRED = "This field is required.";
 
@@ -16,7 +17,7 @@ export const sectionSchema = z
     /**
      * Name of the section within the form.
      */
-    name: z.string(),
+    name: z.enum(["A", "B", "C", "D", "REVIEW"]),
     /**
      * Progress state used to render checkmarks and gate navigation.
      */
@@ -86,15 +87,15 @@ export const contactSchema = z
     /**
      * Role of the contact within the project
      */
-    position: z.string().max(100),
+    position: z.string().max(100).nonempty(),
     /**
      * The contact's first name.
      */
-    firstName: z.string().max(50),
+    firstName: z.string().max(50).nonempty(),
     /**
      * The contact's last name.
      */
-    lastName: z.string().max(50),
+    lastName: z.string().max(50).nonempty(),
     /**
      * Primary email used for contact follow-ups.
      */
@@ -139,7 +140,7 @@ export const piSchema = z
     /**
      * Mailing address for official correspondence
      */
-    address: z.string().max(200),
+    address: z.string().max(200).nonempty(),
   })
   .strict();
 
@@ -169,21 +170,21 @@ export const programInputSchema = z
     description: z.string().max(500).optional(),
   })
   .superRefine((val, ctx) => {
-    if (val._id !== "Not Applicable" && !val.name) {
+    if (val._id === "Other" && !val.name) {
       ctx.addIssue({
         code: "custom",
         path: ["name"],
         message: FIELD_IS_REQUIRED,
       });
     }
-    if (val._id !== "Not Applicable" && !val.abbreviation) {
+    if (val._id === "Other" && !val.abbreviation) {
       ctx.addIssue({
         code: "custom",
         path: ["abbreviation"],
         message: FIELD_IS_REQUIRED,
       });
     }
-    if (val._id !== "Not Applicable" && !val.description) {
+    if (val._id === "Other" && !val.description) {
       ctx.addIssue({
         code: "custom",
         path: ["description"],
@@ -200,11 +201,11 @@ export const repositorySchema = z
      *
      * @example "GEO", "EGA", etc.
      */
-    name: z.string().max(50),
+    name: z.string().max(50).nonempty(),
     /**
      * Study identifier used by the repository to associate records.
      */
-    studyID: z.string().max(50),
+    studyID: z.string().max(50).nonempty(),
     /**
      * Data categories already submitted.
      *
@@ -228,7 +229,7 @@ export const publicationSchema = z
     /**
      * Full publication title associated with the study.
      */
-    title: z.string().max(500),
+    title: z.string().max(500).nonempty(),
     /**
      * PubMed ID (PMID) to enable automatic linking.
      */
@@ -248,7 +249,7 @@ export const plannedPublicationSchema = z
     /**
      * Working or planned title for the forthcoming publication and/or pre-print.
      */
-    title: z.string().max(500),
+    title: z.string().max(500).nonempty(),
     /**
      * Target date for publication release.
      * Stored as MM/DD/YYYY.
@@ -265,13 +266,13 @@ export const fundingSchema = z
     /**
      * Funding agency/organization name.
      */
-    agency: z.string(),
+    agency: z.string().nonempty(),
     /**
      * The grant or contract number(s).
      *
      * @example "R01CAXXXX, R01CAYYYY"
      */
-    grantNumbers: z.string().max(250),
+    grantNumbers: z.string().max(250).nonempty(),
     /**
      * The NCI Program Officer.
      */
@@ -294,7 +295,7 @@ export const studySchema = z
     /**
      * The full study title.
      */
-    name: z.string().max(100),
+    name: z.string().max(1_000).nonempty(),
     /**
      * The short study title.
      */
@@ -302,7 +303,7 @@ export const studySchema = z
     /**
      * A short description of the effort that these data have been collected for.
      */
-    description: z.string().max(2_500),
+    description: z.string().max(2_500).nonempty(),
     /**
      * List of published works arising from the study.
      *
@@ -336,7 +337,12 @@ export const studySchema = z
      *
      * @example "phs002529.v1.p1"
      */
-    dbGaPPPHSNumber: z.string().max(50).optional(),
+    dbGaPPPHSNumber: z
+      .string()
+      .max(50)
+      .trim()
+      .refine((val) => validatePHSNumber(val))
+      .optional(),
     /**
      * The name of the Genomic Program Administrator.
      *
@@ -365,13 +371,13 @@ export const fileInfoSchema = z
      *
      * @example "Raw sequencing data", "Derived sequencing data", "Clinical data"
      */
-    type: z.string(),
+    type: z.string().nonempty(),
     /**
      * File extension associated with the file type.
      *
      * @example "BAM", "FASTQ", "JSON", "TSV"
      */
-    extension: z.string(),
+    extension: z.string().nonempty(),
     /**
      * Number of files to be submitted for this type.
      *
@@ -383,7 +389,7 @@ export const fileInfoSchema = z
      *
      * @example "120 GB"
      */
-    amount: z.string(),
+    amount: z.string().nonempty(),
   })
   .strict();
 
@@ -438,13 +444,25 @@ export const questionnaireDataSchema = z
     /**
      * Targeted date to submit initial data.
      * Stored as MM/DD/YYYY (coerced from Date).
+     * Must be a future date.
      */
-    targetedSubmissionDate: z.string().refine((val) => dayjs(val, "MM/DD/YYYY", true)?.isValid()),
+    targetedSubmissionDate: z.string().refine((val) => {
+      const date = dayjs(val, "MM/DD/YYYY", true)?.startOf("day");
+      const dateIsTodayOrAfter =
+        date?.isSame(dayjs().startOf("day")) || date?.isAfter(dayjs().startOf("day"));
+      return date?.isValid() && dateIsTodayOrAfter;
+    }),
     /**
      * Targeted public release date.
      * Stored as MM/DD/YYYY (coerced from Date).
+     * Must be a future date.
      */
-    targetedReleaseDate: z.string().refine((val) => dayjs(val, "MM/DD/YYYY", true)?.isValid()),
+    targetedReleaseDate: z.string().refine((val) => {
+      const date = dayjs(val, "MM/DD/YYYY", true);
+      const dateIsTodayOrAfter =
+        date?.isSame(dayjs().startOf("day")) || date?.isAfter(dayjs().startOf("day"));
+      return date?.isValid() && dateIsTodayOrAfter;
+    }),
     /**
      * The submission time constraints.
      *
@@ -509,7 +527,7 @@ export const questionnaireDataSchema = z
     /**
      * Confirms imaging data have been de-identified.
      */
-    imagingDataDeIdentified: z.boolean().optional(),
+    imagingDataDeIdentified: z.boolean().nullable(),
     /**
      * Confirms non-imaging data have been de-identified.
      */
@@ -598,6 +616,7 @@ export const questionnaireDataSchema = z
 export type QuestionnaireData = z.infer<typeof questionnaireDataSchema>;
 export type Section = z.infer<typeof sectionSchema>;
 export type SectionStatus = z.infer<typeof sectionSchema>["status"];
+export type SectionKey = z.infer<typeof sectionSchema>["name"];
 export type TimeConstraint = z.infer<typeof timeConstraintSchema>;
 export type ClinicalData = z.infer<typeof clinicalDataSchema>;
 export type Contact = z.infer<typeof contactSchema>;

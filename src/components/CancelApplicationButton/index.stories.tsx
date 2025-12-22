@@ -4,6 +4,7 @@ import { screen, userEvent, waitFor, within, expect, fn } from "@storybook/test"
 
 import { applicantFactory } from "@/factories/application/ApplicantFactory";
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
+import { formContextStateFactory } from "@/factories/application/FormContextStateFactory";
 
 import { CANCEL_APP, CancelAppInput, CancelAppResp } from "../../graphql";
 import { Context as AuthContext, ContextState as AuthCtxState } from "../Contexts/AuthContext";
@@ -57,12 +58,14 @@ const meta: Meta<typeof Button> = {
     (Story) => (
       <FormContext.Provider
         value={{
-          status: FormStatus.LOADED,
-          data: applicationFactory.build({
-            _id: "mock-id",
-            status: "In Progress",
-            applicant: applicantFactory.build({
-              applicantID: "applicant-123",
+          ...formContextStateFactory.build({
+            status: FormStatus.LOADED,
+            data: applicationFactory.build({
+              _id: "mock-id",
+              status: "In Progress",
+              applicant: applicantFactory.build({
+                applicantID: "applicant-123",
+              }),
             }),
           }),
         }}

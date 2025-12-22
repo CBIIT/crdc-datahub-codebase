@@ -112,10 +112,15 @@ const DeleteDialog = ({
     >
       <CloseIconSvg />
     </StyledCloseDialogButton>
-    <StyledHeader variant="h3" data-testid="delete-dialog-header" {...headerProps}>
+    <StyledHeader
+      variant="h3"
+      data-testid="delete-dialog-header"
+      aria-label="Dialog header"
+      {...headerProps}
+    >
       {header}
     </StyledHeader>
-    <StyledDescription data-testid="delete-dialog-description">
+    <StyledDescription id="dialog-description" data-testid="delete-dialog-description">
       {description || (
         <>
           The metadata or files specified in the selected files, along with their associated child

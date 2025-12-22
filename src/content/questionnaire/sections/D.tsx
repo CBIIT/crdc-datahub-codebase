@@ -141,13 +141,13 @@ const FormSectionD: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   const {
     status,
     data: { questionnaireData: data },
+    formRef,
   } = useFormContext();
   const { readOnlyInputs } = useFormMode();
   const { D: SectionDMetadata } = SectionMetadata;
 
   const [dataTypes, setDataTypes] = useState<string[]>(data.dataTypes);
   const formContainerRef = useRef<HTMLDivElement>();
-  const formRef = useRef<HTMLFormElement>();
   const [dataTypesErrorMsg, setDataTypesErrorMsg] = useState<string>("");
   const [clinicalDataTypesErrorMsg, setClinicalDataTypesErrorMsg] = useState<string>("");
   const dataTypesInputRef = useRef<HTMLInputElement>(null);

@@ -1,19 +1,18 @@
+import { TypedDocumentNode } from "@apollo/client";
 import gql from "graphql-tag";
 
-export const mutation = gql`
+export const mutation: TypedDocumentNode<Response, Input> = gql`
   mutation createOrganization(
     $name: String!
     $abbreviation: String!
     $description: String
     $conciergeID: String
-    $studies: [ApprovedStudyInput]
   ) {
     createOrganization(
       name: $name
       abbreviation: $abbreviation
       description: $description
       conciergeID: $conciergeID
-      studies: $studies
     ) {
       _id
       name
@@ -22,11 +21,6 @@ export const mutation = gql`
       status
       conciergeID
       conciergeName
-      studies {
-        _id
-        studyName
-        studyAbbreviation
-      }
       createdAt
       updateAt
     }
@@ -38,7 +32,6 @@ export type Input = {
   abbreviation: string;
   description: string;
   conciergeID: string;
-  studies: { studyID: string }[];
 };
 
 export type Response = {

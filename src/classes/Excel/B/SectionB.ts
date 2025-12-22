@@ -18,13 +18,13 @@ import {
 import { ErrorCatalog } from "../ErrorCatalog";
 import { CharacterLimitsMap, SectionBase, SectionCtxBase } from "../SectionBase";
 
-import { COLUMNS, BKeys, SCHEMA } from "./Columns";
+import { COLUMNS, BKeys } from "./Columns";
 
 const DEFAULT_CHARACTER_LIMITS: CharacterLimitsMap<BKeys> = {
   "program.name": 100,
   "program.abbreviation": 100,
   "program.description": 500,
-  "study.name": 100,
+  "study.name": 1_000,
   "study.abbreviation": 20,
   "study.description": 2_500,
   // "study.funding.agency": 0,
@@ -51,9 +51,11 @@ type SectionBDeps = {
 export class SectionB extends SectionBase<BKeys, SectionBDeps> {
   static SHEET_NAME = "Program and Study";
 
+  static SHEET_ID: SectionKey = "B";
+
   constructor(deps: SectionBDeps) {
     super({
-      id: "B",
+      id: SectionB.SHEET_ID,
       sheetName: SectionB.SHEET_NAME,
       columns: COLUMNS,
       headerColor: "D9EAD3",
@@ -580,4 +582,4 @@ export class SectionB extends SectionBase<BKeys, SectionBDeps> {
   }
 }
 
-export { COLUMNS as SectionBColumns, SCHEMA as SectionBSchema };
+export { COLUMNS as SectionBColumns };

@@ -7,13 +7,38 @@ import { axe } from "vitest-axe";
 
 import {
   EditUserInput,
+  GET_TOOLTIPS,
+  GetTooltipsInput,
+  GetTooltipsResp,
   RETRIEVE_PBAC_DEFAULTS,
   RetrievePBACDefaultsInput,
   RetrievePBACDefaultsResp,
 } from "../../graphql";
-import { act, render, waitFor, within } from "../../test-utils";
+import { act, render, screen, waitFor, within } from "../../test-utils";
 
 import PermissionPanel from "./index";
+
+const getTooltipsMock: MockedResponse<GetTooltipsResp, GetTooltipsInput> = {
+  request: {
+    query: GET_TOOLTIPS,
+  },
+  result: {
+    data: {
+      getTooltips: [
+        // Permissions
+        { key: "submission_request:view", value: "View Submission Request" },
+        { key: "data_submission:view", value: "View Data Submission" },
+        { key: "program:manage", value: "Manage Programs" },
+        { key: "access:request", value: "Request Access" },
+
+        // Notifications
+        { key: "submission_request:submitted", value: "Submission Request submitted" },
+        { key: "data_submission:created", value: "Submission Request submitted" },
+        { key: "access:requested", value: "Access Requested" },
+      ],
+    },
+  },
+};
 
 type MockParentProps = {
   children: React.ReactNode;
@@ -54,7 +79,9 @@ describe("Accessibility", () => {
     };
 
     const { container } = render(<PermissionPanel />, {
-      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
+      wrapper: ({ children }) => (
+        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
+      ),
     });
 
     let result;
@@ -122,7 +149,9 @@ describe("Accessibility", () => {
     };
 
     const { container } = render(<PermissionPanel />, {
-      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
+      wrapper: ({ children }) => (
+        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
+      ),
     });
 
     let result;
@@ -154,7 +183,9 @@ describe("Basic Functionality", () => {
     };
 
     const { container } = render(<PermissionPanel />, {
-      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
+      wrapper: ({ children }) => (
+        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
+      ),
     });
 
     expect(container).toBeInTheDocument();
@@ -182,7 +213,9 @@ describe("Basic Functionality", () => {
     };
 
     const { rerender } = render(<PermissionPanel />, {
-      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
+      wrapper: ({ children }) => (
+        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
+      ),
     });
 
     expect(mockMatcher).toHaveBeenCalledTimes(1);
@@ -270,7 +303,10 @@ describe("Basic Functionality", () => {
 
     const { getByTestId } = render(<PermissionPanel />, {
       wrapper: ({ children }) => (
-        <MockParent mocks={[mock]} methods={{ watch: mockWatcher } as unknown as FormProviderProps}>
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
           {children}
         </MockParent>
       ),
@@ -395,7 +431,10 @@ describe("Basic Functionality", () => {
 
     const { getByTestId, queryByTestId } = render(<PermissionPanel />, {
       wrapper: ({ children }) => (
-        <MockParent mocks={[mock]} methods={{ watch: mockWatcher } as unknown as FormProviderProps}>
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
           {children}
         </MockParent>
       ),
@@ -526,7 +565,10 @@ describe("Basic Functionality", () => {
 
     const { getByTestId, queryByTestId } = render(<PermissionPanel />, {
       wrapper: ({ children }) => (
-        <MockParent mocks={[mock]} methods={{ watch: mockWatcher } as unknown as FormProviderProps}>
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
           {children}
         </MockParent>
       ),
@@ -649,7 +691,10 @@ describe("Basic Functionality", () => {
 
     const { getByTestId } = render(<PermissionPanel />, {
       wrapper: ({ children }) => (
-        <MockParent mocks={[mock]} methods={{ watch: mockWatcher } as unknown as FormProviderProps}>
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
           {children}
         </MockParent>
       ),
@@ -688,7 +733,9 @@ describe("Basic Functionality", () => {
     };
 
     render(<PermissionPanel />, {
-      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
+      wrapper: ({ children }) => (
+        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
+      ),
     });
 
     await waitFor(() => {
@@ -708,7 +755,9 @@ describe("Basic Functionality", () => {
     };
 
     render(<PermissionPanel />, {
-      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
+      wrapper: ({ children }) => (
+        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
+      ),
     });
 
     await waitFor(() => {
@@ -720,6 +769,11 @@ describe("Basic Functionality", () => {
 });
 
 describe("Implementation Requirements", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
   it("should utilize the initial form values to determine the checked state of each permission", async () => {
     const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
       request: {
@@ -804,7 +858,10 @@ describe("Implementation Requirements", () => {
 
     const { getByTestId } = render(<PermissionPanel />, {
       wrapper: ({ children }) => (
-        <MockParent mocks={[mock]} methods={{ watch: mockWatcher } as unknown as FormProviderProps}>
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
           {children}
         </MockParent>
       ),
@@ -963,7 +1020,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId, rerender } = render(<PermissionPanel />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -1111,7 +1168,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId, rerender } = render(<PermissionPanel />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -1155,7 +1212,9 @@ describe("Implementation Requirements", () => {
     };
 
     const { getByTestId } = render(<PermissionPanel />, {
-      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
+      wrapper: ({ children }) => (
+        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
+      ),
     });
 
     expect(within(getByTestId("permissions-accordion")).getByRole("button")).toHaveAttribute(
@@ -1237,7 +1296,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId, rerender } = render(<PermissionPanel />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -1307,7 +1366,9 @@ describe("Implementation Requirements", () => {
     };
 
     const { getByTestId } = render(<PermissionPanel />, {
-      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
+      wrapper: ({ children }) => (
+        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
+      ),
     });
 
     expect(getByTestId("no-permissions-notice")).toBeInTheDocument();
@@ -1433,7 +1494,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId } = render(<PermissionPanel />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -1547,7 +1608,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId, rerender } = render(<PermissionPanel readOnly={false} />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -1703,7 +1764,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId, rerender } = render(<PermissionPanel readOnly={false} />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -1811,7 +1872,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId, rerender } = render(<PermissionPanel readOnly={false} />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -1912,7 +1973,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId, rerender } = render(<PermissionPanel readOnly={false} />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -1923,8 +1984,6 @@ describe("Implementation Requirements", () => {
     await waitFor(() => {
       expect(getByTestId("permission-data_submission:view")).toBeInTheDocument();
     });
-
-    expect(getByTestId("permissions-count")).toHaveTextContent(/(0)/);
 
     // Check the cancel permission which has a multi-level dependency
     userEvent.click(
@@ -2022,7 +2081,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId, rerender } = render(<PermissionPanel readOnly={false} />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -2033,8 +2092,6 @@ describe("Implementation Requirements", () => {
     await waitFor(() => {
       expect(getByTestId("notification-account:inactivated")).toBeInTheDocument();
     });
-
-    expect(getByTestId("notifications-count")).toHaveTextContent(/(0)/);
 
     // Check the cancelled notification which has a multi-level dependency
     userEvent.click(
@@ -2114,7 +2171,7 @@ describe("Implementation Requirements", () => {
     const { getByTestId } = render(<PermissionPanel readOnly={false} />, {
       wrapper: ({ children }) => (
         <MockParent
-          mocks={[mock]}
+          mocks={[mock, getTooltipsMock]}
           methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
         >
           {children}
@@ -2136,5 +2193,573 @@ describe("Implementation Requirements", () => {
         }
       )
     ).toBeChecked();
+  });
+
+  it("should display tooltip on permission label when hovering", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [
+                {
+                  _id: "submission_request:view",
+                  group: "Submission Request",
+                  name: "View",
+                  inherited: [],
+                  order: 0,
+                  checked: false,
+                  disabled: false,
+                },
+              ],
+              notifications: [],
+            },
+          ],
+        },
+      },
+    };
+
+    const mockWatcher = vi.fn().mockImplementation((field) => {
+      if (field === "role") {
+        return "Submitter";
+      }
+      return [];
+    });
+
+    const { getByTestId, getByRole } = render(<PermissionPanel />, {
+      wrapper: ({ children }) => (
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
+          {children}
+        </MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("permission-submission_request:view-label")).toBeInTheDocument();
+    });
+
+    const expandButton = getByRole("button", { name: /Permissions/ });
+    userEvent.click(expandButton);
+
+    const labelSpan = getByTestId("permission-submission_request:view-label");
+
+    userEvent.hover(labelSpan);
+
+    await waitFor(() => {
+      expect(screen.getByRole("tooltip")).toHaveTextContent("View Submission Request", {
+        normalizeWhitespace: true,
+      });
+    });
+  });
+
+  it("should display tooltip on notification label when hovering", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [],
+              notifications: [
+                {
+                  _id: "submission_request:submitted",
+                  group: "Submission Request",
+                  name: "Submitted",
+                  inherited: [],
+                  order: 0,
+                  checked: false,
+                  disabled: false,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const mockWatcher = vi.fn().mockImplementation((field) => {
+      if (field === "role") {
+        return "Submitter";
+      }
+      return [];
+    });
+
+    const { getByTestId, getByRole } = render(<PermissionPanel />, {
+      wrapper: ({ children }) => (
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
+          {children}
+        </MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("notification-submission_request:submitted-label")).toBeInTheDocument();
+    });
+
+    const expandButton = getByRole("button", { name: /Email Notifications/ });
+    userEvent.click(expandButton);
+
+    const labelSpan = getByTestId("notification-submission_request:submitted-label");
+
+    userEvent.hover(labelSpan);
+
+    await waitFor(() => {
+      expect(screen.getByRole("tooltip")).toHaveTextContent("Submission Request submitted", {
+        normalizeWhitespace: true,
+      });
+    });
+  });
+
+  it("should store tooltips as array in local storage", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [],
+              notifications: [],
+            },
+          ],
+        },
+      },
+    };
+
+    render(<PermissionPanel />, {
+      wrapper: ({ children }) => (
+        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(localStorage.getItem("profile-tooltips")).not.toBeNull();
+    });
+
+    const storedTooltips = JSON.parse(localStorage.getItem("profile-tooltips") || "[]");
+
+    expect(Array.isArray(storedTooltips)).toBe(true);
+    expect(storedTooltips.length).toBeGreaterThan(0);
+    expect(storedTooltips).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "submission_request:view",
+          value: "View Submission Request",
+        }),
+        expect.objectContaining({ key: "data_submission:view", value: "View Data Submission" }),
+        expect.objectContaining({ key: "program:manage", value: "Manage Programs" }),
+        expect.objectContaining({ key: "access:request", value: "Request Access" }),
+        expect.objectContaining({
+          key: "submission_request:submitted",
+          value: "Submission Request submitted",
+        }),
+        expect.objectContaining({
+          key: "data_submission:created",
+          value: "Submission Request submitted",
+        }),
+        expect.objectContaining({ key: "access:requested", value: "Access Requested" }),
+      ])
+    );
+  });
+
+  it("should not call API when tooltips are already in local storage", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [],
+              notifications: [],
+            },
+          ],
+        },
+      },
+    };
+
+    const storedTooltips = [
+      { key: "submission_request:view", value: "View Submission Request" },
+      { key: "data_submission:view", value: "View Data Submission" },
+      { key: "program:manage", value: "Manage Programs" },
+    ];
+    localStorage.setItem("profile-tooltips", JSON.stringify(storedTooltips));
+
+    render(<PermissionPanel />, {
+      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
+    });
+
+    await waitFor(() => {
+      expect(localStorage.getItem("profile-tooltips")).not.toBeNull();
+    });
+
+    const tooltips = JSON.parse(localStorage.getItem("profile-tooltips") || "[]");
+    expect(tooltips).toEqual(storedTooltips);
+  });
+
+  it("should retrieve tooltip using base key (without scope suffix)", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [
+                {
+                  _id: "data_submission:view:scope:scope-123" as AuthPermissions,
+                  group: "Data Submission",
+                  name: "View",
+                  inherited: [],
+                  order: 0,
+                  checked: false,
+                  disabled: false,
+                },
+              ],
+              notifications: [],
+            },
+          ],
+        },
+      },
+    };
+
+    const mockWatcher = vi.fn().mockImplementation((field) => {
+      if (field === "role") {
+        return "Submitter";
+      }
+      return [];
+    });
+
+    const { getByTestId, getByRole } = render(<PermissionPanel />, {
+      wrapper: ({ children }) => (
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
+          {children}
+        </MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(
+        getByTestId("permission-data_submission:view:scope:scope-123-label")
+      ).toBeInTheDocument();
+    });
+
+    const expandButton = getByRole("button", { name: /Permissions/ });
+    userEvent.click(expandButton);
+
+    const labelSpan = getByTestId("permission-data_submission:view:scope:scope-123-label");
+
+    userEvent.hover(labelSpan);
+
+    await waitFor(() => {
+      expect(screen.getByRole("tooltip")).toHaveTextContent("View Data Submission", {
+        normalizeWhitespace: true,
+      });
+    });
+  });
+
+  it("should handle missing tooltip data gracefully", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [
+                {
+                  _id: "submission_request:view",
+                  group: "Submission Request",
+                  name: "View",
+                  inherited: [],
+                  order: 0,
+                  checked: false,
+                  disabled: false,
+                },
+              ],
+              notifications: [],
+            },
+          ],
+        },
+      },
+    };
+
+    const mockWatcher = vi.fn().mockImplementation((field) => {
+      if (field === "role") {
+        return "Submitter";
+      }
+      return [];
+    });
+
+    const getTooltipsEmptyMock: MockedResponse<GetTooltipsResp, GetTooltipsInput> = {
+      request: {
+        query: GET_TOOLTIPS,
+      },
+      result: {
+        data: {
+          getTooltips: [],
+        },
+      },
+    };
+
+    const { getByTestId, getByRole } = render(<PermissionPanel />, {
+      wrapper: ({ children }) => (
+        <MockParent
+          mocks={[mock, getTooltipsEmptyMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
+          {children}
+        </MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("permission-submission_request:view")).toBeInTheDocument();
+    });
+
+    const expandButton = getByRole("button", { name: /Permissions/ });
+    userEvent.click(expandButton);
+
+    expect(getByTestId("permission-submission_request:view")).toBeInTheDocument();
+    expect(global.mockEnqueue).not.toHaveBeenCalled();
+  });
+
+  it("should handle GET_TOOLTIPS API failure gracefully", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [
+                {
+                  _id: "submission_request:view",
+                  group: "Submission Request",
+                  name: "View",
+                  inherited: [],
+                  order: 0,
+                  checked: false,
+                  disabled: false,
+                },
+              ],
+              notifications: [],
+            },
+          ],
+        },
+      },
+    };
+
+    const mockWatcher = vi.fn().mockImplementation((field) => {
+      if (field === "role") {
+        return "Submitter";
+      }
+      return [];
+    });
+
+    const getTooltipsErrorMock: MockedResponse<GetTooltipsResp, GetTooltipsInput> = {
+      request: {
+        query: GET_TOOLTIPS,
+      },
+      error: new Error("Network error"),
+    };
+
+    const { getByTestId, getByRole } = render(<PermissionPanel />, {
+      wrapper: ({ children }) => (
+        <MockParent
+          mocks={[mock, getTooltipsErrorMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
+          {children}
+        </MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("permission-submission_request:view")).toBeInTheDocument();
+    });
+
+    const expandButton = getByRole("button", { name: /Permissions/ });
+    userEvent.click(expandButton);
+
+    expect(getByTestId("permission-submission_request:view")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith("Failed to retrieve PBAC tooltips", {
+        variant: "error",
+      });
+    });
+  });
+
+  it("should handle GET_TOOLTIPS GraphQL error gracefully", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [
+                {
+                  _id: "data_submission:view",
+                  group: "Data Submission",
+                  name: "View",
+                  inherited: [],
+                  order: 0,
+                  checked: false,
+                  disabled: false,
+                },
+              ],
+              notifications: [],
+            },
+          ],
+        },
+      },
+    };
+
+    const mockWatcher = vi.fn().mockImplementation((field) => {
+      if (field === "role") {
+        return "Submitter";
+      }
+      return [];
+    });
+
+    const getTooltipsGraphQLErrorMock: MockedResponse<GetTooltipsResp, GetTooltipsInput> = {
+      request: {
+        query: GET_TOOLTIPS,
+      },
+      result: {
+        errors: [new GraphQLError("Failed to fetch tooltips")],
+      },
+    };
+
+    const { getByTestId, getByRole } = render(<PermissionPanel />, {
+      wrapper: ({ children }) => (
+        <MockParent
+          mocks={[mock, getTooltipsGraphQLErrorMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
+          {children}
+        </MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("permission-data_submission:view")).toBeInTheDocument();
+    });
+
+    const expandButton = getByRole("button", { name: /Permissions/ });
+    userEvent.click(expandButton);
+
+    expect(getByTestId("permission-data_submission:view")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith("Failed to retrieve PBAC tooltips", {
+        variant: "error",
+      });
+    });
+  });
+
+  it("should handle null tooltip response gracefully", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [
+                {
+                  _id: "program:manage",
+                  group: "Admin",
+                  name: "Manage Programs",
+                  inherited: [],
+                  order: 0,
+                  checked: false,
+                  disabled: false,
+                },
+              ],
+              notifications: [],
+            },
+          ],
+        },
+      },
+    };
+
+    const mockWatcher = vi.fn().mockImplementation((field) => {
+      if (field === "role") {
+        return "Submitter";
+      }
+      return [];
+    });
+
+    const getTooltipsNullMock: MockedResponse<GetTooltipsResp, GetTooltipsInput> = {
+      request: {
+        query: GET_TOOLTIPS,
+      },
+      result: {
+        data: {
+          getTooltips: null as unknown as GetTooltipsResp["getTooltips"],
+        },
+      },
+    };
+
+    const { getByTestId, getByRole } = render(<PermissionPanel />, {
+      wrapper: ({ children }) => (
+        <MockParent
+          mocks={[mock, getTooltipsNullMock]}
+          methods={{ watch: mockWatcher } as unknown as FormProviderProps}
+        >
+          {children}
+        </MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("permission-program:manage")).toBeInTheDocument();
+    });
+
+    const expandButton = getByRole("button", { name: /Permissions/ });
+    userEvent.click(expandButton);
+
+    expect(getByTestId("permission-program:manage")).toBeInTheDocument();
+    expect(global.mockEnqueue).not.toHaveBeenCalled();
   });
 });

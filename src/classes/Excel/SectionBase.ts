@@ -1,7 +1,7 @@
 import type ExcelJS from "exceljs";
 import { CellValue } from "exceljs";
 
-import { Logger } from "@/utils";
+import { Logger } from "@/utils/logger";
 
 import { ErrorCatalog } from "./ErrorCatalog";
 
@@ -191,10 +191,7 @@ export abstract class SectionBase<K extends string, D> implements Section {
    * @param ws The worksheet.
    * @param row The row to validate.
    */
-  protected abstract applyValidation(
-    ctx: SectionCtxBase,
-    ws: ExcelJS.Worksheet
-  ): void | Promise<void>;
+  protected abstract applyValidation(ctx: SectionCtxBase, ws: ExcelJS.Worksheet): Promise<void>;
 
   /**
    * Write annotations on the specified cells in the worksheet.

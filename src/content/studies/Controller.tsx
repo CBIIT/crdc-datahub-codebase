@@ -26,11 +26,9 @@ const StudiesController: FC = () => {
     return <Navigate to="/" />;
   }
 
-  return studyId ? (
-    <StudyView _id={studyId} />
-  ) : (
+  return (
     <OrganizationProvider preload>
-      <ListView />
+      {studyId ? <StudyView _id={studyId} /> : <ListView />}
     </OrganizationProvider>
   );
 };

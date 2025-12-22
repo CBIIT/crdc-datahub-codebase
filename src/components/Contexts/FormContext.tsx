@@ -39,6 +39,7 @@ export type SetDataReturnType =
 export type ContextState = {
   status: Status;
   data: Application;
+  formRef: React.RefObject<HTMLFormElement>;
   submitData?: () => Promise<string | boolean>;
   reopenForm?: () => Promise<string | boolean>;
   approveForm?: (data: ApproveFormInput, wholeProgram: boolean) => Promise<SetDataReturnType>;
@@ -59,7 +60,12 @@ export enum Status {
   SUBMITTING = "SUBMITTING", // Submitting data to the API
 }
 
-const initialState: ContextState = { status: Status.LOADING, data: null };
+const initialState: ContextState = {
+  status: Status.LOADING,
+  data: null,
+  formRef: React.createRef<HTMLFormElement>(),
+  error: null,
+};
 
 /**
  * Form Context
@@ -99,8 +105,8 @@ type ProviderProps = {
  * Creates a form context for the given form ID
  *
  * @see useFormContext – Form context hook
- * @param {ProviderProps} props - Form context provider props
- * @returns {JSX.Element} - Form context provider
+ * @param props Form context provider props
+ * @returns The Form context provider
  */
 export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps) => {
   const [state, setState] = useState<ContextState>(initialState);
@@ -175,6 +181,10 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     setState((prevState) => ({ ...prevState, status: Status.SAVING }));
     const fullPIName = `${data?.pi?.firstName || ""} ${data?.pi?.lastName || ""}`.trim();
 
+    const newStatus: ApplicationStatus = data?.sections?.some((s) => s.status !== "Not Started")
+      ? "In Progress"
+      : "New";
+
     const newInstitutions = [...newState.data.newInstitutions];
     const { pi, primaryContact, additionalContacts } = newState.data.questionnaireData;
     const contacts = [pi, primaryContact, ...(additionalContacts || [])].filter(
@@ -223,6 +233,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
             .map(({ id, name }) => ({ id, name })),
           GPAName: data?.study?.GPAName,
         },
+        status: newStatus,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 
@@ -253,6 +264,8 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
 
     newState.data = {
       ...newState.data,
+      programName: d?.saveApplication?.programName,
+      studyAbbreviation: d?.saveApplication?.studyAbbreviation,
       status: d?.saveApplication?.status,
       updatedAt: d?.saveApplication?.updatedAt,
       createdAt: d?.saveApplication?.createdAt,
@@ -388,40 +401,19 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       setState({
         status: Status.ERROR,
         data: null,
+        formRef: null,
         error: "Invalid application ID provided",
       });
       return;
     }
 
     (async () => {
-      // NOTE: This logic is UNUSED but left as a fallback in case we need to revert to it
-      if (id === "new") {
-        const { data: d } = await lastApp();
-        const { getMyLastApplication } = d || {};
-        const lastAppData = JSON.parse(getMyLastApplication?.questionnaireData || null) || {};
-
-        setState({
-          status: Status.LOADED,
-          data: {
-            ...InitialApplication,
-            questionnaireData: {
-              ...InitialQuestionnaire,
-              pi: {
-                ...InitialQuestionnaire.pi,
-                ...lastAppData?.pi,
-              },
-            },
-          },
-        });
-
-        return;
-      }
-
       const { data: d, error } = await getApp();
       if (error || !d?.getApplication?.questionnaireData) {
         setState({
           status: Status.ERROR,
           data: null,
+          formRef: null,
           error: "An unknown API or GraphQL error occurred",
         });
         return;
@@ -441,6 +433,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
 
       setState({
         status: Status.LOADED,
+        formRef: state.formRef,
         data: {
           ...merge(cloneDeep(InitialApplication), d?.getApplication),
           questionnaireData: {

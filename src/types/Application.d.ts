@@ -71,7 +71,8 @@ type Applicant = {
 
 type QuestionnaireData = import("@/schemas/Application").QuestionnaireData;
 type Section = import("@/schemas/Application").Section;
-type SectionStatus = import("@/schemas/Application").Section["status"];
+type SectionKey = import("@/schemas/Application").SectionKey;
+type SectionStatus = import("@/schemas/Application").SectionStatus;
 type TimeConstraint = import("@/schemas/Application").TimeConstraint;
 type ClinicalData = import("@/schemas/Application").ClinicalData;
 type Contact = import("@/schemas/Application").Contact;

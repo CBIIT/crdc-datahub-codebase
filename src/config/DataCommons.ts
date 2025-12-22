@@ -36,6 +36,11 @@ const DataCommons: DataCommon[] = [
     assets: null,
   },
   {
+    name: "PSDC",
+    displayName: "PSDC",
+    assets: null,
+  },
+  {
     name: "Test MDF",
     displayName: "Test MDF",
     assets: null,

@@ -21,6 +21,7 @@ import {
   isValidInRange,
   filterPositiveIntegerString,
   combineQuestionnaireData,
+  validatePHSNumber,
 } from "../../../utils";
 
 const StyledLink = styled(Link)({
@@ -54,10 +55,10 @@ const AccessTypesDescription = styled("span")(() => ({
 const FormSectionC: FC<FormSectionProps> = ({ SectionOption, refs }: FormSectionProps) => {
   const {
     data: { questionnaireData: data },
+    formRef,
   } = useFormContext();
   const { readOnlyInputs } = useFormMode();
   const formContainerRef = useRef<HTMLDivElement>();
-  const formRef = useRef<HTMLFormElement>();
   const { getFormObjectRef } = refs;
   const { C: SectionCMetadata } = SectionMetadata;
 
@@ -221,6 +222,8 @@ const FormSectionC: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           name="study[dbGaPPPHSNumber]"
           value={dbGaPPPHSNumber}
           onChange={(e) => setDbGaPPPHSNumber(e.target.value || "")}
+          validate={validatePHSNumber}
+          errorText="Please provide a valid dbGaP PHS number"
           maxLength={50}
           placeholder='Ex/ "phs002529.v1.p1". 50 characters allowed'
           gridWidth={12}

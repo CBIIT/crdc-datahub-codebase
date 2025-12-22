@@ -12,11 +12,12 @@ type FormSectionProps = {
 };
 
 type FormObject = {
+  /**
+   * @deprecated use `formRef` in the context instead.
+   */
   ref: React.RefObject<HTMLFormElement>;
   data: QuestionnaireData;
 };
-
-type SectionKey = "A" | "B" | "C" | "D" | "REVIEW";
 
 type SectionConfig = {
   [key in SectionKey]: SectionOption;

@@ -11,7 +11,7 @@ import { useAuthContext } from "../Contexts/AuthContext";
 import { useFormContext } from "../Contexts/FormContext";
 import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
 
-import ImportDialog from "./ImportDialog";
+import ImportDialog, { IMPORT_ERROR_MESSAGE } from "./ImportDialog";
 
 const StyledImportIcon = styled(ImportIconSvg)({
   width: "27px",
@@ -87,10 +87,12 @@ type Props = {
 const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: Props) => {
   const { enqueueSnackbar } = useSnackbar();
   const { user } = useAuthContext();
-  const { data, setData } = useFormContext();
+  const { data, formRef, setData } = useFormContext();
   const { readOnlyInputs } = useFormMode();
+
   const [openDialog, setOpenDialog] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
+
   const isFormOwner = user?._id === data?.applicant?.applicantID;
   const isReviewSection = activeSection?.toUpperCase() === config.REVIEW.id.toUpperCase();
   const shouldDisable =
@@ -107,6 +109,17 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
     }
 
     setOpenDialog(true);
+  };
+
+  /**
+   * Resets the import state by closing the dialog and resetting the uploading flag.
+   * Used after successful import.
+   *
+   * @returns void
+   */
+  const resetImportState = () => {
+    setOpenDialog(false);
+    setIsUploading(false);
   };
 
   /**
@@ -135,27 +148,47 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
         `ImportApplicationButton: File does not have arrayBuffer method`,
         dataTransferFile
       );
+      setIsUploading(false);
       return;
     }
 
-    const newData = await QuestionnaireExcelMiddleware.parse(
-      await dataTransferFile?.arrayBuffer(),
-      {
-        application: data,
-      }
-    );
+    let parsedForm: QuestionnaireData;
+    try {
+      parsedForm = await QuestionnaireExcelMiddleware.parse(dataTransferFile, {});
+    } catch (error) {
+      Logger.error(`ImportApplicationButton: Failed to parse file`, error);
+      enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
+      setIsUploading(false);
+      return;
+    }
 
-    const res = await setData(newData as QuestionnaireData, { skipSave: false });
+    const isCompleted = parsedForm?.sections?.every((section) => section.status === "Completed");
+    const res = await setData(parsedForm, { skipSave: false });
 
     if (res?.status === "success") {
       enqueueSnackbar(
-        "Your data for this Submission Request has been imported. Please review each page and confirm all fields before submitting.",
+        isCompleted
+          ? "Your data has been imported and all passed validation. You may proceed to Review & Submit."
+          : "Your data has been imported, but some pages contain validation errors. Please review each page and resolve before submitting.",
         { variant: "success" }
       );
+      setTimeout(() => formRef?.current?.reportValidity(), 200);
+      resetImportState();
+    } else {
+      enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
+      setIsUploading(false);
     }
+  };
 
-    setOpenDialog(false);
-    setIsUploading(false);
+  /**
+   * Handles the error callback from the ImportDialog.
+   * Shows the error notification but keeps the dialog open.
+   *
+   * @param message The error message to display.
+   * @returns void
+   */
+  const handleImportError = (message: string) => {
+    enqueueSnackbar(message, { variant: "error" });
   };
 
   if (!isFormOwner) {
@@ -193,6 +226,7 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
         open={openDialog}
         onClose={() => setOpenDialog(false)}
         onConfirm={handleImport}
+        onError={handleImportError}
         disabled={isUploading}
       />
     </>

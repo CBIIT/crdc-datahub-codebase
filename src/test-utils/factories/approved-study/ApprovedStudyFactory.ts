@@ -14,7 +14,7 @@ export const baseApprovedStudy: ApprovedStudy = {
   openAccess: false,
   PI: "",
   ORCID: "",
-  programs: [],
+  program: null,
   primaryContact: userFactory.build(),
   useProgramPC: false,
   pendingModelChange: false,

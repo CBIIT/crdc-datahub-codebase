@@ -126,7 +126,7 @@ const BaseComponent: FC<Props> = ({ section, user = {}, data = {} }: Props) => {
 };
 
 describe("Accessibility", () => {
-  const keys = Object.keys(config);
+  const keys = Object.keys(config) as SectionKey[];
 
   it("has no base accessibility violations", async () => {
     const { container } = render(<BaseComponent section={keys[0]} />);
@@ -184,7 +184,7 @@ describe("Accessibility", () => {
 });
 
 describe("Basic Functionality", () => {
-  const keys = Object.keys(config);
+  const keys = Object.keys(config) as SectionKey[];
   const sections = Object.values(config);
 
   it("renders the progress bar with all A-D config-defined sections", () => {
@@ -390,7 +390,7 @@ describe("Basic Functionality", () => {
         },
         questionnaireData: {
           ...BaseApplication.questionnaireData,
-          sections: keys.map((s) => ({ name: s, status: "Completed" })),
+          sections: keys.map((s: SectionKey) => ({ name: s, status: "Completed" })),
         },
       };
 
@@ -424,7 +424,7 @@ describe("Implementation Requirements", () => {
       },
       questionnaireData: {
         ...BaseApplication.questionnaireData,
-        sections: Object.keys(config)?.map((s) => ({ name: s, status: "Completed" })),
+        sections: Object.keys(config)?.map((s: SectionKey) => ({ name: s, status: "Completed" })),
       },
     };
 
@@ -453,7 +453,7 @@ describe("Implementation Requirements", () => {
       },
       questionnaireData: {
         ...BaseApplication.questionnaireData,
-        sections: Object.keys(config)?.map((s) => ({ name: s, status: "Completed" })),
+        sections: Object.keys(config)?.map((s: SectionKey) => ({ name: s, status: "Completed" })),
       },
     };
 
@@ -482,7 +482,7 @@ describe("Implementation Requirements", () => {
       },
       questionnaireData: {
         ...BaseApplication.questionnaireData,
-        sections: Object.keys(config)?.map((s) => ({ name: s, status: "Completed" })),
+        sections: Object.keys(config)?.map((s: SectionKey) => ({ name: s, status: "Completed" })),
       },
     };
 

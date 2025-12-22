@@ -1,43 +1,4 @@
-import * as z from "zod";
-
-import {
-  fundingSchema,
-  plannedPublicationSchema,
-  programInputSchema,
-  publicationSchema,
-  repositorySchema,
-  studySchema,
-} from "@/schemas/Application";
-
 import { ColumnDef } from "../SectionBase";
-
-export const SCHEMA = z
-  .object({
-    program: programInputSchema,
-    study: z
-      .object({
-        name: studySchema.shape.name,
-        abbreviation: studySchema.shape.abbreviation,
-        description: studySchema.shape.description,
-        funding: z.array(
-          fundingSchema.pick({ agency: true, grantNumbers: true, nciProgramOfficer: true })
-        ),
-        publications: z.array(publicationSchema.pick({ title: true, pubmedID: true, DOI: true })),
-        plannedPublications: z.array(
-          plannedPublicationSchema.pick({ title: true, expectedDate: true })
-        ),
-        repositories: z.array(
-          repositorySchema.pick({
-            name: true,
-            studyID: true,
-            dataTypesSubmitted: true,
-            otherDataTypesSubmitted: true,
-          })
-        ),
-      })
-      .strict(),
-  })
-  .strict();
 
 export type BKeys =
   | "program._id"

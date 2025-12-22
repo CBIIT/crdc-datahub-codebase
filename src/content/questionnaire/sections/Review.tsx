@@ -48,11 +48,11 @@ const StyledDivider = styled(Divider)(() => ({
 const FormSectionReview: FC<FormSectionProps> = ({ SectionOption, refs }: FormSectionProps) => {
   const {
     data: { questionnaireData: data },
+    formRef,
   } = useFormContext();
   const { formMode } = useFormMode();
   const { pi, primaryContact, piAsPrimaryContact, program, study } = data;
   const formContainerRef = useRef<HTMLDivElement>();
-  const formRef = useRef<HTMLFormElement>();
   const { getFormObjectRef } = refs;
 
   const [additionalContacts] = useState<KeyedContact[]>(

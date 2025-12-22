@@ -184,7 +184,11 @@ describe("SubmittedData > General", () => {
     });
   });
 
-  it("should show an error message when 'Select All' failed to fetch all nodes (GraphQL)", async () => {
+  // NOTE: With inverse selection, "Select All" no longer fetches all nodes.
+  // The functionality now uses deleteAll with exclusiveIDs instead of fetching all nodeIDs.
+  // These tests for error handling on fetch are no longer applicable.
+
+  it("should toggle all rows to selected when clicking 'Select All' checkbox", async () => {
     const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
       maxUsageCount: 2, // initial query + orderBy bug
       request: {
@@ -210,20 +214,10 @@ describe("SubmittedData > General", () => {
       },
     };
 
-    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
-      request: {
-        query: GET_SUBMISSION_NODES,
-      },
-      variableMatcher: () => true,
-      result: {
-        errors: [new GraphQLError("Simulated GraphQL error")],
-      },
-    };
-
     const { getAllByRole } = render(
       <TestParent
-        mocks={[mockSubmissionQuery, getNodesMock, getAllNodesMock]}
-        submissionId="example-select-all-id-failure"
+        mocks={[mockSubmissionQuery, getNodesMock]}
+        submissionId="example-select-all-id"
         submissionName={undefined}
       >
         <SubmittedData />
@@ -231,19 +225,21 @@ describe("SubmittedData > General", () => {
     );
 
     await waitFor(() => {
-      // NOTE: Default pagination is 20 rows, if that drops below 20, this test will need to be updated
       expect(getAllByRole("checkbox")).toHaveLength(21);
     });
 
-    userEvent.click(getAllByRole("checkbox")[0]); // click 'Select All' checkbox
+    // Click 'Select All' - should now check header and all visible rows
+    userEvent.click(getAllByRole("checkbox")[0]);
 
     await waitFor(() => {
-      expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Cannot select all rows. Unable to retrieve node data.",
-        {
-          variant: "error",
-        }
-      );
+      // Header checkbox should be checked
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
+      // All row checkboxes should be checked
+      getAllByRole("checkbox")
+        .slice(1)
+        .forEach((checkbox) => {
+          expect(checkbox).toBeChecked();
+        });
     });
   });
 
@@ -251,7 +247,7 @@ describe("SubmittedData > General", () => {
   // This is to support the deletion functionality, where the user may have selected
   // to delete all rows.
   it("should not show an error message when the selected node has 0 results", async () => {
-    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp<false>, GetSubmissionNodesInput> = {
       request: {
         query: GET_SUBMISSION_NODES,
       },
@@ -260,6 +256,7 @@ describe("SubmittedData > General", () => {
         data: {
           getSubmissionNodes: {
             total: 0,
+            IDPropName: "",
             properties: [],
             nodes: [],
           },
@@ -285,66 +282,9 @@ describe("SubmittedData > General", () => {
     );
   });
 
-  it("should show an error message when 'Select All' failed to fetch all nodes (network)", async () => {
-    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
-      maxUsageCount: 2, // initial query + orderBy bug
-      request: {
-        query: GET_SUBMISSION_NODES,
-      },
-      variableMatcher: () => true,
-      result: {
-        data: {
-          getSubmissionNodes: {
-            total: 200,
-            properties: ["col-xyz"],
-            IDPropName: "col-xyz",
-            nodes: Array(20).fill({
-              nodeType: "example-node",
-              nodeID: "example-node-id",
-              props: JSON.stringify({
-                "col-xyz": "value-for-column-xyz",
-              }),
-              status: "New",
-            }),
-          },
-        },
-      },
-    };
-
-    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
-      request: {
-        query: GET_SUBMISSION_NODES,
-      },
-      variableMatcher: () => true,
-      error: new Error("Simulated network error"),
-    };
-
-    const { getAllByRole } = render(
-      <TestParent
-        mocks={[mockSubmissionQuery, getNodesMock, getAllNodesMock]}
-        submissionId="example-select-all-id-failure"
-        submissionName={undefined}
-      >
-        <SubmittedData />
-      </TestParent>
-    );
-
-    await waitFor(() => {
-      // NOTE: Default pagination is 20 rows, if that drops below 20, this test will need to be updated
-      expect(getAllByRole("checkbox")).toHaveLength(21);
-    });
-
-    userEvent.click(getAllByRole("checkbox")[0]); // click 'Select All' checkbox
-
-    await waitFor(() => {
-      expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Cannot select all rows. Unable to retrieve node data.",
-        {
-          variant: "error",
-        }
-      );
-    });
-  });
+  // NOTE: This test was for the old "Select All" behavior that fetched all nodes.
+  // With the new inverse selection approach, "Select All" no longer fetches all nodes,
+  // so this test is no longer applicable and has been removed.
 
   it("should show a alert box when a data deletion is ongoing", async () => {
     const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
@@ -357,6 +297,7 @@ describe("SubmittedData > General", () => {
           getSubmissionNodes: {
             total: 20,
             properties: ["col-xyz"],
+            IDPropName: "col-xyz",
             nodes: Array(20).fill({
               nodeType: "example-node",
               nodeID: "example-node-id",
@@ -791,7 +732,10 @@ describe("SubmittedData > Table", () => {
     });
   });
 
-  it("should fetch all nodes when the 'Select All' checkbox is clicked", async () => {
+  // NOTE: With the new inverse selection approach, "Select All" no longer fetches all nodes.
+  // Instead, it toggles a selectAllActive flag that is used with deleteAll and exclusiveIDs.
+  // This test has been updated to verify the new behavior.
+  it("should activate select all mode when the 'Select All' checkbox is clicked", async () => {
     const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
       maxUsageCount: 2, // initial query + orderBy bug
       request: {
@@ -817,28 +761,9 @@ describe("SubmittedData > Table", () => {
       },
     };
 
-    const mockMatcherAllNodes = vi.fn().mockImplementation(() => true);
-    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
-      maxUsageCount: 1,
-      request: {
-        query: GET_SUBMISSION_NODES,
-      },
-      variableMatcher: mockMatcherAllNodes,
-      result: {
-        data: {
-          getSubmissionNodes: {
-            total: 200,
-            nodes: Array(200).fill({
-              nodeID: "example-node-id",
-            }),
-          },
-        },
-      },
-    };
-
     const { getAllByRole } = render(
       <TestParent
-        mocks={[mockSubmissionQuery, getNodesMock, getAllNodesMock]}
+        mocks={[mockSubmissionQuery, getNodesMock]}
         submissionId="example-select-all-id"
         submissionName={undefined}
       >
@@ -851,21 +776,21 @@ describe("SubmittedData > Table", () => {
       expect(getAllByRole("checkbox")).toHaveLength(21); // header + 20 rows
     });
 
-    expect(mockMatcherAllNodes).not.toHaveBeenCalled();
-
     userEvent.click(getAllByRole("checkbox")[0]); // click 'Select All' checkbox
 
+    // All checkboxes (header + rows) should now be checked without fetching all nodes
     await waitFor(() => {
-      expect(mockMatcherAllNodes).toHaveBeenCalledWith(
-        expect.objectContaining({
-          partial: true,
-          first: -1,
-        })
-      );
+      expect(getAllByRole("checkbox")[0]).toBeChecked(); // header should be checked
+      // All row checkboxes should be checked (inverse selection mode - no exclusions)
+      getAllByRole("checkbox")
+        .slice(1)
+        .forEach((checkbox) => {
+          expect(checkbox).toBeChecked();
+        });
     });
   });
 
-  it("should deselect all rows when the 'Select All' checkbox is clicked in the 'indeterminate' state", async () => {
+  it("should toggle to 'select all' mode when the 'Select All' checkbox is clicked in the 'indeterminate' state", async () => {
     const submissionID = "example-deselect-all-id";
 
     const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
@@ -924,10 +849,15 @@ describe("SubmittedData > Table", () => {
       expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "true");
     });
 
-    userEvent.click(getAllByRole("checkbox")[0]); // click 'Select All' checkbox (to uncheck all)
+    // With new inverse selection, clicking header when indeterminate toggles to "select all" mode
+    userEvent.click(getAllByRole("checkbox")[0]); // click 'Select All' checkbox
 
     await waitFor(() => {
-      expect(getAllByRole("checkbox")[0]).not.toBeChecked();
+      // Header should now be checked (select all mode active with no exclusions)
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
+      // All row checkboxes should be checked
+      expect(getAllByRole("checkbox")[1]).toBeChecked();
+      expect(getAllByRole("checkbox")[2]).toBeChecked();
     });
   });
 
@@ -984,22 +914,123 @@ describe("SubmittedData > Table", () => {
       expect(getAllByRole("checkbox")).toHaveLength(3);
     });
 
-    // Manually select all rows
-    userEvent.click(getAllByRole("checkbox")[1]);
-    userEvent.click(getAllByRole("checkbox")[2]);
+    // Click "Select All" to enter select all mode
+    userEvent.click(getAllByRole("checkbox")[0]);
 
     await waitFor(() => {
       expect(getAllByRole("checkbox")[0]).toBeChecked();
+      // All row checkboxes should be checked
+      expect(getAllByRole("checkbox")[1]).toBeChecked();
+      expect(getAllByRole("checkbox")[2]).toBeChecked();
     });
 
-    userEvent.click(getAllByRole("checkbox")[0]); // click 'Select All' checkbox (to uncheck all)
+    // Click "Select All" again to deselect all
+    userEvent.click(getAllByRole("checkbox")[0]);
 
     await waitFor(() => {
       expect(getAllByRole("checkbox")[0]).not.toBeChecked();
+      // All row checkboxes should be unchecked
+      expect(getAllByRole("checkbox")[1]).not.toBeChecked();
+      expect(getAllByRole("checkbox")[2]).not.toBeChecked();
     });
   });
 
-  it("should not fetch all nodes if the node count is less than the pagination count", async () => {
+  it("should check the header checkbox when all rows are manually selected", async () => {
+    const submissionID = "example-manual-select-all-id";
+
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+      maxUsageCount: 2, // initial query + orderBy bug
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 3,
+            properties: ["col-xyz"],
+            IDPropName: "col-xyz",
+            nodes: [
+              {
+                nodeType: "example-node",
+                nodeID: "example-node-id-1",
+                props: JSON.stringify({
+                  "col-xyz": "value-1",
+                }),
+                status: "New",
+              },
+              {
+                nodeType: "example-node",
+                nodeID: "example-node-id-2",
+                props: JSON.stringify({
+                  "col-xyz": "value-2",
+                }),
+                status: "New",
+              },
+              {
+                nodeType: "example-node",
+                nodeID: "example-node-id-3",
+                props: JSON.stringify({
+                  "col-xyz": "value-3",
+                }),
+                status: "New",
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const { getAllByRole } = render(
+      <TestParent
+        mocks={[mockSubmissionQuery, getNodesMock]}
+        submissionId={submissionID}
+        submissionName={undefined}
+      >
+        <SubmittedData />
+      </TestParent>
+    );
+
+    // Wait for the table to render
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(4); // header + 3 rows
+    });
+
+    // Initially, header should not be checked
+    expect(getAllByRole("checkbox")[0]).not.toBeChecked();
+
+    // Manually select first row
+    userEvent.click(getAllByRole("checkbox")[1]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[1]).toBeChecked();
+      // Header should be indeterminate (partial selection)
+      expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "true");
+    });
+
+    // Manually select second row
+    userEvent.click(getAllByRole("checkbox")[2]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[2]).toBeChecked();
+      // Header should still be indeterminate
+      expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "true");
+    });
+
+    // Manually select third row (all rows now selected)
+    userEvent.click(getAllByRole("checkbox")[3]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[3]).toBeChecked();
+      // Header should now be checked (all rows manually selected)
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
+      expect(getAllByRole("checkbox")[0]).not.toHaveAttribute("data-indeterminate", "true");
+    });
+  });
+
+  // NOTE: With inverse selection, "Select All" never fetches all nodes regardless of count.
+  // This test verifies that behavior.
+  it("should not fetch all nodes when 'Select All' is clicked (inverse selection)", async () => {
     const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
       maxUsageCount: 2, // initial query + orderBy bug
       request: {
@@ -1026,7 +1057,7 @@ describe("SubmittedData > Table", () => {
     };
 
     const mockMatcherAllNodes = vi.fn().mockImplementation(() => true);
-    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp<true>, GetSubmissionNodesInput> = {
       request: {
         query: GET_SUBMISSION_NODES,
       },
@@ -1060,8 +1091,12 @@ describe("SubmittedData > Table", () => {
 
     userEvent.click(getAllByRole("checkbox")[0]);
 
+    // With inverse selection, clicking "Select All" should NOT fetch all nodes
+    // Instead, it just toggles the selectAllActive flag
     await waitFor(() => {
       expect(mockMatcherAllNodes).not.toHaveBeenCalled();
+      // Header should be checked (select all mode active)
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
     });
   });
 

@@ -8,6 +8,7 @@ import {
   Status as FormStatus,
 } from "@/components/Contexts/FormContext";
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
+import { formContextStateFactory } from "@/factories/application/FormContextStateFactory";
 import { institutionFactory } from "@/factories/institution/InstitutionFactory";
 import { LIST_INSTITUTIONS, ListInstitutionsInput, ListInstitutionsResp } from "@/graphql";
 
@@ -22,8 +23,7 @@ type MockParentProps = {
 const MockParent: FC<MockParentProps> = ({ application, mock, children }) => {
   const formCtxState = useMemo<FormContextState>(
     () => ({
-      status: FormStatus.LOADED,
-      data: application,
+      ...formContextStateFactory.build({ status: FormStatus.LOADED, data: application }),
     }),
     [application]
   );

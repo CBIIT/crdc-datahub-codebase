@@ -38,7 +38,7 @@ type ApprovedStudy = {
   /**
    * The list of programs that contain this study
    */
-  programs: Organization[];
+  program: Organization;
   /**
    * The User object of the Primary contact associated with the study
    */

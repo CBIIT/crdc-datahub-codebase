@@ -12,7 +12,6 @@ import GenericTable, { Column } from "../../components/GenericTable";
 import PageBanner from "../../components/PageBanner";
 import Asterisk from "../../components/StyledFormComponents/StyledAsterisk";
 import StyledTooltip from "../../components/StyledFormComponents/StyledTooltip";
-import SummaryList from "../../components/SummaryList";
 import TruncatedText from "../../components/TruncatedText";
 import {
   LIST_APPROVED_STUDIES,
@@ -188,16 +187,8 @@ const columns: Column<ApprovedStudy>[] = [
   },
   {
     label: "Program",
-    renderValue: ({ programs }) => (
-      <SummaryList
-        data={programs}
-        getItemKey={(p) => p._id}
-        renderItem={(p) => <TruncatedText text={p.name} maxCharacters={8} />}
-        renderTooltipItem={(p) => p.name}
-        emptyText=""
-      />
-    ),
-    fieldKey: "programs.name",
+    renderValue: ({ program }) => <TruncatedText text={program?.name} maxCharacters={8} />,
+    fieldKey: "program.name",
     sx: {
       width: "380px",
     },

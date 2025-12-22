@@ -10,7 +10,10 @@ import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 import { institutionFactory } from "@/factories/institution/InstitutionFactory";
 import {
+  GET_TOOLTIPS,
   GET_USER,
+  GetTooltipsInput,
+  GetTooltipsResp,
   GetUserInput,
   GetUserResp,
   LIST_APPROVED_STUDIES,
@@ -98,6 +101,28 @@ const retrievePBACDefaults: MockedResponse<RetrievePBACDefaultsResp, RetrievePBA
   maxUsageCount: Infinity,
 };
 
+const getTooltipsMock: MockedResponse<GetTooltipsResp, GetTooltipsInput> = {
+  request: {
+    query: GET_TOOLTIPS,
+  },
+  result: {
+    data: {
+      getTooltips: [
+        // Permissions
+        { key: "submission_request:view", value: "View Submission Request" },
+        { key: "data_submission:view", value: "View Data Submission" },
+        { key: "program:manage", value: "Manage Programs" },
+        { key: "access:request", value: "Request Access" },
+
+        // Notifications
+        { key: "submission_request:submitted", value: "Submission Request submitted" },
+        { key: "data_submission:created", value: "Submission Request submitted" },
+        { key: "access:requested", value: "Access Requested" },
+      ],
+    },
+  },
+};
+
 type ParentProps = {
   mocks?: MockedResponse[];
   user?: Partial<User>;
@@ -106,7 +131,13 @@ type ParentProps = {
 };
 
 const TestParent: FC<ParentProps> = ({
-  mocks = [getUserMock, listApprovedStudiesMock, listInstitutionsMock, retrievePBACDefaults],
+  mocks = [
+    getUserMock,
+    listApprovedStudiesMock,
+    listInstitutionsMock,
+    retrievePBACDefaults,
+    getTooltipsMock,
+  ],
   user = {},
   initialEntries = ["/"],
   children,

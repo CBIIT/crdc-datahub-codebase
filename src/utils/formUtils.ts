@@ -1,6 +1,11 @@
-import { cloneDeep, mergeWith } from "lodash";
+import { cloneDeep, mergeWith, has, unset, some, values, get } from "lodash";
+import type * as z from "zod";
+
+import { ColumnKey, shouldPersistColumnValue } from "@/classes/Excel/PersistentColumns";
 
 import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
+
+import { Logger } from "./logger";
 
 /**
  * Generic Email Validator
@@ -167,6 +172,22 @@ export const mapOrganizationStudyToId = (
       (study) => study?.studyName === studyName && study?.studyAbbreviation === studyAbbreviation
     )?._id || ""
   );
+};
+
+/**
+ * Validates a dbGaPID phs accession number. A dbGaPID must begin with phs (case-insensitive), followed by 6 digits.
+ *
+ * @note This explicitly does NOT allow version or participant suffixes (e.g. phs000001.v3.p1)
+ * @param {string} id The dbGaPID string to validate.
+ * @returns {boolean} Returns true if the string is a valid dbGaPID, false otherwise.
+ */
+export const isValidDbGaPID = (id: string): boolean => {
+  if (typeof id !== "string" || id?.length < 9) {
+    return false;
+  }
+
+  const idPattern = /^phs\d{6}$/i;
+  return idPattern.test(id);
 };
 
 /**
@@ -354,3 +375,179 @@ export const combineQuestionnaireData = <T extends object, U extends object>(
     // default merge behavior
     return undefined;
   }) as T & U;
+
+export type ParseResult<S extends z.ZodObject> = {
+  passed: boolean;
+  data: Partial<z.infer<S>> | null;
+};
+
+/**
+ * This function will remove the fields that are not valid according to the schema validation.
+ *
+ * @template S
+ * @param schema - The Zod schema to validate against.
+ * @param data - The object to parse against the schema.
+ * @returns The parsed and validated object with all fields optional.
+ */
+export const parseSchemaObject = <S extends z.ZodObject>(
+  schema: S,
+  data: object
+): ParseResult<S> => {
+  const result = schema.safeParse(data);
+  if (result.success) {
+    return { passed: true, data: result.data };
+  }
+
+  Logger.error(`parseSchemaObject: Failed schema validation.`, {
+    data,
+    issues: result.error.issues,
+  });
+
+  const errorFields = result?.error?.issues
+    ?.map((issue) => issue.path)
+    .filter((path) => path?.length > 0);
+
+  const clonedData = cloneDeep(data);
+  for (const path of errorFields) {
+    if (!has(clonedData, path)) {
+      break;
+    }
+
+    const narrowedData = get(clonedData, path);
+    const columnKey = path?.filter((p) => typeof p === "string")?.join(".") as ColumnKey;
+    if (shouldPersistColumnValue(columnKey, narrowedData)) {
+      Logger.info(`parseSchemaObject: Persisting value for column key ${columnKey}.`, {
+        value: narrowedData,
+      });
+    } else if (!unset(clonedData, path)) {
+      Logger.error(`parseSchemaObject: Failed to unset path ${JSON.stringify(path)} in object.`);
+    }
+  }
+
+  return { passed: false, data: clonedData };
+};
+
+/**
+ * A helper function to determine the status of a section based on whether it has passed validation
+ *
+ * @param passed A flag indicating if the section has passed Zod validation
+ * @param hasData A flag indicating if the section has any data
+ * @returns The determined section status
+ */
+export const determineSectionStatus = (passed: boolean, hasData: boolean): SectionStatus => {
+  if (passed) {
+    return "Completed";
+  }
+  if (hasData) {
+    return "In Progress";
+  }
+
+  return "Not Started";
+};
+
+/**
+ * Given a section key and a questionnaire data object, determines if the section has
+ * any data that would indicate the user has started filling it out.
+ *
+ * @param section The section to check for data
+ * @param data The questionnaire data to check against
+ * @returns A boolean flag indicating if the section has any meaningful data
+ */
+export const sectionHasData = (
+  section: SectionKey,
+  data: RecursivePartial<QuestionnaireData>
+): boolean => {
+  switch (section) {
+    case "A": {
+      const hasPIFields = some(values(data?.pi), (v) => typeof v === "string" && v.trim() !== "");
+      const hasPrimaryContactFields = some(
+        values(data?.primaryContact),
+        (v) => typeof v === "string" && v.trim() !== ""
+      );
+      const hasAdditionalContactFields = some(data?.additionalContacts || [], (contact) =>
+        some(values(contact), (v) => typeof v === "string" && v.trim() !== "")
+      );
+
+      return hasPIFields || hasPrimaryContactFields || hasAdditionalContactFields;
+    }
+    case "B": {
+      const hasProgramFields = some(
+        values(data?.program || {}),
+        (v) => typeof v === "string" && v.trim() !== ""
+      );
+      const hasStudyName = data?.study?.name?.length > 0;
+      const hasStudyAbbreviation = data?.study?.abbreviation?.length > 0;
+      const hasStudyDescription = data?.study?.description?.length > 0;
+      const hasFundingAgency =
+        some(data?.study?.funding || [], (contact) =>
+          some(values(contact), (v) => typeof v === "string" && v.trim() !== "")
+        ) || data?.study?.funding?.length > 1;
+      const hasPublications = data?.study?.publications?.length > 0;
+      const hasPlannedPublications = data?.study?.plannedPublications?.length > 0;
+      const hasRepositories = data?.study?.repositories?.length > 0;
+
+      return (
+        hasProgramFields ||
+        hasStudyName ||
+        hasStudyAbbreviation ||
+        hasStudyDescription ||
+        hasFundingAgency ||
+        hasPublications ||
+        hasPlannedPublications ||
+        hasRepositories
+      );
+    }
+    case "C": {
+      const hasAccessTypes = data?.accessTypes?.length > 0;
+      const hasStudyFields =
+        data?.study?.dbGaPPPHSNumber?.length > 0 || data?.study?.GPAName?.length > 0;
+      const hasCancerTypes = data?.cancerTypes?.length > 0;
+      const hasOtherCancerTypes = data?.otherCancerTypes?.length > 0;
+      const hasPreCancerTypes = data?.preCancerTypes?.length > 0;
+      const hasSpecies = data?.species?.length > 0;
+      const hasOtherSpecies = data?.otherSpeciesOfSubjects?.length > 0;
+      const hasNumberOfParticipants = !!data?.numberOfParticipants;
+
+      return (
+        hasAccessTypes ||
+        hasStudyFields ||
+        hasCancerTypes ||
+        hasOtherCancerTypes ||
+        hasPreCancerTypes ||
+        hasSpecies ||
+        hasOtherSpecies ||
+        hasNumberOfParticipants
+      );
+    }
+    case "D": {
+      const hasTargetedSubmissionDate = data?.targetedSubmissionDate?.length > 0;
+      const hasTargetedReleaseDate = data?.targetedReleaseDate?.length > 0;
+      const hasDataTypes = data?.dataTypes?.length > 0;
+      const hasOtherDataTypes = data?.otherDataTypes?.length > 0;
+      const hasFiles =
+        data?.files?.[0]?.type?.length > 0 ||
+        data?.files?.[0]?.extension?.length > 0 ||
+        data?.files?.[0]?.count > 0 ||
+        data?.files?.[0]?.amount?.length > 0 ||
+        data?.files?.length > 1; // NOTE: 1 entry exists by default
+      const hasDataDeIdentified = typeof data?.dataDeIdentified === "boolean";
+      const hasSubmitterComment = data?.submitterComment?.length > 0;
+      const hasCellLines = !!data?.cellLines;
+      const hasModelSystems = !!data?.modelSystems;
+
+      return (
+        hasTargetedSubmissionDate ||
+        hasTargetedReleaseDate ||
+        hasDataTypes ||
+        hasOtherDataTypes ||
+        hasFiles ||
+        hasDataDeIdentified ||
+        hasSubmitterComment ||
+        hasCellLines ||
+        hasModelSystems
+      );
+    }
+    default:
+      return false;
+  }
+};

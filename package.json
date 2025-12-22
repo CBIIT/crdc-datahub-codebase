@@ -1,6 +1,6 @@
 {
   "name": "crdc-datahub-ui",
-  "version": "3.4.1",
+  "version": "3.5.0",
   "engines": {
     "node": ">=22.0.0 <23.0.0",
     "npm": ">=10.0.0"

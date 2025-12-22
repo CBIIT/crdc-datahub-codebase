@@ -75,6 +75,7 @@ const CreateApplicationButton: FC<CreateApplicationButtonProps> = ({
             newInstitutions: [],
             GPAName: "",
           },
+          status: "New",
         },
       });
 
@@ -139,6 +140,7 @@ const CreateApplicationButton: FC<CreateApplicationButtonProps> = ({
             },
           },
         }}
+        aria-labelledby="dialog-description"
       />
     </>
   );

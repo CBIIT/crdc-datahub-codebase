@@ -18,7 +18,7 @@ import { YesNoList } from "../D/SectionD";
 import { ErrorCatalog } from "../ErrorCatalog";
 import { SectionBase, SectionCtxBase } from "../SectionBase";
 
-import { AKeys, COLUMNS, DEFAULT_CHARACTER_LIMITS, SCHEMA } from "./Columns";
+import { AKeys, COLUMNS, DEFAULT_CHARACTER_LIMITS } from "./Columns";
 
 type SectionADeps = {
   data: QuestionnaireData | null;
@@ -28,9 +28,11 @@ type SectionADeps = {
 export class SectionA extends SectionBase<AKeys, SectionADeps> {
   static SHEET_NAME = "PI and Contact";
 
+  static SHEET_ID: SectionKey = "A";
+
   constructor(deps: SectionADeps) {
     super({
-      id: "A",
+      id: SectionA.SHEET_ID,
       sheetName: SectionA.SHEET_NAME,
       columns: COLUMNS,
       headerColor: "D9EAD3",
@@ -321,4 +323,4 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
   }
 }
 
-export { COLUMNS as SectionAColumns, SCHEMA as SectionASchema };
+export { COLUMNS as SectionAColumns };

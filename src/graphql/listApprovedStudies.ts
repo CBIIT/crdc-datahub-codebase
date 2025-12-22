@@ -37,7 +37,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
           firstName
           lastName
         }
-        programs {
+        program {
           _id
           name
           conciergeID

@@ -429,3 +429,74 @@ describe("isErrorValue", () => {
     expect(utils.isErrorValue("error" as unknown as ExcelJS.CellValue)).toBe(false);
   });
 });
+
+describe("PHS_OK", () => {
+  it("returns a valid OR-of-ANDs formula string for a cell reference", () => {
+    const formula = utils.PHS_OK("A1");
+
+    expect(typeof formula).toBe("string");
+    expect(formula.includes("OR(")).toBe(true);
+
+    const andCount = (formula.match(/AND\(/g) || []).length;
+    expect(andCount).toBe(3);
+
+    [
+      "TRIM(",
+      'FIND(".p"',
+      "IFERROR(",
+      "ISNUMBER",
+      "VALUE(",
+      "LEFT(",
+      "RIGHT(",
+      "MID(",
+      "LEN(",
+      '".v"',
+    ].forEach((token) => expect(formula).toContain(token));
+  });
+
+  it("wraps the incoming ref with TRIM(CELL(...)) semantics", () => {
+    const f1 = utils.PHS_OK("A1");
+    const f2 = utils.PHS_OK("  A1  ");
+    expect(f1).toContain("TRIM(");
+    expect(f2).toContain("TRIM(");
+  });
+
+  it("produces a formula fragment (no leading '=') suitable for data validation", () => {
+    const formula = utils.PHS_OK("A1");
+    expect(formula.trim().startsWith("=")).toBe(false);
+  });
+
+  it("returns the exact expected formula for A1", () => {
+    const actual = utils.PHS_OK("A1");
+
+    const expected =
+      "OR(" +
+      "AND(" +
+      "LEN(TRIM($A$1))=9," +
+      'LEFT(TRIM($A$1),3)="phs",' +
+      "IFERROR(ISNUMBER(VALUE(RIGHT(TRIM($A$1),6))),FALSE)" +
+      ")," +
+      "AND(" +
+      'LEFT(TRIM($A$1),3)="phs",' +
+      "IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),4,6))),FALSE)," +
+      'LOWER(MID(TRIM($A$1),10,2))=".v",' +
+      "LEN(TRIM($A$1))>11," +
+      "IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),12,LEN(TRIM($A$1))-11))),FALSE)," +
+      'NOT(IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)>0)' +
+      ")," +
+      "AND(" +
+      'LEFT(TRIM($A$1),3)="phs",' +
+      "IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),4,6))),FALSE)," +
+      'LOWER(MID(TRIM($A$1),10,2))=".v",' +
+      'IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)>12,' +
+      'IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),12,IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)-12))),FALSE),' +
+      'LOWER(IFERROR(MID(TRIM($A$1),IFERROR(FIND(".p",LOWER(TRIM($A$1))),0),2),""))=".p",' +
+      'LEN(TRIM($A$1))>IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)+1,' +
+      'IFERROR(ISNUMBER(VALUE(MID(TRIM($A$1),IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)+2,LEN(TRIM($A$1))-IFERROR(FIND(".p",LOWER(TRIM($A$1))),0)))),FALSE)' +
+      ")" +
+      ")";
+
+    const normalize = (s: string) => s.replace(/\s+/g, "");
+    expect(normalize(actual)).toBe(normalize(expected));
+  });
+});

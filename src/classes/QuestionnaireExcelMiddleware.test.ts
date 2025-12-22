@@ -2444,6 +2444,33 @@ describe("Parsing", () => {
     expect(output.program.description).toBe(InitialQuestionnaire.program.description);
   });
 
+  it("should allow study name to be 1000 characters", async () => {
+    const mockForm = questionnaireDataFactory.build();
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionB();
+
+    // Reset data before parsing
+    // @ts-expect-error Private member
+    middleware.data = {
+      ...InitialQuestionnaire,
+      study: { ...InitialQuestionnaire.study, name: "A".repeat(1_000) },
+      sections: [...InitialSections],
+    };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionB();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+
+    expect(output.study.name).toBe("A".repeat(1_000));
+  });
+
   it("should allow selecting existing program", async () => {
     const _id = v4();
     const mockForm = questionnaireDataFactory.build({
@@ -2776,7 +2803,7 @@ describe("Parsing", () => {
       accessTypes: ["Open Access", "Controlled Access"],
       study: studyFactory.build({
         isDbGapRegistered: true,
-        dbGaPPPHSNumber: "phs100009.v6.a1",
+        dbGaPPPHSNumber: "phs100009.v6.p3",
         GPAName: "Benjamin 'Gpa' Bunny",
       }),
       cancerTypes: cancerTypeOptions.slice(1, 10),
@@ -2807,7 +2834,7 @@ describe("Parsing", () => {
     expect(output.study).toEqual(
       expect.objectContaining({
         isDbGapRegistered: true,
-        dbGaPPPHSNumber: "phs100009.v6.a1",
+        dbGaPPPHSNumber: "phs100009.v6.p3",
         GPAName: "Benjamin 'Gpa' Bunny",
       })
     );
@@ -2842,6 +2869,91 @@ describe("Parsing", () => {
     // @ts-expect-error Private member
     const output = middleware.data;
     expect(output.cancerTypes).toEqual([cancerTypeOptions[3]]);
+  });
+
+  it.each<string>([
+    "phs0012345",
+    "phs00123",
+    "phs001234.v",
+    "phs001234.p1",
+    "phs001234.v12.p",
+    "phs001234.v1.p2x",
+    "phsabc123",
+  ])('should ignore invalid dbGaPPHSNumber "%s" in SectionC', async (input) => {
+    const mockForm = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        isDbGapRegistered: true,
+        dbGaPPPHSNumber: input,
+      }),
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionC();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    await middleware.parseSectionC();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+    expect(output.study.dbGaPPPHSNumber).toEqual(InitialQuestionnaire.study.dbGaPPPHSNumber);
+  });
+
+  it("should allow partial dbGaPPHSNumber with no versioning in SectionC", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        isDbGapRegistered: true,
+        dbGaPPPHSNumber: "phs001234",
+      }),
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionC();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    await middleware.parseSectionC();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+    expect(output.study.dbGaPPPHSNumber).toEqual("phs001234");
+  });
+
+  it.each<[input: string, expected: string]>([
+    ["phs001234", "phs001234"],
+    ["phs001234.v2", "phs001234.v2"],
+    ["phs001234.v2.p3", "phs001234.v2.p3"],
+    ["  phs001234  ", "phs001234"],
+  ])('should allow valid dbGaPPHSNumber "%s" in SectionC', async (input, expected) => {
+    const mockForm = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        isDbGapRegistered: true,
+        dbGaPPPHSNumber: input,
+      }),
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionC();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    await middleware.parseSectionC();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+    expect(output.study.dbGaPPPHSNumber).toEqual(expected);
   });
 
   it("should clear all Cancer Type options if 'Not Applicable' is selected", async () => {
@@ -2975,29 +3087,6 @@ describe("Parsing", () => {
     expect(output.sections.find((s) => s.name === "C")).toEqual(
       expect.objectContaining({
         status: "In Progress",
-      })
-    );
-  });
-
-  it("should set the status of SectionC correctly (Not Started)", async () => {
-    const middleware = new QuestionnaireExcelMiddleware(questionnaireDataFactory.build(), {});
-
-    // @ts-expect-error Private member
-    await middleware.serializeSectionC();
-
-    // @ts-expect-error Private member
-    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
-
-    // @ts-expect-error Private member
-    const result = await middleware.parseSectionC();
-
-    // @ts-expect-error Private member
-    const output = middleware.data;
-
-    expect(result).toEqual(true);
-    expect(output.sections.find((s) => s.name === "C")).toEqual(
-      expect.objectContaining({
-        status: "Not Started",
       })
     );
   });
@@ -3160,6 +3249,87 @@ describe("Parsing", () => {
     expect(result).toEqual(true);
     expect(output.targetedSubmissionDate).toEqual("02/29/2032");
     expect(output.targetedReleaseDate).toEqual("12/25/2033");
+  });
+
+  it("should allow current date for target dates", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2000, 0, 1, 4, 4, 4));
+
+    const mockForm = questionnaireDataFactory.build({
+      targetedSubmissionDate: "01/01/2000",
+      targetedReleaseDate: "01/01/2000",
+      dataTypes: [],
+      imagingDataDeIdentified: null,
+      otherDataTypes: "",
+      clinicalData: {
+        dataTypes: [],
+        otherDataTypes: "",
+        futureDataTypes: null,
+      },
+      files: [],
+      dataDeIdentified: null,
+      cellLines: null,
+      modelSystems: null,
+      submitterComment: null,
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionD();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionD();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+    expect(output.targetedSubmissionDate).toEqual("01/01/2000");
+    expect(output.targetedReleaseDate).toEqual("01/01/2000");
+
+    vi.useRealTimers();
+  });
+
+  it("should not allow past dates for target dates and persist value", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      targetedSubmissionDate: "01/01/2000",
+      targetedReleaseDate: "01/01/2000",
+      dataTypes: [],
+      imagingDataDeIdentified: null,
+      otherDataTypes: "",
+      clinicalData: {
+        dataTypes: [],
+        otherDataTypes: "",
+        futureDataTypes: null,
+      },
+      files: [],
+      dataDeIdentified: null,
+      cellLines: null,
+      modelSystems: null,
+      submitterComment: null,
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionD();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionD();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+    expect(output.targetedSubmissionDate).toEqual("01/01/2000");
+    expect(output.targetedReleaseDate).toEqual("01/01/2000");
   });
 
   it("should handle missing SectionD sheet", async () => {
@@ -3494,11 +3664,14 @@ describe("IO Symmetry", () => {
     });
 
     const serializedExcel = await middleware.serialize();
+    const file = new File([serializedExcel], "filename.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
 
     expect(mockInstitutions).toHaveBeenCalled();
     expect(mockPrograms).toHaveBeenCalled();
 
-    const data = await QuestionnaireExcelMiddleware.parse(serializedExcel, {});
+    const data = await QuestionnaireExcelMiddleware.parse(file, {});
 
     expect(data).toEqual(mockForm);
   });
