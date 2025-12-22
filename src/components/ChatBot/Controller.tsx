@@ -8,7 +8,7 @@ import ChatBot, { Props } from "./ChatBotView";
  * Controls the visibility of the ChatBot component.
  */
 const ChatController: FC<Props> = (props) => {
-  const chatbotValue = env.VITE_CHATBOT_ENABLED ?? "true";
+  const chatbotValue = env.VITE_CHATBOT_ENABLED || "true";
   const chatbotEnabled = chatbotValue.toLowerCase() === "true";
 
   if (!chatbotEnabled) {
