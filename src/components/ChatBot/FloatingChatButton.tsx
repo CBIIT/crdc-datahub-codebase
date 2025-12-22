@@ -43,7 +43,7 @@ const StyledLabel = styled(Typography)({
   letterSpacing: "1px",
 });
 
-export type Props = {
+type Props = {
   label: string;
   onClick: React.MouseEventHandler<HTMLButtonElement>;
 };
