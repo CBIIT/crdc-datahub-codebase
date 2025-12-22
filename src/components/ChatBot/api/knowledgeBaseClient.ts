@@ -56,6 +56,9 @@ export const clearStoredSessionId = (): void => {
   }
 };
 
+/**
+ * Sends a question to the knowledge base API and retrieves the answer.
+ */
 export const askKnowledgeBase = async ({
   question,
   sessionId = null,
