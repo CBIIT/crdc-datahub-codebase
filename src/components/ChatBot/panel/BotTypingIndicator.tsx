@@ -88,7 +88,7 @@ export type Props = {
  * Displays an animated typing indicator with the bot's name and three animated dots.
  */
 const BotTypingIndicator = ({ senderName = chatConfig.supportBotName }: Props): JSX.Element => (
-  <Stack direction="row" justifyContent="flex-start" marginBottom={12}>
+  <Stack direction="row" justifyContent="flex-start" marginBottom="12px">
     <Stack direction="column" alignItems="flex-start">
       <TypingSender>{senderName}</TypingSender>
 
