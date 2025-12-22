@@ -56,6 +56,10 @@ export const clearStoredSessionId = (): void => {
   }
 };
 
+const knowledgeBaseUrl =
+  env.VITE_KNOWLEDGE_BASE_URL ||
+  "https://jaimxxauc3kld7t56dxvppdhsq0btuvo.lambda-url.us-east-1.on.aws";
+
 /**
  * Sends a question to the knowledge base API and retrieves the answer.
  */
@@ -63,7 +67,7 @@ export const askKnowledgeBase = async ({
   question,
   sessionId = null,
   signal,
-  url = env.VITE_KNOWLEDGE_BASE_URL,
+  url = knowledgeBaseUrl,
 }: AskKnowledgeBaseArgs): Promise<AskKnowledgeBaseResponse> => {
   const res = await fetch(url, {
     method: "POST",
