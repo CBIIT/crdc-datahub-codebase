@@ -2,7 +2,7 @@
 
 CRDC datahub upload CLI is a command line interface application for end users to upload cancer research data files and metadata to Datahub.
 
-The application is programmed purely with python v3.11.  It depends on bento common module, http, json, aws boto3 and so on. All required python modules is listed in the file, requirements.txt, and .gitsubmodules.
+The application is programmed purely with python v3.13 and above.  It depends on bento common module, http, json, aws boto3 and so on. All required python modules are listed in the file, requirements.txt, and .gitsubmodules.
 
 The application is consist of multiple python modules/classes to support multiple functions listed below:
 

@@ -6,16 +6,56 @@ from datetime import datetime
 from common.constants import S3_START
 
 
-""" 
-clean_up_key_value(dict)
-Removes leading and trailing spaces from keys and values in a dictionary
-:param: dict as dictionary
-:return: cleaned dict
-"""   
 def clean_up_key_value(dict):
+    """
+    Removes leading and trailing spaces from keys and values in a dictionary.
+    
+    This function iterates through a dictionary and:
+    - Strips whitespace from string keys and values
+    - Filters out empty or whitespace-only keys
+    - Preserves non-string types (int, float, bool, etc.) as-is
+    
+    Args:
+        dict: A dictionary to be cleaned
         
-    return {key if not key else key.strip() if isinstance(key, str) else key : 
-            value if not value else value.strip() if isinstance(value, str) else value for key, value in dict.items()}
+    Returns:
+        dict: A new dictionary with stripped keys/values and empty keys filtered out
+        
+    Example:
+        >>> clean_up_key_value({' name ': '  John  ', '  ': 'remove_me'})
+        {'name': 'John'}
+    """
+    cleaned_dict = {}
+    
+    for key, value in dict.items():
+        # Step 1: Filter out empty or whitespace-only keys
+        # - Skip if key is falsy (0, False, None, etc.)
+        # - Skip if key is a string with only whitespace
+        if not key:
+            continue
+        
+        if isinstance(key, str) and not key.strip():
+            # Key is a string with only whitespace, skip it
+            continue
+        
+        # Step 2: Clean up the key (strip whitespace if it's a string)
+        cleaned_key = key.strip() if isinstance(key, str) else key
+        
+        # Step 3: Clean up the value (strip whitespace if it's a string)
+        # - If value is falsy (empty string, 0, False, None), keep it as-is
+        # - If value is a string, strip it
+        # - If value is not a string, keep it as-is
+        if value and isinstance(value, str):
+            # Value is a non-empty string, strip it
+            cleaned_value = value.strip()
+        else:
+            # Value is either falsy, a non-string type, or empty string (keep as-is)
+            cleaned_value = value
+        
+        # Step 4: Add the cleaned key-value pair to the result
+        cleaned_dict[cleaned_key] = cleaned_value
+    
+    return cleaned_dict
 
 """
 Removes leading and trailing spaces from header names
@@ -45,7 +85,7 @@ def dump_dict_to_tsv(dict_list, file_path):
     if not dict_list or len(dict_list) == 0:
         return False 
     keys = dict_list[0].keys()
-    with open(file_path, 'w') as output_file:
+    with open(file_path, 'w', encoding='utf-8') as output_file:
         dict_writer = csv.DictWriter(output_file, fieldnames=keys, delimiter='\t')
         dict_writer.writeheader()
         dict_writer.writerows(dict_list) 

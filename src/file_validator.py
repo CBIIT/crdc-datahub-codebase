@@ -188,12 +188,6 @@ class FileValidator:
                 msg = f"Line {line_num}: File name {file_name} is not unique in the manifest!"
                 is_valid = False
                 self.log.error(msg)
-        
-            # check if file name only contain ASCII characters
-            if not file_name.isascii():
-                msg = f"Line {line_num}: File name {file_name} contains non-ASCII characters!"
-                is_valid = False
-                self.log.error(msg)
 
             # check file name is a absolute path
             if os.path.isabs(file_name):
@@ -201,11 +195,20 @@ class FileValidator:
                 is_valid = False
                 self.log.error(msg)
 
-            # check if file name contains reserved or illegal characters, /, \, :, *, ?, ", <, >, and |
-            if re.search(r'[:*?"<>|]', file_name):
+            # check if file name contains reserved or illegal characters *, and |
+            if re.search(r'[*|]', file_name):
                 msg = f"Line {line_num}: File name {file_name} contains invalid characters!"
                 is_valid = False
                 self.log.error(msg)
+
+            # check if file name contains non-unicode characters
+            try:
+                file_name.encode('utf-8')
+            except UnicodeEncodeError:
+                msg = f"Line {line_num}: File name {file_name} contains non-unicode characters!"
+                is_valid = False
+                self.log.error(msg)
+
 
             line_num += 1
         self.log.info("Completed validating file names listed in pre-manifest.")
@@ -271,12 +274,12 @@ class FileValidator:
             files_info  =  list(files_dict.values())
 
         except UnicodeDecodeError as ue:
-            # self.log.debug(ue)
-            self.log.exception(f"Reading manifest failed - manifest file contains non-ASCII characters.")
+            self.log.debug(ue)
+            self.log.error(f"Reading manifest file {os.path.basename(pre_manifest)} failed - non-unicode character(s) detected.")
             return [], []
         except Exception as e:
-            # self.log.debug(e)
-            self.log.exception(f"Reading manifest failed - internal error. Please try again and contact the helpdesk if this error persists.")
+            self.log.debug(e)
+            self.log.error(f"Reading manifest file {os.path.basename(pre_manifest)} failed - internal error. Please try again and contact the helpdesk if this error persists.")
             return [], []
         return files_info, manifest_rows
     
@@ -413,7 +416,7 @@ def validate_zip_file(archived_files_info, file_path, md5_cache, log):
     try:
         # create temp dir for unzip and validate if not existing
         os.makedirs(TEMP_UNZIP_DIR, exist_ok=True)
-        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        with zipfile.ZipFile(file_path, 'r', metadata_encoding='utf-8') as zip_ref:
             zip_ref.extractall(TEMP_UNZIP_DIR)
         # list dir under TEMP_UNZIP_DIR and remove __MACOSX dir and contents
         if os.path.isdir(os.path.join(TEMP_UNZIP_DIR, '__MACOSX')):

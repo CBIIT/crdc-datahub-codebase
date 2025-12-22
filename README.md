@@ -11,7 +11,7 @@ The CLI tool was designed to run on data submitter’s computer. It communicates
 The CLI tool was written in Python3 and requires following environment/software to be installed.
 
 - A Mac or Windows computer
-- Python3 (3.6 or above)
+- Python3 (3.13 or above)
 - Git
 - An active Data Hub user with Submitter or Organization Owner roles
 
