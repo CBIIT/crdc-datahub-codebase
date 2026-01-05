@@ -73,6 +73,7 @@ const MessageBubble = styled(Box, {
     fontWeight: style.fontWeight ?? 400,
     fontSize: "16px",
     lineHeight: 1.5,
+    whiteSpace: "pre-line",
 
     '&[data-is-user="true"]': {
       borderTopRightRadius: 0,
