@@ -87,7 +87,7 @@ const useBuildReduxStore = (): ReduxStoreResult => {
     const assets = buildAssetUrls(datacommon, modelVersion);
     const dmnConfig = datacommon.assets["model-navigator-config"];
 
-    const [changelogMD, { data: dictionary, version }] = await Promise.allSettled([
+    const [changelogMD, modelData] = await Promise.allSettled([
       getChangelog(assets?.changelog),
       getModelExploreData(...assets.model_files),
     ]).then((results) =>
@@ -101,6 +101,7 @@ const useBuildReduxStore = (): ReduxStoreResult => {
       })
     );
 
+    const { data: dictionary, version } = modelData || {};
     if (!dictionary || !version) {
       setStatus("error");
       return;
