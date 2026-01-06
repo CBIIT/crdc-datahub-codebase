@@ -87,16 +87,19 @@ const useBuildReduxStore = (): ReduxStoreResult => {
     const assets = buildAssetUrls(datacommon, modelVersion);
     const dmnConfig = datacommon.assets["model-navigator-config"];
 
-    const changelogMD = await getChangelog(assets?.changelog)?.catch((e) => {
-      Logger.error(e);
-      return null;
-    });
+    const [changelogMD, { data: dictionary, version }] = await Promise.allSettled([
+      getChangelog(assets?.changelog),
+      getModelExploreData(...assets.model_files),
+    ]).then((results) =>
+      results.map((result) => {
+        if (result.status === "fulfilled") {
+          return result.value;
+        }
 
-    const { data: dictionary, version } =
-      (await getModelExploreData(...assets.model_files)?.catch((e) => {
-        Logger.error(e);
-        return {};
-      })) || {};
+        Logger.error("Received error during Model Navigator store building", result.reason);
+        return null;
+      })
+    );
 
     if (!dictionary || !version) {
       setStatus("error");
@@ -158,13 +161,15 @@ const useBuildReduxStore = (): ReduxStoreResult => {
       },
     });
 
-    store.dispatch({
-      type: "RECEIVE_CHANGELOG_INFO",
-      data: {
-        changelogMD,
-        changelogTabName: "Version History",
-      },
-    });
+    if (changelogMD) {
+      store.dispatch({
+        type: "RECEIVE_CHANGELOG_INFO",
+        data: {
+          changelogMD,
+          changelogTabName: "Version History",
+        },
+      });
+    }
 
     if (datacommon?.assets?.["model-navigator-config"]?.iconMap) {
       store.dispatch({

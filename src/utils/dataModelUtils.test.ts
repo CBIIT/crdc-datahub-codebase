@@ -383,6 +383,32 @@ describe("buildAssetUrls cases", () => {
       `${MODEL_FILE_REPO}prod/cache/test-name/1.0/prop-file`,
     ]);
   });
+
+  it("should use the changelog fallback 'version-history.md' if release-notes is not defined", () => {
+    const dc: DataCommon = dataCommonFactory.build({
+      name: "test-name",
+      assets: manifestAssetsFactory.build({}),
+    });
+
+    const result = utils.buildAssetUrls(dc, "1.0.0");
+    expect(result.changelog).toEqual(
+      `${MODEL_FILE_REPO}prod/cache/test-name/1.0.0/version-history.md`
+    );
+  });
+
+  it("should use the changelog filename provided if release-notes is defined", () => {
+    const dc: DataCommon = dataCommonFactory.build({
+      name: "test-name",
+      assets: manifestAssetsFactory.build({
+        "release-notes": "custom-release-notes.md",
+      }),
+    });
+
+    const result = utils.buildAssetUrls(dc, "1.0.1");
+    expect(result.changelog).toEqual(
+      `${MODEL_FILE_REPO}prod/cache/test-name/1.0.1/custom-release-notes.md`
+    );
+  });
 });
 
 describe("buildBaseFilterContainers tests", () => {
