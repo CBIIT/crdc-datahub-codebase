@@ -28,7 +28,7 @@ class ApprovedStudies {
         this.useProgramPC = isTrue(useProgramPC);
         this.pendingModelChange = isTrue(pendingModelChange ?? true);
         if (applicationID) {
-            this.pendingApplicationID = applicationID
+            this.applicationID = applicationID
         }
 
         if (primaryContactID) {
