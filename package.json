@@ -1,0 +1,21 @@
+{
+  "name": "crdc-datahub-bedrock-kb",
+  "version": "1.0.0",
+  "main": "index.mjs",
+  "scripts": {
+    "test": "vitest",
+    "build": "tsc"
+  },
+  "author": "amattu2",
+  "license": "AGPL-3.0",
+  "description": "",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.956.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.953.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.159",
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  }
+}
