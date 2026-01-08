@@ -1,12 +1,11 @@
-import { BedrockAgentRuntimeClient, RetrieveAndGenerateCommand, RetrieveAndGenerateCommandInput } from "@aws-sdk/client-bedrock-agent-runtime";
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { BedrockAgentRuntimeClient, CitationEvent, RetrieveAndGenerateCommandInput, RetrieveAndGenerateStreamCommand } from "@aws-sdk/client-bedrock-agent-runtime";
+import { APIGatewayProxyEvent } from "aws-lambda";
 
 const REGION = process.env.AWS_REGION || "us-east-1";
 const KNOWLEDGE_BASE_ID = process.env.KNOWLEDGE_BASE_ID;
 const MODEL_ARN = process.env.MODEL_ARN;
 const GUARDRAIL_ID = process.env.GUARDRAIL_ID;
 const GUARDRAIL_VERSION = process.env.GUARDRAIL_VERSION;
-const DEBUG = (process.env.DEBUG || "false").toLowerCase() === "true";
 
 const PROMPT_TEMPLATE = `
 ## SYSTEM ROLE
@@ -80,143 +79,116 @@ type InputBody = {
   sessionId: string | null;
 };
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  try {
-    const method = event?.httpMethod || "POST";
-
-    if (method === "OPTIONS") {
-      return buildResponse(200, "");
-    }
-
-    let body: InputBody;
-    if (typeof event.body === "string") {
-      try {
-        body = JSON.parse(event.body) as InputBody;
-      } catch (e: unknown) {
-        /* @ts-ignore */
-        return buildResponse(400, { error: "Invalid JSON body", details: e.message });
-      }
-    } else {
-      return buildResponse(400, { error: "Missing request body" });
-    }
-
-    const question = body?.question;
-    const sessionId = body?.sessionId || undefined;
-
-    if (!question) {
-      return buildResponse(400, { error: "Missing 'question' in request body" });
-    }
-
-    if (!KNOWLEDGE_BASE_ID || !MODEL_ARN) {
-      return buildResponse(500, {
-        error: "Missing environment variables",
-        details: {
-          KNOWLEDGE_BASE_ID: !!KNOWLEDGE_BASE_ID,
-          MODEL_ARN: !!MODEL_ARN,
-        },
-      });
-    }
-
-    const params: RetrieveAndGenerateCommandInput = {
-      input: { text: question },
-      sessionId: sessionId,
-      retrieveAndGenerateConfiguration: {
-        type: "KNOWLEDGE_BASE",
-        knowledgeBaseConfiguration: {
-          // Call our knowledge base
-          knowledgeBaseId: KNOWLEDGE_BASE_ID,
-          // Using this model
-          modelArn: MODEL_ARN,
-          // Using this generation configuration
-          generationConfiguration: {
-            // Apply a default prompt template
-            promptTemplate: {
-              textPromptTemplate: PROMPT_TEMPLATE,
-            },
-            // Apply inference configuration
-            inferenceConfig: {
-              textInferenceConfig: {
-                temperature: 0.2,
-                maxTokens: 256,
-                // topP: 0.8
-              }
-            },
-            // Apply guardrail protections
-            guardrailConfiguration: {
-              guardrailId: GUARDRAIL_ID,
-              guardrailVersion: GUARDRAIL_VERSION
-            },
-          },
-          // Use this for querying the KB
-          retrievalConfiguration: {
-            vectorSearchConfiguration: {
-              // Latch onto only 3 results to keep the response relevant
-              numberOfResults: 3,
-            },
-          },
-        },
-      },
-    };
-
-    // Call Bedrock
+export const handler = awslambda.streamifyResponse(
+  async (event: APIGatewayProxyEvent, responseStream) => {
     try {
-      const command = new RetrieveAndGenerateCommand(params);
-      const resp = await bedrockAgent.send(command);
+      const method = event?.httpMethod || "POST";
 
-      const answer = resp?.output?.text ?? "";
-      const citations = resp?.citations ?? [];
-      const returnedSessionId = resp?.sessionId ?? sessionId ?? null;
+      if (method === "OPTIONS") {
+        return responseStream.end();
+      }
 
-      return buildResponse(200, { question, answer, citations, sessionId: returnedSessionId });
-    } catch (bedrockError) {
-      console.error("Bedrock error:", bedrockError);
+      let body: InputBody;
+      if (typeof event.body === "string") {
+        try {
+          body = JSON.parse(event.body) as InputBody;
+        } catch (e: unknown) {
+          /* @ts-ignore */
+          return responseStream.end(JSON.stringify({ error: "Invalid JSON body", details: e.message }));
+        }
+      } else {
+        return responseStream.end(JSON.stringify({ error: "Missing request body" }));
+      }
+
+      const question = body?.question;
+      const sessionId = body?.sessionId || undefined;
+
+      if (!question) {
+        return responseStream.end(JSON.stringify({ error: "Missing 'question' in request body" }));
+      }
+
+      if (!KNOWLEDGE_BASE_ID || !MODEL_ARN) {
+        return responseStream.end(JSON.stringify({
+          error: "Missing environment variables",
+          details: {
+            KNOWLEDGE_BASE_ID: !!KNOWLEDGE_BASE_ID,
+            MODEL_ARN: !!MODEL_ARN,
+          },
+        }));
+      }
+
+      const params: RetrieveAndGenerateCommandInput = {
+        input: { text: question },
+        sessionId: sessionId,
+        retrieveAndGenerateConfiguration: {
+          type: "KNOWLEDGE_BASE",
+          knowledgeBaseConfiguration: {
+            // Call our knowledge base
+            knowledgeBaseId: KNOWLEDGE_BASE_ID,
+            // Using this model
+            modelArn: MODEL_ARN,
+            // Using this generation configuration
+            generationConfiguration: {
+              // Apply a default prompt template
+              promptTemplate: {
+                textPromptTemplate: PROMPT_TEMPLATE,
+              },
+              // Apply inference configuration
+              inferenceConfig: {
+                textInferenceConfig: {
+                  temperature: 0.2,
+                  maxTokens: 512,
+                  // topP: 0.8
+                }
+              },
+              // Apply guardrail protections
+              guardrailConfiguration: {
+                guardrailId: GUARDRAIL_ID,
+                guardrailVersion: GUARDRAIL_VERSION
+              },
+            },
+            // Use this for querying the KB
+            retrievalConfiguration: {
+              vectorSearchConfiguration: {
+                // Latch onto only 3 results to keep the response relevant
+                numberOfResults: 3,
+              },
+            },
+          },
+        },
+      };
+
+      // Call Bedrock
+      try {
+        const command = new RetrieveAndGenerateStreamCommand(params);
+        const resp = await bedrockAgent.send(command);
+
+        responseStream.write(JSON.stringify({ question, sessionId: resp.sessionId ?? sessionId ?? null }));
+
+        const citations: Array<CitationEvent> = [];
+        for await (const chunk of resp.stream || []) {
+          if (chunk.output) {
+            responseStream.write(chunk?.output?.text ?? "");
+          }
+          if (chunk.citation) {
+            citations.push(chunk.citation);
+          }
+        }
+
+        // TODO: Output the citations
+
+        responseStream.end();
+      } catch (bedrockError) {
+        console.error("Bedrock error:", bedrockError);
+
+        /* @ts-ignore */
+        responseStream.end(JSON.stringify({ error: "Internal server error", details: bedrockError.message || bedrockError }));
+      }
+    } catch (err: unknown) {
+      console.error("Handler error:", err);
+
       /* @ts-ignore */
-      return buildResponse(500, { error: "Uncaught error ", details: bedrockError.message || bedrockError.toString() });
+      return responseStream.end(JSON.stringify({ error: err.message || "Internal server error" }));
     }
-  } catch (err: unknown) {
-    console.error("Handler error:", err);
-
-    // If debugging, return full error object (including AWS error details)
-    if (DEBUG) {
-      /* @ts-ignore */
-      return buildResponse(err.statusCode || 500, {
-      /* @ts-ignore */
-
-        error: err.message || "Internal server error",
-      /* @ts-ignore */
-
-        name: err.name,
-      /* @ts-ignore */
-
-        code: err.code,
-      /* @ts-ignore */
-
-        statusCode: err.statusCode,
-      /* @ts-ignore */
-
-        time: err.time,
-      /* @ts-ignore */
-
-        requestId: err.requestId || err.requestID || null,
-      /* @ts-ignore */
-
-        stack: err.stack,
-        raw: err,
-      });
-    }
-
-    // Otherwise return minimal info
-    /* @ts-ignore */
-    return buildResponse(err.statusCode || 500, { error: err.message || "Internal server error" });
   }
-};
-
-const buildResponse = (statusCode: number, body: string | object) => {
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: typeof body === "string" ? body : JSON.stringify(body),
-  };
-}
+);
