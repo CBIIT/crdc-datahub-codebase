@@ -143,7 +143,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
             inferenceConfig: {
               textInferenceConfig: {
                 temperature: 0.2,
-                maxTokens: 512,
+                maxTokens: 4096,
                 // topP: 0.8
               },
             },
