@@ -1,6 +1,5 @@
 import {
   BedrockAgentRuntimeClient,
-  CitationEvent,
   RetrieveAndGenerateCommandInput,
   RetrieveAndGenerateStreamCommand,
 } from "@aws-sdk/client-bedrock-agent-runtime";
@@ -181,19 +180,13 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
       const command = new RetrieveAndGenerateStreamCommand(params);
       const resp = await bedrockAgent.send(command);
 
-      responseStream.write(JSON.stringify({ question, sessionId: resp.sessionId ?? sessionId ?? null }));
+      responseStream.write(JSON.stringify({ sessionId: resp.sessionId ?? sessionId ?? null }) + "\n");
 
-      const citations: Array<CitationEvent> = [];
       for await (const chunk of resp.stream || []) {
         if (chunk.output) {
-          responseStream.write(chunk?.output?.text ?? "");
-        }
-        if (chunk.citation) {
-          citations.push(chunk.citation);
+          responseStream.write(JSON.stringify({ output: chunk.output, citation: chunk.citation || {} }) + "\n");
         }
       }
-
-      // TODO: Output the citations
 
       responseStream.end();
     } catch (bedrockError) {
