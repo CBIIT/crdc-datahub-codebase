@@ -153,11 +153,23 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
               guardrailVersion: GUARDRAIL_VERSION,
             },
           },
+          orchestrationConfiguration: {
+            queryTransformationConfiguration: {
+              type: "QUERY_DECOMPOSITION",
+            },
+          },
           // Use this for querying the KB
           retrievalConfiguration: {
             vectorSearchConfiguration: {
-              // Latch onto only 3 results to keep the response relevant
-              numberOfResults: 3,
+              numberOfResults: 15,
+              // rerankingConfiguration: {
+              //   type: "BEDROCK_RERANKING_MODEL",
+              //   bedrockRerankingConfiguration: {
+              //     modelConfiguration: {
+              //       modelArn: MODEL_ARN,
+              //     },
+              //   },
+              // },
             },
           },
         },
