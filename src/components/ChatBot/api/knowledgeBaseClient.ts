@@ -14,13 +14,6 @@ export type AskKnowledgeBaseResponse = {
   sessionId?: string;
 };
 
-type AskKnowledgeBaseArgs = {
-  question: string;
-  sessionId?: string | null;
-  signal?: AbortSignal;
-  url?: string;
-};
-
 const SESSION_STORAGE_KEY = "chatbot_session_id";
 
 /**
@@ -58,42 +51,88 @@ export const clearStoredSessionId = (): void => {
 
 const knowledgeBaseUrl =
   env.VITE_KNOWLEDGE_BASE_URL ||
-  "https://jaimxxauc3kld7t56dxvppdhsq0btuvo.lambda-url.us-east-1.on.aws";
+  "https://qimghguigfq2bmnfqqqyze6cva0yscgr.lambda-url.us-east-1.on.aws/";
 
-/**
- * Sends a question to the knowledge base API and retrieves the answer.
- */
-export const askKnowledgeBase = async ({
+type AskQuestionArgs = {
+  question: string;
+  sessionId?: string | null;
+  onChunk?: (chunk: string) => void;
+  signal?: AbortSignal;
+};
+
+export async function askQuestion({
   question,
   sessionId = null,
+  onChunk,
   signal,
-  url = knowledgeBaseUrl,
-}: AskKnowledgeBaseArgs): Promise<AskKnowledgeBaseResponse> => {
-  const res = await fetch(url, {
-    method: "POST",
-    // headers: { "Content-Type": "application/json" },
-    signal,
-    body: JSON.stringify({ question, sessionId }),
-  });
+}: AskQuestionArgs): Promise<string | null> {
+  const functionUrl = knowledgeBaseUrl;
 
-  if (!res.ok) {
-    throw new Error(`KnowledgeBase HTTP ${res.status}`);
+  try {
+    const response = await fetch(functionUrl, {
+      method: "POST",
+      body: JSON.stringify({ question, sessionId }),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let currentSessionId = null;
+    let isFirstChunk = true;
+
+    let done = false;
+    while (!done) {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await reader.read();
+      done = result.done;
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(result.value, { stream: true });
+      const lines = buffer.split("\n");
+
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line);
+
+          if (isFirstChunk && parsed.sessionId !== undefined) {
+            currentSessionId = parsed.sessionId;
+            isFirstChunk = false;
+          } else {
+            if (parsed.output?.text && onChunk) {
+              onChunk(parsed.output.text);
+            }
+
+            if (parsed.citation && Object.keys(parsed.citation).length > 0) {
+              Logger.info("Citations:", parsed.citation);
+            }
+
+            if (parsed.error) {
+              Logger.error("Error:", parsed.error);
+            }
+          }
+        } catch (e) {
+          Logger.error("Failed to parse line:", line, e);
+        }
+      }
+    }
+
+    if (currentSessionId) {
+      storeSessionId(currentSessionId);
+    }
+
+    return currentSessionId;
+  } catch (error) {
+    Logger.error("Error:", error);
+    throw error;
   }
-
-  const data = (await res.json()) as AskKnowledgeBaseResponse;
-
-  if (!data?.answer) {
-    Logger.error(
-      "knowledgeBaseClient.ts: The knowledge base response is missing an 'answer'.",
-      data
-    );
-    throw new Error("Oops! Unable to retrieve a response.");
-  }
-
-  // Store the session ID from the response for future requests
-  if (data.sessionId) {
-    storeSessionId(data.sessionId);
-  }
-
-  return data;
-};
+}
