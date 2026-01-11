@@ -1,14 +1,34 @@
 import { Meta, StoryObj } from "@storybook/react";
 
 import ChatBotView from "./ChatBotView";
+import { ChatBotProvider } from "./context/ChatBotContext";
+import { ChatDrawerProvider } from "./context/ChatDrawerContext";
 
-const meta: Meta<typeof ChatBotView> = {
+type StoryArgs = {
+  label: string;
+  title: string;
+  endpointUrl: string;
+};
+
+const meta: Meta<StoryArgs> = {
   title: "ChatBot / ChatBot",
   component: ChatBotView,
   parameters: {
     layout: "fullscreen",
   },
-  decorators: [],
+  decorators: [
+    (Story, context) => (
+      <ChatBotProvider
+        title={context.args.title || "Chat"}
+        label={context.args.label || "Chat"}
+        knowledgeBaseUrl={context.args.endpointUrl}
+      >
+        <ChatDrawerProvider>
+          <Story />
+        </ChatDrawerProvider>
+      </ChatBotProvider>
+    ),
+  ],
   argTypes: {
     label: {
       name: "Label",
@@ -26,8 +46,16 @@ const meta: Meta<typeof ChatBotView> = {
         defaultValue: { summary: "Chat" },
       },
     },
+    endpointUrl: {
+      name: "Endpoint URL",
+      control: "text",
+      description: "The URL for the knowledge base API endpoint.",
+      table: {
+        defaultValue: { summary: import.meta.env.VITE_KNOWLEDGE_BASE_URL || "" },
+      },
+    },
   },
-} satisfies Meta<typeof ChatBotView>;
+} satisfies Meta<StoryArgs>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -38,5 +66,6 @@ export const Button: Story = {
   args: {
     label: "Chat",
     title: "Chat",
+    endpointUrl: import.meta.env.VITE_KNOWLEDGE_BASE_URL || "",
   },
 };

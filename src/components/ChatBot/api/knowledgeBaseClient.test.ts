@@ -11,11 +11,7 @@ vi.mock("@/utils", () => ({
   },
 }));
 
-vi.mock("@/env", () => ({
-  default: {
-    VITE_KNOWLEDGE_BASE_URL: "https://test-api.example.com/",
-  },
-}));
+const TEST_API_URL = "https://test-api.example.com/";
 
 /**
  * Helper to create a mock ReadableStream that emits line-delimited JSON chunks
@@ -78,6 +74,7 @@ describe("askQuestion", () => {
       question: "Test question",
       sessionId: null,
       onChunk,
+      url: TEST_API_URL,
     });
 
     expect(result).toBe("test-session-123");
@@ -103,10 +100,11 @@ describe("askQuestion", () => {
       question: "Test question",
       sessionId: "existing-session",
       onChunk,
+      url: TEST_API_URL,
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://test-api.example.com/",
+      TEST_API_URL,
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ question: "Test question", sessionId: "existing-session" }),
@@ -132,6 +130,7 @@ describe("askQuestion", () => {
     await askQuestion({
       question: "Test question",
       onChunk,
+      url: TEST_API_URL,
     });
 
     expect(onChunk).toHaveBeenCalledTimes(3);
@@ -153,6 +152,7 @@ describe("askQuestion", () => {
     await askQuestion({
       question: "Test question",
       onChunk,
+      url: TEST_API_URL,
     });
 
     expect(onChunk).toHaveBeenCalledTimes(2);
@@ -178,6 +178,7 @@ describe("askQuestion", () => {
     await askQuestion({
       question: "Test question",
       onChunk,
+      url: TEST_API_URL,
     });
 
     expect(Logger.info).toHaveBeenCalledWith("Citations:", mockCitation);
@@ -194,6 +195,7 @@ describe("askQuestion", () => {
     await askQuestion({
       question: "Test question",
       onChunk: vi.fn(),
+      url: TEST_API_URL,
     });
 
     expect(Logger.info).not.toHaveBeenCalled();
@@ -210,6 +212,7 @@ describe("askQuestion", () => {
     await askQuestion({
       question: "Test question",
       onChunk: vi.fn(),
+      url: TEST_API_URL,
     });
 
     expect(Logger.error).toHaveBeenCalledWith("Error:", "Something went wrong");
@@ -221,6 +224,7 @@ describe("askQuestion", () => {
     await expect(
       askQuestion({
         question: "Test question",
+        url: TEST_API_URL,
       })
     ).rejects.toThrow("HTTP error! status: 500");
 
@@ -240,6 +244,7 @@ describe("askQuestion", () => {
     const promise = askQuestion({
       question: "Test question",
       signal: abortController.signal,
+      url: TEST_API_URL,
     });
 
     abortController.abort();
@@ -261,6 +266,7 @@ describe("askQuestion", () => {
     await askQuestion({
       question: "Test question",
       onChunk,
+      url: TEST_API_URL,
     });
 
     expect(onChunk).toHaveBeenCalledTimes(2);
@@ -288,6 +294,7 @@ describe("askQuestion", () => {
     await askQuestion({
       question: "Test question",
       onChunk,
+      url: TEST_API_URL,
     });
 
     expect(onChunk).toHaveBeenCalledTimes(2);
@@ -303,6 +310,7 @@ describe("askQuestion", () => {
 
     const result = await askQuestion({
       question: "Test question",
+      url: TEST_API_URL,
     });
 
     expect(result).toBe("session-1");
@@ -316,6 +324,7 @@ describe("askQuestion", () => {
     const result = await askQuestion({
       question: "Test question",
       onChunk: vi.fn(),
+      url: TEST_API_URL,
     });
 
     expect(result).toBeNull();
@@ -331,10 +340,11 @@ describe("askQuestion", () => {
     await askQuestion({
       question: "Test question",
       signal: abortController.signal,
+      url: TEST_API_URL,
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://test-api.example.com/",
+      TEST_API_URL,
       expect.objectContaining({
         signal: abortController.signal,
       })
@@ -348,6 +358,7 @@ describe("askQuestion", () => {
     await expect(
       askQuestion({
         question: "Test question",
+        url: TEST_API_URL,
       })
     ).rejects.toThrow("Network failure");
 
@@ -370,33 +381,17 @@ describe("askQuestion", () => {
     await expect(
       askQuestion({
         question: "Test question",
+        url: TEST_API_URL,
       })
     ).rejects.toThrow("Stream error");
   });
 
-  it("should use fallback URL when VITE_KNOWLEDGE_BASE_URL is not set", async () => {
-    vi.resetModules();
-    vi.doMock("@/env", () => ({
-      default: {},
-    }));
-
-    // Re-import askQuestion with the new env mock
-    const { askQuestion: askQuestionWithFallback } = await import("./knowledgeBaseClient");
-
-    const mockChunks = [`${JSON.stringify({ sessionId: "session-1" })}\n`];
-    vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
-
-    await askQuestionWithFallback({
-      question: "Test question",
-    });
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      "https://qimghguigfq2bmnfqqqyze6cva0yscgr.lambda-url.us-east-1.on.aws/",
-      expect.objectContaining({
-        method: "POST",
+  it("should throw error when url is not provided", async () => {
+    await expect(
+      askQuestion({
+        question: "Test question",
+        url: "",
       })
-    );
-
-    vi.resetModules();
+    ).rejects.toThrow("Knowledge base URL is required but was not provided");
   });
 });

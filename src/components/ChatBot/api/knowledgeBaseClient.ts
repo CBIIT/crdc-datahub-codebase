@@ -1,4 +1,3 @@
-import env from "@/env";
 import { Logger } from "@/utils";
 
 import { storeSessionId } from "../utils/sessionStorageUtils";
@@ -16,15 +15,12 @@ export type AskKnowledgeBaseResponse = {
   sessionId?: string;
 };
 
-const knowledgeBaseUrl =
-  env.VITE_KNOWLEDGE_BASE_URL ||
-  "https://qimghguigfq2bmnfqqqyze6cva0yscgr.lambda-url.us-east-1.on.aws/";
-
 type AskQuestionArgs = {
   question: string;
   sessionId?: string | null;
   onChunk?: (chunk: string) => void;
   signal?: AbortSignal;
+  url: string;
 };
 
 export async function askQuestion({
@@ -32,11 +28,14 @@ export async function askQuestion({
   sessionId = null,
   onChunk,
   signal,
+  url,
 }: AskQuestionArgs): Promise<string | null> {
-  const functionUrl = knowledgeBaseUrl;
+  if (!url) {
+    throw new Error("Knowledge base URL is required but was not provided");
+  }
 
   try {
-    const response = await fetch(functionUrl, {
+    const response = await fetch(url, {
       method: "POST",
       body: JSON.stringify({ question, sessionId }),
       signal,

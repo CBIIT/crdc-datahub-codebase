@@ -1,7 +1,15 @@
 import { render, screen } from "@testing-library/react";
 
 vi.mock("./ChatBotView", () => ({
-  default: ({ title }: { title?: string }) => <div data-testid="chatbot-view">{title}</div>,
+  default: () => <div data-testid="chatbot-view" />,
+}));
+
+vi.mock("./context/ChatBotContext", () => ({
+  ChatBotProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock("./context/ChatDrawerContext", () => ({
+  ChatDrawerProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
 describe("ChatController", () => {
@@ -24,10 +32,9 @@ describe("ChatController", () => {
 
     const { default: Controller } = await import("./Controller");
 
-    render(<Controller title="Test Chat" />);
+    render(<Controller title="Test Chat" label="Help" />);
 
     expect(screen.getByTestId("chatbot-view")).toBeInTheDocument();
-    expect(screen.getByText("Test Chat")).toBeInTheDocument();
   });
 
   it.each([
@@ -43,12 +50,12 @@ describe("ChatController", () => {
 
     const { default: Controller } = await import("./Controller");
 
-    render(<Controller title="Test Chat" />);
+    render(<Controller title="Test Chat" label="Help" />);
 
     expect(screen.queryByTestId("chatbot-view")).not.toBeInTheDocument();
   });
 
-  it("should pass all props to ChatBot when enabled", async () => {
+  it("should use default props when not provided", async () => {
     vi.doMock("@/env", () => ({
       default: {
         VITE_CHATBOT_ENABLED: "true",
@@ -57,12 +64,7 @@ describe("ChatController", () => {
 
     const { default: Controller } = await import("./Controller");
 
-    const mockProps = {
-      title: "Support Chat",
-      subtitle: "How can we help?",
-    };
-
-    render(<Controller {...mockProps} />);
+    render(<Controller />);
 
     expect(screen.getByTestId("chatbot-view")).toBeInTheDocument();
   });

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useReducer, useRef } from "reac
 
 import { askQuestion } from "../api/knowledgeBaseClient";
 import chatConfig from "../chatConfig";
+import { useChatBotContext } from "../context/ChatBotContext";
 import { createChatMessage, createId, isAbortError } from "../utils/chatUtils";
 import { clearStoredSessionId, getStoredSessionId } from "../utils/sessionStorageUtils";
 
@@ -70,6 +71,7 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
  * @returns An object containing chat state and action handlers.
  */
 export const useChatConversation = (): ChatConversationActions => {
+  const { knowledgeBaseUrl } = useChatBotContext();
   const greetingTimestampRef = useRef<Date>(new Date());
 
   const [state, dispatch] = useReducer(chatReducer, {
@@ -99,11 +101,12 @@ export const useChatConversation = (): ChatConversationActions => {
         question: userText,
         sessionId: storedSessionId,
         signal,
+        url: knowledgeBaseUrl,
       });
 
       return "";
     },
-    []
+    [knowledgeBaseUrl]
   );
 
   useEffect(
@@ -158,6 +161,7 @@ export const useChatConversation = (): ChatConversationActions => {
           question: trimmed,
           sessionId: getStoredSessionId(),
           signal: abortController.signal,
+          url: knowledgeBaseUrl,
           onChunk: (chunk: string) => {
             if (!firstChunkReceived) {
               dispatch({ type: "status_changed", status: "idle" });

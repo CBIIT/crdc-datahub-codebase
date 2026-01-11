@@ -7,6 +7,9 @@ import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
 import { Button, IconButton, Paper, Typography, styled } from "@mui/material";
 import React from "react";
 
+import { useChatBotContext } from "./context/ChatBotContext";
+import { useChatDrawerContext } from "./context/ChatDrawerContext";
+
 const StyledChatDrawer = styled(Paper, {
   shouldForwardProp: (prop) => prop !== "heightPx",
 })<{ heightPx: number }>(({ heightPx }) => ({
@@ -119,64 +122,6 @@ const StyledIconButton = styled(IconButton)({
 
 export type Props = {
   /**
-   * Height of the drawer in pixels.
-   */
-  heightPx: number;
-  /**
-   * Indicates if the drawer is currently being resized.
-   */
-  isDragging: boolean;
-  /**
-   * Indicates if the drawer content is expanded or collapsed.
-   */
-  isExpanded: boolean;
-  /**
-   * Indicates if the drawer is hidden from view.
-   */
-  isMinimized: boolean;
-  /**
-   * Indicates if the drawer is in fullscreen mode.
-   */
-  isFullscreen: boolean;
-  /**
-   * Title text displayed in the drawer header.
-   */
-  title: string;
-  /**
-   * Callback fired when user begins resizing the drawer.
-   */
-  onBeginResize: React.PointerEventHandler<HTMLDivElement>;
-  /**
-   * Callback fired when user toggles expand/collapse state.
-   */
-  onToggleExpand: () => void;
-  /**
-   * Callback fired when user toggles fullscreen mode.
-   */
-  onToggleFullscreen: () => void;
-  /**
-   * Callback fired when user minimizes the drawer.
-   */
-  onMinimize: () => void;
-
-  /**
-   * Indicates whether the end-conversation confirmation UI is showing.
-   */
-  isConfirmingEndConversation: boolean;
-  /**
-   * Callback fired when user clicks the close icon to start confirmation.
-   */
-  onRequestEndConversation: () => void;
-  /**
-   * Callback fired when user confirms ending the conversation.
-   */
-  onConfirmEndConversation: () => void;
-  /**
-   * Callback fired when user cancels ending the conversation.
-   */
-  onCancelEndConversation: () => void;
-
-  /**
    * Child content rendered in the drawer body.
    */
   children: React.ReactNode;
@@ -185,14 +130,15 @@ export type Props = {
 /**
  * ChatDrawer component provides a resizable, draggable chat interface with fullscreen and minimize capabilities.
  */
-const ChatDrawer = (
-  {
+const ChatDrawer = ({ children }: Props): JSX.Element => {
+  const { title } = useChatBotContext();
+  const {
+    drawerRef,
     heightPx,
     isDragging,
     isExpanded,
     isMinimized,
     isFullscreen,
-    title,
     onBeginResize,
     onToggleExpand,
     onToggleFullscreen,
@@ -201,110 +147,110 @@ const ChatDrawer = (
     onRequestEndConversation,
     onConfirmEndConversation,
     onCancelEndConversation,
-    children,
-  }: Props,
-  ref: React.ForwardedRef<HTMLDivElement>
-): JSX.Element => (
-  <StyledChatDrawer
-    ref={ref}
-    heightPx={heightPx}
-    data-minimized={isMinimized ? "true" : "false"}
-    data-fullscreen={isFullscreen ? "true" : "false"}
-    aria-hidden={isMinimized ? "true" : "false"}
-  >
-    <StyledChatHeaderContainer>
-      {!isFullscreen ? (
-        <StyledDragHandleContainer
-          onPointerDown={onBeginResize}
-          data-dragging={isDragging ? "true" : "false"}
-        >
-          <StyledDragHandleBar />
-        </StyledDragHandleContainer>
-      ) : null}
+  } = useChatDrawerContext();
 
-      <StyledChatHeader>
-        <StyledChatTitle as="h2">{title}</StyledChatTitle>
+  return (
+    <StyledChatDrawer
+      ref={drawerRef}
+      heightPx={heightPx}
+      data-minimized={isMinimized ? "true" : "false"}
+      data-fullscreen={isFullscreen ? "true" : "false"}
+      aria-hidden={isMinimized ? "true" : "false"}
+    >
+      <StyledChatHeaderContainer>
+        {!isFullscreen ? (
+          <StyledDragHandleContainer
+            onPointerDown={onBeginResize}
+            data-dragging={isDragging ? "true" : "false"}
+          >
+            <StyledDragHandleBar />
+          </StyledDragHandleContainer>
+        ) : null}
 
-        <StyledHeaderActions>
-          {!isFullscreen ? (
+        <StyledChatHeader>
+          <StyledChatTitle as="h2">{title}</StyledChatTitle>
+
+          <StyledHeaderActions>
+            {!isFullscreen ? (
+              <StyledIconButton
+                size="small"
+                onClick={onToggleExpand}
+                aria-label={isExpanded ? "Collapse chat drawer" : "Expand chat drawer"}
+              >
+                {isExpanded ? (
+                  <ExpandMoreIcon fontSize="small" />
+                ) : (
+                  <ExpandLessIcon fontSize="small" />
+                )}
+              </StyledIconButton>
+            ) : null}
+
             <StyledIconButton
               size="small"
-              onClick={onToggleExpand}
-              aria-label={isExpanded ? "Collapse chat drawer" : "Expand chat drawer"}
+              onClick={onToggleFullscreen}
+              aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
             >
-              {isExpanded ? (
-                <ExpandMoreIcon fontSize="small" />
+              {isFullscreen ? (
+                <FullscreenExitIcon fontSize="small" />
               ) : (
-                <ExpandLessIcon fontSize="small" />
+                <FullscreenIcon fontSize="small" />
               )}
             </StyledIconButton>
-          ) : null}
 
-          <StyledIconButton
-            size="small"
-            onClick={onToggleFullscreen}
-            aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
-          >
-            {isFullscreen ? (
-              <FullscreenExitIcon fontSize="small" />
-            ) : (
-              <FullscreenIcon fontSize="small" />
-            )}
-          </StyledIconButton>
+            <StyledIconButton size="small" onClick={onMinimize} aria-label="Minimize chat">
+              <HorizontalRuleIcon fontSize="small" />
+            </StyledIconButton>
 
-          <StyledIconButton size="small" onClick={onMinimize} aria-label="Minimize chat">
-            <HorizontalRuleIcon fontSize="small" />
-          </StyledIconButton>
-
-          <StyledIconButton
-            size="small"
-            onClick={onRequestEndConversation}
-            aria-label="End conversation"
-          >
-            <CloseIcon fontSize="small" />
-          </StyledIconButton>
-        </StyledHeaderActions>
-      </StyledChatHeader>
-    </StyledChatHeaderContainer>
-
-    <StyledChatBody>
-      {children}
-
-      {isConfirmingEndConversation ? (
-        <ConfirmOverlay role="alertdialog" aria-label="End Conversation">
-          <Typography variant="h6" component="div">
-            End Conversation
-          </Typography>
-
-          <ConfirmActions>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={(e) => {
-                e.stopPropagation();
-                onConfirmEndConversation();
-              }}
-              aria-label="Yes"
+            <StyledIconButton
+              size="small"
+              onClick={onRequestEndConversation}
+              aria-label="End conversation"
             >
-              Yes
-            </Button>
+              <CloseIcon fontSize="small" />
+            </StyledIconButton>
+          </StyledHeaderActions>
+        </StyledChatHeader>
+      </StyledChatHeaderContainer>
 
-            <Button
-              variant="contained"
-              color="info"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCancelEndConversation();
-              }}
-              aria-label="No"
-            >
-              No
-            </Button>
-          </ConfirmActions>
-        </ConfirmOverlay>
-      ) : null}
-    </StyledChatBody>
-  </StyledChatDrawer>
-);
+      <StyledChatBody>
+        {children}
 
-export default React.memo(React.forwardRef<HTMLDivElement, Props>(ChatDrawer));
+        {isConfirmingEndConversation ? (
+          <ConfirmOverlay role="alertdialog" aria-label="End Conversation">
+            <Typography variant="h6" component="div">
+              End Conversation
+            </Typography>
+
+            <ConfirmActions>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onConfirmEndConversation();
+                }}
+                aria-label="Yes"
+              >
+                Yes
+              </Button>
+
+              <Button
+                variant="contained"
+                color="info"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCancelEndConversation();
+                }}
+                aria-label="No"
+              >
+                No
+              </Button>
+            </ConfirmActions>
+          </ConfirmOverlay>
+        ) : null}
+      </StyledChatBody>
+    </StyledChatDrawer>
+  );
+};
+
+export default React.memo(ChatDrawer);
