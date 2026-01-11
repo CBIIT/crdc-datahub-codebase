@@ -1,6 +1,8 @@
 import env from "@/env";
 import { Logger } from "@/utils";
 
+import { storeSessionId } from "../utils/sessionStorageUtils";
+
 export type KnowledgeBaseCitation = {
   title?: string;
   url?: string;
@@ -12,41 +14,6 @@ export type AskKnowledgeBaseResponse = {
   answer: string;
   citations?: KnowledgeBaseCitation[];
   sessionId?: string;
-};
-
-const SESSION_STORAGE_KEY = "chatbot_session_id";
-
-/**
- * Retrieves the stored session ID from session storage.
- */
-export const getStoredSessionId = (): string | null => {
-  try {
-    return sessionStorage.getItem(SESSION_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-};
-
-/**
- * Stores the session ID in session storage.
- */
-export const storeSessionId = (sessionId: string): void => {
-  try {
-    sessionStorage.setItem(SESSION_STORAGE_KEY, sessionId);
-  } catch {
-    Logger.error("Failed to store session ID in session storage");
-  }
-};
-
-/**
- * Clears the stored session ID from session storage.
- */
-export const clearStoredSessionId = (): void => {
-  try {
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
-  } catch {
-    Logger.error("Failed to clear session ID from session storage");
-  }
 };
 
 const knowledgeBaseUrl =
