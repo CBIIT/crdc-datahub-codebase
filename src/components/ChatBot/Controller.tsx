@@ -2,7 +2,7 @@ import { FC } from "react";
 
 import env from "@/env";
 
-import ChatBot, { Props } from "./ChatBotView";
+import ChatBotView, { Props } from "./ChatBotView";
 
 /**
  * Controls the visibility of the ChatBot component.
@@ -15,7 +15,7 @@ const ChatController: FC<Props> = (props) => {
     return null;
   }
 
-  return <ChatBot {...props} />;
+  return <ChatBotView {...props} />;
 };
 
 export default ChatController;
