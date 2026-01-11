@@ -1,12 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
-import {
-  askKnowledgeBase,
-  clearStoredSessionId,
-  getStoredSessionId,
-} from "../api/knowledgeBaseClient";
+import { askQuestion } from "../api/knowledgeBaseClient";
 import chatConfig from "../chatConfig";
 import { createChatMessage, createId, isAbortError } from "../utils/chatUtils";
+import { clearStoredSessionId, getStoredSessionId } from "../utils/sessionStorageUtils";
 
 type ChatState = {
   messages: ChatMessage[];
@@ -49,6 +46,13 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
       return { ...state, inputValue: "" };
     }
     case "message_added": {
+      const existingIndex = state.messages.findIndex((msg) => msg.id === action.message.id);
+      if (existingIndex !== -1) {
+        const updatedMessages = [...state.messages];
+        updatedMessages[existingIndex] = action.message;
+        return { ...state, messages: updatedMessages };
+      }
+
       return { ...state, messages: [...state.messages, action.message] };
     }
     case "status_changed": {
@@ -91,13 +95,13 @@ export const useChatConversation = (): ChatConversationActions => {
   const replyProvider = useMemo<BotReplyProvider>(
     () => async (userText, signal) => {
       const storedSessionId = getStoredSessionId();
-      const { answer } = await askKnowledgeBase({
+      await askQuestion({
         question: userText,
         sessionId: storedSessionId,
         signal,
       });
 
-      return answer;
+      return "";
     },
     []
   );
@@ -146,21 +150,37 @@ export const useChatConversation = (): ChatConversationActions => {
 
     const runReply = async (): Promise<void> => {
       try {
-        const replyText = await replyProvider(trimmed, abortController.signal);
+        const botMessageId = createId("bot_msg_");
+        let accumulatedText = "";
+        let firstChunkReceived = false;
+
+        await askQuestion({
+          question: trimmed,
+          sessionId: getStoredSessionId(),
+          signal: abortController.signal,
+          onChunk: (chunk: string) => {
+            if (!firstChunkReceived) {
+              dispatch({ type: "status_changed", status: "idle" });
+              firstChunkReceived = true;
+            }
+
+            accumulatedText += chunk;
+            dispatch({
+              type: "message_added",
+              message: createChatMessage({
+                id: botMessageId,
+                text: accumulatedText,
+                sender: "bot",
+                senderName: chatConfig.supportBotName,
+              }),
+            });
+          },
+        });
 
         const active = activeRequestRef.current;
         if (!active || active.requestId !== requestId || active.abortController.signal.aborted) {
           return;
         }
-
-        dispatch({
-          type: "message_added",
-          message: createChatMessage({
-            text: replyText,
-            sender: "bot",
-            senderName: chatConfig.supportBotName,
-          }),
-        });
 
         dispatch({ type: "status_changed", status: "idle" });
       } catch (error) {
