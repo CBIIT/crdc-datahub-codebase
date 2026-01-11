@@ -64,6 +64,8 @@ const MessageBubble = styled(Box, {
   const style = BOT_BUBBLE_STYLES[safeVariant];
 
   return {
+    width: "100%",
+    wordWrap: "break-word",
     paddingInline: "12px",
     paddingBlock: "8px",
     borderRadius: "12px",
