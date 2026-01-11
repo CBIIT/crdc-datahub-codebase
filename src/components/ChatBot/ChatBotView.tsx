@@ -13,16 +13,14 @@ const ChatBot = (): JSX.Element => {
   const { label } = useChatBotContext();
   const { isOpen, openDrawer } = useChatDrawerContext();
 
-  return (
-    <>
-      <FloatingChatButton label={label} onClick={openDrawer} />
+  if (!isOpen) {
+    return <FloatingChatButton label={label} onClick={openDrawer} />;
+  }
 
-      {isOpen ? (
-        <ChatDrawer>
-          <ChatPanel />
-        </ChatDrawer>
-      ) : null}
-    </>
+  return (
+    <ChatDrawer>
+      <ChatPanel />
+    </ChatDrawer>
   );
 };
 
