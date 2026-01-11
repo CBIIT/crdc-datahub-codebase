@@ -61,7 +61,7 @@ export const createId = (prefix: string): string => `${prefix}${v4()}`;
 /**
  * Creates a chat message object with provided content and metadata.
  *
- * @param args - Message text, sender, name, and optional variant
+ * @param args - Message text, sender, name, optional variant, and optional custom id
  * @return New chat message object
  */
 export const createChatMessage = (args: {
@@ -69,9 +69,12 @@ export const createChatMessage = (args: {
   sender: ChatSender;
   senderName: string;
   variant?: ChatMessageVariant;
+  id?: string;
 }): ChatMessage => ({
-  id: createId("chat_msg_"),
+  id: args.id ?? createId("chat_msg_"),
   timestamp: new Date(),
   variant: args.variant ?? "default",
-  ...args,
+  text: args.text,
+  sender: args.sender,
+  senderName: args.senderName,
 });
