@@ -1,0 +1,217 @@
+import React from "react";
+import { axe } from "vitest-axe";
+
+import { render } from "@/test-utils";
+
+import MessageList from "./MessageList";
+
+vi.mock("./ChatMessageItem", () => ({
+  default: ({ message }: { message: ChatMessage }) => (
+    <div data-testid={`message-${message.id}`}>{message.text}</div>
+  ),
+}));
+
+vi.mock("./BotTypingIndicator", () => ({
+  default: () => <div data-testid="bot-typing-indicator">Typing...</div>,
+}));
+
+const createMockMessage = (overrides?: Partial<ChatMessage>): ChatMessage => ({
+  id: "test-message-1",
+  text: "Test message",
+  sender: "bot",
+  timestamp: new Date("2024-01-15T14:30:00"),
+  senderName: "Support Bot",
+  variant: "default",
+  ...overrides,
+});
+
+const defaultProps = {
+  greetingTimestamp: new Date("2024-01-15T09:00:00"),
+  messages: [] as ChatMessage[],
+  isBotTyping: false,
+};
+
+describe("Accessibility", () => {
+  beforeEach(() => {
+    Element.prototype.scrollTo = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+  it("should have no accessibility violations with empty messages", async () => {
+    const { container } = render(<MessageList {...defaultProps} />);
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("should have no accessibility violations with messages", async () => {
+    const messages = [createMockMessage({ id: "msg-1", text: "Hello" })];
+    const { container } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("should have no accessibility violations with typing indicator", async () => {
+    const { container } = render(<MessageList {...defaultProps} isBotTyping />);
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe("Basic Functionality", () => {
+  beforeEach(() => {
+    Element.prototype.scrollTo = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should render without crashing", () => {
+    expect(() => render(<MessageList {...defaultProps} />)).not.toThrow();
+  });
+
+  it("should display welcome title", () => {
+    const { getByText } = render(<MessageList {...defaultProps} />);
+
+    expect(getByText("Welcome to Support!")).toBeInTheDocument();
+  });
+
+  it("should display formatted greeting timestamp", () => {
+    const greetingTimestamp = new Date("2024-01-15T14:30:00");
+    const { getByText } = render(
+      <MessageList {...defaultProps} greetingTimestamp={greetingTimestamp} />
+    );
+
+    expect(getByText(/Monday/i)).toBeInTheDocument();
+    expect(getByText(/02:30 PM/i)).toBeInTheDocument();
+  });
+
+  it("should render empty messages array without errors", () => {
+    const { container } = render(<MessageList {...defaultProps} messages={[]} />);
+
+    expect(container.querySelector('[data-testid^="message-"]')).not.toBeInTheDocument();
+  });
+
+  it("should render single message", () => {
+    const messages = [createMockMessage({ id: "msg-1", text: "Hello world" })];
+    const { getByTestId } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(getByTestId("message-msg-1")).toBeInTheDocument();
+  });
+
+  it("should render multiple messages", () => {
+    const messages = [
+      createMockMessage({ id: "msg-1", text: "First message" }),
+      createMockMessage({ id: "msg-2", text: "Second message" }),
+      createMockMessage({ id: "msg-3", text: "Third message" }),
+    ];
+    const { getByTestId } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(getByTestId("message-msg-1")).toBeInTheDocument();
+    expect(getByTestId("message-msg-2")).toBeInTheDocument();
+    expect(getByTestId("message-msg-3")).toBeInTheDocument();
+  });
+
+  it("should show typing indicator when isBotTyping is true", () => {
+    const { getByTestId } = render(<MessageList {...defaultProps} isBotTyping />);
+
+    expect(getByTestId("bot-typing-indicator")).toBeInTheDocument();
+  });
+
+  it("should not show typing indicator when isBotTyping is false", () => {
+    const { queryByTestId } = render(<MessageList {...defaultProps} isBotTyping={false} />);
+
+    expect(queryByTestId("bot-typing-indicator")).not.toBeInTheDocument();
+  });
+
+  it("should render messages with typing indicator", () => {
+    const messages = [createMockMessage({ id: "msg-1", text: "Hello" })];
+    const { getByTestId } = render(
+      <MessageList {...defaultProps} messages={messages} isBotTyping />
+    );
+
+    expect(getByTestId("message-msg-1")).toBeInTheDocument();
+    expect(getByTestId("bot-typing-indicator")).toBeInTheDocument();
+  });
+
+  it("should update when messages prop changes", () => {
+    const messages1 = [createMockMessage({ id: "msg-1", text: "First" })];
+    const messages2 = [
+      createMockMessage({ id: "msg-1", text: "First" }),
+      createMockMessage({ id: "msg-2", text: "Second" }),
+    ];
+    const { rerender, getByTestId, queryByTestId } = render(
+      <MessageList {...defaultProps} messages={messages1} />
+    );
+
+    expect(getByTestId("message-msg-1")).toBeInTheDocument();
+    expect(queryByTestId("message-msg-2")).not.toBeInTheDocument();
+
+    rerender(<MessageList {...defaultProps} messages={messages2} />);
+
+    expect(getByTestId("message-msg-1")).toBeInTheDocument();
+    expect(getByTestId("message-msg-2")).toBeInTheDocument();
+  });
+
+  it("should update typing indicator when isBotTyping changes", () => {
+    const { rerender, getByTestId, queryByTestId } = render(
+      <MessageList {...defaultProps} isBotTyping={false} />
+    );
+
+    expect(queryByTestId("bot-typing-indicator")).not.toBeInTheDocument();
+
+    rerender(<MessageList {...defaultProps} isBotTyping />);
+
+    expect(getByTestId("bot-typing-indicator")).toBeInTheDocument();
+  });
+
+  it("should handle messages with different senders", () => {
+    const messages = [
+      createMockMessage({ id: "msg-1", sender: "bot", text: "Bot message" }),
+      createMockMessage({ id: "msg-2", sender: "user", text: "User message" }),
+    ];
+    const { getByTestId } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(getByTestId("message-msg-1")).toBeInTheDocument();
+    expect(getByTestId("message-msg-2")).toBeInTheDocument();
+  });
+
+  it("should render with different greeting timestamps", () => {
+    const timestamp1 = new Date("2024-01-15T09:00:00");
+    const timestamp2 = new Date("2024-01-16T15:30:00");
+    const { rerender, getByText } = render(
+      <MessageList {...defaultProps} greetingTimestamp={timestamp1} />
+    );
+
+    expect(getByText(/Monday/i)).toBeInTheDocument();
+
+    rerender(<MessageList {...defaultProps} greetingTimestamp={timestamp2} />);
+
+    expect(getByText(/Tuesday/i)).toBeInTheDocument();
+  });
+
+  it("should maintain message order", () => {
+    const messages = [
+      createMockMessage({ id: "msg-1", text: "First" }),
+      createMockMessage({ id: "msg-2", text: "Second" }),
+      createMockMessage({ id: "msg-3", text: "Third" }),
+    ];
+    const { container } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    const messageElements = container.querySelectorAll('[data-testid^="message-"]');
+    expect(messageElements[0]).toHaveAttribute("data-testid", "message-msg-1");
+    expect(messageElements[1]).toHaveAttribute("data-testid", "message-msg-2");
+    expect(messageElements[2]).toHaveAttribute("data-testid", "message-msg-3");
+  });
+
+  it("should call scrollTo when element ref is available", () => {
+    const scrollToSpy = vi.fn();
+    Element.prototype.scrollTo = scrollToSpy;
+
+    render(<MessageList {...defaultProps} />);
+
+    expect(scrollToSpy).toHaveBeenCalled();
+  });
+});
