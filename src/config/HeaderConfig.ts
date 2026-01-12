@@ -1,13 +1,15 @@
 import Logo from "../assets/header/Portal_Logo.svg";
 import LogoSmall from "../assets/header/Portal_Logo_Small.svg";
 import usaFlagSmall from "../assets/header/us_flag_small.svg";
-import DataExplorerInstructions from "../assets/pdf/CRDC_Data_Explorer_Instructions.pdf";
 import ApiInstructions from "../assets/pdf/CRDC_Data_Submission_API_Instructions.pdf";
 
 import { DataCommons } from "./DataCommons";
 
 export const DataSubmissionInstructionsLink =
   "https://datacommons.cancer.gov/data-submission-instructions";
+
+export const DataExplorerInstructionsLink =
+  "https://datacommons.cancer.gov/data-explorer-instructions";
 
 // globalHeaderLogo image 468x100
 // globalHeaderImage: image 2200x100
@@ -70,7 +72,7 @@ export const HeaderLinks = [
       [
         {
           name: "Data Explorer\nInstructions",
-          link: DataExplorerInstructions,
+          link: DataExplorerInstructionsLink,
           id: "data-explorer-instructions",
           className: "navMobileSubItem",
         },
