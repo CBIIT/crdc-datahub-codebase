@@ -74,8 +74,11 @@ export async function askQuestion({
             currentSessionId = parsed.sessionId;
             isFirstChunk = false;
           } else {
-            if (parsed.output?.text && onChunk) {
-              onChunk(parsed.output.text);
+            const outputText =
+              typeof parsed.output === "string" ? parsed.output : parsed.output?.text;
+
+            if (outputText && onChunk) {
+              onChunk(outputText);
             }
 
             if (parsed.citation && Object.keys(parsed.citation).length > 0) {
