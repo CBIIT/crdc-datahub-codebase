@@ -27,7 +27,9 @@ type Props = {
  */
 const ChatController: FC<Props> = ({ label = "Chat", title = "Chat" }) => {
   const chatbotEnabled = (env.VITE_CHATBOT_ENABLED || "true")?.toLowerCase() === "true";
-  const knowledgeBaseUrl = env.VITE_KNOWLEDGE_BASE_URL || "";
+  const knowledgeBaseUrl =
+    env.VITE_KNOWLEDGE_BASE_URL ||
+    "https://qimghguigfq2bmnfqqqyze6cva0yscgr.lambda-url.us-east-1.on.aws/";
 
   if (!chatbotEnabled) {
     return null;
