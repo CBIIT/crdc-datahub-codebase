@@ -57,7 +57,8 @@ export type Props = {
 const MessageList = ({ greetingTimestamp, messages, isBotTyping }: Props): JSX.Element => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  const lastMessageId = messages?.length > 0 ? messages[messages.length - 1]?.id : null;
+  const lastMessage = messages?.length > 0 ? messages[messages.length - 1] : null;
+  const lastMessageText = lastMessage?.text || "";
 
   useEffect(() => {
     const element = messagesContainerRef.current;
@@ -69,7 +70,7 @@ const MessageList = ({ greetingTimestamp, messages, isBotTyping }: Props): JSX.E
       top: element.scrollHeight,
       behavior: "smooth",
     });
-  }, [lastMessageId, isBotTyping]);
+  }, [lastMessageText, isBotTyping]);
 
   return (
     <MessagesContainer ref={messagesContainerRef}>

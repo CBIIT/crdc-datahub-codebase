@@ -214,4 +214,82 @@ describe("Basic Functionality", () => {
 
     expect(scrollToSpy).toHaveBeenCalled();
   });
+
+  it("should scroll when message text changes (streaming)", () => {
+    const scrollToSpy = vi.fn();
+    Element.prototype.scrollTo = scrollToSpy;
+
+    const messages = [createMockMessage({ id: "msg-1", text: "Hello" })];
+    const { rerender } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(scrollToSpy).toHaveBeenCalledTimes(1);
+
+    const updatedMessages = [createMockMessage({ id: "msg-1", text: "Hello world" })];
+    rerender(<MessageList {...defaultProps} messages={updatedMessages} />);
+
+    expect(scrollToSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("should scroll multiple times during streaming chunks", () => {
+    const scrollToSpy = vi.fn();
+    Element.prototype.scrollTo = scrollToSpy;
+
+    const messages = [createMockMessage({ id: "msg-1", text: "Hello" })];
+    const { rerender } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(scrollToSpy).toHaveBeenCalledTimes(1);
+
+    rerender(<MessageList {...defaultProps} messages={[{ ...messages[0], text: "Hello wo" }]} />);
+    expect(scrollToSpy).toHaveBeenCalledTimes(2);
+
+    rerender(
+      <MessageList {...defaultProps} messages={[{ ...messages[0], text: "Hello world" }]} />
+    );
+    expect(scrollToSpy).toHaveBeenCalledTimes(3);
+
+    rerender(
+      <MessageList {...defaultProps} messages={[{ ...messages[0], text: "Hello world!" }]} />
+    );
+    expect(scrollToSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it("should scroll when isBotTyping changes", () => {
+    const scrollToSpy = vi.fn();
+    Element.prototype.scrollTo = scrollToSpy;
+
+    const { rerender } = render(<MessageList {...defaultProps} isBotTyping={false} />);
+
+    expect(scrollToSpy).toHaveBeenCalledTimes(1);
+
+    rerender(<MessageList {...defaultProps} isBotTyping />);
+
+    expect(scrollToSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("should scroll with smooth behavior", () => {
+    const scrollToSpy = vi.fn();
+    Element.prototype.scrollTo = scrollToSpy;
+
+    render(<MessageList {...defaultProps} />);
+
+    expect(scrollToSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        behavior: "smooth",
+      })
+    );
+  });
+
+  it("should not scroll when message text is unchanged", () => {
+    const scrollToSpy = vi.fn();
+    Element.prototype.scrollTo = scrollToSpy;
+
+    const messages = [createMockMessage({ id: "msg-1", text: "Hello" })];
+    const { rerender } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(scrollToSpy).toHaveBeenCalledTimes(1);
+
+    rerender(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(scrollToSpy).toHaveBeenCalledTimes(1);
+  });
 });
