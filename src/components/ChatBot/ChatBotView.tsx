@@ -11,9 +11,9 @@ import FloatingChatButton from "./FloatingChatButton";
  */
 const ChatBot = (): JSX.Element => {
   const { label } = useChatBotContext();
-  const { isOpen, openDrawer } = useChatDrawerContext();
+  const { isOpen, openDrawer, isMinimized } = useChatDrawerContext();
 
-  if (!isOpen) {
+  if (!isOpen || isMinimized) {
     return <FloatingChatButton label={label} onClick={openDrawer} />;
   }
 
