@@ -92,7 +92,7 @@ const BotTypingIndicator = ({ senderName = chatConfig.supportBotName }: Props): 
     <Stack direction="column" alignItems="flex-start">
       <TypingSender>{senderName}</TypingSender>
 
-      <TypingBubble aria-label={`${senderName} is typing`}>
+      <TypingBubble role="status" aria-label={`${senderName} is typing`}>
         <TypingDot />
         <TypingDot />
         <TypingDot />

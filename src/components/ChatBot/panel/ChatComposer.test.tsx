@@ -1,7 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 
-import { render, waitFor } from "@/test-utils";
+import { fireEvent, render, waitFor } from "@/test-utils";
 
 import ChatComposer from "./ChatComposer";
 
@@ -106,7 +106,7 @@ describe("Basic Functionality", () => {
     const { getByRole } = render(<ChatComposer {...defaultProps} onSend={onSend} isSendDisabled />);
 
     const sendButton = getByRole("button", { name: /send message/i });
-    userEvent.click(sendButton);
+    fireEvent.click(sendButton);
 
     expect(onSend).not.toHaveBeenCalled();
   });
