@@ -31,7 +31,7 @@ const ChatController: FC<Props> = ({ label = "Chat", title = "Chat" }) => {
     env.VITE_KNOWLEDGE_BASE_URL ||
     "https://qimghguigfq2bmnfqqqyze6cva0yscgr.lambda-url.us-east-1.on.aws/";
 
-  if (!chatbotEnabled) {
+  if (!chatbotEnabled || !knowledgeBaseUrl?.trim()) {
     return null;
   }
 
