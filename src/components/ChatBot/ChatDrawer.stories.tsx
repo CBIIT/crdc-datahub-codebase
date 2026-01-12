@@ -2,6 +2,7 @@ import { Meta, StoryObj } from "@storybook/react";
 
 import ChatDrawer from "./ChatDrawer";
 import { ChatBotProvider } from "./context/ChatBotContext";
+import { ChatConversationProvider } from "./context/ChatConversationContext";
 import { ChatDrawerProvider } from "./context/ChatDrawerContext";
 
 const meta: Meta<typeof ChatDrawer> = {
@@ -13,9 +14,11 @@ const meta: Meta<typeof ChatDrawer> = {
   decorators: [
     (Story) => (
       <ChatBotProvider title="Chat" label="Chat">
-        <ChatDrawerProvider>
-          <Story />
-        </ChatDrawerProvider>
+        <ChatConversationProvider>
+          <ChatDrawerProvider>
+            <Story />
+          </ChatDrawerProvider>
+        </ChatConversationProvider>
       </ChatBotProvider>
     ),
   ],

@@ -2,6 +2,7 @@ import { Meta, StoryObj } from "@storybook/react";
 
 import ChatBotView from "./ChatBotView";
 import { ChatBotProvider } from "./context/ChatBotContext";
+import { ChatConversationProvider } from "./context/ChatConversationContext";
 import { ChatDrawerProvider } from "./context/ChatDrawerContext";
 
 type StoryArgs = {
@@ -23,9 +24,11 @@ const meta: Meta<StoryArgs> = {
         label={context.args.label || "Chat"}
         knowledgeBaseUrl={context.args.endpointUrl}
       >
-        <ChatDrawerProvider>
-          <Story />
-        </ChatDrawerProvider>
+        <ChatConversationProvider>
+          <ChatDrawerProvider>
+            <Story />
+          </ChatDrawerProvider>
+        </ChatConversationProvider>
       </ChatBotProvider>
     ),
   ],

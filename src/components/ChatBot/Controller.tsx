@@ -4,9 +4,11 @@ import env from "@/env";
 
 import ChatBotView from "./ChatBotView";
 import { ChatBotProvider } from "./context/ChatBotContext";
+import { ChatConversationProvider } from "./context/ChatConversationContext";
 import { ChatDrawerProvider } from "./context/ChatDrawerContext";
 
 const MemoizedChatBotProvider = memo(ChatBotProvider);
+const MemoizedChatConversationProvider = memo(ChatConversationProvider);
 const MemoizedChatDrawerProvider = memo(ChatDrawerProvider);
 
 type Props = {
@@ -33,9 +35,11 @@ const ChatController: FC<Props> = ({ label = "Chat", title = "Chat" }) => {
 
   return (
     <MemoizedChatBotProvider title={title} label={label} knowledgeBaseUrl={knowledgeBaseUrl}>
-      <MemoizedChatDrawerProvider>
-        <ChatBotView />
-      </MemoizedChatDrawerProvider>
+      <MemoizedChatConversationProvider>
+        <MemoizedChatDrawerProvider>
+          <ChatBotView />
+        </MemoizedChatDrawerProvider>
+      </MemoizedChatConversationProvider>
     </MemoizedChatBotProvider>
   );
 };

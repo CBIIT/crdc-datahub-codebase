@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { useChatConversation } from "../hooks/useChatConversation";
 import { useChatDrawer } from "../hooks/useChatDrawer";
+
+import { useChatConversationContext } from "./ChatConversationContext";
 
 type ChatDrawerContextValue = {
   // Drawer open state
@@ -58,7 +59,7 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
     toggleExpand,
   } = useChatDrawer();
 
-  const { endConversation } = useChatConversation();
+  const { endConversation } = useChatConversationContext();
 
   const [isMinimized, setIsMinimized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);

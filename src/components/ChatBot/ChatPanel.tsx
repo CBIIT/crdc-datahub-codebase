@@ -1,8 +1,8 @@
 import { Stack, styled } from "@mui/material";
 import React, { useCallback, useMemo } from "react";
 
+import { useChatConversationContext } from "./context/ChatConversationContext";
 import { useChatDrawerContext } from "./context/ChatDrawerContext";
-import { useChatConversation } from "./hooks/useChatConversation";
 import ChatComposer from "./panel/ChatComposer";
 import MessageList from "./panel/MessageList";
 
@@ -28,7 +28,7 @@ const ChatPanel = (): JSX.Element => {
     setInputValue,
     sendMessage,
     handleKeyDown,
-  } = useChatConversation();
+  } = useChatConversationContext();
 
   /**
    * Determines if the send button should be disabled based on input state and bot typing status.

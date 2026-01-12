@@ -8,6 +8,10 @@ vi.mock("./context/ChatBotContext", () => ({
   ChatBotProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock("./context/ChatConversationContext", () => ({
+  ChatConversationProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
 vi.mock("./context/ChatDrawerContext", () => ({
   ChatDrawerProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));

@@ -4,6 +4,7 @@ import React from "react";
 
 import ChatPanel from "./ChatPanel";
 import { ChatBotProvider } from "./context/ChatBotContext";
+import { ChatConversationProvider } from "./context/ChatConversationContext";
 import { ChatDrawerProvider } from "./context/ChatDrawerContext";
 
 type StoryArgs = {
@@ -36,11 +37,13 @@ const meta: Meta<StoryArgs> = {
           label="Ask a question"
           knowledgeBaseUrl={endpointUrl}
         >
-          <ChatDrawerProvider>
-            <div style={{ height: "600px", width: "100%", border: "1px solid #ccc" }}>
-              <Story />
-            </div>
-          </ChatDrawerProvider>
+          <ChatConversationProvider>
+            <ChatDrawerProvider>
+              <div style={{ height: "600px", width: "100%", border: "1px solid #ccc" }}>
+                <Story />
+              </div>
+            </ChatDrawerProvider>
+          </ChatConversationProvider>
         </ChatBotProvider>
       );
     },
