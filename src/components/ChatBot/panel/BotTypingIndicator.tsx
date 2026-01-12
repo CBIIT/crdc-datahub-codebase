@@ -2,28 +2,35 @@ import { Box, Stack, Typography, styled } from "@mui/material";
 import React from "react";
 
 import chatConfig from "../config/chatConfig";
+import { useChatDrawerContext } from "../context/ChatDrawerContext";
 
-const TypingSender = styled(Typography)({
-  fontSize: "12px",
+const TypingSender = styled(Typography, {
+  shouldForwardProp: (prop) => prop !== "isFullscreen",
+})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
+  fontSize: isFullscreen ? "16px" : "12px",
   fontWeight: 500,
   color: "rgba(0,0,0,0.7)",
   paddingInline: "4px",
   marginBottom: "4px",
-});
+}));
 
-const TypingBubble = styled(Box)({
+const TypingBubble = styled(Box, {
+  shouldForwardProp: (prop) => prop !== "isFullscreen",
+})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
   display: "inline-flex",
   alignItems: "center",
-  gap: 10,
-  paddingInline: "14px",
-  paddingBlock: "10px",
-  minHeight: "36px",
+  gap: isFullscreen ? 14 : 10,
+  paddingInline: isFullscreen ? "18px" : "14px",
+  paddingBlock: isFullscreen ? "14px" : "10px",
+  minHeight: isFullscreen ? "48px" : "36px",
   borderRadius: "12px",
   backgroundColor: "#F5F5F5",
-});
+}));
 
-const TypingDot = styled("span")({
-  "--dot-size": "10px",
+const TypingDot = styled("span", {
+  shouldForwardProp: (prop) => prop !== "isFullscreen",
+})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
+  "--dot-size": isFullscreen ? "12px" : "10px",
   "--dot-border-width": "1px",
   "--dot-border-color": "rgba(0, 94, 162, 0.28)",
   "--dot-color-1": "#005EA2",
@@ -75,7 +82,7 @@ const TypingDot = styled("span")({
     ["--dot-color" as string]: "var(--dot-color-3)",
     animationDelay: "calc(var(--animation-delay-step) * 2)",
   },
-});
+}));
 
 export type Props = {
   /**
@@ -87,18 +94,26 @@ export type Props = {
 /**
  * Displays an animated typing indicator with the bot's name and three animated dots.
  */
-const BotTypingIndicator = ({ senderName = chatConfig.supportBotName }: Props): JSX.Element => (
-  <Stack direction="row" justifyContent="flex-start" marginBottom="12px">
-    <Stack direction="column" alignItems="flex-start">
-      <TypingSender>{senderName}</TypingSender>
+const BotTypingIndicator = ({ senderName = chatConfig.supportBotName }: Props): JSX.Element => {
+  const { isFullscreen } = useChatDrawerContext();
 
-      <TypingBubble role="status" aria-label={`${senderName} is typing`}>
-        <TypingDot />
-        <TypingDot />
-        <TypingDot />
-      </TypingBubble>
+  return (
+    <Stack direction="row" justifyContent="flex-start" marginBottom="12px">
+      <Stack direction="column" alignItems="flex-start">
+        <TypingSender isFullscreen={isFullscreen}>{senderName}</TypingSender>
+
+        <TypingBubble
+          role="status"
+          aria-label={`${senderName} is typing`}
+          isFullscreen={isFullscreen}
+        >
+          <TypingDot isFullscreen={isFullscreen} />
+          <TypingDot isFullscreen={isFullscreen} />
+          <TypingDot isFullscreen={isFullscreen} />
+        </TypingBubble>
+      </Stack>
     </Stack>
-  </Stack>
-);
+  );
+};
 
 export default React.memo<Props>(BotTypingIndicator);

@@ -1,14 +1,25 @@
-import { Stack } from "@mui/material";
+import { Stack, styled } from "@mui/material";
 import React, { useCallback, useMemo } from "react";
 
+import { useChatDrawerContext } from "./context/ChatDrawerContext";
 import { useChatConversation } from "./hooks/useChatConversation";
 import ChatComposer from "./panel/ChatComposer";
 import MessageList from "./panel/MessageList";
+
+const StyledStack = styled(Stack, {
+  shouldForwardProp: (prop) => prop !== "isFullscreen",
+})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
+  height: "100%",
+  ...(isFullscreen && {
+    fontSize: "18px",
+  }),
+}));
 
 /**
  * Renders the main chat interface with message history and user input composer.
  */
 const ChatPanel = (): JSX.Element => {
+  const { isFullscreen } = useChatDrawerContext();
   const {
     greetingTimestamp,
     messages,
@@ -39,7 +50,7 @@ const ChatPanel = (): JSX.Element => {
   );
 
   return (
-    <Stack direction="column" height="100%">
+    <StyledStack direction="column" isFullscreen={isFullscreen}>
       <MessageList
         greetingTimestamp={greetingTimestamp}
         messages={messages}
@@ -52,7 +63,7 @@ const ChatPanel = (): JSX.Element => {
         onKeyDown={handleKeyDown}
         isSendDisabled={isSendDisabled}
       />
-    </Stack>
+    </StyledStack>
   );
 };
 

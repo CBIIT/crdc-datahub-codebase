@@ -4,13 +4,17 @@ import React, { useCallback } from "react";
 
 import StyledOutlinedInput from "@/components/StyledFormComponents/StyledOutlinedInput";
 
+import { useChatDrawerContext } from "../context/ChatDrawerContext";
+
 const StyledBox = styled(Box)({
   borderTop: "1px solid rgba(0,0,0,0.12)",
   padding: "12px",
   backgroundColor: "#FFFFFF",
 });
 
-const StyledTextField = styled(StyledOutlinedInput)({
+const StyledTextField = styled(StyledOutlinedInput, {
+  shouldForwardProp: (prop) => prop !== "isFullscreen",
+})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
   "&.MuiOutlinedInput-root": {
     borderRadius: "8px",
     border: "0 !important",
@@ -19,17 +23,19 @@ const StyledTextField = styled(StyledOutlinedInput)({
     border: "1px solid #005EA2",
   },
   "& .MuiInputBase-input": {
-    fontSize: "14px",
-    padding: "10px",
+    fontSize: isFullscreen ? "18px" : "14px",
+    padding: isFullscreen ? "14px" : "10px",
   },
-});
+}));
 
-const StyledSendButton = styled(IconButton)({
+const StyledSendButton = styled(IconButton, {
+  shouldForwardProp: (prop) => prop !== "isFullscreen",
+})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
   backgroundColor: "#005EA2",
   color: "#FFFFFF",
   borderRadius: "8px",
-  width: "40px",
-  height: "40px",
+  width: isFullscreen ? "48px" : "40px",
+  height: isFullscreen ? "48px" : "40px",
   "&:hover": {
     backgroundColor: "#115293",
   },
@@ -37,7 +43,12 @@ const StyledSendButton = styled(IconButton)({
     backgroundColor: "rgba(0,0,0,0.12)",
     color: "rgba(0,0,0,0.26)",
   },
-});
+  ...(isFullscreen && {
+    "& .MuiSvgIcon-root": {
+      fontSize: "24px",
+    },
+  }),
+}));
 
 export type Props = {
   /**
@@ -72,6 +83,7 @@ const ChatComposer = ({
   onKeyDown,
   isSendDisabled,
 }: Props): JSX.Element => {
+  const { isFullscreen } = useChatDrawerContext();
   /**
    * Handles input value changes and propagates them to the parent.
    */
@@ -91,10 +103,16 @@ const ChatComposer = ({
           value={value}
           onChange={handleInputChange}
           onKeyDown={onKeyDown}
+          isFullscreen={isFullscreen}
           inputProps={{ "aria-label": "Type a message" }}
           fullWidth
         />
-        <StyledSendButton onClick={onSend} disabled={isSendDisabled} aria-label="Send message">
+        <StyledSendButton
+          onClick={onSend}
+          disabled={isSendDisabled}
+          aria-label="Send message"
+          isFullscreen={isFullscreen}
+        >
           <SendIcon fontSize="small" />
         </StyledSendButton>
       </Stack>

@@ -3,6 +3,8 @@ import React, { CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { useChatDrawerContext } from "../context/ChatDrawerContext";
+
 const MessageRow = styled(Box)({
   display: "flex",
   justifyContent: "flex-start",
@@ -29,16 +31,20 @@ const MessageMetaRow = styled(Box)({
   paddingInline: "4px",
 });
 
-const MessageSender = styled(Typography)({
-  fontSize: "12px",
+const MessageSender = styled(Typography, {
+  shouldForwardProp: (prop) => prop !== "isFullscreen",
+})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
+  fontSize: isFullscreen ? "16px" : "12px",
   fontWeight: 500,
   color: "rgba(0,0,0,0.7)",
-});
+}));
 
-const MessageTimestamp = styled(Typography)({
-  fontSize: "12px",
+const MessageTimestamp = styled(Typography, {
+  shouldForwardProp: (prop) => prop !== "isFullscreen",
+})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
+  fontSize: isFullscreen ? "16px" : "12px",
   color: "rgba(0,0,0,0.54)",
-});
+}));
 
 /**
  * Style definitions for message bubbles based on message variant.
@@ -60,22 +66,22 @@ const BOT_BUBBLE_STYLES: Record<ChatMessageVariant, CSSProperties> = {
 };
 
 const MessageBubble = styled(Box, {
-  shouldForwardProp: (prop) => prop !== "variant",
-})<{ variant?: ChatMessageVariant }>(({ variant }) => {
+  shouldForwardProp: (prop) => prop !== "variant" && prop !== "isFullscreen",
+})<{ variant?: ChatMessageVariant; isFullscreen?: boolean }>(({ variant, isFullscreen }) => {
   const safeVariant = (variant ?? "default") as ChatMessageVariant;
   const style = BOT_BUBBLE_STYLES[safeVariant];
 
   return {
     width: "100%",
     wordWrap: "break-word",
-    paddingInline: "12px",
-    paddingBlock: "8px",
+    paddingInline: isFullscreen ? "16px" : "12px",
+    paddingBlock: isFullscreen ? "12px" : "8px",
     borderRadius: "12px",
     backgroundColor: style.backgroundColor,
     border: style.border ?? "none",
     color: style.color,
     fontWeight: style.fontWeight ?? 400,
-    fontSize: "16px",
+    fontSize: isFullscreen ? "18px" : "16px",
     lineHeight: 1.5,
     whiteSpace: "pre-line",
 
@@ -263,6 +269,8 @@ type Props = {
  * Renders a single chat message with sender info, timestamp, and styled bubble.
  */
 const ChatMessageItem = ({ message }: Props): JSX.Element => {
+  const { isFullscreen } = useChatDrawerContext();
+
   if (!message) {
     return null;
   }
@@ -274,11 +282,19 @@ const ChatMessageItem = ({ message }: Props): JSX.Element => {
     <MessageRow data-is-user={dataIsUser}>
       <MessageColumn data-is-user={dataIsUser}>
         <MessageMetaRow>
-          {!isUser ? <MessageSender>{message.senderName}</MessageSender> : null}
-          <MessageTimestamp>{formatMessageTime(message.timestamp)}</MessageTimestamp>
+          {!isUser ? (
+            <MessageSender isFullscreen={isFullscreen}>{message.senderName}</MessageSender>
+          ) : null}
+          <MessageTimestamp isFullscreen={isFullscreen}>
+            {formatMessageTime(message.timestamp)}
+          </MessageTimestamp>
         </MessageMetaRow>
 
-        <MessageBubble data-is-user={dataIsUser} variant={message.variant}>
+        <MessageBubble
+          data-is-user={dataIsUser}
+          variant={message.variant}
+          isFullscreen={isFullscreen}
+        >
           {isUser ? (
             message.text
           ) : (

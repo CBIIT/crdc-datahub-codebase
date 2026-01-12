@@ -75,6 +75,9 @@ const StyledChatHeader = styled("div")({
   borderBottom: "1px solid rgba(0,0,0,0.12)",
   backgroundColor: "transparent",
   color: "white",
+  '&[data-fullscreen="true"]': {
+    padding: "8px 24px",
+  },
 });
 
 const StyledHeaderActions = styled("div")({
@@ -167,7 +170,7 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
           </StyledDragHandleContainer>
         ) : null}
 
-        <StyledChatHeader>
+        <StyledChatHeader data-fullscreen={isFullscreen ? "true" : "false"}>
           <StyledChatTitle as="h2">{title}</StyledChatTitle>
 
           <StyledHeaderActions>
