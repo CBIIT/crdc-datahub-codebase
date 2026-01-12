@@ -83,7 +83,7 @@ export const buildAssetUrls = (model: DataCommon, modelVersion: string): ModelAs
       : "",
     changelog: assets?.["release-notes"]
       ? `${MODEL_FILE_REPO}${tier}/cache/${name}/${version}/${assets?.["release-notes"]}`
-      : null,
+      : `${MODEL_FILE_REPO}${tier}/cache/${name}/${version}/version-history.md`,
   };
 };
 
