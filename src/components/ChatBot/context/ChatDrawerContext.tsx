@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { useChatConversation } from "../hooks/useChatConversation";
 import { useChatDrawer } from "../hooks/useChatDrawer";
@@ -63,6 +63,21 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
   const [isMinimized, setIsMinimized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isConfirmingEndConversation, setIsConfirmingEndConversation] = useState(false);
+
+  /**
+   * Hide the page scrollbar when fullscreen mode is active to avoid double scrollbars.
+   */
+  useEffect(() => {
+    if (isFullscreen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isFullscreen]);
 
   /**
    * Opens the chat drawer and removes the minimized state when the floating button is clicked.
