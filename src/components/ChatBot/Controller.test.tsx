@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 
 vi.mock("./ChatBotView", () => ({
   default: () => <div data-testid="chatbot-view" />,
@@ -32,9 +32,9 @@ describe("ChatController", () => {
 
     const { default: Controller } = await import("./Controller");
 
-    render(<Controller title="Test Chat" label="Help" />);
+    const { getByTestId } = render(<Controller title="Test Chat" label="Help" />);
 
-    expect(screen.getByTestId("chatbot-view")).toBeInTheDocument();
+    expect(getByTestId("chatbot-view")).toBeInTheDocument();
   });
 
   it.each([
@@ -50,9 +50,9 @@ describe("ChatController", () => {
 
     const { default: Controller } = await import("./Controller");
 
-    render(<Controller title="Test Chat" label="Help" />);
+    const { queryByTestId } = render(<Controller title="Test Chat" label="Help" />);
 
-    expect(screen.queryByTestId("chatbot-view")).not.toBeInTheDocument();
+    expect(queryByTestId("chatbot-view")).not.toBeInTheDocument();
   });
 
   it("should use default props when not provided", async () => {
@@ -64,8 +64,8 @@ describe("ChatController", () => {
 
     const { default: Controller } = await import("./Controller");
 
-    render(<Controller />);
+    const { getByTestId } = render(<Controller />);
 
-    expect(screen.getByTestId("chatbot-view")).toBeInTheDocument();
+    expect(getByTestId("chatbot-view")).toBeInTheDocument();
   });
 });
