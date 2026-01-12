@@ -1,7 +1,7 @@
 import { Box, Stack, Typography, styled } from "@mui/material";
 import React from "react";
 
-import chatConfig from "../chatConfig";
+import chatConfig from "../config/chatConfig";
 
 const TypingSender = styled(Typography)({
   fontSize: "12px",

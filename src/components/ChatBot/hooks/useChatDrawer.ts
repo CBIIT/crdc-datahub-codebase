@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useReducer, useRef } from "react";
 
-import chatConfig from "../chatConfig";
+import chatConfig from "../config/chatConfig";
 import { computeNextHeightPx, getViewportHeightPx } from "../utils/chatUtils";
 
 type DrawerState = {

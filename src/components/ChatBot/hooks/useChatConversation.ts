@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
 import { askQuestion } from "../api/knowledgeBaseClient";
-import chatConfig from "../chatConfig";
+import chatConfig from "../config/chatConfig";
 import { useChatBotContext } from "../context/ChatBotContext";
 import { createChatMessage, createId, isAbortError } from "../utils/chatUtils";
 import { clearStoredSessionId, getStoredSessionId } from "../utils/sessionStorageUtils";

@@ -1,7 +1,7 @@
 import { clamp } from "lodash";
 import { v4 } from "uuid";
 
-import chatConfig from "../chatConfig";
+import chatConfig from "../config/chatConfig";
 
 /**
  * Gets the current viewport height, or returns a fallback value if window is unavailable.
