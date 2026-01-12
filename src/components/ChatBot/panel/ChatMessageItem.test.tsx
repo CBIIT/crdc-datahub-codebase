@@ -119,11 +119,14 @@ describe("Basic Functionality", () => {
 
   it("should handle multi-line text", () => {
     const message = createMockMessage({ text: "Line 1\nLine 2\nLine 3" });
-    const { getByText } = render(<ChatMessageItem message={message} />);
+    const { container } = render(<ChatMessageItem message={message} />);
 
-    expect(
-      getByText((content, element) => element?.textContent === "Line 1\nLine 2\nLine 3")
-    ).toBeInTheDocument();
+    const allDivs = container.querySelectorAll('div[data-is-user="false"]');
+    const messageBubble = allDivs[allDivs.length - 1];
+    const paragraph = messageBubble?.querySelector("p");
+    expect(paragraph?.textContent).toContain("Line 1");
+    expect(paragraph?.textContent).toContain("Line 2");
+    expect(paragraph?.textContent).toContain("Line 3");
   });
 
   it("should handle empty text", () => {
@@ -184,5 +187,226 @@ describe("Basic Functionality", () => {
     const formatted = formatMessageTime(timestamp);
 
     expect(formatted).toMatch(/12:00 PM/);
+  });
+});
+
+describe("Markdown Formatting", () => {
+  it("should render markdown bold text for bot messages", () => {
+    const message = createMockMessage({ text: "This is **bold** text", sender: "bot" });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const strongElement = container.querySelector("strong");
+    expect(strongElement).toBeInTheDocument();
+    expect(strongElement?.textContent).toBe("bold");
+  });
+
+  it("should render markdown italic text for bot messages", () => {
+    const message = createMockMessage({ text: "This is *italic* text", sender: "bot" });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const emElement = container.querySelector("em");
+    expect(emElement).toBeInTheDocument();
+    expect(emElement?.textContent).toBe("italic");
+  });
+
+  it("should render markdown links for bot messages", () => {
+    const message = createMockMessage({
+      text: "Check [this link](https://example.com)",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const linkElement = container.querySelector("a");
+    expect(linkElement).toBeInTheDocument();
+    expect(linkElement?.textContent).toBe("this link");
+    expect(linkElement?.getAttribute("href")).toBe("https://example.com");
+  });
+
+  it("should render markdown lists for bot messages", () => {
+    const message = createMockMessage({
+      text: "Items:\n- Item 1\n- Item 2\n- Item 3",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const listItems = container.querySelectorAll("li");
+    expect(listItems).toHaveLength(3);
+    expect(listItems[0].textContent).toBe("Item 1");
+    expect(listItems[1].textContent).toBe("Item 2");
+    expect(listItems[2].textContent).toBe("Item 3");
+  });
+
+  it("should render markdown code blocks for bot messages", () => {
+    const message = createMockMessage({
+      text: "Here is code: `const x = 5;`",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const codeElement = container.querySelector("code");
+    expect(codeElement).toBeInTheDocument();
+    expect(codeElement?.textContent).toBe("const x = 5;");
+  });
+
+  it("should render markdown headings for bot messages", () => {
+    const message = createMockMessage({ text: "## Heading 2", sender: "bot" });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const headingElement = container.querySelector("h2");
+    expect(headingElement).toBeInTheDocument();
+    expect(headingElement?.textContent).toBe("Heading 2");
+  });
+
+  it("should NOT render markdown for user messages", () => {
+    const message = createMockMessage({ text: "This is **bold** text", sender: "user" });
+    const { container, getByText } = render(<ChatMessageItem message={message} />);
+
+    const strongElement = container.querySelector("strong");
+    expect(strongElement).not.toBeInTheDocument();
+
+    expect(getByText("This is **bold** text")).toBeInTheDocument();
+  });
+
+  it("should NOT render markdown links for user messages", () => {
+    const message = createMockMessage({
+      text: "Check [this link](https://example.com)",
+      sender: "user",
+    });
+    const { container, getByText } = render(<ChatMessageItem message={message} />);
+
+    const linkElement = container.querySelector("a");
+    expect(linkElement).not.toBeInTheDocument();
+
+    expect(getByText("Check [this link](https://example.com)")).toBeInTheDocument();
+  });
+
+  it("should render multiple markdown elements together for bot messages", () => {
+    const message = createMockMessage({
+      text: "**Bold** and *italic* with [link](https://example.com)",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    expect(container.querySelector("strong")).toBeInTheDocument();
+    expect(container.querySelector("em")).toBeInTheDocument();
+    expect(container.querySelector("a")).toBeInTheDocument();
+  });
+
+  it("should render markdown paragraphs for bot messages", () => {
+    const message = createMockMessage({
+      text: "Paragraph 1\n\nParagraph 2",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const paragraphs = container.querySelectorAll("p");
+    expect(paragraphs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("should render markdown tables for bot messages", () => {
+    const message = createMockMessage({
+      text: "| Column 1 | Column 2 |\n|----------|----------|\n| Data 1   | Data 2   |",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const table = container.querySelector("table");
+    expect(table).toBeInTheDocument();
+
+    const headers = container.querySelectorAll("th");
+    expect(headers.length).toBeGreaterThanOrEqual(2);
+
+    const cells = container.querySelectorAll("td");
+    expect(cells.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("should render markdown images for bot messages", () => {
+    const message = createMockMessage({
+      text: "![Alt text](https://example.com/image.jpg)",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const img = container.querySelector("img");
+    expect(img).toBeInTheDocument();
+    expect(img?.getAttribute("src")).toBe("https://example.com/image.jpg");
+    expect(img?.getAttribute("alt")).toBe("Alt text");
+  });
+
+  it("should render markdown horizontal rules for bot messages", () => {
+    const message = createMockMessage({
+      text: "Before\n\n---\n\nAfter",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const hr = container.querySelector("hr");
+    expect(hr).toBeInTheDocument();
+  });
+
+  it("should render markdown strikethrough for bot messages", () => {
+    const message = createMockMessage({
+      text: "This is ~~deleted~~ text",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const del = container.querySelector("del");
+    expect(del).toBeInTheDocument();
+    expect(del?.textContent).toBe("deleted");
+  });
+
+  it("should render markdown blockquotes for bot messages", () => {
+    const message = createMockMessage({
+      text: "> This is a quote",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const blockquote = container.querySelector("blockquote");
+    expect(blockquote).toBeInTheDocument();
+  });
+
+  it("should render code blocks with pre tags for bot messages", () => {
+    const message = createMockMessage({
+      text: "```\nconst x = 5;\nconst y = 10;\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const pre = container.querySelector("pre");
+    expect(pre).toBeInTheDocument();
+
+    const code = pre?.querySelector("code");
+    expect(code).toBeInTheDocument();
+  });
+
+  it("should render ordered lists for bot messages", () => {
+    const message = createMockMessage({
+      text: "Steps:\n1. First step\n2. Second step\n3. Third step",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const ol = container.querySelector("ol");
+    expect(ol).toBeInTheDocument();
+
+    const listItems = ol?.querySelectorAll("li");
+    expect(listItems?.length).toBe(3);
+  });
+
+  it("should render task lists with checkboxes for bot messages", () => {
+    const message = createMockMessage({
+      text: "Tasks:\n- [ ] Unchecked task\n- [x] Completed task\n- [ ] Another task",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const checkboxes = container.querySelectorAll("input[type='checkbox']");
+    expect(checkboxes.length).toBe(3);
+
+    expect(checkboxes[1]).toBeChecked();
+    expect(checkboxes[0]).not.toBeChecked();
+    expect(checkboxes[2]).not.toBeChecked();
   });
 });
