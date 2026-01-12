@@ -1,10 +1,43 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
 import { render } from "@/test-utils";
 
+import * as ChatDrawerContextModule from "../context/ChatDrawerContext";
+
 import BotTypingIndicator from "./BotTypingIndicator";
 
+vi.mock("../context/ChatDrawerContext", () => ({
+  useChatDrawerContext: vi.fn(),
+}));
+
+const mockUseChatDrawerContext = vi.mocked(ChatDrawerContextModule.useChatDrawerContext);
+
+const defaultContext = {
+  isFullscreen: false,
+  drawerRef: { current: null },
+  heightPx: 600,
+  isDragging: false,
+  isExpanded: true,
+  isMinimized: false,
+  isOpen: true,
+  onBeginResize: vi.fn(),
+  onToggleExpand: vi.fn(),
+  onToggleFullscreen: vi.fn(),
+  onMinimize: vi.fn(),
+  openDrawer: vi.fn(),
+  isConfirmingEndConversation: false,
+  onRequestEndConversation: vi.fn(),
+  onConfirmEndConversation: vi.fn(),
+  onCancelEndConversation: vi.fn(),
+};
+
 describe("Accessibility", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+  });
+
   it("should have no accessibility violations", async () => {
     const { container } = render(<BotTypingIndicator />);
 
@@ -13,6 +46,10 @@ describe("Accessibility", () => {
 });
 
 describe("Basic Functionality", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+  });
   it("should render without crashing", () => {
     expect(() => render(<BotTypingIndicator />)).not.toThrow();
   });
@@ -62,5 +99,29 @@ describe("Basic Functionality", () => {
 
     const typingBubble = container.querySelector('[aria-label=" is typing"]');
     expect(typingBubble).toBeInTheDocument();
+  });
+
+  it("should apply fullscreen scaling when isFullscreen is true", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: true,
+    });
+
+    const { getByText } = render(<BotTypingIndicator senderName="Test Bot" />);
+    const sender = getByText("Test Bot");
+
+    expect(sender).toHaveStyle({ fontSize: "16px" });
+  });
+
+  it("should apply normal scaling when isFullscreen is false", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: false,
+    });
+
+    const { getByText } = render(<BotTypingIndicator senderName="Test Bot" />);
+    const sender = getByText("Test Bot");
+
+    expect(sender).toHaveStyle({ fontSize: "12px" });
   });
 });

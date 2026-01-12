@@ -1,15 +1,48 @@
 import React from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
 import { render } from "@/test-utils";
 
+import * as ChatDrawerContextModule from "../context/ChatDrawerContext";
+
 import MessageList from "./MessageList";
+
+vi.mock("../context/ChatDrawerContext", () => ({
+  useChatDrawerContext: vi.fn(),
+}));
+
+const mockUseChatDrawerContext = vi.mocked(ChatDrawerContextModule.useChatDrawerContext);
+
+const defaultContext = {
+  isFullscreen: false,
+  drawerRef: { current: null },
+  heightPx: 600,
+  isDragging: false,
+  isExpanded: true,
+  isMinimized: false,
+  isOpen: true,
+  onBeginResize: vi.fn(),
+  onToggleExpand: vi.fn(),
+  onToggleFullscreen: vi.fn(),
+  onMinimize: vi.fn(),
+  openDrawer: vi.fn(),
+  isConfirmingEndConversation: false,
+  onRequestEndConversation: vi.fn(),
+  onConfirmEndConversation: vi.fn(),
+  onCancelEndConversation: vi.fn(),
+};
 
 vi.mock("./ChatMessageItem", () => ({
   default: ({ message }: { message: ChatMessage }) => (
     <div data-testid={`message-${message.id}`}>{message.text}</div>
   ),
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockUseChatDrawerContext.mockReturnValue(defaultContext);
+});
 
 vi.mock("./BotTypingIndicator", () => ({
   default: () => <div data-testid="bot-typing-indicator">Typing...</div>,
@@ -291,5 +324,52 @@ describe("Basic Functionality", () => {
     rerender(<MessageList {...defaultProps} messages={messages} />);
 
     expect(scrollToSpy).toHaveBeenCalledTimes(1);
+  });
+  it("should apply larger font size to greeting title when in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: true,
+    });
+
+    const { getByText } = render(<MessageList {...defaultProps} />);
+
+    const titleElement = getByText("Welcome to Support!");
+    expect(titleElement).toHaveStyle({ fontSize: "24px" });
+  });
+
+  it("should apply default font size to greeting title when not in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: false,
+    });
+
+    const { getByText } = render(<MessageList {...defaultProps} />);
+
+    const titleElement = getByText("Welcome to Support!");
+    expect(titleElement).toHaveStyle({ fontSize: "20px" });
+  });
+
+  it("should apply larger font size to greeting subtitle when in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: true,
+    });
+
+    const { container } = render(<MessageList {...defaultProps} />);
+
+    const subtitleElement = container.querySelector("p");
+    expect(subtitleElement).toHaveStyle({ fontSize: "16px" });
+  });
+
+  it("should apply default font size to greeting subtitle when not in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: false,
+    });
+
+    const { container } = render(<MessageList {...defaultProps} />);
+
+    const subtitleElement = container.querySelector("p");
+    expect(subtitleElement).toHaveStyle({ fontSize: "12px" });
   });
 });

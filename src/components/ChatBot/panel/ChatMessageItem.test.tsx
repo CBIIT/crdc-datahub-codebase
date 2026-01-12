@@ -1,8 +1,36 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
 import { render } from "@/test-utils";
 
+import * as ChatDrawerContextModule from "../context/ChatDrawerContext";
+
 import ChatMessageItem, { formatMessageTime } from "./ChatMessageItem";
+
+vi.mock("../context/ChatDrawerContext", () => ({
+  useChatDrawerContext: vi.fn(),
+}));
+
+const mockUseChatDrawerContext = vi.mocked(ChatDrawerContextModule.useChatDrawerContext);
+
+const defaultContext = {
+  isFullscreen: false,
+  drawerRef: { current: null },
+  heightPx: 600,
+  isDragging: false,
+  isExpanded: true,
+  isMinimized: false,
+  isOpen: true,
+  onBeginResize: vi.fn(),
+  onToggleExpand: vi.fn(),
+  onToggleFullscreen: vi.fn(),
+  onMinimize: vi.fn(),
+  openDrawer: vi.fn(),
+  isConfirmingEndConversation: false,
+  onRequestEndConversation: vi.fn(),
+  onConfirmEndConversation: vi.fn(),
+  onCancelEndConversation: vi.fn(),
+};
 
 const createMockMessage = (overrides?: Partial<ChatMessage>): ChatMessage => ({
   id: "test-message-1",
@@ -12,6 +40,11 @@ const createMockMessage = (overrides?: Partial<ChatMessage>): ChatMessage => ({
   senderName: "Support Bot",
   variant: "default",
   ...overrides,
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockUseChatDrawerContext.mockReturnValue(defaultContext);
 });
 
 describe("Accessibility", () => {
@@ -408,5 +441,95 @@ describe("Markdown Formatting", () => {
     expect(checkboxes[1]).toBeChecked();
     expect(checkboxes[0]).not.toBeChecked();
     expect(checkboxes[2]).not.toBeChecked();
+  });
+
+  it("should apply larger font size to sender name when in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: true,
+    });
+
+    const message = createMockMessage({ sender: "bot", senderName: "Support Bot" });
+    const { getByText } = render(<ChatMessageItem message={message} />);
+
+    const senderElement = getByText("Support Bot");
+    expect(senderElement).toHaveStyle({ fontSize: "16px" });
+  });
+
+  it("should apply smaller font size to sender name when not in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: false,
+    });
+
+    const message = createMockMessage({ sender: "bot", senderName: "Support Bot" });
+    const { getByText } = render(<ChatMessageItem message={message} />);
+
+    const senderElement = getByText("Support Bot");
+    expect(senderElement).toHaveStyle({ fontSize: "12px" });
+  });
+
+  it("should apply larger font size to timestamp when in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: true,
+    });
+
+    const message = createMockMessage({
+      sender: "bot",
+      timestamp: new Date("2024-01-15T14:30:00"),
+    });
+    const { getByText } = render(<ChatMessageItem message={message} />);
+
+    const timestampElement = getByText("02:30 PM");
+    expect(timestampElement).toHaveStyle({ fontSize: "16px" });
+  });
+
+  it("should apply smaller font size to timestamp when not in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: false,
+    });
+
+    const message = createMockMessage({
+      sender: "bot",
+      timestamp: new Date("2024-01-15T14:30:00"),
+    });
+    const { getByText } = render(<ChatMessageItem message={message} />);
+
+    const timestampElement = getByText("02:30 PM");
+    expect(timestampElement).toHaveStyle({ fontSize: "12px" });
+  });
+
+  it("should apply larger font size and padding to message bubble when in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: true,
+    });
+
+    const message = createMockMessage({ text: "Test message content", sender: "bot" });
+    const { getByText } = render(<ChatMessageItem message={message} />);
+
+    const textElement = getByText("Test message content");
+    const bubbleElement = textElement.parentElement as HTMLElement;
+    expect(bubbleElement).toHaveStyle({ fontSize: "18px" });
+    expect(bubbleElement).toHaveStyle({ paddingInline: "16px" });
+    expect(bubbleElement).toHaveStyle({ paddingBlock: "12px" });
+  });
+
+  it("should apply smaller font size and padding to message bubble when not in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultContext,
+      isFullscreen: false,
+    });
+
+    const message = createMockMessage({ text: "Test message content", sender: "bot" });
+    const { getByText } = render(<ChatMessageItem message={message} />);
+
+    const textElement = getByText("Test message content");
+    const bubbleElement = textElement.parentElement as HTMLElement;
+    expect(bubbleElement).toHaveStyle({ fontSize: "16px" });
+    expect(bubbleElement).toHaveStyle({ paddingInline: "12px" });
+    expect(bubbleElement).toHaveStyle({ paddingBlock: "8px" });
   });
 });

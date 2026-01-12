@@ -1,15 +1,47 @@
 import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
 import { render } from "@/test-utils";
 
 import ChatPanel from "./ChatPanel";
+import * as ChatDrawerContextModule from "./context/ChatDrawerContext";
+
+vi.mock("./context/ChatDrawerContext", () => ({
+  useChatDrawerContext: vi.fn(),
+}));
+
+const mockUseChatDrawerContext = vi.mocked(ChatDrawerContextModule.useChatDrawerContext);
+
+const defaultChatDrawerContext = {
+  isFullscreen: false,
+  drawerRef: { current: null },
+  heightPx: 600,
+  isDragging: false,
+  isExpanded: true,
+  isMinimized: false,
+  isOpen: true,
+  onBeginResize: vi.fn(),
+  onToggleExpand: vi.fn(),
+  onToggleFullscreen: vi.fn(),
+  onMinimize: vi.fn(),
+  openDrawer: vi.fn(),
+  isConfirmingEndConversation: false,
+  onRequestEndConversation: vi.fn(),
+  onConfirmEndConversation: vi.fn(),
+  onCancelEndConversation: vi.fn(),
+};
 
 const mockUseChatConversation = vi.fn();
 
 vi.mock("./hooks/useChatConversation", () => ({
   useChatConversation: () => mockUseChatConversation(),
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockUseChatDrawerContext.mockReturnValue(defaultChatDrawerContext);
+});
 
 vi.mock("./panel/MessageList", () => ({
   default: ({
@@ -301,5 +333,29 @@ describe("Basic Functionality", () => {
     const { getByTestId: getByTestId2 } = render(<ChatPanel />);
 
     expect(getByTestId2("composer-input")).toHaveValue("Second");
+  });
+
+  it("should apply larger font size to container when in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isFullscreen: true,
+    });
+
+    const { container } = render(<ChatPanel />);
+
+    const stackElement = container.firstChild as HTMLElement;
+    expect(stackElement).toHaveStyle({ fontSize: "18px" });
+  });
+
+  it("should not apply extra font size to container when not in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isFullscreen: false,
+    });
+
+    const { container } = render(<ChatPanel />);
+
+    const stackElement = container.firstChild as HTMLElement;
+    expect(stackElement).not.toHaveStyle({ fontSize: "18px" });
   });
 });
