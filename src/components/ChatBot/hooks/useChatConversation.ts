@@ -16,7 +16,8 @@ type ChatAction =
   | { type: "input_changed"; value: string }
   | { type: "input_cleared" }
   | { type: "message_added"; message: ChatMessage }
-  | { type: "status_changed"; status: ChatStatus };
+  | { type: "status_changed"; status: ChatStatus }
+  | { type: "conversation_reset" };
 
 type BotReplyProvider = (userText: string, signal: AbortSignal) => Promise<string>;
 
@@ -58,6 +59,19 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
     }
     case "status_changed": {
       return { ...state, status: action.status };
+    }
+    case "conversation_reset": {
+      return {
+        messages: [
+          createChatMessage({
+            text: chatConfig.initialMessage,
+            sender: "bot",
+            senderName: chatConfig.supportBotName,
+          }),
+        ],
+        inputValue: "",
+        status: "idle",
+      };
     }
     default: {
       return state;
@@ -238,6 +252,8 @@ export const useChatConversation = (): ChatConversationActions => {
     clearStoredSessionId();
     activeRequestRef.current?.abortController.abort();
     activeRequestRef.current = null;
+    greetingTimestampRef.current = new Date();
+    dispatch({ type: "conversation_reset" });
   }, []);
 
   return {
