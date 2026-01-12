@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render } from "@/test-utils";
 
 vi.mock("./ChatBotView", () => ({
   default: () => <div data-testid="chatbot-view" />,
