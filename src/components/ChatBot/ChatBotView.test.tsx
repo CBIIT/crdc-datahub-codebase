@@ -211,4 +211,17 @@ describe("Basic Functionality", () => {
 
     expect(getByText("Ask a Question")).toBeInTheDocument();
   });
+
+  it("should render FloatingChatButton when drawer is minimized", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      isOpen: true,
+      isMinimized: true,
+      openDrawer: vi.fn(),
+    });
+
+    const { getByTestId, queryByTestId } = render(<ChatBotView />);
+
+    expect(getByTestId("floating-chat-button")).toBeInTheDocument();
+    expect(queryByTestId("chat-drawer")).not.toBeInTheDocument();
+  });
 });
