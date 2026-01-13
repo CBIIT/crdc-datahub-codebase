@@ -4,10 +4,14 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 
 import * as knowledgeBaseClient from "../api/knowledgeBaseClient";
-import * as ChatBotContextModule from "../context/ChatBotContext";
 import * as sessionStorageUtils from "../utils/sessionStorageUtils";
 
-import { chatReducer, useChatConversation } from "./useChatConversation";
+import * as ChatBotContextModule from "./ChatBotContext";
+import {
+  chatReducer,
+  ChatConversationProvider,
+  useChatConversationContext,
+} from "./ChatConversationContext";
 
 vi.mock("../api/knowledgeBaseClient", () => ({
   askQuestion: vi.fn(),
@@ -22,7 +26,7 @@ vi.mock("../utils/chatUtils", async () => {
   };
 });
 
-vi.mock("../context/ChatBotContext", () => ({
+vi.mock("./ChatBotContext", () => ({
   useChatBotContext: vi.fn(),
 }));
 
@@ -37,7 +41,7 @@ const mockGetStoredSessionId = vi.mocked(sessionStorageUtils.getStoredSessionId)
 const mockClearStoredSessionId = vi.mocked(sessionStorageUtils.clearStoredSessionId);
 
 const TestParent = () => {
-  const conversation = useChatConversation();
+  const conversation = useChatConversationContext();
 
   return (
     <div>
@@ -84,7 +88,14 @@ const TestParent = () => {
   );
 };
 
-describe("useChatConversation", () => {
+const renderWithProvider = () =>
+  render(
+    <ChatConversationProvider>
+      <TestParent />
+    </ChatConversationProvider>
+  );
+
+describe("ChatConversationContext", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseChatBotContext.mockReturnValue({
@@ -98,25 +109,41 @@ describe("useChatConversation", () => {
 
   describe("Initial State", () => {
     it("should initialize with greeting message", () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = render(
+        <ChatConversationProvider>
+          <TestParent />
+        </ChatConversationProvider>
+      );
 
       expect(getByTestId("messages-count")).toHaveTextContent("1");
     });
 
     it("should initialize with empty input value", () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = render(
+        <ChatConversationProvider>
+          <TestParent />
+        </ChatConversationProvider>
+      );
 
       expect(getByTestId("input-value")).toHaveValue("");
     });
 
     it("should initialize with isBotTyping as false", () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = render(
+        <ChatConversationProvider>
+          <TestParent />
+        </ChatConversationProvider>
+      );
 
       expect(getByTestId("is-bot-typing")).toHaveTextContent("false");
     });
 
     it("should initialize with greeting timestamp", () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = render(
+        <ChatConversationProvider>
+          <TestParent />
+        </ChatConversationProvider>
+      );
 
       const timestamp = getByTestId("greeting-timestamp").textContent;
       expect(timestamp).toBeTruthy();
@@ -124,10 +151,18 @@ describe("useChatConversation", () => {
     });
 
     it("should have stable greeting timestamp across re-renders", () => {
-      const { getByTestId, rerender } = render(<TestParent />);
+      const { getByTestId, rerender } = render(
+        <ChatConversationProvider>
+          <TestParent />
+        </ChatConversationProvider>
+      );
 
       const firstTimestamp = getByTestId("greeting-timestamp").textContent;
-      rerender(<TestParent />);
+      rerender(
+        <ChatConversationProvider>
+          <TestParent />
+        </ChatConversationProvider>
+      );
       const secondTimestamp = getByTestId("greeting-timestamp").textContent;
 
       expect(firstTimestamp).toBe(secondTimestamp);
@@ -136,7 +171,7 @@ describe("useChatConversation", () => {
 
   describe("setInputValue", () => {
     it("should update input value", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.clear(input);
@@ -146,7 +181,7 @@ describe("useChatConversation", () => {
     });
 
     it("should update input value multiple times", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.clear(input);
@@ -161,7 +196,7 @@ describe("useChatConversation", () => {
     });
 
     it("should handle empty string", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -173,7 +208,7 @@ describe("useChatConversation", () => {
 
   describe("sendMessage", () => {
     it("should not send empty message", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const sendButton = getByTestId("send-button");
       userEvent.click(sendButton);
@@ -183,7 +218,7 @@ describe("useChatConversation", () => {
     });
 
     it("should not send whitespace-only message", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "   ");
@@ -196,7 +231,7 @@ describe("useChatConversation", () => {
     });
 
     it("should add user message when sending", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Hello bot");
@@ -210,7 +245,7 @@ describe("useChatConversation", () => {
     });
 
     it("should clear input after sending", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test message");
@@ -231,7 +266,7 @@ describe("useChatConversation", () => {
           })
       );
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -245,7 +280,7 @@ describe("useChatConversation", () => {
     });
 
     it("should call askQuestion with correct parameters", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "What is CRDC?");
@@ -275,7 +310,7 @@ describe("useChatConversation", () => {
         return "";
       });
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Hi");
@@ -299,7 +334,7 @@ describe("useChatConversation", () => {
         return "";
       });
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -321,7 +356,7 @@ describe("useChatConversation", () => {
         return "";
       });
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -340,7 +375,7 @@ describe("useChatConversation", () => {
     it("should handle error response", async () => {
       mockAskQuestion.mockRejectedValue(new Error("API Error"));
 
-      const { getByTestId, getByText } = render(<TestParent />);
+      const { getByTestId, getByText } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -363,7 +398,7 @@ describe("useChatConversation", () => {
           })
       );
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "First message");
@@ -398,7 +433,7 @@ describe("useChatConversation", () => {
         return "";
       });
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       const sendButton = getByTestId("send-button");
@@ -426,7 +461,7 @@ describe("useChatConversation", () => {
       abortError.name = "AbortError";
       mockAskQuestion.mockRejectedValue(abortError);
 
-      const { getByTestId, queryByText } = render(<TestParent />);
+      const { getByTestId, queryByText } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -444,7 +479,7 @@ describe("useChatConversation", () => {
 
   describe("handleKeyDown", () => {
     it("should send message on Enter key", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test message{Enter}");
@@ -455,7 +490,7 @@ describe("useChatConversation", () => {
     });
 
     it("should not send message on Shift+Enter", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test message");
@@ -467,7 +502,7 @@ describe("useChatConversation", () => {
     });
 
     it("should not send message on other keys", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test message");
@@ -481,7 +516,7 @@ describe("useChatConversation", () => {
 
   describe("endConversation", () => {
     it("should clear stored session ID", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const endButton = getByTestId("end-conversation-button");
       userEvent.click(endButton);
@@ -500,7 +535,7 @@ describe("useChatConversation", () => {
         return "";
       });
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -529,7 +564,7 @@ describe("useChatConversation", () => {
         return "";
       });
 
-      const { getByTestId, unmount } = render(<TestParent />);
+      const { getByTestId, unmount } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -563,7 +598,7 @@ describe("useChatConversation", () => {
 
   describe("Edge Cases", () => {
     it("should handle multiple rapid setInputValue calls", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.clear(input);
@@ -581,7 +616,7 @@ describe("useChatConversation", () => {
         return "";
       });
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -596,7 +631,7 @@ describe("useChatConversation", () => {
     });
 
     it("should trim message before sending", async () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "  Test message  ");
@@ -614,7 +649,7 @@ describe("useChatConversation", () => {
     });
 
     it("should handle Shift+Enter without sending message", () => {
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test message");
@@ -654,7 +689,7 @@ describe("useChatConversation", () => {
         return "";
       });
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "First");
@@ -689,7 +724,7 @@ describe("useChatConversation", () => {
         throw new Error("Synchronous error");
       });
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "Test");
@@ -723,7 +758,7 @@ describe("useChatConversation", () => {
         return "";
       });
 
-      const { getByTestId } = render(<TestParent />);
+      const { getByTestId } = renderWithProvider();
 
       const input = getByTestId("input-value");
       userEvent.type(input, "First");

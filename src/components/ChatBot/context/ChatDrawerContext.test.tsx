@@ -13,16 +13,9 @@ vi.mock("../hooks/useChatDrawer", () => ({
   useChatDrawer: vi.fn(),
 }));
 
-vi.mock("../hooks/useChatConversation", () => ({
-  useChatConversation: vi.fn(() => ({
-    greetingTimestamp: new Date(),
-    messages: [],
-    inputValue: "",
-    isBotTyping: false,
-    setInputValue: vi.fn(),
-    sendMessage: vi.fn(),
-    handleKeyDown: vi.fn(),
-    endConversation: vi.fn(),
+vi.mock("./ChatBotContext", () => ({
+  useChatBotContext: vi.fn(() => ({
+    isChatEnabled: true,
   })),
 }));
 
