@@ -1,17 +1,14 @@
-import Logo from "../assets/header/Portal_Logo.svg";
-import LogoSmall from "../assets/header/Portal_Logo_Small.svg";
-import usaFlagSmall from "../assets/header/us_flag_small.svg";
+import Logo from "@/assets/header/Portal_Logo.svg";
+import LogoSmall from "@/assets/header/Portal_Logo_Small.svg";
+import usaFlagSmall from "@/assets/header/us_flag_small.svg";
+import { getCRDCBaseUrl } from "@/utils";
 
 import { DataCommons } from "./DataCommons";
 
-export const SubmissionRequestInstructionsLink =
-  "https://datacommons.cancer.gov/submission-request-instructions";
-
-export const DataSubmissionInstructionsLink =
-  "https://datacommons.cancer.gov/data-submission-instructions";
-
-export const DataExplorerInstructionsLink =
-  "https://datacommons.cancer.gov/data-explorer-instructions";
+const CRDC_BASE_URL = getCRDCBaseUrl();
+export const SubmissionRequestInstructionsLink = `${CRDC_BASE_URL}submission-request-instructions`;
+export const DataSubmissionInstructionsLink = `${CRDC_BASE_URL}data-submission-instructions`;
+export const DataExplorerInstructionsLink = `${CRDC_BASE_URL}data-explorer-instructions`;
 
 // globalHeaderLogo image 468x100
 // globalHeaderImage: image 2200x100
