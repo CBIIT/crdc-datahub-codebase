@@ -1,10 +1,34 @@
 # Introduction
 
-TODO
+This project provides the base implementation for a serverless question-answering system using AWS Bedrock and a Knowledge Base (KB). It handles incoming questions, retrieves relevant context from the KB, and generates answers using the Converse API.
+
+Key features include:
+
+- Serverless architecture using AWS Lambda
+- Integration with a Knowledge Base for context retrieval
+- Streaming responses for real-time interaction
+- Error handling and logging
+
+Future enhancements may include support for backend-managed conversation memory and improved citation handling.
 
 # Getting Started
 
-TODO
+## Prerequisites
+
+- AWS Account with access to Bedrock and Lambda
+- Knowledge Base setup
+- Guardrails setup
+
+## Deployment
+
+1. Clone the repository.
+2. Install dependencies using `npm install`.
+3. Build the project using `npm run build`.
+4. Deploy the Lambda function using AWS SAM or your preferred deployment method.
+
+## Client Usage
+
+An example client function to interact with the deployed Lambda function is provided below:
 
 ```JavaScript
 async function askQuestion(question, sessionId = null) {
@@ -73,4 +97,43 @@ async function askQuestion(question, sessionId = null) {
     console.error("Error:", error);
   }
 }
+```
+
+# Architecture Diagram
+
+```mermaid
+graph TB
+    Client["Client Application"]
+    APIGW["API Gateway"]
+    Lambda["AWS Lambda<br/>Handler"]
+    Cache["In-Memory<br/>Conversation Cache"]
+    
+    KB["Bedrock Knowledge Base"]
+    KBDocs["KB Documents<br/>S3 Storage"]
+    
+    Bedrock["AWS Bedrock<br/>Converse API"]
+    Model["Claude Model<br/>claude-3-*"]
+    Guardrails["Bedrock Guardrails"]
+    
+    Client -->|POST /question| APIGW
+    APIGW -->|invoke| Lambda
+    
+    Lambda -->|retrieve| KB
+    KB -->|search vector DB| KBDocs
+    KBDocs -->|return docs| KB
+    KB -->|retrieval results| Lambda
+    
+    Lambda -->|cache check| Cache
+    Cache -->|return history| Lambda
+    
+    Lambda -->|stream converse| Bedrock
+    Bedrock -->|invoke| Model
+    Bedrock -->|apply filters| Guardrails
+    Guardrails -->|safe output| Bedrock
+    Model -->|response| Bedrock
+    
+    Bedrock -->|stream chunks| Lambda
+    Lambda -->|cache update| Cache
+    Lambda -->|stream output| APIGW
+    APIGW -->|stream| Client
 ```

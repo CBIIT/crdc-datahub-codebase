@@ -1,17 +1,26 @@
 import {
   BedrockAgentRuntimeClient,
-  RetrieveAndGenerateCommandInput,
-  RetrieveAndGenerateStreamCommand,
+  RetrieveCommand,
+  RetrieveCommandInput,
 } from "@aws-sdk/client-bedrock-agent-runtime";
+import {
+  BedrockRuntimeClient,
+  ConverseStreamCommand,
+  ConverseStreamCommandInput,
+  Message,
+} from "@aws-sdk/client-bedrock-runtime";
 import { APIGatewayProxyEvent } from "aws-lambda";
+import { safeParseJSON } from "./utils/json.mjs";
+import { formatUserPrompt } from "./utils/conversation.mjs";
+import { Logger } from "./utils/logger.mjs";
 
-const REGION = process.env.AWS_REGION || "us-east-1";
+const REGION = process.env.AWS_REGION;
 const KNOWLEDGE_BASE_ID = process.env.KNOWLEDGE_BASE_ID;
 const MODEL_ARN = process.env.MODEL_ARN;
 const GUARDRAIL_ID = process.env.GUARDRAIL_ID;
 const GUARDRAIL_VERSION = process.env.GUARDRAIL_VERSION;
 
-const PROMPT_TEMPLATE = `
+const SYSTEM_PROMPT = `
 ## SYSTEM ROLE
 
 You are a domain-specific assistant for the CRDC Submission Portal.
@@ -48,21 +57,18 @@ $query$
 ## RESPONSE RULES
 
 - Answer ONLY the user's question
-- Base the answer strictly on <search_results>.
+- Do NOT guess or infer beyond the provided data.
 - Do NOT mention or refer to:
   - search results
   - the existence of a search process
   - the tags <search_results> or <question>
   - information being provided to you
 - Respond as if the information is inherently known.
-- Do NOT guess or infer beyond the provided data.
-- Answer in English.
 - Keep the response concise and helpful.
-- Use bullet points when it improves clarity.
-- Use plain ASCII text only.
-- Do NOT use markdown or other formatting symbols.
-- Use consistent formatting. Do not switch between bullet points and dashes, etc.
 - If the question is ambiguous or unclear, ask for clarification instead of guessing.
+- Use markdown formatting naturally where appropriate. Do not use excessive formatting.
+- When using markdown formatting, avoid using large headers (h1 - h3) unless absolutely necessary. Prefer smaller headers or bold text for emphasis.
+- Answer exclusively in English.
 
 ## RESPONSE FALLBACK
 
@@ -72,135 +78,162 @@ If the answer cannot be determined with certainty from <search_results>, or the 
 
 ## ADDITIONAL CONTEXT
 
-- The data_models folder contains aggregated Data Model representations in JSON format.
+- The data_models folder contains the aggregated General Commons Data Model representation in JSON format.
 - These models may appear in <search_results> and should be treated as authoritative.
+- The user may ask questions about GC, General Commons, GC Model, GC Data Model, or close variants of that; these are referring to "CDS" or CDS Data Model.
 `;
 
 const bedrockAgent = new BedrockAgentRuntimeClient({ region: REGION });
+const bedrockRuntime = new BedrockRuntimeClient({ region: REGION });
 
 type InputBody = {
   question: string;
   sessionId: string | null;
+  conversationHistory?: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }>;
 };
 
-export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxyEvent, responseStream) => {
-  try {
-    const method = event?.httpMethod || "POST";
-
-    if (method === "OPTIONS") {
+/**
+ * Handles the incoming API Gateway request for the Knowledge base chat completion.
+ *
+ * @param event The API Gateway event.
+ * @param responseStream The response stream to write the output to.
+ * @returns void
+ */
+export const handler = awslambda.streamifyResponse(
+  async (event: APIGatewayProxyEvent, responseStream): Promise<awslambda.HttpResponseStream> => {
+    if (event?.httpMethod === "OPTIONS") {
       return responseStream.end();
     }
 
-    let body: InputBody;
-    if (typeof event.body === "string") {
-      try {
-        body = JSON.parse(event.body) as InputBody;
-      } catch (e: unknown) {
-        /* @ts-expect-error untyped error */
-        return responseStream.end(JSON.stringify({ error: "Invalid JSON body", details: e.message }));
-      }
-    } else {
-      return responseStream.end(JSON.stringify({ error: "Missing request body" }));
-    }
+    if (!KNOWLEDGE_BASE_ID || !MODEL_ARN || !GUARDRAIL_ID || !GUARDRAIL_VERSION) {
+      Logger.error("Missing required environment variables", {
+        KNOWLEDGE_BASE_ID,
+        MODEL_ARN,
+        GUARDRAIL_ID,
+        GUARDRAIL_VERSION,
+      });
 
-    const question = body?.question;
-    const sessionId = body?.sessionId || undefined;
-
-    if (!question) {
-      return responseStream.end(JSON.stringify({ error: "Missing 'question' in request body" }));
-    }
-
-    if (!KNOWLEDGE_BASE_ID || !MODEL_ARN) {
       return responseStream.end(
-        JSON.stringify({
-          error: "Missing environment variables",
-          details: {
-            KNOWLEDGE_BASE_ID: !!KNOWLEDGE_BASE_ID,
-            MODEL_ARN: !!MODEL_ARN,
-          },
-        })
+        JSON.stringify({ error: "Invalid configuration: Missing required environment variables" })
       );
     }
 
-    const params: RetrieveAndGenerateCommandInput = {
-      input: { text: question },
-      sessionId: sessionId,
-      retrieveAndGenerateConfiguration: {
-        type: "KNOWLEDGE_BASE",
-        knowledgeBaseConfiguration: {
-          // Call our knowledge base
-          knowledgeBaseId: KNOWLEDGE_BASE_ID,
-          // Using this model
-          modelArn: MODEL_ARN,
-          // Using this generation configuration
-          generationConfiguration: {
-            // Apply a default prompt template
-            promptTemplate: {
-              textPromptTemplate: PROMPT_TEMPLATE,
-            },
-            // Apply inference configuration
-            inferenceConfig: {
-              textInferenceConfig: {
-                temperature: 0.2,
-                maxTokens: 4096,
-                // topP: 0.8
-              },
-            },
-            // Apply guardrail protections
-            guardrailConfiguration: {
-              guardrailId: GUARDRAIL_ID,
-              guardrailVersion: GUARDRAIL_VERSION,
-            },
-          },
-          orchestrationConfiguration: {
-            queryTransformationConfiguration: {
-              type: "QUERY_DECOMPOSITION",
-            },
-          },
-          // Use this for querying the KB
-          retrievalConfiguration: {
-            vectorSearchConfiguration: {
-              numberOfResults: 15,
-              // rerankingConfiguration: {
-              //   type: "BEDROCK_RERANKING_MODEL",
-              //   bedrockRerankingConfiguration: {
-              //     modelConfiguration: {
-              //       modelArn: MODEL_ARN,
-              //     },
-              //   },
-              // },
-            },
-          },
+    const body = safeParseJSON<InputBody>(event.body || "");
+    if (!body?.question) {
+      Logger.info("Missing 'question' in request body", { body });
+      return responseStream.end(JSON.stringify({ error: "Missing 'question' in request body" }));
+    }
+
+    const question = body?.question;
+    const sessionId = body?.sessionId || crypto.randomUUID();
+    const conversationHistory = body?.conversationHistory || []; // TODO: Use ephemeral storage for history
+
+    // Step 1: Retrieve relevant documents from Knowledge Base
+    const retrieveParams: RetrieveCommandInput = {
+      knowledgeBaseId: KNOWLEDGE_BASE_ID,
+      retrievalQuery: {
+        text: question,
+      },
+      retrievalConfiguration: {
+        vectorSearchConfiguration: {
+          numberOfResults: 15,
         },
       },
     };
 
-    // Call Bedrock
+    let searchResults = "";
+    // let citations: Citation = {};
+
     try {
-      const command = new RetrieveAndGenerateStreamCommand(params);
-      const resp = await bedrockAgent.send(command);
+      const retrieveCommand = new RetrieveCommand(retrieveParams);
+      const retrieveResponse = await bedrockAgent.send(retrieveCommand);
 
-      responseStream.write(JSON.stringify({ sessionId: resp.sessionId ?? sessionId ?? null }) + "\n");
+      // Build search results context from retrieved documents
+      if (retrieveResponse.retrievalResults) {
+        // citations = {
+        //   retrievedReferences: retrieveResponse.retrievalResults.map((result) => ({
+        //     content: { text: result.content?.text },
+        //     location: result.location,
+        //     metadata: result.metadata,
+        //   })),
+        // };
 
-      for await (const chunk of resp.stream || []) {
-        if (chunk.output) {
-          responseStream.write(JSON.stringify({ output: chunk.output, citation: chunk.citation || {} }) + "\n");
+        searchResults = retrieveResponse.retrievalResults
+          .map((result, index) => {
+            const content = result.content?.text || "";
+            const source = result.location?.s3Location?.uri || "Unknown source";
+            return `[Document ${index + 1}]\nSource: ${source}\nContent: ${content}\n`;
+          })
+          .join("\n");
+      }
+    } catch (retrieveError: unknown) {
+      Logger.error("Error retrieving knowledge from Knowledge Base", retrieveError);
+      return responseStream.end(JSON.stringify({ error: "Failed to retrieve content from Knowledge Base" }));
+    }
+
+    // Step 2: Build conversation messages with context
+    const messages: Message[] = [
+      ...conversationHistory.map((msg) => ({
+        role: msg.role,
+        content: [{ text: msg.content }],
+      })),
+      {
+        role: "user" as const,
+        content: [{ text: formatUserPrompt(question, searchResults) }],
+      },
+    ];
+
+    // Step 3: Call Converse API
+    const converseParams: ConverseStreamCommandInput = {
+      modelId: MODEL_ARN.split("/").pop() || MODEL_ARN,
+      messages: messages,
+      system: [{ text: SYSTEM_PROMPT }],
+      inferenceConfig: {
+        temperature: 0.3,
+        maxTokens: 4096,
+      },
+      guardrailConfig: {
+        guardrailIdentifier: GUARDRAIL_ID,
+        guardrailVersion: GUARDRAIL_VERSION,
+      },
+    };
+
+    try {
+      const converseCommand = new ConverseStreamCommand(converseParams);
+      const converseResponse = await bedrockRuntime.send(converseCommand);
+
+      // Send session ID first
+      responseStream.write(JSON.stringify({ sessionId }) + "\n");
+
+      // Stream the response
+      if (converseResponse.stream) {
+        for await (const chunk of converseResponse.stream) {
+          if (chunk.contentBlockDelta?.delta?.text) {
+            responseStream.write(
+              JSON.stringify({
+                output: chunk.contentBlockDelta.delta.text,
+                citation: {}, // citations,
+              }) + "\n"
+            );
+          }
+
+          if (chunk.messageStop) {
+            break;
+          }
         }
       }
 
       responseStream.end();
-    } catch (bedrockError) {
-      console.error("Bedrock error:", bedrockError);
-
-      responseStream.end(
-        /* @ts-expect-error untyped error */
-        JSON.stringify({ error: "Internal server error", details: bedrockError.message || bedrockError })
-      );
+    } catch (converseError: unknown) {
+      Logger.error("Error generating response from Converse API", converseError);
+      return responseStream.end(JSON.stringify({ error: "AWS bedrock failed to generate response" }));
     }
-  } catch (err: unknown) {
-    console.error("Handler error:", err);
 
-    /* @ts-expect-error untyped error */
-    return responseStream.end(JSON.stringify({ error: err.message || "Internal server error" }));
+    // NOTE: This should never be reached due to the responseStream.end() calls above
+    Logger.error("Handler completed without sending a response");
+    return responseStream.end();
   }
-});
+);
