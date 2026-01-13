@@ -104,7 +104,7 @@ describe("ChatConversationContext", () => {
       knowledgeBaseUrl: "https://api.example.com/chat",
     });
     mockGetStoredSessionId.mockReturnValue("test-session-id");
-    mockAskQuestion.mockResolvedValue(undefined);
+    mockAskQuestion.mockResolvedValue({ sessionId: "test-session-id", citations: [] });
   });
 
   describe("Initial State", () => {
@@ -262,7 +262,7 @@ describe("ChatConversationContext", () => {
       mockAskQuestion.mockImplementation(
         () =>
           new Promise((resolve) => {
-            setTimeout(() => resolve(""), 100);
+            setTimeout(() => resolve({ sessionId: "test-session-id", citations: [] }), 100);
           })
       );
 
@@ -307,7 +307,7 @@ describe("ChatConversationContext", () => {
           onChunk("from ");
           onChunk("bot");
         }
-        return "";
+        return { sessionId: "test-session-id", citations: [] };
       });
 
       const { getByTestId } = renderWithProvider();
@@ -331,7 +331,7 @@ describe("ChatConversationContext", () => {
         if (onChunk) {
           onChunk("First chunk");
         }
-        return "";
+        return { sessionId: "test-session-id", citations: [] };
       });
 
       const { getByTestId } = renderWithProvider();
@@ -353,7 +353,7 @@ describe("ChatConversationContext", () => {
           onChunk("Part 1 ");
           onChunk("Part 2");
         }
-        return "";
+        return { sessionId: "test-session-id", citations: [] };
       });
 
       const { getByTestId } = renderWithProvider();
@@ -394,7 +394,7 @@ describe("ChatConversationContext", () => {
       mockAskQuestion.mockImplementation(
         () =>
           new Promise((resolve) => {
-            setTimeout(() => resolve(""), 100);
+            setTimeout(() => resolve({ sessionId: "test-session-id", citations: [] }), 100);
           })
       );
 
@@ -430,7 +430,7 @@ describe("ChatConversationContext", () => {
         await new Promise<void>((resolve) => {
           setTimeout(() => resolve(), 100);
         });
-        return "";
+        return { sessionId: "test-session-id", citations: [] };
       });
 
       const { getByTestId } = renderWithProvider();
@@ -532,7 +532,7 @@ describe("ChatConversationContext", () => {
         await new Promise<void>((resolve) => {
           setTimeout(() => resolve(), 100);
         });
-        return "";
+        return { sessionId: "test-session-id", citations: [] };
       });
 
       const { getByTestId } = renderWithProvider();
@@ -561,7 +561,7 @@ describe("ChatConversationContext", () => {
         await new Promise<void>((resolve) => {
           setTimeout(() => resolve(), 200);
         });
-        return "";
+        return { sessionId: "test-session-id", citations: [] };
       });
 
       const { getByTestId, unmount } = renderWithProvider();
@@ -613,7 +613,7 @@ describe("ChatConversationContext", () => {
           onChunk("Chunk 1 ");
           onChunk("Chunk 2");
         }
-        return "";
+        return { sessionId: "test-session-id", citations: [] };
       });
 
       const { getByTestId } = renderWithProvider();
@@ -686,7 +686,7 @@ describe("ChatConversationContext", () => {
         if (onChunk) {
           onChunk("Second");
         }
-        return "";
+        return { sessionId: "test-session-id", citations: [] };
       });
 
       const { getByTestId } = renderWithProvider();
@@ -750,12 +750,12 @@ describe("ChatConversationContext", () => {
           await new Promise<void>((resolve) => {
             firstResolve = resolve;
           });
-          return "";
+          return { sessionId: "test-session-id", citations: [] };
         }
         if (onChunk) {
           onChunk("Second response");
         }
-        return "";
+        return { sessionId: "test-session-id", citations: [] };
       });
 
       const { getByTestId } = renderWithProvider();

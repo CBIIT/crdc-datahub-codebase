@@ -83,7 +83,8 @@ describe("askQuestion", () => {
       typewriterDelay: 0,
     });
 
-    expect(result).toBe("test-session-123");
+    expect(result.sessionId).toBe("test-session-123");
+    expect(result.citations).toEqual([]);
     expect(onChunk).toHaveBeenCalledTimes(3);
     expect(onChunk).toHaveBeenNthCalledWith(1, "Hello ");
     expect(onChunk).toHaveBeenNthCalledWith(2, "world");
@@ -133,13 +134,14 @@ describe("askQuestion", () => {
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
 
     const onChunk = vi.fn();
-    await askQuestion({
+    const result = await askQuestion({
       question: "Test question",
       onChunk,
       url: TEST_API_URL,
       typewriterDelay: 0,
     });
 
+    expect(result.sessionId).toBe("session-1");
     expect(onChunk).toHaveBeenCalledTimes(3);
     expect(onChunk).toHaveBeenNthCalledWith(1, "First");
     expect(onChunk).toHaveBeenNthCalledWith(2, " Second");
@@ -168,7 +170,7 @@ describe("askQuestion", () => {
     expect(onChunk).toHaveBeenNthCalledWith(2, "Part 2");
   });
 
-  it("should log citations when present", async () => {
+  it("should collect and return citations", async () => {
     const mockCitation = {
       title: "Test Document",
       url: "https://example.com/doc",
@@ -183,16 +185,20 @@ describe("askQuestion", () => {
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
 
     const onChunk = vi.fn();
-    await askQuestion({
+    const onCitation = vi.fn();
+    const result = await askQuestion({
       question: "Test question",
       onChunk,
+      onCitation,
       url: TEST_API_URL,
     });
 
-    expect(Logger.info).toHaveBeenCalledWith("Citations:", mockCitation);
+    expect(result.citations).toEqual([mockCitation]);
+    expect(onCitation).toHaveBeenCalledWith(mockCitation);
+    expect(Logger.info).toHaveBeenCalledWith("All citations collected:", [mockCitation]);
   });
 
-  it("should not log citations when citation object is empty", async () => {
+  it("should not collect citations when citation object is empty", async () => {
     const mockChunks = [
       `${JSON.stringify({ sessionId: "session-1" })}\n`,
       `${JSON.stringify({ output: { text: "Answer" }, citation: {} })}\n`,
@@ -200,13 +206,13 @@ describe("askQuestion", () => {
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
 
-    await askQuestion({
+    const result = await askQuestion({
       question: "Test question",
       onChunk: vi.fn(),
       url: TEST_API_URL,
     });
 
-    expect(Logger.info).not.toHaveBeenCalled();
+    expect(result.citations).toEqual([]);
   });
 
   it("should log errors when present in response", async () => {
@@ -324,10 +330,11 @@ describe("askQuestion", () => {
       url: TEST_API_URL,
     });
 
-    expect(result).toBe("session-1");
+    expect(result.sessionId).toBe("session-1");
+    expect(result.citations).toEqual([]);
   });
 
-  it("should return null when no sessionId is received", async () => {
+  it("should return null sessionId when no sessionId is received", async () => {
     const mockChunks = [`${JSON.stringify({ output: { text: "Text" }, citation: {} })}\n`];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -338,8 +345,48 @@ describe("askQuestion", () => {
       url: TEST_API_URL,
     });
 
-    expect(result).toBeNull();
+    expect(result.sessionId).toBeNull();
+    expect(result.citations).toEqual([]);
     expect(getStoredSessionId()).toBeNull();
+  });
+
+  it("should filter duplicate citations by URL", async () => {
+    const citation1 = {
+      title: "Document 1",
+      url: "https://example.com/doc1",
+      snippet: "First snippet",
+    };
+    const citation2 = {
+      title: "Document 2",
+      url: "https://example.com/doc2",
+      snippet: "Second snippet",
+    };
+    const duplicateCitation = {
+      title: "Document 1 Updated",
+      url: "https://example.com/doc1",
+      snippet: "Updated snippet",
+    };
+
+    const mockChunks = [
+      `${JSON.stringify({ sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ output: { text: "Answer" }, citation: citation1 })}\n`,
+      `${JSON.stringify({ output: { text: "More" }, citation: citation2 })}\n`,
+      `${JSON.stringify({ output: { text: "Text" }, citation: duplicateCitation })}\n`,
+    ];
+
+    vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
+
+    const onCitation = vi.fn();
+    const result = await askQuestion({
+      question: "Test question",
+      onCitation,
+      url: TEST_API_URL,
+    });
+
+    expect(result.citations).toEqual([citation1, citation2]);
+    expect(onCitation).toHaveBeenCalledTimes(2);
+    expect(onCitation).toHaveBeenNthCalledWith(1, citation1);
+    expect(onCitation).toHaveBeenNthCalledWith(2, citation2);
   });
 
   it("should pass fetch signal to request", async () => {
@@ -527,24 +574,26 @@ describe("processStreamingResponse", () => {
     vi.clearAllMocks();
   });
 
-  it("should return session ID from first chunk with valid stream", async () => {
+  it("should return session ID and citations from stream", async () => {
     const chunks = [`${JSON.stringify({ sessionId: "test-session-123", output: "Hello" })}\n`];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader, undefined, 0);
+    const result = await processStreamingResponse(reader, undefined, undefined, 0);
 
-    expect(result).toBe("test-session-123");
+    expect(result.sessionId).toBe("test-session-123");
+    expect(result.citations).toEqual([]);
   });
 
-  it("should return null when no session ID found in stream", async () => {
+  it("should return null sessionId when no session ID found in stream", async () => {
     const chunks = [`${JSON.stringify({ output: "Hello world" })}\n`];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader, undefined, 0);
+    const result = await processStreamingResponse(reader, undefined, undefined, 0);
 
-    expect(result).toBeNull();
+    expect(result.sessionId).toBeNull();
+    expect(result.citations).toEqual([]);
   });
 
   it("should handle incomplete JSON lines in buffer correctly", async () => {
@@ -553,7 +602,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk, 0);
+    await processStreamingResponse(reader, onChunk, undefined, 0);
 
     expect(onChunk).toHaveBeenCalledWith("Hello world");
   });
@@ -566,7 +615,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk, 0);
+    await processStreamingResponse(reader, onChunk, undefined, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(2);
     expect(onChunk).toHaveBeenNthCalledWith(1, "Line 1");
@@ -582,7 +631,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk, 0);
+    await processStreamingResponse(reader, onChunk, undefined, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(1);
     expect(onChunk).toHaveBeenCalledWith("Line 1");
@@ -598,7 +647,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk, 0);
+    await processStreamingResponse(reader, onChunk, undefined, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(3);
     expect(onChunk).toHaveBeenNthCalledWith(1, "First");
@@ -615,9 +664,9 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader, onChunk, 0);
+    const result = await processStreamingResponse(reader, onChunk, undefined, 0);
 
-    expect(result).toBe("test-123");
+    expect(result.sessionId).toBe("test-123");
     expect(onChunk).toHaveBeenCalledTimes(1);
     expect(onChunk).toHaveBeenCalledWith("Second");
   });
@@ -626,9 +675,10 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream([]);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader, undefined, 0);
+    const result = await processStreamingResponse(reader, undefined, undefined, 0);
 
-    expect(result).toBeNull();
+    expect(result.sessionId).toBeNull();
+    expect(result.citations).toEqual([]);
   });
 
   it("should decode Uint8Array chunks correctly with TextDecoder", async () => {
@@ -637,7 +687,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk, 0);
+    await processStreamingResponse(reader, onChunk, undefined, 0);
 
     expect(onChunk).toHaveBeenCalledWith("Hello 👋");
   });
@@ -648,7 +698,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk, 0);
+    await processStreamingResponse(reader, onChunk, undefined, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(1);
     expect(onChunk).toHaveBeenCalledWith("Hello");
@@ -662,7 +712,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk, 0);
+    await processStreamingResponse(reader, onChunk, undefined, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(2);
     expect(onChunk).toHaveBeenNthCalledWith(1, "First");
@@ -674,9 +724,10 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader, undefined, 0);
+    const result = await processStreamingResponse(reader, undefined, undefined, 0);
 
-    expect(result).toBe("test-123");
+    expect(result.sessionId).toBe("test-123");
+    expect(result.citations).toEqual([]);
   });
 
   it("should apply typewriter effect to multiple output chunks", async () => {
@@ -689,7 +740,7 @@ describe("processStreamingResponse", () => {
     const reader = stream.getReader();
     const onChunk = vi.fn();
 
-    const promise = processStreamingResponse(reader, onChunk, 10);
+    const promise = processStreamingResponse(reader, onChunk, undefined, 10);
 
     await vi.runAllTimersAsync();
     await promise;
@@ -705,6 +756,67 @@ describe("processStreamingResponse", () => {
     expect(onChunk).toHaveBeenNthCalledWith(8, "e");
 
     vi.useRealTimers();
+  });
+
+  it("should collect citations from stream", async () => {
+    const citation1 = {
+      title: "Doc 1",
+      url: "https://example.com/doc1",
+      snippet: "First doc",
+    };
+    const citation2 = {
+      title: "Doc 2",
+      url: "https://example.com/doc2",
+      snippet: "Second doc",
+    };
+
+    const chunks = [
+      `${JSON.stringify({ sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ output: "Text 1", citation: citation1 })}\n`,
+      `${JSON.stringify({ output: "Text 2", citation: citation2 })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+    const onCitation = vi.fn();
+
+    const result = await processStreamingResponse(reader, undefined, onCitation, 0);
+
+    expect(result.citations).toEqual([citation1, citation2]);
+    expect(onCitation).toHaveBeenCalledTimes(2);
+    expect(onCitation).toHaveBeenNthCalledWith(1, citation1);
+    expect(onCitation).toHaveBeenNthCalledWith(2, citation2);
+  });
+
+  it("should filter duplicate citations by URL in stream", async () => {
+    const citation1 = {
+      title: "Doc 1",
+      url: "https://example.com/doc1",
+      snippet: "First doc",
+    };
+    const citation2 = {
+      title: "Doc 2",
+      url: "https://example.com/doc2",
+      snippet: "Second doc",
+    };
+    const duplicateCitation = {
+      title: "Doc 1 Updated",
+      url: "https://example.com/doc1",
+      snippet: "Updated doc",
+    };
+
+    const chunks = [
+      `${JSON.stringify({ output: "Text 1", citation: citation1 })}\n`,
+      `${JSON.stringify({ output: "Text 2", citation: citation2 })}\n`,
+      `${JSON.stringify({ output: "Text 3", citation: duplicateCitation })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+    const onCitation = vi.fn();
+
+    const result = await processStreamingResponse(reader, undefined, onCitation, 0);
+
+    expect(result.citations).toEqual([citation1, citation2]);
+    expect(onCitation).toHaveBeenCalledTimes(2);
   });
 });
 

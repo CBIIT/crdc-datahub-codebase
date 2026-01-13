@@ -161,6 +161,7 @@ const useChatConversation = (): ChatConversationActions => {
       try {
         const botMessageId = createId("bot_msg_");
         let accumulatedText = "";
+        const allCitations: ChatCitation[] = [];
         let firstChunkReceived = false;
 
         await askQuestion({
@@ -185,11 +186,28 @@ const useChatConversation = (): ChatConversationActions => {
               }),
             });
           },
+          onCitation: (citation) => {
+            allCitations?.push(citation);
+          },
         });
 
         const active = activeRequestRef.current;
         if (!active || active.requestId !== requestId || active.abortController.signal.aborted) {
           return;
+        }
+
+        // Add citations to exiting bot message if they exist
+        if (allCitations?.length > 0) {
+          dispatch({
+            type: "message_added",
+            message: createChatMessage({
+              id: botMessageId,
+              text: accumulatedText,
+              sender: "bot",
+              senderName: chatConfig.supportBotName,
+              citations: allCitations,
+            }),
+          });
         }
 
         dispatch({ type: "status_changed", status: "idle" });

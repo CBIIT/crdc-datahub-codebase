@@ -1,4 +1,4 @@
-import { Box, Typography, styled } from "@mui/material";
+import { Box, Chip, Typography, styled } from "@mui/material";
 import React, { CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -244,6 +244,34 @@ const MessageBubble = styled(Box, {
   };
 });
 
+const CitationsContainer = styled(Box)({
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "4px",
+  marginTop: "8px",
+  paddingTop: "8px",
+  borderTop: "1px solid rgba(0, 0, 0, 0.08)",
+});
+
+const StyledCitationChip = styled(Chip)({
+  fontSize: "11px",
+  height: "20px",
+  cursor: "pointer",
+  backgroundColor: "rgba(0, 0, 0, 0.04)",
+  border: "1px solid rgba(0, 0, 0, 0.12)",
+  textDecoration: "none !important",
+  "&:hover": {
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    textDecoration: "none !important",
+  },
+  "&:link, &:visited, &:active": {
+    textDecoration: "none !important",
+  },
+  "& .MuiChip-label": {
+    padding: "0 6px",
+  },
+}) as typeof Chip;
+
 /**
  * Custom anchor component for ReactMarkdown that opens links in new tabs.
  */
@@ -289,6 +317,7 @@ const ChatMessageItem = ({ message }: Props): JSX.Element => {
 
   const isUser = message.sender === "user";
   const dataIsUser = isUser ? "true" : "false";
+  const hasCitations = message?.citations?.length > 0;
 
   return (
     <MessageRow data-is-user={dataIsUser}>
@@ -310,14 +339,33 @@ const ChatMessageItem = ({ message }: Props): JSX.Element => {
           {isUser ? (
             message.text
           ) : (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: LinkComponent,
-              }}
-            >
-              {message.text}
-            </ReactMarkdown>
+            <>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  a: LinkComponent,
+                }}
+              >
+                {message.text}
+              </ReactMarkdown>
+              {hasCitations && (
+                <CitationsContainer>
+                  {message.citations?.map((citation, index) => (
+                    <StyledCitationChip
+                      // eslint-disable-next-line react/no-array-index-key
+                      key={`${message.id}-citation-${index}`}
+                      label={citation?.title || `[${index + 1}]`}
+                      size="small"
+                      component="a"
+                      href={citation?.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      clickable
+                    />
+                  ))}
+                </CitationsContainer>
+              )}
+            </>
           )}
         </MessageBubble>
       </MessageColumn>

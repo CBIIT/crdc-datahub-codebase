@@ -2,16 +2,10 @@ import { Logger } from "@/utils";
 
 import { storeSessionId } from "../utils/sessionStorageUtils";
 
-export type KnowledgeBaseCitation = {
-  title?: string;
-  url?: string;
-  snippet?: string;
-};
-
 export type AskKnowledgeBaseResponse = {
   question: string;
   answer: string;
-  citations?: KnowledgeBaseCitation[];
+  citations?: ChatCitation[];
   sessionId?: string;
 };
 
@@ -19,9 +13,15 @@ type AskQuestionArgs = {
   question: string;
   sessionId?: string | null;
   onChunk?: (chunk: string) => void;
+  onCitation?: (citation: ChatCitation) => void;
   signal?: AbortSignal;
   url: string;
   typewriterDelay?: number;
+};
+
+type AskQuestionResult = {
+  sessionId: string | null;
+  citations: ChatCitation[];
 };
 
 /**
@@ -102,17 +102,21 @@ export async function emitWithTypewriter(
  *
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader - The stream reader for the response body
  * @param {(chunk: string) => void} [onChunk] - Optional callback to invoke with each text chunk
+ * @param {(citation: ChatCitation) => void} [onCitation] - Optional callback to invoke with each citation
  * @param {number} [typewriterDelay=15] - Delay in milliseconds between characters (0 to disable typewriter effect)
- * @returns {Promise<string | null>} The session ID from the response, or null if not found
+ * @returns {Promise<{ sessionId: string | null; citations: ChatCitation[] }>} The session ID and collected citations from the response
  */
 export async function processStreamingResponse(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onChunk?: (chunk: string) => void,
+  onCitation?: (citation: ChatCitation) => void,
   typewriterDelay = 15
-): Promise<string | null> {
+): Promise<{ sessionId: string | null; citations: ChatCitation[] }> {
   const decoder = new TextDecoder();
   let buffer = "";
   let currentSessionId: string | null = null;
+  const citations: ChatCitation[] = [];
+  const seenCitationUrls = new Set<string>();
   let isFirstChunk = true;
   let done = false;
 
@@ -147,8 +151,13 @@ export async function processStreamingResponse(
           await emitWithTypewriter(outputText, onChunk, typewriterDelay);
         }
 
-        if (parsed.citation && Object.keys(parsed.citation).length > 0) {
-          Logger.info("Citations:", parsed.citation);
+        const citationHasContent = !!parsed.citation && !!parsed.citation.url;
+        const citationIsNotDuplicate = !seenCitationUrls.has(parsed.citation.url);
+
+        if (citationHasContent && citationIsNotDuplicate) {
+          seenCitationUrls.add(parsed.citation.url);
+          citations.push(parsed.citation);
+          onCitation?.(parsed.citation);
         }
 
         if (parsed.error) {
@@ -160,7 +169,7 @@ export async function processStreamingResponse(
     }
   }
 
-  return currentSessionId;
+  return { sessionId: currentSessionId, citations };
 }
 
 /**
@@ -170,20 +179,22 @@ export async function processStreamingResponse(
  * @param {string} args.question - The question text to send
  * @param {string | null} [args.sessionId] - Optional session ID to continue a conversation
  * @param {(chunk: string) => void} [args.onChunk] - Optional callback invoked with each text chunk as it arrives
+ * @param {(citation: ChatCitation) => void} [args.onCitation] - Optional callback invoked with each citation as it arrives
  * @param {AbortSignal} [args.signal] - Optional abort signal to cancel the request
  * @param {string} args.url - The knowledge base API endpoint URL
  * @param {number} [args.typewriterDelay=15] - Delay in milliseconds between characters (0 to disable typewriter effect)
- * @returns {Promise<string | null>} The session ID from the response, or null if not found
+ * @returns {Promise<AskQuestionResult>} The session ID and citations from the response
  * @throws {Error} If the URL is not provided or the HTTP request fails
  */
 export async function askQuestion({
   question,
   sessionId = null,
   onChunk,
+  onCitation,
   signal,
   url,
   typewriterDelay = 10,
-}: AskQuestionArgs): Promise<string | null> {
+}: AskQuestionArgs): Promise<AskQuestionResult> {
   if (!url) {
     throw new Error("Knowledge base URL is required but was not provided");
   }
@@ -200,13 +211,22 @@ export async function askQuestion({
     }
 
     const reader = response.body.getReader();
-    const currentSessionId = await processStreamingResponse(reader, onChunk, typewriterDelay);
+    const { sessionId: currentSessionId, citations } = await processStreamingResponse(
+      reader,
+      onChunk,
+      onCitation,
+      typewriterDelay
+    );
 
     if (currentSessionId) {
       storeSessionId(currentSessionId);
     }
 
-    return currentSessionId;
+    if (citations.length > 0) {
+      Logger.info("All citations collected:", citations);
+    }
+
+    return { sessionId: currentSessionId, citations };
   } catch (error) {
     Logger.error("Error:", error);
     throw error;
