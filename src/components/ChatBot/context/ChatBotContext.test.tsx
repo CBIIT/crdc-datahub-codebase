@@ -1,7 +1,4 @@
-import { renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-
-import { render } from "@/test-utils";
+import { render, renderHook } from "@/test-utils";
 
 import { ChatBotProvider, useChatBotContext } from "./ChatBotContext";
 
