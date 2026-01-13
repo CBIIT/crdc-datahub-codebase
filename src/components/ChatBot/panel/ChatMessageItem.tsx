@@ -245,6 +245,18 @@ const MessageBubble = styled(Box, {
 });
 
 /**
+ * Custom anchor component for ReactMarkdown that opens links in new tabs.
+ */
+const LinkComponent = ({
+  node,
+  ...props
+}: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => (
+  <a {...props} target="_blank" rel="noopener noreferrer">
+    {props.children}
+  </a>
+);
+
+/**
  * Formats a date object into a localized time string.
  *
  * @param date - The date to format
@@ -298,7 +310,14 @@ const ChatMessageItem = ({ message }: Props): JSX.Element => {
           {isUser ? (
             message.text
           ) : (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: LinkComponent,
+              }}
+            >
+              {message.text}
+            </ReactMarkdown>
           )}
         </MessageBubble>
       </MessageColumn>

@@ -537,4 +537,49 @@ describe("Markdown Formatting", () => {
     expect(bubbleElement).toHaveStyle({ paddingInline: "12px" });
     expect(bubbleElement).toHaveStyle({ paddingBlock: "8px" });
   });
+
+  it("should render links with target='_blank' and rel attributes in bot messages", () => {
+    const message = createMockMessage({
+      text: "Check out [this link](https://example.com) for more info.",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const link = container.querySelector("a");
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "https://example.com");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(link).toHaveTextContent("this link");
+  });
+
+  it("should render multiple links with target='_blank' in bot messages", () => {
+    const message = createMockMessage({
+      text: "Visit [site 1](https://example1.com) and [site 2](https://example2.com).",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const links = container.querySelectorAll("a");
+    expect(links.length).toBe(2);
+
+    expect(links[0]).toHaveAttribute("href", "https://example1.com");
+    expect(links[0]).toHaveAttribute("target", "_blank");
+    expect(links[0]).toHaveAttribute("rel", "noopener noreferrer");
+
+    expect(links[1]).toHaveAttribute("href", "https://example2.com");
+    expect(links[1]).toHaveAttribute("target", "_blank");
+    expect(links[1]).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("should not render links for user messages", () => {
+    const message = createMockMessage({
+      text: "Check out https://example.com",
+      sender: "user",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const link = container.querySelector("a");
+    expect(link).not.toBeInTheDocument();
+  });
 });
