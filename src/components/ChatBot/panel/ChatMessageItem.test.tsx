@@ -42,12 +42,12 @@ const createMockMessage = (overrides?: Partial<ChatMessage>): ChatMessage => ({
   ...overrides,
 });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  mockUseChatDrawerContext.mockReturnValue(defaultContext);
-});
-
 describe("Accessibility", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+  });
+
   it("should have no accessibility violations with bot message", async () => {
     const message = createMockMessage();
     const { container } = render(<ChatMessageItem message={message} />);
@@ -71,6 +71,11 @@ describe("Accessibility", () => {
 });
 
 describe("Basic Functionality", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+  });
+
   it("should render without crashing", () => {
     const message = createMockMessage();
     expect(() => render(<ChatMessageItem message={message} />)).not.toThrow();

@@ -1,5 +1,3 @@
-import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
 import { render } from "@/test-utils";
@@ -39,11 +37,6 @@ vi.mock("./ChatMessageItem", () => ({
   ),
 }));
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  mockUseChatDrawerContext.mockReturnValue(defaultContext);
-});
-
 vi.mock("./BotTypingIndicator", () => ({
   default: () => <div data-testid="bot-typing-indicator">Typing...</div>,
 }));
@@ -67,6 +60,8 @@ const defaultProps = {
 describe("Accessibility", () => {
   beforeEach(() => {
     Element.prototype.scrollTo = vi.fn();
+    vi.clearAllMocks();
+    mockUseChatDrawerContext.mockReturnValue(defaultContext);
   });
 
   afterEach(() => {
@@ -95,6 +90,8 @@ describe("Accessibility", () => {
 describe("Basic Functionality", () => {
   beforeEach(() => {
     Element.prototype.scrollTo = vi.fn();
+    vi.clearAllMocks();
+    mockUseChatDrawerContext.mockReturnValue(defaultContext);
   });
 
   afterEach(() => {

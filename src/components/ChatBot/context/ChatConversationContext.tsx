@@ -28,8 +28,6 @@ type ChatAction =
   | { type: "status_changed"; status: ChatStatus }
   | { type: "conversation_reset" };
 
-type BotReplyProvider = (userText: string, signal: AbortSignal) => Promise<string>;
-
 export type ChatConversationActions = {
   greetingTimestamp: Date;
   messages: ChatMessage[];
@@ -91,7 +89,7 @@ export const chatReducer = (state: ChatState, action: ChatAction): ChatState => 
 /**
  * Custom hook to manage chat conversation state and behavior.
  *
- * @returns An object containing chat state and action handlers.
+ * @returns {ChatConversationActions} An object containing chat state and action handlers.
  */
 const useChatConversation = (): ChatConversationActions => {
   const { knowledgeBaseUrl } = useChatBotContext();
@@ -117,21 +115,6 @@ const useChatConversation = (): ChatConversationActions => {
     abortController: AbortController;
   } | null>(null);
 
-  const replyProvider = useMemo<BotReplyProvider>(
-    () => async (userText, signal) => {
-      const storedSessionId = getStoredSessionId();
-      await askQuestion({
-        question: userText,
-        sessionId: storedSessionId,
-        signal,
-        url: knowledgeBaseUrl,
-      });
-
-      return "";
-    },
-    [knowledgeBaseUrl]
-  );
-
   useEffect(
     () => () => {
       activeRequestRef.current?.abortController.abort();
@@ -140,48 +123,48 @@ const useChatConversation = (): ChatConversationActions => {
     []
   );
 
-  const setInputValue = useCallback((value: string): void => {
-    dispatch({ type: "input_changed", value });
-  }, []);
-
-  const sendMessage = useCallback((): void => {
-    const { current } = stateRef;
-    const trimmed = current.inputValue.trim();
-
-    if (!trimmed) {
+  /**
+   * Handles errors that occur during bot reply requests.
+   */
+  const handleReplyError = useCallback((error: unknown, requestId: string): void => {
+    const active = activeRequestRef.current;
+    if (!active || active.requestId !== requestId) {
       return;
     }
 
-    if (current.status === "bot_typing") {
+    if (active.abortController.signal.aborted || isAbortError(error)) {
       return;
     }
 
     dispatch({
       type: "message_added",
       message: createChatMessage({
-        text: trimmed,
-        sender: "user",
-        senderName: chatConfig.userDisplayName,
+        text: "Sorry, an unexpected error occurred. Please try again later.",
+        sender: "bot",
+        senderName: chatConfig.supportBotName,
+        variant: "error",
       }),
     });
 
-    dispatch({ type: "input_cleared" });
-    dispatch({ type: "status_changed", status: "bot_typing" });
+    dispatch({ type: "status_changed", status: "idle" });
+  }, []);
 
-    activeRequestRef.current?.abortController.abort();
-
-    const abortController = new AbortController();
-    const requestId = createId("bot_reply_");
-    activeRequestRef.current = { requestId, abortController };
-
-    const runReply = async (): Promise<void> => {
+  /**
+   * Executes the bot reply request with streaming support.
+   */
+  const runReply = useCallback(
+    async (
+      userMessage: string,
+      requestId: string,
+      abortController: AbortController
+    ): Promise<void> => {
       try {
         const botMessageId = createId("bot_msg_");
         let accumulatedText = "";
         let firstChunkReceived = false;
 
         await askQuestion({
-          question: trimmed,
+          question: userMessage,
           sessionId: getStoredSessionId(),
           signal: abortController.signal,
           url: knowledgeBaseUrl,
@@ -211,36 +194,62 @@ const useChatConversation = (): ChatConversationActions => {
 
         dispatch({ type: "status_changed", status: "idle" });
       } catch (error) {
-        const active = activeRequestRef.current;
-        if (!active || active.requestId !== requestId) {
-          return;
-        }
-
-        if (active.abortController.signal.aborted || isAbortError(error)) {
-          return;
-        }
-
-        dispatch({
-          type: "message_added",
-          message: createChatMessage({
-            text: "Sorry, an unexpected error occurred. Please try again later.",
-            sender: "bot",
-            senderName: chatConfig.supportBotName,
-            variant: "error",
-          }),
-        });
-
-        dispatch({ type: "status_changed", status: "idle" });
+        handleReplyError(error, requestId);
       }
-    };
+    },
+    [knowledgeBaseUrl, handleReplyError]
+  );
 
-    runReply().catch((error: unknown) => {
+  /**
+   * Updates the input field value in the chat state.
+   */
+  const setInputValue = useCallback((value: string): void => {
+    dispatch({ type: "input_changed", value });
+  }, []);
+
+  /**
+   * Sends the current input message to the bot.
+   */
+  const sendMessage = useCallback((): void => {
+    const { current } = stateRef;
+    const value = current.inputValue?.trim();
+
+    if (!value) {
+      return;
+    }
+
+    if (current.status === "bot_typing") {
+      return;
+    }
+
+    dispatch({
+      type: "message_added",
+      message: createChatMessage({
+        text: value,
+        sender: "user",
+        senderName: chatConfig.userDisplayName,
+      }),
+    });
+
+    dispatch({ type: "input_cleared" });
+    dispatch({ type: "status_changed", status: "bot_typing" });
+
+    activeRequestRef.current?.abortController.abort();
+
+    const abortController = new AbortController();
+    const requestId = createId("bot_reply_");
+    activeRequestRef.current = { requestId, abortController };
+
+    runReply(value, requestId, abortController).catch((error: unknown) => {
       if (!isAbortError(error)) {
         dispatch({ type: "status_changed", status: "idle" });
       }
     });
-  }, [replyProvider, knowledgeBaseUrl]);
+  }, [runReply]);
 
+  /**
+   * Handles keyboard events in the chat input.
+   */
   const handleKeyDown: React.KeyboardEventHandler<HTMLDivElement> = useCallback(
     (event) => {
       if (event.key !== "Enter") {
@@ -257,6 +266,9 @@ const useChatConversation = (): ChatConversationActions => {
     [sendMessage]
   );
 
+  /**
+   * Ends the current conversation and resets to initial state.
+   */
   const endConversation = useCallback((): void => {
     clearStoredSessionId();
     activeRequestRef.current?.abortController.abort();
