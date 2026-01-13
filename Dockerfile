@@ -3,6 +3,7 @@ ENV PORT 8082
 ENV NODE_ENV production
 WORKDIR /usr/src/app
 RUN npm install -g npm@11.7.0
+RUN npm install -g glob@10.5.0
 COPY package*.json ./
 RUN npm ci --only=production
 COPY  --chown=node:node . .
