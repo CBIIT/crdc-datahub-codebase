@@ -14,7 +14,7 @@ import { safeParse } from "./jsonUtils";
  * @param data - The submission object to evaluate.
  * @param user - The current user.
  * @returns Returns an object indicating whether the submit button is enabled,
- * whether the admin override is in effect, and an optional tooltip explaining why it is disabled.
+ * whether the admin override is in effect, and an optional tooltip explaining the button state.
  */
 export const shouldEnableSubmit = (data: GetSubmissionResp, user: User): SubmitButtonResult => {
   if (!data?.getSubmission?._id || !user) {
