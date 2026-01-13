@@ -2,7 +2,12 @@ import { Logger } from "@/utils";
 
 import { getStoredSessionId, storeSessionId } from "../utils/sessionStorageUtils";
 
-import { askQuestion, processLine, processStreamingResponse } from "./knowledgeBaseClient";
+import {
+  askQuestion,
+  emitWithTypewriter,
+  processLine,
+  processStreamingResponse,
+} from "./knowledgeBaseClient";
 
 vi.mock("@/utils", () => ({
   Logger: {
@@ -75,6 +80,7 @@ describe("askQuestion", () => {
       sessionId: null,
       onChunk,
       url: TEST_API_URL,
+      typewriterDelay: 0,
     });
 
     expect(result).toBe("test-session-123");
@@ -131,6 +137,7 @@ describe("askQuestion", () => {
       question: "Test question",
       onChunk,
       url: TEST_API_URL,
+      typewriterDelay: 0,
     });
 
     expect(onChunk).toHaveBeenCalledTimes(3);
@@ -153,6 +160,7 @@ describe("askQuestion", () => {
       question: "Test question",
       onChunk,
       url: TEST_API_URL,
+      typewriterDelay: 0,
     });
 
     expect(onChunk).toHaveBeenCalledTimes(2);
@@ -225,6 +233,7 @@ describe("askQuestion", () => {
       askQuestion({
         question: "Test question",
         url: TEST_API_URL,
+        typewriterDelay: 0,
       })
     ).rejects.toThrow("HTTP error! status: 500");
 
@@ -267,6 +276,7 @@ describe("askQuestion", () => {
       question: "Test question",
       onChunk,
       url: TEST_API_URL,
+      typewriterDelay: 0,
     });
 
     expect(onChunk).toHaveBeenCalledTimes(2);
@@ -295,6 +305,7 @@ describe("askQuestion", () => {
       question: "Test question",
       onChunk,
       url: TEST_API_URL,
+      typewriterDelay: 0,
     });
 
     expect(onChunk).toHaveBeenCalledTimes(2);
@@ -521,7 +532,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader);
+    const result = await processStreamingResponse(reader, undefined, 0);
 
     expect(result).toBe("test-session-123");
   });
@@ -531,7 +542,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader);
+    const result = await processStreamingResponse(reader, undefined, 0);
 
     expect(result).toBeNull();
   });
@@ -542,7 +553,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk);
+    await processStreamingResponse(reader, onChunk, 0);
 
     expect(onChunk).toHaveBeenCalledWith("Hello world");
   });
@@ -555,7 +566,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk);
+    await processStreamingResponse(reader, onChunk, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(2);
     expect(onChunk).toHaveBeenNthCalledWith(1, "Line 1");
@@ -571,7 +582,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk);
+    await processStreamingResponse(reader, onChunk, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(1);
     expect(onChunk).toHaveBeenCalledWith("Line 1");
@@ -587,7 +598,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk);
+    await processStreamingResponse(reader, onChunk, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(3);
     expect(onChunk).toHaveBeenNthCalledWith(1, "First");
@@ -604,7 +615,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader, onChunk);
+    const result = await processStreamingResponse(reader, onChunk, 0);
 
     expect(result).toBe("test-123");
     expect(onChunk).toHaveBeenCalledTimes(1);
@@ -615,7 +626,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream([]);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader);
+    const result = await processStreamingResponse(reader, undefined, 0);
 
     expect(result).toBeNull();
   });
@@ -626,7 +637,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk);
+    await processStreamingResponse(reader, onChunk, 0);
 
     expect(onChunk).toHaveBeenCalledWith("Hello 👋");
   });
@@ -637,7 +648,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk);
+    await processStreamingResponse(reader, onChunk, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(1);
     expect(onChunk).toHaveBeenCalledWith("Hello");
@@ -651,7 +662,7 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    await processStreamingResponse(reader, onChunk);
+    await processStreamingResponse(reader, onChunk, 0);
 
     expect(onChunk).toHaveBeenCalledTimes(2);
     expect(onChunk).toHaveBeenNthCalledWith(1, "First");
@@ -663,8 +674,134 @@ describe("processStreamingResponse", () => {
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
-    const result = await processStreamingResponse(reader);
+    const result = await processStreamingResponse(reader, undefined, 0);
 
     expect(result).toBe("test-123");
+  });
+
+  it("should apply typewriter effect to multiple output chunks", async () => {
+    vi.useFakeTimers();
+    const chunks = [
+      `${JSON.stringify({ output: "Hi" })}\n`,
+      `${JSON.stringify({ output: " there" })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+    const onChunk = vi.fn();
+
+    const promise = processStreamingResponse(reader, onChunk, 10);
+
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(onChunk).toHaveBeenCalledTimes(8);
+    expect(onChunk).toHaveBeenNthCalledWith(1, "H");
+    expect(onChunk).toHaveBeenNthCalledWith(2, "i");
+    expect(onChunk).toHaveBeenNthCalledWith(3, " ");
+    expect(onChunk).toHaveBeenNthCalledWith(4, "t");
+    expect(onChunk).toHaveBeenNthCalledWith(5, "h");
+    expect(onChunk).toHaveBeenNthCalledWith(6, "e");
+    expect(onChunk).toHaveBeenNthCalledWith(7, "r");
+    expect(onChunk).toHaveBeenNthCalledWith(8, "e");
+
+    vi.useRealTimers();
+  });
+});
+
+describe("emitWithTypewriter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("should emit characters one by one with typewriter delay", async () => {
+    const onChunk = vi.fn();
+
+    const promise = emitWithTypewriter("Hi", onChunk, 15);
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(onChunk).toHaveBeenCalledTimes(2);
+    expect(onChunk).toHaveBeenNthCalledWith(1, "H");
+    expect(onChunk).toHaveBeenNthCalledWith(2, "i");
+  });
+
+  it("should emit entire text at once when typewriter delay is 0", async () => {
+    const onChunk = vi.fn();
+
+    await emitWithTypewriter("Hello", onChunk, 0);
+
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("Hello");
+  });
+
+  it("should respect custom typewriter delay timing", async () => {
+    const onChunk = vi.fn();
+    const customDelay = 50;
+
+    const promise = emitWithTypewriter("AB", onChunk, customDelay);
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(onChunk).toHaveBeenCalledTimes(2);
+    expect(onChunk).toHaveBeenNthCalledWith(1, "A");
+    expect(onChunk).toHaveBeenNthCalledWith(2, "B");
+  });
+
+  it("should use default 15ms delay when not specified", async () => {
+    const onChunk = vi.fn();
+
+    const promise = emitWithTypewriter("XY", onChunk);
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(onChunk).toHaveBeenCalledTimes(2);
+    expect(onChunk).toHaveBeenNthCalledWith(1, "X");
+    expect(onChunk).toHaveBeenNthCalledWith(2, "Y");
+  });
+
+  it("should not call onChunk when not provided", async () => {
+    const promise = emitWithTypewriter("Hello", undefined, 100);
+    await promise;
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("should handle empty text", async () => {
+    const onChunk = vi.fn();
+
+    await emitWithTypewriter("", onChunk, 15);
+
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+
+  it("should work with special characters and emojis", async () => {
+    const onChunk = vi.fn();
+
+    const promise = emitWithTypewriter("Hi👋", onChunk, 10);
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(onChunk).toHaveBeenCalledTimes(4);
+    expect(onChunk).toHaveBeenNthCalledWith(1, "H");
+    expect(onChunk).toHaveBeenNthCalledWith(2, "i");
+    expect(onChunk.mock.calls[2][0] + onChunk.mock.calls[3][0]).toBe("👋");
+  });
+
+  it("should emit all characters for longer text", async () => {
+    const onChunk = vi.fn();
+    const text = "Hello World";
+
+    const promise = emitWithTypewriter(text, onChunk, 5);
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(onChunk).toHaveBeenCalledTimes(text.length);
+    const emittedText = onChunk.mock.calls.map((call) => call[0]).join("");
+    expect(emittedText).toBe(text);
   });
 });

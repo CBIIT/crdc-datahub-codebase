@@ -21,6 +21,7 @@ type AskQuestionArgs = {
   onChunk?: (chunk: string) => void;
   signal?: AbortSignal;
   url: string;
+  typewriterDelay?: number;
 };
 
 /**
@@ -65,15 +66,49 @@ export function processLine(
 }
 
 /**
- * Processes the streaming response from the knowledge base API.
+ * Emits text with a typewriter effect (character by character) using a configurable delay.
+ *
+ * @param {string} text - The text to emit character by character
+ * @param {(chunk: string) => void} [onChunk] - Optional callback to invoke with each character
+ * @param {number} [typewriterDelay=15] - Delay in milliseconds between characters (0 to disable typewriter effect)
+ * @returns {Promise<void>}
+ */
+export async function emitWithTypewriter(
+  text: string,
+  onChunk?: (chunk: string) => void,
+  typewriterDelay = 15
+): Promise<void> {
+  if (!onChunk || !text) {
+    return;
+  }
+
+  // If typewriter delay is 0, emit the whole text at once
+  if (typewriterDelay === 0) {
+    onChunk(text);
+    return;
+  }
+
+  for (let i = 0; i < text.length; i += 1) {
+    onChunk(text[i]);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, typewriterDelay);
+    });
+  }
+}
+
+/**
+ * Processes the streaming response from the knowledge base API with typewriter effect.
  *
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader - The stream reader for the response body
  * @param {(chunk: string) => void} [onChunk] - Optional callback to invoke with each text chunk
+ * @param {number} [typewriterDelay=15] - Delay in milliseconds between characters (0 to disable typewriter effect)
  * @returns {Promise<string | null>} The session ID from the response, or null if not found
  */
 export async function processStreamingResponse(
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  onChunk?: (chunk: string) => void
+  onChunk?: (chunk: string) => void,
+  typewriterDelay = 15
 ): Promise<string | null> {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -95,11 +130,32 @@ export async function processStreamingResponse(
     buffer = lines.pop() || "";
 
     for (const line of lines) {
-      const sessionId = processLine(line, isFirstChunk, onChunk);
+      try {
+        const parsed = JSON.parse(line);
 
-      if (sessionId) {
-        currentSessionId = sessionId;
-        isFirstChunk = false;
+        if (isFirstChunk && parsed.sessionId !== undefined) {
+          currentSessionId = parsed.sessionId;
+          isFirstChunk = false;
+          // eslint-disable-next-line no-continue
+          continue;
+        }
+
+        const outputText = typeof parsed.output === "string" ? parsed.output : parsed.output?.text;
+
+        if (outputText) {
+          // eslint-disable-next-line no-await-in-loop
+          await emitWithTypewriter(outputText, onChunk, typewriterDelay);
+        }
+
+        if (parsed.citation && Object.keys(parsed.citation).length > 0) {
+          Logger.info("Citations:", parsed.citation);
+        }
+
+        if (parsed.error) {
+          Logger.error("Error:", parsed.error);
+        }
+      } catch (e) {
+        Logger.error("Failed to parse line:", line, e);
       }
     }
   }
@@ -116,6 +172,7 @@ export async function processStreamingResponse(
  * @param {(chunk: string) => void} [args.onChunk] - Optional callback invoked with each text chunk as it arrives
  * @param {AbortSignal} [args.signal] - Optional abort signal to cancel the request
  * @param {string} args.url - The knowledge base API endpoint URL
+ * @param {number} [args.typewriterDelay=15] - Delay in milliseconds between characters (0 to disable typewriter effect)
  * @returns {Promise<string | null>} The session ID from the response, or null if not found
  * @throws {Error} If the URL is not provided or the HTTP request fails
  */
@@ -125,6 +182,7 @@ export async function askQuestion({
   onChunk,
   signal,
   url,
+  typewriterDelay = 10,
 }: AskQuestionArgs): Promise<string | null> {
   if (!url) {
     throw new Error("Knowledge base URL is required but was not provided");
@@ -142,7 +200,7 @@ export async function askQuestion({
     }
 
     const reader = response.body.getReader();
-    const currentSessionId = await processStreamingResponse(reader, onChunk);
+    const currentSessionId = await processStreamingResponse(reader, onChunk, typewriterDelay);
 
     if (currentSessionId) {
       storeSessionId(currentSessionId);
