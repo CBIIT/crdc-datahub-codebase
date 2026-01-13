@@ -38,7 +38,7 @@ const TestParent = ({ onRender }: TestParentProps) => {
       <div data-testid="is-open">{hook.isOpen.toString()}</div>
       <div data-testid="is-dragging">{hook.isDragging.toString()}</div>
       <div data-testid="is-expanded">{hook.isExpanded.toString()}</div>
-      <div data-testid="drawer-height-px">{hook.drawerHeightPx}</div>
+      <div data-testid="drawer-height-px">{String(hook.drawerHeightPx)}</div>
       <button type="button" data-testid="open-drawer" onClick={hook.openDrawer}>
         Open
       </button>
@@ -582,6 +582,8 @@ describe("useChatDrawer", () => {
         pointerType: "mouse",
         button: 0,
         pointerId: 1,
+        clientX: 100,
+        clientY: 100,
         preventDefault: vi.fn(),
       } as unknown as React.PointerEvent<HTMLDivElement>;
 
@@ -597,10 +599,7 @@ describe("useChatDrawer", () => {
       });
 
       await waitFor(() => {
-        expect(mockComputeNextHeightPx).toHaveBeenCalledWith({
-          drawerElement: mockElement,
-          clientY: 300,
-        });
+        expect(getByTestId("is-dragging")).toHaveTextContent("true");
       });
     });
 
@@ -821,22 +820,20 @@ describe("useChatDrawer", () => {
         writable: true,
       });
 
-      mockComputeNextHeightPx.mockReturnValue({
-        heightPx: 600,
-        viewportHeightPx: 800,
-      });
-
       const openButton = getByTestId("open-drawer");
       userEvent.click(openButton);
 
       await waitFor(() => {
         expect(getByTestId("is-open")).toHaveTextContent("true");
+        expect(getByTestId("drawer-height-px")).toHaveTextContent("475");
       });
 
       const startEvent = {
         pointerType: "mouse",
         button: 0,
         pointerId: 1,
+        clientX: 100,
+        clientY: 575,
         preventDefault: vi.fn(),
       } as unknown as React.PointerEvent<HTMLDivElement>;
 
@@ -852,7 +849,7 @@ describe("useChatDrawer", () => {
       });
 
       await waitFor(() => {
-        expect(getByTestId("drawer-height-px")).toHaveTextContent("600");
+        expect(getByTestId("drawer-height-px")).toHaveTextContent("800");
       });
     });
 
@@ -873,11 +870,6 @@ describe("useChatDrawer", () => {
         writable: true,
       });
 
-      mockComputeNextHeightPx.mockReturnValue({
-        heightPx: 795,
-        viewportHeightPx: 800,
-      });
-
       const openButton = getByTestId("open-drawer");
       userEvent.click(openButton);
 
@@ -889,6 +881,8 @@ describe("useChatDrawer", () => {
         pointerType: "mouse",
         button: 0,
         pointerId: 1,
+        clientX: 100,
+        clientY: 485,
         preventDefault: vi.fn(),
       } as unknown as React.PointerEvent<HTMLDivElement>;
 

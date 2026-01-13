@@ -47,6 +47,7 @@ describe("Accessibility", () => {
   it("should have no accessibility violations when drawer is closed", async () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: false,
+      isMinimized: false,
       openDrawer: vi.fn(),
     });
 
@@ -58,6 +59,7 @@ describe("Accessibility", () => {
   it("should have no accessibility violations when drawer is open", async () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: true,
+      isMinimized: false,
       openDrawer: vi.fn(),
     });
 
@@ -80,6 +82,7 @@ describe("Basic Functionality", () => {
   it("should render without crashing", () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: false,
+      isMinimized: false,
       openDrawer: vi.fn(),
     });
 
@@ -89,6 +92,7 @@ describe("Basic Functionality", () => {
   it("should render FloatingChatButton when drawer is closed", () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: false,
+      isMinimized: false,
       openDrawer: vi.fn(),
     });
 
@@ -100,6 +104,7 @@ describe("Basic Functionality", () => {
   it("should not render ChatDrawer when drawer is closed", () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: false,
+      isMinimized: false,
       openDrawer: vi.fn(),
     });
 
@@ -111,6 +116,7 @@ describe("Basic Functionality", () => {
   it("should render ChatDrawer when drawer is open", () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: true,
+      isMinimized: false,
       openDrawer: vi.fn(),
     });
 
@@ -122,6 +128,7 @@ describe("Basic Functionality", () => {
   it("should render ChatPanel inside ChatDrawer when open", () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: true,
+      isMinimized: false,
       openDrawer: vi.fn(),
     });
 
@@ -133,6 +140,7 @@ describe("Basic Functionality", () => {
   it("should not render FloatingChatButton when drawer is open", () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: true,
+      isMinimized: false,
       openDrawer: vi.fn(),
     });
 
@@ -161,6 +169,7 @@ describe("Basic Functionality", () => {
     const openDrawer = vi.fn();
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: false,
+      isMinimized: false,
       openDrawer,
     });
 
@@ -176,6 +185,7 @@ describe("Basic Functionality", () => {
     const openDrawer = vi.fn();
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: false,
+      isMinimized: false,
       openDrawer,
     });
 
@@ -188,6 +198,7 @@ describe("Basic Functionality", () => {
 
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: true,
+      isMinimized: false,
       openDrawer,
     });
     const { queryByTestId: queryByTestId2, getByTestId: getByTestId2 } = render(<ChatBotView />);
@@ -204,6 +215,7 @@ describe("Basic Functionality", () => {
     });
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: false,
+      isMinimized: false,
       openDrawer: vi.fn(),
     });
 
@@ -212,16 +224,16 @@ describe("Basic Functionality", () => {
     expect(getByText("Ask a Question")).toBeInTheDocument();
   });
 
-  it("should render FloatingChatButton when drawer is minimized", () => {
+  it("should render both FloatingChatButton and ChatDrawer when minimized", () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: true,
       isMinimized: true,
       openDrawer: vi.fn(),
     });
 
-    const { getByTestId, queryByTestId } = render(<ChatBotView />);
+    const { getByTestId } = render(<ChatBotView />);
 
     expect(getByTestId("floating-chat-button")).toBeInTheDocument();
-    expect(queryByTestId("chat-drawer")).not.toBeInTheDocument();
+    expect(getByTestId("chat-drawer")).toBeInTheDocument();
   });
 });

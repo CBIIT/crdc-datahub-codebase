@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 import ChatDrawer from "./ChatDrawer";
 import ChatPanel from "./ChatPanel";
@@ -13,14 +13,18 @@ const ChatBot = (): JSX.Element => {
   const { label } = useChatBotContext();
   const { isOpen, openDrawer, isMinimized } = useChatDrawerContext();
 
-  if (!isOpen || isMinimized) {
-    return <FloatingChatButton label={label} onClick={openDrawer} />;
-  }
+  const showFloatingButton = useMemo(() => !isOpen || isMinimized, [isOpen, isMinimized]);
 
   return (
-    <ChatDrawer>
-      <ChatPanel />
-    </ChatDrawer>
+    <>
+      {showFloatingButton && <FloatingChatButton label={label} onClick={openDrawer} />}
+
+      {isOpen && (
+        <ChatDrawer>
+          <ChatPanel />
+        </ChatDrawer>
+      )}
+    </>
   );
 };
 
