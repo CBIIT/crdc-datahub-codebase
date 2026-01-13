@@ -21,7 +21,7 @@ type ChatAction =
 
 type BotReplyProvider = (userText: string, signal: AbortSignal) => Promise<string>;
 
-type ChatConversationActions = {
+export type ChatConversationActions = {
   greetingTimestamp: Date;
   messages: ChatMessage[];
   inputValue: string;
@@ -39,7 +39,7 @@ type ChatConversationActions = {
  * @param action - The Action to process
  * @returns The updated chat state
  */
-const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
+export const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
   switch (action.type) {
     case "input_changed": {
       return { ...state, inputValue: action.value };
@@ -265,5 +265,6 @@ export const useChatConversation = (): ChatConversationActions => {
     sendMessage,
     handleKeyDown,
     endConversation,
+    ...(process.env.NODE_ENV === "test" && { _testReplyProvider: replyProvider }),
   };
 };

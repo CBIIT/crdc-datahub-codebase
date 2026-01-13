@@ -7,11 +7,20 @@ import * as knowledgeBaseClient from "../api/knowledgeBaseClient";
 import * as ChatBotContextModule from "../context/ChatBotContext";
 import * as sessionStorageUtils from "../utils/sessionStorageUtils";
 
-import { useChatConversation } from "./useChatConversation";
+import { ChatConversationActions, chatReducer, useChatConversation } from "./useChatConversation";
 
 vi.mock("../api/knowledgeBaseClient", () => ({
   askQuestion: vi.fn(),
 }));
+
+vi.mock("../utils/chatUtils", async () => {
+  const actual = await vi.importActual<typeof import("../utils/chatUtils")>("../utils/chatUtils");
+  return {
+    ...actual,
+    createId: vi.fn(actual.createId),
+    createChatMessage: vi.fn(actual.createChatMessage),
+  };
+});
 
 vi.mock("../context/ChatBotContext", () => ({
   useChatBotContext: vi.fn(),
@@ -27,8 +36,12 @@ const mockUseChatBotContext = vi.mocked(ChatBotContextModule.useChatBotContext);
 const mockGetStoredSessionId = vi.mocked(sessionStorageUtils.getStoredSessionId);
 const mockClearStoredSessionId = vi.mocked(sessionStorageUtils.clearStoredSessionId);
 
+type ChatConversationWithTestUtils = ChatConversationActions & {
+  _testReplyProvider?: (question: string, signal: AbortSignal) => Promise<string>;
+};
+
 const TestParent = () => {
-  const conversation = useChatConversation();
+  const conversation = useChatConversation() as ChatConversationWithTestUtils;
 
   return (
     <div>
@@ -53,7 +66,12 @@ const TestParent = () => {
         onKeyDown={conversation.handleKeyDown}
       />
       <div data-testid="is-bot-typing">{conversation.isBotTyping.toString()}</div>
-      <button type="button" data-testid="send-button" onClick={conversation.sendMessage}>
+      <button
+        type="button"
+        data-testid="send-button"
+        onClick={conversation.sendMessage}
+        disabled={conversation.isBotTyping}
+      >
         Send
       </button>
       <Box component="div" data-testid="keydown-button" onKeyDown={conversation.handleKeyDown}>
@@ -66,6 +84,9 @@ const TestParent = () => {
       >
         End
       </button>
+      <div data-testid="test-reply-provider" style={{ display: "none" }}>
+        {JSON.stringify({ hasProvider: !!conversation._testReplyProvider })}
+      </div>
     </div>
   );
 };
@@ -533,6 +554,20 @@ describe("useChatConversation", () => {
     });
   });
 
+  describe("Reducer", () => {
+    it("should return current state for unknown action type", () => {
+      const initialState = {
+        messages: [],
+        inputValue: "test",
+        status: "idle" as const,
+      };
+
+      const result = chatReducer(initialState, { type: "unknown" } as never);
+
+      expect(result).toEqual(initialState);
+    });
+  });
+
   describe("Edge Cases", () => {
     it("should handle multiple rapid setInputValue calls", async () => {
       const { getByTestId } = render(<TestParent />);
@@ -583,6 +618,185 @@ describe("useChatConversation", () => {
           })
         );
       });
+    });
+
+    it("should handle Shift+Enter without sending message", () => {
+      const { getByTestId } = render(<TestParent />);
+
+      const input = getByTestId("input-value");
+      userEvent.type(input, "Test message");
+
+      const keydownButton = getByTestId("keydown-button");
+      keydownButton.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+
+      expect(mockAskQuestion).not.toHaveBeenCalled();
+      expect(input).toHaveValue("Test message");
+    });
+
+    it("should not reset status when error for superseded request", async () => {
+      let firstResolve: (() => void) | null = null;
+      let callCount = 0;
+
+      mockAskQuestion.mockImplementation(async ({ onChunk }) => {
+        callCount += 1;
+        if (callCount === 1) {
+          if (onChunk) {
+            onChunk("First");
+          }
+          await new Promise<void>((resolve) => {
+            firstResolve = resolve;
+          });
+          throw new Error("Network error");
+        }
+        if (onChunk) {
+          onChunk("Second");
+        }
+        return "";
+      });
+
+      const { getByTestId } = render(<TestParent />);
+
+      const input = getByTestId("input-value");
+      userEvent.type(input, "First");
+
+      const sendButton = getByTestId("send-button");
+      userEvent.click(sendButton);
+
+      await waitFor(() => {
+        expect(getByTestId("is-bot-typing")).toHaveTextContent("false");
+      });
+
+      userEvent.clear(input);
+      userEvent.type(input, "Second");
+      userEvent.click(sendButton);
+
+      await waitFor(() => {
+        expect(mockAskQuestion).toHaveBeenCalledTimes(2);
+      });
+
+      if (firstResolve) {
+        firstResolve();
+      }
+
+      await waitFor(() => {
+        const messages = getByTestId("messages");
+        expect(messages.textContent).toContain("Second");
+      });
+    });
+
+    it("should handle non-abort errors in final catch", async () => {
+      mockAskQuestion.mockImplementation(async () => {
+        throw new Error("Synchronous error");
+      });
+
+      const { getByTestId } = render(<TestParent />);
+
+      const input = getByTestId("input-value");
+      userEvent.type(input, "Test");
+
+      const sendButton = getByTestId("send-button");
+      userEvent.click(sendButton);
+
+      await waitFor(() => {
+        expect(getByTestId("is-bot-typing")).toHaveTextContent("false");
+      });
+    });
+
+    it("should create replyProvider that returns empty string", async () => {
+      mockAskQuestion.mockResolvedValue(undefined);
+
+      const TestReplyProviderParent = () => {
+        const conversation = useChatConversation() as unknown as ChatConversationWithTestUtils;
+        const [result, setResult] = React.useState<string | null>(null);
+
+        const testReplyProvider = async () => {
+          if (conversation._testReplyProvider) {
+            const res = await conversation._testReplyProvider("test", new AbortController().signal);
+            setResult(res);
+          }
+        };
+
+        return (
+          <div>
+            <button type="button" data-testid="test-provider-button" onClick={testReplyProvider}>
+              Test
+            </button>
+            <div data-testid="provider-result">{result !== null ? result : "pending"}</div>
+          </div>
+        );
+      };
+
+      const { getByTestId } = render(<TestReplyProviderParent />);
+
+      const button = getByTestId("test-provider-button");
+      userEvent.click(button);
+
+      await waitFor(() => {
+        expect(getByTestId("provider-result")).toHaveTextContent("");
+      });
+
+      expect(mockAskQuestion).toHaveBeenCalled();
+    });
+
+    it("should return early when aborted after askQuestion completes", async () => {
+      let firstResolve: (() => void) | null = null;
+      let callCount = 0;
+
+      mockAskQuestion.mockImplementation(async ({ onChunk }) => {
+        callCount += 1;
+        if (callCount === 1) {
+          if (onChunk) {
+            onChunk("First response");
+          }
+          await new Promise<void>((resolve) => {
+            firstResolve = resolve;
+          });
+          return "";
+        }
+        if (onChunk) {
+          onChunk("Second response");
+        }
+        return "";
+      });
+
+      const { getByTestId } = render(<TestParent />);
+
+      const input = getByTestId("input-value");
+      userEvent.type(input, "First");
+
+      const sendButton = getByTestId("send-button");
+      userEvent.click(sendButton);
+
+      await waitFor(() => {
+        expect(getByTestId("is-bot-typing")).toHaveTextContent("false");
+      });
+
+      userEvent.clear(input);
+      userEvent.type(input, "Second");
+      userEvent.click(sendButton);
+
+      await waitFor(() => {
+        expect(mockAskQuestion).toHaveBeenCalledTimes(2);
+      });
+
+      if (firstResolve) {
+        firstResolve();
+      }
+
+      await waitFor(
+        () => {
+          const messages = getByTestId("messages");
+          expect(messages.textContent).toContain("Second response");
+        },
+        { timeout: 2000 }
+      );
     });
   });
 });
