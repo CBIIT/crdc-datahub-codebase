@@ -2,7 +2,7 @@ import { Logger } from "@/utils";
 
 import { getStoredSessionId, storeSessionId } from "../utils/sessionStorageUtils";
 
-import { askQuestion } from "./knowledgeBaseClient";
+import { askQuestion, processLine, processStreamingResponse } from "./knowledgeBaseClient";
 
 vi.mock("@/utils", () => ({
   Logger: {
@@ -393,5 +393,278 @@ describe("askQuestion", () => {
         url: "",
       })
     ).rejects.toThrow("Knowledge base URL is required but was not provided");
+  });
+});
+
+describe("processLine", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should return session ID when isFirstChunk is true and sessionId exists", () => {
+    const line = JSON.stringify({ sessionId: "test-session-123" });
+    const result = processLine(line, true);
+
+    expect(result).toBe("test-session-123");
+  });
+
+  it("should return undefined when isFirstChunk is false", () => {
+    const line = JSON.stringify({ sessionId: "test-session-123" });
+    const result = processLine(line, false);
+
+    expect(result).toBeUndefined();
+  });
+
+  it("should return undefined when session ID is not present in parsed object", () => {
+    const line = JSON.stringify({ output: "Some text" });
+    const result = processLine(line, true);
+
+    expect(result).toBeUndefined();
+  });
+
+  it("should invoke onChunk callback with output text when present (string format)", () => {
+    const onChunk = vi.fn();
+    const line = JSON.stringify({ output: "Hello world" });
+    processLine(line, false, onChunk);
+
+    expect(onChunk).toHaveBeenCalledWith("Hello world");
+    expect(onChunk).toHaveBeenCalledTimes(1);
+  });
+
+  it("should invoke onChunk callback with output.text when present (object format)", () => {
+    const onChunk = vi.fn();
+    const line = JSON.stringify({ output: { text: "Hello world" } });
+    processLine(line, false, onChunk);
+
+    expect(onChunk).toHaveBeenCalledWith("Hello world");
+    expect(onChunk).toHaveBeenCalledTimes(1);
+  });
+
+  it("should not invoke onChunk when output is missing", () => {
+    const onChunk = vi.fn();
+    const line = JSON.stringify({ sessionId: "test-123" });
+    processLine(line, true, onChunk);
+
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+
+  it("should not invoke onChunk when onChunk callback is not provided", () => {
+    const line = JSON.stringify({ output: "Hello world" });
+    expect(() => processLine(line, false)).not.toThrow();
+  });
+
+  it("should log citation when present and non-empty", () => {
+    const line = JSON.stringify({
+      citation: {
+        title: "Document 1",
+        url: "http://example.com/doc1",
+      },
+    });
+    processLine(line, false);
+
+    expect(Logger.info).toHaveBeenCalledWith("Citations:", {
+      title: "Document 1",
+      url: "http://example.com/doc1",
+    });
+  });
+
+  it("should not log citation when empty object", () => {
+    const line = JSON.stringify({ citation: {} });
+    processLine(line, false);
+
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should log errors when parsed.error exists", () => {
+    const line = JSON.stringify({ error: "Something went wrong" });
+    processLine(line, false);
+
+    expect(Logger.error).toHaveBeenCalledWith("Error:", "Something went wrong");
+  });
+
+  it("should handle JSON.parse errors gracefully and return undefined", () => {
+    const invalidLine = "{ invalid json }";
+    const result = processLine(invalidLine, false);
+
+    expect(result).toBeUndefined();
+    expect(Logger.error).toHaveBeenCalledWith(
+      "Failed to parse line:",
+      invalidLine,
+      expect.any(Error)
+    );
+  });
+
+  it("should handle empty string input", () => {
+    const result = processLine("", false);
+
+    expect(result).toBeUndefined();
+    expect(Logger.error).toHaveBeenCalledWith("Failed to parse line:", "", expect.any(Error));
+  });
+
+  it("should return session ID and skip onChunk on first chunk even if output present", () => {
+    const onChunk = vi.fn();
+    const line = JSON.stringify({ sessionId: "test-123", output: "Initial response" });
+    const result = processLine(line, true, onChunk);
+
+    expect(result).toBe("test-123");
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+});
+
+describe("processStreamingResponse", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should return session ID from first chunk with valid stream", async () => {
+    const chunks = [`${JSON.stringify({ sessionId: "test-session-123", output: "Hello" })}\n`];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    const result = await processStreamingResponse(reader);
+
+    expect(result).toBe("test-session-123");
+  });
+
+  it("should return null when no session ID found in stream", async () => {
+    const chunks = [`${JSON.stringify({ output: "Hello world" })}\n`];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    const result = await processStreamingResponse(reader);
+
+    expect(result).toBeNull();
+  });
+
+  it("should handle incomplete JSON lines in buffer correctly", async () => {
+    const onChunk = vi.fn();
+    const chunks = ['{"output": "Hel', 'lo world"}\n'];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await processStreamingResponse(reader, onChunk);
+
+    expect(onChunk).toHaveBeenCalledWith("Hello world");
+  });
+
+  it("should process multiple complete lines in single chunk", async () => {
+    const onChunk = vi.fn();
+    const chunks = [
+      `${JSON.stringify({ output: "Line 1" })}\n${JSON.stringify({ output: "Line 2" })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await processStreamingResponse(reader, onChunk);
+
+    expect(onChunk).toHaveBeenCalledTimes(2);
+    expect(onChunk).toHaveBeenNthCalledWith(1, "Line 1");
+    expect(onChunk).toHaveBeenNthCalledWith(2, "Line 2");
+  });
+
+  it("should not process incomplete final line without newline", async () => {
+    const onChunk = vi.fn();
+    const chunks = [
+      `${JSON.stringify({ output: "Line 1" })}\n`,
+      JSON.stringify({ output: "Line 2" }),
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await processStreamingResponse(reader, onChunk);
+
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("Line 1");
+  });
+
+  it("should call onChunk for each complete line with output", async () => {
+    const onChunk = vi.fn();
+    const chunks = [
+      `${JSON.stringify({ output: "First" })}\n`,
+      `${JSON.stringify({ output: "Second" })}\n`,
+      `${JSON.stringify({ output: "Third" })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await processStreamingResponse(reader, onChunk);
+
+    expect(onChunk).toHaveBeenCalledTimes(3);
+    expect(onChunk).toHaveBeenNthCalledWith(1, "First");
+    expect(onChunk).toHaveBeenNthCalledWith(2, "Second");
+    expect(onChunk).toHaveBeenNthCalledWith(3, "Third");
+  });
+
+  it("should only return first session ID found in stream", async () => {
+    const onChunk = vi.fn();
+    const chunks = [
+      `${JSON.stringify({ sessionId: "test-123", output: "First" })}\n`,
+      `${JSON.stringify({ sessionId: "test-456", output: "Second" })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    const result = await processStreamingResponse(reader, onChunk);
+
+    expect(result).toBe("test-123");
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("Second");
+  });
+
+  it("should handle empty stream (immediate done)", async () => {
+    const stream = createMockStream([]);
+    const reader = stream.getReader();
+
+    const result = await processStreamingResponse(reader);
+
+    expect(result).toBeNull();
+  });
+
+  it("should decode Uint8Array chunks correctly with TextDecoder", async () => {
+    const onChunk = vi.fn();
+    const chunks = [`${JSON.stringify({ output: "Hello 👋" })}\n`];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await processStreamingResponse(reader, onChunk);
+
+    expect(onChunk).toHaveBeenCalledWith("Hello 👋");
+  });
+
+  it("should handle chunks with only newlines", async () => {
+    const onChunk = vi.fn();
+    const chunks = ["\n\n", `${JSON.stringify({ output: "Hello" })}\n`, "\n"];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await processStreamingResponse(reader, onChunk);
+
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("Hello");
+  });
+
+  it("should skip empty lines between valid JSON lines", async () => {
+    const onChunk = vi.fn();
+    const chunks = [
+      `${JSON.stringify({ output: "First" })}\n\n${JSON.stringify({ output: "Second" })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await processStreamingResponse(reader, onChunk);
+
+    expect(onChunk).toHaveBeenCalledTimes(2);
+    expect(onChunk).toHaveBeenNthCalledWith(1, "First");
+    expect(onChunk).toHaveBeenNthCalledWith(2, "Second");
+  });
+
+  it("should work without onChunk callback", async () => {
+    const chunks = [`${JSON.stringify({ sessionId: "test-123", output: "Hello" })}\n`];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    const result = await processStreamingResponse(reader);
+
+    expect(result).toBe("test-123");
   });
 });
