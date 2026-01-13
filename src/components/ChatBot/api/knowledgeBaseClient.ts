@@ -70,13 +70,15 @@ export function processLine(
  *
  * @param {string} text - The text to emit character by character
  * @param {(chunk: string) => void} [onChunk] - Optional callback to invoke with each character
- * @param {number} [typewriterDelay=15] - Delay in milliseconds between characters (0 to disable typewriter effect)
+ * @param {number} [typewriterDelay=10] - Delay in milliseconds between characters (0 to disable typewriter effect)
+ * @param {AbortSignal} [signal] - Optional abort signal to stop the typewriter effect
  * @returns {Promise<void>}
  */
 export async function emitWithTypewriter(
   text: string,
   onChunk?: (chunk: string) => void,
-  typewriterDelay = 15
+  typewriterDelay = 10,
+  signal?: AbortSignal
 ): Promise<void> {
   if (!onChunk || !text) {
     return;
@@ -89,6 +91,9 @@ export async function emitWithTypewriter(
   }
 
   for (let i = 0; i < text.length; i += 1) {
+    if (signal?.aborted) {
+      return;
+    }
     onChunk(text[i]);
     // eslint-disable-next-line no-await-in-loop
     await new Promise<void>((resolve) => {
@@ -103,14 +108,16 @@ export async function emitWithTypewriter(
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader - The stream reader for the response body
  * @param {(chunk: string) => void} [onChunk] - Optional callback to invoke with each text chunk
  * @param {(citation: ChatCitation) => void} [onCitation] - Optional callback to invoke with each citation
- * @param {number} [typewriterDelay=15] - Delay in milliseconds between characters (0 to disable typewriter effect)
+ * @param {number} [typewriterDelay=10] - Delay in milliseconds between characters (0 to disable typewriter effect)
+ * @param {AbortSignal} [signal] - Optional abort signal to stop the typewriter effect
  * @returns {Promise<{ sessionId: string | null; citations: ChatCitation[] }>} The session ID and collected citations from the response
  */
 export async function processStreamingResponse(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onChunk?: (chunk: string) => void,
   onCitation?: (citation: ChatCitation) => void,
-  typewriterDelay = 15
+  typewriterDelay = 10,
+  signal?: AbortSignal
 ): Promise<{ sessionId: string | null; citations: ChatCitation[] }> {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -148,7 +155,7 @@ export async function processStreamingResponse(
 
         if (outputText) {
           // eslint-disable-next-line no-await-in-loop
-          await emitWithTypewriter(outputText, onChunk, typewriterDelay);
+          await emitWithTypewriter(outputText, onChunk, typewriterDelay, signal);
         }
 
         const citationHasContent = !!parsed.citation && !!parsed.citation.url;
@@ -182,7 +189,7 @@ export async function processStreamingResponse(
  * @param {(citation: ChatCitation) => void} [args.onCitation] - Optional callback invoked with each citation as it arrives
  * @param {AbortSignal} [args.signal] - Optional abort signal to cancel the request
  * @param {string} args.url - The knowledge base API endpoint URL
- * @param {number} [args.typewriterDelay=15] - Delay in milliseconds between characters (0 to disable typewriter effect)
+ * @param {number} [args.typewriterDelay=10] - Delay in milliseconds between characters (0 to disable typewriter effect)
  * @returns {Promise<AskQuestionResult>} The session ID and citations from the response
  * @throws {Error} If the URL is not provided or the HTTP request fails
  */
@@ -215,7 +222,8 @@ export async function askQuestion({
       reader,
       onChunk,
       onCitation,
-      typewriterDelay
+      typewriterDelay,
+      signal
     );
 
     if (currentSessionId) {

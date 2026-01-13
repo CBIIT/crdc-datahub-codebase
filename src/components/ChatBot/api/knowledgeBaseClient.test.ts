@@ -818,6 +818,39 @@ describe("processStreamingResponse", () => {
     expect(result.citations).toEqual([citation1, citation2]);
     expect(onCitation).toHaveBeenCalledTimes(2);
   });
+
+  it("should stop typewriter effect when abort signal is triggered during processing", async () => {
+    vi.useFakeTimers();
+
+    const chunks = [
+      `${JSON.stringify({ output: "This is a long message" })}\n`,
+      `${JSON.stringify({ output: " that continues on" })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+    const onChunk = vi.fn();
+    const abortController = new AbortController();
+
+    const promise = processStreamingResponse(
+      reader,
+      onChunk,
+      undefined,
+      10,
+      abortController.signal
+    );
+
+    await vi.advanceTimersByTimeAsync(30);
+
+    abortController.abort();
+
+    await vi.runAllTimersAsync();
+    await promise;
+
+    const emittedChars = onChunk.mock.calls.length;
+    expect(emittedChars).toBeLessThan("This is a long message that continues on".length);
+
+    vi.useRealTimers();
+  });
 });
 
 describe("emitWithTypewriter", () => {
@@ -915,5 +948,48 @@ describe("emitWithTypewriter", () => {
     expect(onChunk).toHaveBeenCalledTimes(text.length);
     const emittedText = onChunk.mock.calls.map((call) => call[0]).join("");
     expect(emittedText).toBe(text);
+  });
+
+  it("should stop typewriter effect when abort signal is triggered", async () => {
+    const onChunk = vi.fn();
+    const text = "Hello World";
+    const abortController = new AbortController();
+
+    const promise = emitWithTypewriter(text, onChunk, 5, abortController.signal);
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    abortController.abort();
+
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(onChunk.mock.calls.length).toBeLessThan(text.length);
+    expect(onChunk).not.toHaveBeenCalledTimes(text.length);
+  });
+
+  it("should not emit any characters if already aborted", async () => {
+    const onChunk = vi.fn();
+    const text = "Hello";
+    const abortController = new AbortController();
+
+    abortController.abort();
+
+    const promise = emitWithTypewriter(text, onChunk, 5, abortController.signal);
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+
+  it("should emit all text immediately when delay is 0 and not aborted", async () => {
+    const onChunk = vi.fn();
+    const text = "Hello";
+    const abortController = new AbortController();
+
+    await emitWithTypewriter(text, onChunk, 0, abortController.signal);
+
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith(text);
   });
 });
