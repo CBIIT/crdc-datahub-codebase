@@ -12,6 +12,7 @@ type ChatDrawerContextValue = {
   // Drawer state
   drawerRef: React.RefObject<HTMLDivElement>;
   heightPx: number;
+  widthPx: number;
   isDragging: boolean;
   isExpanded: boolean;
   isMinimized: boolean;
@@ -53,6 +54,7 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
     isDragging,
     isExpanded,
     drawerHeightPx,
+    drawerWidthPx,
     openDrawer,
     closeDrawer,
     beginResize,
@@ -141,6 +143,7 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
       openDrawer: handleOpenDrawer,
       drawerRef,
       heightPx: drawerHeightPx,
+      widthPx: drawerWidthPx,
       isDragging,
       isExpanded,
       isMinimized,
@@ -159,6 +162,7 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
       handleOpenDrawer,
       drawerRef,
       drawerHeightPx,
+      drawerWidthPx,
       isDragging,
       isExpanded,
       isMinimized,

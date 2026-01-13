@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useReducer, useRef } from "react";
 
 import chatConfig from "../config/chatConfig";
-import { computeNextHeightPx, getViewportHeightPx } from "../utils/chatUtils";
+import { getViewportHeightPx } from "../utils/chatUtils";
 
 type DrawerState = {
   /**
@@ -20,6 +20,10 @@ type DrawerState = {
    * The current height of the drawer in pixels.
    */
   heightPx: number;
+  /**
+   * The current width of the drawer in pixels.
+   */
+  widthPx: number;
 };
 
 type DrawerAction =
@@ -28,6 +32,7 @@ type DrawerAction =
   | { type: "drag_started" }
   | { type: "drag_ended" }
   | { type: "height_changed"; heightPx: number; viewportHeightPx: number }
+  | { type: "width_changed"; widthPx: number }
   | { type: "expand_toggled"; viewportHeightPx: number };
 
 /**
@@ -49,6 +54,7 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
         isDragging: false,
         isExpanded: false,
         heightPx: chatConfig.height.collapsed,
+        widthPx: chatConfig.width.default,
       };
     }
     case "closed": {
@@ -62,6 +68,7 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
         isDragging: false,
         isExpanded: false,
         heightPx: chatConfig.height.collapsed,
+        widthPx: chatConfig.width.default,
       };
     }
     case "drag_started": {
@@ -85,6 +92,12 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
         ...state,
         heightPx: action.heightPx,
         isExpanded: isNearMax,
+      };
+    }
+    case "width_changed": {
+      return {
+        ...state,
+        widthPx: action.widthPx,
       };
     }
     case "expand_toggled": {
@@ -118,6 +131,7 @@ export type useChatDrawerResult = {
   isDragging: boolean;
   isExpanded: boolean;
   drawerHeightPx: number;
+  drawerWidthPx: number;
   openDrawer: () => void;
   closeDrawer: () => void;
   beginResize: React.PointerEventHandler<HTMLDivElement>;
@@ -137,6 +151,7 @@ export const useChatDrawer = (): useChatDrawerResult => {
     isDragging: false,
     isExpanded: false,
     heightPx: chatConfig.height.collapsed,
+    widthPx: chatConfig.width.default,
   });
 
   const stateRef = useRef(state);
@@ -151,6 +166,14 @@ export const useChatDrawer = (): useChatDrawerResult => {
    * Stores the ID of the active pointer during a drag operation.
    */
   const activePointerIdRef = useRef<number | null>(null);
+  /**
+   * Stores the initial pointer position when drag starts.
+   */
+  const initialPointerPosRef = useRef<{ x: number; y: number } | null>(null);
+  /**
+   * Stores the initial dimensions when drag starts.
+   */
+  const initialDimensionsRef = useRef<{ width: number; height: number } | null>(null);
 
   /**
    * Opens the chat drawer.
@@ -192,24 +215,54 @@ export const useChatDrawer = (): useChatDrawerResult => {
 
     isDraggingRef.current = true;
     activePointerIdRef.current = event.pointerId;
+    initialPointerPosRef.current = { x: event.clientX, y: event.clientY };
+    initialDimensionsRef.current = {
+      width: stateRef.current.widthPx,
+      height: stateRef.current.heightPx,
+    };
 
     dispatch({ type: "drag_started" });
   }, []);
 
   /**
-   * Applies the resize, given a pointer Y position.
+   * Applies the resize, given pointer X and Y positions.
    */
-  const applyResize = useCallback((clientY: number): void => {
+  const applyResize = useCallback((clientX: number, clientY: number): void => {
     const drawerElement = drawerRef.current;
     if (!drawerElement) {
       return;
     }
 
-    const next = computeNextHeightPx({ drawerElement, clientY });
+    const initialPos = initialPointerPosRef.current;
+    const initialDims = initialDimensionsRef.current;
+
+    if (!initialPos || !initialDims) {
+      return;
+    }
+
+    // Calculate deltas from initial position
+    const deltaX = initialPos.x - clientX;
+    const deltaY = initialPos.y - clientY;
+
+    // Apply delta to initial dimensions
+    const newWidth = initialDims.width + deltaX;
+    const newHeight = initialDims.height + deltaY;
+
+    // Update height
+    const viewportHeightPx = getViewportHeightPx(chatConfig.height.collapsed);
+    const heightPx = Math.max(chatConfig.height.min, Math.min(newHeight, viewportHeightPx));
     dispatch({
       type: "height_changed",
-      heightPx: next.heightPx,
-      viewportHeightPx: next.viewportHeightPx,
+      heightPx,
+      viewportHeightPx,
+    });
+
+    // Update width
+    const viewportWidth = window.innerWidth;
+    const widthPx = Math.max(chatConfig.width.min, Math.min(newWidth, viewportWidth));
+    dispatch({
+      type: "width_changed",
+      widthPx,
     });
   }, []);
 
@@ -227,7 +280,7 @@ export const useChatDrawer = (): useChatDrawerResult => {
         return;
       }
 
-      applyResize(event.clientY);
+      applyResize(event.clientX, event.clientY);
     },
     [applyResize]
   );
@@ -242,6 +295,8 @@ export const useChatDrawer = (): useChatDrawerResult => {
 
     isDraggingRef.current = false;
     activePointerIdRef.current = null;
+    initialPointerPosRef.current = null;
+    initialDimensionsRef.current = null;
 
     dispatch({ type: "drag_ended" });
   }, []);
@@ -278,6 +333,7 @@ export const useChatDrawer = (): useChatDrawerResult => {
     isDragging: state.isDragging,
     isExpanded: state.isExpanded,
     drawerHeightPx: state.heightPx,
+    drawerWidthPx: state.widthPx,
     openDrawer,
     closeDrawer,
     beginResize,

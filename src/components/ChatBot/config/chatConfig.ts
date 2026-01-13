@@ -31,6 +31,19 @@ const chatConfig = {
      */
     expandedSnapThreshold: 8,
   },
+  /**
+   * The width configuration for the chat drawer.
+   */
+  width: {
+    /**
+     * The default width of the chat drawer.
+     */
+    default: 384,
+    /**
+     * The minimum width of the chat drawer.
+     */
+    min: 384,
+  },
 };
 
 export default chatConfig;

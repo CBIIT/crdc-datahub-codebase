@@ -18,6 +18,7 @@ const defaultContext = {
   isFullscreen: false,
   drawerRef: { current: null },
   heightPx: 600,
+  widthPx: 384,
   isDragging: false,
   isExpanded: true,
   isMinimized: false,

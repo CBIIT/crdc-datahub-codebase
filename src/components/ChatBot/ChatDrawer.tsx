@@ -11,12 +11,12 @@ import { useChatBotContext } from "./context/ChatBotContext";
 import { useChatDrawerContext } from "./context/ChatDrawerContext";
 
 const StyledChatDrawer = styled(Paper, {
-  shouldForwardProp: (prop) => prop !== "heightPx",
-})<{ heightPx: number }>(({ heightPx }) => ({
+  shouldForwardProp: (prop) => prop !== "heightPx" && prop !== "widthPx",
+})<{ heightPx: number; widthPx: number }>(({ heightPx, widthPx }) => ({
   position: "fixed",
   right: 0,
   bottom: 0,
-  width: "384px",
+  width: widthPx,
   height: heightPx,
   borderRadius: "24px 0 0 0",
   zIndex: 12000,
@@ -51,7 +51,7 @@ const StyledDragHandleContainer = styled("div")({
   alignItems: "center",
   justifyContent: "center",
   paddingBlock: "12px",
-  cursor: "ns-resize",
+  cursor: "nwse-resize",
   transition: "background-color 0.2s ease-out",
   backgroundColor: "transparent",
   '&[data-dragging="true"]': {
@@ -138,6 +138,7 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
   const {
     drawerRef,
     heightPx,
+    widthPx,
     isDragging,
     isExpanded,
     isMinimized,
@@ -156,6 +157,7 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
     <StyledChatDrawer
       ref={drawerRef}
       heightPx={heightPx}
+      widthPx={widthPx}
       data-minimized={isMinimized ? "true" : "false"}
       data-fullscreen={isFullscreen ? "true" : "false"}
       aria-hidden={isMinimized ? "true" : "false"}

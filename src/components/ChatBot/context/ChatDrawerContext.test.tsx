@@ -81,6 +81,7 @@ const defaultChatDrawerHook = {
   isDragging: false,
   isExpanded: true,
   drawerHeightPx: 600,
+  drawerWidthPx: 384,
   openDrawer: vi.fn(),
   closeDrawer: vi.fn(),
   beginResize: vi.fn(),
