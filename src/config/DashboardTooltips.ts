@@ -43,6 +43,9 @@ export const TOOLTIP_TEXT = {
           "There are ongoing batch uploads. Please wait for the upload to complete.",
       },
     },
+    WITHDRAW: {
+      ENABLED: "Withdraw will reverse the submission and control will return to the Submitter.",
+    },
   },
   COLLABORATORS_DIALOG: {
     PERMISSIONS: {

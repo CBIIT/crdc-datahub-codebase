@@ -1,4 +1,5 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
+import userEvent from "@testing-library/user-event";
 import { useMemo } from "react";
 import { Mock } from "vitest";
 
@@ -154,5 +155,40 @@ describe("Implementation Requirements - Release", () => {
     });
     expect(releaseBtn).toBeInTheDocument();
     expect(releaseBtn).toHaveTextContent("Release to DC-1");
+  });
+});
+
+describe("Implementation Requirements - Withdraw", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should show a tooltip on the enabled Withdraw button", async () => {
+    const { getByRole, findByRole } = render(
+      <TestParent
+        user={{
+          _id: "submission-owner",
+          role: "Submitter",
+          permissions: ["data_submission:view", "data_submission:create"],
+        }}
+        submission={{
+          _id: "submission-id",
+          status: "Submitted",
+          submitterID: "submission-owner",
+        }}
+      >
+        <DataSubmissionActions onAction={vi.fn()} />
+      </TestParent>
+    );
+
+    const withdrawBtn = getByRole("button", { name: /withdraw/i });
+    expect(withdrawBtn).toBeEnabled();
+
+    userEvent.hover(withdrawBtn);
+    const tooltip = await findByRole("tooltip");
+    expect(tooltip).toBeInTheDocument();
+    expect(tooltip).toHaveTextContent(
+      "Withdraw will reverse the submission and control will return to the Submitter."
+    );
   });
 });
