@@ -1,5 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
-import { fn } from "@storybook/test";
+import { fn, userEvent, within, expect, screen, waitFor } from "@storybook/test";
 import { ComponentPropsWithoutRef } from "react";
 
 import { submissionAttributesFactory } from "@/factories/submission/SubmissionAttributesFactory";
@@ -329,6 +329,18 @@ export const Withdraw: Story = {
   name: "User can Withdraw their submitted submission",
   args: {
     submissionStatus: "Submitted",
+  },
+  play: async ({ canvasElement }) => {
+    const { getByRole } = within(canvasElement);
+    const withdrawBtn = getByRole("button", { name: /withdraw/i });
+
+    expect(withdrawBtn).toBeEnabled();
+
+    userEvent.hover(withdrawBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    });
   },
 };
 
