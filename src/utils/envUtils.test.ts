@@ -336,3 +336,39 @@ describe("getFilteredDataCommons cases", () => {
     expect(getFilteredDataCommons()).toEqual(["dc1", "dc3"]);
   });
 });
+
+describe("getCRDCBaseUrl cases", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+  });
+
+  it.each<[envValue: string | undefined, expectedUrl: string]>([
+    // LOWER
+    ["dev", "https://datacommons-dev.cancer.gov/"],
+    ["dev2", "https://datacommons-dev.cancer.gov/"],
+    ["qa", "https://datacommons-dev.cancer.gov/"],
+    ["qa2", "https://datacommons-dev.cancer.gov/"],
+    ["DEV", "https://datacommons-dev.cancer.gov/"],
+    ["QA", "https://datacommons-dev.cancer.gov/"],
+    // PROD
+    ["stage", "https://datacommons.cancer.gov/"],
+    ["prod", "https://datacommons.cancer.gov/"],
+    [undefined, "https://datacommons.cancer.gov/"],
+    ["", "https://datacommons.cancer.gov/"],
+    ["invalid", "https://datacommons.cancer.gov/"],
+  ])("should return the correct base URL for the tier '%s'", async (envValue, expectedUrl) => {
+    vi.doMock("../env", async () => {
+      const actual = await vi.importActual<typeof import("../env")>("../env");
+      return {
+        default: {
+          ...actual.default,
+          VITE_DEV_TIER: envValue,
+        },
+      };
+    });
+
+    const { getCRDCBaseUrl } = await import("./envUtils");
+    expect(getCRDCBaseUrl()).toBe(expectedUrl);
+  });
+});
