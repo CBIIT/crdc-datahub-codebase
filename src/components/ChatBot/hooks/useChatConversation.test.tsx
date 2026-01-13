@@ -7,7 +7,7 @@ import * as knowledgeBaseClient from "../api/knowledgeBaseClient";
 import * as ChatBotContextModule from "../context/ChatBotContext";
 import * as sessionStorageUtils from "../utils/sessionStorageUtils";
 
-import { ChatConversationActions, chatReducer, useChatConversation } from "./useChatConversation";
+import { chatReducer, useChatConversation } from "./useChatConversation";
 
 vi.mock("../api/knowledgeBaseClient", () => ({
   askQuestion: vi.fn(),
@@ -36,12 +36,8 @@ const mockUseChatBotContext = vi.mocked(ChatBotContextModule.useChatBotContext);
 const mockGetStoredSessionId = vi.mocked(sessionStorageUtils.getStoredSessionId);
 const mockClearStoredSessionId = vi.mocked(sessionStorageUtils.clearStoredSessionId);
 
-type ChatConversationWithTestUtils = ChatConversationActions & {
-  _testReplyProvider?: (question: string, signal: AbortSignal) => Promise<string>;
-};
-
 const TestParent = () => {
-  const conversation = useChatConversation() as ChatConversationWithTestUtils;
+  const conversation = useChatConversation();
 
   return (
     <div>
@@ -84,9 +80,6 @@ const TestParent = () => {
       >
         End
       </button>
-      <div data-testid="test-reply-provider" style={{ display: "none" }}>
-        {JSON.stringify({ hasProvider: !!conversation._testReplyProvider })}
-      </div>
     </div>
   );
 };
@@ -707,42 +700,6 @@ describe("useChatConversation", () => {
       await waitFor(() => {
         expect(getByTestId("is-bot-typing")).toHaveTextContent("false");
       });
-    });
-
-    it("should create replyProvider that returns empty string", async () => {
-      mockAskQuestion.mockResolvedValue(undefined);
-
-      const TestReplyProviderParent = () => {
-        const conversation = useChatConversation() as unknown as ChatConversationWithTestUtils;
-        const [result, setResult] = React.useState<string | null>(null);
-
-        const testReplyProvider = async () => {
-          if (conversation._testReplyProvider) {
-            const res = await conversation._testReplyProvider("test", new AbortController().signal);
-            setResult(res);
-          }
-        };
-
-        return (
-          <div>
-            <button type="button" data-testid="test-provider-button" onClick={testReplyProvider}>
-              Test
-            </button>
-            <div data-testid="provider-result">{result !== null ? result : "pending"}</div>
-          </div>
-        );
-      };
-
-      const { getByTestId } = render(<TestReplyProviderParent />);
-
-      const button = getByTestId("test-provider-button");
-      userEvent.click(button);
-
-      await waitFor(() => {
-        expect(getByTestId("provider-result")).toHaveTextContent("");
-      });
-
-      expect(mockAskQuestion).toHaveBeenCalled();
     });
 
     it("should return early when aborted after askQuestion completes", async () => {

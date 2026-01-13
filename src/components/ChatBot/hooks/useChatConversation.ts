@@ -265,6 +265,5 @@ export const useChatConversation = (): ChatConversationActions => {
     sendMessage,
     handleKeyDown,
     endConversation,
-    ...(process.env.NODE_ENV === "test" && { _testReplyProvider: replyProvider }),
   };
 };
