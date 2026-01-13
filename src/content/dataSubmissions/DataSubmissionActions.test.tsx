@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useMemo } from "react";
 import { Mock } from "vitest";
 
+import { TOOLTIP_TEXT } from "@/config/DashboardTooltips";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 import { submissionCtxStateFactory } from "@/factories/submission/SubmissionContextFactory";
@@ -14,11 +15,12 @@ import {
   ContextState as AuthContextState,
 } from "../../components/Contexts/AuthContext";
 import { SubmissionContext, SubmissionCtxState } from "../../components/Contexts/SubmissionContext";
-import { shouldDisableRelease } from "../../utils";
+import { shouldDisableRelease, shouldEnableSubmit } from "../../utils";
 
 import DataSubmissionActions from "./DataSubmissionActions";
 
 const shouldDisableReleaseMock = shouldDisableRelease as Mock;
+const shouldEnableSubmitMock = shouldEnableSubmit as Mock;
 
 vi.mock("../../utils", async () => {
   const actual = await vi.importActual<typeof import("../../utils")>("../../utils");
@@ -158,6 +160,57 @@ describe("Implementation Requirements - Release", () => {
   });
 });
 
+describe("Implementation Requirements - Submit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each<SubmissionStatus>(["In Progress", "Withdrawn", "Rejected"])(
+    "should show a tooltip on the enabled Submit button (status: %s)",
+    async (status) => {
+      shouldEnableSubmitMock.mockReturnValue({
+        enabled: true,
+        tooltip: "mock-tooltip-text",
+      });
+
+      const { getByRole, findByRole } = render(
+        <TestParent
+          user={{
+            _id: "submission-owner",
+            role: "Submitter",
+            permissions: ["data_submission:view", "data_submission:create"],
+          }}
+          submission={{
+            _id: "submission-id",
+            dataType: "Metadata Only",
+            intention: "New/Update",
+            submitterID: "submission-owner",
+            fileValidationStatus: "Passed",
+            metadataValidationStatus: "Passed",
+            crossSubmissionStatus: "Passed",
+            status, // varies per test case
+            otherSubmissions: JSON.stringify({
+              "In Progress": [],
+              Submitted: [],
+              Released: [],
+            }),
+          }}
+        >
+          <DataSubmissionActions onAction={vi.fn()} />
+        </TestParent>
+      );
+
+      const submitBtn = getByRole("button", { name: /submit/i });
+      expect(submitBtn).toBeEnabled();
+
+      userEvent.hover(submitBtn);
+      const tooltip = await findByRole("tooltip");
+      expect(tooltip).toBeInTheDocument();
+      expect(tooltip).toHaveTextContent("mock-tooltip-text");
+    }
+  );
+});
+
 describe("Implementation Requirements - Withdraw", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -187,8 +240,6 @@ describe("Implementation Requirements - Withdraw", () => {
     userEvent.hover(withdrawBtn);
     const tooltip = await findByRole("tooltip");
     expect(tooltip).toBeInTheDocument();
-    expect(tooltip).toHaveTextContent(
-      "Withdraw will reverse the submission and control will return to the Submitter."
-    );
+    expect(tooltip).toHaveTextContent(TOOLTIP_TEXT.SUBMISSION_ACTIONS.WITHDRAW.ENABLED);
   });
 });

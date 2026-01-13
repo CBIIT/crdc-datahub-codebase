@@ -1,5 +1,6 @@
 import { MockedFunction } from "vitest";
 
+import { TOOLTIP_TEXT } from "@/config/DashboardTooltips";
 import { userFactory } from "@/factories/auth/UserFactory";
 import { errorMessageFactory } from "@/factories/submission/ErrorMessageFactory";
 import { qcResultFactory } from "@/factories/submission/QCResultFactory";
@@ -422,6 +423,22 @@ describe("General Submit", () => {
     expect(result.isAdminOverride).toBe(false);
   });
 
+  it("should supply a tooltip when allowing submit without override", () => {
+    const submission: Submission = {
+      ...baseSubmission,
+      metadataValidationStatus: "Warning",
+      fileValidationStatus: "Warning",
+    };
+    const result = utils.shouldEnableSubmit(
+      { getSubmission: submission, getSubmissionAttributes: null, submissionStats: null },
+      baseUser
+    );
+
+    expect(result.enabled).toBe(true);
+    expect(result.isAdminOverride).toBe(false);
+    expect(result.tooltip).toBe(TOOLTIP_TEXT.SUBMISSION_ACTIONS.SUBMIT.ENABLED);
+  });
+
   it("should disable submit when submission is null", () => {
     const result = utils.shouldEnableSubmit(null, baseUser);
     expect(result.enabled).toBe(false);
@@ -430,6 +447,26 @@ describe("General Submit", () => {
 });
 
 describe("Admin Submit", () => {
+  it("should not supply a tooltip with admin override", () => {
+    const submission: Submission = {
+      ...baseSubmission,
+      metadataValidationStatus: "Error",
+      fileValidationStatus: "Error",
+    };
+    const user: User = {
+      ...baseUser,
+      role: "Admin",
+      permissions: ["data_submission:view", "data_submission:admin_submit"],
+    };
+    const result = utils.shouldEnableSubmit(
+      { getSubmission: submission, getSubmissionAttributes: null, submissionStats: null },
+      user
+    );
+
+    expect(result.isAdminOverride).toBe(true);
+    expect(result.tooltip).not.toBeDefined();
+  });
+
   it("should allow admin override with validation errors", () => {
     const submission: Submission = {
       ...baseSubmission,
