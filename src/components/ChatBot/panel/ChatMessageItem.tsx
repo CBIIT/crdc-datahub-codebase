@@ -1,5 +1,6 @@
-import { Box, Chip, Typography, styled } from "@mui/material";
-import React, { CSSProperties } from "react";
+import { Check, ContentCopy } from "@mui/icons-material";
+import { Box, Chip, IconButton, Typography, styled } from "@mui/material";
+import React, { CSSProperties, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -272,6 +273,19 @@ const StyledCitationChip = styled(Chip)({
   },
 }) as typeof Chip;
 
+const StyledCopyButton = styled(IconButton)({
+  position: "absolute",
+  top: 8,
+  right: 8,
+  padding: "6px",
+  minWidth: "auto",
+  color: "rgba(0, 0, 0, 0.6)",
+  "&:hover": {
+    backgroundColor: "rgba(0, 0, 0, 0.1)",
+    color: "rgba(0, 0, 0, 0.8)",
+  },
+});
+
 /**
  * Custom anchor component for ReactMarkdown that opens links in new tabs.
  */
@@ -283,6 +297,39 @@ const LinkComponent = ({
     {props.children}
   </a>
 );
+
+/**
+ * Custom pre component for ReactMarkdown that includes a copy to clipboard button for code blocks.
+ */
+const PreComponent = ({ children }: { children: React.ReactNode }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const codeElement = React.Children.toArray(children).find(
+      (child) => React.isValidElement(child) && child.type === "code"
+    );
+
+    if (codeElement && React.isValidElement(codeElement)) {
+      const codeText = String(codeElement.props.children ?? "").replace(/\n$/, "");
+      await navigator.clipboard.writeText(codeText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <pre style={{ position: "relative", paddingRight: "48px" }}>
+      <StyledCopyButton
+        onClick={handleCopy}
+        size="small"
+        title={copied ? "Copied!" : "Copy to clipboard"}
+      >
+        {copied ? <Check sx={{ fontSize: 16 }} /> : <ContentCopy sx={{ fontSize: 16 }} />}
+      </StyledCopyButton>
+      {children}
+    </pre>
+  );
+};
 
 /**
  * Formats a date object into a localized time string.
@@ -344,6 +391,7 @@ const ChatMessageItem = ({ message }: Props): JSX.Element => {
                 remarkPlugins={[remarkGfm]}
                 components={{
                   a: LinkComponent,
+                  pre: PreComponent,
                 }}
               >
                 {message.text}

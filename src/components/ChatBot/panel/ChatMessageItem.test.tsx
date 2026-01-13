@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { axe } from "vitest-axe";
 
 import { render } from "@/test-utils";
@@ -582,5 +582,176 @@ describe("Markdown Formatting", () => {
 
     const link = container.querySelector("a");
     expect(link).not.toBeInTheDocument();
+  });
+});
+
+describe("PreComponent - Copy to Clipboard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn(() => Promise.resolve()),
+      },
+    });
+  });
+
+  it("should render copy button for code blocks", () => {
+    const message = createMockMessage({
+      text: "```javascript\nconst x = 5;\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const copyButton = container.querySelector('button[title="Copy to clipboard"]');
+    expect(copyButton).toBeInTheDocument();
+  });
+
+  it("should copy code text to clipboard when button is clicked", async () => {
+    const message = createMockMessage({
+      text: "```javascript\nconst x = 5;\nconsole.log(x);\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const copyButton = container.querySelector('button[title="Copy to clipboard"]');
+    expect(copyButton).toBeInTheDocument();
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("const x = 5;\nconsole.log(x);");
+    });
+  });
+
+  it("should show check icon after successful copy", async () => {
+    const message = createMockMessage({
+      text: "```python\nprint('hello')\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const copyButton = container.querySelector('button[title="Copy to clipboard"]');
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      const copiedButton = container.querySelector('button[title="Copied!"]');
+      expect(copiedButton).toBeInTheDocument();
+    });
+  });
+
+  it("should reset icon back to copy after 2 seconds", async () => {
+    vi.useFakeTimers();
+
+    const message = createMockMessage({
+      text: "```bash\nls -la\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const copyButton = container.querySelector('button[title="Copy to clipboard"]');
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(container.querySelector('button[title="Copied!"]')).toBeInTheDocument();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    await waitFor(() => {
+      expect(container.querySelector('button[title="Copy to clipboard"]')).toBeInTheDocument();
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("should handle code blocks with multiple languages", async () => {
+    const message = createMockMessage({
+      text: "```typescript\nconst foo: string = 'bar';\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const copyButton = container.querySelector('button[title="Copy to clipboard"]');
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("const foo: string = 'bar';");
+    });
+  });
+
+  it("should strip trailing newline from copied text", async () => {
+    const message = createMockMessage({
+      text: "```\nsome code\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const copyButton = container.querySelector('button[title="Copy to clipboard"]');
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("some code");
+    });
+  });
+
+  it("should add extra padding to pre element for copy button space", () => {
+    const message = createMockMessage({
+      text: "```\ncode here\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const preElement = container.querySelector("pre");
+    expect(preElement).toBeInTheDocument();
+    expect(preElement).toHaveStyle({ paddingRight: "48px" });
+  });
+
+  it("should position copy button in top right of code block", () => {
+    const message = createMockMessage({
+      text: "```\ntest\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const copyButton = container.querySelector('button[title="Copy to clipboard"]');
+    expect(copyButton).toBeInTheDocument();
+
+    const styles = window.getComputedStyle(copyButton);
+    expect(styles.position).toBe("absolute");
+  });
+
+  it("should not render copy button for inline code", () => {
+    const message = createMockMessage({
+      text: "This is `inline code` in text",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const copyButton = container.querySelector('button[title="Copy to clipboard"]');
+    expect(copyButton).not.toBeInTheDocument();
+  });
+
+  it("should handle empty code blocks", async () => {
+    const message = createMockMessage({
+      text: "```\n```",
+      sender: "bot",
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const copyButton = container.querySelector('button[title="Copy to clipboard"]');
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("");
+    });
   });
 });
