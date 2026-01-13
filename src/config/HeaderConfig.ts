@@ -1,9 +1,11 @@
 import Logo from "../assets/header/Portal_Logo.svg";
 import LogoSmall from "../assets/header/Portal_Logo_Small.svg";
 import usaFlagSmall from "../assets/header/us_flag_small.svg";
-import ApiInstructions from "../assets/pdf/CRDC_Data_Submission_API_Instructions.pdf";
 
 import { DataCommons } from "./DataCommons";
+
+export const SubmissionRequestInstructionsLink =
+  "https://datacommons.cancer.gov/submission-request-instructions";
 
 export const DataSubmissionInstructionsLink =
   "https://datacommons.cancer.gov/data-submission-instructions";
@@ -56,7 +58,7 @@ export const HeaderLinks = [
       [
         {
           name: "Submission Request Instructions",
-          link: "https://datacommons.cancer.gov/submission-request-instructions",
+          link: SubmissionRequestInstructionsLink,
           id: "submission-request-instructions",
           className: "navMobileSubItem",
         },
@@ -80,7 +82,7 @@ export const HeaderLinks = [
       [
         {
           name: "API Instructions",
-          link: ApiInstructions,
+          link: "/CRDC_Data_Submission_API_Instructions.pdf",
           id: "api-instructions",
           className: "navMobileSubItem",
         },
