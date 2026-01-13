@@ -112,7 +112,7 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
   }
 };
 
-type Result = {
+export type useChatDrawerResult = {
   drawerRef: React.RefObject<HTMLDivElement>;
   isOpen: boolean;
   isDragging: boolean;
@@ -129,7 +129,7 @@ type Result = {
  *
  * @returns An object containing the state and actions for the chat drawer.
  */
-export const useChatDrawer = (): Result => {
+export const useChatDrawer = (): useChatDrawerResult => {
   const drawerRef = useRef<HTMLDivElement>(null);
 
   const [state, dispatch] = useReducer(reducer, {
