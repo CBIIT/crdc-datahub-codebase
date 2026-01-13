@@ -196,7 +196,7 @@ const useChatConversation = (): ChatConversationActions => {
           return;
         }
 
-        // Add citations to exiting bot message if they exist
+        // Add citations to existing bot message if they exist
         if (allCitations?.length > 0) {
           dispatch({
             type: "message_added",
