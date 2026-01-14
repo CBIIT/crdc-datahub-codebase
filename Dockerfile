@@ -1,8 +1,5 @@
 FROM node:22.17.0-alpine3.21 AS build
 
-# CVE-2025-9230
-# RUN apk upgrade openssl
-
 WORKDIR /usr/src/app
 
 COPY . .
