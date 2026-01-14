@@ -2,8 +2,10 @@ import { useLazyQuery } from "@apollo/client";
 import { Alert, Container, Stack, styled, TableCell, TableHead, Box } from "@mui/material";
 import { isEqual } from "lodash";
 import { useSnackbar } from "notistack";
-import React, { FC, useRef, useState } from "react";
+import React, { FC, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+
+import DataSubmissionListExport from "@/components/ExportSubmissionsButton";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
 import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/AuthContext";
@@ -377,6 +379,16 @@ const ListingView: FC = () => {
     setTablePage(0);
   };
 
+  const exportScope = {
+    ...filtersRef.current,
+    ...tableRef.current?.tableParams,
+  };
+
+  const Actions = useMemo<React.ReactNode>(
+    () => <DataSubmissionListExport scope={exportScope} hasData={totalData > 0} />,
+    [exportScope, totalData]
+  );
+
   return (
     <>
       <PageBanner
@@ -417,7 +429,7 @@ const ListingView: FC = () => {
             defaultRowsPerPage={20}
             defaultOrder="desc"
             disableUrlParams={false}
-            position="bottom"
+            position="both"
             noContentText="You either do not have the appropriate permissions to view data submissions, or there are no data submissions associated with your account."
             onFetchData={handleFetchData}
             containerProps={{
@@ -426,7 +438,12 @@ const ListingView: FC = () => {
                 border: 0,
                 borderTopLeftRadius: 0,
                 borderTopRightRadius: 0,
+                borderTop: "1px solid #6CACDA",
               },
+            }}
+            AdditionalActions={{
+              top: { after: Actions },
+              bottom: { after: Actions },
             }}
             CustomTableHead={StyledTableHead}
             CustomTableHeaderCell={StyledHeaderCell}
