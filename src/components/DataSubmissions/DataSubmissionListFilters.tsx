@@ -1,11 +1,21 @@
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { FormControl, IconButton, MenuItem, Grid, Box, styled, Stack } from "@mui/material";
+import {
+  FormControl,
+  IconButton,
+  MenuItem,
+  Grid,
+  Box,
+  styled,
+  Stack,
+  InputAdornment,
+} from "@mui/material";
 import { debounce, isEqual, sortBy } from "lodash";
 import { memo, useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
 import { ListSubmissionsInput, ListSubmissionsResp } from "../../graphql";
 import { isStringLengthBetween } from "../../utils";
+import ClearButton from "../ClearButton";
 import { useSearchParamsContext } from "../Contexts/SearchParamsContext";
 import { Column } from "../GenericTable";
 import ColumnVisibilityButton from "../GenericTable/ColumnVisibilityButton";
@@ -425,6 +435,20 @@ const DataSubmissionListFilters = ({
                       selected?.length > 1 ? `${selected.length} statuses selected` : selected
                     }
                     multiple
+                    endAdornment={
+                      field.value?.length > 0 && (
+                        <InputAdornment position="end">
+                          <ClearButton
+                            onClick={() => {
+                              field.onChange([]);
+                              handleFilterChange("status");
+                            }}
+                            data-testid="status-clear-button"
+                            aria-label="Clear status selection"
+                          />
+                        </InputAdornment>
+                      )
+                    }
                   >
                     {statusValues.map((value) => (
                       <MenuItem
