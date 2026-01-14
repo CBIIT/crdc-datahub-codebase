@@ -378,16 +378,14 @@ const ListingView: FC = () => {
     filtersRef.current = { ...data };
     setTablePage(0);
   };
+  const Actions = useMemo<React.ReactNode>(() => {
+    const scope = {
+      ...filtersRef.current,
+      ...tableRef.current?.tableParams,
+    };
 
-  const exportScope = {
-    ...filtersRef.current,
-    ...tableRef.current?.tableParams,
-  };
-
-  const Actions = useMemo<React.ReactNode>(
-    () => <DataSubmissionListExport scope={exportScope} hasData={totalData > 0} />,
-    [exportScope, totalData]
-  );
+    return <DataSubmissionListExport scope={scope} hasData={totalData > 0} />;
+  }, [filtersRef.current, tableRef.current?.tableParams, totalData]);
 
   return (
     <>
