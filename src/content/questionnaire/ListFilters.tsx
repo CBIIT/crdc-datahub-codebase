@@ -4,6 +4,7 @@ import {
   FormControl,
   Grid,
   IconButton,
+  InputAdornment,
   MenuItem,
   Stack,
   styled,
@@ -13,6 +14,7 @@ import { isEqual } from "lodash";
 import { memo, useCallback, useMemo, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
+import ClearButton from "../../components/ClearButton";
 import { useSearchParamsContext } from "../../components/Contexts/SearchParamsContext";
 import StyledAutocompleteFormComponent from "../../components/StyledFormComponents/StyledAutocomplete";
 import StyledTextFieldFormComponent from "../../components/StyledFormComponents/StyledOutlinedInput";
@@ -231,7 +233,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
         });
       }
     } else {
-      newSearchParams.delete("statuses");
+      newSearchParams.set("statuses", "");
     }
 
     if (studyNameFilter && studyNameFilter.length >= 3) {
@@ -386,6 +388,20 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                     }}
                     data-testid="application-status-filter"
                     multiple
+                    endAdornment={
+                      field.value?.length > 0 && (
+                        <InputAdornment position="end">
+                          <ClearButton
+                            onClick={() => {
+                              field.onChange([]);
+                              handleFilterChange("statuses");
+                            }}
+                            data-testid="status-clear-button"
+                            aria-label="Clear status selection"
+                          />
+                        </InputAdornment>
+                      )
+                    }
                   >
                     {statusValues.map((status) => (
                       <MenuItem
