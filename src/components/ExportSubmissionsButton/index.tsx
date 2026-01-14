@@ -2,7 +2,6 @@ import { useLazyQuery } from "@apollo/client";
 import { CloudDownload } from "@mui/icons-material";
 import { IconButton, IconButtonProps, Stack, styled } from "@mui/material";
 import dayjs from "dayjs";
-import { useSnackbar } from "notistack";
 import { unparse } from "papaparse";
 import { memo, useMemo, useState } from "react";
 
@@ -38,7 +37,6 @@ export type Props = {
  * Provides the button and supporting functionality to export the data submissions list to CSV.
  */
 const ExportSubmissionsButton: React.FC<Props> = ({ scope, hasData, ...buttonProps }: Props) => {
-  const { enqueueSnackbar } = useSnackbar();
   const { user } = useAuthContext();
 
   const [loading, setLoading] = useState<boolean>(false);
@@ -59,10 +57,6 @@ const ExportSubmissionsButton: React.FC<Props> = ({ scope, hasData, ...buttonPro
 
   const handleExport = async () => {
     setLoading(true);
-
-    enqueueSnackbar("Downloading the requested CSV file. This may take a moment...", {
-      variant: "default",
-    });
 
     try {
       const data = await fetchAllData<
@@ -107,15 +101,8 @@ const ExportSubmissionsButton: React.FC<Props> = ({ scope, hasData, ...buttonPro
       }));
 
       downloadBlob(unparse(csvArray, { quotes: true }), filename, "text/csv;charset=utf-8;");
-
-      enqueueSnackbar("CSV file downloaded successfully.", {
-        variant: "success",
-      });
     } catch (err) {
       Logger.error("Error during data submissions CSV generation", err);
-      enqueueSnackbar("Failed to generate the CSV file.", {
-        variant: "error",
-      });
     } finally {
       setLoading(false);
     }
