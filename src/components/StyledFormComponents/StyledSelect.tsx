@@ -17,9 +17,6 @@ const StyledSelect = styled(Select, {
     opacity: props.theme.palette.action.disabledOpacity,
   },
   // Dropdown
-  "& .MuiPopover-root": {
-    zIndex: "10000 !important",
-  },
   "& .MuiPaper-root": {
     borderRadius: "8px",
     border: "1px solid #6B7294",

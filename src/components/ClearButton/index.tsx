@@ -7,7 +7,7 @@ const StyledClearButton = styled(IconButton)({
   padding: "4px",
   marginRight: "14px",
   position: "relative",
-  zIndex: 10000,
+  zIndex: 10001,
   backgroundColor: "#E7F2EF",
   border: "1px solid #D6D6D6",
   "&:hover": {

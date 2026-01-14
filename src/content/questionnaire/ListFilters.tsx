@@ -1,5 +1,6 @@
 import RefreshIcon from "@mui/icons-material/Refresh";
 import {
+  Backdrop,
   Box,
   FormControl,
   Grid,
@@ -159,6 +160,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
   });
 
   const [touchedFilters, setTouchedFilters] = useState<TouchedState>(initialTouchedFields);
+  const [isStatusesMenuOpen, setIsStatusesMenuOpen] = useState<boolean>(false);
 
   const handleFormChange = useCallback((form: FilterForm) => {
     if (!onChange || !form) {
@@ -377,7 +379,17 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                 render={({ field }) => (
                   <StyledSelect
                     {...field}
-                    MenuProps={{ disablePortal: true, sx: { zIndex: 99999 } }}
+                    MenuProps={{
+                      disablePortal: true,
+                      hideBackdrop: true,
+                      sx: { zIndex: 10002, pointerEvents: "none" },
+                      PaperProps: {
+                        sx: { pointerEvents: "auto" },
+                      },
+                    }}
+                    open={isStatusesMenuOpen}
+                    onOpen={() => setIsStatusesMenuOpen(true)}
+                    onClose={() => setIsStatusesMenuOpen(false)}
                     inputProps={{ id: "status-filter" }}
                     renderValue={(selected: string[]) =>
                       selected?.length > 1 ? `${selected.length} statuses selected` : selected
@@ -414,6 +426,11 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                     ))}
                   </StyledSelect>
                 )}
+              />
+              <Backdrop
+                open={isStatusesMenuOpen}
+                onClick={() => setIsStatusesMenuOpen(false)}
+                sx={{ zIndex: 10000, opacity: "0 !important", cursor: "text" }}
               />
             </StyledFormControl>
           </Grid>

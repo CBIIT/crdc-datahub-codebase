@@ -8,6 +8,7 @@ import {
   styled,
   Stack,
   InputAdornment,
+  Backdrop,
 } from "@mui/material";
 import { debounce, isEqual, sortBy } from "lodash";
 import { memo, useEffect, useRef, useState } from "react";
@@ -160,6 +161,7 @@ const DataSubmissionListFilters = ({
 
   const [touchedFilters, setTouchedFilters] = useState<TouchedState>(initialTouchedFields);
   const [selectMinWidth, setSelectMinWidth] = useState<number | null>(null);
+  const [isStatusesMenuOpen, setIsStatusesMenuOpen] = useState<boolean>(false);
 
   const debounceAfter3CharsInputs: FilterFormKey[] = ["name", "dbGaPID"];
   const debouncedOnChangeRef = useRef(
@@ -424,7 +426,17 @@ const DataSubmissionListFilters = ({
                   <StyledSelect
                     {...field}
                     value={field.value || []}
-                    MenuProps={{ disablePortal: true }}
+                    MenuProps={{
+                      disablePortal: true,
+                      hideBackdrop: true,
+                      sx: { zIndex: 10002, pointerEvents: "none" },
+                      PaperProps: {
+                        sx: { pointerEvents: "auto" },
+                      },
+                    }}
+                    open={isStatusesMenuOpen}
+                    onOpen={() => setIsStatusesMenuOpen(true)}
+                    onClose={() => setIsStatusesMenuOpen(false)}
                     inputProps={{ id: "status-filter", "data-testid": "status-select-input" }}
                     data-testid="status-select"
                     onChange={(e) => {
@@ -461,6 +473,11 @@ const DataSubmissionListFilters = ({
                     ))}
                   </StyledSelect>
                 )}
+              />
+              <Backdrop
+                open={isStatusesMenuOpen}
+                onClick={() => setIsStatusesMenuOpen(false)}
+                sx={{ zIndex: 10000, opacity: "0 !important", cursor: "text" }}
               />
             </StyledFormControl>
           </Grid>
