@@ -67,8 +67,8 @@ const Publication: FC<Props> = ({
           label="DOI"
           name={`study[publications][${index}][DOI]`}
           value={DOI}
-          placeholder="Enter DOI"
-          maxLength={20}
+          placeholder="200 characters allowed"
+          maxLength={200}
           gridWidth={6}
           readOnly={readOnly}
         />

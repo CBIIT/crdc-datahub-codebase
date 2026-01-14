@@ -2243,6 +2243,10 @@ describe("Parsing", () => {
             pubmedID: "87654321",
             DOI: "10.1234/random2",
           }),
+          publicationFactory.build({
+            title: "Test Publication 3",
+            DOI: "x".repeat(200),
+          }),
         ],
         plannedPublications: [
           plannedPublicationFactory.build({
@@ -2327,6 +2331,10 @@ describe("Parsing", () => {
           title: "Test Publication 2",
           pubmedID: "87654321",
           DOI: "10.1234/random2",
+        }),
+        expect.objectContaining({
+          title: "Test Publication 3",
+          DOI: "x".repeat(200),
         }),
       ])
     );

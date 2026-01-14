@@ -87,3 +87,19 @@ export const getFilteredDataCommons = (): string[] => {
 
   return mapped;
 };
+
+/**
+ * A utility to determine the correct base URL for the CRDC Data commons domain.
+ *
+ * @returns The base URL as a string.
+ */
+export const getCRDCBaseUrl = (): string => {
+  const { VITE_DEV_TIER } = env || {};
+  const lowerTiers: string[] = ["dev", "dev2", "qa", "qa2"];
+
+  if (VITE_DEV_TIER && lowerTiers.includes(VITE_DEV_TIER.toLowerCase())) {
+    return "https://datacommons-dev.cancer.gov/";
+  }
+
+  return "https://datacommons.cancer.gov/";
+};

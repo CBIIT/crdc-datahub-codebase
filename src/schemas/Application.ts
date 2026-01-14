@@ -237,7 +237,7 @@ export const publicationSchema = z
     /**
      * Digital Object Identifier to uniquely reference the work.
      */
-    DOI: z.string().max(20).optional(),
+    DOI: z.string().max(200).optional(),
   })
   .strict();
 
