@@ -58,12 +58,13 @@ const BOT_BUBBLE_STYLES: Record<ChatMessageVariant, CSSProperties> = {
     color: "#212121",
   },
   info: {
-    backgroundColor: "#DCEEFB",
-    color: "#0B2540",
+    backgroundColor: "transparent",
+    color: "#005EA2",
+    fontWeight: 600,
   },
   error: {
-    backgroundColor: "#C05239",
-    color: "#FFFFFF",
+    backgroundColor: "transparent",
+    color: "#C05239",
     fontWeight: 600,
   },
 };
