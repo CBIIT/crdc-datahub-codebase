@@ -276,9 +276,11 @@ const StyledCitationChip = styled(Chip)({
   },
 }) as typeof Chip;
 
-const StyledCopyButton = styled(IconButton)({
+const StyledCopyButton = styled(IconButton, {
+  shouldForwardProp: (prop) => prop !== "isFullscreen",
+})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
   position: "absolute",
-  top: 8,
+  top: isFullscreen ? 9 : 6,
   right: 8,
   padding: "6px",
   minWidth: "auto",
@@ -290,7 +292,7 @@ const StyledCopyButton = styled(IconButton)({
     backgroundColor: "rgba(255, 255, 255, 0.95)",
     color: "rgba(0, 0, 0, 0.8)",
   },
-});
+}));
 
 /**
  * Custom anchor component for ReactMarkdown that opens links in new tabs.
@@ -308,6 +310,7 @@ const LinkComponent = ({
  * Custom pre component for ReactMarkdown that includes a copy to clipboard button for code blocks.
  */
 const PreComponent = ({ children }: { children: React.ReactNode }) => {
+  const { isFullscreen } = useChatDrawerContext();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -329,6 +332,7 @@ const PreComponent = ({ children }: { children: React.ReactNode }) => {
         onClick={handleCopy}
         size="small"
         title={copied ? "Copied!" : "Copy to clipboard"}
+        isFullscreen={isFullscreen}
       >
         {copied ? <Check sx={{ fontSize: 16 }} /> : <ContentCopy sx={{ fontSize: 16 }} />}
       </StyledCopyButton>
