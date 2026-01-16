@@ -280,7 +280,7 @@ const StyledCopyButton = styled(IconButton, {
   shouldForwardProp: (prop) => prop !== "isFullscreen",
 })<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
   position: "absolute",
-  top: isFullscreen ? 9 : 6,
+  top: isFullscreen ? 7.5 : 6,
   right: 8,
   padding: "6px",
   minWidth: "auto",
