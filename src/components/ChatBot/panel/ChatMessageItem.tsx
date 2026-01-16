@@ -16,12 +16,14 @@ const MessageRow = styled(Box)({
 });
 
 const MessageColumn = styled(Box)({
-  maxWidth: "80%",
+  maxWidth: "100%",
+  width: "100%",
   display: "flex",
   flexDirection: "column",
   alignItems: "flex-start",
   '&[data-is-user="true"]': {
     alignItems: "flex-end",
+    width: "auto",
   },
 });
 
@@ -52,7 +54,7 @@ const MessageTimestamp = styled(Typography, {
  */
 const BOT_BUBBLE_STYLES: Record<ChatMessageVariant, CSSProperties> = {
   default: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "transparent",
     color: "#212121",
   },
   info: {
@@ -95,6 +97,7 @@ const MessageBubble = styled(Box, {
     '&[data-is-user="false"]': {
       borderTopLeftRadius: 0,
       whiteSpace: "normal",
+      paddingInline: "4px",
     },
 
     // Markdown styles for bot messages
