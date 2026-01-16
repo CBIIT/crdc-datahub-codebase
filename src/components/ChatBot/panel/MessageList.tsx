@@ -37,10 +37,9 @@ const ChatSubtitle = styled(Typography, {
 
 const formatGreetingDateTime = (date: Date): string =>
   new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   }).format(date);
 
 export type Props = {
@@ -84,7 +83,7 @@ const MessageList = ({ greetingTimestamp, messages, isBotTyping }: Props): JSX.E
     <MessagesContainer ref={messagesContainerRef}>
       <ChatHeader>
         <ChatTitle variant="h6" isFullscreen={isFullscreen}>
-          Welcome to Support!
+          Welcome to the CRDC Submission Portal Support
         </ChatTitle>
         <ChatSubtitle isFullscreen={isFullscreen}>
           {formatGreetingDateTime(greetingTimestamp)}
