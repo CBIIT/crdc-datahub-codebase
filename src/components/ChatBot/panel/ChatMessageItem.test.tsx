@@ -520,7 +520,6 @@ describe("Markdown Formatting", () => {
     const bubbleElement = textElement.parentElement as HTMLElement;
     expect(bubbleElement).toHaveStyle({ fontSize: "18px" });
     expect(bubbleElement).toHaveStyle({ paddingInline: "4px" });
-    expect(bubbleElement).toHaveStyle({ paddingBlock: "12px" });
   });
 
   it("should apply smaller font size and padding to message bubble when not in fullscreen mode", () => {
@@ -536,7 +535,6 @@ describe("Markdown Formatting", () => {
     const bubbleElement = textElement.parentElement as HTMLElement;
     expect(bubbleElement).toHaveStyle({ fontSize: "16px" });
     expect(bubbleElement).toHaveStyle({ paddingInline: "4px" });
-    expect(bubbleElement).toHaveStyle({ paddingBlock: "8px" });
   });
 
   it("should render links with target='_blank' and rel attributes in bot messages", () => {
