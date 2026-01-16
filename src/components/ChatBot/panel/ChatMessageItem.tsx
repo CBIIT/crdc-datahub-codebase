@@ -283,8 +283,11 @@ const StyledCopyButton = styled(IconButton)({
   padding: "6px",
   minWidth: "auto",
   color: "rgba(0, 0, 0, 0.6)",
+  backgroundColor: "rgba(255, 255, 255, 0.8)",
+  backdropFilter: "blur(4px)",
+  zIndex: 1,
   "&:hover": {
-    backgroundColor: "rgba(0, 0, 0, 0.1)",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     color: "rgba(0, 0, 0, 0.8)",
   },
 });
@@ -321,7 +324,7 @@ const PreComponent = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <pre style={{ position: "relative", paddingRight: "48px" }}>
+    <Box sx={{ position: "relative" }}>
       <StyledCopyButton
         onClick={handleCopy}
         size="small"
@@ -329,8 +332,8 @@ const PreComponent = ({ children }: { children: React.ReactNode }) => {
       >
         {copied ? <Check sx={{ fontSize: 16 }} /> : <ContentCopy sx={{ fontSize: 16 }} />}
       </StyledCopyButton>
-      {children}
-    </pre>
+      <pre style={{ paddingRight: "48px" }}>{children}</pre>
+    </Box>
   );
 };
 
