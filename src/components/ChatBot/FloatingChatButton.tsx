@@ -5,7 +5,7 @@ import React from "react";
 const StyledFloatingButton = styled(Button)({
   position: "fixed",
   right: 0,
-  top: "85%",
+  top: "65%",
   transform: "translateY(-50%)",
   zIndex: 10000,
   display: "flex",
