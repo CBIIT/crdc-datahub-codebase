@@ -6,4 +6,4 @@
  * @returns A formatted string combining search results and the user's question.
  */
 export const formatUserPrompt = (question: string, searchResults: string) =>
-  `Search Results:\n${searchResults}\n\nUser Question: ${question}`;
+  `Search Results: <search_results>\n${searchResults}\n</search_results>\n\nUser Question: <question>\n${question}\n</question>`;
