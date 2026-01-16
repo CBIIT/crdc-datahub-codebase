@@ -90,6 +90,7 @@ const MessageBubble = styled(Box, {
     whiteSpace: "pre-line",
 
     '&[data-is-user="true"]': {
+      width: "fit-content",
       borderTopRightRadius: 0,
       backgroundColor: "#005EA2",
       color: "#FFFFFF",
@@ -99,6 +100,7 @@ const MessageBubble = styled(Box, {
       borderTopLeftRadius: 0,
       whiteSpace: "normal",
       paddingInline: "4px",
+      paddingBlock: 0,
     },
 
     // Markdown styles for bot messages
