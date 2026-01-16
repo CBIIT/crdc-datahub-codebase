@@ -5,7 +5,7 @@ const chatConfig = {
   /**
    * The name of the support bot.
    */
-  supportBotName: "Support Bot",
+  supportBotName: "CRDC Support",
   /**
    * The display name of the user.
    */
