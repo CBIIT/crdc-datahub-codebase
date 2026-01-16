@@ -106,7 +106,7 @@ describe("Basic Functionality", () => {
   it("should display welcome title", () => {
     const { getByText } = render(<MessageList {...defaultProps} />);
 
-    expect(getByText("Welcome to Support!")).toBeInTheDocument();
+    expect(getByText("Welcome to the CRDC Submission Portal Support")).toBeInTheDocument();
   });
 
   it("should display formatted greeting timestamp", () => {
@@ -115,8 +115,7 @@ describe("Basic Functionality", () => {
       <MessageList {...defaultProps} greetingTimestamp={greetingTimestamp} />
     );
 
-    expect(getByText(/Monday/i)).toBeInTheDocument();
-    expect(getByText(/02:30 PM/i)).toBeInTheDocument();
+    expect(getByText(/January 15, 2024/i)).toBeInTheDocument();
   });
 
   it("should render empty messages array without errors", () => {
@@ -216,11 +215,11 @@ describe("Basic Functionality", () => {
       <MessageList {...defaultProps} greetingTimestamp={timestamp1} />
     );
 
-    expect(getByText(/Monday/i)).toBeInTheDocument();
+    expect(getByText(/January 15, 2024/i)).toBeInTheDocument();
 
     rerender(<MessageList {...defaultProps} greetingTimestamp={timestamp2} />);
 
-    expect(getByText(/Tuesday/i)).toBeInTheDocument();
+    expect(getByText(/January 16, 2024/i)).toBeInTheDocument();
   });
 
   it("should maintain message order", () => {
@@ -331,7 +330,7 @@ describe("Basic Functionality", () => {
 
     const { getByText } = render(<MessageList {...defaultProps} />);
 
-    const titleElement = getByText("Welcome to Support!");
+    const titleElement = getByText("Welcome to the CRDC Submission Portal Support");
     expect(titleElement).toHaveStyle({ fontSize: "24px" });
   });
 
@@ -343,7 +342,7 @@ describe("Basic Functionality", () => {
 
     const { getByText } = render(<MessageList {...defaultProps} />);
 
-    const titleElement = getByText("Welcome to Support!");
+    const titleElement = getByText("Welcome to the CRDC Submission Portal Support");
     expect(titleElement).toHaveStyle({ fontSize: "20px" });
   });
 

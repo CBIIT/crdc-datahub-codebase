@@ -519,7 +519,7 @@ describe("Markdown Formatting", () => {
     const textElement = getByText("Test message content");
     const bubbleElement = textElement.parentElement as HTMLElement;
     expect(bubbleElement).toHaveStyle({ fontSize: "18px" });
-    expect(bubbleElement).toHaveStyle({ paddingInline: "16px" });
+    expect(bubbleElement).toHaveStyle({ paddingInline: "4px" });
     expect(bubbleElement).toHaveStyle({ paddingBlock: "12px" });
   });
 
@@ -535,7 +535,7 @@ describe("Markdown Formatting", () => {
     const textElement = getByText("Test message content");
     const bubbleElement = textElement.parentElement as HTMLElement;
     expect(bubbleElement).toHaveStyle({ fontSize: "16px" });
-    expect(bubbleElement).toHaveStyle({ paddingInline: "12px" });
+    expect(bubbleElement).toHaveStyle({ paddingInline: "4px" });
     expect(bubbleElement).toHaveStyle({ paddingBlock: "8px" });
   });
 

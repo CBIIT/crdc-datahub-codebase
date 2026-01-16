@@ -58,7 +58,7 @@ describe("Basic Functionality", () => {
   it("should display default sender name", () => {
     const { getByText } = render(<BotTypingIndicator />);
 
-    expect(getByText("Support Bot")).toBeInTheDocument();
+    expect(getByText("CRDC Support")).toBeInTheDocument();
   });
 
   it("should display custom sender name when provided", () => {
@@ -77,7 +77,7 @@ describe("Basic Functionality", () => {
   it("should render with correct structure", () => {
     const { container } = render(<BotTypingIndicator />);
 
-    const typingBubble = container.querySelector('[aria-label="Support Bot is typing"]');
+    const typingBubble = container.querySelector('[aria-label="CRDC Support is typing"]');
     expect(typingBubble).toBeInTheDocument();
     expect(typingBubble?.querySelectorAll("span")).toHaveLength(3);
   });
