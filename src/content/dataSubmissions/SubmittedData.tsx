@@ -432,7 +432,16 @@ const SubmittedData: FC = () => {
     setSelectType("exclusion");
     setSelectedItems([]);
     isFetchingAllData.current = false;
-  }, [selectType, isFetchingAllData, filterRef.current, setSelectedItems, setSelectType]);
+  }, [
+    _id,
+    data,
+    totalData,
+    selectType,
+    isFetchingAllData,
+    filterRef.current,
+    setSelectedItems,
+    setSelectType,
+  ]);
 
   const handleOnDelete = (successMessage: string) => {
     setDeleteSuccessMessage(successMessage);
