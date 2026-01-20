@@ -117,9 +117,7 @@ class FileUploader:
                     file_info[SUCCEEDED] = True
                     file_info[ERRORS] = None
                     if self.from_s3 == True:
-                        retry_count = 0
-                        for retry_count in range(0, MAX_DELETE_RETRY):
-                            retry_count += 1
+                        for retry_count in range(1, MAX_DELETE_RETRY+1):
                             try:
                                 os.remove(file_info[FILE_PATH])
                                 break
