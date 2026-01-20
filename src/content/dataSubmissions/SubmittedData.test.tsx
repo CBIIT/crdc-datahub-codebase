@@ -849,12 +849,9 @@ describe("SubmittedData > Table", () => {
       expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "true");
     });
 
-    // TODO: The current implementation clears selection when clicking header in indeterminate state
-    // This doesn't match the expected behavior described in CRDCDH-3488 notes
     userEvent.click(getAllByRole("checkbox")[0]); // click 'Select All' checkbox
 
     await waitFor(() => {
-      // Current behavior: header checkbox becomes unchecked (all selections cleared)
       expect(getAllByRole("checkbox")[0]).not.toBeChecked();
       expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "false");
       // All row checkboxes should be unchecked
