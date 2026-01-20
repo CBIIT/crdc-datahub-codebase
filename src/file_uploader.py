@@ -117,23 +117,20 @@ class FileUploader:
                     file_info[SUCCEEDED] = True
                     file_info[ERRORS] = None
                     if self.from_s3 == True:
-                        try:
-                            os.remove(file_info[FILE_PATH])
-                        except Exception as e:
-                            retry_count = 0
-                            for retry_count in range(0, MAX_DELETE_RETRY):
-                                retry_count += 1
-                                try:
-                                    #wait 30 seconds to delete temp file
-                                    self.log.info(f"Waiting 30 seconds to delete temp file: {file_info[FILE_PATH]} due to {str(e)}")
-                                    time.sleep(30)
-                                    os.remove(file_info[FILE_PATH])
-                                    break
-                                except Exception as e:
-                                    if retry_count == MAX_DELETE_RETRY:
-                                        self.log.error(f"Failed to delete temp file: {file_info[FILE_PATH]} due to {str(e)} after {MAX_DELETE_RETRY} retries.")
-                                        raise e
-                                    continue
+                        retry_count = 0
+                        for retry_count in range(0, MAX_DELETE_RETRY):
+                            retry_count += 1
+                            try:
+                                os.remove(file_info[FILE_PATH])
+                                break
+                            except Exception as e:
+                                if retry_count == MAX_DELETE_RETRY:
+                                    self.log.error(f"Failed to delete temp file: {file_info[FILE_PATH]} due to {str(e)} after {MAX_DELETE_RETRY} retries.")
+                                    raise e
+                                #wait 30 seconds to delete temp file
+                                self.log.info(f"Waiting 30 seconds to delete temp file: {file_info[FILE_PATH]} due to {str(e)}")
+                                time.sleep(30)
+                                continue
 
                 else:
                     self._deal_with_failed_file(job, file_queue)
