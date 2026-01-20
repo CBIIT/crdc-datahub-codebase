@@ -6,7 +6,7 @@ from datetime import datetime
 from bento.common.utils import get_logger
 from common.constants import FILE_NAME_DEFAULT, SUCCEEDED, ERRORS,  OVERWRITE, DRY_RUN,\
     S3_BUCKET, TEMP_CREDENTIAL, FILE_PREFIX, RETRIES, FILE_DIR, FROM_S3, FILE_PATH,FILE_SIZE_DEFAULT, MD5_DEFAULT,\
-    SUBFOLDER_FILE_NAME, TEMP_DOWNLOAD_DIR, BYPASS_ARCHIVE_VALIDATION
+    SUBFOLDER_FILE_NAME, TEMP_DOWNLOAD_DIR, BYPASS_ARCHIVE_VALIDATION, MAX_DELETE_RETRY
 from common.utils import extract_s3_info_from_url, format_size, format_time
 from common.s3util import S3Bucket
 from copier import Copier
@@ -120,10 +120,21 @@ class FileUploader:
                         try:
                             os.remove(file_info[FILE_PATH])
                         except Exception as e:
-                            #wait 30 seconds to delete temp file
-                            self.log.info(f"Waiting 30 seconds to delete temp file: {file_info[FILE_PATH]} due to {str(e)}")
-                            time.sleep(30)
-                            os.remove(file_info[FILE_PATH])
+                            retry_count = 0
+                            for retry_count in range(0, MAX_DELETE_RETRY):
+                                retry_count += 1
+                                try:
+                                    #wait 30 seconds to delete temp file
+                                    self.log.info(f"Waiting 30 seconds to delete temp file: {file_info[FILE_PATH]} due to {str(e)}")
+                                    time.sleep(30)
+                                    os.remove(file_info[FILE_PATH])
+                                    break
+                                except Exception as e:
+                                    if retry_count == MAX_DELETE_RETRY:
+                                        self.log.error(f"Failed to delete temp file: {file_info[FILE_PATH]} due to {str(e)} after {MAX_DELETE_RETRY} retries.")
+                                        raise e
+                                    continue
+
                 else:
                     self._deal_with_failed_file(job, file_queue)
                     if job[self.TTL]  > 0:
