@@ -147,6 +147,10 @@ export type Column<T> = {
    * Custom styling for the header table cell of the column
    */
   sx?: TableCellProps["sx"];
+  /**
+   * Define how the column label and value should be exported
+   */
+  exportValue?: (a: T) => { label: string; value: string | number };
 };
 
 export type Props<T> = {
