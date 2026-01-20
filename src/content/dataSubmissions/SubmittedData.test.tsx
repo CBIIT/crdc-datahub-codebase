@@ -1266,14 +1266,16 @@ describe("SubmittedData > Table", () => {
             total: 100,
             properties: ["col-xyz"],
             IDPropName: "col-xyz",
-            nodes: Array(20).fill({
-              nodeType: "example-node",
-              nodeID: "example-node-id",
-              props: JSON.stringify({
-                "col-xyz": "value-for-column-xyz",
-              }),
-              status: "New",
-            }),
+            nodes: Array(20)
+              .fill(null)
+              .map((_, idx) => ({
+                nodeType: "example-node",
+                nodeID: `example-node-id-${idx}`,
+                props: JSON.stringify({
+                  "col-xyz": `value-for-column-xyz-${idx}`,
+                }),
+                status: "New",
+              })),
           },
         },
       },
@@ -1410,14 +1412,16 @@ describe("SubmittedData > Table", () => {
             total: 100,
             properties: ["col-xyz"],
             IDPropName: "col-xyz",
-            nodes: Array(20).fill({
-              nodeType: "example-node",
-              nodeID: "example-node-id",
-              props: JSON.stringify({
-                "col-xyz": "value-for-column-xyz",
-              }),
-              status: "New",
-            }),
+            nodes: Array(20)
+              .fill(null)
+              .map((_, idx) => ({
+                nodeType: "example-node",
+                nodeID: `example-node-id-${idx}`,
+                props: JSON.stringify({
+                  "col-xyz": `value-for-column-xyz-${idx}`,
+                }),
+                status: "New",
+              })),
           },
         },
       },
