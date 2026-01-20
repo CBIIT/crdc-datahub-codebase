@@ -578,7 +578,7 @@ describe("Implementation Requirements", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        'Cannot delete more than 2000 items at once. Please use "Select All" or reduce your selection.',
+        "Cannot delete more than 2000 items at once. Please refine your filters or adjust your selection.",
         {
           variant: "error",
         }
