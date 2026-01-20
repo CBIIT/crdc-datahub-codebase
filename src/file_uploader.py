@@ -127,10 +127,10 @@ class FileUploader:
                                 if retry_count == MAX_DELETE_RETRY:
                                     self.log.error(f"Failed to delete temp file: {file_info[FILE_PATH]} due to {str(e)} after {MAX_DELETE_RETRY} retries.")
                                     raise e
+                                self.log.error(f"Failed to delete temp file: {file_info[FILE_PATH]} due to {str(e)}")
                                 #wait 30 seconds to delete temp file
-                                self.log.info(f"Waiting 30 seconds to delete temp file: {file_info[FILE_PATH]} due to {str(e)}")
+                                self.log.info(f"Waiting 30 seconds to retry delete temp file: {file_info[FILE_PATH]}")
                                 time.sleep(30)
-                                continue
 
                 else:
                     self._deal_with_failed_file(job, file_queue)
