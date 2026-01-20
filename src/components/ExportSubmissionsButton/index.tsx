@@ -5,10 +5,11 @@ import dayjs from "dayjs";
 import { unparse } from "papaparse";
 import { memo, useMemo, useState } from "react";
 
+import type { Column } from "@/components/GenericTable";
 import StyledFormTooltip from "@/components/StyledFormComponents/StyledTooltip";
 import { hasPermission } from "@/config/AuthPermissions";
 import { LIST_SUBMISSIONS, ListSubmissionsInput, ListSubmissionsResp } from "@/graphql";
-import { downloadBlob, fetchAllData, FormatDate, Logger } from "@/utils";
+import { downloadBlob, fetchAllData, Logger } from "@/utils";
 
 import { useAuthContext } from "../Contexts/AuthContext";
 
@@ -31,12 +32,21 @@ export type Props = {
    * Whether there is data available to export.
    */
   hasData: boolean;
+  /**
+   * The visible columns to include in the CSV export.
+   */
+  visibleColumns: Column<ListSubmissionsResp["listSubmissions"]["submissions"][number]>[];
 } & IconButtonProps;
 
 /**
  * Provides the button and supporting functionality to export the data submissions list to CSV.
  */
-const ExportSubmissionsButton: React.FC<Props> = ({ scope, hasData, ...buttonProps }: Props) => {
+const ExportSubmissionsButton: React.FC<Props> = ({
+  scope,
+  hasData,
+  visibleColumns,
+  ...buttonProps
+}: Props) => {
   const { user } = useAuthContext();
 
   const [loading, setLoading] = useState<boolean>(false);
@@ -77,28 +87,16 @@ const ExportSubmissionsButton: React.FC<Props> = ({ scope, hasData, ...buttonPro
 
       const filename = `crdc-data-submissions-${dayjs().format("YYYY-MM-DD-HH-mm-ss")}.csv`;
 
-      const csvArray = data.map((submission) => ({
-        "Submission Name": submission.name,
-        Submitter: submission.submitterName,
-        "Data Commons": submission.dataCommonsDisplayName,
-        Type: submission.intention,
-        "Model Version": submission.modelVersion,
-        Program: submission.organization?.name ?? "NA",
-        Study: submission.studyAbbreviation,
-        "dbGaP ID": submission.dbGaPID,
-        Status: submission.status,
-        "Data Concierge": submission.conciergeName,
-        "Record Count": Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
-          submission.nodeCount || 0
-        ),
-        "Data File Size": submission.dataFileSize.formatted || 0,
-        "Created Date": submission.createdAt
-          ? FormatDate(submission.createdAt, "M/D/YYYY h:mm A")
-          : "",
-        "Last Updated": submission.updatedAt
-          ? FormatDate(submission.updatedAt, "M/D/YYYY h:mm A")
-          : "",
-      }));
+      const csvArray = data.map((submission) => {
+        const row: Record<string, string | number> = {};
+        visibleColumns?.forEach((col) => {
+          if (typeof col.exportValue === "function") {
+            const { label, value } = col.exportValue(submission);
+            row[label] = value;
+          }
+        });
+        return row;
+      });
 
       downloadBlob(unparse(csvArray, { quotes: true }), filename, "text/csv;charset=utf-8;");
     } catch (err) {

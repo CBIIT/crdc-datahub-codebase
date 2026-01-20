@@ -11,8 +11,11 @@ import { LIST_SUBMISSIONS, ListSubmissionsInput, ListSubmissionsResp } from "@/g
 import { render, waitFor } from "@/test-utils";
 
 import { Status as AuthStatus, useAuthContext } from "../Contexts/AuthContext";
+import { Column } from "../GenericTable";
 
 import ExportSubmissionsButton from "./index";
+
+type Submission = ListSubmissionsResp["listSubmissions"]["submissions"][number];
 
 const mockDownloadBlob = vi.fn();
 const mockFetchAllData = vi.fn();
@@ -91,6 +94,93 @@ const defaultScope = {
   orderBy: "updatedAt",
 };
 
+const defaultColumns: Column<Submission>[] = [
+  {
+    label: "Submission Name",
+    renderValue: (a) => a.name,
+    field: "name",
+    exportValue: (a) => ({ label: "Submission Name", value: a.name }),
+  },
+  {
+    label: "Submitter",
+    renderValue: (a) => a.submitterName,
+    field: "submitterName",
+    exportValue: (a) => ({ label: "Submitter", value: a.submitterName }),
+  },
+  {
+    label: "Data Commons",
+    renderValue: (a) => a.dataCommonsDisplayName,
+    field: "dataCommonsDisplayName",
+    exportValue: (a) => ({ label: "Data Commons", value: a.dataCommonsDisplayName }),
+  },
+  {
+    label: "Type",
+    renderValue: (a) => a.intention,
+    field: "intention",
+    exportValue: (a) => ({ label: "Type", value: a.intention }),
+  },
+  {
+    label: "Model Version",
+    renderValue: (a) => a.modelVersion,
+    field: "modelVersion",
+    exportValue: (a) => ({ label: "Model Version", value: a.modelVersion }),
+  },
+  {
+    label: "Program",
+    renderValue: (a) => a.organization?.name ?? "NA",
+    fieldKey: "organization.name",
+    exportValue: (a) => ({ label: "Program", value: a.organization?.name ?? "" }),
+  },
+  {
+    label: "Study",
+    renderValue: (a) => a.studyAbbreviation,
+    field: "studyAbbreviation",
+    exportValue: (a) => ({ label: "Study", value: a.studyAbbreviation }),
+  },
+  {
+    label: "dbGaP ID",
+    renderValue: (a) => a.dbGaPID,
+    field: "dbGaPID",
+    exportValue: (a) => ({ label: "dbGaP ID", value: a.dbGaPID }),
+  },
+  {
+    label: "Status",
+    renderValue: (a) => a.status,
+    field: "status",
+    exportValue: (a) => ({ label: "Status", value: a.status }),
+  },
+  {
+    label: "Data Concierge",
+    renderValue: (a) => a.conciergeName,
+    field: "conciergeName",
+    exportValue: (a) => ({ label: "Data Concierge", value: a.conciergeName }),
+  },
+  {
+    label: "Record Count",
+    renderValue: (a) => a.nodeCount,
+    field: "nodeCount",
+    exportValue: (a) => ({ label: "Record Count", value: a.nodeCount }),
+  },
+  {
+    label: "Data File Size",
+    renderValue: (a) => a.dataFileSize.formatted,
+    fieldKey: "dataFileSize.size",
+    exportValue: (a) => ({ label: "Data File Size", value: a.dataFileSize.formatted }),
+  },
+  {
+    label: "Created Date",
+    renderValue: (a) => a.createdAt,
+    field: "createdAt",
+    exportValue: (a) => ({ label: "Created Date", value: a.createdAt }),
+  },
+  {
+    label: "Last Updated",
+    renderValue: (a) => a.updatedAt,
+    field: "updatedAt",
+    exportValue: (a) => ({ label: "Last Updated", value: a.updatedAt }),
+  },
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockDownloadBlob.mockReset();
@@ -112,16 +202,25 @@ beforeEach(() => {
 
 describe("Accessibility", () => {
   it("should have no accessibility violations", async () => {
-    const { container } = render(<ExportSubmissionsButton scope={defaultScope} hasData />, {
-      wrapper: ({ children }) => <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>,
-    });
+    const { container } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
 
     expect(await axe(container)).toHaveNoViolations();
   });
 
   it("should have no accessibility violations (disabled)", async () => {
     const { container, getByTestId } = render(
-      <ExportSubmissionsButton scope={defaultScope} hasData={false} />,
+      <ExportSubmissionsButton
+        scope={defaultScope}
+        hasData={false}
+        visibleColumns={defaultColumns}
+      />,
       {
         wrapper: ({ children }) => (
           <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
@@ -137,16 +236,25 @@ describe("Accessibility", () => {
 
 describe("Basic Functionality", () => {
   it("should render without crashing", () => {
-    const { getByTestId } = render(<ExportSubmissionsButton scope={defaultScope} hasData />, {
-      wrapper: ({ children }) => <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>,
-    });
+    const { getByTestId } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
 
     expect(getByTestId("export-data-submissions-button")).toBeInTheDocument();
   });
 
   it("should be disabled when hasData is false", () => {
     const { getByTestId } = render(
-      <ExportSubmissionsButton scope={defaultScope} hasData={false} />,
+      <ExportSubmissionsButton
+        scope={defaultScope}
+        hasData={false}
+        visibleColumns={defaultColumns}
+      />,
       {
         wrapper: ({ children }) => (
           <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
@@ -158,17 +266,27 @@ describe("Basic Functionality", () => {
   });
 
   it("should be enabled when hasData is true", () => {
-    const { getByTestId } = render(<ExportSubmissionsButton scope={defaultScope} hasData />, {
-      wrapper: ({ children }) => <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>,
-    });
+    const { getByTestId } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
 
     expect(getByTestId("export-data-submissions-button")).toBeEnabled();
   });
 
   it("should invoke fetchAllData with correct parameters", async () => {
-    const { getByTestId } = render(<ExportSubmissionsButton scope={defaultScope} hasData />, {
-      wrapper: ({ children }) => <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>,
-    });
+    const { getByTestId } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
 
     const exportButton = getByTestId("export-data-submissions-button");
 
@@ -186,7 +304,7 @@ describe("Basic Functionality", () => {
 describe("Implementation Requirements", () => {
   it("should have a tooltip with correct text when enabled", async () => {
     const { getByTestId, findByRole } = render(
-      <ExportSubmissionsButton scope={defaultScope} hasData />,
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
       {
         wrapper: ({ children }) => (
           <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
@@ -208,7 +326,11 @@ describe("Implementation Requirements", () => {
 
   it("should have a tooltip with correct text when disabled", async () => {
     const { getByTestId, findByRole } = render(
-      <ExportSubmissionsButton scope={defaultScope} hasData={false} />,
+      <ExportSubmissionsButton
+        scope={defaultScope}
+        hasData={false}
+        visibleColumns={defaultColumns}
+      />,
       {
         wrapper: ({ children }) => (
           <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
@@ -231,9 +353,14 @@ describe("Implementation Requirements", () => {
   it("should be disabled while downloading", async () => {
     mockFetchAllData.mockImplementation(() => new Promise(() => {}));
 
-    const { getByTestId } = render(<ExportSubmissionsButton scope={defaultScope} hasData />, {
-      wrapper: ({ children }) => <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>,
-    });
+    const { getByTestId } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
 
     const button = getByTestId("export-data-submissions-button");
 
@@ -247,9 +374,14 @@ describe("Implementation Requirements", () => {
   });
 
   it("should download the CSV with the correct filename format", async () => {
-    const { getByTestId } = render(<ExportSubmissionsButton scope={defaultScope} hasData />, {
-      wrapper: ({ children }) => <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>,
-    });
+    const { getByTestId } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
 
     userEvent.click(getByTestId("export-data-submissions-button"));
 
@@ -263,9 +395,14 @@ describe("Implementation Requirements", () => {
   });
 
   it("should format CSV data correctly", async () => {
-    const { getByTestId } = render(<ExportSubmissionsButton scope={defaultScope} hasData />, {
-      wrapper: ({ children }) => <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>,
-    });
+    const { getByTestId } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
 
     userEvent.click(getByTestId("export-data-submissions-button"));
 
@@ -298,10 +435,56 @@ describe("Implementation Requirements", () => {
       isLoggedIn: true,
     });
 
-    const { queryByTestId } = render(<ExportSubmissionsButton scope={defaultScope} hasData />, {
-      wrapper: ({ children }) => <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>,
-    });
+    const { queryByTestId } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
 
     expect(queryByTestId("export-data-submissions-button")).not.toBeInTheDocument();
+  });
+
+  it("should only export columns provided in the columns prop", async () => {
+    const visibleColumns: Column<Submission>[] = [
+      {
+        label: "Submission Name",
+        renderValue: (a) => a.name,
+        field: "name",
+        exportValue: (a) => ({ label: "Submission Name", value: a.name }),
+      },
+      {
+        label: "Status",
+        renderValue: (a) => a.status,
+        field: "status",
+        exportValue: (a) => ({ label: "Status", value: a.status }),
+      },
+    ];
+
+    const { getByTestId } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={visibleColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
+
+    userEvent.click(getByTestId("export-data-submissions-button"));
+
+    await waitFor(() => {
+      expect(mockDownloadBlob).toHaveBeenCalled();
+    });
+
+    const csvContent = mockDownloadBlob.mock.calls[0][0];
+
+    expect(csvContent).toContain("Submission Name");
+    expect(csvContent).toContain("Status");
+
+    expect(csvContent).not.toContain("Submitter");
+    expect(csvContent).not.toContain("Data Commons");
+    expect(csvContent).not.toContain("Program");
   });
 });
