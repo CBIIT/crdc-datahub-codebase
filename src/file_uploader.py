@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import time
 from collections import deque
 from datetime import datetime
 from bento.common.utils import get_logger
@@ -116,7 +117,13 @@ class FileUploader:
                     file_info[SUCCEEDED] = True
                     file_info[ERRORS] = None
                     if self.from_s3 == True:
-                        os.remove(file_info[FILE_PATH])
+                        try:
+                            os.remove(file_info[FILE_PATH])
+                        except Exception as e:
+                            #wait 30 seconds to delete temp file
+                            self.log.info(f"Waiting 30 seconds to delete temp file: {file_info[FILE_PATH]} due to {str(e)}")
+                            time.sleep(30)
+                            os.remove(file_info[FILE_PATH])
                 else:
                     self._deal_with_failed_file(job, file_queue)
                     if job[self.TTL]  > 0:
