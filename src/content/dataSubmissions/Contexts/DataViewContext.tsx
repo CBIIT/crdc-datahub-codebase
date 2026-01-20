@@ -19,7 +19,7 @@ const DataViewContext = React.createContext<{
    * An indicator specifying what type of selection is currently active
    * When true, selectedItems contains exclusions instead of inclusions.
    */
-  selectType?: "explicit" | "exclusion";
+  selectType?: "explicit" | "exclusion" | null;
   /**
    * Toggle the current row selection
    *

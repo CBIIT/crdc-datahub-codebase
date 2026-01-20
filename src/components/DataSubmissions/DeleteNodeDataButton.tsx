@@ -47,7 +47,7 @@ type Props = {
   /**
    * An indicator specifying if the delete type is explicit selection or exclusion selection
    */
-  selectType: "explicit" | "exclusion";
+  selectType: "explicit" | "exclusion" | null;
   /**
    * An array of the selected node IDs.
    *
