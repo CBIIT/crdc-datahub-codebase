@@ -415,6 +415,7 @@ const SubmittedData: FC = () => {
           variant: "error",
         });
         setSelectedItems([]);
+        setSelectType(null);
         isFetchingAllData.current = false;
         return;
       }
