@@ -7,7 +7,7 @@ import { memo, useMemo, useState } from "react";
 import DeleteAllFilesIcon from "../../assets/icons/delete_all_files_icon.svg?react";
 import { hasPermission } from "../../config/AuthPermissions";
 import { DELETE_DATA_RECORDS, DeleteDataRecordsInput, DeleteDataRecordsResp } from "../../graphql";
-import { titleCase } from "../../utils";
+import { Logger, titleCase } from "../../utils";
 import { useAuthContext } from "../Contexts/AuthContext";
 import { useSubmissionContext } from "../Contexts/SubmissionContext";
 import DeleteDialog from "../DeleteDialog";
@@ -45,16 +45,17 @@ type Props = {
    */
   nodeType: string;
   /**
+   * An indicator specifying if the delete type is explicit selection or exclusion selection
+   */
+  selectType: "explicit" | "exclusion";
+  /**
    * An array of the selected node IDs.
-   * When selectAllActive is true, these are the EXCLUDED IDs.
-   * When selectAllActive is false, these are the INCLUDED IDs.
+   *
+   * NOTE:
+   * - When selectType is explicit, these are the INCLUDED IDs.
+   * - When selectType is exclusion, these are the EXCLUDED IDs.
    */
   selectedItems: string[];
-  /**
-   * Indicates if "select all" (inverse selection) mode is active.
-   * When true, selectedItems contains exclusions instead of inclusions.
-   */
-  selectAllActive?: boolean;
   /**
    * Total number of items matching the current filters (used for count display in deleteAll mode)
    */
@@ -68,7 +69,7 @@ type Props = {
 const DeleteNodeDataButton = ({
   nodeType,
   selectedItems,
-  selectAllActive = false,
+  selectType,
   totalData = 0,
   disabled,
   onDelete,
@@ -95,14 +96,13 @@ const DeleteNodeDataButton = ({
     return "Delete all the selected records from this data submission";
   }, [deletingData, nodeType]);
 
-  // Calculate the effective count of items to be deleted
   const effectiveItemCount = useMemo<number>(() => {
-    if (selectAllActive) {
-      // When selectAllActive, we're deleting all EXCEPT selectedItems
+    if (selectType === "exclusion") {
       return totalData - selectedItems.length;
     }
+
     return selectedItems.length;
-  }, [selectAllActive, totalData, selectedItems]);
+  }, [selectType, totalData, selectedItems]);
 
   const content = useMemo(() => {
     const nodeTerm: string = effectiveItemCount > 1 ? "nodes" : "node";
@@ -138,8 +138,8 @@ const DeleteNodeDataButton = ({
   );
 
   const onClickIcon = async () => {
-    // When selectAllActive, check if exclusiveIDs exceeds the limit
-    if (selectAllActive && selectedItems.length > MAX_IDS_LIMIT) {
+    // When selectType is exclusion, check if exclusiveIDs exceeds the limit
+    if (selectType === "exclusion" && selectedItems.length > MAX_IDS_LIMIT) {
       enqueueSnackbar(
         `Cannot delete with more than ${MAX_IDS_LIMIT} exclusions. Please adjust your selection.`,
         { variant: "error" }
@@ -147,10 +147,10 @@ const DeleteNodeDataButton = ({
       return;
     }
 
-    // When not selectAllActive, check if nodeIds exceeds the limit
-    if (!selectAllActive && selectedItems.length > MAX_IDS_LIMIT) {
+    // When selectType is explicit, check if nodeIds exceeds the limit
+    if (selectType === "explicit" && selectedItems.length > MAX_IDS_LIMIT) {
       enqueueSnackbar(
-        `Cannot delete more than ${MAX_IDS_LIMIT} items at once. Please use "Select All" or reduce your selection.`,
+        `Cannot delete more than ${MAX_IDS_LIMIT} items at once. Please refine your filters or adjust your selection.`,
         { variant: "error" }
       );
       return;
@@ -165,21 +165,19 @@ const DeleteNodeDataButton = ({
 
   const onConfirmDialog = async () => {
     try {
+      if (!selectType) {
+        throw new Error("No selection type specified for deletion.");
+      }
+
       setLoading(true);
 
-      const variables: DeleteDataRecordsInput = {
-        _id,
-        nodeType,
-      };
-
-      if (selectAllActive) {
-        // Use deleteAll with optional exclusiveIDs
+      const variables: DeleteDataRecordsInput = { _id, nodeType };
+      if (selectType === "exclusion") {
         variables.deleteAll = true;
         if (selectedItems.length > 0) {
           variables.exclusiveIDs = selectedItems;
         }
       } else {
-        // Use traditional nodeIds selection
         variables.nodeIds = selectedItems;
       }
 
@@ -192,6 +190,7 @@ const DeleteNodeDataButton = ({
       setConfirmOpen(false);
       onDelete?.(content.snackbarSuccess);
     } catch (err) {
+      Logger.error("DeleteNodeDataButton: Error deleting node data.", err);
       enqueueSnackbar(content.snackbarError, {
         variant: "error",
       });
@@ -205,7 +204,8 @@ const DeleteNodeDataButton = ({
   }
 
   // Determine if button should be disabled based on effective selection
-  const hasNoSelection = selectAllActive ? effectiveItemCount === 0 : selectedItems.length === 0;
+  const hasNoSelection =
+    selectType === "exclusion" ? effectiveItemCount === 0 : selectedItems.length === 0;
 
   return (
     <>

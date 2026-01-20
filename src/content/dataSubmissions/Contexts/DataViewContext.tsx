@@ -16,10 +16,10 @@ const DataViewContext = React.createContext<{
    */
   isFetchingAllData?: React.MutableRefObject<boolean>;
   /**
-   * Indicates if "select all" (inverse selection) mode is active.
+   * An indicator specifying what type of selection is currently active
    * When true, selectedItems contains exclusions instead of inclusions.
    */
-  selectAllActive?: boolean;
+  selectType?: "explicit" | "exclusion";
   /**
    * Toggle the current row selection
    *

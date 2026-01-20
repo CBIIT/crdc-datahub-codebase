@@ -12,6 +12,7 @@ import { visuallyHidden } from "@mui/utils";
 import { isEqual } from "lodash";
 import { useSnackbar } from "notistack";
 import React, { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import { useAuthContext } from "../../components/Contexts/AuthContext";
 import { useSubmissionContext } from "../../components/Contexts/SubmissionContext";
@@ -21,6 +22,7 @@ import { ExportNodeDataButton } from "../../components/DataSubmissions/ExportNod
 import SubmittedDataFilters, {
   FilterForm,
   FilterMethods,
+  hasFiltersApplied,
 } from "../../components/DataSubmissions/SubmittedDataFilters";
 import GenericTable, { Column } from "../../components/GenericTable";
 import TruncatedText from "../../components/TruncatedText";
@@ -29,7 +31,7 @@ import {
   GetSubmissionNodesInput,
   GetSubmissionNodesResp,
 } from "../../graphql";
-import { coerceToString, rearrangeKeys, safeParse } from "../../utils";
+import { coerceToString, Logger, rearrangeKeys, safeParse } from "../../utils";
 
 import DataViewContext from "./Contexts/DataViewContext";
 
@@ -50,23 +52,18 @@ type HeaderCheckboxProps = CheckboxProps;
 
 const HeaderCheckbox = (props: HeaderCheckboxProps) => (
   <DataViewContext.Consumer>
-    {({
-      selectedItems,
-      totalData,
-      isFetchingAllData,
-      selectAllActive,
-      handleToggleAll,
-      handleToggleRow,
-    }) => {
-      // When selectAllActive is true, selectedItems contains exclusions
-      // When selectAllActive is false, selectedItems contains selections
-      // isChecked = (selectAllActive AND no exclusions) OR (not selectAllActive AND all items selected)
-      const isChecked = selectAllActive
-        ? selectedItems.length === 0
-        : selectedItems.length === totalData;
-      const hasPartialSelection = selectAllActive
-        ? selectedItems.length > 0
-        : selectedItems.length > 0 && selectedItems.length < totalData;
+    {({ selectedItems, totalData, isFetchingAllData, selectType, handleToggleAll }) => {
+      // When selectType is "exclusion", selectedItems contains exclusions
+      // When selectType is "explicit", selectedItems contains selections
+      // isChecked = (selectType is "exclusion" AND no exclusions) OR (selectType is "explicit" AND all items selected)
+      const isChecked =
+        selectType === "exclusion"
+          ? selectedItems.length === 0
+          : selectedItems.length === totalData;
+      const hasPartialSelection =
+        selectType === "exclusion"
+          ? selectedItems.length > 0
+          : selectedItems.length > 0 && selectedItems.length < totalData;
 
       const handleOnChange = () => {
         // Not checked and not intermediate -> toggle select all ON
@@ -140,7 +137,7 @@ const SubmittedData: FC = () => {
   const [prevListing, setPrevListing] = useState<FetchListing<T>>(null);
   const [totalData, setTotalData] = useState<number>(0);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [selectAllActive, setSelectAllActive] = useState<boolean>(false);
+  const [selectType, setSelectType] = useState<"explicit" | "exclusion">(null);
   const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<T>(null);
 
@@ -238,12 +235,13 @@ const SubmittedData: FC = () => {
       ),
       renderValue: (d) => (
         <DataViewContext.Consumer>
-          {({ selectedItems, selectAllActive, handleToggleRow }) => {
-            // When selectAllActive, row is checked if NOT in selectedItems (exclusions)
-            // When not selectAllActive, row is checked if IN selectedItems (selections)
-            const isChecked = selectAllActive
-              ? !selectedItems?.includes(d.nodeID)
-              : selectedItems?.includes(d.nodeID);
+          {({ selectedItems, selectType, handleToggleRow }) => {
+            // When selectType is "exclusion", row is checked if NOT in selectedItems (exclusions)
+            // When selectType is "explicit", row is checked if IN selectedItems (selections)
+            const isChecked =
+              selectType === "exclusion"
+                ? !selectedItems?.includes(d.nodeID)
+                : selectedItems?.includes(d.nodeID);
 
             return (
               <Stack direction="row" spacing={1}>
@@ -351,7 +349,7 @@ const SubmittedData: FC = () => {
   const handleFilterChange = useCallback(
     (filters: FilterForm) => {
       setSelectedItems([]);
-      setSelectAllActive(false);
+      setSelectType(null);
       filterRef.current = filters;
       tableRef.current?.setPage(0, true);
     },
@@ -369,24 +367,77 @@ const SubmittedData: FC = () => {
             newSelected.add(id);
           }
         });
-        return Array.from(newSelected);
+
+        const next = Array.from(newSelected);
+        if (selectType !== "exclusion") {
+          setSelectType(next.length > 0 ? "explicit" : null);
+        }
+
+        return next;
       });
     },
-    [setSelectedItems]
+    [selectType, setSelectedItems, setSelectType]
   );
 
-  const handleToggleAll = useCallback(() => {
-    // Toggle selectAllActive - when turning ON, clear selectedItems (no exclusions)
-    // When turning OFF, clear selectedItems (no selections)
-    setSelectAllActive((prev) => !prev);
+  const handleToggleAll = useCallback(async () => {
+    // Selection is already active. Clear selection
+    if (selectType) {
+      setSelectedItems([]);
+      setSelectType(null);
+      return;
+    }
+
+    if (hasFiltersApplied(filterRef.current)) {
+      // NOTE: Force immediate update of selectedItems for the current page
+      flushSync(() => {
+        setSelectedItems(data?.map((node) => node.nodeID) || []);
+        setSelectType("explicit");
+      });
+
+      // If all rows are already visible, no need to fetch data
+      if (data?.length === totalData) {
+        isFetchingAllData.current = false;
+        return;
+      }
+
+      const { data: d, error } = await getSubmissionNodes({
+        variables: {
+          _id,
+          first: -1,
+          partial: true,
+          ...filterRef.current,
+        },
+      }).catch((e) => ({ error: e, data: null }));
+
+      if (error || !d?.getSubmissionNodes) {
+        Logger.error("SubmittedData: Error fetching all node IDs for select all.", { error });
+        enqueueSnackbar("Cannot select all rows. Unable to retrieve list of nodes.", {
+          variant: "error",
+        });
+        setSelectedItems([]);
+        isFetchingAllData.current = false;
+        return;
+      }
+
+      Logger.info("SubmittedData: Selected all rows using explicit ID approach.", {
+        ids: d.getSubmissionNodes.nodes.map((node) => node.nodeID),
+        filters: filterRef.current,
+      });
+      setSelectedItems(d.getSubmissionNodes.nodes.map((node) => node.nodeID));
+      isFetchingAllData.current = false;
+      return;
+    }
+
+    Logger.info("SubmittedData: Selecting all rows using excluded ID approach.");
+    setSelectType("exclusion");
     setSelectedItems([]);
     isFetchingAllData.current = false;
-  }, [isFetchingAllData, setSelectedItems, setSelectAllActive]);
+  }, [selectType, isFetchingAllData, filterRef.current, setSelectedItems, setSelectType]);
 
   const handleOnDelete = (successMessage: string) => {
     setDeleteSuccessMessage(successMessage);
     setSelectedItems([]);
-    setSelectAllActive(false);
+    setSelectType(null);
 
     updateQuery((prev) => ({
       ...prev,
@@ -411,7 +462,7 @@ const SubmittedData: FC = () => {
         />
         <DeleteNodeDataButton
           selectedItems={selectedItems}
-          selectAllActive={selectAllActive}
+          selectType={selectType}
           totalData={totalData}
           nodeType={filterRef.current.nodeType}
           disabled={loading}
@@ -425,7 +476,7 @@ const SubmittedData: FC = () => {
       name,
       filterRef.current?.nodeType,
       selectedItems,
-      selectAllActive,
+      selectType,
       totalData,
       loading,
       data.length,
@@ -439,9 +490,9 @@ const SubmittedData: FC = () => {
       selectedItems,
       totalData,
       isFetchingAllData,
-      selectAllActive,
+      selectType,
     }),
-    [handleToggleRow, handleToggleAll, selectedItems, totalData, isFetchingAllData, selectAllActive]
+    [handleToggleRow, handleToggleAll, selectedItems, totalData, isFetchingAllData, selectType]
   );
 
   useEffect(() => {
