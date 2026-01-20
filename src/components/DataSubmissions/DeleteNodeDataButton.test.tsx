@@ -561,6 +561,31 @@ describe("Implementation Requirements", () => {
     });
   });
 
+  it("should show error when nodeIds exceed the 2000 limit (non-selectAll mode)", async () => {
+    const { getByTestId } = render(
+      <Button
+        nodeType="test-node-type"
+        selectedItems={Array(2001).fill("node-id")}
+        selectType="explicit"
+        totalData={5000}
+      />,
+      {
+        wrapper: TestParent,
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "Cannot delete more than 2000 items at once. Please refine your filters or adjust your selection.",
+        {
+          variant: "error",
+        }
+      );
+    });
+  });
+
   it("should show correct item count in dialog when selectAllActive is true", async () => {
     const { getByTestId, getByRole } = render(
       <Button
