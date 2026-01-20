@@ -3,13 +3,17 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { userEvent, within, screen } from "@storybook/test";
 
 import { Context as AuthContext } from "@/components/Contexts/AuthContext";
+import { Column } from "@/components/GenericTable";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
 import { LIST_SUBMISSIONS, ListSubmissionsInput, ListSubmissionsResp } from "@/graphql";
+import { FormatDate } from "@/utils";
 
 import Button from "./index";
+
+type Submission = ListSubmissionsResp["listSubmissions"]["submissions"][number];
 
 const mockSubmissions = submissionFactory.build(2, (idx) => ({
   _id: `submission-${idx}`,
@@ -63,6 +67,103 @@ const defaultScope = {
   orderBy: "updatedAt",
 };
 
+const defaultColumns: Column<Submission>[] = [
+  {
+    label: "Submission Name",
+    renderValue: (a) => a.name,
+    field: "name",
+    exportValue: (a) => ({ label: "Submission Name", value: a.name }),
+  },
+  {
+    label: "Submitter",
+    renderValue: (a) => a.submitterName,
+    field: "submitterName",
+    exportValue: (a) => ({ label: "Submitter", value: a.submitterName }),
+  },
+  {
+    label: "Data Commons",
+    renderValue: (a) => a.dataCommonsDisplayName,
+    field: "dataCommonsDisplayName",
+    exportValue: (a) => ({ label: "Data Commons", value: a.dataCommonsDisplayName }),
+  },
+  {
+    label: "Type",
+    renderValue: (a) => a.intention,
+    field: "intention",
+    exportValue: (a) => ({ label: "Type", value: a.intention }),
+  },
+  {
+    label: "Model Version",
+    renderValue: (a) => a.modelVersion,
+    field: "modelVersion",
+    exportValue: (a) => ({ label: "Model Version", value: a.modelVersion }),
+  },
+  {
+    label: "Program",
+    renderValue: (a) => a.organization?.name ?? "NA",
+    fieldKey: "organization.name",
+    exportValue: (a) => ({ label: "Program", value: a.organization?.name ?? "" }),
+  },
+  {
+    label: "Study",
+    renderValue: (a) => a.studyAbbreviation,
+    field: "studyAbbreviation",
+    exportValue: (a) => ({ label: "Study", value: a.studyAbbreviation }),
+  },
+  {
+    label: "dbGaP ID",
+    renderValue: (a) => a.dbGaPID,
+    field: "dbGaPID",
+    exportValue: (a) => ({ label: "dbGaP ID", value: a.dbGaPID }),
+  },
+  {
+    label: "Status",
+    renderValue: (a) => a.status,
+    field: "status",
+    exportValue: (a) => ({ label: "Status", value: a.status }),
+  },
+  {
+    label: "Data Concierge",
+    renderValue: (a) => a.conciergeName,
+    field: "conciergeName",
+    exportValue: (a) => ({ label: "Data Concierge", value: a.conciergeName }),
+  },
+  {
+    label: "Record Count",
+    renderValue: (a) =>
+      Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(a.nodeCount || 0),
+    field: "nodeCount",
+    exportValue: (a) => ({
+      label: "Record Count",
+      value: Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(a.nodeCount || 0),
+    }),
+  },
+  {
+    label: "Data File Size",
+    renderValue: (a) => a.dataFileSize.formatted || 0,
+    fieldKey: "dataFileSize.size",
+    exportValue: (a) => ({ label: "Data File Size", value: a.dataFileSize.formatted || 0 }),
+  },
+  {
+    label: "Created Date",
+    renderValue: (a) => FormatDate(a.createdAt, "M/D/YYYY"),
+    field: "createdAt",
+    exportValue: (a) => ({
+      label: "Created Date",
+      value: a.createdAt ? FormatDate(a.createdAt, "M/D/YYYY h:mm A") : "",
+    }),
+  },
+  {
+    label: "Last Updated",
+    renderValue: (a) => FormatDate(a.updatedAt, "M/D/YYYY"),
+    field: "updatedAt",
+    exportValue: (a) => ({
+      label: "Last Updated",
+      value: a.updatedAt ? FormatDate(a.updatedAt, "M/D/YYYY h:mm A") : "",
+    }),
+  },
+];
+
 /**
  * A button providing the ability to export the list of Data Submissions to CSV.
  */
@@ -87,6 +188,7 @@ const meta: Meta<typeof Button> = {
   args: {
     scope: defaultScope,
     hasData: true,
+    visibleColumns: defaultColumns,
   },
 } satisfies Meta<typeof Button>;
 
