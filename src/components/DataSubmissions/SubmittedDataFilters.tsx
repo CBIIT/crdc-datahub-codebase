@@ -33,6 +33,8 @@ export type FilterMethods = {
 
 export type FilterForm = Pick<GetSubmissionNodesInput, "nodeType" | "status" | "submittedID">;
 
+export const DEFAULT_VALUES: FilterForm = { nodeType: "", status: "All", submittedID: "" };
+
 const StyledContainer = styled(Box)({
   display: "flex",
   alignItems: "center",
@@ -57,6 +59,15 @@ const StyledInlineLabel = styled("label")({
 });
 
 /**
+ * A utility function to determine if any filters are applied, ignoring `nodeType` filter
+ *
+ * @param filters The current filter form values
+ * @returns True if any filters other than `nodeType` are applied, false otherwise
+ */
+export const hasFiltersApplied = (filters: FilterForm) =>
+  filters.status !== DEFAULT_VALUES.status || filters.submittedID !== DEFAULT_VALUES.submittedID;
+
+/**
  * A component that provides filters for the Submitted Data table
  *
  * @see {@link FilterProps} for the props
@@ -65,7 +76,7 @@ const StyledInlineLabel = styled("label")({
 const SubmittedDataFilters = forwardRef<FilterMethods, FilterProps>(
   ({ submissionId, onChange }, ref) => {
     const { watch, setValue, getValues, control } = useForm<FilterForm>({
-      defaultValues: { nodeType: "", status: "All", submittedID: "" },
+      defaultValues: DEFAULT_VALUES,
     });
 
     const debouncedOnChangeRef = useRef(
