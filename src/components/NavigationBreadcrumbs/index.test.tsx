@@ -1,9 +1,8 @@
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { breadcrumbEntryFactory } from "@/factories/navigation/BreadcrumbEntryFactory";
 
-import { render } from "../../test-utils";
+import { TestRouter, render } from "../../test-utils";
 
 import NavigationBreadcrumbs, { BreadcrumbEntry } from "./index";
 
@@ -15,7 +14,7 @@ describe("Accessibility", () => {
     ];
 
     const { container } = render(<NavigationBreadcrumbs entries={entries} />, {
-      wrapper: MemoryRouter,
+      wrapper: TestRouter,
     });
 
     expect(await axe(container)).toHaveNoViolations();
@@ -26,7 +25,7 @@ describe("Basic Functionality", () => {
   it("should render without crashing", () => {
     expect(() =>
       render(<NavigationBreadcrumbs entries={[]} />, {
-        wrapper: MemoryRouter,
+        wrapper: TestRouter,
       })
     ).not.toThrow();
   });
@@ -43,7 +42,7 @@ describe("Basic Functionality", () => {
     ];
 
     const { getAllByTestId } = render(<NavigationBreadcrumbs entries={entries} />, {
-      wrapper: MemoryRouter,
+      wrapper: TestRouter,
     });
 
     expect(getAllByTestId(/breadcrumb-entry/i)).toHaveLength(4);
@@ -57,7 +56,7 @@ describe("Basic Functionality", () => {
     ];
 
     const { queryAllByRole } = render(<NavigationBreadcrumbs entries={entries} />, {
-      wrapper: MemoryRouter,
+      wrapper: TestRouter,
     });
 
     expect(queryAllByRole("link")).toHaveLength(0);
@@ -69,7 +68,7 @@ describe("Basic Functionality", () => {
     ];
 
     const { getByTestId } = render(<NavigationBreadcrumbs entries={entries} />, {
-      wrapper: MemoryRouter,
+      wrapper: TestRouter,
     });
 
     expect(getByTestId("breadcrumb-entry-0")).toHaveStyle("color: #005EA2");
@@ -79,7 +78,7 @@ describe("Basic Functionality", () => {
     const entries: BreadcrumbEntry[] = [breadcrumbEntryFactory.build({ label: "Non-Link Item" })];
 
     const { getByTestId } = render(<NavigationBreadcrumbs entries={entries} />, {
-      wrapper: MemoryRouter,
+      wrapper: TestRouter,
     });
 
     expect(getByTestId("breadcrumb-entry-0")).toHaveStyle("color: #1B1B1B");
@@ -90,7 +89,7 @@ describe("Basic Functionality", () => {
     const newEntries: BreadcrumbEntry[] = [breadcrumbEntryFactory.build({ label: "Updated" })];
 
     const { rerender, getByTestId } = render(<NavigationBreadcrumbs entries={initialEntries} />, {
-      wrapper: MemoryRouter,
+      wrapper: TestRouter,
     });
 
     expect(getByTestId("breadcrumb-entry-0")).toHaveTextContent("Initial");
@@ -114,7 +113,7 @@ describe("Snapshots", () => {
     ];
 
     const { container } = render(<NavigationBreadcrumbs entries={entries} />, {
-      wrapper: MemoryRouter,
+      wrapper: TestRouter,
     });
 
     expect(container).toMatchSnapshot();

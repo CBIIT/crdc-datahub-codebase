@@ -1,9 +1,9 @@
 import userEvent from "@testing-library/user-event";
 import React, { FC } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
-import { render, waitFor, within } from "../../test-utils";
+import { TestRouter, render, waitFor, within } from "../../test-utils";
 import { SearchParamsProvider, useSearchParamsContext } from "../Contexts/SearchParamsContext";
 
 import DataExplorerFilters from "./index";
@@ -14,9 +14,9 @@ type ParentProps = {
 };
 
 const TestParent: FC<ParentProps> = ({ initialEntries = ["/"], children }: ParentProps) => (
-  <MemoryRouter initialEntries={initialEntries}>
+  <TestRouter initialEntries={initialEntries}>
     <SearchParamsProvider>{children}</SearchParamsProvider>
-  </MemoryRouter>
+  </TestRouter>
 );
 
 describe("Accessibility", () => {

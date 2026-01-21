@@ -8,7 +8,11 @@ import StyledNotistackAlerts from "./components/StyledNotistackAlerts";
 import routeConfig from "./router";
 import theme from "./theme";
 
-const router = createBrowserRouter(routeConfig);
+const router = createBrowserRouter(routeConfig, {
+  future: {
+    v7_relativeSplatPath: true,
+  },
+});
 
 const App = () => (
   <ThemeProvider theme={theme}>
@@ -26,7 +30,7 @@ const App = () => (
     >
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <CssBaseline />
-        <RouterProvider router={router} />
+        <RouterProvider router={router} future={{ v7_startTransition: true }} />
       </LocalizationProvider>
     </SnackbarProvider>
   </ThemeProvider>

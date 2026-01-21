@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter as Router } from "react-router-dom";
+import { BrowserRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { render } from "../../test-utils";
@@ -10,6 +10,10 @@ vi.mock("../../config/HeaderConfig", async () => ({
   ...(await vi.importActual("../../config/HeaderConfig")),
   DataSubmissionInstructionsLink: "/data-submission-instructions",
 }));
+
+const Router = (p) => (
+  <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+);
 
 describe("Accessibility", () => {
   it("should not have accessibility violations", async () => {

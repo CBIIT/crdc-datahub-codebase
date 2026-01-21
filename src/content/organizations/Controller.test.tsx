@@ -1,5 +1,5 @@
 import React, { FC, useMemo } from "react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
@@ -9,7 +9,7 @@ import {
   ContextState as AuthContextState,
   Status as AuthContextStatus,
 } from "../../components/Contexts/AuthContext";
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 
 import OrganizationController from "./Controller";
 
@@ -55,12 +55,12 @@ const TestParent: FC<ParentProps> = ({
 
   return (
     <AuthContext.Provider value={baseAuthCtx}>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <TestRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/programs/:orgId?" element={children} />
           <Route path="/" element={<div>Root Page</div>} />
         </Routes>
-      </MemoryRouter>
+      </TestRouter>
     </AuthContext.Provider>
   );
 };

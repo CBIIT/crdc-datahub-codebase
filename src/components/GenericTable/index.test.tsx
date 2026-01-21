@@ -1,10 +1,9 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import React, { FC } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
-import { render, fireEvent, within, waitFor } from "../../test-utils";
+import { TestRouter, render, fireEvent, within, waitFor } from "../../test-utils";
 import { SearchParamsProvider } from "../Contexts/SearchParamsContext";
 
 import GenericTable, { Column, Props } from ".";
@@ -51,9 +50,9 @@ const TestParent: FC<{ mocks?: MockedResponse[]; children: React.ReactNode }> = 
   children,
 }) => (
   <MockedProvider mocks={mocks} showWarnings>
-    <MemoryRouter>
+    <TestRouter>
       <SearchParamsProvider>{children}</SearchParamsProvider>
-    </MemoryRouter>
+    </TestRouter>
   </MockedProvider>
 );
 

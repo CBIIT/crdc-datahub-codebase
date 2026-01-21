@@ -113,7 +113,7 @@ const BaseComponent: FC<Props> = ({ section, user = {}, data = {} }: Props) => {
   );
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <MockedProvider mocks={[institutionsMock, formVersionMock, listOrgsMock]}>
         <AuthCtx.Provider value={authValue}>
           <FormCtx.Provider value={formValue}>

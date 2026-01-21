@@ -36,7 +36,7 @@ const TestParent: FC<TestParentProps> = ({ isLoggedIn, children }: TestParentPro
   );
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthCtx.Provider value={authValue}>{children}</AuthCtx.Provider>
     </BrowserRouter>
   );

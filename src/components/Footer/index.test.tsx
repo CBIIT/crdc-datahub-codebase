@@ -19,7 +19,9 @@ describe("Basic Functionality", () => {
     mockUseMediaQuery.mockImplementation(() => false); // Mobile + tablet = false
 
     const { getByTestId, queryByTestId } = render(<Footer />, {
-      wrapper: (p) => <BrowserRouter {...p} />,
+      wrapper: (p) => (
+        <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+      ),
     });
 
     expect(getByTestId("desktop-footer")).toBeInTheDocument();
@@ -33,7 +35,9 @@ describe("Basic Functionality", () => {
     );
 
     const { getByTestId, queryByTestId } = render(<Footer />, {
-      wrapper: (p) => <BrowserRouter {...p} />,
+      wrapper: (p) => (
+        <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+      ),
     });
 
     expect(queryByTestId("desktop-footer")).not.toBeInTheDocument();
@@ -47,7 +51,9 @@ describe("Basic Functionality", () => {
     mockUseMediaQuery.mockImplementation((query: string) => query === "(max-width: 767px)");
 
     const { getByTestId, queryByTestId } = render(<Footer />, {
-      wrapper: (p) => <BrowserRouter {...p} />,
+      wrapper: (p) => (
+        <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+      ),
     });
 
     expect(queryByTestId("desktop-footer")).not.toBeInTheDocument();

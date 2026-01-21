@@ -31,7 +31,7 @@ const BaseComponent: FC<Props> = ({ data = {} }: Props) => {
   );
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <FormCtx.Provider value={value}>
         <StatusBar />
       </FormCtx.Provider>

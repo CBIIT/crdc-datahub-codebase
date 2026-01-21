@@ -1,7 +1,7 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import { GraphQLError } from "graphql";
 import { FC, useMemo } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
@@ -12,7 +12,7 @@ import {
   Status as AuthContextStatus,
 } from "../../components/Contexts/AuthContext";
 import { GET_DASHBOARD_URL, GetDashboardURLInput, GetDashboardURLResp } from "../../graphql";
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 
 import Controller from "./Controller";
 
@@ -52,7 +52,7 @@ const TestParent: FC<ParentProps> = ({
 
   return (
     <MockedProvider mocks={mocks} showWarnings>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <TestRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route
             path="/dashboard"
@@ -60,7 +60,7 @@ const TestParent: FC<ParentProps> = ({
           />
           <Route path="/" element={<div>Root Page</div>} />
         </Routes>
-      </MemoryRouter>
+      </TestRouter>
     </MockedProvider>
   );
 };
