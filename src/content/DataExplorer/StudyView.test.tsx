@@ -1,7 +1,7 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import { GraphQLError } from "graphql";
 import React, { FC } from "react";
-import { MemoryRouter, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { Route, Routes, useLocation, useParams } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { approvedStudyFactory } from "@/factories/approved-study/ApprovedStudyFactory";
@@ -15,7 +15,7 @@ import {
   GetReleasedNodeTypesInput,
   GetReleasedNodeTypesResp,
 } from "../../graphql";
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 
 import StudyView from "./StudyView";
 
@@ -71,14 +71,14 @@ type MockParentProps = {
  */
 const TestParent: FC<MockParentProps> = ({ mocks = [], initialEntries = [] }: MockParentProps) => (
   <MockedProvider mocks={mocks} addTypename={false}>
-    <MemoryRouter initialEntries={initialEntries}>
+    <TestRouter initialEntries={initialEntries}>
       <SearchParamsProvider>
         <Routes>
           <Route path="/data-explorer/:studyId" element={<TestChild />} />
           <Route path="/data-explorer" element={<TestListView />} />
         </Routes>
       </SearchParamsProvider>
-    </MemoryRouter>
+    </TestRouter>
   </MockedProvider>
 );
 

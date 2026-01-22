@@ -8,7 +8,7 @@ import { submissionStatisticFactory } from "@/factories/submission/SubmissionSta
 import { SUBMISSION_STATS, SubmissionStatsInput, SubmissionStatsResp } from "../../graphql";
 import { render, waitFor, within } from "../../test-utils";
 
-import SubmittedDataFilters from "./SubmittedDataFilters";
+import SubmittedDataFilters, { hasFiltersApplied } from "./SubmittedDataFilters";
 
 type ParentProps = {
   mocks?: MockedResponse[];
@@ -405,5 +405,21 @@ describe("SubmittedDataFilters cases", () => {
     vi.advanceTimersByTime(500);
 
     expect(mockOnChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("SubmittedDataFilters utility functions", () => {
+  it("hasFiltersApplied should return true if any filters other than nodeType are applied", () => {
+    expect(hasFiltersApplied({ nodeType: "any", status: "Error", submittedID: "" })).toBeTruthy();
+    expect(
+      hasFiltersApplied({ nodeType: "any", status: "All", submittedID: "some-id" })
+    ).toBeTruthy();
+    expect(
+      hasFiltersApplied({ nodeType: "any", status: "Warning", submittedID: "some-id" })
+    ).toBeTruthy();
+  });
+
+  it("hasFiltersApplied should return false if no filters other than nodeType are applied", () => {
+    expect(hasFiltersApplied({ nodeType: "any", status: "All", submittedID: "" })).toBeFalsy();
   });
 });

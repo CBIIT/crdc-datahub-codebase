@@ -1,6 +1,6 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import React, { FC, useMemo } from "react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 import { approvedStudyFactory } from "@/factories/approved-study/ApprovedStudyFactory";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
@@ -27,7 +27,7 @@ import {
   ListOrgsInput,
   ListOrgsResp,
 } from "../../graphql";
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 
 import StudiesController from "./Controller";
 
@@ -105,7 +105,7 @@ const TestParent: FC<ParentProps> = ({
 
   return (
     <MockedProvider mocks={[...listOrgMocks, ...mocks]} showWarnings>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <TestRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route
             path="/studies/:studyId?"
@@ -119,7 +119,7 @@ const TestParent: FC<ParentProps> = ({
           />
           <Route path="/" element={<div>Root Page</div>} />
         </Routes>
-      </MemoryRouter>
+      </TestRouter>
     </MockedProvider>
   );
 };

@@ -1,10 +1,10 @@
 import userEvent from "@testing-library/user-event";
 import React, { FC } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { SearchParamsProvider } from "../../components/Contexts/SearchParamsContext";
-import { render, fireEvent, waitFor, act, within } from "../../test-utils";
+import { TestRouter, render, fireEvent, waitFor, act, within } from "../../test-utils";
 
 import ListFilters, { defaultValues, DEFAULT_STATUSES_SELECTED } from "./ListFilters";
 import type { FilterForm } from "./ListFilters";
@@ -24,9 +24,9 @@ type ParentProps = {
 };
 
 const TestParent: FC<ParentProps> = ({ initialEntries = ["/"], children }) => (
-  <MemoryRouter initialEntries={initialEntries}>
+  <TestRouter initialEntries={initialEntries}>
     <SearchParamsProvider>{children}</SearchParamsProvider>
-  </MemoryRouter>
+  </TestRouter>
 );
 
 describe("Accessibility", () => {

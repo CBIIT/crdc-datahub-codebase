@@ -1,7 +1,7 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { FC, useMemo } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { SearchParamsProvider } from "@/components/Contexts/SearchParamsContext";
@@ -26,7 +26,7 @@ import {
   RetrievePBACDefaultsInput,
   RetrievePBACDefaultsResp,
 } from "@/graphql";
-import { act, render, waitFor } from "@/test-utils";
+import { TestRouter, act, render, waitFor } from "@/test-utils";
 
 import {
   Context as AuthContext,
@@ -156,11 +156,11 @@ const TestParent: FC<ParentProps> = ({
 
   return (
     <MockedProvider mocks={mocks}>
-      <MemoryRouter initialEntries={initialEntries}>
+      <TestRouter initialEntries={initialEntries}>
         <AuthContext.Provider value={authCtx}>
           <SearchParamsProvider>{children}</SearchParamsProvider>
         </AuthContext.Provider>
-      </MemoryRouter>
+      </TestRouter>
     </MockedProvider>
   );
 };

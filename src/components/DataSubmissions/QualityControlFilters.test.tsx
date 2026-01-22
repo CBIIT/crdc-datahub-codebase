@@ -1,7 +1,6 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import React, { FC, useMemo } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { Mock } from "vitest";
 import { axe } from "vitest-axe";
 
@@ -23,7 +22,7 @@ import {
   SubmissionStatsResp,
   SubmissionStatsInput,
 } from "../../graphql";
-import { render, waitFor, within } from "../../test-utils";
+import { TestRouter, render, waitFor, within } from "../../test-utils";
 import {
   SubmissionContext,
   SubmissionCtxState,
@@ -84,7 +83,7 @@ const TestParent: FC<TestParentProps> = ({
   );
 
   return (
-    <MemoryRouter>
+    <TestRouter>
       <MockedProvider mocks={mocks}>
         <SubmissionContext.Provider value={value}>
           <QualityControlFilters
@@ -94,7 +93,7 @@ const TestParent: FC<TestParentProps> = ({
           />
         </SubmissionContext.Provider>
       </MockedProvider>
-    </MemoryRouter>
+    </TestRouter>
   );
 };
 

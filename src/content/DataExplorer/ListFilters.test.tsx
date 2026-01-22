@@ -1,12 +1,11 @@
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { releasedStudyFactory } from "@/factories/approved-study/ReleasedStudyFactory";
 
 import { SearchParamsProvider } from "../../components/Contexts/SearchParamsContext";
-import { render, waitFor, within } from "../../test-utils";
+import { TestRouter, render, waitFor, within } from "../../test-utils";
 
 import ListFilters, { defaultValues } from "./ListFilters";
 
@@ -38,9 +37,9 @@ type Props = {
   children: React.ReactNode;
 };
 const TestParent: React.FC<Props> = ({ initialEntries = ["/"], children }) => (
-  <MemoryRouter initialEntries={initialEntries}>
+  <TestRouter initialEntries={initialEntries}>
     <SearchParamsProvider>{children}</SearchParamsProvider>
-  </MemoryRouter>
+  </TestRouter>
 );
 
 describe("Accessibility", () => {

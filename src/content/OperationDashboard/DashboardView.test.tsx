@@ -1,5 +1,4 @@
 import { FC, useMemo } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
@@ -10,7 +9,7 @@ import {
   ContextState as AuthContextState,
   Status as AuthContextStatus,
 } from "../../components/Contexts/AuthContext";
-import { render } from "../../test-utils";
+import { TestRouter, render } from "../../test-utils";
 
 import DashboardView from "./DashboardView";
 
@@ -37,7 +36,7 @@ const MockParent: FC<ParentProps> = ({
 
   return (
     <AuthContext.Provider value={baseAuthCtx}>
-      <MemoryRouter basename="/">{children}</MemoryRouter>
+      <TestRouter basename="/">{children}</TestRouter>
     </AuthContext.Provider>
   );
 };

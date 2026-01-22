@@ -1,13 +1,13 @@
 import userEvent from "@testing-library/user-event";
 import React, { FC, useMemo } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 
 import { ListSubmissionsResp } from "../../graphql";
-import { render, waitFor, within } from "../../test-utils";
+import { TestRouter, render, waitFor, within } from "../../test-utils";
 import {
   Context as AuthContext,
   ContextState as AuthContextState,
@@ -47,11 +47,11 @@ const TestParent: FC<ParentProps> = ({
   );
 
   return (
-    <MemoryRouter initialEntries={initialEntries}>
+    <TestRouter initialEntries={initialEntries}>
       <AuthContext.Provider value={authContextValue}>
         <SearchParamsProvider>{children}</SearchParamsProvider>
       </AuthContext.Provider>
-    </MemoryRouter>
+    </TestRouter>
   );
 };
 

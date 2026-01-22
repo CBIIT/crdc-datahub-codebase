@@ -1,7 +1,7 @@
 import { FC } from "react";
-import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from "react-router-dom";
+import { Route, RouterProvider, Routes, createMemoryRouter } from "react-router-dom";
 
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 
 import Controller from "./Controller";
 
@@ -23,12 +23,12 @@ type ParentProps = {
 };
 
 const TestParent: FC<ParentProps> = ({ initialEntry = "/", children }: ParentProps) => (
-  <MemoryRouter initialEntries={[initialEntry]}>
+  <TestRouter initialEntries={[initialEntry]}>
     <Routes>
       <Route path="/model-navigator/:model/:version?" element={children} />
       <Route path="/" element={<div>MOCK HOME PAGE</div>} />
     </Routes>
-  </MemoryRouter>
+  </TestRouter>
 );
 
 describe("Basic Functionality", () => {
@@ -62,12 +62,17 @@ describe("Basic Functionality", () => {
           element: <Controller />,
         },
       ],
-      { initialEntries: ["/model-navigator/fake-model"] }
+      {
+        initialEntries: ["/model-navigator/fake-model"],
+        future: {
+          v7_relativeSplatPath: true,
+        },
+      }
     );
 
     expect(history.state.location.pathname).toBe("/model-navigator/fake-model"); // Assert the "user" is at the starting location
 
-    render(<RouterProvider router={history} />); // Render the router, and subsequently, the Controller with redirect
+    render(<RouterProvider router={history} future={{ v7_startTransition: true }} />); // Render the router, and subsequently, the Controller with redirect
 
     await waitFor(() => {
       expect(history.state.location.pathname).toBe("/model-navigator/fake-model/latest"); // Assert the "user" is redirected to the latest version

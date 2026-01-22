@@ -69,7 +69,7 @@ const TestParent: React.FC<TestParentProps> = ({
 describe("Accessibility", () => {
   it("should have no violations for DeleteNodeDataButton component", async () => {
     const { container, getByTestId } = render(
-      <Button nodeType="test" selectedItems={["ID_1", "ID_2", "ID_3"]} />,
+      <Button nodeType="test" selectedItems={["ID_1", "ID_2", "ID_3"]} selectType="explicit" />,
       { wrapper: TestParent }
     );
 
@@ -78,9 +78,12 @@ describe("Accessibility", () => {
   });
 
   it("should have no violations for DeleteNodeDataButton component when disabled", async () => {
-    const { container, getByTestId } = render(<Button nodeType="test" selectedItems={[]} />, {
-      wrapper: TestParent,
-    });
+    const { container, getByTestId } = render(
+      <Button nodeType="test" selectedItems={[]} selectType="explicit" />,
+      {
+        wrapper: TestParent,
+      }
+    );
 
     expect(getByTestId("delete-node-data-button")).toBeDisabled(); // Sanity check to ensure the button is disabled
     expect(await axe(container)).toHaveNoViolations();
@@ -94,7 +97,9 @@ describe("Basic Functionality", () => {
 
   it("should render without crashing", () => {
     expect(() =>
-      render(<Button nodeType="" selectedItems={[]} />, { wrapper: TestParent })
+      render(<Button nodeType="" selectedItems={[]} selectType="explicit" />, {
+        wrapper: TestParent,
+      })
     ).not.toThrow();
   });
 
@@ -112,7 +117,7 @@ describe("Basic Functionality", () => {
     ];
 
     const { getByTestId, getByRole } = render(
-      <Button nodeType="test" selectedItems={["1 item ID"]} />,
+      <Button nodeType="test" selectedItems={["1 item ID"]} selectType="explicit" />,
       { wrapper: (props) => <TestParent {...props} mocks={mocks} /> }
     );
 
@@ -145,7 +150,7 @@ describe("Basic Functionality", () => {
     ];
 
     const { getByTestId, getByRole } = render(
-      <Button nodeType="test" selectedItems={["1 item ID"]} />,
+      <Button nodeType="test" selectedItems={["1 item ID"]} selectType="explicit" />,
       { wrapper: (props) => <TestParent {...props} mocks={mocks} /> }
     );
 
@@ -185,7 +190,7 @@ describe("Basic Functionality", () => {
     ];
 
     const { getByTestId, getByRole } = render(
-      <Button nodeType="test" selectedItems={["1 item ID"]} />,
+      <Button nodeType="test" selectedItems={["1 item ID"]} selectType="explicit" />,
       { wrapper: (props) => <TestParent {...props} mocks={mocks} /> }
     );
 
@@ -207,9 +212,12 @@ describe("Basic Functionality", () => {
   });
 
   it("should be disabled when there are no selected items", () => {
-    const { getByTestId } = render(<Button nodeType="fake-node" selectedItems={[]} />, {
-      wrapper: TestParent,
-    });
+    const { getByTestId } = render(
+      <Button nodeType="fake-node" selectedItems={[]} selectType="explicit" />,
+      {
+        wrapper: TestParent,
+      }
+    );
 
     expect(getByTestId("delete-node-data-button")).toBeDisabled();
   });
@@ -232,7 +240,7 @@ describe("Basic Functionality", () => {
           ],
         })}
       >
-        <Button nodeType="test" selectedItems={["ID_1", "ID_2", "ID_3"]} />,
+        <Button nodeType="test" selectedItems={["ID_1", "ID_2", "ID_3"]} selectType="explicit" />,
       </TestParent>
     );
 
@@ -259,7 +267,12 @@ describe("Basic Functionality", () => {
     ];
 
     const { getByTestId, getByRole } = render(
-      <Button nodeType="test" selectedItems={["1 item ID"]} onDelete={onDelete} />,
+      <Button
+        nodeType="test"
+        selectedItems={["1 item ID"]}
+        onDelete={onDelete}
+        selectType="explicit"
+      />,
       { wrapper: (props) => <TestParent {...props} mocks={mocks} /> }
     );
 
@@ -282,16 +295,19 @@ describe("Implementation Requirements", () => {
   });
 
   it("should be disabled when a deletion operation is in progress", () => {
-    const { getByTestId } = render(<Button nodeType="test" selectedItems={[]} />, {
-      wrapper: (props) => <TestParent {...props} submission={{ deletingData: true }} />,
-    });
+    const { getByTestId } = render(
+      <Button nodeType="test" selectedItems={[]} selectType="explicit" />,
+      {
+        wrapper: (props) => <TestParent {...props} submission={{ deletingData: true }} />,
+      }
+    );
 
     expect(getByTestId("delete-node-data-button")).toBeDisabled();
   });
 
   it("should have a tooltip on the delete button (enabled)", async () => {
     const { getByTestId, findByRole } = render(
-      <Button nodeType="test" selectedItems={["1 item ID"]} />,
+      <Button nodeType="test" selectedItems={["1 item ID"]} selectType="explicit" />,
       {
         wrapper: TestParent,
       }
@@ -316,7 +332,7 @@ describe("Implementation Requirements", () => {
     "should customize the tooltip text for metadata vs data files",
     async (nodeType, tooltipText) => {
       const { getByTestId, findByRole } = render(
-        <Button nodeType={nodeType} selectedItems={["1 item ID"]} />,
+        <Button nodeType={nodeType} selectedItems={["1 item ID"]} selectType="explicit" />,
         {
           wrapper: TestParent,
         }
@@ -331,9 +347,12 @@ describe("Implementation Requirements", () => {
   );
 
   it("should have a tooltip when the delete button is disabled with an ongoing deletion", async () => {
-    const { getByTestId, findByRole } = render(<Button nodeType="test" selectedItems={[]} />, {
-      wrapper: (props) => <TestParent {...props} submission={{ deletingData: true }} />,
-    });
+    const { getByTestId, findByRole } = render(
+      <Button nodeType="test" selectedItems={[]} selectType="explicit" />,
+      {
+        wrapper: (props) => <TestParent {...props} submission={{ deletingData: true }} />,
+      }
+    );
 
     // NOTE: Cannot hover a disabled button, pointing to the span instead
     userEvent.hover(getByTestId("delete-node-data-button").parentElement);
@@ -347,7 +366,7 @@ describe("Implementation Requirements", () => {
 
   it("should show a confirmation dialog when the 'Delete' icon is clicked", async () => {
     const { getByTestId, getByRole } = render(
-      <Button nodeType="test" selectedItems={["1 item ID"]} />,
+      <Button nodeType="test" selectedItems={["1 item ID"]} selectType="explicit" />,
       {
         wrapper: TestParent,
       }
@@ -380,7 +399,11 @@ describe("Implementation Requirements", () => {
     ];
 
     const { getByTestId, getByRole } = render(
-      <Button nodeType="test-node-type" selectedItems={["ID_1", "ID_2", "ID_3"]} />,
+      <Button
+        nodeType="test-node-type"
+        selectedItems={["ID_1", "ID_2", "ID_3"]}
+        selectType="explicit"
+      />,
       {
         wrapper: (props) => (
           <TestParent {...props} mocks={mocks} submission={{ _id: "mock-submission-id" }} />
@@ -406,7 +429,7 @@ describe("Implementation Requirements", () => {
     });
   });
 
-  it("should use deleteAll API when selectAllActive is true with no exclusions", async () => {
+  it("should use deleteAll API when selectType is true with no exclusions", async () => {
     const mockMatcher = vi.fn().mockImplementation(() => true);
     const mocks: MockedResponse<DeleteDataRecordsResp, DeleteDataRecordsInput>[] = [
       {
@@ -426,7 +449,12 @@ describe("Implementation Requirements", () => {
     ];
 
     const { getByTestId, getByRole } = render(
-      <Button nodeType="test-node-type" selectedItems={[]} selectAllActive totalData={100} />,
+      <Button
+        nodeType="test-node-type"
+        selectedItems={[]}
+        selectType="exclusion"
+        totalData={100}
+      />,
       {
         wrapper: (props) => (
           <TestParent {...props} mocks={mocks} submission={{ _id: "mock-submission-id" }} />
@@ -481,7 +509,7 @@ describe("Implementation Requirements", () => {
       <Button
         nodeType="test-node-type"
         selectedItems={["excluded-id-1", "excluded-id-2"]}
-        selectAllActive
+        selectType="exclusion"
         totalData={100}
       />,
       {
@@ -513,7 +541,7 @@ describe("Implementation Requirements", () => {
       <Button
         nodeType="test-node-type"
         selectedItems={Array(2001).fill("excluded-id")}
-        selectAllActive
+        selectType="exclusion"
         totalData={5000}
       />,
       {
@@ -538,7 +566,7 @@ describe("Implementation Requirements", () => {
       <Button
         nodeType="test-node-type"
         selectedItems={Array(2001).fill("node-id")}
-        selectAllActive={false}
+        selectType="explicit"
         totalData={5000}
       />,
       {
@@ -550,7 +578,7 @@ describe("Implementation Requirements", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        'Cannot delete more than 2000 items at once. Please use "Select All" or reduce your selection.',
+        "Cannot delete more than 2000 items at once. Please refine your filters or adjust your selection.",
         {
           variant: "error",
         }
@@ -563,7 +591,7 @@ describe("Implementation Requirements", () => {
       <Button
         nodeType="test-node"
         selectedItems={["excluded-1", "excluded-2"]}
-        selectAllActive
+        selectType="exclusion"
         totalData={100}
       />,
       {
@@ -585,7 +613,7 @@ describe("Implementation Requirements", () => {
       <Button
         nodeType="test-node"
         selectedItems={["id-1", "id-2", "id-3"]}
-        selectAllActive
+        selectType="exclusion"
         totalData={3}
       />,
       {
@@ -599,7 +627,7 @@ describe("Implementation Requirements", () => {
 
   it("should dismiss the dialog when the 'Cancel' button is clicked", async () => {
     const { getByTestId, getByRole } = render(
-      <Button nodeType="test" selectedItems={["1 item ID"]} />,
+      <Button nodeType="test" selectedItems={["1 item ID"]} selectType="explicit" />,
       {
         wrapper: TestParent,
       }
@@ -620,7 +648,7 @@ describe("Implementation Requirements", () => {
 
   it("should contain the nodeType and selection count in the delete dialog content", async () => {
     const { getByTestId, getByRole } = render(
-      <Button nodeType="test-node-123" selectedItems={["node-id-456"]} />,
+      <Button nodeType="test-node-123" selectedItems={["node-id-456"]} selectType="explicit" />,
       {
         wrapper: TestParent,
       }
@@ -642,7 +670,7 @@ describe("Implementation Requirements", () => {
     ["ALL CAPS", "Delete All Caps Node"],
   ])("should use a title-cased nodeType in the dialog header", (nodeType, expected) => {
     const { getByTestId, getByRole } = render(
-      <Button nodeType={nodeType} selectedItems={["node-id-456"]} />,
+      <Button nodeType={nodeType} selectedItems={["node-id-456"]} selectType="explicit" />,
       {
         wrapper: TestParent,
       }
@@ -663,7 +691,11 @@ describe("Implementation Requirements", () => {
     "should use the proper pluralization for the delete dialog title",
     async (selectedItems, expected) => {
       const { getByTestId, getByRole } = render(
-        <Button nodeType="xyz-node" selectedItems={Array(selectedItems).fill("fake-node-id")} />,
+        <Button
+          nodeType="xyz-node"
+          selectedItems={Array(selectedItems).fill("fake-node-id")}
+          selectType="explicit"
+        />,
         {
           wrapper: TestParent,
         }
@@ -697,6 +729,7 @@ describe("Implementation Requirements", () => {
         <Button
           nodeType="test-node-123"
           selectedItems={Array(selectedItems).fill("fake-node-id")}
+          selectType="explicit"
         />,
         {
           wrapper: TestParent,
@@ -747,6 +780,7 @@ describe("Implementation Requirements", () => {
           nodeType="test-node-123"
           selectedItems={Array(selectedItems).fill("fake-node-id")}
           onDelete={mockOnDelete}
+          selectType="explicit"
         />,
         {
           wrapper: (props) => <TestParent {...props} mocks={[mock]} />,
@@ -810,6 +844,7 @@ describe("Implementation Requirements", () => {
           nodeType="data file"
           selectedItems={Array(selectedItems).fill("fake-data-file")}
           onDelete={mockOnDelete}
+          selectType="explicit"
         />,
         {
           wrapper: (props) => <TestParent {...props} mocks={[mock]} />,
@@ -832,25 +867,31 @@ describe("Implementation Requirements", () => {
   );
 
   it("should be visible and interactive when the user has the required permissions", async () => {
-    const { getByTestId } = render(<Button nodeType="test" selectedItems={[]} />, {
-      wrapper: (props) => (
-        <TestParent
-          {...props}
-          user={{
-            role: "Submitter",
-            permissions: ["data_submission:view", "data_submission:create"],
-          }}
-        />
-      ),
-    });
+    const { getByTestId } = render(
+      <Button nodeType="test" selectedItems={[]} selectType="explicit" />,
+      {
+        wrapper: (props) => (
+          <TestParent
+            {...props}
+            user={{
+              role: "Submitter",
+              permissions: ["data_submission:view", "data_submission:create"],
+            }}
+          />
+        ),
+      }
+    );
 
     expect(getByTestId("delete-node-data-button")).toBeVisible();
   });
 
   it("should not be rendered when the user is missing the required permissions", async () => {
-    const { queryByTestId } = render(<Button nodeType="test" selectedItems={[]} />, {
-      wrapper: (props) => <TestParent {...props} user={{ role: "Submitter", permissions: [] }} />,
-    });
+    const { queryByTestId } = render(
+      <Button nodeType="test" selectedItems={[]} selectType="explicit" />,
+      {
+        wrapper: (props) => <TestParent {...props} user={{ role: "Submitter", permissions: [] }} />,
+      }
+    );
 
     expect(queryByTestId("delete-node-data-button")).not.toBeInTheDocument();
   });
@@ -858,9 +899,12 @@ describe("Implementation Requirements", () => {
   it.each<SubmissionStatus>(["New", "In Progress", "Rejected", "Withdrawn"])(
     "should (implicitly) be enabled for the Submission Status %s",
     (status) => {
-      const { getByTestId } = render(<Button nodeType="test" selectedItems={["item-1"]} />, {
-        wrapper: (props) => <TestParent {...props} submission={{ status }} />,
-      });
+      const { getByTestId } = render(
+        <Button nodeType="test" selectedItems={["item-1"]} selectType="explicit" />,
+        {
+          wrapper: (props) => <TestParent {...props} submission={{ status }} />,
+        }
+      );
 
       expect(getByTestId("delete-node-data-button")).toBeEnabled();
     }
@@ -869,9 +913,12 @@ describe("Implementation Requirements", () => {
   it.each<SubmissionStatus>(["Submitted", "Released", "Completed", "Canceled", "Deleted"])(
     "should be disabled for the Submission Status %s",
     (status) => {
-      const { getByTestId } = render(<Button nodeType="test" selectedItems={["item-1"]} />, {
-        wrapper: (props) => <TestParent {...props} submission={{ status }} />,
-      });
+      const { getByTestId } = render(
+        <Button nodeType="test" selectedItems={["item-1"]} selectType="explicit" />,
+        {
+          wrapper: (props) => <TestParent {...props} submission={{ status }} />,
+        }
+      );
 
       expect(getByTestId("delete-node-data-button")).toBeDisabled();
     }

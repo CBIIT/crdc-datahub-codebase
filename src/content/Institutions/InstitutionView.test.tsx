@@ -1,7 +1,7 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { SearchParamsProvider } from "../../components/Contexts/SearchParamsContext";
@@ -16,7 +16,7 @@ import {
   UpdateInstitutionResp,
   UpdateInstitutionInput,
 } from "../../graphql";
-import { act, render, waitFor, within } from "../../test-utils";
+import { TestRouter, act, render, waitFor, within } from "../../test-utils";
 
 import InstitutionView from "./InstitutionView";
 
@@ -119,9 +119,9 @@ type ParentProps = {
 
 const TestParent: React.FC<ParentProps> = ({ mocks = [], initialEntries = ["/"], children }) => (
   <MockedProvider mocks={mocks} addTypename={false}>
-    <MemoryRouter initialEntries={initialEntries}>
+    <TestRouter initialEntries={initialEntries}>
       <SearchParamsProvider>{children}</SearchParamsProvider>
-    </MemoryRouter>
+    </TestRouter>
   </MockedProvider>
 );
 

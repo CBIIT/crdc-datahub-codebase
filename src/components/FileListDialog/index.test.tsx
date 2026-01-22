@@ -2,7 +2,6 @@ import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { FC } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { batchFactory } from "@/factories/submission/BatchFactory";
@@ -13,7 +12,7 @@ import {
   DownloadMetadataFileInput,
   DOWNLOAD_METADATA_FILE,
 } from "../../graphql";
-import { render, waitFor, within } from "../../test-utils";
+import { TestRouter, render, waitFor, within } from "../../test-utils";
 import { SearchParamsProvider } from "../Contexts/SearchParamsContext";
 
 import Dialog from "./index";
@@ -24,11 +23,11 @@ type ParentProps = {
 };
 
 const TestParent: FC<ParentProps> = ({ mocks = [], children }) => (
-  <MemoryRouter basename="">
+  <TestRouter basename="">
     <MockedProvider mocks={mocks}>
       <SearchParamsProvider>{children}</SearchParamsProvider>
     </MockedProvider>
-  </MemoryRouter>
+  </TestRouter>
 );
 
 describe("Accessibility", () => {

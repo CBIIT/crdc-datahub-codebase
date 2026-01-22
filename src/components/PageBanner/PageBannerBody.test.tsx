@@ -1,16 +1,15 @@
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
-import { render } from "../../test-utils";
+import { TestRouter, render } from "../../test-utils";
 
 import PageBannerBody from "./PageBannerBody";
 
 type Props = {
   children: React.ReactNode;
 };
-const TestParent: React.FC<Props> = ({ children }) => <MemoryRouter>{children}</MemoryRouter>;
+const TestParent: React.FC<Props> = ({ children }) => <TestRouter>{children}</TestRouter>;
 
 describe("Accessibility", () => {
   const label = "Click Here";

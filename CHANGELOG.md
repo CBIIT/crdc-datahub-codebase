@@ -1,5 +1,24 @@
 # Release Notes
 
+## 3.5.1 (Released 01/26/2026)
+
+#### Submission Request
+
+- Increased the DOI field character limit from 20 to 200 characters to accommodate full DOI values without truncation.
+
+#### Data Submission
+
+- Action buttons on the Data Submission dashboard now display tooltips on hover to clarify button functionality before clicking.
+- \[Bug Fix\]: Fixed an issue where deleting selected records in Data View was incorrectly deleting the entire node type instead of only the selected records.
+
+#### Data Commons
+
+- Data Explorer documentation hosting has been moved to the CRDC Data Commons site for centralized resource management.
+
+#### Security & Infrastructure
+
+- Mitigated multiple high-severity Common Vulnerabilities and Exposures (CVE) issues across the system to enhance security.
+
 ## 3.5.0 (Released 12/19/2025)
 
 #### Submission Request

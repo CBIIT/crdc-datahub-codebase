@@ -1,6 +1,4 @@
-import { MemoryRouter } from "react-router-dom";
-
-import { render } from "../../test-utils";
+import { TestRouter, render } from "../../test-utils";
 
 import LoginController from "./Controller";
 
@@ -35,19 +33,19 @@ describe("LoginController", () => {
   });
 
   it("should set the page title to 'Login'", () => {
-    render(<LoginController />, { wrapper: MemoryRouter });
+    render(<LoginController />, { wrapper: TestRouter });
 
     expect(mockUsePageTitle).toHaveBeenCalledWith("Login");
   });
 
   it("should render a loader while redirecting to the NIH SSO login page", () => {
-    const { getByTestId } = render(<LoginController />, { wrapper: MemoryRouter });
+    const { getByTestId } = render(<LoginController />, { wrapper: TestRouter });
 
     expect(getByTestId("login-flow-loader")).toBeVisible();
   });
 
   it("should redirect to the SSO login page with the correct params", () => {
-    render(<LoginController />, { wrapper: MemoryRouter });
+    render(<LoginController />, { wrapper: TestRouter });
 
     expect(window.location.href).toContain("https://mock-sso-url");
     expect(window.location.href).toContain("client_id=mock-client-id");
@@ -63,9 +61,9 @@ describe("LoginController", () => {
     (redirectState) => {
       render(<LoginController />, {
         wrapper: ({ children }) => (
-          <MemoryRouter initialEntries={["/login", { state: { redirectState } }]}>
+          <TestRouter initialEntries={["/login", { state: { redirectState } }]}>
             {children}
-          </MemoryRouter>
+          </TestRouter>
         ),
       });
 
@@ -80,9 +78,9 @@ describe("LoginController", () => {
     (redirectState) => {
       render(<LoginController />, {
         wrapper: ({ children }) => (
-          <MemoryRouter initialEntries={["/login", { state: { redirectState } }]}>
+          <TestRouter initialEntries={["/login", { state: { redirectState } }]}>
             {children}
-          </MemoryRouter>
+          </TestRouter>
         ),
       });
 

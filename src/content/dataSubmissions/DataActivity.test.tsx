@@ -1,7 +1,6 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import { GraphQLError } from "graphql";
 import { FC } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { submissionCtxStateFactory } from "@/factories/submission/SubmissionContextFactory";
@@ -11,7 +10,7 @@ import { SearchParamsProvider } from "../../components/Contexts/SearchParamsCont
 import * as SubmissionCtx from "../../components/Contexts/SubmissionContext";
 import { SubmissionCtxStatus } from "../../components/Contexts/SubmissionContext";
 import { LIST_BATCHES, ListBatchesResp } from "../../graphql";
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 
 import DataActivity from "./DataActivity";
 
@@ -21,11 +20,11 @@ type ParentProps = {
 };
 
 const TestParent: FC<ParentProps> = ({ mocks, children }: ParentProps) => (
-  <MemoryRouter basename="">
+  <TestRouter basename="">
     <MockedProvider mocks={mocks} showWarnings>
       <SearchParamsProvider>{children}</SearchParamsProvider>
     </MockedProvider>
-  </MemoryRouter>
+  </TestRouter>
 );
 
 describe("General", () => {

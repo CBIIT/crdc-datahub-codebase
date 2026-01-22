@@ -7,7 +7,11 @@ import FooterTablet from "./FooterTablet";
 
 describe("Accessibility", () => {
   it("should not have any accessibility violations", async () => {
-    const { container } = render(<FooterTablet />, { wrapper: (p) => <BrowserRouter {...p} /> });
+    const { container } = render(<FooterTablet />, {
+      wrapper: (p) => (
+        <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+      ),
+    });
 
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -16,7 +20,11 @@ describe("Accessibility", () => {
 describe("Basic Functionality", () => {
   it("should render without crashing", () => {
     expect(() =>
-      render(<FooterTablet />, { wrapper: (p) => <BrowserRouter {...p} /> })
+      render(<FooterTablet />, {
+        wrapper: (p) => (
+          <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+        ),
+      })
     ).not.toThrow();
   });
 });

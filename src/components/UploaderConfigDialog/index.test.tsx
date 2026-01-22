@@ -1,9 +1,8 @@
 import userEvent from "@testing-library/user-event";
 import { FC } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
-import { fireEvent, render, waitFor, within } from "../../test-utils";
+import { TestRouter, fireEvent, render, waitFor, within } from "../../test-utils";
 
 import UploaderConfigDialog from "./index";
 
@@ -12,7 +11,7 @@ type ParentProps = {
 };
 
 const TestParent: FC<ParentProps> = ({ children }) => (
-  <MemoryRouter basename="">{children}</MemoryRouter>
+  <TestRouter basename="">{children}</TestRouter>
 );
 
 describe("Accessibility", () => {

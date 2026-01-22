@@ -8,7 +8,11 @@ import FooterMobile from "./FooterMobile";
 
 describe("Accessibility", () => {
   it("should not have any accessibility violations", async () => {
-    const { container } = render(<FooterMobile />, { wrapper: (p) => <BrowserRouter {...p} /> });
+    const { container } = render(<FooterMobile />, {
+      wrapper: (p) => (
+        <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+      ),
+    });
 
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -17,13 +21,19 @@ describe("Accessibility", () => {
 describe("Basic Functionality", () => {
   it("should render without crashing", () => {
     expect(() =>
-      render(<FooterMobile />, { wrapper: (p) => <BrowserRouter {...p} /> })
+      render(<FooterMobile />, {
+        wrapper: (p) => (
+          <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+        ),
+      })
     ).not.toThrow();
   });
 
   it("should toggle the expand of sections on click", () => {
     const { getAllByTestId } = render(<FooterMobile />, {
-      wrapper: (p) => <BrowserRouter {...p} />,
+      wrapper: (p) => (
+        <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+      ),
     });
 
     const allGroups = getAllByTestId("dropdown-section-group");

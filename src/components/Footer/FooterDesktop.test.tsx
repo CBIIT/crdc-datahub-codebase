@@ -7,7 +7,11 @@ import FooterDesktop from "./FooterDesktop";
 
 describe("Accessibility", () => {
   it("should not have any accessibility violations", async () => {
-    const { container } = render(<FooterDesktop />, { wrapper: (p) => <BrowserRouter {...p} /> });
+    const { container } = render(<FooterDesktop />, {
+      wrapper: (p) => (
+        <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+      ),
+    });
 
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -16,7 +20,11 @@ describe("Accessibility", () => {
 describe("Basic Functionality", () => {
   it("should render without crashing", () => {
     expect(() =>
-      render(<FooterDesktop />, { wrapper: (p) => <BrowserRouter {...p} /> })
+      render(<FooterDesktop />, {
+        wrapper: (p) => (
+          <BrowserRouter {...p} future={{ v7_startTransition: true, v7_relativeSplatPath: true }} />
+        ),
+      })
     ).not.toThrow();
   });
 });

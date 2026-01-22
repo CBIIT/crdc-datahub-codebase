@@ -1,9 +1,8 @@
 import { FC } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import packageConfig from "../../config/PackageTableConfig";
-import { render } from "../../test-utils";
+import { TestRouter, render } from "../../test-utils";
 
 import PackageTable from "./PackageTable";
 
@@ -29,7 +28,7 @@ type ParentProps = {
 };
 
 const TestParent: FC<ParentProps> = ({ children }) => (
-  <MemoryRouter basename="">{children}</MemoryRouter>
+  <TestRouter basename="">{children}</TestRouter>
 );
 
 describe("Accessibility", () => {

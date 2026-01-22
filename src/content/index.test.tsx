@@ -26,7 +26,7 @@ const Parent: FC<{ children: React.ReactElement; loggedIn: boolean }> = ({
 
   return (
     <MockedProvider>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Context.Provider value={value}>{children}</Context.Provider>
       </BrowserRouter>
     </MockedProvider>

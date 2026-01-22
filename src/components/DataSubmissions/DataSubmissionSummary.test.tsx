@@ -3,7 +3,6 @@ import { within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { isEqual } from "lodash";
 import React, { FC, useMemo } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
@@ -15,7 +14,7 @@ import { submissionFactory } from "@/factories/submission/SubmissionFactory";
 import { submissionHistoryEventFactory } from "@/factories/submission/SubmissionHistoryEvent";
 import { EDIT_SUBMISSION } from "@/graphql";
 
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 import { Context as AuthContext, ContextState as AuthContextState } from "../Contexts/AuthContext";
 import {
   SubmissionContext,
@@ -68,7 +67,7 @@ const BaseComponent: FC<Props> = ({
     <MockedProvider mocks={mocks}>
       <AuthContext.Provider value={authState}>
         <SubmissionContext.Provider value={submissionCtxState}>
-          <MemoryRouter basename="">{children}</MemoryRouter>
+          <TestRouter basename="">{children}</TestRouter>
         </SubmissionContext.Provider>
       </AuthContext.Provider>
     </MockedProvider>
