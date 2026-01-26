@@ -10,9 +10,10 @@ import {
   Message,
 } from "@aws-sdk/client-bedrock-runtime";
 import { APIGatewayProxyEvent } from "aws-lambda";
-import { safeParseJSON } from "./utils/json.mjs";
-import { formatUserPrompt } from "./utils/conversation.mjs";
-import { Logger } from "./utils/logger.mjs";
+import { safeParseJSON } from "@/utils/json.mjs";
+import { formatUserPrompt } from "@/utils/conversation.mjs";
+import { Logger } from "@/utils/logger.mjs";
+import { InputBody } from "@/schemas/api";
 
 const REGION = process.env.AWS_REGION;
 const KNOWLEDGE_BASE_ID = process.env.KNOWLEDGE_BASE_ID;
@@ -102,15 +103,6 @@ If Decision B is chosen, you MUST respond with exactly ONE of the following resp
 
 const bedrockAgent = new BedrockAgentRuntimeClient({ region: REGION });
 const bedrockRuntime = new BedrockRuntimeClient({ region: REGION });
-
-type InputBody = {
-  question: string;
-  sessionId: string | null;
-  conversationHistory?: Array<{
-    role: "user" | "assistant";
-    content: string;
-  }>;
-};
 
 /**
  * Handles the incoming API Gateway request for the Knowledge base chat completion.
@@ -227,6 +219,8 @@ export const handler = awslambda.streamifyResponse(
 
       // Send session ID first
       responseStream.write(JSON.stringify({ sessionId }) + "\n");
+
+      // TODO: Output a 'pulse' event to provide context on what's currently happening (e.g., "Generating response", "Finalizing", etc.)
 
       // Stream the response
       if (converseResponse.stream) {
