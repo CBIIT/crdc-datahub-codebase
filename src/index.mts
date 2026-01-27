@@ -160,6 +160,11 @@ export const handler = awslambda.streamifyResponse(
       const retrieveCommand = new RetrieveCommand(retrieveParams);
       const retrieveResponse = await bedrockAgent.send(retrieveCommand);
 
+      Logger.info("Retrieved documents from Knowledge Base", {
+        sessionId,
+        chunkCount: retrieveResponse?.retrievalResults?.length || 0,
+      });
+
       // Build search results context from retrieved documents
       if (retrieveResponse.retrievalResults) {
         // citations = {
@@ -177,6 +182,8 @@ export const handler = awslambda.streamifyResponse(
             return `[Document ${index + 1}]\nSource: ${source}\nContent: ${content}\n`;
           })
           .join("\n");
+      } else {
+        Logger.error("No retrieval results from Knowledge Base", { sessionId });
       }
     } catch (retrieveError: unknown) {
       Logger.error("Error retrieving knowledge from Knowledge Base", retrieveError);
@@ -237,6 +244,9 @@ export const handler = awslambda.streamifyResponse(
           if (event.messageStop?.stopReason === "guardrail_intervened") {
             Logger.info("Guardrail intervened in the response generation", { sessionId, event });
           }
+          if (event.messageStop?.stopReason === "max_tokens") {
+            Logger.info("Response generation stopped due to max tokens limit", { sessionId, event });
+          }
 
           if (event.messageStop) {
             break;
@@ -244,14 +254,10 @@ export const handler = awslambda.streamifyResponse(
         }
       }
 
-      responseStream.end();
+      return responseStream.end();
     } catch (converseError: unknown) {
       Logger.error("Error generating response from Converse API", converseError);
       return responseStream.end(JSON.stringify({ error: "AWS bedrock failed to generate response" }));
     }
-
-    // NOTE: This should never be reached due to the responseStream.end() calls above
-    Logger.error("Handler completed without sending a response");
-    return responseStream.end();
   }
 );
