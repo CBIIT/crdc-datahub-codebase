@@ -13,7 +13,8 @@ import { APIGatewayProxyEvent } from "aws-lambda";
 import { safeParseJSON } from "./utils/json.mjs";
 import { formatUserPrompt } from "./utils/conversation.mjs";
 import { Logger } from "./utils/logger.mjs";
-import { InputBody } from "@/schemas/api";
+import type { InputBody } from "@/schemas/api";
+import { GenerateEvent } from "./utils/output.mjs";
 
 const REGION = process.env.AWS_REGION;
 const KNOWLEDGE_BASE_ID = process.env.KNOWLEDGE_BASE_ID;
@@ -140,6 +141,9 @@ export const handler = awslambda.streamifyResponse(
     const sessionId = body?.sessionId || crypto.randomUUID();
     const conversationHistory = body?.conversationHistory || []; // TODO: Use ephemeral storage for history
 
+    // Initial response with sessionId
+    responseStream.write(JSON.stringify({ sessionId }) + "\n");
+
     // Step 1: Retrieve relevant documents from Knowledge Base
     const retrieveParams: RetrieveCommandInput = {
       knowledgeBaseId: KNOWLEDGE_BASE_ID,
@@ -157,6 +161,8 @@ export const handler = awslambda.streamifyResponse(
     // let citations: Citation = {};
 
     try {
+      responseStream.write(JSON.stringify(GenerateEvent("Retrieving relevant documents")) + "\n");
+
       const retrieveCommand = new RetrieveCommand(retrieveParams);
       const retrieveResponse = await bedrockAgent.send(retrieveCommand);
 
@@ -221,13 +227,10 @@ export const handler = awslambda.streamifyResponse(
     };
 
     try {
+      responseStream.write(JSON.stringify(GenerateEvent("Generating a response")) + "\n");
+
       const converseCommand = new ConverseStreamCommand(converseParams);
       const converseResponse = await bedrockRuntime.send(converseCommand);
-
-      // Send session ID first
-      responseStream.write(JSON.stringify({ sessionId }) + "\n");
-
-      // TODO: Output a 'pulse' event to provide context on what's currently happening (e.g., "Generating response", "Finalizing", etc.)
 
       // Stream the response
       if (converseResponse.stream) {

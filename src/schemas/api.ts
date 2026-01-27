@@ -24,3 +24,10 @@ export const APIResponseSchema = z.object({
 });
 
 export type APIResponse = z.infer<typeof APIResponseSchema>;
+
+export const APIEventSchema = z.object({
+  type: z.enum(["pulse"]),
+  description: z.string(),
+});
+
+export type APIEvent = z.infer<typeof APIEventSchema>;
