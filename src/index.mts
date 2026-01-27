@@ -10,9 +10,9 @@ import {
   Message,
 } from "@aws-sdk/client-bedrock-runtime";
 import { APIGatewayProxyEvent } from "aws-lambda";
-import { safeParseJSON } from "@/utils/json.mjs";
-import { formatUserPrompt } from "@/utils/conversation.mjs";
-import { Logger } from "@/utils/logger.mjs";
+import { safeParseJSON } from "./utils/json.mjs";
+import { formatUserPrompt } from "./utils/conversation.mjs";
+import { Logger } from "./utils/logger.mjs";
 import { InputBody } from "@/schemas/api";
 
 const REGION = process.env.AWS_REGION;
