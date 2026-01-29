@@ -32,8 +32,8 @@ def pull_pv_lists_v2(configs, mongo_dao):
     # synonym_puller = SynonymPuller(configs, mongo_dao, api_client)
     
     try:
-        # pull pv, cde, synonym, concept codes
-        pv_puller.pull_cde_pv_synonym_concept_codes()
+        # pull pv, property, synonym, concept codes
+        pv_puller.pull_property_pv_synonym_concept_codes()
         # test get CDE by code and version
         # get_pv_by_code_version(configs, log, "12447172", "1.00", mongo_dao)
     except (KeyboardInterrupt, SystemExit):
@@ -60,20 +60,19 @@ class PVPullerV2:
         else:
             self.pv_models = []
         
-    def pull_cde_pv_synonym_concept_codes(self):
+    def pull_property_pv_synonym_concept_codes(self):
         """
-        pull cde pv from STS API (CDE_API_URL) and save to db
+        pull property pv from STS API (CDE_API_URL) and save to db
         """
         resource = self.configs[STS_DATA_RESOURCE_CONFIG] if self.configs.get(STS_DATA_RESOURCE_CONFIG) else STS_DATA_RESOURCE_API
         # resource = self.configs[STS_DATA_RESOURCE_CONFIG] if self.configs.get(STS_DATA_RESOURCE_CONFIG) else STS_DATA_RESOURCE_FILE
         try:
-            cde_records, synonym_records, concept_codes_records = retrieveAllCDEViaAPI(self.configs, self.pv_models, self.log, self.api_client) if resource == STS_DATA_RESOURCE_API \
-                else retrieveAllCDEViaDumpFile(self.configs, self.log, self.api_client)
-            if not cde_records or len(cde_records) == 0:
+            property_records, synonym_records, concept_codes_records = retrieveAllPropertyViaAPI(self.configs, self.pv_models, self.log, self.api_client)
+            if not property_records or len(property_records) == 0:
                 self.log.info("No property found!")
                 return
-            self.log.info(f"{len(cde_records)} unique property are retrieved!")
-            result, msg = self.mongo_dao.upsert_property_pv(list(cde_records))
+            self.log.info(f"{len(property_records)} unique property are retrieved!")
+            result, msg = self.mongo_dao.upsert_property_pv(list(property_records))
             if result: 
                 self.log.info(f"Property PV are pulled and save successfully!")
             else:
@@ -100,9 +99,9 @@ class PVPullerV2:
             self.log.exception(e)
             self.log.exception(f"Failed to retrieve CDE PVs.")
 
-def retrieveAllCDEViaAPI(configs, pv_models, log, api_client=None):
+def retrieveAllPropertyViaAPI(configs, pv_models, log, api_client=None):
     """
-    extract cde from cde dump file
+    extract property from api
     """
     sts_api_url_list = []
     if len(pv_models) > 0:
@@ -121,24 +120,12 @@ def retrieveAllCDEViaAPI(configs, pv_models, log, api_client=None):
     if not results or len(results) == 0:
         log.error(f"No cde/pvs retrieve from STS API, {sts_api_url_list}.")
         return None, None, None
-    cde_records, synonym_set, concept_code_set = process_sts_cde_pv(results, log)
+    property_records, synonym_set, concept_code_set = process_sts_property_pv(results, log)
     log.info(f"Retrieved CDE PVs from {sts_api_url_list}.")
-    return cde_records, synonym_set, concept_code_set
+    return property_records, synonym_set, concept_code_set
 
-def retrieveAllCDEViaDumpFile(configs, log, api_client=None):
-    """
-    extract cde from cde dump file
-    """
-    sts_file_url = configs[STS_DUMP_CONFIG].format(configs[TIER_CONFIG])
-    log.info(f"Retrieving cde from {sts_file_url}...")
-    if not api_client:
-        api_client = APIInvoker(configs)
-    results = api_client.get_synonyms(sts_file_url)
-    cde_records, synonym_set, concept_code_set = process_sts_cde_pv(results, log)
-    log.info(f"Retrieved CDE PVs from {sts_file_url}.")
-    return cde_records, synonym_set, concept_code_set
 
-def process_sts_cde_pv(sts_results, log, cde_only=False):
+def process_sts_property_pv(sts_results, log, cde_only=False):
     """
     get cde pv from sts api
     :param sts_api_url: sts api url
@@ -148,11 +135,11 @@ def process_sts_cde_pv(sts_results, log, cde_only=False):
     synonym_set = set()
     concept_code_set = set()
     if not sts_results or len(sts_results) == 0:
-        log.error(f"No cde/pvs retrieve from STS API.")
+        log.error(f"No property/pvs retrieve from STS API.")
         return None, None, None
     property_list  = [item for item in sts_results if item.get(PROPERTY) and item.get(PROPERTY) != 'null'] 
     if not property_list or len(property_list) == 0:
-        log.error(f"No cde found in STS API results.")
+        log.error(f"No property found in STS API results.")
         return None, None, None
     for item in property_list:
         property_name = item.get(PROPERTY)
@@ -177,15 +164,15 @@ def process_sts_cde_pv(sts_results, log, cde_only=False):
 
     return property_records, synonym_set, concept_code_set
 
-def extract_pv_list(cde_pv_list):
+def extract_pv_list(property_pv_list):
     """
-    extract pv list from cde dump file
+    extract pv list from property pv list
     """
     pv_list = None
-    if cde_pv_list and len(cde_pv_list) > 0 and cde_pv_list[0].get(NCIT_VALUE): 
-        pv_list = [item.get(NCIT_VALUE) for item in cde_pv_list if item.get(NCIT_VALUE) is not None]
-    if cde_pv_list and any(item.get(NCIT_VALUE) for item in cde_pv_list):
-        pv_list = [item[NCIT_VALUE] for item in cde_pv_list if NCIT_VALUE in item and item[NCIT_VALUE] is not None]
+    if property_pv_list and len(property_pv_list) > 0 and property_pv_list[0].get(NCIT_VALUE): 
+        pv_list = [item.get(NCIT_VALUE) for item in property_pv_list if item.get(NCIT_VALUE) is not None]
+    if property_pv_list and any(item.get(NCIT_VALUE) for item in property_pv_list):
+        pv_list = [item[NCIT_VALUE] for item in property_pv_list if NCIT_VALUE in item and item[NCIT_VALUE] is not None]
         contains_http = any(s for s in pv_list if isinstance(s, str) and s.startswith(("http:", "https:")))
         if contains_http:
             return None
@@ -207,11 +194,11 @@ def compose_property_record(property_item):
     }
     return property_record
 
-def compose_synonym_record(cde_item, synonym_set):
+def compose_synonym_record(property_item, synonym_set):
     """
-    compose synonym record from cde dump file
+    compose synonym record from property item
     """
-    pv_list = cde_item.get(CDE_PV_NAME)
+    pv_list = property_item.get(CDE_PV_NAME)
     if pv_list:
         for pv_item in pv_list:
             synonyms = pv_item.get(NCIT_SYNONYMS)
@@ -224,12 +211,12 @@ def compose_synonym_record(cde_item, synonym_set):
                             synonym_set.add(synonym_key)
     return
 
-def compose_concept_code_record(cde_item, concept_code_set):
+def compose_concept_code_record(property_item, concept_code_set):
     """
-    compose concept code record from cde dump file
+    compose concept code record from property item
     """
-    pv_list = cde_item.get(CDE_PV_NAME)
-    cde_code = cde_item.get(CDE_CODE)
+    pv_list = property_item.get(CDE_PV_NAME)
+    cde_code = property_item.get(CDE_CODE)
     if pv_list:
         for pv in pv_list:
             value = pv.get(NCIT_VALUE)
@@ -240,90 +227,3 @@ def compose_concept_code_record(cde_item, concept_code_set):
                     continue
                 concept_code_set.add(concept_code_key)
     return
-
-def get_pv_by_code_version(configs, log, cde_code, cde_version, mongo_dao):
-    """
-    get permissive values by cde code and version in real time
-    :param cde_code: cde code
-    :param cde_version: cde version
-    """
-    msg = None
-    if cde_code is None:
-        msg = "CDE code is required."
-        log.error(f"Invalid CDE code.")
-        return None
-    cde_records = []
-    api_client = APIInvoker(configs)
-    resource = configs[STS_DATA_RESOURCE_CONFIG] if configs.get(STS_DATA_RESOURCE_CONFIG) else STS_DATA_RESOURCE_API
-    # resource = configs[STS_DATA_RESOURCE_CONFIG] if configs.get(STS_DATA_RESOURCE_CONFIG) else STS_DATA_RESOURCE_FILE
-    if resource == STS_DATA_RESOURCE_API:
-        sts_api_url = configs[STS_API_ONE_URL]
-        if not sts_api_url:
-            msg = "STS API url is not configured."
-            log.error(f"Invalid STS API URL.")
-            return None
-        if not cde_version:
-            sts_api_url = sts_api_url.replace("/{cde_version}", "")
-            sts_api_url = sts_api_url.format(cde_code=cde_code)
-            cde_version = None
-        else:   
-            sts_api_url = sts_api_url.format(cde_code=cde_code, cde_version=cde_version)
-        log.info(f"Retrieving cde from {sts_api_url} for {cde_code}/{cde_version}...")
-        try:
-            results = api_client.get_all_data_elements_v2(sts_api_url)
-            cde_records, _, _ = process_sts_cde_pv(results, log, True)
-            if not cde_records or len(cde_records) == 0:
-                msg = f"No CDE found for {cde_code}/{cde_version}."
-                log.info(msg)
-                return None
-        except Exception as e:
-            log.exception(e)
-            msg = f"Failed to retrieve CDE PVs for {cde_code}/{cde_version}."
-            log.exception(msg)
-            return None
-        except Exception as e:
-            log.exception(e)
-            msg = f"Failed to retrieve CDE PVs for {cde_code}/{cde_version}."
-            log.exception(msg)
-            return None
-    else:
-        sts_file_url = configs[STS_DUMP_CONFIG].format(configs[TIER_CONFIG])
-        log.info(f"Retrieving cde from {sts_file_url} for {cde_code}/{cde_version}...")
-        try:
-            results = api_client.get_synonyms(sts_file_url)
-            cde_records, _, _ = process_sts_cde_pv(results, log, True)
-
-        except Exception as e:
-            log.exception(e)
-            msg = f"Failed to retrieve CDE PVs for {cde_code}/{cde_version}."
-            log.exception(msg)
-            return None
-
-    if not cde_records or len(cde_records) == 0:
-        msg = f"No CDE found for {cde_code}/{cde_version}."
-        log.info(msg)
-        return None
-    log.info(f"{len(cde_records)} unique CDE are retrieved!")
-    cde_record = next((item for item in cde_records if item[CDE_CODE] == cde_code and item[CDE_VERSION] == cde_version), None)
-    if not cde_record:
-        msg = f"No CDE found for {cde_code}/{cde_version}."
-        log.info(msg)
-        return None
-    if not cde_records or len(cde_records) == 0:
-        msg = f"No CDE found for {cde_code}/{cde_version}."
-        log.info(msg)
-        return None
-    log.info(f"{len(cde_records)} unique CDE are retrieved!")
-    cde_record = next((item for item in cde_records if item[CDE_CODE] == cde_code and item[CDE_VERSION] == cde_version), None)
-    if not cde_record:
-        msg = f"No CDE found for {cde_code}/{cde_version}."
-        log.info(msg)
-        return None
-    log.info(f"Retrieved CDE for {cde_code}/{cde_version}.")
-    # save cde pv to db
-    result, _ = mongo_dao.upsert_cde([cde_record])
-    if result:
-        log.info(f"CED PV are pulled and save successfully!")
-    else:
-        log.error(f"Failed to pull and save CDE PV! {msg}")
-    return cde_record
