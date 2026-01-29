@@ -6,8 +6,8 @@ import os
 from bento.common.utils import get_logger, LOG_PREFIX
 # from bento.common.sqs import Queue
 from common.sqs_queue import Queue
-from common.constants import SQS_NAME, SERVICE_TYPE, SERVICE_TYPE_ESSENTIAL, \
-    SERVICE_TYPE_FILE, SERVICE_TYPE_METADATA, SERVICE_TYPE_EXPORT, SERVICE_TYPE_PV_PULLER
+from common.constants import  SQS_NAME, SERVICE_TYPE, SERVICE_TYPE_ESSENTIAL, \
+    SERVICE_TYPE_FILE, SERVICE_TYPE_METADATA, SERVICE_TYPE_EXPORT, SERVICE_TYPE_PV_PULLER, SERVICE_TYPE_PV_PULLER_V2
 from common.utils import get_exception_msg
 from config import Config
 from essential_validator import essentialValidate
@@ -15,6 +15,7 @@ from file_validator import fileValidate
 from metadata_validator import metadataValidate
 from metadata_export import metadata_export
 from pv_puller import pull_pv_lists
+from pv_puller_v2 import pull_pv_lists_v2
 
 DATA_RECORDS_SEARCH_INDEX = "submissionID_nodeType_nodeID"
 DATA_RECORDS_CRDC_SEARCH_INDEX = "dataCommons_nodeType_nodeID"
@@ -44,7 +45,7 @@ def controller():
     #step 2 initialize sqs queue, mongo db access object and model store
     try:
         job_queue = None
-        if  configs[SERVICE_TYPE] not in [SERVICE_TYPE_PV_PULLER]:
+        if  configs[SERVICE_TYPE] not in [SERVICE_TYPE_PV_PULLER, SERVICE_TYPE_PV_PULLER_V2]:
             job_queue = Queue(configs[SQS_NAME], configs.get('aws_profile'))
         mongo_dao = config.mongodb_dao
         # set dataRecord search index
@@ -62,6 +63,10 @@ def controller():
             return 1
         
         if configs[SERVICE_TYPE] == SERVICE_TYPE_PV_PULLER and not mongo_dao.set_search_cde_index(CDE_SEARCH_INDEX):
+            log.error("Failed to set cde index!")
+            return 1
+
+        if configs[SERVICE_TYPE] == SERVICE_TYPE_PV_PULLER_V2 and not mongo_dao.set_search_cde_index(CDE_SEARCH_INDEX):
             log.error("Failed to set cde index!")
             return 1   
 
@@ -81,6 +86,8 @@ def controller():
         metadata_export(configs, job_queue, mongo_dao)
     elif configs[SERVICE_TYPE] == SERVICE_TYPE_PV_PULLER:
         pull_pv_lists(configs, mongo_dao)
+    elif configs[SERVICE_TYPE] == SERVICE_TYPE_PV_PULLER_V2:
+        pull_pv_lists_v2(configs, mongo_dao)
     else:
         log.error(f'Invalid service type: {configs[SERVICE_TYPE]}!')
         return 1

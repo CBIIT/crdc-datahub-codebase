@@ -12,7 +12,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLlE
     SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, CDE_PERMISSIVE_VALUES, CREATED_AT, PROPERTIES,\
     STUDY_COLLECTION, ORGANIZATION_COLLECTION, USER_COLLECTION, PV_CONCEPT_CODE_COLLECTION, CONCEPT_CODE, PERMISSIBLE_VALUE,\
     GENERATED_PROPS, FILE_ENDED, METADATA_ENDED, METADATA_STATUS, FILE_STATUS, FILE_VALIDATION, METADATA_VALIDATION,\
-    CONSENT_CODE, RELEASE
+    CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL
 from common.utils import get_exception_msg, current_datetime, get_uuid_str
 from common.s3_utils import S3Service
 
@@ -1064,7 +1064,40 @@ class MongoDao:
             msg = f"Failed to upsert CDE PV, {get_exception_msg()}"
             self.log.exception(msg)
             return False, msg 
-        
+    
+    def upsert_property_pv(self, cde_list):
+        db = self.client[self.db_name]
+        data_collection = db["propertyPVs"]
+        commands = []
+        try:
+            for m in list(cde_list):
+                query = {PROPERTY: m[PROPERTY], VERSION: m[VERSION], MODEL: m[MODEL]}
+                cde = data_collection.find_one(query)
+                if cde:
+                    cde[UPDATED_AT] = current_datetime()
+                    #cde[CDE_FULL_NAME] = m[CDE_FULL_NAME]
+                    cde[CDE_PERMISSIVE_VALUES] = m[CDE_PERMISSIVE_VALUES]
+                    commands.append(UpdateOne({ID: cde[ID]}, {"$set": cde}))
+                else:
+                    m[CREATED_AT] = current_datetime()
+                    m[UPDATED_AT] = current_datetime()
+                    m[ID] = get_uuid_str()
+                    commands.append(InsertOne(m))
+            if len(commands) > 0:
+                result = data_collection.bulk_write(commands)
+            self.log.info(f'Total {result.inserted_count} property PV are inserted and {result.modified_count} property PV are updated.')
+            return True, None
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            msg = f"Failed to upsert property PV ."
+            self.log.exception(msg)
+            return False, msg
+        except Exception as e:
+            self.log.exception(e)
+            msg = f"Failed to upsert CDE PV, {get_exception_msg()}"
+            self.log.exception(msg)
+            return False, msg
+
     def upsert_cde(self, cde_list):
         db = self.client[self.db_name]
         data_collection = db[CDE_COLLECTION]
