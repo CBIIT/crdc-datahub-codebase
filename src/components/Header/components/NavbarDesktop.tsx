@@ -19,7 +19,7 @@ const Nav = styled("div")({
   width: "100%",
   background: "#ffffff",
   boxShadow: "-0.1px 6px 9px -6px rgba(0, 0, 0, 0.5)",
-  zIndex: 1100,
+  zIndex: 11000,
   position: "relative",
   "& .dropdownContainer": {
     margin: "0 auto",
