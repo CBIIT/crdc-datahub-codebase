@@ -12,7 +12,7 @@ const Dropdown = styled("div")({
   right: 0,
   width: "100%",
   background: "#1F4671",
-  zIndex: 1100,
+  zIndex: 11000,
   display: "block",
   position: "absolute",
   paddingTop: "35px",
