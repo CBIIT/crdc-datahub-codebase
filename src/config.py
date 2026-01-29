@@ -6,7 +6,7 @@ from common.constants import MONGO_DB, SQS_NAME, DB, MODEL_FILE_DIR, SERVICE_TYP
     SERVICE_TYPES, DB, FILE_QUEUE, METADATA_QUEUE, STS_API_ALL_URL_V2, TIER, TIER_CONFIG, SERVICE_TYPE_EXPORT, EXPORTER_QUEUE,\
     DM_BUCKET_CONFIG_NAME, PROD_BUCKET_CONFIG_NAME, DATASYNC_ROLE_ARN_CONFIG , DATASYNC_ROLE_ARN_ENV, CONFIG_TYPE, \
     CONFIG_KEY, CDE_API_URL, SYNONYM_API_URL, DATASYNC_LOG_ARN_ENV, DATASYNC_LOG_ARN_CONFIG, STS_RESOURCE_CONFIG_TYPE,\
-    STS_DATA_RESOURCE_CONFIG, STS_DUMP_CONFIG, STS_API_ALL_URL, STS_API_ONE_URL, SERVICE_TYPE_PV_PULLER_V2
+    STS_DATA_RESOURCE_CONFIG, STS_DUMP_CONFIG, STS_API_ALL_URL, STS_API_ONE_URL
 from bento.common.utils import get_logger
 from common.utils import clean_up_key_value, get_exception_msg, load_message_config
 from common.mongo_dao import MongoDao
@@ -139,7 +139,7 @@ class Config():
             return False
     
     def set_sqs(self, configs_in_db):
-        if self.data[SERVICE_TYPE] in [SERVICE_TYPE_PV_PULLER, SERVICE_TYPE_PV_PULLER_V2]: 
+        if self.data[SERVICE_TYPE] in [SERVICE_TYPE_PV_PULLER]: 
             return True
         sqs_name = None
         if self.data[SERVICE_TYPE] == SERVICE_TYPE_ESSENTIAL:

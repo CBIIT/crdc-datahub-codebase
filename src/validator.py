@@ -7,7 +7,7 @@ from bento.common.utils import get_logger, LOG_PREFIX
 # from bento.common.sqs import Queue
 from common.sqs_queue import Queue
 from common.constants import  SQS_NAME, SERVICE_TYPE, SERVICE_TYPE_ESSENTIAL, \
-    SERVICE_TYPE_FILE, SERVICE_TYPE_METADATA, SERVICE_TYPE_EXPORT, SERVICE_TYPE_PV_PULLER, SERVICE_TYPE_PV_PULLER_V2
+    SERVICE_TYPE_FILE, SERVICE_TYPE_METADATA, SERVICE_TYPE_EXPORT, SERVICE_TYPE_PV_PULLER
 from common.utils import get_exception_msg
 from config import Config
 from essential_validator import essentialValidate
@@ -45,7 +45,7 @@ def controller():
     #step 2 initialize sqs queue, mongo db access object and model store
     try:
         job_queue = None
-        if  configs[SERVICE_TYPE] not in [SERVICE_TYPE_PV_PULLER, SERVICE_TYPE_PV_PULLER_V2]:
+        if  configs[SERVICE_TYPE] not in [SERVICE_TYPE_PV_PULLER]:
             job_queue = Queue(configs[SQS_NAME], configs.get('aws_profile'))
         mongo_dao = config.mongodb_dao
         # set dataRecord search index
@@ -66,9 +66,6 @@ def controller():
             log.error("Failed to set cde index!")
             return 1
 
-        if configs[SERVICE_TYPE] == SERVICE_TYPE_PV_PULLER_V2 and not mongo_dao.set_search_cde_index(CDE_SEARCH_INDEX):
-            log.error("Failed to set cde index!")
-            return 1   
 
     except Exception as e:
         log.exception(e)
@@ -86,7 +83,6 @@ def controller():
         metadata_export(configs, job_queue, mongo_dao)
     elif configs[SERVICE_TYPE] == SERVICE_TYPE_PV_PULLER:
         pull_pv_lists(configs, mongo_dao)
-    elif configs[SERVICE_TYPE] == SERVICE_TYPE_PV_PULLER_V2:
         pull_pv_lists_v2(configs, mongo_dao)
     else:
         log.error(f'Invalid service type: {configs[SERVICE_TYPE]}!')

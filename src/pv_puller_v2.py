@@ -94,7 +94,7 @@ class PVPullerV2:
             result = self.mongo_dao.insert_concept_codes(list(concept_codes_records))
             if result is not None:
                 self.log.info(f"Property Concept Codes are pulled and save successfully!")
-            self.log.info(f"All Property PVs, Synonyms and Concept Codes are pulled and saved successfully!")
+            self.log.info(f"All property PVs, Synonyms and Concept Codes are pulled and saved successfully!")
             return
         except Exception as e:
             self.log.exception(e)
