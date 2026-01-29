@@ -35,7 +35,10 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         organization {
           name
         }
-        studyAbbreviation
+        study {
+          studyName
+          studyAbbreviation
+        }
         dbGaPID
         modelVersion
         status
@@ -86,7 +89,7 @@ export type Response = {
       | "submitterName"
       | "dataCommonsDisplayName"
       | "organization"
-      | "studyAbbreviation"
+      | "study"
       | "dbGaPID"
       | "modelVersion"
       | "status"

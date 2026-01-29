@@ -106,9 +106,9 @@ const defaultColumns: Column<Submission>[] = [
   },
   {
     label: "Study",
-    renderValue: (a) => a.studyAbbreviation,
-    field: "studyAbbreviation",
-    exportValue: (a) => ({ label: "Study", value: a.studyAbbreviation }),
+    renderValue: (a) => a.study.studyAbbreviation,
+    fieldKey: "study.studyAbbreviation",
+    exportValue: (a) => ({ label: "Study", value: a.study.studyAbbreviation }),
   },
   {
     label: "dbGaP ID",

@@ -22,7 +22,7 @@ import TruncatedText from "../../components/TruncatedText";
 import { LIST_SUBMISSIONS, ListSubmissionsInput, ListSubmissionsResp } from "../../graphql";
 import { useColumnVisibility } from "../../hooks/useColumnVisibility";
 import usePageTitle from "../../hooks/usePageTitle";
-import { FormatDate, Logger } from "../../utils";
+import { FormatDate, formatFullStudyName, Logger } from "../../utils";
 
 type T = ListSubmissionsResp["listSubmissions"]["submissions"][number];
 
@@ -157,10 +157,16 @@ const columns: Column<T>[] = [
   },
   {
     label: "Study",
-    renderValue: (a) => <TruncatedText text={a.studyAbbreviation} />,
-    field: "studyAbbreviation",
+    renderValue: (a) => (
+      <TruncatedText
+        text={a.study?.studyAbbreviation}
+        tooltipText={formatFullStudyName(a.study?.studyName, a.study?.studyAbbreviation)}
+        forceTooltip
+      />
+    ),
+    fieldKey: "study.studyAbbreviation",
     hideable: false,
-    exportValue: (a) => ({ label: "Study", value: a.studyAbbreviation }),
+    exportValue: (a) => ({ label: "Study", value: a.study?.studyAbbreviation }),
   },
 
   {
