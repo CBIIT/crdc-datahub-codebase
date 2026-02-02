@@ -90,7 +90,7 @@ class PVPullerV2:
                 self.log.info("No concept code found!")
                 return
             self.log.info(f"{len(concept_codes_records)} unique concept codes are retrieved!")
-            result = self.mongo_dao.insert_concept_codes(list(concept_codes_records))
+            result = self.mongo_dao.insert_concept_codes_v2(list(concept_codes_records))
             if result is not None:
                 self.log.info(f"Property Concept Codes are pulled and save successfully!")
             self.log.info(f"All property PVs, Synonyms and Concept Codes are pulled and saved successfully!")
@@ -216,13 +216,15 @@ def compose_concept_code_record(property_item, concept_code_set):
     compose concept code record from property item
     """
     pv_list = property_item.get(CDE_PV_NAME)
-    cde_code = property_item.get(CDE_CODE)
+    #cde_code = property_item.get(CDE_CODE)
+    model = property_item.get(MODEL)
+    property_name = property_item.get(PROPERTY)
     if pv_list:
         for pv in pv_list:
             value = pv.get(NCIT_VALUE)
             concept_code = pv.get(NCIT_CDE_CONCEPT_CODE)
             if concept_code:
-                concept_code_key = (cde_code, value, concept_code)
+                concept_code_key = (model, property_name, value, concept_code)
                 if concept_code_key in concept_code_set:
                     continue
                 concept_code_set.add(concept_code_key)

@@ -1346,6 +1346,34 @@ class MongoDao:
             msg = f"Failed to upsert concept code, {get_exception_msg()}"
             self.log.exception(msg)
             return None
+
+    def insert_concept_codes_v2(self, concept_codes):
+        db = self.client[self.db_name]
+        data_collection = db[PV_CONCEPT_CODE_COLLECTION]
+        to_insert = []
+        try:
+            for item in concept_codes:
+                concept_code = {MODEL: item[0], PROPERTY: item[1], PERMISSIBLE_VALUE: item[2], CONCEPT_CODE: item[3]}
+                # check if synonym exists
+                existing_concept_code = data_collection.find_one(concept_code)
+                if existing_concept_code:
+                    continue
+                to_insert.append({ID: get_uuid_str(),  **concept_code})
+
+            if len(to_insert) == 0:
+                return 0
+            result = data_collection.insert_many(to_insert)
+            return len(result.inserted_ids)
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            msg = f"Failed to upsert concept code, {get_exception_msg()}"
+            self.log.exception(msg)
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            msg = f"Failed to upsert concept code, {get_exception_msg()}"
+            self.log.exception(msg)
+            return None
     """
     get concept code by pv
     :param pv
