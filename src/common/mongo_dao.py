@@ -1072,12 +1072,11 @@ class MongoDao:
         try:
             for m in list(cde_list):
                 query = {PROPERTY: m[PROPERTY], VERSION: m[VERSION], MODEL: m[MODEL]}
-                cde = data_collection.find_one(query)
-                if cde:
-                    cde[UPDATED_AT] = current_datetime()
-                    #cde[CDE_FULL_NAME] = m[CDE_FULL_NAME]
-                    cde[CDE_PERMISSIVE_VALUES] = m[CDE_PERMISSIVE_VALUES]
-                    commands.append(UpdateOne({ID: cde[ID]}, {"$set": cde}))
+                property = data_collection.find_one(query)
+                if property:
+                    property[UPDATED_AT] = current_datetime()
+                    property[CDE_PERMISSIVE_VALUES] = m[CDE_PERMISSIVE_VALUES]
+                    commands.append(UpdateOne({ID: property[ID]}, {"$set": property}))
                 else:
                     m[CREATED_AT] = current_datetime()
                     m[UPDATED_AT] = current_datetime()
@@ -1094,7 +1093,7 @@ class MongoDao:
             return False, msg
         except Exception as e:
             self.log.exception(e)
-            msg = f"Failed to upsert CDE PV, {get_exception_msg()}"
+            msg = f"Failed to upsert property PV, {get_exception_msg()}"
             self.log.exception(msg)
             return False, msg
 

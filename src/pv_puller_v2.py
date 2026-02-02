@@ -108,7 +108,7 @@ def retrieveAllPropertyViaAPI(configs, pv_models, log, api_client=None):
         for pv_model in pv_models:
             sts_api_url_list.append(configs[STS_API_ALL_URL_V2] + "/" + pv_model)
     else:
-        sts_api_url_list.append(configs[STS_API_ALL_URL_V2])
+        raise Exception("No model configured for pulling property PVs.")
     log.info(f"Retrieving cde from {sts_api_url_list}...")
     if not api_client:
         api_client = APIInvoker(configs)
