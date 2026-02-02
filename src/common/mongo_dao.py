@@ -12,7 +12,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLlE
     SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, CDE_PERMISSIVE_VALUES, CREATED_AT, PROPERTIES,\
     STUDY_COLLECTION, ORGANIZATION_COLLECTION, USER_COLLECTION, PV_CONCEPT_CODE_COLLECTION, CONCEPT_CODE, PERMISSIBLE_VALUE,\
     GENERATED_PROPS, FILE_ENDED, METADATA_ENDED, METADATA_STATUS, FILE_STATUS, FILE_VALIDATION, METADATA_VALIDATION,\
-    CONSENT_CODE, RELEASE
+    CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL
 from common.utils import get_exception_msg, current_datetime, get_uuid_str
 from common.s3_utils import S3Service
 
@@ -1064,7 +1064,39 @@ class MongoDao:
             msg = f"Failed to upsert CDE PV, {get_exception_msg()}"
             self.log.exception(msg)
             return False, msg 
-        
+    
+    def upsert_property_pv(self, cde_list):
+        db = self.client[self.db_name]
+        data_collection = db["propertyPVs"]
+        commands = []
+        try:
+            for m in list(cde_list):
+                query = {PROPERTY: m[PROPERTY], VERSION: m[VERSION], MODEL: m[MODEL]}
+                property = data_collection.find_one(query)
+                if property:
+                    property[UPDATED_AT] = current_datetime()
+                    property[CDE_PERMISSIVE_VALUES] = m[CDE_PERMISSIVE_VALUES]
+                    commands.append(UpdateOne({ID: property[ID]}, {"$set": property}))
+                else:
+                    m[CREATED_AT] = current_datetime()
+                    m[UPDATED_AT] = current_datetime()
+                    m[ID] = get_uuid_str()
+                    commands.append(InsertOne(m))
+            if len(commands) > 0:
+                result = data_collection.bulk_write(commands)
+            self.log.info(f'Total {result.inserted_count} property PV are inserted and {result.modified_count} property PV are updated.')
+            return True, None
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            msg = f"Failed to upsert property PV ."
+            self.log.exception(msg)
+            return False, msg
+        except Exception as e:
+            self.log.exception(e)
+            msg = f"Failed to upsert property PV, {get_exception_msg()}"
+            self.log.exception(msg)
+            return False, msg
+
     def upsert_cde(self, cde_list):
         db = self.client[self.db_name]
         data_collection = db[CDE_COLLECTION]
@@ -1293,6 +1325,34 @@ class MongoDao:
         try:
             for item in concept_codes:
                 concept_code = {CDE_CODE: item[0], PERMISSIBLE_VALUE: item[1], CONCEPT_CODE: item[2]}
+                # check if synonym exists
+                existing_concept_code = data_collection.find_one(concept_code)
+                if existing_concept_code:
+                    continue
+                to_insert.append({ID: get_uuid_str(),  **concept_code})
+
+            if len(to_insert) == 0:
+                return 0
+            result = data_collection.insert_many(to_insert)
+            return len(result.inserted_ids)
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            msg = f"Failed to upsert concept code, {get_exception_msg()}"
+            self.log.exception(msg)
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            msg = f"Failed to upsert concept code, {get_exception_msg()}"
+            self.log.exception(msg)
+            return None
+
+    def insert_concept_codes_v2(self, concept_codes):
+        db = self.client[self.db_name]
+        data_collection = db[PV_CONCEPT_CODE_COLLECTION]
+        to_insert = []
+        try:
+            for item in concept_codes:
+                concept_code = {MODEL: item[0], PROPERTY: item[1], PERMISSIBLE_VALUE: item[2], CONCEPT_CODE: item[3]}
                 # check if synonym exists
                 existing_concept_code = data_collection.find_one(concept_code)
                 if existing_concept_code:

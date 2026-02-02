@@ -256,3 +256,7 @@ STS_DATA_RESOURCE_CONFIG = "sts_data_resource"
 STS_DATA_RESOURCE_API = "sts_api"
 STS_DATA_RESOURCE_FILE = "sts_file"
 STS_DUMP_CONFIG = "sts-dump-file-url"
+STS_API_ALL_URL_V2 = "sts_api_all_url_v2"
+
+PROPERTY = "property"
+MODEL = "model"
