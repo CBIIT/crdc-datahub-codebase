@@ -412,6 +412,6 @@ describe("ListFilters Component", () => {
     const clearButton = getByTestId("status-clear-button");
     const styles = window.getComputedStyle(clearButton);
 
-    expect(parseInt(styles.zIndex, 10)).toBeGreaterThan(9999);
+    expect(parseInt(styles.zIndex, 10)).toBeGreaterThan(250);
   });
 });

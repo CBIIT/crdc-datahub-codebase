@@ -338,7 +338,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                     slotProps={{
                       popper: {
                         sx: {
-                          zIndex: 99999,
+                          zIndex: 700,
                         },
                       },
                     }}
@@ -382,7 +382,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                     MenuProps={{
                       disablePortal: true,
                       hideBackdrop: true,
-                      sx: { zIndex: 10002, pointerEvents: "none" },
+                      sx: { zIndex: 700, pointerEvents: "none" },
                       PaperProps: {
                         sx: { pointerEvents: "auto" },
                       },
@@ -430,7 +430,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
               <Backdrop
                 open={isStatusesMenuOpen}
                 onClick={() => setIsStatusesMenuOpen(false)}
-                sx={{ zIndex: 10000, opacity: "0 !important", cursor: "text" }}
+                sx={{ zIndex: 500, opacity: "0 !important", cursor: "text" }}
               />
             </StyledFormControl>
           </Grid>
