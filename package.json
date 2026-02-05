@@ -5,6 +5,7 @@
   "scripts": {
     "test": "vitest",
     "start": "node src/index.ts",
+    "dev": "node --env-file=.env src/index.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lint:ci": "eslint . --max-warnings 0",
