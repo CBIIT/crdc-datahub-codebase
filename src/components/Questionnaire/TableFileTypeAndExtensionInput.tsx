@@ -232,7 +232,7 @@ const TableAutocompleteInput: FC<Props> = ({
               disablePortal: true,
               sx: {
                 top: "-2px !important",
-                zIndex: "2000",
+                zIndex: 700,
               },
               modifiers: [
                 {
@@ -303,7 +303,7 @@ const TableAutocompleteInput: FC<Props> = ({
               disablePortal: true,
               sx: {
                 top: "-2px !important",
-                zIndex: "2000",
+                zIndex: 700,
               },
               modifiers: [
                 {

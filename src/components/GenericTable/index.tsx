@@ -490,7 +490,11 @@ const GenericTable = <T,>(
   return (
     <StyledTableContainer {...containerProps}>
       {(!paramsInitialized || showDelayedLoading) && (
-        <SuspenseLoader fullscreen={false} data-testid="generic-table-suspense-loader" />
+        <SuspenseLoader
+          fullscreen={false}
+          zIndex={250}
+          data-testid="generic-table-suspense-loader"
+        />
       )}
       {(position === "top" || position === "both") && (
         <Pagination verticalPlacement="top" disabled={!data || loading || !paramsInitialized} />

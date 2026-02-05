@@ -225,7 +225,7 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
                 }
                 MenuProps={{
                   disablePortal: true,
-                  sx: { width: selectMinWidth ? `${selectMinWidth}px` : "auto" },
+                  sx: { zIndex: 700, width: selectMinWidth ? `${selectMinWidth}px` : "auto" },
                 }}
                 inputProps={{ id: "programID-filter" }}
                 data-testid="programID-select"
@@ -258,7 +258,11 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
               <StyledSelect
                 {...field}
                 value={field.value}
-                MenuProps={{ disablePortal: true, PaperProps: { sx: { maxWidth: "300px" } } }}
+                MenuProps={{
+                  disablePortal: true,
+                  PaperProps: { sx: { maxWidth: "300px" } },
+                  sx: { zIndex: 700 },
+                }}
                 inputProps={{ id: "accessType-filter" }}
                 data-testid="accessType-select"
                 onChange={(e) => {
