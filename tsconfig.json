@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "noEmit": true, // Optional - see note below
+    "noEmit": true,
     "target": "esnext",
     "module": "nodenext",
     "rewriteRelativeImportExtensions": true,
@@ -15,14 +15,6 @@
     "forceConsistentCasingInFileNames": true,
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
-    "paths": {
-      "@/utils/*": [
-        "./src/utils/*"
-      ],
-      "@/schemas/*": [
-        "./src/schemas/*"
-      ],
-    },
   },
   "exclude": [
     "node_modules",
