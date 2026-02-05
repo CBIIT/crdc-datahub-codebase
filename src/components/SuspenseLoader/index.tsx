@@ -25,7 +25,7 @@ const StyledBox = styled(Box, {
   height: "100%",
 }));
 
-const SuspenseLoader: FC<Props> = ({ fullscreen = true, zIndex = 9999, ...rest }: Props) => (
+const SuspenseLoader: FC<Props> = ({ fullscreen = true, zIndex = 2000, ...rest }: Props) => (
   <StyledBox
     display="flex"
     alignItems="center"
