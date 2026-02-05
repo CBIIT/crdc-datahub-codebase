@@ -59,7 +59,7 @@ export const createQuestionRouter = (): express.Router => {
 
     const question = body?.question;
     const sessionId = body?.sessionId || crypto.randomUUID();
-    const conversationHistory = body?.conversationHistory || []; // TODO: Use ephemeral storage for history
+    const conversationHistory: NonNullable<InputBody["conversationHistory"]> = body?.conversationHistory ?? []; // TODO: Use ephemeral storage for history
 
     // Initial response with sessionId
     res.write(JSON.stringify({ sessionId }) + "\n");
@@ -119,7 +119,7 @@ export const createQuestionRouter = (): express.Router => {
 
     // Step 2: Build conversation messages with context
     const messages: Message[] = [
-      ...conversationHistory.map((msg: Message) => ({
+      ...conversationHistory.map((msg) => ({
         role: msg.role,
         content: [{ text: msg.content }],
       })),
