@@ -1,14 +1,19 @@
 {
   "compilerOptions": {
-    "target": "es2020",
+    "noEmit": true, // Optional - see note below
+    "target": "esnext",
+    "module": "nodenext",
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
     "strict": true,
     "preserveConstEnums": true,
     "sourceMap": false,
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "moduleResolution": "nodenext",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "paths": {
       "@/utils/*": [

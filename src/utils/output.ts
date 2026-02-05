@@ -1,4 +1,4 @@
-import { APIEvent } from "@/schemas/api";
+import type { APIEvent } from "../schemas/api.ts";
 
 /**
  * A utility function to generate an API event of type "pulse".

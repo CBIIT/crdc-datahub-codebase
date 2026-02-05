@@ -31,4 +31,10 @@ export type AppEnv = {
    * The deployment environment the app is running in
    */
   NODE_ENV: "test" | "development" | "production";
+  /**
+   * The port number the server listens on
+   *
+   * @example "3000"
+   */
+  PORT: string;
 };
