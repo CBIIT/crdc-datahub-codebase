@@ -121,7 +121,6 @@ jobs:
         run: |
           echo "Running unit tests..."
           npm ci
-          npx prisma generate
           npm test
 
       - name: Build Backend Docker Image
