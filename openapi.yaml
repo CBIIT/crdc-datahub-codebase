@@ -1,0 +1,167 @@
+openapi: 3.1.0
+info:
+  title: Chatbot Backend API
+  version: 3.6.0
+  description: Express API for the CRDC Submission Portal chatbot.
+servers:
+  - url: http://localhost:3000
+paths:
+  /question:
+    options:
+      summary: CORS preflight
+      responses:
+        "204":
+          description: No content
+    post:
+      summary: Ask a question
+      description: |
+        Streams newline-delimited JSON responses.
+        The first line includes a `sessionId`. Subsequent lines include `output` chunks
+        and optional `citation` or `error`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InputBody"
+            examples:
+              basic:
+                value:
+                  question: "What is CRDC DataHub?"
+                  sessionId: null
+                  conversationHistory: []
+      responses:
+        "200":
+          description: Streaming response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamLine"
+              examples:
+                session:
+                  value:
+                    sessionId: "8d17d1d6-0c28-4c31-9ce7-4c7c4d81cfc1"
+                output:
+                  value:
+                    output: "CRDC DataHub is..."
+                    citation: {}
+                event:
+                  value:
+                    type: "pulse"
+                    description: "Generating a response"
+                error:
+                  value:
+                    error: "AWS bedrock failed to generate response"
+        "400":
+          description: Missing or invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /status/ping:
+    get:
+      summary: Ping
+      responses:
+        "200":
+          description: Pong
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                pong:
+                  value: "pong"
+  /status/version:
+    get:
+      summary: Service version
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+components:
+  schemas:
+    InputBody:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          minLength: 1
+        sessionId:
+          type: string
+          format: uuid
+          nullable: true
+        conversationHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConversationMessage"
+          default: []
+    ConversationMessage:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+    StreamLine:
+      oneOf:
+        - $ref: "#/components/schemas/SessionLine"
+        - $ref: "#/components/schemas/OutputLine"
+        - $ref: "#/components/schemas/EventLine"
+        - $ref: "#/components/schemas/ErrorResponse"
+    SessionLine:
+      type: object
+      required:
+        - sessionId
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+    OutputLine:
+      type: object
+      properties:
+        output:
+          type: string
+        citation:
+          type: object
+      required:
+        - output
+    EventLine:
+      type: object
+      required:
+        - type
+        - description
+      properties:
+        type:
+          type: string
+          enum: [pulse]
+        description:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    VersionResponse:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: string
