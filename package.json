@@ -1,6 +1,6 @@
 {
   "name": "crdc-datahub-bedrock-kb",
-  "version": "1.0.0",
+  "version": "3.6.0",
   "main": "index.mjs",
   "scripts": {
     "test": "vitest",
