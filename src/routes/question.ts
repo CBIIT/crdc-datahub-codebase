@@ -29,10 +29,6 @@ const bedrockRuntime = new BedrockRuntimeClient({ region: REGION });
 export const createQuestionRouter = (): express.Router => {
   const router = express.Router();
 
-  router.options("/", (_req, res) => {
-    res.status(204).end();
-  });
-
   router.post("/", async (req, res) => {
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Transfer-Encoding", "chunked");
