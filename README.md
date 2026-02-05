@@ -22,9 +22,9 @@ Future enhancements may include support for backend-managed conversation memory 
 ## Local Development
 
 1. Clone the repository.
-2. Install dependencies using `npm install`.
-3. Build the project using `npm run build`.
-4. Start the server using `npm start`.
+2. Copy the `.env.example` file to `.env` and fill in the required environment variables.
+3. Install dependencies using `npm install`.
+4. Start the server using `npm run dev`.
 
 The API is available at:
 
