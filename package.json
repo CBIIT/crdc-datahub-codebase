@@ -1,5 +1,5 @@
 {
-  "name": "crdc-datahub-bedrock-kb",
+  "name": "crdc-datahub-chatbot-backend",
   "version": "3.6.0",
   "main": "index.mjs",
   "scripts": {
