@@ -12,7 +12,7 @@ const StyledAlert = styled(Alert, {
   borderColor: bgColor || "none",
   boxShadow: "-4px 8px 27px 4px rgba(27,28,28,0.09)",
   justifyContent: "center",
-  zIndex: "1200",
+  zIndex: "1400",
   position: "fixed",
   top: "20px",
   left: "50%",

@@ -386,7 +386,7 @@ const DataSubmissionListFilters = ({
                     }
                     MenuProps={{
                       disablePortal: true,
-                      sx: { width: selectMinWidth ? `${selectMinWidth}px` : "auto" },
+                      sx: { zIndex: 700, width: selectMinWidth ? `${selectMinWidth}px` : "auto" },
                     }}
                     inputProps={{
                       id: "organization-filter",
@@ -429,7 +429,7 @@ const DataSubmissionListFilters = ({
                     MenuProps={{
                       disablePortal: true,
                       hideBackdrop: true,
-                      sx: { zIndex: 10002, pointerEvents: "none" },
+                      sx: { zIndex: 700, pointerEvents: "none" },
                       PaperProps: {
                         sx: { pointerEvents: "auto" },
                       },
@@ -477,7 +477,7 @@ const DataSubmissionListFilters = ({
               <Backdrop
                 open={isStatusesMenuOpen}
                 onClick={() => setIsStatusesMenuOpen(false)}
-                sx={{ zIndex: 10000, opacity: "0 !important", cursor: "text" }}
+                sx={{ zIndex: 500, opacity: "0 !important", cursor: "text" }}
               />
             </StyledFormControl>
           </Grid>
@@ -496,7 +496,7 @@ const DataSubmissionListFilters = ({
                   <StyledSelect
                     {...field}
                     value={dataCommons?.length ? field.value : "All"}
-                    MenuProps={{ disablePortal: true }}
+                    MenuProps={{ disablePortal: true, sx: { zIndex: 700 } }}
                     inputProps={{
                       id: "data-commons-filter",
                       "data-testid": "data-commons-select-input",
@@ -582,7 +582,7 @@ const DataSubmissionListFilters = ({
                     }}
                     MenuProps={{
                       disablePortal: true,
-                      sx: { width: selectMinWidth ? `${selectMinWidth}px` : "auto" },
+                      sx: { zIndex: 700, width: selectMinWidth ? `${selectMinWidth}px` : "auto" },
                     }}
                     inputProps={{
                       id: "submitter-name-filter",

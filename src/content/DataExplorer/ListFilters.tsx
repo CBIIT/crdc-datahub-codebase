@@ -258,7 +258,7 @@ const ListFilters = ({ dataCommonsDisplayNames, onChange }: Props) => {
                 <StyledSelect
                   {...field}
                   value={field.value}
-                  MenuProps={{ disablePortal: true }}
+                  MenuProps={{ disablePortal: true, sx: { zIndex: 700 } }}
                   inputProps={{
                     id: "data-commons-display-names-filter",
                     "data-testid": "data-commons-display-names-select-input",

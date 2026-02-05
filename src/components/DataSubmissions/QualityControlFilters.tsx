@@ -181,7 +181,7 @@ const QualityControlFilters = ({ issueType, isAggregated, onChange }: Props) => 
                     {...field}
                     inputProps={{ id: "issueType-filter", "data-testid": "issueType-filter" }}
                     data-testid="quality-control-issueType-filter"
-                    MenuProps={{ disablePortal: true, sx: { zIndex: 99999 } }}
+                    MenuProps={{ disablePortal: true, sx: { zIndex: 700 } }}
                   >
                     <MenuItem value="All" data-testid="issueType-all">
                       All
@@ -218,7 +218,7 @@ const QualityControlFilters = ({ issueType, isAggregated, onChange }: Props) => 
                     {...field}
                     inputProps={{ id: "batchID-filter" }}
                     data-testid="quality-control-batchID-filter"
-                    MenuProps={{ disablePortal: true, sx: { zIndex: 99999 } }}
+                    MenuProps={{ disablePortal: true, sx: { zIndex: 700 } }}
                   >
                     <MenuItem value="All" data-testid="batchID-all">
                       All
@@ -255,7 +255,7 @@ const QualityControlFilters = ({ issueType, isAggregated, onChange }: Props) => 
                     {...field}
                     inputProps={{ id: "nodeType-filter" }}
                     data-testid="quality-control-nodeType-filter"
-                    MenuProps={{ disablePortal: true, sx: { zIndex: 99999 } }}
+                    MenuProps={{ disablePortal: true, sx: { zIndex: 700 } }}
                   >
                     <MenuItem value="All" data-testid="nodeType-all">
                       All
@@ -292,7 +292,7 @@ const QualityControlFilters = ({ issueType, isAggregated, onChange }: Props) => 
                 {...field}
                 inputProps={{ id: "severity-filter" }}
                 data-testid="quality-control-severity-filter"
-                MenuProps={{ disablePortal: true, sx: { zIndex: 99999 } }}
+                MenuProps={{ disablePortal: true, sx: { zIndex: 700 } }}
               >
                 <MenuItem value="All" data-testid="severity-all">
                   All

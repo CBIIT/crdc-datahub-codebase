@@ -19,7 +19,7 @@ import CloseIconSvg from "../../assets/icons/close_icon.svg?react";
 import Tooltip from "../Tooltip";
 
 const StyledPopper = styled(Popper)({
-  zIndex: 100,
+  zIndex: 300,
 });
 
 const StyledResetButton = styled(Button)(({ theme }) => ({

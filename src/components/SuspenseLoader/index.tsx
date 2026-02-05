@@ -1,4 +1,4 @@
-import { Box, CircularProgress, styled } from "@mui/material";
+import { Box, BoxProps, CircularProgress, styled } from "@mui/material";
 import { ComponentProps, FC } from "react";
 
 type Props = {
@@ -8,6 +8,10 @@ type Props = {
    * @default true
    */
   fullscreen?: boolean;
+  /**
+   * Defines the zIndex of the entire suspense loader.
+   */
+  zIndex?: BoxProps["zIndex"];
 } & ComponentProps<typeof CircularProgress>;
 
 const StyledBox = styled(Box, {
@@ -19,11 +23,16 @@ const StyledBox = styled(Box, {
   top: 0,
   width: "100%",
   height: "100%",
-  zIndex: "9999",
 }));
 
-const SuspenseLoader: FC<Props> = ({ fullscreen = true, ...rest }: Props) => (
-  <StyledBox display="flex" alignItems="center" justifyContent="center" fullscreen={fullscreen}>
+const SuspenseLoader: FC<Props> = ({ fullscreen = true, zIndex = 2000, ...rest }: Props) => (
+  <StyledBox
+    display="flex"
+    alignItems="center"
+    justifyContent="center"
+    fullscreen={fullscreen}
+    zIndex={zIndex}
+  >
     <CircularProgress size={64} disableShrink thickness={3} aria-label="Content Loader" {...rest} />
   </StyledBox>
 );
