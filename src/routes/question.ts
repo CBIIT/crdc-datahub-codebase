@@ -36,19 +36,14 @@ export const createQuestionRouter = ({
         issues: validationResult.error.issues,
         body: req.body,
       });
-      return res.status(400).json({
-        error: "Invalid request body",
-        details: validationResult.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
-      });
+      return res.status(400).json({ error: "Invalid request body" });
     }
 
-    const body = validationResult.data;
-
-    // Start streaming only after validation passes
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Transfer-Encoding", "chunked");
     res.flushHeaders();
 
+    const body = validationResult.data;
     const question = body.question;
     const sessionId = body.sessionId || crypto.randomUUID();
     const conversationHistory: NonNullable<InputBody["conversationHistory"]> = body.conversationHistory;
