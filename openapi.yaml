@@ -15,9 +15,17 @@ paths:
     post:
       summary: Ask a question
       description: |
-        Streams newline-delimited JSON responses.
-        The first line includes a `sessionId`. Subsequent lines include `output` chunks
-        and optional `citation` or `error`.
+        Validates request and configuration, then streams newline-delimited JSON responses.
+        
+        **Before streaming starts (validation phase):**
+        - Returns 400 for missing or invalid request data (e.g., missing question)
+        - Returns 500 for server/configuration errors (e.g., missing environment variables)
+        
+        **After streaming starts (200 OK):**
+        - The first line includes a `sessionId`
+        - Subsequent lines include `output` chunks with optional `citation`
+        - Event lines with `type` and `description` for progress updates
+        - Error lines with `error` field for errors during processing (e.g., AWS failures)
       requestBody:
         required: true
         content:
@@ -32,7 +40,9 @@ paths:
                   conversationHistory: []
       responses:
         "200":
-          description: Streaming response
+          description: |
+            Streaming response with newline-delimited JSON.
+            Errors during processing (after streaming starts) are sent as error objects in the stream.
           content:
             application/json:
               schema:
@@ -53,17 +63,29 @@ paths:
                   value:
                     error: "AWS bedrock failed to generate response"
         "400":
-          description: Missing or invalid request data
+          description: |
+            Bad request - validation error before streaming starts.
+            Examples: missing or invalid question field.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingQuestion:
+                  value:
+                    error: "Missing 'question' in request body"
         "500":
-          description: Server error
+          description: |
+            Server error before streaming starts.
+            Examples: missing environment variables, configuration errors.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingConfig:
+                  value:
+                    error: "Invalid configuration: Missing required environment variables"
   /status/ping:
     get:
       summary: Ping
