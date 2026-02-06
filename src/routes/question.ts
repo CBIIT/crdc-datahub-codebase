@@ -64,7 +64,7 @@ export const createQuestionRouter = (): express.Router => {
 
     const question = body.question;
     const sessionId = body.sessionId || crypto.randomUUID();
-    const conversationHistory: NonNullable<InputBody["conversationHistory"]> = body.conversationHistory ?? [];
+    const conversationHistory: NonNullable<InputBody["conversationHistory"]> = body.conversationHistory;
 
     // Initial response with sessionId
     res.write(JSON.stringify({ sessionId }) + "\n");
