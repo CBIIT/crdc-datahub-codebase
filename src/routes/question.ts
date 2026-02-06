@@ -16,32 +16,29 @@ import { GenerateEvent } from "../utils/output.ts";
 import { InputBodySchema, type InputBody } from "../schemas/api.ts";
 import { CHATBOT_PROMPT } from "../config/prompts.ts";
 
-const REGION = process.env.AWS_REGION;
-const KNOWLEDGE_BASE_ID = process.env.KNOWLEDGE_BASE_ID;
-const MODEL_ARN = process.env.MODEL_ARN;
-const GUARDRAIL_ID = process.env.GUARDRAIL_ID;
-const GUARDRAIL_VERSION = process.env.GUARDRAIL_VERSION;
-
-const bedrockAgent = new BedrockAgentRuntimeClient({ region: REGION });
-const bedrockRuntime = new BedrockRuntimeClient({ region: REGION });
-
-export const createQuestionRouter = (): express.Router => {
+export const createQuestionRouter = ({
+  REGION,
+  KNOWLEDGE_BASE_ID,
+  MODEL_ARN,
+  GUARDRAIL_ID,
+  GUARDRAIL_VERSION,
+}: {
+  REGION: string;
+  KNOWLEDGE_BASE_ID: string;
+  MODEL_ARN: string;
+  GUARDRAIL_ID: string;
+  GUARDRAIL_VERSION: string;
+}) => {
   const router = express.Router();
 
+  if (!KNOWLEDGE_BASE_ID || !MODEL_ARN || !GUARDRAIL_ID || !GUARDRAIL_VERSION) {
+    throw new Error("Missing required environment variables for question router");
+  }
+
+  const BEDROCK_AGENT = new BedrockAgentRuntimeClient({ region: REGION });
+  const BEDROCK_RUNTIME = new BedrockRuntimeClient({ region: REGION });
+
   router.post("/", async (req, res) => {
-    // Validate environment configuration first (before starting stream)
-    if (!KNOWLEDGE_BASE_ID || !MODEL_ARN || !GUARDRAIL_ID || !GUARDRAIL_VERSION) {
-      Logger.error("Missing required environment variables", {
-        KNOWLEDGE_BASE_ID,
-        MODEL_ARN,
-        GUARDRAIL_ID,
-        GUARDRAIL_VERSION,
-      });
-
-      return res.status(500).json({ error: "Invalid configuration: Missing required environment variables" });
-    }
-
-    // Validate request body (before starting stream)
     const validationResult = InputBodySchema.safeParse(req.body);
     if (!validationResult.success) {
       Logger.info("Invalid request body", {
@@ -88,7 +85,7 @@ export const createQuestionRouter = (): express.Router => {
       res.write(JSON.stringify(GenerateEvent("Retrieving relevant documents")) + "\n");
 
       const retrieveCommand = new RetrieveCommand(retrieveParams);
-      const retrieveResponse = await bedrockAgent.send(retrieveCommand);
+      const retrieveResponse = await BEDROCK_AGENT.send(retrieveCommand);
 
       Logger.info("Retrieved documents from Knowledge Base", {
         sessionId,
@@ -155,7 +152,7 @@ export const createQuestionRouter = (): express.Router => {
       res.write(JSON.stringify(GenerateEvent("Generating a response")) + "\n");
 
       const converseCommand = new ConverseStreamCommand(converseParams);
-      const converseResponse = await bedrockRuntime.send(converseCommand);
+      const converseResponse = await BEDROCK_RUNTIME.send(converseCommand);
 
       // Stream the response
       if (converseResponse.stream) {
