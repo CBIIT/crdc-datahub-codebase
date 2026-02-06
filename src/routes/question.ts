@@ -29,10 +29,7 @@ export const createQuestionRouter = (): express.Router => {
   const router = express.Router();
 
   router.post("/", async (req, res) => {
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("Transfer-Encoding", "chunked");
-    res.flushHeaders();
-
+    // Validate environment configuration first (before starting stream)
     if (!KNOWLEDGE_BASE_ID || !MODEL_ARN || !GUARDRAIL_ID || !GUARDRAIL_VERSION) {
       Logger.error("Missing required environment variables", {
         KNOWLEDGE_BASE_ID,
@@ -41,26 +38,28 @@ export const createQuestionRouter = (): express.Router => {
         GUARDRAIL_VERSION,
       });
 
-      res.write(JSON.stringify({ error: "Invalid configuration: Missing required environment variables" }) + "\n");
-      return res.end();
+      return res.status(500).json({ error: "Invalid configuration: Missing required environment variables" });
     }
 
+    // Validate request body (before starting stream)
     const validationResult = InputBodySchema.safeParse(req.body);
     if (!validationResult.success) {
       Logger.info("Invalid request body", {
         issues: validationResult.error.issues,
         body: req.body,
       });
-      res.write(
-        JSON.stringify({
-          error: "Invalid request body",
-          details: validationResult.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
-        }) + "\n"
-      );
-      return res.end();
+      return res.status(400).json({
+        error: "Invalid request body",
+        details: validationResult.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
+      });
     }
 
     const body = validationResult.data;
+
+    // Start streaming only after validation passes
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.flushHeaders();
 
     const question = body.question;
     const sessionId = body.sessionId || crypto.randomUUID();
