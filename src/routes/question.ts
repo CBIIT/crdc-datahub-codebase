@@ -15,28 +15,19 @@ import { Logger } from "../utils/logger.ts";
 import { GenerateEvent } from "../utils/output.ts";
 import { InputBodySchema, type InputBody } from "../schemas/api.ts";
 import { CHATBOT_PROMPT } from "../config/prompts.ts";
+import type { AppEnv } from "../types/AppEnv.ts";
 
 export const createQuestionRouter = ({
-  REGION,
+  AWS_REGION,
   KNOWLEDGE_BASE_ID,
   MODEL_ARN,
   GUARDRAIL_ID,
   GUARDRAIL_VERSION,
-}: {
-  REGION: string;
-  KNOWLEDGE_BASE_ID: string;
-  MODEL_ARN: string;
-  GUARDRAIL_ID: string;
-  GUARDRAIL_VERSION: string;
-}) => {
+}: Pick<AppEnv, "AWS_REGION" | "KNOWLEDGE_BASE_ID" | "MODEL_ARN" | "GUARDRAIL_ID" | "GUARDRAIL_VERSION">) => {
   const router = express.Router();
 
-  if (!KNOWLEDGE_BASE_ID || !MODEL_ARN || !GUARDRAIL_ID || !GUARDRAIL_VERSION) {
-    throw new Error("Missing required environment variables for question router");
-  }
-
-  const BEDROCK_AGENT = new BedrockAgentRuntimeClient({ region: REGION });
-  const BEDROCK_RUNTIME = new BedrockRuntimeClient({ region: REGION });
+  const BEDROCK_AGENT = new BedrockAgentRuntimeClient({ region: AWS_REGION });
+  const BEDROCK_RUNTIME = new BedrockRuntimeClient({ region: AWS_REGION });
 
   router.post("/", async (req, res) => {
     const validationResult = InputBodySchema.safeParse(req.body);
