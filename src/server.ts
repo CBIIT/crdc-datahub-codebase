@@ -20,6 +20,6 @@ export const createServer = (): Express => {
 
 export const startServer = (app: Express, port: number): void => {
   app.listen(port, () => {
-    Logger.info(`Express server listening on port ${port}`);
+    Logger.info(`Server listening on port ${port}`);
   });
 };

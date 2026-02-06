@@ -1,3 +1,5 @@
-declare namespace NodeJS {
-  type ProcessEnv = import("./AppEnv").AppEnv;
+declare global {
+  namespace NodeJS {
+    type ProcessEnv = import("./schemas/env.ts").AppEnv;
+  }
 }

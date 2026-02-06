@@ -15,7 +15,7 @@ import { Logger } from "../utils/logger.ts";
 import { GenerateEvent } from "../utils/output.ts";
 import { InputBodySchema, type InputBody } from "../schemas/api.ts";
 import { CHATBOT_PROMPT } from "../config/prompts.ts";
-import type { AppEnv } from "../types/AppEnv.ts";
+import type { AppEnv } from "../schemas/env.ts";
 
 export const createQuestionRouter = ({
   AWS_REGION,
