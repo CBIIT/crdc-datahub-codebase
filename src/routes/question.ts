@@ -10,11 +10,10 @@ import {
   type Message,
 } from "@aws-sdk/client-bedrock-runtime";
 import express from "express";
-import { safeParseJSON } from "../utils/json.ts";
 import { formatUserPrompt } from "../utils/conversation.ts";
 import { Logger } from "../utils/logger.ts";
 import { GenerateEvent } from "../utils/output.ts";
-import type { InputBody } from "../schemas/api.ts";
+import { InputBodySchema, type InputBody } from "../schemas/api.ts";
 import { CHATBOT_PROMPT } from "../config/prompts.ts";
 
 const REGION = process.env.AWS_REGION;
@@ -43,20 +42,28 @@ export const createQuestionRouter = (): express.Router => {
     }
 
     // Validate request body (before starting stream)
-    const body = safeParseJSON<InputBody>(JSON.stringify(req.body ?? {}));
-    if (!body?.question) {
-      Logger.info("Missing 'question' in request body", { body });
-      return res.status(400).json({ error: "Missing 'question' in request body" });
+    const validationResult = InputBodySchema.safeParse(req.body);
+    if (!validationResult.success) {
+      Logger.info("Invalid request body", {
+        issues: validationResult.error.issues,
+        body: req.body,
+      });
+      return res.status(400).json({
+        error: "Invalid request body",
+        details: validationResult.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
+      });
     }
+
+    const body = validationResult.data;
 
     // Start streaming only after validation passes
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Transfer-Encoding", "chunked");
     res.flushHeaders();
 
-    const question = body?.question;
-    const sessionId = body?.sessionId || crypto.randomUUID();
-    const conversationHistory: NonNullable<InputBody["conversationHistory"]> = body?.conversationHistory ?? []; // TODO: Use ephemeral storage for history
+    const question = body.question;
+    const sessionId = body.sessionId || crypto.randomUUID();
+    const conversationHistory: NonNullable<InputBody["conversationHistory"]> = body.conversationHistory;
 
     // Initial response with sessionId
     res.write(JSON.stringify({ sessionId }) + "\n");
