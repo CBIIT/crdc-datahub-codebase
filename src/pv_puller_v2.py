@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from bento.common.utils import get_logger
-from common.constants import TIER_CONFIG, CDE_API_URL, CDE_CODE, CDE_VERSION, CDE_FULL_NAME, STS_API_ALL_URL_V2, STS_API_ONE_URL, \
+from common.constants import TIER_CONFIG, CDE_API_URL, CDE_CODE, CDE_VERSION, CDE_FULL_NAME, STS_API_ALL_URL_V2, STS_API_ONE_URL, STS_API_ONE_URL_V2, \
         CDE_PERMISSIVE_VALUES, STS_DATA_RESOURCE_CONFIG, STS_DATA_RESOURCE_API, STS_DATA_RESOURCE_FILE, STS_DUMP_CONFIG, DATA_COMMONS_LIST, HIDDEN_MODELS, KEY, PROPERTY, MODEL, VERSION
 from common.utils import get_exception_msg
 from common.api_client import APIInvoker
@@ -97,7 +97,7 @@ class PVPullerV2:
             return
         except Exception as e:
             self.log.exception(e)
-            self.log.exception(f"Failed to retrieve CDE PVs.")
+            self.log.exception(f"Failed to retrieve property PVs.")
 
 def retrieveAllPropertyViaAPI(configs, pv_models, log, api_client=None):
     """
@@ -106,7 +106,7 @@ def retrieveAllPropertyViaAPI(configs, pv_models, log, api_client=None):
     sts_api_url_list = []
     if len(pv_models) > 0:
         for pv_model in pv_models:
-            sts_api_url_list.append(configs[STS_API_ALL_URL_V2] + "/" + pv_model)
+            sts_api_url_list.append(f"{configs[STS_API_ALL_URL_V2]}/{pv_model}")
     else:
         raise Exception("No model configured for pulling property PVs.")
     log.info(f"Retrieving cde from {sts_api_url_list}...")
@@ -229,3 +229,105 @@ def compose_concept_code_record(property_item, concept_code_set):
                     continue
                 concept_code_set.add(concept_code_key)
     return
+
+def get_pv_by_property_version(configs, log, prop, prop_version, prop_model, mongo_dao):
+    """
+    get permissive values by cde code and version in real time
+    :param cde_code: cde code
+    :param cde_version: cde version
+    """
+    msg = None
+    prop_records = []
+    api_client = APIInvoker(configs)
+    #resource = configs[STS_DATA_RESOURCE_CONFIG] if configs.get(STS_DATA_RESOURCE_CONFIG) else STS_DATA_RESOURCE_API
+    # resource = configs[STS_DATA_RESOURCE_CONFIG] if configs.get(STS_DATA_RESOURCE_CONFIG) else STS_DATA_RESOURCE_FILE
+    sts_api_url = configs[STS_API_ONE_URL_V2]
+    if not sts_api_url:
+        msg = "STS API url is not configured."
+        log.error(f"Invalid STS API URL.")
+        return None
+    if not prop_version:
+        sts_api_url = sts_api_url.replace("/version={prop_version}", "")
+        sts_api_url = sts_api_url.format(property=prop)
+        prop_version = None
+    else:   
+        sts_api_url = sts_api_url.format(model=prop_model, property=prop, version=prop_version)
+    log.info(f"Retrieving property values from {sts_api_url} for {prop}/{prop_version}...")
+    try:
+        results = api_client.get_all_data_elements(sts_api_url)
+        prop_records, _, _ = process_sts_property_pv(results, log, True)
+        if not prop_records or len(prop_records) == 0:
+            msg = f"No property found for {prop}/{prop_version}."
+            log.info(msg)
+            return None
+    except Exception as e:
+        log.exception(e)
+        msg = f"Failed to retrieve property PVs for {prop}/{prop_version}."
+        log.exception(msg)
+        return None
+    except Exception as e:
+        log.exception(e)
+        msg = f"Failed to retrieve property PVs for {prop}/{prop_version}."
+        log.exception(msg)
+        return None
+
+    if not prop_records or len(prop_records) == 0:
+        msg = f"No property found for {prop}/{prop_version}."
+        log.info(msg)
+        return None
+    log.info(f"{len(prop_records)} unique properties are retrieved!")
+    prop_record = next((item for item in prop_records if item[PROPERTY] == prop and item[MODEL] == prop_model and item[VERSION] == prop_version), None)
+    if not prop_record:
+        msg = f"No property found for {prop}/{prop_version}."
+        log.info(msg)
+        return None
+    if not prop_records or len(prop_records) == 0:
+        msg = f"No property found for {prop}/{prop_version}."
+        log.info(msg)
+        return None
+    log.info(f"{len(prop_records)} unique properties are retrieved!")
+    log.info(f"Retrieved property for {prop}/{prop_version}.")
+    # save property pv to db
+    result, _ = mongo_dao.upsert_property_pv([prop_record])
+    get_all_pvs_by_version(configs, log, prop_version, prop_model, mongo_dao)
+    if result:
+        log.info(f"Property PV are pulled and save successfully!")
+    else:
+        log.error(f"Failed to pull and save property PV! {msg}")
+    return prop_record
+
+def get_all_pvs_by_version(configs, log, version, model, mongo_dao):
+    api_client = APIInvoker(configs)
+    sts_api_url = configs[STS_API_ONE_URL_V2]
+    if not sts_api_url:
+        log.error(f"Invalid STS API URL.")
+        return None
+    sts_api_url = f"{configs[STS_API_ALL_URL_V2]}/{model}/?version={version}"
+    results = api_client.get_all_data_elements(sts_api_url)
+    prop_records, synonym_records, concept_codes_records = process_sts_property_pv(results, log, False)
+    result_pv, _ = mongo_dao.upsert_property_pv(prop_records)
+    if result_pv: 
+        log.info(f"Property PV for {model}/{version} are pulled and save successfully!")
+    else:
+        log.error(f"Failed to pull and save Property PV!")
+    if not prop_records or len(prop_records) == 0:
+        log.info("No property found!")
+        return None
+
+    if not synonym_records or len(synonym_records) == 0:
+        log.info("No synonym found!")
+    log.info(f"{len(synonym_records)} unique synonyms are retrieved!")
+    result_synonyms = mongo_dao.insert_synonyms(list(synonym_records))
+    if result_synonyms is not None:
+        log.info(f"Property Synonyms for {model}/{version} are pulled and save successfully!")
+
+    if not concept_codes_records or len(concept_codes_records) == 0:
+        log.info("No concept code found!")
+    log.info(f"{len(concept_codes_records)} unique concept codes are retrieved!")
+    result_concept_codes = mongo_dao.insert_concept_codes_v2(list(concept_codes_records))
+    if result_concept_codes is not None:
+        log.info(f"Property Concept Codes for {model}/{version} are pulled and save successfully!")
+    log.info(f"All property PVs, Synonyms and Concept Codes for {model}/{version} are pulled and saved successfully!")
+    
+    
+

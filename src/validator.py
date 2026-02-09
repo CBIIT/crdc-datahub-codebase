@@ -82,7 +82,6 @@ def controller():
     elif configs[SERVICE_TYPE] == SERVICE_TYPE_EXPORT:
         metadata_export(configs, job_queue, mongo_dao)
     elif configs[SERVICE_TYPE] == SERVICE_TYPE_PV_PULLER:
-        pull_pv_lists(configs, mongo_dao)
         pull_pv_lists_v2(configs, mongo_dao)
     else:
         log.error(f'Invalid service type: {configs[SERVICE_TYPE]}!')

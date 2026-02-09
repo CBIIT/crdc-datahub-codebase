@@ -1065,12 +1065,12 @@ class MongoDao:
             self.log.exception(msg)
             return False, msg 
     
-    def upsert_property_pv(self, cde_list):
+    def upsert_property_pv(self, prop_list):
         db = self.client[self.db_name]
         data_collection = db["propertyPVs"]
         commands = []
         try:
-            for m in list(cde_list):
+            for m in list(prop_list):
                 query = {PROPERTY: m[PROPERTY], VERSION: m[VERSION], MODEL: m[MODEL]}
                 property = data_collection.find_one(query)
                 if property:
@@ -1168,6 +1168,22 @@ class MongoDao:
             self.log.exception(e)
             self.log.exception(f"Failed to get permissible values for {cde_code}/{cde_version}: {get_exception_msg()}")
             return None
+    
+    def get_property_permissible_values(self, model, version, prop):
+        db = self.client[self.db_name]
+        data_collection = db["propertyPVs"]
+        query = {PROPERTY: prop, VERSION: version, MODEL: model}
+        try:
+            return data_collection.find_one(query, sort=[( VERSION, DESCENDING )])  #find latest version 
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to get permissible values for {prop}/{version}: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to get permissible values for {prop}/{version}: {get_exception_msg()}")
+            return None
+
     """
     get qc record by qc_id
     :param qc_id:
@@ -1377,10 +1393,11 @@ class MongoDao:
     get concept code by pv
     :param pv
     """   
-    def get_concept_code_by_pv(self, cde, pv):
+    
+    def get_concept_code_by_pv(self, property, model, pv):
         db = self.client[self.db_name]
         data_collection = db[PV_CONCEPT_CODE_COLLECTION]
-        query = {CDE_CODE: cde, PERMISSIBLE_VALUE: pv}
+        query = {PROPERTY: property, MODEL: model, PERMISSIBLE_VALUE: pv}
         try:
             return data_collection.find_one(query)
         except errors.PyMongoError as pe:

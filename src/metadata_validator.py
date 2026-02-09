@@ -13,13 +13,13 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     QC_RESULT_ID, BATCH_IDS, VALIDATION_TYPE_METADATA, S3_FILE_INFO, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, QC_ORIGIN, \
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
-    GENERATED_PROPS, DELETE_COMMAND, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, DATA_COMMONS, STUDY_ID
+    GENERATED_PROPS, DELETE_COMMAND, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, DATA_COMMONS, STUDY_ID, NAME_PROP
 from common.utils import current_datetime, get_exception_msg, dump_dict_to_json, create_error, get_uuid_str
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
 from service.ecs_agent import set_scale_in_protection
 from x_submission_validator import CrossSubmissionValidator
-from pv_puller import get_pv_by_code_version
+from pv_puller_v2 import get_all_pvs_by_version
 
 VISIBILITY_TIMEOUT = 20
 BATCH_SIZE = 1000
@@ -623,11 +623,10 @@ class MetaDataValidator:
             
             minimum = prop_def.get(MIN)
             maximum = prop_def.get(MAX)
-            permissive_vals, msg, check_concept_code, cde_code = self.get_permissive_value(prop_def)
-            if msg and msg == CDE_NOT_FOUND:
-                errors.append(create_error("M027", [msg_prefix, prop_name], prop_name, value))
+            model = self.model.get_data_commons()
+            permissive_vals, msg, check_concept_code = self.get_permissive_value(prop_def)
             if check_concept_code == True:
-                self.set_concept_code(data_record, prop_name, value, cde_code)
+                self.set_concept_code(data_record, prop_name, value, model)
             if type == "string":
                 val = str(value)
                 result, error, corrected_value = check_permissive(val, permissive_vals, msg_prefix, prop_name, self.mongo_dao)
@@ -708,7 +707,7 @@ class MetaDataValidator:
 
         return errors
     
-    def set_concept_code(self, data_record, prop_name, value, cde_code):
+    def set_concept_code(self, data_record, prop_name, value, model):
         """
         set concept code for the property
         """
@@ -722,7 +721,7 @@ class MetaDataValidator:
         concept_code_values = []
         for val in values:
             # get concept code by the value
-            result = self.mongo_dao.get_concept_code_by_pv(cde_code, val.strip())
+            result = self.mongo_dao.get_concept_code_by_pv(prop_name, model, val.strip())
             if result and result.get(CONCEPT_CODE):
                 concept_code_values.append(result[CONCEPT_CODE])
 
@@ -739,32 +738,40 @@ class MetaDataValidator:
         permissive_vals = prop_def.get("permissible_values") 
         msg = None
         check_concept_code = False
-        cde_code = None
+        #cde_code = None
+        model = self.model.get_data_commons()
+        version = self.model.get_model_version()
+        prop_name = prop_def.get(NAME_PROP)
+        #prop_type = prop_def.get(TYPE)
+
         if prop_def.get(CDE_TERM) and len(prop_def.get(CDE_TERM)) > 0:
             # retrieve permissible values from DB or cde site
+            '''
             cde_terms = [ct for ct in prop_def[CDE_TERM] if 'caDSR' in ct.get('Origin', '')]
             if cde_terms and len(cde_terms) > 0:
                 cde_code = cde_terms[0].get(TERM_CODE) 
                 cde_version = cde_terms[0].get(TERM_VERSION)
             if not cde_code:
-                return permissive_vals, msg, check_concept_code, cde_code
+                return permissive_vals, msg, check_concept_code, cde_code'''
             
-            cde = self.mongo_dao.get_cde_permissible_values(cde_code, cde_version)
-            if cde:
-                if cde.get(CDE_PERMISSIVE_VALUES) is not None: 
-                    if len(cde.get(CDE_PERMISSIVE_VALUES)) > 0:
-                        permissive_vals = cde[CDE_PERMISSIVE_VALUES]
+            prop = self.mongo_dao.get_property_permissible_values(model, version, prop_name)
+            if prop:
+                if prop.get(CDE_PERMISSIVE_VALUES) is not None: 
+                    if len(prop.get(CDE_PERMISSIVE_VALUES)) > 0:
+                        permissive_vals = prop[CDE_PERMISSIVE_VALUES]
                         check_concept_code = True
                     else:
                         permissive_vals = None
             else:
                 if not self.searched_sts:
-                    cde = get_pv_by_code_version(self.config, self.log, cde_code, cde_version, self.mongo_dao)
+                    #if there is no record for the property in DB, call STS to pull all the property under the model and version to get the permissible values and save in DB, then call mongo_dao to get the property record again.
+                    get_all_pvs_by_version(self.config, self.log, version, model, self.mongo_dao)
+                    prop = self.mongo_dao.get_property_permissible_values(model, version, prop_name)
                     self.searched_sts = True
-                    if cde:
-                        if cde.get(CDE_PERMISSIVE_VALUES) is not None:
-                            if len(cde[CDE_PERMISSIVE_VALUES]) > 0:
-                                permissive_vals = cde[CDE_PERMISSIVE_VALUES]
+                    if prop:
+                        if prop.get(CDE_PERMISSIVE_VALUES) is not None:
+                            if len(prop[CDE_PERMISSIVE_VALUES]) > 0:
+                                permissive_vals = prop[CDE_PERMISSIVE_VALUES]
                                 check_concept_code = True
                             else:
                                 permissive_vals =  None #escape validation
@@ -780,7 +787,7 @@ class MetaDataValidator:
         # strip white space if the value is string
         if permissive_vals and len(permissive_vals) > 0 and isinstance(permissive_vals[0], str):
             permissive_vals = [item.strip() for item in permissive_vals]
-        return permissive_vals, msg, check_concept_code, cde_code
+        return permissive_vals, msg, check_concept_code
 
     
 """util functions"""

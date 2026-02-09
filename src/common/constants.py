@@ -251,6 +251,7 @@ CONSENT_GROUP_NUMBER = "consent_group_number"
 
 STS_API_ALL_URL = "sts_api_all_url"
 STS_API_ONE_URL = "sts_api_one_url"
+STS_API_ONE_URL_V2 = "sts_api_one_url_v2"
 STS_RESOURCE_CONFIG_TYPE = "STS_RESOURCE"
 STS_DATA_RESOURCE_CONFIG = "sts_data_resource"
 STS_DATA_RESOURCE_API = "sts_api"
