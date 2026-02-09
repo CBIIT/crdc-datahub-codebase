@@ -24,6 +24,8 @@ class MongoDao:
       self.client = MongoClient(connectionStr)
       self.db_name = db_name
       self.s3_service = S3Service()
+      self.props = {}
+      self.concept_codes = {}
     """
     get batch by id
     """
@@ -1170,11 +1172,16 @@ class MongoDao:
             return None
     
     def get_property_permissible_values(self, model, version, prop):
+        if self.props.get(prop) is not None:
+            if self.props[prop].get(VERSION) == version and self.props[prop].get(MODEL) == model and self.props[prop].get(PROPERTY) == prop:
+                return self.props.get(prop)
         db = self.client[self.db_name]
         data_collection = db["propertyPVs"]
         query = {PROPERTY: prop, VERSION: version, MODEL: model}
         try:
-            return data_collection.find_one(query, sort=[( VERSION, DESCENDING )])  #find latest version 
+            property_result = data_collection.find_one(query, sort=[( VERSION, DESCENDING )])  #find latest version 
+            self.props[prop] = property_result
+            return property_result
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to get permissible values for {prop}/{version}: {get_exception_msg()}")
@@ -1395,11 +1402,16 @@ class MongoDao:
     """   
     
     def get_concept_code_by_pv(self, property, model, pv):
+        if self.concept_codes.get(pv) is not None:
+            if self.concept_codes[pv].get(PROPERTY) == property and self.concept_codes[pv].get(MODEL) == model:
+                return self.concept_codes.get(pv)
         db = self.client[self.db_name]
         data_collection = db[PV_CONCEPT_CODE_COLLECTION]
         query = {PROPERTY: property, MODEL: model, PERMISSIBLE_VALUE: pv}
         try:
-            return data_collection.find_one(query)
+            pv_result = data_collection.find_one(query)
+            self.concept_codes[pv] = pv_result
+            return pv_result
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to get concept code for {pv}: {get_exception_msg()}")

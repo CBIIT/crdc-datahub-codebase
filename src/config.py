@@ -120,12 +120,12 @@ class Config():
                 self.log.critical(f'No sts resource is configured in both env and args!')
                 return False
             else:
-                self.data[STS_DATA_RESOURCE_CONFIG] = sts_resource[STS_DATA_RESOURCE_CONFIG] if sts_resource.get(STS_DATA_RESOURCE_CONFIG) else None
-                self.data[STS_DUMP_CONFIG] = sts_resource[STS_DUMP_CONFIG] if sts_resource.get(STS_DUMP_CONFIG) else None
-                self.data[STS_API_ALL_URL] = sts_resource[STS_API_ALL_URL] if sts_resource.get(STS_API_ALL_URL) else None
-                self.data[STS_API_ONE_URL] = sts_resource[STS_API_ONE_URL] if sts_resource.get(STS_API_ONE_URL) else None
-                self.data[STS_API_ALL_URL_V2] = sts_resource[STS_API_ALL_URL_V2] if sts_resource.get(STS_API_ALL_URL_V2) else None
-                self.data[STS_API_ONE_URL_V2] = sts_resource[STS_API_ONE_URL_V2] if sts_resource.get(STS_API_ONE_URL_V2) else None
+                self.data[STS_DATA_RESOURCE_CONFIG] = sts_resource.get(STS_DATA_RESOURCE_CONFIG)
+                self.data[STS_DUMP_CONFIG] = sts_resource.get(STS_DUMP_CONFIG)
+                self.data[STS_API_ALL_URL] = sts_resource.get(STS_API_ALL_URL)
+                self.data[STS_API_ONE_URL] = sts_resource.get(STS_API_ONE_URL)
+                self.data[STS_API_ALL_URL_V2] = sts_resource.get(STS_API_ALL_URL_V2)
+                self.data[STS_API_ONE_URL_V2] = sts_resource.get(STS_API_ONE_URL_V2)
             # load configured customized message to memory
             if self.data[SERVICE_TYPE] in [SERVICE_TYPE_METADATA, SERVICE_TYPE_FILE]:
                 message_config = load_message_config()
