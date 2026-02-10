@@ -9,7 +9,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLlE
     SUBMISSION_REL_STATUS, SUBMISSION_REL_STATUS_DELETED, STUDY_ABBREVIATION, SUBMISSION_STATUS, STUDY_ID, \
     CROSS_SUBMISSION_VALIDATION_STATUS, ADDITION_ERRORS, VALIDATION_COLLECTION, VALIDATION_ENDED, CONFIG_COLLECTION, \
     BATCH_BUCKET, CDE_COLLECTION, CDE_CODE, CDE_VERSION, ENTITY_TYPE, QC_COLLECTION, QC_RESULT_ID, CONFIG_TYPE, \
-    SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, CDE_PERMISSIVE_VALUES, CREATED_AT, PROPERTIES,\
+    SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, PROPERTY_PERMISSIBLE_VALUES, CREATED_AT, PROPERTIES,\
     STUDY_COLLECTION, ORGANIZATION_COLLECTION, USER_COLLECTION, PV_CONCEPT_CODE_COLLECTION, CONCEPT_CODE, PERMISSIBLE_VALUE,\
     GENERATED_PROPS, FILE_ENDED, METADATA_ENDED, METADATA_STATUS, FILE_STATUS, FILE_VALIDATION, METADATA_VALIDATION,\
     CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL
@@ -24,6 +24,8 @@ class MongoDao:
       self.client = MongoClient(connectionStr)
       self.db_name = db_name
       self.s3_service = S3Service()
+      self.props = {}
+      self.concept_codes = {}
     """
     get batch by id
     """
@@ -1065,17 +1067,17 @@ class MongoDao:
             self.log.exception(msg)
             return False, msg 
     
-    def upsert_property_pv(self, cde_list):
+    def upsert_property_pv(self, prop_list):
         db = self.client[self.db_name]
         data_collection = db["propertyPVs"]
         commands = []
         try:
-            for m in list(cde_list):
+            for m in list(prop_list):
                 query = {PROPERTY: m[PROPERTY], VERSION: m[VERSION], MODEL: m[MODEL]}
                 property = data_collection.find_one(query)
                 if property:
                     property[UPDATED_AT] = current_datetime()
-                    property[CDE_PERMISSIVE_VALUES] = m[CDE_PERMISSIVE_VALUES]
+                    property[PROPERTY_PERMISSIBLE_VALUES] = m[PROPERTY_PERMISSIBLE_VALUES]
                     commands.append(UpdateOne({ID: property[ID]}, {"$set": property}))
                 else:
                     m[CREATED_AT] = current_datetime()
@@ -1168,6 +1170,27 @@ class MongoDao:
             self.log.exception(e)
             self.log.exception(f"Failed to get permissible values for {cde_code}/{cde_version}: {get_exception_msg()}")
             return None
+    
+    def get_property_permissible_values(self, model, version, prop):
+        prop_key = f"{model}_{version}_{prop}"
+        if self.props.get(prop_key) is not None:
+            return self.props.get(prop_key)
+        db = self.client[self.db_name]
+        data_collection = db["propertyPVs"]
+        query = {PROPERTY: prop, VERSION: version, MODEL: model}
+        try:
+            property_result = data_collection.find_one(query, sort=[( VERSION, DESCENDING )])  #find latest version 
+            self.props[prop_key] = property_result
+            return property_result
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to get permissible values for {prop}/{version}: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to get permissible values for {prop}/{version}: {get_exception_msg()}")
+            return None
+
     """
     get qc record by qc_id
     :param qc_id:
@@ -1377,12 +1400,18 @@ class MongoDao:
     get concept code by pv
     :param pv
     """   
-    def get_concept_code_by_pv(self, cde, pv):
+    
+    def get_concept_code_by_pv(self, property, model, pv):
+        pv_key = f"{property}_{model}_{pv}"
+        if self.concept_codes.get(pv_key) is not None:
+            return self.concept_codes.get(pv_key)
         db = self.client[self.db_name]
         data_collection = db[PV_CONCEPT_CODE_COLLECTION]
-        query = {CDE_CODE: cde, PERMISSIBLE_VALUE: pv}
+        query = {PROPERTY: property, MODEL: model, PERMISSIBLE_VALUE: pv}
         try:
-            return data_collection.find_one(query)
+            pv_result = data_collection.find_one(query)
+            self.concept_codes[pv_key] = pv_result
+            return pv_result
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to get concept code for {pv}: {get_exception_msg()}")

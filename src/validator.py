@@ -14,7 +14,6 @@ from essential_validator import essentialValidate
 from file_validator import fileValidate
 from metadata_validator import metadataValidate
 from metadata_export import metadata_export
-from pv_puller import pull_pv_lists
 from pv_puller_v2 import pull_pv_lists_v2
 
 DATA_RECORDS_SEARCH_INDEX = "submissionID_nodeType_nodeID"
@@ -82,7 +81,6 @@ def controller():
     elif configs[SERVICE_TYPE] == SERVICE_TYPE_EXPORT:
         metadata_export(configs, job_queue, mongo_dao)
     elif configs[SERVICE_TYPE] == SERVICE_TYPE_PV_PULLER:
-        pull_pv_lists(configs, mongo_dao)
         pull_pv_lists_v2(configs, mongo_dao)
     else:
         log.error(f'Invalid service type: {configs[SERVICE_TYPE]}!')

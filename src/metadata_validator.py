@@ -9,21 +9,21 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     NODE_TYPE, PROPERTIES, TYPE, MIN, MAX, VALUE_EXCLUSIVE, VALUE_PROP, VALIDATION_RESULT, ORIN_FILE_NAME, \
     VALIDATED_AT, SERVICE_TYPE_METADATA, NODE_ID, PROPERTIES, PARENTS, KEY, NODE_ID, PARENT_TYPE, PARENT_ID_NAME, PARENT_ID_VAL, \
     SUBMISSION_INTENTION, SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE, TYPE_METADATA_VALIDATE, TYPE_CROSS_SUBMISSION, \
-    SUBMISSION_REL_STATUS_RELEASED, VALIDATION_ID, VALIDATION_ENDED, CDE_TERM, TERM_CODE, TERM_VERSION, CDE_PERMISSIVE_VALUES, \
+    SUBMISSION_REL_STATUS_RELEASED, VALIDATION_ID, VALIDATION_ENDED, PROPERTY_TERM, TERM_CODE, TERM_VERSION, \
     QC_RESULT_ID, BATCH_IDS, VALIDATION_TYPE_METADATA, S3_FILE_INFO, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, QC_ORIGIN, \
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
-    GENERATED_PROPS, DELETE_COMMAND, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, DATA_COMMONS, STUDY_ID
-from common.utils import current_datetime, get_exception_msg, dump_dict_to_json, create_error, get_uuid_str
+    GENERATED_PROPS, DELETE_COMMAND, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, DATA_COMMONS, STUDY_ID, NAME_PROP
+from common.utils import current_datetime, get_exception_msg, dump_dict_to_json, create_error, get_uuid_str, has_permissive_value
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
 from service.ecs_agent import set_scale_in_protection
 from x_submission_validator import CrossSubmissionValidator
-from pv_puller import get_pv_by_code_version
+from pv_puller_v2 import get_all_pvs_by_version
 
 VISIBILITY_TIMEOUT = 20
 BATCH_SIZE = 1000
-CDE_NOT_FOUND = "CDE not available"
+PROPERTY_NOT_FOUND = "Permissible values not available"
 
 def metadataValidate(configs, job_queue, mongo_dao):
     log = get_logger('Metadata Validation Service')
@@ -110,7 +110,7 @@ class MetaDataValidator:
         self.isError = None
         self.isWarning = None
         self.searched_sts = False
-        self.not_found_cde = False
+        self.not_found_property = False
         self.study_name = None
         self.program_names = None
 
@@ -623,11 +623,10 @@ class MetaDataValidator:
             
             minimum = prop_def.get(MIN)
             maximum = prop_def.get(MAX)
-            permissive_vals, msg, check_concept_code, cde_code = self.get_permissive_value(prop_def)
-            if msg and msg == CDE_NOT_FOUND:
-                errors.append(create_error("M027", [msg_prefix, prop_name], prop_name, value))
+            model = self.model.get_data_commons()
+            permissive_vals, msg, check_concept_code = self.get_permissive_value(prop_def)
             if check_concept_code == True:
-                self.set_concept_code(data_record, prop_name, value, cde_code)
+                self.set_concept_code(data_record, prop_name, value, model)
             if type == "string":
                 val = str(value)
                 result, error, corrected_value = check_permissive(val, permissive_vals, msg_prefix, prop_name, self.mongo_dao)
@@ -708,7 +707,7 @@ class MetaDataValidator:
 
         return errors
     
-    def set_concept_code(self, data_record, prop_name, value, cde_code):
+    def set_concept_code(self, data_record, prop_name, value, model):
         """
         set concept code for the property
         """
@@ -722,7 +721,7 @@ class MetaDataValidator:
         concept_code_values = []
         for val in values:
             # get concept code by the value
-            result = self.mongo_dao.get_concept_code_by_pv(cde_code, val.strip())
+            result = self.mongo_dao.get_concept_code_by_pv(prop_name, model, val.strip())
             if result and result.get(CONCEPT_CODE):
                 concept_code_values.append(result[CONCEPT_CODE])
 
@@ -730,8 +729,7 @@ class MetaDataValidator:
             data_record[GENERATED_PROPS] = {}
 
         data_record[GENERATED_PROPS].update({property_concept_code_name: list_delimiter.join(concept_code_values)})
-  
-    
+
     """
     get permissible values of a property
     """
@@ -739,48 +737,37 @@ class MetaDataValidator:
         permissive_vals = prop_def.get("permissible_values") 
         msg = None
         check_concept_code = False
-        cde_code = None
-        if prop_def.get(CDE_TERM) and len(prop_def.get(CDE_TERM)) > 0:
-            # retrieve permissible values from DB or cde site
-            cde_terms = [ct for ct in prop_def[CDE_TERM] if 'caDSR' in ct.get('Origin', '')]
-            if cde_terms and len(cde_terms) > 0:
-                cde_code = cde_terms[0].get(TERM_CODE) 
-                cde_version = cde_terms[0].get(TERM_VERSION)
-            if not cde_code:
-                return permissive_vals, msg, check_concept_code, cde_code
+        model = self.model.get_data_commons()
+        version = self.model.get_model_version()
+        prop_name = prop_def.get(NAME_PROP)
+        #prop_type = prop_def.get(TYPE)
+
+        if prop_def.get(PROPERTY_TERM) and len(prop_def.get(PROPERTY_TERM)) > 0:
+            # retrieve permissible values from DB or property site
             
-            cde = self.mongo_dao.get_cde_permissible_values(cde_code, cde_version)
-            if cde:
-                if cde.get(CDE_PERMISSIVE_VALUES) is not None: 
-                    if len(cde.get(CDE_PERMISSIVE_VALUES)) > 0:
-                        permissive_vals = cde[CDE_PERMISSIVE_VALUES]
-                        check_concept_code = True
-                    else:
-                        permissive_vals = None
+            prop = self.mongo_dao.get_property_permissible_values(model, version, prop_name)
+            if prop:
+                check_concept_code, permissive_vals = has_permissive_value(prop)
             else:
                 if not self.searched_sts:
-                    cde = get_pv_by_code_version(self.config, self.log, cde_code, cde_version, self.mongo_dao)
+                    #if there is no record for the property in DB, call STS to pull all the property under the model and version to get the permissible values and save in DB, then call mongo_dao to get the property record again.
+                    get_all_pvs_by_version(self.config, self.log, version, model, self.mongo_dao)
+                    prop = self.mongo_dao.get_property_permissible_values(model, version, prop_name)
                     self.searched_sts = True
-                    if cde:
-                        if cde.get(CDE_PERMISSIVE_VALUES) is not None:
-                            if len(cde[CDE_PERMISSIVE_VALUES]) > 0:
-                                permissive_vals = cde[CDE_PERMISSIVE_VALUES]
-                                check_concept_code = True
-                            else:
-                                permissive_vals =  None #escape validation
-                            
+                    if prop:
+                        check_concept_code, permissive_vals = has_permissive_value(prop)
                     else:
-                        msg = CDE_NOT_FOUND
-                        self.not_found_cde = True
+                        msg = PROPERTY_NOT_FOUND
+                        self.not_found_property = True
                 else: 
-                    if self.not_found_cde:
-                        msg = CDE_NOT_FOUND
+                    if self.not_found_property:
+                        msg = PROPERTY_NOT_FOUND
 
                        
         # strip white space if the value is string
         if permissive_vals and len(permissive_vals) > 0 and isinstance(permissive_vals[0], str):
             permissive_vals = [item.strip() for item in permissive_vals]
-        return permissive_vals, msg, check_concept_code, cde_code
+        return permissive_vals, msg, check_concept_code
 
     
 """util functions"""
