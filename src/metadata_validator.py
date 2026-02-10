@@ -23,7 +23,7 @@ from pv_puller_v2 import get_all_pvs_by_version
 
 VISIBILITY_TIMEOUT = 20
 BATCH_SIZE = 1000
-PROPERTY_NOT_FOUND = "Property not available"
+PROPERTY_NOT_FOUND = "Permissible values not available"
 
 def metadataValidate(configs, job_queue, mongo_dao):
     log = get_logger('Metadata Validation Service')
