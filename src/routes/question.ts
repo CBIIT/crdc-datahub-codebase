@@ -73,13 +73,13 @@ export const createQuestionRouter = ({
       const retrieveCommand = new RetrieveCommand(retrieveParams);
       const retrieveResponse = await BEDROCK_AGENT.send(retrieveCommand);
 
-      Logger.info("Retrieved documents from Knowledge Base", {
-        sessionId,
-        chunkCount: retrieveResponse?.retrievalResults?.length || 0,
-      });
+      if (retrieveResponse?.retrievalResults?.length) {
+        Logger.info("Retrieved documents from Knowledge Base", {
+          sessionId,
+          query: question,
+          chunks: retrieveResponse.retrievalResults.length || 0,
+        });
 
-      // Build search results context from retrieved documents
-      if (retrieveResponse.retrievalResults) {
         // citations = {
         //   retrievedReferences: retrieveResponse.retrievalResults.map((result) => ({
         //     content: { text: result.content?.text },
@@ -96,7 +96,7 @@ export const createQuestionRouter = ({
           })
           .join("\n");
       } else {
-        Logger.error("No retrieval results from Knowledge Base", { sessionId });
+        Logger.error("No retrieval results from Knowledge Base", { sessionId, query: question });
       }
     } catch (retrieveError: unknown) {
       Logger.error("Error retrieving knowledge from Knowledge Base", retrieveError);
@@ -135,6 +135,8 @@ export const createQuestionRouter = ({
     };
 
     try {
+      Logger.info("Sending request to Converse API", { sessionId, modelId: converseParams.modelId });
+
       res.write(JSON.stringify(GenerateEvent("Generating a response")) + "\n");
 
       const converseCommand = new ConverseStreamCommand(converseParams);
@@ -142,6 +144,8 @@ export const createQuestionRouter = ({
 
       // Stream the response
       if (converseResponse.stream) {
+        Logger.info("Streaming response from Converse API", { sessionId });
+
         for await (const event of converseResponse.stream) {
           if (event.contentBlockDelta?.delta?.text) {
             res.write(
@@ -158,7 +162,6 @@ export const createQuestionRouter = ({
           if (event.messageStop?.stopReason === "max_tokens") {
             Logger.info("Response generation stopped due to max tokens limit", { sessionId, event });
           }
-
           if (event.messageStop) {
             break;
           }
