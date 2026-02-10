@@ -261,3 +261,5 @@ STS_API_ALL_URL_V2 = "sts_api_all_url_v2"
 
 PROPERTY = "property"
 MODEL = "model"
+PROPERTY_PERMISSIBLE_VALUES = "PermissibleValues"
+PROPERTY_TERM = "Term"

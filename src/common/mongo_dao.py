@@ -9,7 +9,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLlE
     SUBMISSION_REL_STATUS, SUBMISSION_REL_STATUS_DELETED, STUDY_ABBREVIATION, SUBMISSION_STATUS, STUDY_ID, \
     CROSS_SUBMISSION_VALIDATION_STATUS, ADDITION_ERRORS, VALIDATION_COLLECTION, VALIDATION_ENDED, CONFIG_COLLECTION, \
     BATCH_BUCKET, CDE_COLLECTION, CDE_CODE, CDE_VERSION, ENTITY_TYPE, QC_COLLECTION, QC_RESULT_ID, CONFIG_TYPE, \
-    SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, CDE_PERMISSIVE_VALUES, CREATED_AT, PROPERTIES,\
+    SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, PROPERTY_PERMISSIBLE_VALUES, CREATED_AT, PROPERTIES,\
     STUDY_COLLECTION, ORGANIZATION_COLLECTION, USER_COLLECTION, PV_CONCEPT_CODE_COLLECTION, CONCEPT_CODE, PERMISSIBLE_VALUE,\
     GENERATED_PROPS, FILE_ENDED, METADATA_ENDED, METADATA_STATUS, FILE_STATUS, FILE_VALIDATION, METADATA_VALIDATION,\
     CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL
@@ -1077,7 +1077,7 @@ class MongoDao:
                 property = data_collection.find_one(query)
                 if property:
                     property[UPDATED_AT] = current_datetime()
-                    property[CDE_PERMISSIVE_VALUES] = m[CDE_PERMISSIVE_VALUES]
+                    property[PROPERTY_PERMISSIBLE_VALUES] = m[PROPERTY_PERMISSIBLE_VALUES]
                     commands.append(UpdateOne({ID: property[ID]}, {"$set": property}))
                 else:
                     m[CREATED_AT] = current_datetime()
@@ -1172,15 +1172,15 @@ class MongoDao:
             return None
     
     def get_property_permissible_values(self, model, version, prop):
-        if self.props.get(prop) is not None:
-            if self.props[prop].get(VERSION) == version and self.props[prop].get(MODEL) == model and self.props[prop].get(PROPERTY) == prop:
-                return self.props.get(prop)
+        prop_key = f"{model}_{version}_{prop}"
+        if self.props.get(prop_key) is not None:
+            return self.props.get(prop_key)
         db = self.client[self.db_name]
         data_collection = db["propertyPVs"]
         query = {PROPERTY: prop, VERSION: version, MODEL: model}
         try:
             property_result = data_collection.find_one(query, sort=[( VERSION, DESCENDING )])  #find latest version 
-            self.props[prop] = property_result
+            self.props[prop_key] = property_result
             return property_result
         except errors.PyMongoError as pe:
             self.log.exception(pe)
@@ -1402,15 +1402,15 @@ class MongoDao:
     """   
     
     def get_concept_code_by_pv(self, property, model, pv):
-        if self.concept_codes.get(pv) is not None:
-            if self.concept_codes[pv].get(PROPERTY) == property and self.concept_codes[pv].get(MODEL) == model:
-                return self.concept_codes.get(pv)
+        pv_key = f"{property}_{model}_{pv}"
+        if self.concept_codes.get(pv_key) is not None:
+            return self.concept_codes.get(pv_key)
         db = self.client[self.db_name]
         data_collection = db[PV_CONCEPT_CODE_COLLECTION]
         query = {PROPERTY: property, MODEL: model, PERMISSIBLE_VALUE: pv}
         try:
             pv_result = data_collection.find_one(query)
-            self.concept_codes[pv] = pv_result
+            self.concept_codes[pv_key] = pv_result
             return pv_result
         except errors.PyMongoError as pe:
             self.log.exception(pe)

@@ -9,7 +9,7 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     NODE_TYPE, PROPERTIES, TYPE, MIN, MAX, VALUE_EXCLUSIVE, VALUE_PROP, VALIDATION_RESULT, ORIN_FILE_NAME, \
     VALIDATED_AT, SERVICE_TYPE_METADATA, NODE_ID, PROPERTIES, PARENTS, KEY, NODE_ID, PARENT_TYPE, PARENT_ID_NAME, PARENT_ID_VAL, \
     SUBMISSION_INTENTION, SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE, TYPE_METADATA_VALIDATE, TYPE_CROSS_SUBMISSION, \
-    SUBMISSION_REL_STATUS_RELEASED, VALIDATION_ID, VALIDATION_ENDED, CDE_TERM, TERM_CODE, TERM_VERSION, CDE_PERMISSIVE_VALUES, \
+    SUBMISSION_REL_STATUS_RELEASED, VALIDATION_ID, VALIDATION_ENDED, PROPERTY_TERM, TERM_CODE, TERM_VERSION, \
     QC_RESULT_ID, BATCH_IDS, VALIDATION_TYPE_METADATA, S3_FILE_INFO, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, QC_ORIGIN, \
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
@@ -23,7 +23,7 @@ from pv_puller_v2 import get_all_pvs_by_version
 
 VISIBILITY_TIMEOUT = 20
 BATCH_SIZE = 1000
-CDE_NOT_FOUND = "CDE not available"
+PROPERTY_NOT_FOUND = "Property not available"
 
 def metadataValidate(configs, job_queue, mongo_dao):
     log = get_logger('Metadata Validation Service')
@@ -110,7 +110,7 @@ class MetaDataValidator:
         self.isError = None
         self.isWarning = None
         self.searched_sts = False
-        self.not_found_cde = False
+        self.not_found_property = False
         self.study_name = None
         self.program_names = None
 
@@ -737,14 +737,13 @@ class MetaDataValidator:
         permissive_vals = prop_def.get("permissible_values") 
         msg = None
         check_concept_code = False
-        #cde_code = None
         model = self.model.get_data_commons()
         version = self.model.get_model_version()
         prop_name = prop_def.get(NAME_PROP)
         #prop_type = prop_def.get(TYPE)
 
-        if prop_def.get(CDE_TERM) and len(prop_def.get(CDE_TERM)) > 0:
-            # retrieve permissible values from DB or cde site
+        if prop_def.get(PROPERTY_TERM) and len(prop_def.get(PROPERTY_TERM)) > 0:
+            # retrieve permissible values from DB or property site
             
             prop = self.mongo_dao.get_property_permissible_values(model, version, prop_name)
             if prop:
@@ -758,11 +757,11 @@ class MetaDataValidator:
                     if prop:
                         check_concept_code, permissive_vals = has_permissive_value(prop)
                     else:
-                        msg = CDE_NOT_FOUND
-                        self.not_found_cde = True
+                        msg = PROPERTY_NOT_FOUND
+                        self.not_found_property = True
                 else: 
-                    if self.not_found_cde:
-                        msg = CDE_NOT_FOUND
+                    if self.not_found_property:
+                        msg = PROPERTY_NOT_FOUND
 
                        
         # strip white space if the value is string

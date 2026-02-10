@@ -14,7 +14,6 @@ from essential_validator import essentialValidate
 from file_validator import fileValidate
 from metadata_validator import metadataValidate
 from metadata_export import metadata_export
-from pv_puller import pull_pv_lists
 from pv_puller_v2 import pull_pv_lists_v2
 
 DATA_RECORDS_SEARCH_INDEX = "submissionID_nodeType_nodeID"
