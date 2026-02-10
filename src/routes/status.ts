@@ -8,6 +8,7 @@ export const createStatusRouter = (): express.Router => {
   });
 
   router.get("/version", (_, res) => {
+    // TODO: Replace with actual version environment variable
     res.json({ version: "unknown" });
   });
 
