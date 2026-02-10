@@ -38,6 +38,15 @@ paths:
                   question: "What is CRDC DataHub?"
                   sessionId: null
                   conversationHistory: []
+              withHistory:
+                value:
+                  question: "Can you summarize the data submission steps?"
+                  sessionId: "2e9d6a44-1b34-4c9d-9c85-0a4f1d74d6a1"
+                  conversationHistory:
+                    - role: user
+                      content: "What is CRDC DataHub?"
+                    - role: assistant
+                      content: "CRDC DataHub is the Cancer Research Data Commons DataHub."
       responses:
         "200":
           description: |
