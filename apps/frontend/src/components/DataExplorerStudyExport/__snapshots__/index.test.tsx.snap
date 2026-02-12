@@ -1,0 +1,172 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Snapshots > should match snapshot when disabled 1`] = `
+<div>
+  <div
+    class="MuiBox-root css-0"
+  >
+    <button
+      aria-label="Export study metadata"
+      class="MuiButtonBase-root Mui-disabled MuiIconButton-root Mui-disabled MuiIconButton-sizeMedium css-kq13b2-MuiButtonBase-root-MuiIconButton-root"
+      data-testid="export-study-metadata-toggle"
+      disabled=""
+      tabindex="-1"
+      type="button"
+    >
+      <div
+        class="MuiStack-root css-m69qwo-MuiStack-root"
+      >
+        <svg
+          class="css-ugaskd"
+          fill="none"
+          height="20"
+          viewBox="0 0 20 20"
+          width="20"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M10.9473 12.1053V4H8.94727V12.1053L6.31569 9.57895L4.94727 10.9474L9.89463 15.8947L14.842 10.9474L13.4736 9.57895L10.9473 12.1053Z"
+            fill="currentColor"
+          />
+          <path
+            d="M16.8421 0H2.94737C1.26316 0 0 1.26316 0 2.94737V16.8421C0 18.5263 1.26316 19.7895 2.94737 19.7895H16.8421C18.5263 19.7895 19.7895 18.5263 19.7895 16.8421V2.94737C19.7895 1.26316 18.5263 0 16.8421 0ZM17.8947 16.8421C17.8947 17.4737 17.4737 17.7895 16.9474 17.7895H2.94737C2.31579 17.7895 2 17.3684 2 16.8421V2.94737C2 2.31579 2.31579 2 2.94737 2H16.8421C17.4737 2 17.7895 2.42105 17.7895 2.94737V16.8421H17.8947Z"
+            fill="currentColor"
+          />
+        </svg>
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1q5be5l-MuiSvgIcon-root"
+          data-testid="ExpandMoreIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"
+          />
+        </svg>
+      </div>
+    </button>
+  </div>
+</div>
+`;
+
+exports[`Snapshots > should match snapshot when enabled 1`] = `
+<div>
+  <div
+    class="MuiBox-root css-0"
+  >
+    <button
+      aria-label="Export study metadata"
+      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeMedium css-kq13b2-MuiButtonBase-root-MuiIconButton-root"
+      data-testid="export-study-metadata-toggle"
+      tabindex="0"
+      type="button"
+    >
+      <div
+        class="MuiStack-root css-m69qwo-MuiStack-root"
+      >
+        <svg
+          class="css-ugaskd"
+          fill="none"
+          height="20"
+          viewBox="0 0 20 20"
+          width="20"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M10.9473 12.1053V4H8.94727V12.1053L6.31569 9.57895L4.94727 10.9474L9.89463 15.8947L14.842 10.9474L13.4736 9.57895L10.9473 12.1053Z"
+            fill="currentColor"
+          />
+          <path
+            d="M16.8421 0H2.94737C1.26316 0 0 1.26316 0 2.94737V16.8421C0 18.5263 1.26316 19.7895 2.94737 19.7895H16.8421C18.5263 19.7895 19.7895 18.5263 19.7895 16.8421V2.94737C19.7895 1.26316 18.5263 0 16.8421 0ZM17.8947 16.8421C17.8947 17.4737 17.4737 17.7895 16.9474 17.7895H2.94737C2.31579 17.7895 2 17.3684 2 16.8421V2.94737C2 2.31579 2.31579 2 2.94737 2H16.8421C17.4737 2 17.7895 2.42105 17.7895 2.94737V16.8421H17.8947Z"
+            fill="currentColor"
+          />
+        </svg>
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1q5be5l-MuiSvgIcon-root"
+          data-testid="ExpandMoreIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"
+          />
+        </svg>
+      </div>
+      <span
+        class="MuiTouchRipple-root css-8je8zh-MuiTouchRipple-root"
+      />
+    </button>
+  </div>
+</div>
+`;
+
+exports[`Snapshots > should match snapshot when open 1`] = `
+<div>
+  <div
+    class="MuiBox-root css-0"
+  >
+    <button
+      aria-label="Export study metadata"
+      class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeMedium css-kq13b2-MuiButtonBase-root-MuiIconButton-root"
+      data-testid="export-study-metadata-toggle"
+      tabindex="0"
+      type="button"
+    >
+      <div
+        class="MuiStack-root css-m69qwo-MuiStack-root"
+      >
+        <svg
+          class="css-ugaskd"
+          fill="none"
+          height="20"
+          viewBox="0 0 20 20"
+          width="20"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M10.9473 12.1053V4H8.94727V12.1053L6.31569 9.57895L4.94727 10.9474L9.89463 15.8947L14.842 10.9474L13.4736 9.57895L10.9473 12.1053Z"
+            fill="currentColor"
+          />
+          <path
+            d="M16.8421 0H2.94737C1.26316 0 0 1.26316 0 2.94737V16.8421C0 18.5263 1.26316 19.7895 2.94737 19.7895H16.8421C18.5263 19.7895 19.7895 18.5263 19.7895 16.8421V2.94737C19.7895 1.26316 18.5263 0 16.8421 0ZM17.8947 16.8421C17.8947 17.4737 17.4737 17.7895 16.9474 17.7895H2.94737C2.31579 17.7895 2 17.3684 2 16.8421V2.94737C2 2.31579 2.31579 2 2.94737 2H16.8421C17.4737 2 17.7895 2.42105 17.7895 2.94737V16.8421H17.8947Z"
+            fill="currentColor"
+          />
+        </svg>
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1q5be5l-MuiSvgIcon-root"
+          data-testid="ExpandMoreIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"
+          />
+        </svg>
+      </div>
+      <span
+        class="MuiTouchRipple-root css-8je8zh-MuiTouchRipple-root"
+      >
+        <span
+          class="css-y4cjyz-MuiTouchRipple-ripple MuiTouchRipple-ripple MuiTouchRipple-rippleVisible"
+          style="width: 1px; height: 1px; top: -0.5px; left: -0.5px;"
+        >
+          <span
+            class="MuiTouchRipple-child MuiTouchRipple-childLeaving"
+          />
+        </span>
+        <span
+          class="css-y4cjyz-MuiTouchRipple-ripple MuiTouchRipple-ripple MuiTouchRipple-rippleVisible MuiTouchRipple-ripplePulsate"
+          style="width: 1px; height: 1px; top: -0.5px; left: -0.5px;"
+        >
+          <span
+            class="MuiTouchRipple-child MuiTouchRipple-childLeaving MuiTouchRipple-childPulsate"
+          />
+        </span>
+      </span>
+    </button>
+  </div>
+</div>
+`;

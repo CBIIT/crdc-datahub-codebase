@@ -1,0 +1,31 @@
+# Overview
+
+This document provides developer documentation on the CRDC Submission Portal – Data Submissions feature.
+
+# Data Submissions
+
+Refer to this section for information on the Data Submission functionality.
+
+## Submit Action Requirements
+
+The following table outlines the conditions for which a Data Submission must meet in order to be submitted. Key:
+
+- ❌: If the condition is not met, the submission cannot be submitted.
+- ✅: If the condition is not met, the submission can still be submitted.
+
+| Requirement                                                                       | Description                                                                                                             | Admin Submit | Regular Submit |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------ | -------------- |
+| Submission status must not be 'New'                                               | The submission status must not be 'New'.                                                                                | ❌           | ❌             |
+| Validation must not be running                                                    | The `metadataValidationStatus` and `fileValidationStatus` should not be `Validating`.                                   | ❌           | ❌             |
+| No uploading batches                                                              | There should be no batches with status `Uploading` for the submission.                                                  | ❌           | ❌             |
+| Submission Status                                                                 | The submission status must be one of: `In Progress`, `Withdrawn`, or `Rejected` to submit                               | ❌           | ❌             |
+| Metadata validation for 'Delete' intention                                        | Metadata validation should be initialized for submissions with the intention `Delete`.                                  | ❌           | ❌             |
+| Metadata validation for 'Metadata Only' submissions                               | Metadata validation should be initialized for submissions with the data type `Metadata Only`.                           | ❌           | ❌             |
+| Data file size should be greater than 0 for 'Metadata and Data Files' submissions | The `dataFileSize.size` property should be greater than 0 for submissions with the data type `Metadata and Data Files`. | ❌           | ❌             |
+| Metadata validation for 'Metadata and Data Files' submissions                     | Metadata validation should be initialized for submissions with the data type `Metadata and Data Files`.                 | ❌           | ❌             |
+| Validation must have been run                                                     | The `metadataValidationStatus` and `fileValidationStatus` should not be `New`.                                          | ❌           | ❌             |
+| Submission must not have orphaned files                                           | No `QCResult` should contain the error code `F008`.                                                                     | ❌           | ❌             |
+| Validation must have passed                                                       | The `metadataValidationStatus` and `fileValidationStatus` should not be `Error`.                                        | ✅           | ❌             |
+| **All checks passed**                                                             | All above conditions have passed.                                                                                       | ❌           | ✅             |
+
+**NOTE:** Conditions are run in sequence by criticality (most critical first). The first failing condition's tooltip appears.
