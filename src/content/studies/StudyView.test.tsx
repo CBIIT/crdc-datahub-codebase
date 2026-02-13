@@ -2,7 +2,7 @@ import { ApolloError } from "@apollo/client";
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import React, { FC } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { OrganizationProvider } from "@/components/Contexts/OrganizationListContext";
@@ -26,7 +26,7 @@ import {
   ListOrgsInput,
   LIST_ORGS,
 } from "../../graphql";
-import { act, render, waitFor, within } from "../../test-utils";
+import { TestRouter, act, render, waitFor, within } from "../../test-utils";
 
 import StudyView from "./StudyView";
 
@@ -103,9 +103,9 @@ const TestParent: FC<ParentProps> = ({
 }: ParentProps) => (
   <MockedProvider mocks={mocks} addTypename={false}>
     <OrganizationProvider preload>
-      <MemoryRouter initialEntries={initialEntries}>
+      <TestRouter initialEntries={initialEntries}>
         <SearchParamsProvider>{children}</SearchParamsProvider>
-      </MemoryRouter>
+      </TestRouter>
     </OrganizationProvider>
   </MockedProvider>
 );

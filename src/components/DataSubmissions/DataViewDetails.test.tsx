@@ -1,9 +1,8 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import { FC } from "react";
-import { MemoryRouter } from "react-router-dom";
 
 import { GET_NODE_DETAIL, GET_RELATED_NODES } from "../../graphql";
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 import { SearchParamsProvider } from "../Contexts/SearchParamsContext";
 
 import DataViewDetails from "./DataViewDetails";
@@ -98,9 +97,9 @@ type ParentProps = {
 
 const TestParent: FC<ParentProps> = ({ mocks, children }: ParentProps) => (
   <MockedProvider mocks={mocks} addTypename={false}>
-    <MemoryRouter>
+    <TestRouter>
       <SearchParamsProvider>{children}</SearchParamsProvider>
-    </MemoryRouter>
+    </TestRouter>
   </MockedProvider>
 );
 

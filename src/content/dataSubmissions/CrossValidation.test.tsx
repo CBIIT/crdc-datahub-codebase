@@ -2,7 +2,6 @@ import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { FC, useMemo } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { batchFactory } from "@/factories/submission/BatchFactory";
@@ -27,7 +26,7 @@ import {
   SubmissionStatsResp,
   SUBMISSION_CROSS_VALIDATION_RESULTS,
 } from "../../graphql";
-import { render, waitFor, within } from "../../test-utils";
+import { TestRouter, render, waitFor, within } from "../../test-utils";
 
 import CrossValidation from "./CrossValidation";
 
@@ -82,13 +81,13 @@ const TestParent: FC<ParentProps> = ({ submission = {}, mocks, children }: Paren
   );
 
   return (
-    <MemoryRouter basename="">
+    <TestRouter basename="">
       <MockedProvider mocks={mocks} showWarnings>
         <SubmissionContext.Provider value={ctxValue}>
           <SearchParamsProvider>{children}</SearchParamsProvider>
         </SubmissionContext.Provider>
       </MockedProvider>
-    </MemoryRouter>
+    </TestRouter>
   );
 };
 

@@ -1,13 +1,13 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import React, { FC } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 
 import { LIST_ORGS, ListOrgsInput, ListOrgsResp } from "../../../graphql";
-import { fireEvent, render, waitFor, within } from "../../../test-utils";
+import { TestRouter, fireEvent, render, waitFor, within } from "../../../test-utils";
 import { OrganizationProvider } from "../../Contexts/OrganizationListContext";
 import { SearchParamsProvider, useSearchParamsContext } from "../../Contexts/SearchParamsContext";
 
@@ -50,11 +50,11 @@ const TestParent: FC<ParentProps> = ({
   children,
 }: ParentProps) => (
   <MockedProvider mocks={[...listOrgMocks, ...mocks]}>
-    <MemoryRouter initialEntries={initialEntries}>
+    <TestRouter initialEntries={initialEntries}>
       <OrganizationProvider preload>
         <SearchParamsProvider>{children}</SearchParamsProvider>
       </OrganizationProvider>
-    </MemoryRouter>
+    </TestRouter>
   </MockedProvider>
 );
 

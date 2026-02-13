@@ -1,7 +1,6 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { FC, useMemo } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
@@ -14,7 +13,7 @@ import { newBatchFactory } from "@/factories/submission/NewBatchFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
 
 import { CREATE_BATCH, CreateBatchResp, UPDATE_BATCH, UpdateBatchResp } from "../../graphql";
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 import { Context as AuthCtx, ContextState as AuthCtxState } from "../Contexts/AuthContext";
 import {
   SubmissionContext,
@@ -51,7 +50,7 @@ const TestParent: FC<ParentProps> = ({
   );
 
   return (
-    <MemoryRouter>
+    <TestRouter>
       <AuthCtx.Provider
         value={authCtxStateFactory.build({
           user: userFactory.build({
@@ -67,7 +66,7 @@ const TestParent: FC<ParentProps> = ({
           </MockedProvider>
         </SubmissionContext.Provider>
       </AuthCtx.Provider>
-    </MemoryRouter>
+    </TestRouter>
   );
 };
 

@@ -32,7 +32,7 @@ const DEFAULT_CHARACTER_LIMITS: CharacterLimitsMap<BKeys> = {
   "study.funding.nciProgramOfficer": 50,
   "study.publications.title": 500,
   "study.publications.pubmedID": 20,
-  "study.publications.DOI": 20,
+  "study.publications.DOI": 200,
   "study.plannedPublications.title": 500,
   // "study.plannedPublications.expectedDate": 0,
   "study.repositories.name": 50,

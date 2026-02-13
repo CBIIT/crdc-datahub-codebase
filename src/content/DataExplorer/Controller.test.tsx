@@ -1,5 +1,5 @@
 import React, { FC, useMemo } from "react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
@@ -9,7 +9,7 @@ import {
   ContextState as AuthContextState,
   Status as AuthContextStatus,
 } from "../../components/Contexts/AuthContext";
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 
 import DataExplorerController from "./Controller";
 
@@ -44,11 +44,11 @@ const TestParent: FC<ParentProps> = ({
 
   return (
     <AuthContext.Provider value={baseAuthCtx}>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <TestRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/data-explorer/:studyId?" element={children} />
         </Routes>
-      </MemoryRouter>
+      </TestRouter>
     </AuthContext.Provider>
   );
 };

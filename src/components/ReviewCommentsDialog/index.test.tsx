@@ -17,7 +17,7 @@ type Props<T, H> = {
 
 const BaseComponent = <T, H>({ open, status, lastReview, title, onClose }: Props<T, H>) => (
   <ThemeProvider theme={theme}>
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ReviewCommentsDialog
         open={open}
         onClose={onClose}

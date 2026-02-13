@@ -1,6 +1,6 @@
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 
 import RequireAuth from "./index";
 
@@ -11,7 +11,7 @@ vi.mock("../Contexts/AuthContext", async () => ({
 }));
 
 const TestRoutes: React.ReactElement = (
-  <MemoryRouter initialEntries={["/protected"]}>
+  <TestRouter initialEntries={["/protected"]}>
     <Routes>
       <Route
         path="/protected"
@@ -25,7 +25,7 @@ const TestRoutes: React.ReactElement = (
       />
       <Route path="/" element={<div>Login Page</div>} />
     </Routes>
-  </MemoryRouter>
+  </TestRouter>
 );
 
 describe("Basic Functionality", () => {

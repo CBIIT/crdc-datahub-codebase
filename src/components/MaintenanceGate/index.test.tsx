@@ -1,10 +1,10 @@
 import { MockedResponse, MockedProvider } from "@apollo/client/testing";
 import { GraphQLError } from "graphql";
 import { FC } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 
 import { IS_MAINTENANCE_MODE, IsMaintenanceModeResponse } from "../../graphql/isMaintenanceMode";
-import { render, waitFor } from "../../test-utils";
+import { TestRouter, render, waitFor } from "../../test-utils";
 
 import MaintenanceGate from "./index";
 
@@ -20,13 +20,13 @@ type MockParentProps = {
 
 const MockParent: FC<MockParentProps> = ({ mocks, initialEntries = ["/"] }) => (
   <MockedProvider mocks={mocks} addTypename={false}>
-    <MemoryRouter initialEntries={initialEntries}>
+    <TestRouter initialEntries={initialEntries}>
       <Routes>
         <Route element={<MaintenanceGate />}>
           <Route path="/" element={<p>Home Page</p>} />
         </Route>
       </Routes>
-    </MemoryRouter>
+    </TestRouter>
   </MockedProvider>
 );
 

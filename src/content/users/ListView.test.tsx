@@ -2,7 +2,7 @@ import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import { fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FC, useMemo } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import {
@@ -16,7 +16,7 @@ import {
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 import { LIST_USERS, ListUsersResp } from "@/graphql";
-import { act, render, waitFor } from "@/test-utils";
+import { TestRouter, act, render, waitFor } from "@/test-utils";
 
 import ListView from "./ListView";
 
@@ -63,11 +63,11 @@ const TestParent: FC<ParentProps> = ({
 
   return (
     <MockedProvider mocks={mocks} addTypename={false}>
-      <MemoryRouter initialEntries={initialEntries}>
+      <TestRouter initialEntries={initialEntries}>
         <AuthContext.Provider value={authCtx}>
           <SearchParamsProvider>{children}</SearchParamsProvider>
         </AuthContext.Provider>
-      </MemoryRouter>
+      </TestRouter>
     </MockedProvider>
   );
 };

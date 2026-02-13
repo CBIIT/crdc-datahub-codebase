@@ -165,7 +165,7 @@ const DataExplorerFilters = ({
                     }
                     MenuProps={{
                       disablePortal: true,
-                      sx: { width: selectMinWidth ? `${selectMinWidth}px` : "auto" },
+                      sx: { zIndex: 700, width: selectMinWidth ? `${selectMinWidth}px` : "auto" },
                     }}
                     inputProps={{
                       id: "nodeType-filter",

@@ -2,7 +2,6 @@ import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { FC } from "react";
-import { MemoryRouter } from "react-router-dom";
 
 import { approvedStudyFactory } from "@/factories/approved-study/ApprovedStudyFactory";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
@@ -16,7 +15,7 @@ import {
   ListApprovedStudiesInput,
   ListApprovedStudiesResp,
 } from "../../graphql";
-import { render, waitFor, within } from "../../test-utils";
+import { TestRouter, render, waitFor, within } from "../../test-utils";
 import { Context as AuthCtx, ContextState as AuthCtxState } from "../Contexts/AuthContext";
 
 import CreateDataSubmissionDialog from "./CreateDataSubmissionDialog";
@@ -123,7 +122,7 @@ const TestParent: FC<ParentProps> = ({
 }) => (
   <AuthCtx.Provider value={authCtxState}>
     <MockedProvider mocks={mocks} addTypename={false}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <TestRouter>{children}</TestRouter>
     </MockedProvider>
   </AuthCtx.Provider>
 );

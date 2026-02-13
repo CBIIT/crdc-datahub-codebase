@@ -1,9 +1,11 @@
 import RefreshIcon from "@mui/icons-material/Refresh";
 import {
+  Backdrop,
   Box,
   FormControl,
   Grid,
   IconButton,
+  InputAdornment,
   MenuItem,
   Stack,
   styled,
@@ -13,6 +15,7 @@ import { isEqual } from "lodash";
 import { memo, useCallback, useMemo, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
+import ClearButton from "../../components/ClearButton";
 import { useSearchParamsContext } from "../../components/Contexts/SearchParamsContext";
 import StyledAutocompleteFormComponent from "../../components/StyledFormComponents/StyledAutocomplete";
 import StyledTextFieldFormComponent from "../../components/StyledFormComponents/StyledOutlinedInput";
@@ -157,6 +160,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
   });
 
   const [touchedFilters, setTouchedFilters] = useState<TouchedState>(initialTouchedFields);
+  const [isStatusesMenuOpen, setIsStatusesMenuOpen] = useState<boolean>(false);
 
   const handleFormChange = useCallback((form: FilterForm) => {
     if (!onChange || !form) {
@@ -231,7 +235,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
         });
       }
     } else {
-      newSearchParams.delete("statuses");
+      newSearchParams.set("statuses", "");
     }
 
     if (studyNameFilter && studyNameFilter.length >= 3) {
@@ -334,7 +338,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                     slotProps={{
                       popper: {
                         sx: {
-                          zIndex: 99999,
+                          zIndex: 700,
                         },
                       },
                     }}
@@ -375,7 +379,17 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                 render={({ field }) => (
                   <StyledSelect
                     {...field}
-                    MenuProps={{ disablePortal: true, sx: { zIndex: 99999 } }}
+                    MenuProps={{
+                      disablePortal: true,
+                      hideBackdrop: true,
+                      sx: { zIndex: 700, pointerEvents: "none" },
+                      PaperProps: {
+                        sx: { pointerEvents: "auto" },
+                      },
+                    }}
+                    open={isStatusesMenuOpen}
+                    onOpen={() => setIsStatusesMenuOpen(true)}
+                    onClose={() => setIsStatusesMenuOpen(false)}
                     inputProps={{ id: "status-filter" }}
                     renderValue={(selected: string[]) =>
                       selected?.length > 1 ? `${selected.length} statuses selected` : selected
@@ -386,6 +400,20 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                     }}
                     data-testid="application-status-filter"
                     multiple
+                    endAdornment={
+                      field.value?.length > 0 && (
+                        <InputAdornment position="end">
+                          <ClearButton
+                            onClick={() => {
+                              field.onChange([]);
+                              handleFilterChange("statuses");
+                            }}
+                            data-testid="status-clear-button"
+                            aria-label="Clear status selection"
+                          />
+                        </InputAdornment>
+                      )
+                    }
                   >
                     {statusValues.map((status) => (
                       <MenuItem
@@ -398,6 +426,11 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                     ))}
                   </StyledSelect>
                 )}
+              />
+              <Backdrop
+                open={isStatusesMenuOpen}
+                onClick={() => setIsStatusesMenuOpen(false)}
+                sx={{ zIndex: 500, opacity: "0 !important", cursor: "text" }}
               />
             </StyledFormControl>
           </Grid>

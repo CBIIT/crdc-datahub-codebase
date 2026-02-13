@@ -3,12 +3,7 @@ import { Container, Divider, Stack, styled } from "@mui/material";
 import { isEqual, cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
 import React, { FC, useCallback, useEffect, useRef, useState } from "react";
-import {
-  useNavigate,
-  unstable_useBlocker as useBlocker,
-  unstable_Blocker as Blocker,
-  Navigate,
-} from "react-router-dom";
+import { useNavigate, useBlocker, Blocker, Navigate } from "react-router-dom";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
 import ChevronLeft from "../../assets/icons/chevron_left.svg?react";

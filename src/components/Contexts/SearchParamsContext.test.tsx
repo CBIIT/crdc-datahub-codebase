@@ -1,7 +1,7 @@
 import userEvent from "@testing-library/user-event";
-import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, Route, Routes } from "react-router-dom";
 
-import { render, screen, waitFor } from "../../test-utils";
+import { TestRouter, render, screen, waitFor } from "../../test-utils";
 
 import { SearchParamsProvider, useSearchParamsContext } from "./SearchParamsContext";
 
@@ -46,14 +46,14 @@ const TestChild = () => {
 };
 
 const TestParent = ({ initialEntries = ["/test?initial=true"] }) => (
-  <MemoryRouter initialEntries={initialEntries}>
+  <TestRouter initialEntries={initialEntries}>
     <SearchParamsProvider>
       <Routes>
         <Route path="/test" element={<TestChild />} />
         <Route path="/another" element={<TestChild />} />
       </Routes>
     </SearchParamsProvider>
-  </MemoryRouter>
+  </TestRouter>
 );
 
 describe("SearchParamsContext", () => {

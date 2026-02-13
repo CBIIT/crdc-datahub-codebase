@@ -227,7 +227,7 @@ const DataSubmissionActions = ({ onAction }: Props) => {
         <Tooltip
           placement="top"
           title={submitActionButton?.tooltip}
-          open={undefined} // will use hoverListener to open
+          open={undefined}
           disableHoverListener={!submitActionButton?.tooltip || (action && action !== "Submit")}
         >
           <span>
@@ -247,7 +247,7 @@ const DataSubmissionActions = ({ onAction }: Props) => {
         <Tooltip
           placement="top"
           title={TOOLTIP_TEXT.SUBMISSION_ACTIONS.RELEASE.DISABLED.NO_CROSS_VALIDATION}
-          open={undefined} // will use hoverListener to open
+          open={undefined}
           disableHoverListener={!((action && action !== "Release") || releaseActionButton?.disable)}
         >
           <span>
@@ -279,15 +279,24 @@ const DataSubmissionActions = ({ onAction }: Props) => {
         </StyledLoadingButton>
       ) : null}
       {canShowAction("Withdraw") ? (
-        <StyledLoadingButton
-          variant="contained"
-          color="error"
-          onClick={() => onOpenDialog("Withdraw")}
-          loading={action === "Withdraw"}
-          disabled={action && action !== "Withdraw"}
+        <Tooltip
+          placement="top"
+          title={TOOLTIP_TEXT.SUBMISSION_ACTIONS.WITHDRAW.ENABLED}
+          open={undefined}
+          disableHoverListener={action && action !== "Withdraw"}
         >
-          Withdraw
-        </StyledLoadingButton>
+          <span>
+            <StyledLoadingButton
+              variant="contained"
+              color="error"
+              onClick={() => onOpenDialog("Withdraw")}
+              loading={action === "Withdraw"}
+              disabled={action && action !== "Withdraw"}
+            >
+              Withdraw
+            </StyledLoadingButton>
+          </span>
+        </Tooltip>
       ) : null}
       {canShowAction("SubmittedReject") || canShowAction("ReleasedReject") ? (
         <StyledLoadingButton

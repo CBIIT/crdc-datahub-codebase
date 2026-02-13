@@ -2,7 +2,6 @@ import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { FC, useMemo } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
@@ -27,7 +26,7 @@ import {
   SubmissionStatsInput,
   SubmissionStatsResp,
 } from "../../graphql";
-import { render, waitFor, within } from "../../test-utils";
+import { TestRouter, render, waitFor, within } from "../../test-utils";
 
 import SubmittedData from "./SubmittedData";
 
@@ -81,7 +80,7 @@ const TestParent: FC<ParentProps> = ({
 
   return (
     <MockedProvider mocks={mocks} showWarnings>
-      <MemoryRouter basename="">
+      <TestRouter basename="">
         <AuthContext.Provider
           value={authCtxStateFactory.build({
             user: userFactory.build({
@@ -94,7 +93,7 @@ const TestParent: FC<ParentProps> = ({
             <SearchParamsProvider>{children}</SearchParamsProvider>
           </SubmissionContext.Provider>
         </AuthContext.Provider>
-      </MemoryRouter>
+      </TestRouter>
     </MockedProvider>
   );
 };
@@ -849,15 +848,14 @@ describe("SubmittedData > Table", () => {
       expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "true");
     });
 
-    // With new inverse selection, clicking header when indeterminate toggles to "select all" mode
     userEvent.click(getAllByRole("checkbox")[0]); // click 'Select All' checkbox
 
     await waitFor(() => {
-      // Header should now be checked (select all mode active with no exclusions)
-      expect(getAllByRole("checkbox")[0]).toBeChecked();
-      // All row checkboxes should be checked
-      expect(getAllByRole("checkbox")[1]).toBeChecked();
-      expect(getAllByRole("checkbox")[2]).toBeChecked();
+      expect(getAllByRole("checkbox")[0]).not.toBeChecked();
+      expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "false");
+      // All row checkboxes should be unchecked
+      expect(getAllByRole("checkbox")[1]).not.toBeChecked();
+      expect(getAllByRole("checkbox")[2]).not.toBeChecked();
     });
   });
 
@@ -1248,6 +1246,431 @@ describe("SubmittedData > Table", () => {
     await waitFor(() => {
       expect(getByTestId("generic-table-rows-per-page-top")).toHaveValue("20");
       expect(getByTestId("generic-table-rows-per-page-bottom")).toHaveValue("20");
+    });
+  });
+
+  it("should use 'exclusion' mode when selecting all without filters", async () => {
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+      maxUsageCount: 2, // initial query + orderBy bug
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 100,
+            properties: ["col-xyz"],
+            IDPropName: "col-xyz",
+            nodes: Array(20)
+              .fill(null)
+              .map((_, idx) => ({
+                nodeType: "example-node",
+                nodeID: `example-node-id-${idx}`,
+                props: JSON.stringify({
+                  "col-xyz": `value-for-column-xyz-${idx}`,
+                }),
+                status: "New",
+              })),
+          },
+        },
+      },
+    };
+
+    const { getAllByRole } = render(
+      <TestParent
+        mocks={[mockSubmissionQuery, getNodesMock]}
+        submissionId="example-exclusion-mode"
+        submissionName={undefined}
+      >
+        <SubmittedData />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(21); // header + 20 rows
+    });
+
+    // Click 'Select All' - should use exclusion mode (no filters applied)
+    userEvent.click(getAllByRole("checkbox")[0]);
+
+    await waitFor(() => {
+      // Header should be checked (exclusion mode with no exclusions)
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
+      // All visible row checkboxes should be checked
+      getAllByRole("checkbox")
+        .slice(1)
+        .forEach((checkbox) => {
+          expect(checkbox).toBeChecked();
+        });
+    });
+  });
+
+  it("should use 'explicit' mode when selecting all with filters applied", async () => {
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+      maxUsageCount: 3, // initial query + orderBy bug + filter fetch
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: (vars) => !vars.partial,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 2,
+            properties: ["col-xyz"],
+            IDPropName: "col-xyz",
+            nodes: [
+              {
+                nodeType: "example-node",
+                nodeID: "node-1",
+                props: JSON.stringify({
+                  "col-xyz": "value-1",
+                }),
+                status: "New",
+              },
+              {
+                nodeType: "example-node",
+                nodeID: "node-2",
+                props: JSON.stringify({
+                  "col-xyz": "value-2",
+                }),
+                status: "New",
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp<true>, GetSubmissionNodesInput> = {
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: (vars) => vars.partial === true && vars.first === -1,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 2,
+            nodes: [{ nodeID: "node-1" }, { nodeID: "node-2" }],
+          },
+        },
+      },
+    };
+
+    const { getAllByRole, getByLabelText } = render(
+      <TestParent
+        mocks={[mockSubmissionQuery, getNodesMock, getAllNodesMock]}
+        submissionId="example-explicit-mode"
+        submissionName={undefined}
+      >
+        <SubmittedData />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(3); // header + 2 rows
+    });
+
+    // Apply a filter to trigger explicit mode
+    userEvent.type(getByLabelText("Submitted ID"), "test-filter");
+
+    await waitFor(() => {
+      expect(getByLabelText("Submitted ID")).toHaveValue("test-filter");
+    });
+
+    // Wait for data to load after filter
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(3);
+    });
+
+    // Click 'Select All' - should use explicit mode (filters applied)
+    userEvent.click(getAllByRole("checkbox")[0]);
+
+    await waitFor(() => {
+      // Header should be checked
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
+      // All row checkboxes should be checked
+      expect(getAllByRole("checkbox")[1]).toBeChecked();
+      expect(getAllByRole("checkbox")[2]).toBeChecked();
+    });
+  });
+
+  it("should transition from 'exclusion' mode to no selection when header is clicked", async () => {
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+      maxUsageCount: 2, // initial query + orderBy bug
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 100,
+            properties: ["col-xyz"],
+            IDPropName: "col-xyz",
+            nodes: Array(20)
+              .fill(null)
+              .map((_, idx) => ({
+                nodeType: "example-node",
+                nodeID: `example-node-id-${idx}`,
+                props: JSON.stringify({
+                  "col-xyz": `value-for-column-xyz-${idx}`,
+                }),
+                status: "New",
+              })),
+          },
+        },
+      },
+    };
+
+    const { getAllByRole } = render(
+      <TestParent
+        mocks={[mockSubmissionQuery, getNodesMock]}
+        submissionId="example-exclusion-deselect"
+        submissionName={undefined}
+      >
+        <SubmittedData />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(21);
+    });
+
+    // Enter exclusion mode by clicking 'Select All'
+    userEvent.click(getAllByRole("checkbox")[0]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
+    });
+
+    // Click again to deselect all (transition from exclusion to no selection)
+    userEvent.click(getAllByRole("checkbox")[0]);
+
+    await waitFor(() => {
+      // All checkboxes should be unchecked
+      expect(getAllByRole("checkbox")[0]).not.toBeChecked();
+      getAllByRole("checkbox")
+        .slice(1)
+        .forEach((checkbox) => {
+          expect(checkbox).not.toBeChecked();
+        });
+    });
+  });
+
+  it("should maintain exclusion mode when unchecking individual rows", async () => {
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+      maxUsageCount: 2, // initial query + orderBy bug
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 100,
+            properties: ["col-xyz"],
+            IDPropName: "col-xyz",
+            nodes: [
+              {
+                nodeType: "example-node",
+                nodeID: "node-1",
+                props: JSON.stringify({ "col-xyz": "value-1" }),
+                status: "New",
+              },
+              {
+                nodeType: "example-node",
+                nodeID: "node-2",
+                props: JSON.stringify({ "col-xyz": "value-2" }),
+                status: "New",
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const { getAllByRole } = render(
+      <TestParent
+        mocks={[mockSubmissionQuery, getNodesMock]}
+        submissionId="example-exclusion-uncheck"
+        submissionName={undefined}
+      >
+        <SubmittedData />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(3); // header + 2 rows
+    });
+
+    // Enter exclusion mode by clicking 'Select All'
+    userEvent.click(getAllByRole("checkbox")[0]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
+      expect(getAllByRole("checkbox")[1]).toBeChecked();
+      expect(getAllByRole("checkbox")[2]).toBeChecked();
+    });
+
+    // Uncheck one row - should add to exclusion list
+    userEvent.click(getAllByRole("checkbox")[1]);
+
+    await waitFor(() => {
+      // Header should be indeterminate (partial selection)
+      expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "true");
+      // First row unchecked, second row still checked
+      expect(getAllByRole("checkbox")[1]).not.toBeChecked();
+      expect(getAllByRole("checkbox")[2]).toBeChecked();
+    });
+  });
+
+  it("should transition from 'explicit' mode to no selection when last item is unchecked", async () => {
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+      maxUsageCount: 2, // initial query + orderBy bug
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 2,
+            properties: ["col-xyz"],
+            IDPropName: "col-xyz",
+            nodes: [
+              {
+                nodeType: "example-node",
+                nodeID: "node-1",
+                props: JSON.stringify({ "col-xyz": "value-1" }),
+                status: "New",
+              },
+              {
+                nodeType: "example-node",
+                nodeID: "node-2",
+                props: JSON.stringify({ "col-xyz": "value-2" }),
+                status: "New",
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const { getAllByRole } = render(
+      <TestParent
+        mocks={[mockSubmissionQuery, getNodesMock]}
+        submissionId="example-explicit-deselect"
+        submissionName={undefined}
+      >
+        <SubmittedData />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(3);
+    });
+
+    // Manually select one row (explicit mode)
+    userEvent.click(getAllByRole("checkbox")[1]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[1]).toBeChecked();
+      expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "true");
+    });
+
+    // Uncheck the selected row - should transition to no selection
+    userEvent.click(getAllByRole("checkbox")[1]);
+
+    await waitFor(() => {
+      // All checkboxes should be unchecked
+      expect(getAllByRole("checkbox")[0]).not.toBeChecked();
+      expect(getAllByRole("checkbox")[0]).toHaveAttribute("data-indeterminate", "false");
+      expect(getAllByRole("checkbox")[1]).not.toBeChecked();
+    });
+  });
+
+  it("should skip fetching when all data is already visible with filters", async () => {
+    const getNodesMock: MockedResponse<GetSubmissionNodesResp, GetSubmissionNodesInput> = {
+      maxUsageCount: 3, // initial query + orderBy bug + filter fetch
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: (vars) => !vars.partial,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 2,
+            properties: ["col-xyz"],
+            IDPropName: "col-xyz",
+            nodes: [
+              {
+                nodeType: "example-node",
+                nodeID: "node-1",
+                props: JSON.stringify({ "col-xyz": "value-1" }),
+                status: "New",
+              },
+              {
+                nodeType: "example-node",
+                nodeID: "node-2",
+                props: JSON.stringify({ "col-xyz": "value-2" }),
+                status: "New",
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const mockMatcherAllNodes = vi.fn().mockImplementation((vars) => vars.partial === true);
+    const getAllNodesMock: MockedResponse<GetSubmissionNodesResp<true>, GetSubmissionNodesInput> = {
+      request: {
+        query: GET_SUBMISSION_NODES,
+      },
+      variableMatcher: mockMatcherAllNodes,
+      result: {
+        data: {
+          getSubmissionNodes: {
+            total: 2,
+            nodes: [{ nodeID: "node-1" }, { nodeID: "node-2" }],
+          },
+        },
+      },
+    };
+
+    const { getAllByRole, getByLabelText } = render(
+      <TestParent
+        mocks={[mockSubmissionQuery, getNodesMock, getAllNodesMock]}
+        submissionId="example-skip-fetch"
+        submissionName={undefined}
+      >
+        <SubmittedData />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(3);
+    });
+
+    // Apply a filter
+    userEvent.type(getByLabelText("Submitted ID"), "test");
+
+    await waitFor(() => {
+      expect(getByLabelText("Submitted ID")).toHaveValue("test");
+    });
+
+    // Wait for filtered data
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")).toHaveLength(3);
+    });
+
+    // Click 'Select All' - should NOT fetch because all data is visible (2 rows shown, 2 total)
+    userEvent.click(getAllByRole("checkbox")[0]);
+
+    await waitFor(() => {
+      expect(getAllByRole("checkbox")[0]).toBeChecked();
+      // Should not have called the partial fetch
+      expect(mockMatcherAllNodes).not.toHaveBeenCalled();
     });
   });
 });

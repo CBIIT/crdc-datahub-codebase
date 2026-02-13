@@ -2,7 +2,6 @@ import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { FC, useMemo } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { aggregatedQCResultFactory } from "@/factories/submission/AggregatedQCResultFactory";
@@ -36,7 +35,7 @@ import {
   GetPendingPVsInput,
   GET_PENDING_PVS,
 } from "../../graphql";
-import { fireEvent, render, waitFor, within } from "../../test-utils";
+import { TestRouter, fireEvent, render, waitFor, within } from "../../test-utils";
 
 import QualityControl from "./QualityControl";
 
@@ -191,13 +190,13 @@ const TestParent: FC<ParentProps> = ({ submission = {}, mocks, children }: Paren
   );
 
   return (
-    <MemoryRouter basename="">
+    <TestRouter basename="">
       <MockedProvider mocks={mocks} showWarnings>
         <SubmissionContext.Provider value={ctxValue}>
           <SearchParamsProvider>{children}</SearchParamsProvider>
         </SubmissionContext.Provider>
       </MockedProvider>
-    </MemoryRouter>
+    </TestRouter>
   );
 };
 

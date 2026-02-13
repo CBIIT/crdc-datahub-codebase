@@ -1,10 +1,10 @@
 import userEvent from "@testing-library/user-event";
 import React, { FC } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { SearchParamsProvider } from "../../components/Contexts/SearchParamsContext";
-import { render, fireEvent, waitFor, act, within } from "../../test-utils";
+import { TestRouter, render, fireEvent, waitFor, act, within } from "../../test-utils";
 
 import ListFilters, { defaultValues, DEFAULT_STATUSES_SELECTED } from "./ListFilters";
 import type { FilterForm } from "./ListFilters";
@@ -24,9 +24,9 @@ type ParentProps = {
 };
 
 const TestParent: FC<ParentProps> = ({ initialEntries = ["/"], children }) => (
-  <MemoryRouter initialEntries={initialEntries}>
+  <TestRouter initialEntries={initialEntries}>
     <SearchParamsProvider>{children}</SearchParamsProvider>
-  </MemoryRouter>
+  </TestRouter>
 );
 
 describe("Accessibility", () => {
@@ -196,7 +196,9 @@ describe("ListFilters Component", () => {
       </TestParent>
     );
 
-    const statusSelect = within(getByTestId("application-status-filter")).getByRole("button");
+    const statusSelect = within(getByTestId("application-status-filter")).getByRole("button", {
+      name: /statuses selected/i,
+    });
     expect(statusSelect).toBeInTheDocument();
 
     userEvent.click(statusSelect);
@@ -227,7 +229,9 @@ describe("ListFilters Component", () => {
       </TestParent>
     );
 
-    const statusSelect = within(getByTestId("application-status-filter")).getByRole("button");
+    const statusSelect = within(getByTestId("application-status-filter")).getByRole("button", {
+      name: /statuses selected/i,
+    });
     userEvent.click(statusSelect);
 
     // Unselect all default statuses
@@ -247,7 +251,9 @@ describe("ListFilters Component", () => {
       </TestParent>
     );
 
-    const statusSelect = within(getByTestId("application-status-filter")).getByRole("button");
+    const statusSelect = within(getByTestId("application-status-filter")).getByRole("button", {
+      name: /statuses selected/i,
+    });
     userEvent.click(statusSelect);
 
     // Unselect all default statuses
@@ -287,5 +293,125 @@ describe("ListFilters Component", () => {
         submitterName: "JohnDoe",
       })
     );
+  });
+
+  it("displays clear button when statuses are selected", () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <ListFilters applicationData={mockApplicationData} />
+      </TestParent>
+    );
+
+    expect(getByTestId("status-clear-button")).toBeInTheDocument();
+  });
+
+  it("hides clear button when no statuses are selected", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <TestParent>
+        <ListFilters applicationData={mockApplicationData} />
+      </TestParent>
+    );
+
+    const statusSelect = within(getByTestId("application-status-filter")).getByRole("button", {
+      name: /statuses selected/i,
+    });
+    userEvent.click(statusSelect);
+
+    DEFAULT_STATUSES_SELECTED.forEach((status) => {
+      userEvent.click(getByTestId(`application-status-${status}`));
+    });
+
+    await waitFor(() => {
+      expect(queryByTestId("status-clear-button")).not.toBeInTheDocument();
+    });
+  });
+
+  it("clears all selected statuses when clicked", async () => {
+    const onChangeMock = vi.fn();
+    const { getByTestId } = render(
+      <TestParent>
+        <ListFilters applicationData={mockApplicationData} onChange={onChangeMock} />
+      </TestParent>
+    );
+
+    const clearButton = getByTestId("status-clear-button");
+    userEvent.click(clearButton);
+
+    await waitFor(() => {
+      expect(onChangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statuses: [],
+        })
+      );
+    });
+  });
+
+  it("is clickable when dropdown is open", async () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <ListFilters applicationData={mockApplicationData} />
+      </TestParent>
+    );
+
+    const statusSelect = within(getByTestId("application-status-filter")).getByRole("button", {
+      name: /statuses selected/i,
+    });
+
+    userEvent.click(statusSelect);
+
+    await waitFor(() => {
+      const statusOptions = within(getByTestId("application-status-filter")).getByRole("listbox", {
+        hidden: true,
+      });
+      expect(statusOptions).toBeInTheDocument();
+    });
+
+    const clearButton = getByTestId("status-clear-button");
+    expect(clearButton).toBeInTheDocument();
+    expect(() => userEvent.click(clearButton)).not.toThrow();
+  });
+
+  it("keeps dropdown open after clear button is clicked", async () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <ListFilters applicationData={mockApplicationData} />
+      </TestParent>
+    );
+
+    const statusSelect = within(getByTestId("application-status-filter")).getByRole("button", {
+      name: /statuses selected/i,
+    });
+
+    userEvent.click(statusSelect);
+
+    await waitFor(() => {
+      const statusOptions = within(getByTestId("application-status-filter")).getByRole("listbox", {
+        hidden: true,
+      });
+      expect(statusOptions).toBeInTheDocument();
+    });
+
+    const clearButton = getByTestId("status-clear-button");
+    userEvent.click(clearButton);
+
+    await waitFor(() => {
+      const statusOptions = within(getByTestId("application-status-filter")).getByRole("listbox", {
+        hidden: true,
+      });
+      expect(statusOptions).toBeInTheDocument();
+    });
+  });
+
+  it("has proper z-index to appear above backdrop and table loading", () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <ListFilters applicationData={mockApplicationData} />
+      </TestParent>
+    );
+
+    const clearButton = getByTestId("status-clear-button");
+    const styles = window.getComputedStyle(clearButton);
+
+    expect(parseInt(styles.zIndex, 10)).toBeGreaterThan(250);
   });
 });

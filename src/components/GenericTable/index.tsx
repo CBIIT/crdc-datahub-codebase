@@ -147,6 +147,10 @@ export type Column<T> = {
    * Custom styling for the header table cell of the column
    */
   sx?: TableCellProps["sx"];
+  /**
+   * Define how the column label and value should be exported
+   */
+  exportValue?: (a: T) => { label: string; value: string | number };
 };
 
 export type Props<T> = {
@@ -486,7 +490,11 @@ const GenericTable = <T,>(
   return (
     <StyledTableContainer {...containerProps}>
       {(!paramsInitialized || showDelayedLoading) && (
-        <SuspenseLoader fullscreen={false} data-testid="generic-table-suspense-loader" />
+        <SuspenseLoader
+          fullscreen={false}
+          zIndex={250}
+          data-testid="generic-table-suspense-loader"
+        />
       )}
       {(position === "top" || position === "both") && (
         <Pagination verticalPlacement="top" disabled={!data || loading || !paramsInitialized} />

@@ -1,8 +1,7 @@
 import React from "react";
-import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 
-import { render } from "../../test-utils";
+import { TestRouter, render } from "../../test-utils";
 
 import NavigatorLink, { NavigatorLinkProps } from "./NavigatorLink";
 
@@ -10,9 +9,7 @@ type TestParentProps = {
   children: React.ReactNode;
 };
 
-const TestParent: React.FC<TestParentProps> = ({ children }) => (
-  <MemoryRouter>{children}</MemoryRouter>
-);
+const TestParent: React.FC<TestParentProps> = ({ children }) => <TestRouter>{children}</TestRouter>;
 
 describe("Accessibility", () => {
   it("should not have any violations", async () => {

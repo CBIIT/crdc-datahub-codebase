@@ -8,7 +8,7 @@ import { render, waitFor } from "../../test-utils";
 import Page from "./Page404";
 
 const TestParent: FC = () => (
-  <BrowserRouter>
+  <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
     <Page />
   </BrowserRouter>
 );
@@ -47,10 +47,15 @@ describe("404 Page Cases", () => {
       ],
       {
         initialEntries: ["/404"],
+        future: {
+          v7_relativeSplatPath: true,
+        },
       }
     );
 
-    const { getByText, getByRole } = render(<RouterProvider router={router} />);
+    const { getByText, getByRole } = render(
+      <RouterProvider router={router} future={{ v7_startTransition: true }} />
+    );
 
     await waitFor(() => {
       expect(getByText(/page not found/i)).toBeInTheDocument();

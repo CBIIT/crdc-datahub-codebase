@@ -1,13 +1,13 @@
 import userEvent from "@testing-library/user-event";
 import React, { FC, useMemo } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 
 import { ListSubmissionsResp } from "../../graphql";
-import { render, waitFor, within } from "../../test-utils";
+import { TestRouter, render, waitFor, within } from "../../test-utils";
 import {
   Context as AuthContext,
   ContextState as AuthContextState,
@@ -47,11 +47,11 @@ const TestParent: FC<ParentProps> = ({
   );
 
   return (
-    <MemoryRouter initialEntries={initialEntries}>
+    <TestRouter initialEntries={initialEntries}>
       <AuthContext.Provider value={authContextValue}>
         <SearchParamsProvider>{children}</SearchParamsProvider>
       </AuthContext.Provider>
-    </MemoryRouter>
+    </TestRouter>
   );
 };
 
@@ -1062,6 +1062,182 @@ describe("DataSubmissionListFilters Component", () => {
         })
       );
     });
+  });
+
+  it("displays clear button when statuses are selected", () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <DataSubmissionListFilters
+          columns={columns}
+          organizations={organizations}
+          submitterNames={submitterNames}
+          dataCommons={dataCommons}
+          dataCommonsDisplayNames={dataCommons}
+          columnVisibilityModel={columnVisibilityModel}
+          onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+          onChange={mockOnChange}
+        />
+      </TestParent>
+    );
+
+    expect(getByTestId("status-clear-button")).toBeInTheDocument();
+  });
+
+  it("hides clear button when no statuses are selected", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <TestParent>
+        <DataSubmissionListFilters
+          columns={columns}
+          organizations={organizations}
+          submitterNames={submitterNames}
+          dataCommons={dataCommons}
+          dataCommonsDisplayNames={dataCommons}
+          columnVisibilityModel={columnVisibilityModel}
+          onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+          onChange={mockOnChange}
+        />
+      </TestParent>
+    );
+
+    const statusSelect = within(getByTestId("status-select")).getByRole("button", {
+      name: /statuses selected/i,
+    });
+    userEvent.click(statusSelect);
+
+    userEvent.click(getByTestId("status-option-New"));
+    userEvent.click(getByTestId("status-option-In Progress"));
+    userEvent.click(getByTestId("status-option-Submitted"));
+    userEvent.click(getByTestId("status-option-Withdrawn"));
+    userEvent.click(getByTestId("status-option-Released"));
+    userEvent.click(getByTestId("status-option-Rejected"));
+
+    await waitFor(() => {
+      expect(queryByTestId("status-clear-button")).not.toBeInTheDocument();
+    });
+  });
+
+  it("clears all selected statuses when clicked", async () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <DataSubmissionListFilters
+          columns={columns}
+          organizations={organizations}
+          submitterNames={submitterNames}
+          dataCommons={dataCommons}
+          dataCommonsDisplayNames={dataCommons}
+          columnVisibilityModel={columnVisibilityModel}
+          onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+          onChange={mockOnChange}
+        />
+      </TestParent>
+    );
+
+    const clearButton = getByTestId("status-clear-button");
+    userEvent.click(clearButton);
+
+    await waitFor(() => {
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: [],
+        })
+      );
+    });
+  });
+
+  it("is clickable when dropdown is open", async () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <DataSubmissionListFilters
+          columns={columns}
+          organizations={organizations}
+          submitterNames={submitterNames}
+          dataCommons={dataCommons}
+          dataCommonsDisplayNames={dataCommons}
+          columnVisibilityModel={columnVisibilityModel}
+          onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+          onChange={mockOnChange}
+        />
+      </TestParent>
+    );
+
+    const statusSelect = within(getByTestId("status-select")).getByRole("button", {
+      name: /statuses selected/i,
+    });
+
+    userEvent.click(statusSelect);
+
+    await waitFor(() => {
+      const statusOptions = within(getByTestId("status-select")).getByRole("listbox", {
+        hidden: true,
+      });
+      expect(statusOptions).toBeInTheDocument();
+    });
+
+    const clearButton = getByTestId("status-clear-button");
+    expect(clearButton).toBeInTheDocument();
+    expect(() => userEvent.click(clearButton)).not.toThrow();
+  });
+
+  it("keeps dropdown open after clear button is clicked", async () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <DataSubmissionListFilters
+          columns={columns}
+          organizations={organizations}
+          submitterNames={submitterNames}
+          dataCommons={dataCommons}
+          dataCommonsDisplayNames={dataCommons}
+          columnVisibilityModel={columnVisibilityModel}
+          onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+          onChange={mockOnChange}
+        />
+      </TestParent>
+    );
+
+    const statusSelect = within(getByTestId("status-select")).getByRole("button", {
+      name: /statuses selected/i,
+    });
+
+    userEvent.click(statusSelect);
+
+    await waitFor(() => {
+      const statusOptions = within(getByTestId("status-select")).getByRole("listbox", {
+        hidden: true,
+      });
+      expect(statusOptions).toBeInTheDocument();
+    });
+
+    const clearButton = getByTestId("status-clear-button");
+    userEvent.click(clearButton);
+
+    await waitFor(() => {
+      const statusOptions = within(getByTestId("status-select")).getByRole("listbox", {
+        hidden: true,
+      });
+      expect(statusOptions).toBeInTheDocument();
+    });
+  });
+
+  it("has proper z-index to appear above backdrop", () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <DataSubmissionListFilters
+          columns={columns}
+          organizations={organizations}
+          submitterNames={submitterNames}
+          dataCommons={dataCommons}
+          dataCommonsDisplayNames={dataCommons}
+          columnVisibilityModel={columnVisibilityModel}
+          onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+          onChange={mockOnChange}
+        />
+      </TestParent>
+    );
+
+    const clearButton = getByTestId("status-clear-button");
+    const styles = window.getComputedStyle(clearButton);
+
+    expect(parseInt(styles.zIndex, 10)).toBeGreaterThan(250);
   });
 
   it("renders the Study filter with correct label text", async () => {

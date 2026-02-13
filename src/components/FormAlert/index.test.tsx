@@ -1,8 +1,8 @@
 import { FC } from "react";
-import { MemoryRouter, MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
-import { render } from "../../test-utils";
+import { TestRouter, render } from "../../test-utils";
 
 import FormAlert from ".";
 
@@ -12,7 +12,7 @@ type TestParentProps = {
 };
 
 const TestParent: FC<TestParentProps> = ({ initialEntries, children }) => (
-  <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+  <TestRouter initialEntries={initialEntries}>{children}</TestRouter>
 );
 
 describe("Accessibility", () => {

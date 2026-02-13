@@ -1,3 +1,5 @@
+import { TOOLTIP_TEXT } from "@/config/DashboardTooltips";
+
 import { hasPermission } from "../config/AuthPermissions";
 import { ADMIN_OVERRIDE_CONDITIONS, SUBMIT_BUTTON_CONDITIONS } from "../config/SubmitButtonConfig";
 import { GetSubmissionResp } from "../graphql";
@@ -9,11 +11,10 @@ import { safeParse } from "./jsonUtils";
  * For admins, it first checks if an admin override is allowed. If not an admin, it checks remaining conditions
  * to determine if the submission can be enabled.
  *
- * @param {GetSubmissionResp} data - The submission object to evaluate.
- * @param {QCResult[]} qcResults - The QC results for the submission.
- * @param {User} user - The current user.
- * @returns {SubmitButtonResult} - Returns an object indicating whether the submit button is enabled,
- * whether the admin override is in effect, and an optional tooltip explaining why it is disabled.
+ * @param data - The submission object to evaluate.
+ * @param user - The current user.
+ * @returns Returns an object indicating whether the submit button is enabled,
+ * whether the admin override is in effect, and an optional tooltip explaining the button state.
  */
 export const shouldEnableSubmit = (data: GetSubmissionResp, user: User): SubmitButtonResult => {
   if (!data?.getSubmission?._id || !user) {
@@ -44,7 +45,11 @@ export const shouldEnableSubmit = (data: GetSubmissionResp, user: User): SubmitB
 
   // If no failed conditions, enable submit
   if (!failedCondition) {
-    return { enabled: true, isAdminOverride: false };
+    return {
+      enabled: true,
+      isAdminOverride: false,
+      tooltip: TOOLTIP_TEXT.SUBMISSION_ACTIONS.SUBMIT.ENABLED,
+    };
   }
 
   // Otherwise, disable submit and display tooltip if available
