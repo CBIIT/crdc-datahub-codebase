@@ -167,7 +167,7 @@ const columns: Column<T>[] = [
     ),
     fieldKey: "study.studyAbbreviation",
     hideable: false,
-    exportValue: (a) => ({ label: "Study", value: a.study?.studyAbbreviation }),
+    exportValue: (a) => ({ label: "Study", value: a.study?.studyAbbreviation ?? "" }),
   },
   {
     label: "SRF",
