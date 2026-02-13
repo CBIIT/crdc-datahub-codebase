@@ -58,7 +58,13 @@ module.exports = Object.freeze({
         SCOPE: {
             NEW: "new",
             ALL: "all"
-        }
+        },
+        BATCH_MESSAGE_TYPE: "Validate Metadata Batch",
+        METADATA_BATCH_CONFIG_TYPE: "METADATA_VALIDATION_BATCH_SIZE",
+        DEFAULT_METADATA_BATCH_SIZE: 1000,
+        MIN_METADATA_BATCH_SIZE: 100,
+        // SQS FIFO limit is 256KB; ~6,890 UUIDs fit per message. 5,000 provides ~27% headroom.
+        MAX_METADATA_BATCH_SIZE: 5000
     },
     INTENTION: {
         UPDATE: "New/Update",

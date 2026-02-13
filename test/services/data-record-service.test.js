@@ -101,7 +101,8 @@ describe('DataRecordService', () => {
       mockAwsService,
       mockS3Service,
       mockQcResultsService,
-      'export-queue'
+      'export-queue',
+      null
     );
 
     dataRecordDAO = new DataRecordDAO(mockDataRecordsCollection);

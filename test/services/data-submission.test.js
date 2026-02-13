@@ -2123,7 +2123,8 @@ describe('Submission.validateSubmission', () => {
 
     beforeEach(() => {
         mockValidationDAO = {
-            create: jest.fn()
+            create: jest.fn(),
+            update: jest.fn()
         };
 
         mockDataRecordService = {
@@ -2247,6 +2248,61 @@ describe('Submission.validateSubmission', () => {
         const result = await submissionService.validateSubmission(mockParams, mockContext);
 
         expect(result).toEqual(mockValidationResult);
+    });
+
+    it('should write totalBatches to validation document on successful batch validation', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = { success: true, totalBatches: 3, failedCount: 0 };
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', { totalBatches: 3 });
+    });
+
+    it('should mark validation as Error with statusDetail on partial SQS send failure', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = { success: false, message: 'Failed to validate metadata', totalBatches: 5, failedCount: 2 };
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalBatches: 5,
+            status: VALIDATION_STATUS.ERROR,
+            statusDetail: ['Failed to enqueue 2 of 5 batch messages']
+        });
+    });
+
+    it('should not update validation document when no totalBatches in result', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = { success: true };
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).not.toHaveBeenCalled();
     });
 });
 

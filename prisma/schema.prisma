@@ -278,6 +278,7 @@ model Configuration {
   keys                             Json?
   new                              String?
   prefix                           String?
+  size                             Int?
   tag                              ConfigurationTag?
   timeout                          Int?
   type                             String
@@ -518,6 +519,7 @@ model Submission {
   studyID                  String
   submitterID              String
   conciergeID              String?
+  statusDetail             String[]
   validationEnded          DateTime?      @db.Date
   validationScope          String?
   validationStarted        DateTime?      @db.Date
@@ -597,7 +599,9 @@ model Validation {
   scope        String?
   started      DateTime  @db.Date
   status       String?
+  statusDetail String[]
   submissionID String
+  totalBatches Int?
   type         String[]
 
   submission Submission @relation(fields: [submissionID], references: [id], onDelete: Cascade)

@@ -7,6 +7,7 @@
  * 
  * Migration files:
  * - rename-application-id.js: Rename pendingApplicationID to applicationID in ApprovedStudies
+ * - init-metadata-validation-batch-size.js: Initialize METADATA_VALIDATION_BATCH_SIZE config entry
  */
 
 const { MongoClient } = require('mongodb');
@@ -76,6 +77,29 @@ async function closeDatabaseConnection(client) {
 // ============================================================================
 
 /**
+ * Execute METADATA_VALIDATION_BATCH_SIZE config initialization
+ */
+async function executeMetadataValidationBatchSizeMigration(db) {
+    console.log('🔄 Executing METADATA_VALIDATION_BATCH_SIZE initialization...');
+
+    try {
+        const migration = require('./init-metadata-validation-batch-size');
+        const result = await migration.initMetadataValidationBatchSize(db);
+
+        if (result.success) {
+            console.log('✅ METADATA_VALIDATION_BATCH_SIZE initialization completed successfully');
+        } else {
+            console.log('❌ METADATA_VALIDATION_BATCH_SIZE initialization failed');
+        }
+
+        return result;
+    } catch (error) {
+        console.error('❌ Error executing METADATA_VALIDATION_BATCH_SIZE initialization:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Execute applicationID migration
  */
 async function executeApplicationIDMigration(db) {
@@ -133,6 +157,11 @@ async function orchestrateMigration() {
                 name: "Rename pendingApplicationID to applicationID",
                 file: "rename-application-id.js",
                 execute: () => executeApplicationIDMigration(db)
+            },
+            {
+                name: "Initialize METADATA_VALIDATION_BATCH_SIZE configuration",
+                file: "init-metadata-validation-batch-size.js",
+                execute: () => executeMetadataValidationBatchSizeMigration(db)
             }
         ];
         
