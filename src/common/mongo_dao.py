@@ -1,4 +1,4 @@
-from pymongo import MongoClient, errors, ReplaceOne, UpdateOne, DeleteOne, DESCENDING, InsertOne
+from pymongo import MongoClient, errors, ReplaceOne, UpdateOne, DeleteOne, DESCENDING, InsertOne, ReturnDocument
 import re
 from bento.common.utils import get_logger
 from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLlECTION, ID, UPDATED_AT, \
@@ -12,7 +12,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLlE
     SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, PROPERTY_PERMISSIBLE_VALUES, CREATED_AT, PROPERTIES,\
     STUDY_COLLECTION, ORGANIZATION_COLLECTION, USER_COLLECTION, PV_CONCEPT_CODE_COLLECTION, CONCEPT_CODE, PERMISSIBLE_VALUE,\
     GENERATED_PROPS, FILE_ENDED, METADATA_ENDED, METADATA_STATUS, FILE_STATUS, FILE_VALIDATION, METADATA_VALIDATION,\
-    CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL
+    CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL, COMPLETED_BATCHES, QC_VALIDATION_TYPE, QC_SEVERITY
 from common.utils import get_exception_msg, current_datetime, get_uuid_str
 from common.s3_utils import S3Service
 
@@ -510,6 +510,27 @@ class MongoDao:
             self.log.exception(e)
             self.log.exception(f"{submission_id}: Failed to retrieve data records, {get_exception_msg()}")
             return None 
+
+    """
+    Fetch data records by their _id values.
+    Used for batched validation where backend specifies exact record IDs.
+    """
+    def get_dataRecords_by_ids(self, data_record_ids):
+        db = self.client[self.db_name]
+        file_collection = db[DATA_COLlECTION]
+        try:
+            query = {ID: {'$in': data_record_ids}}
+            result = list(file_collection.find(query))
+            self.log.info(f'Found {len(result)} data records for {len(data_record_ids)} requested IDs')
+            return result
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to fetch data records by IDs: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to fetch data records by IDs: {get_exception_msg()}")
+            return None
         
     """
     retrieve dataRecord by submissionID and nodeType
@@ -971,6 +992,38 @@ class MongoDao:
             self.log.exception(e)
             self.log.exception(f"Failed to count documents for collection, {collection} at conditions {query}")
             return False
+
+    """
+    Atomically increment completedBatches counter for a validation.
+    Returns tuple: (completed_count, is_last_batch)
+    Uses MongoDB's atomic $inc to handle concurrent batch completions safely.
+    """
+    def increment_completed_batches(self, validation_id, total_batches):
+        db = self.client[self.db_name]
+        validation_collection = db[VALIDATION_COLLECTION]
+        try:
+            result = validation_collection.find_one_and_update(
+                {ID: validation_id},
+                {'$inc': {COMPLETED_BATCHES: 1}},
+                return_document=ReturnDocument.AFTER
+            )
+            if result:
+                completed = result.get(COMPLETED_BATCHES, 0)
+                is_last = completed >= total_batches
+                self.log.info(f'Validation {validation_id}: completed {completed}/{total_batches} batches')
+                return completed, is_last
+            else:
+                self.log.error(f'Validation document not found: {validation_id}')
+                return None, False
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to increment completed batches for {validation_id}: {get_exception_msg()}")
+            return None, False
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to increment completed batches for {validation_id}: {get_exception_msg()}")
+            return None, False
+
     """
     update validation status
     """   
@@ -1270,6 +1323,30 @@ class MongoDao:
             msg = f"Failed to upsert QC records, {get_exception_msg()}"
             self.log.exception(msg)
             return False, msg
+
+    """
+    Fetch all QC results for a submission and validation type.
+    Returns only severity field for efficient aggregation.
+    """
+    def get_qc_results_by_submission(self, submission_id, validation_type):
+        db = self.client[self.db_name]
+        qc_collection = db[QC_COLLECTION]
+        try:
+            query = {
+                SUBMISSION_ID: submission_id,
+                QC_VALIDATION_TYPE: validation_type
+            }
+            # Only fetch severity field for efficiency
+            return list(qc_collection.find(query, {QC_SEVERITY: 1, ID: 0}))
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to fetch QC results for {submission_id}: {get_exception_msg()}")
+            return []
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to fetch QC results for {submission_id}: {get_exception_msg()}")
+            return []
+
     """
     get configuration by env var
     :param env_var:

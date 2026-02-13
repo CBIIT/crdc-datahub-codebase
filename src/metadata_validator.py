@@ -13,7 +13,8 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     QC_RESULT_ID, BATCH_IDS, VALIDATION_TYPE_METADATA, S3_FILE_INFO, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, QC_ORIGIN, \
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
-    GENERATED_PROPS, DELETE_COMMAND, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, DATA_COMMONS, STUDY_ID, NAME_PROP
+    GENERATED_PROPS, DELETE_COMMAND, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, DATA_COMMONS, STUDY_ID, NAME_PROP, \
+    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX
 from common.utils import current_datetime, get_exception_msg, dump_dict_to_json, create_error, get_uuid_str, has_permissive_value
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
@@ -78,6 +79,85 @@ def metadataValidate(configs, job_queue, mongo_dao):
                         status = validator.validate(submission_id)
                         if validator.submission:
                             mongo_dao.set_submission_validation_status(validator.submission, None, None, status, None)
+                    elif data.get(SQS_TYPE) == TYPE_METADATA_VALIDATE_BATCH and submission_id:
+                        # Batched metadata validation flow
+                        validation_id = data.get(VALIDATION_ID)
+                        data_record_ids = data.get(DATA_RECORD_IDS, [])
+                        total_batches = data.get(TOTAL_BATCHES, 1)
+                        batch_index = data.get(BATCH_INDEX, 0)
+                        scope = data.get(SCOPE)
+                        
+                        if not validation_id:
+                            log.error(f'Invalid batch message - missing validationID: {data}')
+                        elif not data_record_ids or len(data_record_ids) == 0:
+                            log.error(f'Invalid batch message - empty dataRecordIds: {data}')
+                        else:
+                            log.info(f'Processing batch {batch_index + 1}/{total_batches} for validation {validation_id} '
+                                     f'({len(data_record_ids)} records)')
+                            
+                            # Fetch only the specified data records
+                            data_records = mongo_dao.get_dataRecords_by_ids(data_record_ids)
+                            
+                            if data_records and len(data_records) > 0:
+                                # Initialize validator and get submission context
+                                validator = MetaDataValidator(mongo_dao, model_store, configs)
+                                submission = mongo_dao.get_submission(submission_id)
+                                
+                                if submission:
+                                    validator.submission = submission
+                                    validator.submission_id = submission_id
+                                    validator.scope = scope
+                                    validator.datacommon = submission.get(DATA_COMMON_NAME)
+                                    
+                                    # Get model for validation
+                                    model_version = submission.get(MODEL_VERSION)
+                                    validator.model = model_store.get_model_by_data_common_version(
+                                        validator.datacommon, model_version
+                                    )
+                                    
+                                    # Get study info for name validation
+                                    study_id = submission.get(STUDY_ID)
+                                    if study_id:
+                                        study = mongo_dao.find_study_by_id(study_id)
+                                        if study:
+                                            validator.study_name = study.get("studyName")
+                                            validator.program_names = mongo_dao.find_organization_name_by_study_id(study_id)
+                                    
+                                    # Validate the batch (saves QC results internally)
+                                    validator.validate_nodes(data_records)
+                                    
+                                    # Atomically increment completed batches counter
+                                    completed_count, is_last_batch = mongo_dao.increment_completed_batches(
+                                        validation_id, total_batches
+                                    )
+                                    
+                                    if is_last_batch:
+                                        # All batches complete - set final status
+                                        log.info(f'All {total_batches} batches complete for validation {validation_id}')
+                                        
+                                        # Aggregate QC results to determine final status
+                                        final_status = validator.get_aggregated_status(submission_id)
+                                        validation_end_at = current_datetime()
+                                        
+                                        # Update validation document
+                                        mongo_dao.update_validation_status(
+                                            validation_id, final_status, validation_end_at, METADATA_VALIDATION
+                                        )
+                                        
+                                        # Update submission document
+                                        validator.submission[VALIDATION_ENDED] = validation_end_at
+                                        mongo_dao.set_submission_validation_status(
+                                            validator.submission, None, final_status, None, None
+                                        )
+                                        
+                                        log.info(f'Validation {validation_id} completed with status: {final_status}')
+                                    else:
+                                        log.info(f'Batch {batch_index + 1} complete, '
+                                                 f'{total_batches - completed_count} batches remaining')
+                                else:
+                                    log.error(f'Submission not found: {submission_id}')
+                            else:
+                                log.error(f'No data records found for IDs in batch {batch_index}')
                     else:
                         log.error(f'Invalid message: {data}!')
                     log.info(f'Processed {SERVICE_TYPE_METADATA} validation for the submission: {data[SUBMISSION_ID]}!')
@@ -113,6 +193,27 @@ class MetaDataValidator:
         self.not_found_property = False
         self.study_name = None
         self.program_names = None
+
+    def get_aggregated_status(self, submission_id):
+        """
+        Aggregate QC results to determine final metadata validation status.
+        Aggregation rule: Error > Warning > Passed
+        
+        This queries all QC results for the submission to determine the worst severity,
+        which becomes the final validation status.
+        """
+        qc_results = self.mongo_dao.get_qc_results_by_submission(
+            submission_id, VALIDATION_TYPE_METADATA
+        )
+        highest_severity = STATUS_PASSED
+        for qc in qc_results:
+            severity = qc.get(QC_SEVERITY)
+            if severity == STATUS_ERROR:
+                # Error is worst - can return immediately
+                return STATUS_ERROR
+            if severity == STATUS_WARNING:
+                highest_severity = STATUS_WARNING
+        return highest_severity
 
     def validate(self, submission_id, scope):
         #1. # get data common from submission
