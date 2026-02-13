@@ -15,7 +15,7 @@ import Button from "./index";
 
 type Submission = ListSubmissionsResp["listSubmissions"]["submissions"][number];
 
-const mockSubmissions = submissionFactory.build(2, (idx) => ({
+const baseSubmissions = submissionFactory.build(2, (idx) => ({
   _id: `submission-${idx}`,
   name: `Test Submission ${idx}`,
   submitterName: `Test Submitter ${idx}`,
@@ -35,6 +35,12 @@ const mockSubmissions = submissionFactory.build(2, (idx) => ({
   dataFileSize: { size: 1024 * 1024 * (idx + 1), formatted: `${idx + 1} MB` },
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-15T00:00:00Z",
+}));
+
+const mockSubmissions: Submission[] = baseSubmissions.map((submission, idx) => ({
+  ...submission,
+  submissionRequestID: `submission-request-${idx}`,
+  canViewSubmissionRequest: true,
 }));
 
 const mockPopulatedResp: MockedResponse<ListSubmissionsResp, ListSubmissionsInput> = {
