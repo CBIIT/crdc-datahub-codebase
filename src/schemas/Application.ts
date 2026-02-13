@@ -341,7 +341,7 @@ export const studySchema = z
       .string()
       .max(50)
       .trim()
-      .refine((val) => validatePHSNumber(val))
+      .refine((val) => !val || validatePHSNumber(val))
       .optional(),
     /**
      * The name of the Genomic Program Administrator.
