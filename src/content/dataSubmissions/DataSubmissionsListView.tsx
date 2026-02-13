@@ -6,6 +6,7 @@ import React, { FC, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import DataSubmissionListExport from "@/components/ExportSubmissionsButton";
+import SRFLink from "@/components/SRFLink";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
 import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/AuthContext";
@@ -168,7 +169,15 @@ const columns: Column<T>[] = [
     hideable: false,
     exportValue: (a) => ({ label: "Study", value: a.study?.studyAbbreviation }),
   },
-
+  {
+    label: "SRF",
+    renderValue: ({ submissionRequestID, canViewSubmissionRequest }) => (
+      <SRFLink appId={submissionRequestID} disabled={!canViewSubmissionRequest} />
+    ),
+    field: "submissionRequestID",
+    sortDisabled: true,
+    hideable: false,
+  },
   {
     label: "dbGaP ID",
     renderValue: (a) => <TruncatedText text={a.dbGaPID} maxCharacters={15} />,
