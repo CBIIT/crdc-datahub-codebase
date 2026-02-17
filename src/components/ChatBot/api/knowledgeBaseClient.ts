@@ -25,47 +25,6 @@ type AskQuestionResult = {
 };
 
 /**
- * Processes a single line from the streaming response.
- *
- * @param {string} line - The JSON line to process
- * @param {boolean} isFirstChunk - Whether this is the first chunk being processed
- * @param {(chunk: string) => void} [onChunk] - Optional callback to invoke with output text
- * @returns {string | undefined} The session ID if found on first chunk, otherwise undefined
- */
-export function processLine(
-  line: string,
-  isFirstChunk: boolean,
-  onChunk?: (chunk: string) => void
-): string | undefined {
-  try {
-    const parsed = JSON.parse(line);
-
-    if (isFirstChunk && parsed.sessionId !== undefined) {
-      return parsed.sessionId;
-    }
-
-    const outputText = typeof parsed.output === "string" ? parsed.output : parsed.output?.text;
-
-    if (outputText && onChunk) {
-      onChunk(outputText);
-    }
-
-    if (parsed.citation && Object.keys(parsed.citation).length > 0) {
-      Logger.info("Citations:", parsed.citation);
-    }
-
-    if (parsed.error) {
-      Logger.error("Error:", parsed.error);
-    }
-
-    return undefined;
-  } catch (e) {
-    Logger.error("Failed to parse line:", line, e);
-    return undefined;
-  }
-}
-
-/**
  * Emits text with a typewriter effect (character by character) using a configurable delay.
  *
  * @param {string} text - The text to emit character by character

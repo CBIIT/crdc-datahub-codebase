@@ -2,12 +2,7 @@ import { Logger } from "@/utils";
 
 import { getStoredSessionId, storeSessionId } from "../utils/sessionStorageUtils";
 
-import {
-  askQuestion,
-  emitWithTypewriter,
-  processLine,
-  processStreamingResponse,
-} from "./knowledgeBaseClient";
+import { askQuestion, emitWithTypewriter, processStreamingResponse } from "./knowledgeBaseClient";
 
 vi.mock("@/utils", () => ({
   Logger: {
@@ -451,121 +446,6 @@ describe("askQuestion", () => {
         url: "",
       })
     ).rejects.toThrow("Knowledge base URL is required but was not provided");
-  });
-});
-
-describe("processLine", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should return session ID when isFirstChunk is true and sessionId exists", () => {
-    const line = JSON.stringify({ sessionId: "test-session-123" });
-    const result = processLine(line, true);
-
-    expect(result).toBe("test-session-123");
-  });
-
-  it("should return undefined when isFirstChunk is false", () => {
-    const line = JSON.stringify({ sessionId: "test-session-123" });
-    const result = processLine(line, false);
-
-    expect(result).toBeUndefined();
-  });
-
-  it("should return undefined when session ID is not present in parsed object", () => {
-    const line = JSON.stringify({ output: "Some text" });
-    const result = processLine(line, true);
-
-    expect(result).toBeUndefined();
-  });
-
-  it("should invoke onChunk callback with output text when present (string format)", () => {
-    const onChunk = vi.fn();
-    const line = JSON.stringify({ output: "Hello world" });
-    processLine(line, false, onChunk);
-
-    expect(onChunk).toHaveBeenCalledWith("Hello world");
-    expect(onChunk).toHaveBeenCalledTimes(1);
-  });
-
-  it("should invoke onChunk callback with output.text when present (object format)", () => {
-    const onChunk = vi.fn();
-    const line = JSON.stringify({ output: { text: "Hello world" } });
-    processLine(line, false, onChunk);
-
-    expect(onChunk).toHaveBeenCalledWith("Hello world");
-    expect(onChunk).toHaveBeenCalledTimes(1);
-  });
-
-  it("should not invoke onChunk when output is missing", () => {
-    const onChunk = vi.fn();
-    const line = JSON.stringify({ sessionId: "test-123" });
-    processLine(line, true, onChunk);
-
-    expect(onChunk).not.toHaveBeenCalled();
-  });
-
-  it("should not invoke onChunk when onChunk callback is not provided", () => {
-    const line = JSON.stringify({ output: "Hello world" });
-    expect(() => processLine(line, false)).not.toThrow();
-  });
-
-  it("should log citation when present and non-empty", () => {
-    const line = JSON.stringify({
-      citation: {
-        title: "Document 1",
-        url: "http://example.com/doc1",
-      },
-    });
-    processLine(line, false);
-
-    expect(Logger.info).toHaveBeenCalledWith("Citations:", {
-      title: "Document 1",
-      url: "http://example.com/doc1",
-    });
-  });
-
-  it("should not log citation when empty object", () => {
-    const line = JSON.stringify({ citation: {} });
-    processLine(line, false);
-
-    expect(Logger.info).not.toHaveBeenCalled();
-  });
-
-  it("should log errors when parsed.error exists", () => {
-    const line = JSON.stringify({ error: "Something went wrong" });
-    processLine(line, false);
-
-    expect(Logger.error).toHaveBeenCalledWith("Error:", "Something went wrong");
-  });
-
-  it("should handle JSON.parse errors gracefully and return undefined", () => {
-    const invalidLine = "{ invalid json }";
-    const result = processLine(invalidLine, false);
-
-    expect(result).toBeUndefined();
-    expect(Logger.error).toHaveBeenCalledWith(
-      "Failed to parse line:",
-      invalidLine,
-      expect.any(Error)
-    );
-  });
-
-  it("should handle empty string input", () => {
-    const result = processLine("", false);
-
-    expect(result).toBeUndefined();
-    expect(Logger.error).toHaveBeenCalledWith("Failed to parse line:", "", expect.any(Error));
-  });
-
-  it("should return session ID and skip onChunk on first chunk even if output present", () => {
-    const onChunk = vi.fn();
-    const line = JSON.stringify({ sessionId: "test-123", output: "Initial response" });
-    const result = processLine(line, true, onChunk);
-
-    expect(result).toBe("test-123");
-    expect(onChunk).not.toHaveBeenCalled();
   });
 });
 
