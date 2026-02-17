@@ -1,6 +1,7 @@
 import { LazyQueryExecFunction } from "@apollo/client";
 import ExcelJS from "exceljs";
 import { cloneDeep, merge, union, toString } from "lodash";
+import z from "zod";
 
 import cancerTypeOptions from "@/config/CancerTypesConfig";
 import DataTypes from "@/config/DataTypesConfig";
@@ -77,6 +78,11 @@ export class QuestionnaireExcelMiddleware {
    * This object is mutated during the import process, but remains immutable for export.
    */
   private data: QuestionnaireData | null;
+
+  /**
+   * An internal array to store any validation issues encountered during the parsing process.
+   */
+  private validationIssues: z.core.$ZodIssue[] = [];
 
   /**
    * The dependencies required for exporting or importing,
@@ -411,6 +417,7 @@ export class QuestionnaireExcelMiddleware {
       result.passed,
       sectionHasData(SectionA.SHEET_ID, result.data)
     );
+    this.validationIssues.push(...(result.issues || []));
 
     return true;
   }
@@ -448,6 +455,7 @@ export class QuestionnaireExcelMiddleware {
       result.passed,
       sectionHasData(SectionB.SHEET_ID, result.data)
     );
+    this.validationIssues.push(...(result.issues || []));
 
     return true;
   }
@@ -487,6 +495,7 @@ export class QuestionnaireExcelMiddleware {
       result.passed,
       sectionHasData(SectionC.SHEET_ID, result.data)
     );
+    this.validationIssues.push(...(result.issues || []));
 
     return true;
   }
@@ -521,6 +530,7 @@ export class QuestionnaireExcelMiddleware {
       result.passed,
       sectionHasData(SectionD.SHEET_ID, result.data)
     );
+    this.validationIssues.push(...(result.issues || []));
 
     return true;
   }

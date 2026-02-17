@@ -379,6 +379,7 @@ export const combineQuestionnaireData = <T extends object, U extends object>(
 export type ParseResult<S extends z.ZodObject> = {
   passed: boolean;
   data: Partial<z.infer<S>> | null;
+  issues?: z.core.$ZodIssue[];
 };
 
 /**
@@ -424,7 +425,7 @@ export const parseSchemaObject = <S extends z.ZodObject>(
     }
   }
 
-  return { passed: false, data: clonedData };
+  return { passed: false, data: clonedData, issues: result?.error?.issues };
 };
 
 /**

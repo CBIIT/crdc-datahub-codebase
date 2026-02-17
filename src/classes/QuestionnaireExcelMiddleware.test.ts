@@ -1,4 +1,5 @@
 import ExcelJS, { Worksheet } from "exceljs";
+import { isEqual } from "lodash";
 import { v4 } from "uuid";
 
 import cancerTypeOptions, { CUSTOM_CANCER_TYPES } from "@/config/CancerTypesConfig";
@@ -2962,6 +2963,38 @@ describe("Parsing", () => {
     // @ts-expect-error Private member
     const output = middleware.data;
     expect(output.study.dbGaPPPHSNumber).toEqual(expected);
+  });
+
+  it("should allow empty dbGaPPPHSNumber when isDbGapRegistered is false", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        isDbGapRegistered: false,
+        dbGaPPPHSNumber: "",
+      }),
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionC();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    await middleware.parseSectionC();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+    expect(output.study.isDbGapRegistered).toEqual(false);
+    expect(output.study.dbGaPPPHSNumber).toEqual("");
+
+    // @ts-expect-error Private member
+    const { validationIssues } = middleware;
+    const dbGaPPPHSNumberIssue = validationIssues.find((issue) =>
+      isEqual(issue.path, ["study", "dbGaPPPHSNumber"])
+    );
+    expect(dbGaPPPHSNumberIssue).toBeUndefined();
   });
 
   it("should clear all Cancer Type options if 'Not Applicable' is selected", async () => {

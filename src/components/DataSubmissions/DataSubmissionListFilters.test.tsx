@@ -1239,4 +1239,51 @@ describe("DataSubmissionListFilters Component", () => {
 
     expect(parseInt(styles.zIndex, 10)).toBeGreaterThan(250);
   });
+
+  it("renders the Study filter with correct label text", async () => {
+    const { getByText, getByTestId } = render(
+      <TestParent>
+        <DataSubmissionListFilters
+          columns={columns}
+          organizations={organizations}
+          submitterNames={submitterNames}
+          dataCommons={dataCommons}
+          dataCommonsDisplayNames={dataCommons}
+          columnVisibilityModel={columnVisibilityModel}
+          onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+          onChange={mockOnChange}
+        />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByText("Study")).toBeInTheDocument();
+      expect(getByTestId("dbGaPID-input")).toBeInTheDocument();
+    });
+  });
+
+  it("renders the Study filter with correct placeholder text", async () => {
+    const { getByTestId, getByPlaceholderText } = render(
+      <TestParent>
+        <DataSubmissionListFilters
+          columns={columns}
+          organizations={organizations}
+          submitterNames={submitterNames}
+          dataCommons={dataCommons}
+          dataCommonsDisplayNames={dataCommons}
+          columnVisibilityModel={columnVisibilityModel}
+          onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+          onChange={mockOnChange}
+        />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      const studyInput = getByTestId("dbGaPID-input");
+      expect(studyInput).toBeInTheDocument();
+      expect(studyInput).toHaveAttribute("placeholder", "Enter Study Name, Acronym, or dbGaP ID");
+    });
+
+    expect(getByPlaceholderText("Enter Study Name, Acronym, or dbGaP ID")).toBeInTheDocument();
+  });
 });
