@@ -12,6 +12,7 @@ export type AskKnowledgeBaseResponse = {
 type AskQuestionArgs = {
   question: string;
   sessionId?: string | null;
+  conversationHistory?: ConversationHistory[];
   onChunk?: (chunk: string) => void;
   onCitation?: (citation: ChatCitation) => void;
   signal?: AbortSignal;
@@ -155,6 +156,7 @@ export async function processStreamingResponse(
 export async function askQuestion({
   question,
   sessionId = null,
+  conversationHistory = [],
   onChunk,
   onCitation,
   signal,
@@ -168,7 +170,7 @@ export async function askQuestion({
   try {
     const response = await fetch(url, {
       method: "POST",
-      body: JSON.stringify({ question, sessionId }),
+      body: JSON.stringify({ question, sessionId, conversationHistory }),
       signal,
     });
 

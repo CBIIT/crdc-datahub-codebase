@@ -150,6 +150,19 @@ const useChatConversation = (): ChatConversationActions => {
   }, []);
 
   /**
+   * Builds conversation history from messages for the API request.
+   * Excludes the initial greeting message.
+   */
+  const buildConversationHistory = useCallback(
+    (messages: ChatMessage[]): ConversationHistory[] =>
+      messages.slice(1).map((msg) => ({
+        role: msg.sender === "user" ? "user" : "assistant",
+        content: msg.text,
+      })),
+    []
+  );
+
+  /**
    * Executes the bot reply request with streaming support.
    */
   const runReply = useCallback(
@@ -163,10 +176,12 @@ const useChatConversation = (): ChatConversationActions => {
         let accumulatedText = "";
         const allCitations: ChatCitation[] = [];
         let firstChunkReceived = false;
+        const conversationHistory = buildConversationHistory(stateRef.current.messages);
 
         await askQuestion({
           question: userMessage,
           sessionId: getStoredSessionId(),
+          conversationHistory,
           signal: abortController.signal,
           url: knowledgeBaseUrl,
           onChunk: (chunk: string) => {
@@ -215,7 +230,7 @@ const useChatConversation = (): ChatConversationActions => {
         handleReplyError(error, requestId);
       }
     },
-    [knowledgeBaseUrl, handleReplyError]
+    [knowledgeBaseUrl, handleReplyError, buildConversationHistory]
   );
 
   /**
