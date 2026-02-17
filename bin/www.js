@@ -9,12 +9,16 @@ let server;
     app.set('port', port);
 
     // Run startup migrations unless SKIP_STARTUP_MIGRATIONS is set (e.g. for tests or manual migration)
-    if (!process.env.SKIP_STARTUP_MIGRATIONS) {
-        const { orchestrateMigration } = require('../documentation/3-6-0/3-6-0-migration');
-        const result = await orchestrateMigration();
-        if (!result.success) {
-            console.error('Startup migrations failed. Exiting.');
-            process.exit(1);
+    const skipMigrations = process.env.SKIP_STARTUP_MIGRATIONS?.toLowerCase() === 'true';
+    if (!skipMigrations) {
+        try {
+            const { orchestrateMigration } = require('../documentation/3-6-0/3-6-0-migration');
+            const result = await orchestrateMigration();
+            if (!result.success) {
+                console.error('Some data migrations failed, please check the logs for details.');
+            }
+        } catch (error) {
+            console.error('An error occurred during data migration:', error);
         }
     }
     else {
