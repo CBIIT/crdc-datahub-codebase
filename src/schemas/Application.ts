@@ -9,6 +9,19 @@ import { validatePHSNumber } from "@/utils";
 
 const FIELD_IS_REQUIRED = "This field is required.";
 
+export const studySchemaSuperRefine = (
+  val: { isDbGapRegistered?: boolean; dbGaPPPHSNumber?: string },
+  ctx: z.RefinementCtx
+) => {
+  if (val.isDbGapRegistered && !val.dbGaPPPHSNumber?.trim()) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["dbGaPPPHSNumber"],
+      message: FIELD_IS_REQUIRED,
+    });
+  }
+};
+
 /**
  * Schema for a section in the application questionnaire.
  */
@@ -341,7 +354,7 @@ export const studySchema = z
       .string()
       .max(50)
       .trim()
-      .refine((val) => validatePHSNumber(val))
+      .refine((val) => !val || validatePHSNumber(val))
       .optional(),
     /**
      * The name of the Genomic Program Administrator.
@@ -350,15 +363,7 @@ export const studySchema = z
      */
     GPAName: z.string().optional(),
   })
-  .superRefine((val, ctx) => {
-    if (val.isDbGapRegistered && !val.dbGaPPPHSNumber) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["dbGaPPPHSNumber"],
-        message: FIELD_IS_REQUIRED,
-      });
-    }
-  })
+  .superRefine(studySchemaSuperRefine)
   .strict();
 
 /**
