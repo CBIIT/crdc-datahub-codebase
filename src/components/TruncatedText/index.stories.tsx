@@ -21,3 +21,11 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {},
 };
+
+export const ForceTooltip: Story = {
+  args: {
+    forceTooltip: true,
+    text: "Short text",
+    tooltipText: "This is a forced tooltip",
+  },
+};

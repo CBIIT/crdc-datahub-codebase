@@ -33,7 +33,7 @@ vi.mock("../Contexts/AuthContext", async () => ({
 
 const mockUseAuthContext = useAuthContext as ReturnType<typeof vi.fn>;
 
-const mockSubmissions = submissionFactory.build(10, (idx) => ({
+const baseSubmissions = submissionFactory.build(10, (idx) => ({
   _id: `submission-${idx}`,
   name: `Submission ${idx}`,
   submitterName: `Submitter ${idx}`,
@@ -53,6 +53,12 @@ const mockSubmissions = submissionFactory.build(10, (idx) => ({
   dataFileSize: { size: 1024 * (idx + 1), formatted: `${idx + 1} KB` },
   createdAt: "2024-01-01T00:00:00Z",
   updatedAt: "2024-01-02T00:00:00Z",
+}));
+
+const mockSubmissions: Submission[] = baseSubmissions.map((submission, idx) => ({
+  ...submission,
+  submissionRequestID: `submission-request-${idx}`,
+  canViewSubmissionRequest: true,
 }));
 
 const listSubmissionsMock: MockedResponse<ListSubmissionsResp, ListSubmissionsInput> = {
@@ -133,9 +139,9 @@ const defaultColumns: Column<Submission>[] = [
   },
   {
     label: "Study",
-    renderValue: (a) => a.studyAbbreviation,
-    field: "studyAbbreviation",
-    exportValue: (a) => ({ label: "Study", value: a.studyAbbreviation }),
+    renderValue: (a) => a.study?.studyAbbreviation,
+    fieldKey: "study.studyAbbreviation",
+    exportValue: (a) => ({ label: "Study", value: a.study?.studyAbbreviation }),
   },
   {
     label: "dbGaP ID",
