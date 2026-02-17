@@ -19,3 +19,14 @@ type ChatMessage = {
   variant?: ChatMessageVariant;
   citations?: ChatCitation[];
 };
+
+type ConversationHistory = {
+  /**
+   * The role of the message sender.
+   */
+  role: "user" | "assistant";
+  /**
+   * The content of the message.
+   */
+  content: string;
+};
