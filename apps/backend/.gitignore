@@ -1,0 +1,13 @@
+
+.idea
+node_modules
+*.env
+/logs/
+*.http
+**/.DS_Store
+*.vscode*
+local-files
+coverage
+dist/
+generated/prisma/
+integration-tests/

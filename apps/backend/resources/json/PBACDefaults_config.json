@@ -1,0 +1,1646 @@
+{
+    "_id": "06e527d4-0040-48cd-a4a1-bd8d850ab828",
+    "type": "PBAC",
+    "version": "2.2.0",
+    "Defaults": [
+      {
+        "role": "Federal Lead",
+        "permissions": [
+          {
+            "_id": "submission_request:view:all",
+            "group": "Submission Request Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:create:all",
+            "group": "Submission Request Permissions",
+            "name": "Create",
+            "inherited": ["submission_request:view:all"],
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:review:all",
+            "group": "Submission Request Permissions",
+            "name": "Review",
+            "inherited": ["submission_request:view:all"],
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:submit:all",
+            "group": "Submission Request Permissions",
+            "name": "Submit",
+            "inherited": ["submission_request:view:all"],
+            "order": 3,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:cancel:all",
+            "group": "Submission Request Permissions",
+            "name": "Cancel/Restore",
+            "inherited": ["submission_request:view:all"],
+            "order": 5,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "access:request:none",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:view:study",
+            "group": "Data Submission Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:create:study",
+            "group": "Data Submission Permissions",
+            "inherited": ["data_submission:view:study"],
+            "name": "Create",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:cancel:study",
+            "group": "Data Submission Permissions",
+            "name": "Cancel",
+            "inherited": ["data_submission:view:study"],
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:review:study",
+            "group": "Data Submission Permissions",
+            "name": "Review",
+            "inherited": ["data_submission:view:study"],
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:admin_submit:study",
+            "group": "Data Submission Permissions",
+            "name": "Admin Submit",
+            "inherited": ["data_submission:view:study"],
+            "order": 5,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:confirm:study",
+            "group": "Data Submission Permissions",
+            "name": "Confirm",
+            "inherited": ["data_submission:view:study"],
+            "order": 6,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "user:manage:role:Federal Lead",
+            "group": "Admin Permissions",
+            "name": "Manage Users",
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "program:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Programs",
+            "order": 1,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "study:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Studies",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "institution:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Institutions",
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "dashboard:view:study",
+            "group": "Admin Permissions",
+            "name": "View Operation Dashboard",
+            "order": 5,
+            "checked": true,
+            "disabled": false
+          }
+        ],
+        "notifications": [
+          {
+            "_id": "submission_request:submitted",
+            "group": "Submission Request Emails",
+            "name": "When Submitted",
+            "order": 1,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:to_be_reviewed",
+            "group": "Submission Request Emails",
+            "name": "When available for review",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:reviewed",
+            "group": "Submission Request Emails",
+            "name": "When review decision made",
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:pending_cleared",
+            "group": "Submission Request Emails",
+            "name": "When pending cleared",
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:canceled",
+            "group": "Submission Request Emails",
+            "name": "When canceled/restored",
+            "order": 5,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:deleted",
+            "group": "Submission Request Emails",
+            "name": "When deleted",
+            "order": 7,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:expiring",
+            "group": "Submission Request Emails",
+            "name": "When expiring",
+            "order": 6,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:created",
+            "group": "Data Submission Emails",
+            "name": "When created",
+            "order": 1,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:submitted",
+            "group": "Data Submission Emails",
+            "name": "When submitted",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:cancelled",
+            "group": "Data Submission Emails",
+            "name": "When cancelled",
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:withdrawn",
+            "group": "Data Submission Emails",
+            "name": "When withdrawn",
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:rejected",
+            "group": "Data Submission Emails",
+            "name": "When rejected",
+            "order": 5,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:released",
+            "group": "Data Submission Emails",
+            "name": "When released",
+            "order": 6,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:completed",
+            "group": "Data Submission Emails",
+            "name": "When completed",
+            "order": 7,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:expiring",
+            "group": "Data Submission Emails",
+            "name": "When expiring",
+            "order": 8,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:deleted",
+            "group": "Data Submission Emails",
+            "name": "When deleted",
+            "order": 9,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:pv_requested",
+            "group": "Data Submission Emails",
+            "name": "When New PV requested",
+            "order": 10,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:cfg_changed",
+            "group": "Data Submission Emails",
+            "name": "When config changed",
+            "order": 11,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "access:requested",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "account:access_changed",
+            "group": "Miscellaneous",
+            "name": "Account Access Change",
+            "order": 2,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "account:inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled",
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "account:users_inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled (Consolidated)",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          }
+        ]
+      },
+      {
+        "role": "Data Commons Personnel",
+        "permissions": [
+          {
+            "_id": "submission_request:view:all",
+            "group": "Submission Request Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:create:all",
+            "group": "Submission Request Permissions",
+            "name": "Create",
+            "inherited": ["submission_request:view:all"],
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:review:all",
+            "group": "Submission Request Permissions",
+            "name": "Review",
+            "inherited": ["submission_request:view:all"],
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:submit:all",
+            "group": "Submission Request Permissions",
+            "name": "Submit",
+            "inherited": ["submission_request:view:all"],
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:cancel:all",
+            "group": "Submission Request Permissions",
+            "name": "Cancel/Restore",
+            "inherited": ["submission_request:view:all"],
+            "order": 5,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "access:request:none",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:view:DC",
+            "group": "Data Submission Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:create:DC",
+            "group": "Data Submission Permissions",
+            "inherited": ["data_submission:view:DC"],
+            "name": "Create",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:cancel:DC",
+            "group": "Data Submission Permissions",
+            "name": "Cancel",
+            "inherited": ["data_submission:view:DC"],
+            "order": 3,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:review:DC",
+            "group": "Data Submission Permissions",
+            "inherited": ["data_submission:view:DC"],
+            "name": "Review",
+            "order": 4,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:admin_submit:DC",
+            "group": "Data Submission Permissions",
+            "name": "Admin Submit",
+            "inherited": ["data_submission:view:DC"],
+            "order": 5,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:confirm:DC",
+            "group": "Data Submission Permissions",
+            "name": "Confirm",
+            "inherited": ["data_submission:view:DC"],
+            "order": 6,
+            "checked": true,
+            "disabled": false
+          },
+         
+          {
+            "_id": "user:manage:role",
+            "group": "Admin Permissions",
+            "name": "Manage Users",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "program:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Programs",
+            "order": 1,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "study:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Studies",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "institution:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Institutions",
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "dashboard:view:DC",
+            "group": "Admin Permissions",
+            "name": "View Operation Dashboard",
+            "order": 5,
+            "checked": true,
+            "disabled": false
+          }
+        ],
+        "notifications": [
+          {
+            "_id": "submission_request:submitted",
+            "group": "Submission Request Emails",
+            "name": "When Submitted",
+            "order": 1,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:to_be_reviewed",
+            "group": "Submission Request Emails",
+            "name": "When available for review",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:reviewed",
+            "group": "Submission Request Emails",
+            "name": "When review decision made",
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:pending_cleared",
+            "group": "Submission Request Emails",
+            "name": "When pending cleared",
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:canceled",
+            "group": "Submission Request Emails",
+            "name": "When canceled/restored",
+            "order": 5,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:deleted",
+            "group": "Submission Request Emails",
+            "name": "When deleted",
+            "order": 7,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:expiring",
+            "group": "Submission Request Emails",
+            "name": "When expiring",
+            "order": 6,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:created",
+            "group": "Data Submission Emails",
+            "name": "When created",
+            "order": 1,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:submitted",
+            "group": "Data Submission Emails",
+            "name": "When submitted",
+            "order": 2,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:cancelled",
+            "group": "Data Submission Emails",
+            "name": "When cancelled",
+            "order": 3,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:withdrawn",
+            "group": "Data Submission Emails",
+            "name": "When withdrawn",
+            "order": 4,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:rejected",
+            "group": "Data Submission Emails",
+            "name": "When rejected",
+            "order": 5,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:released",
+            "group": "Data Submission Emails",
+            "name": "When released",
+            "order": 6,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:completed",
+            "group": "Data Submission Emails",
+            "name": "When completed",
+            "order": 7,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:expiring",
+            "group": "Data Submission Emails",
+            "name": "When expiring",
+            "order": 8,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:deleted",
+            "group": "Data Submission Emails",
+            "name": "When deleted",
+            "order": 9,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:pv_requested",
+            "group": "Data Submission Emails",
+            "name": "When New PV requested",
+            "order": 10,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:cfg_changed",
+            "group": "Data Submission Emails",
+            "name": "When config changed",
+            "order": 11,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "access:requested",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "account:access_changed",
+            "group": "Miscellaneous",
+            "name": "Account Access Change",
+            "order": 2,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "account:inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled",
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "account:users_inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled (Consolidated)",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          }
+        ]
+      },
+      {
+        "role": "Admin",
+        "permissions": [
+          {
+            "_id": "submission_request:view:all",
+            "group": "Submission Request Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:create:all",
+            "group": "Submission Request Permissions",
+            "inherited": ["submission_request:view:all"],
+            "name": "Create",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:review:all",
+            "group": "Submission Request Permissions",
+            "inherited": ["submission_request:view:all"],
+            "name": "Review",
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:submit:all",
+            "group": "Submission Request Permissions",
+            "name": "Submit",
+            "inherited": ["submission_request:view:all"],
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:cancel:all",
+            "group": "Submission Request Permissions",
+            "name": "Cancel/Restore",
+            "inherited": ["submission_request:view:all"],
+            "order": 5,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "access:request:none",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:view:all",
+            "group": "Data Submission Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:create:all",
+            "group": "Data Submission Permissions",
+            "name": "Create",
+            "inherited": ["data_submission:view:all"],
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:cancel:all",
+            "group": "Data Submission Permissions",
+            "name": "Cancel",
+            "inherited": ["data_submission:view:all"],
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:review:all",
+            "group": "Data Submission Permissions",
+            "inherited": ["data_submission:view:all"],
+            "name": "Review",
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:admin_submit:all",
+            "group": "Data Submission Permissions",
+            "name": "Admin Submit",
+            "inherited": ["data_submission:view:all"],
+            "order": 5,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:confirm:all",
+            "group": "Data Submission Permissions",
+            "name": "Confirm",
+            "inherited": ["data_submission:view:all"],
+            "order": 6,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "user:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Users",
+            "order": 4,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "program:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Programs",
+            "order": 1,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "study:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Studies",
+            "order": 2,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "institution:manage:all",
+            "group": "Admin Permissions",
+            "name": "Manage Institutions",
+            "order": 3,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "dashboard:view:all",
+            "group": "Admin Permissions",
+            "name": "View Operation Dashboard",
+            "order": 5,
+            "checked": true,
+            "disabled": false
+          }
+        ],
+        "notifications": [
+          {
+            "_id": "submission_request:submitted",
+            "group": "Submission Request Emails",
+            "name": "When Submitted",
+            "order": 1,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:to_be_reviewed",
+            "group": "Submission Request Emails",
+            "name": "When available for review",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:reviewed",
+            "group": "Submission Request Emails",
+            "name": "When review decision made",
+            "order": 3,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:pending_cleared",
+            "group": "Submission Request Emails",
+            "name": "When pending cleared",
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:canceled",
+            "group": "Submission Request Emails",
+            "name": "When canceled/restored",
+            "order": 5,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:deleted",
+            "group": "Submission Request Emails",
+            "name": "When deleted",
+            "order": 7,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:expiring",
+            "group": "Submission Request Emails",
+            "name": "When expiring",
+            "order": 6,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:created",
+            "group": "Data Submission Emails",
+            "name": "When created",
+            "order": 1,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:submitted",
+            "group": "Data Submission Emails",
+            "name": "When submitted",
+            "order": 2,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:cancelled",
+            "group": "Data Submission Emails",
+            "name": "When cancelled",
+            "order": 3,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:withdrawn",
+            "group": "Data Submission Emails",
+            "name": "When withdrawn",
+            "order": 4,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:rejected",
+            "group": "Data Submission Emails",
+            "name": "When rejected",
+            "order": 5,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:released",
+            "group": "Data Submission Emails",
+            "name": "When released",
+            "order": 6,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:completed",
+            "group": "Data Submission Emails",
+            "name": "When completed",
+            "order": 7,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:expiring",
+            "group": "Data Submission Emails",
+            "name": "When expiring",
+            "order": 8,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:deleted",
+            "group": "Data Submission Emails",
+            "name": "When deleted",
+            "order": 9,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:pv_requested",
+            "group": "Data Submission Emails",
+            "name": "When New PV requested",
+            "order": 10,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "data_submission:cfg_changed",
+            "group": "Data Submission Emails",
+            "name": "When config changed",
+            "order": 11,
+            "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "access:requested",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "account:access_changed",
+            "group": "Miscellaneous",
+            "name": "Account Access Change",
+            "order": 2,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "account:inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled",
+            "order": 3,
+            "checked": true,
+            "disabled": false
+          },
+          {
+            "_id": "account:users_inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled (Consolidated)",
+            "order": 4,
+            "checked": true,
+            "disabled": false
+          }
+        ]
+      },
+      {
+        "role": "Submitter",
+        "permissions": [
+          {
+            "_id": "submission_request:view:own",
+            "group": "Submission Request Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:create:own",
+            "group": "Submission Request Permissions",
+            "inherited": ["submission_request:view:own"],
+            "name": "Create",
+            "order": 2,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:review:none",
+            "group": "Submission Request Permissions",
+            "inherited": [],
+            "name": "Review",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:submit:own",
+            "group": "Submission Request Permissions",
+            "name": "Submit",
+            "inherited": ["submission_request:view:own"],
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:cancel:own",
+            "group": "Submission Request Permissions",
+            "name": "Cancel/Restore",
+            "inherited": ["submission_request:view:own"],
+            "order": 5,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "access:request:own",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:view:study",
+            "group": "Data Submission Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:create:own",
+            "group": "Data Submission Permissions",
+            "name": "Create",
+            "inherited": ["data_submission:view:study"],
+            "order": 2,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:cancel:own",
+            "group": "Data Submission Permissions",
+            "name": "Cancel",
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:review:none",
+            "group": "Data Submission Permissions",
+            "inherited": [],
+            "name": "Review",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:admin_submit:none",
+            "group": "Data Submission Permissions",
+            "name": "Admin Submit",
+            "inherited": ["data_submission:view:study"],
+            "order": 5,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:confirm:none",
+            "group": "Data Submission Permissions",
+            "name": "Confirm",
+            "inherited": ["data_submission:view:study"],
+            "order": 6,
+            "checked": false,
+            "disabled": true
+          },
+          
+          {
+            "_id": "user:manage:none",
+            "group": "Admin Permissions",
+            "name": "Manage Users",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "program:manage:none",
+            "group": "Admin Permissions",
+            "name": "Manage Programs",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "study:manage:none",
+            "group": "Admin Permissions",
+            "name": "Manage Studies",
+            "order": 2,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "institution:manage:none",
+            "group": "Admin Permissions",
+            "name": "Manage Institutions",
+            "order": 3,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "dashboard:view:none",
+            "group": "Admin Permissions",
+            "name": "View Operation Dashboard",
+            "order": 5,
+            "checked": false,
+            "disabled": true
+          }
+        ],
+        "notifications": [
+          {
+            "_id": "submission_request:submitted",
+            "group": "Submission Request Emails",
+            "name": "When Submitted",
+            "order": 1,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:to_be_reviewed",
+            "group": "Submission Request Emails",
+            "name": "When available for review",
+            "order": 2,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:reviewed",
+            "group": "Submission Request Emails",
+            "name": "When review decision made",
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:pending_cleared",
+            "group": "Submission Request Emails",
+            "name": "When pending cleared",
+            "order": 4,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:canceled",
+            "group": "Submission Request Emails",
+            "name": "When canceled/restored",
+            "order": 5,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:deleted",
+            "group": "Submission Request Emails",
+            "name": "When deleted",
+            "order": 7,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:expiring",
+            "group": "Submission Request Emails",
+            "name": "When expiring",
+            "order": 6,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:created",
+            "group": "Data Submission Emails",
+            "name": "When created",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:submitted",
+            "group": "Data Submission Emails",
+            "name": "When submitted",
+            "order": 2,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:cancelled",
+            "group": "Data Submission Emails",
+            "name": "When cancelled",
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:withdrawn",
+            "group": "Data Submission Emails",
+            "name": "When withdrawn",
+            "order": 4,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:rejected",
+            "group": "Data Submission Emails",
+            "name": "When rejected",
+            "order": 5,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:released",
+            "group": "Data Submission Emails",
+            "name": "When released",
+            "order": 6,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:completed",
+            "group": "Data Submission Emails",
+            "name": "When completed",
+            "order": 7,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:expiring",
+            "group": "Data Submission Emails",
+            "name": "When expiring",
+            "order": 8,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:deleted",
+            "group": "Data Submission Emails",
+            "name": "When deleted",
+            "order": 9,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:pv_requested",
+            "group": "Data Submission Emails",
+            "name": "When New PV requested",
+            "order": 10,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:cfg_changed",
+            "group": "Data Submission Emails",
+            "name": "When config changed",
+            "order": 11,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "access:requested",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "account:access_changed",
+            "group": "Miscellaneous",
+            "name": "Account Access Change",
+            "order": 2,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "account:inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled",
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "account:users_inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled (Consolidated)",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          }
+        ]
+      },
+      {
+        "role": "User",
+        "permissions": [
+          {
+            "_id": "submission_request:view:own",
+            "group": "Submission Request Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:create:own",
+            "group": "Submission Request Permissions",
+            "inherited": ["submission_request:view:own"],
+            "name": "Create",
+            "order": 2,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:review:none",
+            "group": "Submission Request Permissions",
+            "inherited": [],
+            "name": "Review",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:submit:own",
+            "group": "Submission Request Permissions",
+            "name": "Submit",
+            "inherited": ["submission_request:view:own"],
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:cancel:own",
+            "group": "Submission Request Permissions",
+            "name": "Cancel/Restore",
+            "inherited": ["submission_request:view:own"],
+            "order": 5,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "access:request:own",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:view:none",
+            "group": "Data Submission Permissions",
+            "name": "View",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:create:none",
+            "group": "Data Submission Permissions",
+            "name": "Create",
+            "inherited": [],
+            "order": 2,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:cancel:none",
+            "group": "Data Submission Permissions",
+            "name": "Cancel",
+            "order": 3,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:review:none",
+            "group": "Data Submission Permissions",
+            "inherited": [],
+            "name": "Review",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:admin_submit:none",
+            "group": "Data Submission Permissions",
+            "name": "Admin Submit",
+            "order": 5,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:confirm:none",
+            "group": "Data Submission Permissions",
+            "name": "Confirm",
+            "order": 6,
+            "checked": false,
+            "disabled": true
+          },
+          
+          {
+            "_id": "user:manage:none",
+            "group": "Admin Permissions",
+            "name": "Manage Users",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "program:manage:none",
+            "group": "Admin Permissions",
+            "name": "Manage Programs",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "study:manage:none",
+            "group": "Admin Permissions",
+            "name": "Manage Studies",
+            "order": 2,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "institution:manage:none",
+            "group": "Admin Permissions",
+            "name": "Manage Institutions",
+            "order": 3,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "dashboard:view:none",
+            "group": "Admin Permissions",
+            "name": "View Operation Dashboard",
+            "order": 5,
+            "checked": false,
+            "disabled": true
+          }
+        ],
+        "notifications": [
+          {
+            "_id": "submission_request:submitted",
+            "group": "Submission Request Emails",
+            "name": "When Submitted",
+            "order": 1,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:to_be_reviewed",
+            "group": "Submission Request Emails",
+            "name": "When available for review",
+            "order": 2,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:reviewed",
+            "group": "Submission Request Emails",
+            "name": "When review decision made",
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:pending_cleared",
+            "group": "Submission Request Emails",
+            "name": "When pending cleared",
+            "order": 4,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:canceled",
+            "group": "Submission Request Emails",
+            "name": "When canceled/restored",
+            "order": 5,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:deleted",
+            "group": "Submission Request Emails",
+            "name": "When deleted",
+            "order": 7,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:expiring",
+            "group": "Submission Request Emails",
+            "name": "When expiring",
+            "order": 6,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:created",
+            "group": "Data Submission Emails",
+            "name": "When created",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:submitted",
+            "group": "Data Submission Emails",
+            "name": "When submitted",
+            "order": 2,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:cancelled",
+            "group": "Data Submission Emails",
+            "name": "When cancelled",
+            "order": 3,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:withdrawn",
+            "group": "Data Submission Emails",
+            "name": "When withdrawn",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:rejected",
+            "group": "Data Submission Emails",
+            "name": "When rejected",
+            "order": 5,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:released",
+            "group": "Data Submission Emails",
+            "name": "When released",
+            "order": 6,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:completed",
+            "group": "Data Submission Emails",
+            "name": "When completed",
+            "order": 7,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:expiring",
+            "group": "Data Submission Emails",
+            "name": "When expiring",
+            "order": 8,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:deleted",
+            "group": "Data Submission Emails",
+            "name": "When deleted",
+            "order": 9,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:pv_requested",
+            "group": "Data Submission Emails",
+            "name": "When New PV requested",
+            "order": 10,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "data_submission:cfg_changed",
+            "group": "Data Submission Emails",
+            "name": "When config changed",
+            "order": 11,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "access:requested",
+            "group": "Miscellaneous",
+            "name": "Request Access",
+            "order": 1,
+            "checked": false,
+            "disabled": true
+          },
+          {
+            "_id": "account:access_changed",
+            "group": "Miscellaneous",
+            "name": "Account Access Change",
+            "order": 2,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "account:inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled",
+            "order": 3,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "account:users_inactivated",
+            "group": "Miscellaneous",
+            "name": "Account Disabled (Consolidated)",
+            "order": 4,
+            "checked": false,
+            "disabled": true
+          }
+        ]
+      }
+    ]
+  }

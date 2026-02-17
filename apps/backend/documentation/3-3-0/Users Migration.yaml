@@ -1,0 +1,124 @@
+Commands:
+  - Create backup: Recommended to use MonogoDB Compass and use the 'Export Data' button to export the full 'users' collection as a JSON file.
+  - Select database:
+      For DEV2 or QA2: |
+        use crdc-datahub2
+      For all other tiers: |
+        use crdc-datahub
+  - Add inherited permissions to user document CRDCDH-2321: |
+      db.users.updateMany(
+      {
+        permissions: { $in: ["submission_request:create", "submission_request:review"] },
+      },
+      {
+        $addToSet: { permissions: "submission_request:view" }
+      }
+      );
+      
+      db.users.updateMany(
+      {
+        permissions: { $in: ["data_submission:create", "data_submission:review"] },
+      },
+      {
+        $addToSet: { permissions: "data_submission:view" }
+      }
+      );
+  - Add the missing primary contact email notifications to admin user CRDCDH-2398: |
+      db.users.updateMany(
+      {
+        role: "Admin",
+      },
+      {
+        $addToSet: { notifications: "data_submission:missing_primary_contact" }
+      }
+      );
+  - Update all history records in the Submission Request where status is 'Deleted'. CRDCDH-2434: |
+      db.applications.updateMany(
+        { "history.status": "Deleted" },
+        {
+          $set: {
+                  "history.$[elem].reviewComment": "This Submission Request has been deleted by the system due to inactivity."
+              }
+        },
+        {
+          arrayFilters: [
+              { "elem.status": "Deleted" }
+          ]
+        }
+      );
+  - Set all submissions to include the fileSize property within the submission document for CRDCDH-2432:  |
+      db.submissions.updateMany(
+          { "dataFileSize": { $exists: false } },
+          {
+              $set: { "dataFileSize": { formatted: "0", size: 0 } }
+          }
+      );
+  - Set all institutions to include status(Active/Inactive), createdAt, updatedAt within the institution document for CRDCDH-2484:  |
+      db.institutions.updateMany(
+        {},
+        {
+          $set: {
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              status: "Active"
+          }
+        }
+      )
+  - Add the missing manage institution permission to admin user CRDCDH-2488: |
+      db.users.updateMany(
+          {
+            role: "Admin",
+          },
+          {
+            $addToSet: { permissions: "institution:manage" }
+          }
+      );
+  - Set useProgramPC to approvedStudies for CRDCDH-2481:  |
+      db.approvedStudies.updateMany(
+          {},
+          [
+              {
+                  $set: {
+                      useProgramPC: {
+                          $cond: {
+                              if: {
+                                  $or: [
+                                      { $eq: ["$primaryContactID", null] },
+                                      { $not: ["$primaryContactID"] }
+                                  ]
+                              },
+                              then: true,
+                              else: false
+                          }
+                      }
+                  }
+              }
+          ]
+      );
+  - new data submission email Notification to DCP for CRDCDH-2619:  |
+      db.users.updateMany(
+        {
+          role: {$in: ["Admin", "Data Commons Personnel"]},
+        },
+        {
+          $addToSet: { notifications: "data_submission:created" }
+        }
+      );
+        
+      db.users.updateMany(
+        { notifications: "data_submission:missing_primary_contact" },
+        { $pull: { notifications: "data_submission:missing_primary_contact" } }
+      );
+  - insert the maintenance mode into configuration collection CRDCDH-2841:  |
+        db.configuration.insertOne({
+            _id: "df408763-39ac-4906-9da6-986e61e2a017",
+            type: "MAINTENANCE_MODE",
+            keys: {
+                flag: false
+            }
+        });
+  - Getting rid of organization property from the submission collection - CRDCDH-2779: |
+        db.submissions.updateMany(
+          { organization: { $exists: true } },
+          { $unset: { organization: "" } }
+        );
