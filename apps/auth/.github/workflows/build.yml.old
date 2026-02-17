@@ -1,0 +1,101 @@
+name: Build Authn service
+permissions: 
+  contents: write
+  id-token: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Choose the environment to build"
+        required: true
+        type: environment
+      code_branch:
+        description: "Branch to build"
+        required: true
+        default: "main"
+      trivy_test_scan:
+        description: "Run Trivy Test Scan"
+        required: true
+        type: boolean
+        default: false
+
+
+jobs:
+  build:
+    name: Build authn image
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      ECR_REPO: "crdc-datahub-authn"
+      SERVICE: "authn"
+      REGION: "us-east-1"
+      CODE_BRANCH: "${{ github.event.inputs.code_branch }}"
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CODE_BRANCH }}
+          submodules: true
+
+      - name: Build Docker Image
+        id: build-image
+        run: |
+          echo "Building: $ECR_REPO:$CODE_BRANCH.${{ github.run_number }}"
+          docker build --no-cache -t $ECR_REPO:$CODE_BRANCH.${{ github.run_number }} .
+
+
+  test:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      ECR_REPO: "crdc-datahub-authn"
+      SERVICE: "authn"
+      REGION: "us-east-1"
+      CODE_BRANCH: "${{ github.event.inputs.code_branch }}"
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+    needs: build
+    if: github.event.inputs.trivy_test_scan == 'true'
+
+    steps:
+      - name: Run Trivy Vulnerability Scan
+        run: |
+          echo "Testing Image with Trivy: $ECR_REPO:$CODE_BRANCH.${{ github.run_number }}"
+          docker run --rm --name trivy -u root -v /var/run/docker.sock:/var/run/docker.sock aquasecurity/trivy:latest \
+          image --exit-code 1 --severity HIGH,CRITICAL $ECR_REPO:$CODE_BRANCH.${{ github.run_number }}
+
+  push:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      ECR_REPO: "crdc-datahub-authn"
+      SERVICE: "authn"
+      REGION: "us-east-1"
+      CODE_BRANCH: "${{ github.event.inputs.code_branch }}"
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+    needs: [build]
+
+    steps:
+      - name: Configure AWS Role to assume using OIDC authentication
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Login to Amazon ECR
+        env:
+          REGISTRY_URL: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+        run: |
+          aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REGISTRY_URL
+
+      - name: Push Docker Image to ECR
+        env:
+          REGISTRY_URL: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+        run: |
+          echo "Pushing: $ECR_REPO:$CODE_BRANCH.${{ github.run_number }}"
+          docker push $REGISTRY_URL/$ECR_REPO:$CODE_BRANCH.${{ github.run_number }}

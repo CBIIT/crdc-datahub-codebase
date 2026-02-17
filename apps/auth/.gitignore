@@ -1,0 +1,9 @@
+public/
+node_modules/
+sessions/
+.idea/
+logs/
+yaml/
+newrelic_agent.log
+.env
+coverage/

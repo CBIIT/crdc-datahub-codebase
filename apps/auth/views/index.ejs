@@ -1,0 +1,139 @@
+<!-- The top of file index.ejs -->
+<html itemscope itemtype="http://schema.org/Article">
+<head>
+    <!-- BEGIN Pre-requisites -->
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js">
+    </script>
+    <!-- END Pre-requisites -->
+</head>
+<body>
+    <!-- Add where you want your sign-in button to render -->
+    <!-- Use an image that follows the branding guidelines in a real app -->
+    <div>
+        <button id="signInBtnNIH">Sign in NIH</button>
+    </div>
+    <p id="auth-code"></p>
+    <div>
+        <button id="logout">Sign out</button>
+    </div>
+    <div>
+        <button id="authenticated">Authenticated?</button>
+    </div>
+    <div>
+        <button id="file_service">Request File</button>
+    </div>
+    <p id="login_text">Not logged in</p>
+    <script>
+        $('#signInBtnNIH').click(function() {
+            // signInCallback defined in step 6.
+            let newUrl = "https://stsstg.nih.gov/auth/oauth/v2/authorize?";
+            newUrl += `client_id=<%= nihClientID %>`;
+            newUrl += `&redirect_uri=<%= nihRedirectURL %>`;
+            newUrl += `&response_type=code`;
+            newUrl += `&scope=openid email profile`;
+            newUrl += `&prompt=login`;
+            window.location =  newUrl;
+        });
+        $('#logout').click(function() {
+            // signInCallback defined in step 6.
+            signOut();
+        });
+        $('#authenticated').click(function() {
+            // signInCallback defined in step 6.
+            authenticated();
+        });
+        $('#file_service').click(function() {
+            // signInCallback defined in step 6.
+            requestFile();
+        });
+
+        // Display auth code if given in URL, for example redirect back by NIH
+        let queryString = document.location.search;
+        if (queryString) {
+            let params = new URLSearchParams(queryString);
+            let code = params.get("code"); // is the string "Jonathan"
+            $('#auth-code').text(code);
+        }
+    </script>
+
+    <!-- Last part of BODY element in file index.ejs -->
+    <script>
+        function signInDisplayCode(authResult) {
+            if (authResult['code']) {
+                $("#auth-code").text(authResult['code']);
+                // Google login with authenticated code
+              if (!noAutoLogin) {
+                  (async () => {
+                      const rawResponse = await fetch('/api/authn/login/', {
+                          method: 'POST',
+                          headers: {
+                              'Accept': 'application/json',
+                              'Content-Type': 'application/json'
+                          },
+                          body: JSON.stringify({code: authResult['code']})
+                      });
+                      const content = await rawResponse.json();
+                      console.log(content);
+                      $('#login_text').text(content.email.includes('@gmail.com') ? 'Google ' + content.name + ' Logged in' : 'Not logged in');
+                  })();
+              }
+            }
+        }
+        async function signOut() {
+            const rawResponse = await fetch('/api/authn/logout/', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({IDP: 'nih' })
+            });
+            const content = await rawResponse.json();
+            console.log(content);
+            if (content.status === 'success') $('#login_text').text('Not logged in');
+        }
+        async function authenticated() {
+            const queryString = window.location.search;
+            const urlParams = new URLSearchParams(queryString);
+            if (!urlParams.get('code')) return;
+            await nihLogin(urlParams.get('code'));
+        }
+
+        async function nihLogin(auth_code) {
+            console.log('auth_code: ' + auth_code);
+            fetch(`/api/authn/login`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({code: auth_code, IDP: 'nih'})
+            })
+                .then(response => response.json())
+                .then((responseData) => {
+                    console.log(JSON.stringify(responseData));
+                    $('#login_text').text(responseData.email ? responseData.name + ' Logged in': 'Not logged in');
+                })
+        }
+
+        async function requestFile() {
+            const rawResponse = await fetch('/api/auth/files/BENTO-FILE-217910', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            });
+            const content = await rawResponse.json();
+            console.log(content);
+        }
+    </script>
+    <script type="text/javascript">
+        var noAutoLogin = <%= noAutoLogin %>
+        if (!noAutoLogin) {
+            window.onload = authenticated;
+        }
+    </script>
+</body>
+</html>
