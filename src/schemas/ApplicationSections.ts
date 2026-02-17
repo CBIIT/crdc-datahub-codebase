@@ -5,9 +5,14 @@ import {
   plannedPublicationSchema,
   programInputSchema,
   publicationSchema,
+  questionnaireClinicalDataSuperRefine,
   questionnaireDataSchema,
+  questionnaireImagingDataDeIdentifiedSuperRefine,
+  questionnaireOtherCancerTypesSuperRefine,
+  questionnaireOtherSpeciesSuperRefine,
   repositorySchema,
   studySchema,
+  studySchemaSuperRefine,
 } from "./Application";
 
 /**
@@ -64,6 +69,7 @@ const CSchema = z
         dbGaPPPHSNumber: questionnaireDataSchema.shape.study.shape.dbGaPPPHSNumber,
         GPAName: questionnaireDataSchema.shape.study.shape.GPAName,
       })
+      .superRefine(studySchemaSuperRefine)
       .strict(),
     otherCancerTypesEnabled: questionnaireDataSchema.shape.otherCancerTypesEnabled,
     otherCancerTypes: questionnaireDataSchema.shape.otherCancerTypes,
@@ -73,6 +79,8 @@ const CSchema = z
     otherSpeciesOfSubjects: questionnaireDataSchema.shape.otherSpeciesOfSubjects,
     numberOfParticipants: questionnaireDataSchema.shape.numberOfParticipants,
   })
+  .superRefine(questionnaireOtherCancerTypesSuperRefine)
+  .superRefine(questionnaireOtherSpeciesSuperRefine)
   .strict();
 
 /**
@@ -92,6 +100,8 @@ const DSchema = z
     modelSystems: questionnaireDataSchema.shape.modelSystems,
     submitterComment: questionnaireDataSchema.shape.submitterComment,
   })
+  .superRefine(questionnaireImagingDataDeIdentifiedSuperRefine)
+  .superRefine(questionnaireClinicalDataSuperRefine)
   .strict();
 
 export {
