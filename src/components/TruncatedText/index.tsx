@@ -1,5 +1,5 @@
 import { styled, SxProps } from "@mui/material";
-import { FC, memo } from "react";
+import { FC, memo, useMemo } from "react";
 
 import StyledTooltip from "../StyledFormComponents/StyledTooltip";
 
@@ -59,6 +59,10 @@ type Props = {
    */
   disableInteractiveTooltip?: boolean;
   /**
+   * A boolean to force showing the tooltip even when text is not truncated
+   */
+  forceTooltip?: boolean;
+  /**
    * Indicates whether or not to show an arrow with the tooltip
    */
   arrow?: boolean;
@@ -87,21 +91,28 @@ const TruncatedText: FC<Props> = ({
   ellipsis = true,
   disableHoverListener,
   disableInteractiveTooltip = true,
+  forceTooltip = false,
   arrow = false,
   wrapperSx = {},
   labelSx = {},
 }: Props) => {
-  const isTruncated = text?.length > maxCharacters;
-  const displayText = isTruncated
-    ? `${text?.trim()?.slice(0, maxCharacters)?.trim()}${ellipsis ? "..." : ""}`
-    : text;
+  const isTruncated = useMemo<boolean>(() => text?.length > maxCharacters, [text, maxCharacters]);
+
+  const displayText = useMemo<string>(() => {
+    if (isTruncated) {
+      return `${text?.trim()?.slice(0, maxCharacters)?.trim()}${ellipsis ? "..." : ""}`;
+    }
+    return text || "";
+  }, [isTruncated, text, maxCharacters, ellipsis]);
+
+  const shouldShowTooltip = forceTooltip || isTruncated;
 
   return (
     <StyledTooltip
       placement="top"
       title={tooltipText || text || ""}
       disableHoverListener={
-        disableHoverListener !== undefined ? disableHoverListener : !isTruncated
+        disableHoverListener !== undefined ? disableHoverListener : !shouldShowTooltip
       }
       disableInteractive={disableInteractiveTooltip}
       data-testid="truncated-text-tooltip"
@@ -109,7 +120,7 @@ const TruncatedText: FC<Props> = ({
       dynamic
     >
       <StyledTextWrapper
-        truncated={isTruncated}
+        truncated={shouldShowTooltip}
         underline={underline}
         data-testid="truncated-text-wrapper"
         sx={wrapperSx}

@@ -8,8 +8,22 @@ type Submission = {
   dataCommonsDisplayName: string;
   modelVersion: string;
   studyID: string;
+  /**
+   * The abbreviation of the study associated with the submission.
+   *
+   * @deprecated Use `study.studyAbbreviation` instead.
+   */
   studyAbbreviation: string;
+  /**
+   * The name of the study associated with the submission.
+   *
+   * @deprecated Use `study.studyName` instead.
+   */
   studyName: string;
+  /**
+   * The study associated with the submission.
+   */
+  study: Pick<ApprovedStudy, "studyName" | "studyAbbreviation">;
   dbGaPID: string; // # aka. phs number
   bucketName: string; // # populated from organization
   rootPath: string; // # a submission folder will be created under this path, default is / or "" meaning root folder

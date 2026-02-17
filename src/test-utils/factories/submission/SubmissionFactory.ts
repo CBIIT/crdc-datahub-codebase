@@ -15,6 +15,7 @@ export const baseSubmission: Submission = {
   studyID: "",
   studyAbbreviation: "",
   studyName: "",
+  study: null,
   dbGaPID: "",
   bucketName: "",
   rootPath: "",

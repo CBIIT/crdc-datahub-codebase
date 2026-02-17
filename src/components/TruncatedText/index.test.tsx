@@ -171,6 +171,41 @@ describe("Basic Functionality", () => {
 
     expect(getByTestId("truncated-text-label")).not.toHaveAttribute("sx");
   });
+
+  it("should show tooltip when forceTooltip is true even if text is not truncated", async () => {
+    const { getByTestId, findByRole } = render(
+      <TruncatedText text="Short text" maxCharacters={20} forceTooltip />
+    );
+    const textLabel = getByTestId("truncated-text-label");
+    userEvent.hover(textLabel);
+
+    const tooltip = await findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Short text");
+  });
+
+  it("should show a custom tooltip when forceTooltip is true", async () => {
+    const { getByTestId, findByRole } = render(
+      <TruncatedText
+        text="Short text"
+        maxCharacters={20}
+        forceTooltip
+        tooltipText="a very custom tooltip"
+      />
+    );
+    const textLabel = getByTestId("truncated-text-label");
+    userEvent.hover(textLabel);
+
+    const tooltip = await findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("a very custom tooltip");
+  });
+
+  it("should enable the underline when forceTooltip is true and text is not truncated", () => {
+    const { getByTestId } = render(
+      <TruncatedText text="Short text" maxCharacters={20} forceTooltip underline />
+    );
+    const textWrapper = getByTestId("truncated-text-wrapper");
+    expect(textWrapper).toHaveStyle("text-decoration: underline");
+  });
 });
 
 describe("Edge Cases", () => {

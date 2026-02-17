@@ -6,6 +6,7 @@ import React, { FC, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import DataSubmissionListExport from "@/components/ExportSubmissionsButton";
+import SRFLink from "@/components/SRFLink";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
 import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/AuthContext";
@@ -22,7 +23,7 @@ import TruncatedText from "../../components/TruncatedText";
 import { LIST_SUBMISSIONS, ListSubmissionsInput, ListSubmissionsResp } from "../../graphql";
 import { useColumnVisibility } from "../../hooks/useColumnVisibility";
 import usePageTitle from "../../hooks/usePageTitle";
-import { FormatDate, Logger } from "../../utils";
+import { FormatDate, formatFullStudyName, Logger } from "../../utils";
 
 type T = ListSubmissionsResp["listSubmissions"]["submissions"][number];
 
@@ -157,12 +158,26 @@ const columns: Column<T>[] = [
   },
   {
     label: "Study",
-    renderValue: (a) => <TruncatedText text={a.studyAbbreviation} />,
-    field: "studyAbbreviation",
+    renderValue: (a) => (
+      <TruncatedText
+        text={a.study?.studyAbbreviation}
+        tooltipText={formatFullStudyName(a.study?.studyName, a.study?.studyAbbreviation)}
+        forceTooltip
+      />
+    ),
+    fieldKey: "study.studyAbbreviation",
     hideable: false,
-    exportValue: (a) => ({ label: "Study", value: a.studyAbbreviation }),
+    exportValue: (a) => ({ label: "Study", value: a.study?.studyAbbreviation ?? "" }),
   },
-
+  {
+    label: "SRF",
+    renderValue: ({ submissionRequestID, canViewSubmissionRequest }) => (
+      <SRFLink appId={submissionRequestID} disabled={!canViewSubmissionRequest} />
+    ),
+    field: "submissionRequestID",
+    sortDisabled: true,
+    hideable: false,
+  },
   {
     label: "dbGaP ID",
     renderValue: (a) => <TruncatedText text={a.dbGaPID} maxCharacters={15} />,
