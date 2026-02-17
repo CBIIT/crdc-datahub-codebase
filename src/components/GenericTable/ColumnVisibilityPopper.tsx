@@ -233,6 +233,12 @@ export type ExtendedColumn = {
    * If true, the column will be hidden when the default visibility model is applied.
    */
   defaultHidden?: boolean;
+  /**
+   * Indicates if the column should be hidden from the visibility toggle interface.
+   * If true, the column will not appear in the column visibility popper at all.
+   * The column will still be rendered in the table.
+   */
+  hideFromToggle?: boolean;
 };
 
 export type ColumnVisibilityPopperGroup = {
@@ -373,7 +379,8 @@ const ColumnVisibilityPopper = <C extends ExtendedColumn>({
 
   /**
    * Handles the "Show/Hide All" checkbox change event.
-   * Toggles visibility of all hideable columns.
+   * Toggles visibility of all hideable columns that are shown in the toggle interface.
+   * Columns with hideFromToggle are not affected.
    *
    * @param event - The change event from the checkbox
    */
@@ -382,7 +389,12 @@ const ColumnVisibilityPopper = <C extends ExtendedColumn>({
     const updatedModel = columns.reduce<ColumnVisibilityModel>((model, column) => {
       const key = getColumnKey(column);
       const isHideable = column.hideable !== false;
-      if (isHideable) {
+      const isHiddenFromToggle = column.hideFromToggle === true;
+
+      if (isHiddenFromToggle) {
+        // Preserve current state for columns hidden from toggle
+        model[key] = columnVisibilityModel[key];
+      } else if (isHideable) {
         model[key] = isChecked;
       } else {
         model[key] = true; // Non-hideable columns remain visible
@@ -401,11 +413,14 @@ const ColumnVisibilityPopper = <C extends ExtendedColumn>({
   };
 
   const sortedColumns = useMemo<C[]>(() => {
+    // Filter out columns that should be hidden from the toggle interface
+    const visibleInToggle = columns.filter((column) => column.hideFromToggle !== true);
+
     if (!sortAlphabetically) {
-      return columns;
+      return visibleInToggle;
     }
 
-    return [...columns].sort((a, b) => {
+    return [...visibleInToggle].sort((a, b) => {
       const labelA = getColumnLabel(a)?.toLowerCase();
       const labelB = getColumnLabel(b)?.toLowerCase();
       return labelA?.localeCompare(labelB);
