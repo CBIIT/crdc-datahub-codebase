@@ -8,6 +8,7 @@ import {
   questionnaireDataSchema,
   repositorySchema,
   studySchema,
+  studySchemaSuperRefine,
 } from "./Application";
 
 /**
@@ -64,6 +65,7 @@ const CSchema = z
         dbGaPPPHSNumber: questionnaireDataSchema.shape.study.shape.dbGaPPPHSNumber,
         GPAName: questionnaireDataSchema.shape.study.shape.GPAName,
       })
+      .superRefine(studySchemaSuperRefine)
       .strict(),
     otherCancerTypesEnabled: questionnaireDataSchema.shape.otherCancerTypesEnabled,
     otherCancerTypes: questionnaireDataSchema.shape.otherCancerTypes,
