@@ -1,0 +1,36 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`404 Page Cases > should render statically and correctly 1`] = `
+<div>
+  <div
+    class="MuiStack-root css-1odcfns-MuiStack-root"
+  >
+    <div
+      class="MuiBox-root css-1iatin6"
+    >
+      <img
+        alt="404 icon"
+        class="css-1g2o5dd"
+        src="/src/assets/icons/404.png"
+      />
+      <h1
+        class="MuiTypography-root MuiTypography-h1 css-oastk0-MuiTypography-root"
+      >
+        Page not found.
+      </h1>
+      <p
+        class="MuiTypography-root MuiTypography-body1 css-me1iuw-MuiTypography-root"
+      >
+        Looks like you got a little turned around.
+      </p>
+      <button
+        class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-disableElevation MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-disableElevation css-1uyj2ed-MuiButtonBase-root-MuiButton-root"
+        tabindex="0"
+        type="button"
+      >
+        Return Home
+      </button>
+    </div>
+  </div>
+</div>
+`;

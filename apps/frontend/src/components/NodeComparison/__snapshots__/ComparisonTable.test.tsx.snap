@@ -1,0 +1,176 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Snapshots > should match the loading state snapshot > loading table 1`] = `
+<div>
+  <div
+    class="MuiTableContainer-root css-1dgj49d-MuiTableContainer-root"
+  >
+    <table
+      class="MuiTable-root css-1sjtdyy-MuiTable-root"
+      data-testid="node-comparison-table"
+    >
+      <thead
+        class="MuiTableHead-root css-d1l5r2-MuiTableHead-root"
+      >
+        <tr
+          class="MuiTableRow-root MuiTableRow-head css-1q1u3t4-MuiTableRow-root"
+        >
+          <td
+            class="MuiTableCell-root MuiTableCell-head MuiTableCell-sizeSmall css-10x4n77-MuiTableCell-root"
+            width="55"
+          />
+          <td
+            class="MuiTableCell-root MuiTableCell-head MuiTableCell-sizeSmall css-10x4n77-MuiTableCell-root"
+            data-testid="node-comparison-table-header-skeleton"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-head MuiTableCell-sizeSmall css-10x4n77-MuiTableCell-root"
+            data-testid="node-comparison-table-header-skeleton"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-head MuiTableCell-sizeSmall css-10x4n77-MuiTableCell-root"
+            data-testid="node-comparison-table-header-skeleton"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-head MuiTableCell-sizeSmall css-10x4n77-MuiTableCell-root"
+            data-testid="node-comparison-table-header-skeleton"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-head MuiTableCell-sizeSmall css-10x4n77-MuiTableCell-root"
+            data-testid="node-comparison-table-header-skeleton"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+        </tr>
+      </thead>
+      <tbody
+        class="MuiTableBody-root css-apqrd9-MuiTableBody-root"
+      >
+        <tr
+          class="MuiTableRow-root css-1q1u3t4-MuiTableRow-root"
+        >
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+            width="55"
+          >
+            Existing
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+        </tr>
+        <tr
+          class="MuiTableRow-root css-1q1u3t4-MuiTableRow-root"
+        >
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+            width="55"
+          >
+            New
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+          <td
+            class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeSmall css-1yqt4t-MuiTableCell-root"
+          >
+            <span
+              class="MuiSkeleton-root MuiSkeleton-text MuiSkeleton-pulse css-1n7gpw1-MuiSkeleton-root"
+              style="width: 100%; height: 24px;"
+            />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+`;

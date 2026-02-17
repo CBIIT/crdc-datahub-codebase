@@ -1,0 +1,35 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Snapshots > should match the nominal state snapshot 1`] = `
+<div>
+  <div
+    class="MuiBox-root css-17gs3ot"
+  >
+    <p
+      class="MuiTypography-root MuiTypography-body1 css-1r7ezte-MuiTypography-root"
+      data-testid="node-comparison-header"
+    >
+      A record with this ID already exists. Review the existing and newly submitted data to decide whether to update the current record.
+    </p>
+    <div>
+      MOCK COMPARISON TABLE
+    </div>
+    <div
+      class="MuiTypography-root MuiTypography-body1 css-10nrxju-MuiTypography-root"
+      data-testid="node-comparison-footer"
+    >
+      Notes:
+      <ul
+        class="css-yzb7y1"
+      >
+        <li>
+          Columns with Empty values will leave existing data unchanged.
+        </li>
+        <li>
+          Columns with "&lt;delete&gt;" values will remove the existing data.
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+`;

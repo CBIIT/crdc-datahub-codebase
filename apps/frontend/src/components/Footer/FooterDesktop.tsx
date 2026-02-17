@@ -1,0 +1,303 @@
+import { styled } from "@mui/material";
+import { Link } from "react-router-dom";
+
+import FooterData from "../../config/FooterConfig";
+
+import NewsletterForm from "./NewsletterForm";
+
+const StyledFooter = styled("footer")({
+  backgroundColor: "#1B496E",
+  borderTop: "1px solid #6C727B",
+  bottom: 0,
+  width: "100%",
+  position: "relative",
+});
+
+const StyledTopContainer = styled("div")({
+  padding: "2rem",
+  maxWidth: "1400px",
+  marginLeft: "auto",
+  marginRight: "auto",
+  display: "flex",
+  justifyContent: "space-between",
+});
+
+const StyledNewsletterForm = styled(NewsletterForm)({
+  width: "33.3%",
+  "& .signUpTitle": {
+    fontFamily: "poppins",
+    fontWeight: 700,
+    fontSize: "22.88px",
+    lineHeight: "34px",
+    color: "#FFFFFF",
+    marginBottom: "1rem",
+  },
+  "& .enterTitle": {
+    fontFamily: "Open Sans",
+    fontWeight: 400,
+    fontSize: "16px",
+    lineHeight: "22px",
+    color: "#FFFFFF",
+    marginBottom: "10px",
+  },
+  "& .signUpInputBox": {
+    width: "100%",
+    height: "47px",
+    fontSize: "25px",
+    paddingLeft: "8px",
+    marginTop: "4px",
+    "&:focus": {
+      outline: "0.25rem solid #2491ff",
+    },
+  },
+  "& .signUpButton": {
+    background: "#FACE00",
+    borderRadius: "8px",
+    border: 0,
+    padding: "9px 16px",
+    fontFamily: "Open Sans",
+    fontWeight: 700,
+    fontSize: "16px",
+    lineHeight: "22px",
+    color: "#14315C",
+    marginTop: "18px",
+    "&:hover": {
+      cursor: "pointer",
+    },
+  },
+});
+
+const FooterLinksContainer = styled("div")({
+  width: "66.7%",
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 33%)",
+  "& .footItem": {
+    marginBottom: "24px",
+  },
+  "& .footItemTitle": {
+    fontFamily: "Open Sans",
+    color: "#FFFFFF",
+    fontWeight: 700,
+    fontSize: "16px",
+    lineHeight: "22px",
+    marginBottom: "10px",
+  },
+  "& .footItemSubtitle": {
+    marginBottom: "10px",
+    maxWidth: "290px",
+    fontFamily: "Open Sans",
+    color: "#FFFFFF",
+    fontWeight: 400,
+    fontSize: "16px",
+    lineHeight: "22px",
+  },
+  "& .footItemLink": {
+    color: "inherit",
+    textDecoration: "none",
+    "&:hover": {
+      textDecoration: "underline",
+    },
+  },
+});
+
+const StyledBottomContainer = styled("div")({
+  background: "#14315C",
+  "& span": {
+    display: "block",
+  },
+  "& .bottom-footer-container": {
+    display: "flex",
+    flexFlow: "wrap",
+    justifyContent: "space-between",
+    maxWidth: "1400px",
+    marginLeft: "auto",
+    marginRight: "auto",
+    height: "fit-content",
+    paddingTop: "1.25rem",
+    paddingBottom: "1.25rem",
+    paddingLeft: "2rem",
+    paddingRight: "2rem",
+  },
+  "& .break": {
+    order: 2,
+    width: "100%",
+    flexBasis: "100%",
+    height: "2rem",
+    margin: 0,
+    border: 0,
+  },
+  "& .logoText": {
+    textDecoration: "none",
+  },
+  "& .logoUpperText": {
+    fontFamily: "poppins",
+    fontWeight: 700,
+    fontSize: "24.96px",
+    lineHeight: "37px",
+    color: "#FFFFFF",
+  },
+  "& .logoLowerText": {
+    fontFamily: "poppins",
+    fontWeight: 400,
+    fontSize: "18.72px",
+    color: "#FFFFFF",
+  },
+  "& #bottom-footer-contact-us": {
+    fontFamily: "Poppins",
+    fontStyle: "normal",
+    fontWeight: 700,
+    fontSize: "22.88px",
+    lineHeight: "34px",
+    textAlign: "right",
+    color: "#FFFFFF",
+    order: 1,
+  },
+  "& #bottom-footer-contact-links": {
+    fontFamily: "Open Sans",
+    fontStyle: "normal",
+    fontWeight: 400,
+    fontSize: "16px",
+    lineHeight: "22px",
+    color: "#FFFFFF",
+    marginTop: "0.25rem",
+    "& a": {
+      textDecoration: "none",
+      color: "#FFFFFF",
+      marginLeft: "1rem",
+    },
+  },
+  "& #bottom-footer-follow-us": {
+    fontFamily: "Poppins",
+    fontStyle: "normal",
+    fontWeight: 700,
+    fontSize: "22.88px",
+    lineHeight: "34px",
+    color: "#FFFFFF",
+    order: 3,
+  },
+  "& #bottom-footer-follow-us-links": {
+    marginTop: "1rem",
+  },
+  "& .bottom-footer-social-media-imgs": {
+    marginLeft: "10px",
+  },
+  "& #bottom-footer-gov-links": {
+    order: 4,
+  },
+  "& #bottom-footer-gov-links a": {
+    textDecoration: "none",
+    display: "block",
+    fontFamily: "Open Sans",
+    fontStyle: "normal",
+    fontWeight: 400,
+    fontSize: "14px",
+    lineHeight: "1.6",
+    textAlign: "right",
+    color: "#FFFFFF",
+  },
+});
+
+const FooterDesktop = () => (
+  <StyledFooter role="contentinfo" data-testid="desktop-footer">
+    <StyledTopContainer>
+      <FooterLinksContainer>
+        {FooterData.link_sections.map((linkItem) => (
+          <div className="footItem" key={`link_${linkItem.title}`}>
+            <div className="footItemTitle">{linkItem.title}</div>
+            {linkItem.items.map((item) => {
+              if (typeof item?.link !== "string") {
+                return (
+                  <div className="footItemSubtitle" key={item?.text}>
+                    {item.text}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="footItemSubtitle" key={item?.text}>
+                  {item.link.includes("http") ? (
+                    <a
+                      className="footItemLink"
+                      href={item.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {item.text}
+                    </a>
+                  ) : (
+                    <Link className="footItemLink" to={item.link}>
+                      {item.text}
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </FooterLinksContainer>
+      <StyledNewsletterForm />
+    </StyledTopContainer>
+    <StyledBottomContainer>
+      <div className="bottom-footer-container">
+        <div id="bottom-footer-header">
+          <a
+            className="logoText"
+            href="https://www.cancer.gov"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <div className="logoUpperText">National Cancer Institute</div>
+            <div className="logoLowerText">at the National Institutes of Health</div>
+          </a>
+        </div>
+        <div id="bottom-footer-contact-us">
+          Contact Us
+          <div id="bottom-footer-contact-links">
+            {FooterData.contact_links.map((contactItem) =>
+              contactItem.link.includes("http") ? (
+                <a
+                  key={contactItem.link}
+                  href={contactItem.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {contactItem.text}
+                </a>
+              ) : (
+                <a key={contactItem.link} href={contactItem.link}>
+                  {contactItem.text}
+                </a>
+              )
+            )}
+          </div>
+        </div>
+        <div className="break" />
+        <div id="bottom-footer-follow-us">
+          Follow Us
+          <div id="bottom-footer-follow-us-links">
+            {FooterData.followUs_links.map((followItem, idx) => (
+              <a
+                key={followItem.link}
+                className={idx !== 0 ? "bottom-footer-social-media-imgs" : ""}
+                href={followItem.link}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img src={followItem.img} alt={followItem.description} />
+              </a>
+            ))}
+          </div>
+        </div>
+        <div id="bottom-footer-gov-links">
+          {FooterData.global_footer_links.map((linkItem) => (
+            <a key={linkItem?.text} href={linkItem.link} target="_blank" rel="noopener noreferrer">
+              {linkItem.text}
+            </a>
+          ))}
+        </div>
+      </div>
+    </StyledBottomContainer>
+  </StyledFooter>
+);
+
+export default FooterDesktop;

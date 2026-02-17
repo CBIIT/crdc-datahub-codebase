@@ -1,0 +1,124 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Snapshots > should match the snapshot 1`] = `
+<div>
+  <nav
+    aria-label="navigation breadcrumb"
+    class="MuiTypography-root MuiTypography-body1 MuiBreadcrumbs-root css-sm3bj9-MuiTypography-root-MuiBreadcrumbs-root"
+    data-testid="breadcrumb-container"
+  >
+    <ol
+      class="MuiBreadcrumbs-ol css-4pdmu4-MuiBreadcrumbs-ol"
+    >
+      <li
+        class="MuiBreadcrumbs-li"
+      >
+        <p
+          class="MuiTypography-root MuiTypography-body1 css-utvzy7-MuiTypography-root"
+          data-testid="breadcrumb-entry-0"
+        >
+          <a
+            class="css-q2y3yl"
+            href="/"
+          >
+            Home
+          </a>
+        </p>
+      </li>
+      <li
+        aria-hidden="true"
+        class="MuiBreadcrumbs-separator css-1wuw8dw-MuiBreadcrumbs-separator"
+      >
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-i4bv87-MuiSvgIcon-root"
+          data-testid="NavigateNextIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
+          />
+        </svg>
+      </li>
+      <li
+        class="MuiBreadcrumbs-li"
+      >
+        <p
+          class="MuiTypography-root MuiTypography-body1 css-utvzy7-MuiTypography-root"
+          data-testid="breadcrumb-entry-1"
+        >
+          <a
+            class="css-q2y3yl"
+            href="/data-explorer"
+          >
+            Data Explorer
+          </a>
+        </p>
+      </li>
+      <li
+        aria-hidden="true"
+        class="MuiBreadcrumbs-separator css-1wuw8dw-MuiBreadcrumbs-separator"
+      >
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-i4bv87-MuiSvgIcon-root"
+          data-testid="NavigateNextIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
+          />
+        </svg>
+      </li>
+      <li
+        class="MuiBreadcrumbs-li"
+      >
+        <p
+          class="MuiTypography-root MuiTypography-body1 css-utvzy7-MuiTypography-root"
+          data-testid="breadcrumb-entry-2"
+        >
+          <a
+            class="css-q2y3yl"
+            href="/data-explorer/study-view"
+          >
+            Study View
+          </a>
+        </p>
+      </li>
+      <li
+        aria-hidden="true"
+        class="MuiBreadcrumbs-separator css-1wuw8dw-MuiBreadcrumbs-separator"
+      >
+        <svg
+          aria-hidden="true"
+          class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-i4bv87-MuiSvgIcon-root"
+          data-testid="NavigateNextIcon"
+          focusable="false"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"
+          />
+        </svg>
+      </li>
+      <li
+        class="MuiBreadcrumbs-li"
+      >
+        <p
+          class="MuiTypography-root MuiTypography-body1 css-utvzy7-MuiTypography-root"
+          data-testid="breadcrumb-entry-3"
+        >
+          <a
+            class="css-q2y3yl"
+            href="/data-explorer/study-view/metadata-details"
+          >
+            Metadata Details
+          </a>
+        </p>
+      </li>
+    </ol>
+  </nav>
+</div>
+`;
