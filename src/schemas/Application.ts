@@ -22,74 +22,6 @@ export const studySchemaSuperRefine = (
   }
 };
 
-export const questionnaireOtherCancerTypesSuperRefine = (
-  val: { otherCancerTypesEnabled?: boolean; otherCancerTypes?: string },
-  ctx: z.RefinementCtx
-) => {
-  if (val.otherCancerTypesEnabled && !val.otherCancerTypes?.length) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["otherCancerTypes"],
-      message: FIELD_IS_REQUIRED,
-    });
-  }
-};
-
-export const questionnaireOtherSpeciesSuperRefine = (
-  val: { otherSpeciesEnabled?: boolean; otherSpeciesOfSubjects?: string },
-  ctx: z.RefinementCtx
-) => {
-  if (val.otherSpeciesEnabled && !val.otherSpeciesOfSubjects?.length) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["otherSpeciesOfSubjects"],
-      message: FIELD_IS_REQUIRED,
-    });
-  }
-};
-
-export const questionnairePrimaryContactSuperRefine = (
-  val: { piAsPrimaryContact?: boolean; primaryContact?: unknown },
-  ctx: z.RefinementCtx
-) => {
-  if (!val.piAsPrimaryContact && val.primaryContact === undefined) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["primaryContact"],
-      message: "primaryContact is required when piAsPrimaryContact is false",
-    });
-  }
-};
-
-export const questionnaireClinicalDataSuperRefine = (
-  val: { clinicalData?: ClinicalData; dataTypes?: string[] },
-  ctx: z.RefinementCtx
-) => {
-  if (val.clinicalData && !val.dataTypes?.includes(DataTypes.clinicalTrial.name)) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["clinicalData"],
-      message: `clinicalData is only valid when dataTypes includes ${DataTypes.clinicalTrial.name}`,
-    });
-  }
-};
-
-export const questionnaireImagingDataDeIdentifiedSuperRefine = (
-  val: { dataTypes?: string[]; imagingDataDeIdentified?: boolean },
-  ctx: z.RefinementCtx
-) => {
-  if (
-    val.dataTypes?.includes(DataTypes.imaging.name) &&
-    val.imagingDataDeIdentified === undefined
-  ) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["imagingDataDeIdentified"],
-      message: FIELD_IS_REQUIRED,
-    });
-  }
-};
-
 /**
  * Schema for a section in the application questionnaire.
  */
@@ -644,11 +576,46 @@ export const questionnaireDataSchema = z
      */
     submitterComment: z.string().max(500).optional(),
   })
-  .superRefine(questionnaireOtherCancerTypesSuperRefine)
-  .superRefine(questionnaireOtherSpeciesSuperRefine)
-  .superRefine(questionnairePrimaryContactSuperRefine)
-  .superRefine(questionnaireClinicalDataSuperRefine)
-  .superRefine(questionnaireImagingDataDeIdentifiedSuperRefine)
+  .superRefine((val, ctx) => {
+    if (val.otherCancerTypesEnabled && !val.otherCancerTypes?.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["otherCancerTypes"],
+        message: FIELD_IS_REQUIRED,
+      });
+    }
+    if (val.otherSpeciesEnabled && !val.otherSpeciesOfSubjects?.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["otherSpeciesOfSubjects"],
+        message: FIELD_IS_REQUIRED,
+      });
+    }
+    if (!val.piAsPrimaryContact && val.primaryContact === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["primaryContact"],
+        message: "primaryContact is required when piAsPrimaryContact is false",
+      });
+    }
+    if (val.clinicalData && !val.dataTypes?.includes(DataTypes.clinicalTrial.name)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["clinicalData"],
+        message: `clinicalData is only valid when dataTypes includes ${DataTypes.clinicalTrial.name}`,
+      });
+    }
+    if (
+      val.dataTypes?.includes(DataTypes.imaging.name) &&
+      val.imagingDataDeIdentified === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["imagingDataDeIdentified"],
+        message: FIELD_IS_REQUIRED,
+      });
+    }
+  })
   .strict();
 
 export type QuestionnaireData = z.infer<typeof questionnaireDataSchema>;
