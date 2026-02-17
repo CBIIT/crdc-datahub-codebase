@@ -441,7 +441,7 @@ const ColumnVisibilityPopper = <C extends ExtendedColumn>({
   }, [groups, sortedColumns, getColumnGroup]);
 
   const hideableColumns = useMemo<C[]>(
-    () => columns.filter((column) => column.hideable !== false),
+    () => columns.filter((column) => column.hideable !== false && column.hideFromToggle !== true),
     [columns]
   );
 
