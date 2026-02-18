@@ -842,7 +842,7 @@ type Query {
     ): ListApplications
     # when first parameter is set to -1, we should return all applications (no pagination)
     # sortDirection in ["ASC", "DESC"]
-    # orderBy in ["applicant.applicantName", "applicant.fullName", "programName", "studyName", "studyAbbreviation", "status", "version", "createdAt", "updatedAt"]
+    # orderBy in ["applicant.applicantName", "applicant.fullName", "programName", "studyName", "studyAbbreviation", "status", "version", "createdAt", "updatedAt", "submittedDate"]
 
     # Admin only
     listApprovedStudies(
