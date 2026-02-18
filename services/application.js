@@ -33,7 +33,8 @@ const VALID_ORDER_BY_LIST_APPLICATIONS = [
     "status",
     "version",
     "createdAt",
-    "updatedAt"
+    "updatedAt",
+    "submittedDate"
 ];
 class Application {
     _DELETE_REVIEW_COMMENT="This Submission Request has been deleted by the system due to inactivity.";
