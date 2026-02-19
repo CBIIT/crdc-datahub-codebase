@@ -31,6 +31,13 @@ export const envSchema = z
      */
     GUARDRAIL_VERSION: z.string().min(1),
     /**
+     * The Bedrock reranking model ARN for Knowledge Base retrieval
+     * If not provided, retrieval results will not be reranked
+     *
+     * @example "arn:aws:bedrock:us-west-2::foundation-model/amazon.rerank-v1"
+     */
+    RERANK_MODEL_ARN: z.string().default(""),
+    /**
      * The deployment environment the app is running in
      */
     NODE_ENV: z.enum(["test", "development", "production"]).default("production"),
