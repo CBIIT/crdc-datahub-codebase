@@ -93,7 +93,14 @@ export const createQuestionRouter = ({
             documentName: result.metadata?.document_name || null,
             documentLink: result.metadata?.public_url || null,
           }))
-          .filter((citation): citation is Citation => CitationSchema.safeParse(citation).success);
+          .filter((citation): citation is Citation => CitationSchema.safeParse(citation).success)
+          .filter(
+            (citation, index, self) =>
+              index ===
+              self.findIndex(
+                (c) => c.documentName === citation.documentName && c.documentLink === citation.documentLink
+              )
+          );
       } else {
         Logger.error("No retrieval results from Knowledge Base", { sessionId, query: question });
       }
