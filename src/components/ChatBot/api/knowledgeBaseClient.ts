@@ -118,11 +118,11 @@ export async function processStreamingResponse(
           await emitWithTypewriter(outputText, onChunk, typewriterDelay, signal);
         }
 
-        const citationHasContent = !!parsed.citation && !!parsed.citation.url;
-        const citationIsNotDuplicate = !seenCitationUrls.has(parsed.citation.url);
+        const citationHasContent = !!parsed?.citation && !!parsed?.citation?.url;
+        const citationIsNotDuplicate = !seenCitationUrls.has(parsed?.citation?.url);
 
         if (citationHasContent && citationIsNotDuplicate) {
-          seenCitationUrls.add(parsed.citation.url);
+          seenCitationUrls.add(parsed.citation?.url);
           citations.push(parsed.citation);
           onCitation?.(parsed.citation);
         }
