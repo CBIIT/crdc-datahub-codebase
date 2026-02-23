@@ -15,6 +15,7 @@ type Column = {
   label: string;
   hideable?: boolean;
   defaultHidden?: boolean;
+  hideFromToggle?: boolean;
 };
 
 const columns: Column[] = [
@@ -325,5 +326,246 @@ describe("ColumnVisibilityPopper", () => {
     userEvent.click(closeButton);
 
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("should not render columns with hideFromToggle: true in the visibility popper", () => {
+    const columnsWithHidden: Column[] = [
+      { field: "name", label: "Name", hideable: false },
+      { field: "age", label: "Age", defaultHidden: true },
+      { field: "email", label: "Email" },
+      { field: "hidden", label: "Hidden Column", hideFromToggle: true },
+    ];
+
+    const { queryByTestId, getByTestId } = renderComponent({
+      columns: columnsWithHidden,
+      columnVisibilityModel: {
+        ...columnVisibilityModel,
+        hidden: true,
+      },
+    });
+
+    // Columns without hideFromToggle should be rendered
+    expect(getByTestId("checkbox-name")).toBeInTheDocument();
+    expect(getByTestId("checkbox-age")).toBeInTheDocument();
+    expect(getByTestId("checkbox-email")).toBeInTheDocument();
+
+    // Column with hideFromToggle: true should NOT be rendered
+    expect(queryByTestId("checkbox-hidden")).not.toBeInTheDocument();
+  });
+
+  it("should not include hideFromToggle columns when toggling all columns", () => {
+    const columnsWithHidden: Column[] = [
+      { field: "name", label: "Name", hideable: false },
+      { field: "age", label: "Age", defaultHidden: true },
+      { field: "email", label: "Email" },
+      { field: "hidden", label: "Hidden Column", hideFromToggle: true },
+    ];
+
+    const { getByTestId } = renderComponent({
+      columns: columnsWithHidden,
+      columnVisibilityModel: {
+        ...columnVisibilityModel,
+        hidden: true,
+      },
+    });
+
+    const toggleAllCheckbox = getByTestId("toggle-all-checkbox") as HTMLInputElement;
+    userEvent.click(toggleAllCheckbox);
+
+    // Only columns that are shown in the popper should be affected
+    // The 'hidden' column state should be preserved (it was true initially)
+    expect(setColumnVisibilityModel).toHaveBeenCalledWith({
+      name: true, // Non-hideable remains true
+      age: false,
+      email: false,
+      hidden: true, // hideFromToggle column state is preserved
+    });
+  });
+
+  it("should work correctly with grouped columns and hideFromToggle", () => {
+    const columnsWithHidden: Column[] = [
+      { field: "name", label: "Name", hideable: false },
+      { field: "age", label: "Age", defaultHidden: true },
+      { field: "email", label: "Email" },
+      { field: "hidden", label: "Hidden Column", hideFromToggle: true },
+    ];
+
+    const groups: ColumnVisibilityPopperGroup[] = [{ name: "GROUP-1" }, { name: "GROUP-2" }];
+
+    const getColumnGroup = (column: Column) => {
+      switch (column.field) {
+        case "name":
+        case "age":
+          return "GROUP-1";
+        case "email":
+        case "hidden":
+          return "GROUP-2";
+        default:
+          return "";
+      }
+    };
+
+    const { getByTestId, queryByTestId } = renderComponent({
+      columns: columnsWithHidden,
+      columnVisibilityModel: {
+        ...columnVisibilityModel,
+        hidden: true,
+      },
+      groups,
+      getColumnGroup,
+    });
+
+    // GROUP-1 should have name and age
+    const group1 = getByTestId("column-group-GROUP-1");
+    expect(within(group1).getByTestId("checkbox-name")).toBeInTheDocument();
+    expect(within(group1).getByTestId("checkbox-age")).toBeInTheDocument();
+
+    // GROUP-2 should only have email (hidden is excluded)
+    const group2 = getByTestId("column-group-GROUP-2");
+    expect(within(group2).getByTestId("checkbox-email")).toBeInTheDocument();
+    expect(within(group2).queryByTestId("checkbox-hidden")).not.toBeInTheDocument();
+
+    // Hidden column should not be in the popper at all
+    expect(queryByTestId("checkbox-hidden")).not.toBeInTheDocument();
+  });
+
+  it("should maintain alphabetical sorting while excluding hideFromToggle columns", () => {
+    const unorderedColumns: Column[] = [
+      { field: "zebra", label: "Zebra" },
+      { field: "hidden1", label: "Hidden 1", hideFromToggle: true },
+      { field: "apple", label: "Apple" },
+      { field: "hidden2", label: "Hidden 2", hideFromToggle: true },
+      { field: "banana", label: "Banana" },
+    ];
+
+    const { getAllByTestId } = renderComponent({
+      columns: unorderedColumns,
+      columnVisibilityModel: {
+        zebra: true,
+        hidden1: true,
+        apple: true,
+        hidden2: true,
+        banana: true,
+      },
+      sortAlphabetically: true,
+    });
+
+    // Get all checkboxes for the columns
+    const checkboxes = getAllByTestId(/^checkbox-/);
+
+    const columnKeys = checkboxes.map((checkbox) => {
+      const dataTestId = checkbox.getAttribute("data-testid") || "";
+      return dataTestId.replace("checkbox-", "");
+    });
+
+    // Expected order: apple, banana, zebra (alphabetically sorted, hideFromToggle columns excluded)
+    expect(columnKeys).toEqual(["apple", "banana", "zebra"]);
+  });
+
+  it("should not include hideFromToggle columns when sortAlphabetically is false", () => {
+    const unorderedColumns: Column[] = [
+      { field: "zebra", label: "Zebra" },
+      { field: "hidden1", label: "Hidden 1", hideFromToggle: true },
+      { field: "apple", label: "Apple" },
+      { field: "hidden2", label: "Hidden 2", hideFromToggle: true },
+      { field: "banana", label: "Banana" },
+    ];
+
+    const { getAllByTestId } = renderComponent({
+      columns: unorderedColumns,
+      columnVisibilityModel: {
+        zebra: true,
+        hidden1: true,
+        apple: true,
+        hidden2: true,
+        banana: true,
+      },
+      sortAlphabetically: false,
+    });
+
+    // Get all checkboxes for the columns
+    const checkboxes = getAllByTestId(/^checkbox-/);
+
+    const columnKeys = checkboxes.map((checkbox) => {
+      const dataTestId = checkbox.getAttribute("data-testid") || "";
+      return dataTestId.replace("checkbox-", "");
+    });
+
+    // Expected order: zebra, apple, banana (original order, hideFromToggle columns excluded)
+    expect(columnKeys).toEqual(["zebra", "apple", "banana"]);
+  });
+
+  it("should calculate 'Show All' checkbox state correctly when hideFromToggle columns exist and are unchecked", () => {
+    const columnsWithHidden: Column[] = [
+      { field: "name", label: "Name", hideable: false },
+      { field: "age", label: "Age" },
+      { field: "email", label: "Email" },
+      { field: "hidden", label: "Hidden Column", hideFromToggle: true },
+    ];
+
+    // All visible-in-toggle columns are checked, but hideFromToggle column is unchecked
+    const { getByTestId } = renderComponent({
+      columns: columnsWithHidden,
+      columnVisibilityModel: {
+        name: true,
+        age: true,
+        email: true,
+        hidden: false, // hideFromToggle column is unchecked
+      },
+    });
+
+    const toggleAllCheckbox = getByTestId("toggle-all-checkbox") as HTMLInputElement;
+    // The checkbox should be checked because all visible-in-toggle columns are checked
+    // (hideFromToggle columns should not affect this state)
+    expect(toggleAllCheckbox.checked).toBe(true);
+  });
+
+  it("should calculate 'Show All' checkbox state correctly when hideFromToggle columns exist and are checked", () => {
+    const columnsWithHidden: Column[] = [
+      { field: "name", label: "Name", hideable: false },
+      { field: "age", label: "Age" },
+      { field: "email", label: "Email" },
+      { field: "hidden", label: "Hidden Column", hideFromToggle: true },
+    ];
+
+    // Some visible-in-toggle columns are unchecked, hideFromToggle column is checked
+    const { getByTestId } = renderComponent({
+      columns: columnsWithHidden,
+      columnVisibilityModel: {
+        name: true,
+        age: false, // visible column is unchecked
+        email: true,
+        hidden: true, // hideFromToggle column is checked (should not affect state)
+      },
+    });
+
+    const toggleAllCheckbox = getByTestId("toggle-all-checkbox") as HTMLInputElement;
+    // The checkbox should be unchecked because not all visible-in-toggle hideable columns are checked
+    expect(toggleAllCheckbox.checked).toBe(false);
+  });
+
+  it("should calculate 'Show All' checkbox state as checked when all visible hideable columns are checked", () => {
+    const columnsWithHidden: Column[] = [
+      { field: "name", label: "Name", hideable: false },
+      { field: "age", label: "Age" },
+      { field: "email", label: "Email" },
+      { field: "hidden1", label: "Hidden 1", hideFromToggle: true },
+      { field: "hidden2", label: "Hidden 2", hideFromToggle: true, hideable: false },
+    ];
+
+    const { getByTestId } = renderComponent({
+      columns: columnsWithHidden,
+      columnVisibilityModel: {
+        name: true,
+        age: true,
+        email: true,
+        hidden1: false, // hideFromToggle column unchecked
+        hidden2: true, // hideFromToggle + non-hideable
+      },
+    });
+
+    const toggleAllCheckbox = getByTestId("toggle-all-checkbox") as HTMLInputElement;
+    // Should be checked because all visible-in-toggle hideable columns (age, email) are checked
+    expect(toggleAllCheckbox.checked).toBe(true);
   });
 });
