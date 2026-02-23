@@ -177,6 +177,7 @@ const columns: Column<T>[] = [
     field: "submissionRequestID",
     sortDisabled: true,
     hideable: false,
+    hideFromToggle: true,
   },
   {
     label: "dbGaP ID",

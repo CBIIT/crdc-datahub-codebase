@@ -139,6 +139,12 @@ export type Column<T> = {
    */
   defaultHidden?: boolean;
   /**
+   * Indicates if the column should be hidden from the visibility toggle interface.
+   * If true, the column will not appear in the column visibility popper at all.
+   * The column will still be rendered in the table.
+   */
+  hideFromToggle?: boolean;
+  /**
    * A comparator function for sorting rows based on the column values.
    * Primarily used when server-side sorting is unavailable
    */
