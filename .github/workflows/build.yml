@@ -12,7 +12,7 @@ on:
       #branch:
       #description: Branch to build
       #required: true
-      trivy_test_scan_be:
+      trivy_test_scan_chatbot_be:
         description: "Run Trivy Test Scan"
         required: true
         type: boolean
@@ -25,44 +25,23 @@ on:
 
   pull_request:
     types:
-      - opened
       - closed
     branches:
       - "*.*.*"
 
 jobs:
-  pr-unit-test:
-    name: PR Unit Test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.pull_request.action != 'closed'
-    steps:
-      - name: Checkout Code Repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          submodules: recursive
-          clean: true
-          fetch-depth: 0
-
-      - name: Run Unit Test with new PR
-        id: unit-test-PR
-        run: |
-          echo "Running unit tests..."
-          npm ci
-          npm test
-
-  build-backend:
-    name: Build backend image
+  build-chatbot-backend:
+    name: Build chatbot backend image
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'build' }}
     env:
-      ECR_REPO_BE: "crdc-hub-backend"
+      ECR_REPO_CHATBOT_BE: "crdc-hub-chatbot-be"
       REGION: "us-east-1"
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      TRIVY_TEST_SCAN_BE: ${{ github.event.inputs.trivy_test_scan_be != '' && github.event.inputs.trivy_test_scan_be || 'true' }}
+      TRIVY_TEST_SCAN_CHATBOT_BE: ${{ github.event.inputs.trivy_test_scan_chatbot_be != '' && github.event.inputs.trivy_test_scan_chatbot_be || 'true' }}
       UNIT_TEST: ${{ github.event.inputs.unit_test != '' && github.event.inputs.unit_test || 'true' }}
 
     steps:
@@ -115,33 +94,40 @@ jobs:
           cat /etc/os-release
           echo "Directory contents:"
           ls -latr
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && inputs.unit_test == true)
+        with:
+          node-version: "22.x"
+          cache: "npm"
+
       - name: Run Unit Test
         id: unit-test
         if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && inputs.unit_test == true)
         run: |
           echo "Running unit tests..."
-          npm ci
-          npm test
+          npm i
+          npm run test:ci
 
-      - name: Build Backend Docker Image
+      - name: Build Chatbot Backend Docker Image
         id: build-image
         env:
           REGISTRY_URL: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-          #BE_IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_BE }}:${{ env.branch }}.${{ github.run_number }}
-          BE_IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_BE }}:${{ env.IMAGE_TAG }}
+          CHATBOT_BE_IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_CHATBOT_BE }}:${{ env.IMAGE_TAG }}
         run: |
-          echo "Building: $BE_IMAGE_NAME"
-          docker build --no-cache -t $BE_IMAGE_NAME .
+          echo "Building: $CHATBOTBE_IMAGE_NAME"
+          docker build --no-cache -t $CHATBOT_BE_IMAGE_NAME .
 
-      - name: Run Trivy test scan for BE Docker Image
+      - name: Run Trivy test scan for CHATBOT BE Docker Image
         id: trivy-scan-be
         if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && inputs.trivy_test_scan_be == true)
         env:
           REGISTRY_URL: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-          BE_IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_BE }}:${{ env.IMAGE_TAG }}
+          CHATBOT_BE_IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_CHATBOT_BE }}:${{ env.IMAGE_TAG }}
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: "${{ env.BE_IMAGE_NAME }}"
+          image-ref: "${{ env.CHATBOT_BE_IMAGE_NAME }}"
           format: "table"
           exit-code: 1
           severity: "CRITICAL,HIGH"
@@ -169,10 +155,10 @@ jobs:
         if: success()
         env:
           REGISTRY_URL: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com
-          BE_IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_BE }}:${{ env.IMAGE_TAG }}
+          CHATBOT_BE_IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_CHATBOT_BE }}:${{ env.IMAGE_TAG }}
         run: |
-          echo "Pushing: $BE_IMAGE_NAME"
-          docker push $BE_IMAGE_NAME
+          echo "Pushing: $CHATBOT_BE_IMAGE_NAME"
+          docker push $CHATBOT_BE_IMAGE_NAME
 
       - name: Slack Notification
         env:
