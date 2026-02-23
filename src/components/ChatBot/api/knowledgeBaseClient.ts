@@ -12,6 +12,7 @@ export type AskKnowledgeBaseResponse = {
 type AskQuestionArgs = {
   question: string;
   sessionId?: string | null;
+  conversationHistory?: ConversationHistory[];
   onChunk?: (chunk: string) => void;
   onCitation?: (citation: ChatCitation) => void;
   signal?: AbortSignal;
@@ -117,11 +118,11 @@ export async function processStreamingResponse(
           await emitWithTypewriter(outputText, onChunk, typewriterDelay, signal);
         }
 
-        const citationHasContent = !!parsed.citation && !!parsed.citation.url;
-        const citationIsNotDuplicate = !seenCitationUrls.has(parsed.citation.url);
+        const citationHasContent = !!parsed?.citation && !!parsed?.citation?.url;
+        const citationIsNotDuplicate = !seenCitationUrls.has(parsed?.citation?.url);
 
         if (citationHasContent && citationIsNotDuplicate) {
-          seenCitationUrls.add(parsed.citation.url);
+          seenCitationUrls.add(parsed.citation?.url);
           citations.push(parsed.citation);
           onCitation?.(parsed.citation);
         }
@@ -155,6 +156,7 @@ export async function processStreamingResponse(
 export async function askQuestion({
   question,
   sessionId = null,
+  conversationHistory = [],
   onChunk,
   onCitation,
   signal,
@@ -168,7 +170,7 @@ export async function askQuestion({
   try {
     const response = await fetch(url, {
       method: "POST",
-      body: JSON.stringify({ question, sessionId }),
+      body: JSON.stringify({ question, sessionId, conversationHistory }),
       signal,
     });
 

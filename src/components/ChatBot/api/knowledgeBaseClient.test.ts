@@ -109,7 +109,11 @@ describe("askQuestion", () => {
       TEST_API_URL,
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ question: "Test question", sessionId: "existing-session" }),
+        body: JSON.stringify({
+          question: "Test question",
+          sessionId: "existing-session",
+          conversationHistory: [],
+        }),
       })
     );
   });

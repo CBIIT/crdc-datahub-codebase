@@ -1,5 +1,6 @@
 import { waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test-utils";
@@ -16,6 +17,20 @@ vi.mock("../hooks/useChatDrawer", () => ({
 vi.mock("./ChatBotContext", () => ({
   useChatBotContext: vi.fn(() => ({
     isChatEnabled: true,
+  })),
+}));
+
+vi.mock("./ChatConversationContext", () => ({
+  ChatConversationProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  useChatConversationContext: vi.fn(() => ({
+    messages: [],
+    inputValue: "",
+    isBotTyping: false,
+    setInputValue: vi.fn(),
+    sendMessage: vi.fn(),
+    handleKeyDown: vi.fn(),
+    endConversation: vi.fn(),
+    greetingTimestamp: new Date(),
   })),
 }));
 

@@ -11,6 +11,11 @@ import React, {
 import { askQuestion } from "../api/knowledgeBaseClient";
 import chatConfig from "../config/chatConfig";
 import { createChatMessage, createId, isAbortError } from "../utils/chatUtils";
+import {
+  clearConversationMessages,
+  getStoredConversationMessages,
+  storeConversationMessages,
+} from "../utils/conversationStorageUtils";
 import { clearStoredSessionId, getStoredSessionId } from "../utils/sessionStorageUtils";
 
 import { useChatBotContext } from "./ChatBotContext";
@@ -19,6 +24,7 @@ type ChatState = {
   messages: ChatMessage[];
   inputValue: string;
   status: ChatStatus;
+  isInitialized: boolean;
 };
 
 type ChatAction =
@@ -26,7 +32,8 @@ type ChatAction =
   | { type: "input_cleared" }
   | { type: "message_added"; message: ChatMessage }
   | { type: "status_changed"; status: ChatStatus }
-  | { type: "conversation_reset" };
+  | { type: "conversation_reset" }
+  | { type: "chat_initialized"; messages: ChatMessage[] };
 
 export type ChatConversationActions = {
   greetingTimestamp: Date;
@@ -38,6 +45,16 @@ export type ChatConversationActions = {
   handleKeyDown: React.KeyboardEventHandler<HTMLDivElement>;
   endConversation: () => void;
 };
+
+/**
+ * Creates the initial greeting message for the chat.
+ */
+const createGreetingMessage = (): ChatMessage =>
+  createChatMessage({
+    text: chatConfig.initialMessage,
+    sender: "bot",
+    senderName: chatConfig.supportBotName,
+  });
 
 /**
  * Chat reducer to manage chat state transitions.
@@ -69,15 +86,17 @@ export const chatReducer = (state: ChatState, action: ChatAction): ChatState => 
     }
     case "conversation_reset": {
       return {
-        messages: [
-          createChatMessage({
-            text: chatConfig.initialMessage,
-            sender: "bot",
-            senderName: chatConfig.supportBotName,
-          }),
-        ],
+        messages: [createGreetingMessage()],
         inputValue: "",
         status: "idle",
+        isInitialized: true,
+      };
+    }
+    case "chat_initialized": {
+      return {
+        ...state,
+        messages: action.messages,
+        isInitialized: true,
       };
     }
     default: {
@@ -96,19 +115,33 @@ const useChatConversation = (): ChatConversationActions => {
   const greetingTimestampRef = useRef<Date>(new Date());
 
   const [state, dispatch] = useReducer(chatReducer, {
-    messages: [
-      createChatMessage({
-        text: chatConfig.initialMessage,
-        sender: "bot",
-        senderName: chatConfig.supportBotName,
-      }),
-    ],
+    messages: [createGreetingMessage()],
     inputValue: "",
     status: "idle",
+    isInitialized: false,
   });
 
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  /**
+   * Initializes the chat by loading conversation history from IndexedDB.
+   */
+  const initializeChat = useCallback(async () => {
+    const storedMessages = await getStoredConversationMessages();
+    const messages = [createGreetingMessage(), ...storedMessages];
+    dispatch({ type: "chat_initialized", messages });
+  }, []);
+
+  useEffect(() => {
+    initializeChat();
+  }, [initializeChat]);
+
+  useEffect(() => {
+    if (state.isInitialized && state.messages.length > 0) {
+      storeConversationMessages(state.messages.slice(1));
+    }
+  }, [state.messages, state.isInitialized]);
 
   const activeRequestRef = useRef<{
     requestId: string;
@@ -150,6 +183,19 @@ const useChatConversation = (): ChatConversationActions => {
   }, []);
 
   /**
+   * Builds conversation history from messages for the API request.
+   * Excludes the initial greeting message.
+   */
+  const buildConversationHistory = useCallback(
+    (messages: ChatMessage[]): ConversationHistory[] =>
+      messages.slice(1).map((msg) => ({
+        role: msg.sender === "user" ? "user" : "assistant",
+        content: msg.text,
+      })),
+    []
+  );
+
+  /**
    * Executes the bot reply request with streaming support.
    */
   const runReply = useCallback(
@@ -163,10 +209,12 @@ const useChatConversation = (): ChatConversationActions => {
         let accumulatedText = "";
         const allCitations: ChatCitation[] = [];
         let firstChunkReceived = false;
+        const conversationHistory = buildConversationHistory(stateRef.current.messages);
 
         await askQuestion({
           question: userMessage,
           sessionId: getStoredSessionId(),
+          conversationHistory,
           signal: abortController.signal,
           url: knowledgeBaseUrl,
           onChunk: (chunk: string) => {
@@ -215,7 +263,7 @@ const useChatConversation = (): ChatConversationActions => {
         handleReplyError(error, requestId);
       }
     },
-    [knowledgeBaseUrl, handleReplyError]
+    [knowledgeBaseUrl, handleReplyError, buildConversationHistory]
   );
 
   /**
@@ -289,6 +337,7 @@ const useChatConversation = (): ChatConversationActions => {
    */
   const endConversation = useCallback((): void => {
     clearStoredSessionId();
+    clearConversationMessages();
     activeRequestRef.current?.abortController.abort();
     activeRequestRef.current = null;
     greetingTimestampRef.current = new Date();
