@@ -38,7 +38,7 @@ FIFO queue configured via the `METADATA_QUEUE` environment variable. `MessageGro
 | `submissionID` | string (UUID) | yes | Message is silently skipped if missing. |
 | `scope` | string | yes | `"new"` or `"all"` (case-insensitive). Must be truthy. |
 | `dataRecordIds` | string[] | yes | Array of `dataRecords._id` values. Must be non-empty. |
-| `totalBatches` | int | yes | Total number of batch messages for this validation run. Must be >= 1. Message is rejected if missing or < 1; validation will appear stuck. All messages in a run must carry the same value. |
+| `totalBatches` | int | yes | Total number of batch messages for this validation run. Must be >= 1. All messages in a run must carry the same value. |
 | `batchIndex` | int | yes | Zero-based index of this batch within the run. |
 
 ### Legacy (Non-Batch) Message Fields
@@ -132,13 +132,13 @@ On each batch message, the validator atomically updates the **validation documen
 | `$inc` | `completedBatches` | +1 per batch |
 | `$inc` | `failedBatches` | +1 if the batch failed |
 | `$max` | `worstBatchStatus` | Numeric precedence: Passed=0, Warning=1, Error=2 |
-| `$push` | `batchStatusDetails` | Status detail string: failure description for failed batches, or `"Batch {N}: {errors} errors, {warnings} warnings"` summary for batches with data validation errors/warnings. Not pushed for batches that pass cleanly. |
+| `$push` | `batchStatusDetails` | Failure message string (only for failed batches) |
 
 Completion is detected when `completedBatches >= totalBatches` (from the message, not the document).
 
 ### Validator Updates on Final Batch
 
-When the last batch completes (`completedBatches >= totalBatches`), the validator updates both collections in sequence. To prevent double-finalization on message redelivery, the validator uses a guard filter (`{metadataEnded: null}`) on the validation document update; if `metadataEnded` is already set, the update is skipped and the submission document is not modified.
+When the last batch completes, the validator updates both collections in sequence:
 
 **Validation document** (`$set` + `$unset`):
 
@@ -160,7 +160,7 @@ If the validation document's `type` array has more than one entry, overall `stat
 
 ### `statusDetail` Format
 
-- **Batch runs:** `[string]` -- one entry per batch that failed or had data validation errors/warnings. `null` when all batches pass cleanly.
+- **Batch runs:** `[string]` -- one entry per failed batch describing the failure. `null` when all batches pass.
 - **Non-batch runs:** `null` (not set).
 - Written to both the `validation` and `submissions` documents under the key `"statusDetail"`.
 
@@ -197,13 +197,12 @@ Backend                          SQS (FIFO)                    Validator
 | Scenario | Behavior |
 |----------|----------|
 | Missing `validationID` | Message rejected, no DB update. Validation appears stuck. |
-| Missing or `totalBatches` < 1 | Message rejected, no DB update. Validation appears stuck. |
+| `totalBatches` < 1 | Message rejected, no DB update. Validation appears stuck. |
 | Missing `scope` or empty `dataRecordIds` | Batch marked as failed, counter still incremented. |
 | Submission/model/study not found | Batch marked as failed, counter still incremented. |
 | `validate_nodes` exception | Batch marked as failed, counter still incremented. |
 | Partial `dataRecordIds` match | Warning logged, continues with found records. |
 | Validation document not found | `increment_completed_batches` returns `None`; finalization skipped. |
-| Duplicate finalization (message redelivery) | Guard filter `{metadataEnded: null}` prevents the second worker from overwriting the validation or submission documents. Logged at info level; no data corruption. |
 | Backend partial send failure | Backend sets `status: "Error"` and `statusDetail: ["Failed to enqueue {N} of {total} batch messages"]` on validation doc. Validator processes arrived batches but never reaches `completedBatches >= totalBatches`, so it does not finalize. |
 | Backend total send failure | Backend rolls back submission validation statuses to their previous values and sets `status: "Error"` / `ended` on the validation doc. |
 | Zero total records | Backend does not send messages. Rolls back `metadataValidationStatus` to `null` (no metadata to validate). |

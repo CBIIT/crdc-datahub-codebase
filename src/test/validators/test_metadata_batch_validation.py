@@ -9,7 +9,7 @@ _this_dir = os.path.dirname(os.path.abspath(__file__))
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(_this_dir)))
 sys.path.insert(0, os.path.join(_project_root, 'src'))
 
-from metadata_validator import metadataValidate, MetaDataValidator, _process_metadata_validation
+from metadata_validator import metadataValidate, MetaDataValidator
 from common import constants
 from pymongo import errors
 
@@ -351,8 +351,7 @@ class TestBatchHandler:
         msg = self._make_batch_msg()
         mock_mongo_dao.increment_completed_batches.return_value = (1, False, 0, constants.STATUS_PASSED, [])
 
-        with patch.object(MetaDataValidator, 'validate_nodes', return_value=2):
-            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
         mock_mongo_dao.get_dataRecords_by_ids.assert_called_once_with(['r1', 'r2'])
         mock_mongo_dao.increment_completed_batches.assert_called_once()
@@ -368,8 +367,7 @@ class TestBatchHandler:
         msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
         mock_mongo_dao.increment_completed_batches.return_value = (3, True, 0, constants.STATUS_PASSED, [])
 
-        with patch.object(MetaDataValidator, 'validate_nodes', return_value=2):
-            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
         mock_mongo_dao.update_validation_status.assert_called_once()
         args = mock_mongo_dao.update_validation_status.call_args[0]
@@ -382,7 +380,6 @@ class TestBatchHandler:
             constants.BATCH_STATUS_DETAILS: '', constants.WORST_BATCH_STATUS: '',
             constants.TOTAL_BATCHES: '',
         }
-        assert kwargs['guard_filter'] == {constants.METADATA_ENDED: None}
 
         mock_mongo_dao.set_submission_validation_status.assert_called_once()
         sub_kwargs = mock_mongo_dao.set_submission_validation_status.call_args[1]
@@ -691,8 +688,7 @@ class TestBatchHandler:
         msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
         mock_mongo_dao.increment_completed_batches.return_value = (3, True, 0, constants.STATUS_PASSED, [])
 
-        with patch.object(MetaDataValidator, 'validate_nodes', return_value=2):
-            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
         assert kwargs['unset_fields'] == {
@@ -700,7 +696,6 @@ class TestBatchHandler:
             constants.BATCH_STATUS_DETAILS: '', constants.WORST_BATCH_STATUS: '',
             constants.TOTAL_BATCHES: '',
         }
-        assert kwargs['guard_filter'] == {constants.METADATA_ENDED: None}
 
     # -- missing validation_id --
 
@@ -760,258 +755,3 @@ class TestBatchHandler:
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
         assert args[1] == constants.STATUS_ERROR
         assert any('No data records found' in d for d in kwargs['status_detail'])
-
-    # -- missing totalBatches field --
-
-    def test_missing_total_batches_treated_as_invalid(self, mock_configs, mock_model_store, mock_mongo_dao):
-        """When totalBatches is absent from the message, it should be rejected."""
-        payload = {
-            constants.SQS_TYPE: constants.TYPE_METADATA_VALIDATE_BATCH,
-            constants.SUBMISSION_ID: 'sub-1',
-            constants.VALIDATION_ID: 'val-1',
-            constants.DATA_RECORD_IDS: ['r1', 'r2'],
-            constants.BATCH_INDEX: 0,
-            constants.SCOPE: 'New',
-        }
-        msg = MagicMock()
-        msg.body = json.dumps(payload)
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        mock_mongo_dao.increment_completed_batches.assert_not_called()
-        mock_mongo_dao.get_dataRecords_by_ids.assert_not_called()
-        msg.delete.assert_called_once()
-
-    # -- double-finalization guard --
-
-    def test_double_finalization_guard_skips_submission_update(self, mock_configs, mock_model_store, mock_mongo_dao):
-        """When update_validation_status returns False (guard_filter blocked),
-        set_submission_validation_status should not be called."""
-        msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
-        mock_mongo_dao.increment_completed_batches.return_value = (3, True, 0, constants.STATUS_PASSED, [])
-        mock_mongo_dao.update_validation_status.return_value = False
-
-        with patch.object(MetaDataValidator, 'validate_nodes', return_value=2):
-            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        mock_mongo_dao.update_validation_status.assert_called_once()
-        mock_mongo_dao.set_submission_validation_status.assert_not_called()
-        msg.delete.assert_called_once()
-
-    # -- batch summary detail for data-error batches --
-
-    def test_batch_summary_detail_for_data_errors(self, mock_configs, mock_model_store, mock_mongo_dao):
-        """When validate_nodes succeeds but finds errors/warnings, a summary
-        status_detail should be passed to increment_completed_batches."""
-        msg = self._make_batch_msg()
-        mock_mongo_dao.increment_completed_batches.return_value = (1, False, 0, constants.STATUS_ERROR, [])
-
-        def fake_validate_nodes(self_validator, data_records):
-            for r in data_records:
-                r[constants.STATUS] = constants.STATUS_ERROR
-            self_validator.isError = True
-            return len(data_records)
-
-        with patch.object(MetaDataValidator, 'validate_nodes', fake_validate_nodes):
-            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
-        assert call_kwargs['batch_failed'] is False
-        assert call_kwargs['status_detail'] is not None
-        assert 'Batch 0:' in call_kwargs['status_detail']
-        assert '2 errors' in call_kwargs['status_detail']
-
-    def test_batch_summary_detail_for_warnings(self, mock_configs, mock_model_store, mock_mongo_dao):
-        """When validate_nodes finds only warnings, status_detail reflects that."""
-        msg = self._make_batch_msg()
-        mock_mongo_dao.increment_completed_batches.return_value = (1, False, 0, constants.STATUS_WARNING, [])
-
-        def fake_validate_nodes(self_validator, data_records):
-            for r in data_records:
-                r[constants.STATUS] = constants.STATUS_WARNING
-            self_validator.isWarning = True
-            return len(data_records)
-
-        with patch.object(MetaDataValidator, 'validate_nodes', fake_validate_nodes):
-            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
-        assert call_kwargs['batch_failed'] is False
-        assert '0 errors' in call_kwargs['status_detail']
-        assert '2 warnings' in call_kwargs['status_detail']
-
-    def test_no_summary_detail_when_all_passed(self, mock_configs, mock_model_store, mock_mongo_dao):
-        """When validate_nodes succeeds with all records passing, status_detail is None."""
-        msg = self._make_batch_msg()
-        mock_mongo_dao.increment_completed_batches.return_value = (1, False, 0, constants.STATUS_PASSED, [])
-
-        with patch.object(MetaDataValidator, 'validate_nodes', return_value=2):
-            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
-        assert call_kwargs['batch_failed'] is False
-        assert call_kwargs['status_detail'] is None
-
-
-# ---------------------------------------------------------------------------
-# _process_metadata_validation — submission None guard
-# ---------------------------------------------------------------------------
-
-class TestProcessMetadataValidation:
-
-    @pytest.fixture
-    def mock_model_store(self):
-        store = MagicMock()
-        model = MagicMock()
-        model.model = True
-        model.get_nodes.return_value = ['node1']
-        store.get_model_by_data_common_version.return_value = model
-        return store
-
-    @pytest.fixture
-    def mock_mongo_dao(self):
-        dao = MagicMock()
-        dao.update_validation_status.return_value = True
-        dao.set_submission_validation_status.return_value = True
-        return dao
-
-    @pytest.fixture
-    def mock_configs(self):
-        from common.constants import MODEL_FILE_DIR, TIER_CONFIG, SQS_NAME
-        return {
-            MODEL_FILE_DIR: '/fake/models',
-            TIER_CONFIG: '/fake/tier.json',
-            SQS_NAME: 'test-queue',
-        }
-
-    def test_missing_submission_does_not_crash(self, mock_mongo_dao, mock_model_store, mock_configs, caplog):
-        """When validate() returns STATUS_ERROR because submission is None,
-        the function should log an error and not crash."""
-        import logging
-        data = {
-            constants.SUBMISSION_ID: 'sub-missing',
-            constants.SCOPE: 'New',
-            constants.VALIDATION_ID: 'val-1',
-        }
-        mock_mongo_dao.get_submission.return_value = None
-
-        with caplog.at_level(logging.ERROR):
-            result = _process_metadata_validation(mock_mongo_dao, mock_model_store, mock_configs, data)
-
-        mock_mongo_dao.update_validation_status.assert_called_once()
-        mock_mongo_dao.set_submission_validation_status.assert_not_called()
-        assert any('no submission document available' in r.getMessage() for r in caplog.records)
-
-    def test_successful_submission_updates_status(self, mock_mongo_dao, mock_model_store, mock_configs):
-        """When validate() succeeds, both validation and submission status are updated."""
-        data = {
-            constants.SUBMISSION_ID: 'sub-1',
-            constants.SCOPE: 'New',
-            constants.VALIDATION_ID: 'val-1',
-        }
-        submission = {
-            '_id': 'sub-1',
-            constants.DATA_COMMON_NAME: 'CDS',
-            constants.MODEL_VERSION: '1.0',
-            constants.STUDY_ID: 'study-1',
-        }
-        mock_mongo_dao.get_submission.return_value = submission
-        mock_mongo_dao.find_study_by_id.return_value = {'studyName': 'Test Study'}
-        mock_mongo_dao.find_organization_name_by_study_id.return_value = ['Test Org']
-
-        def fake_validate(self_validator, submission_id, scope):
-            self_validator.submission = submission
-            return constants.STATUS_PASSED
-
-        with patch.object(MetaDataValidator, 'validate', fake_validate):
-            result = _process_metadata_validation(mock_mongo_dao, mock_model_store, mock_configs, data)
-
-        mock_mongo_dao.update_validation_status.assert_called_once()
-        mock_mongo_dao.set_submission_validation_status.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# update_validation_status — guard_filter (mongo_dao)
-# ---------------------------------------------------------------------------
-
-class TestUpdateValidationStatusGuardFilter:
-
-    def _setup_mock_db(self, mock_client_class):
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        mock_db = MagicMock()
-        mock_client.__getitem__.return_value = mock_db
-        mock_validation_col = MagicMock()
-
-        def db_getitem(key):
-            if key == constants.VALIDATION_COLLECTION:
-                return mock_validation_col
-            return MagicMock()
-
-        mock_db.__getitem__.side_effect = db_getitem
-        return mock_validation_col
-
-    @patch("common.mongo_dao.MongoClient")
-    def test_guard_filter_merged_into_query(self, mock_client_class):
-        from common.mongo_dao import MongoDao
-        col = self._setup_mock_db(mock_client_class)
-        col.find_one.return_value = {
-            constants.ID: 'val-1',
-            constants.TYPE: ['metadata'],
-        }
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        col.update_one.return_value = mock_result
-
-        dao = MongoDao("mongodb://localhost", "test_db")
-        result = dao.update_validation_status(
-            'val-1', constants.STATUS_PASSED, '2026-01-01',
-            guard_filter={constants.METADATA_ENDED: None}
-        )
-
-        find_query = col.find_one.call_args[0][0]
-        assert find_query == {constants.ID: 'val-1', constants.METADATA_ENDED: None}
-        update_query = col.update_one.call_args[0][0]
-        assert update_query == {constants.ID: 'val-1', constants.METADATA_ENDED: None}
-        assert result is True
-
-    @patch("common.mongo_dao.MongoClient")
-    def test_guard_filter_no_match_returns_false(self, mock_client_class, caplog):
-        """When guard_filter causes find_one to return None, should return False
-        with an info log about already-finalized."""
-        import logging
-        from common.mongo_dao import MongoDao
-        col = self._setup_mock_db(mock_client_class)
-        col.find_one.return_value = None
-
-        dao = MongoDao("mongodb://localhost", "test_db")
-        with caplog.at_level(logging.INFO):
-            result = dao.update_validation_status(
-                'val-1', constants.STATUS_PASSED, '2026-01-01',
-                guard_filter={constants.METADATA_ENDED: None}
-            )
-
-        assert result is False
-        col.update_one.assert_not_called()
-        assert any('already finalized' in r.getMessage() for r in caplog.records)
-
-    @patch("common.mongo_dao.MongoClient")
-    def test_no_guard_filter_uses_simple_query(self, mock_client_class):
-        from common.mongo_dao import MongoDao
-        col = self._setup_mock_db(mock_client_class)
-        col.find_one.return_value = {
-            constants.ID: 'val-1',
-            constants.TYPE: ['metadata'],
-        }
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        col.update_one.return_value = mock_result
-
-        dao = MongoDao("mongodb://localhost", "test_db")
-        result = dao.update_validation_status(
-            'val-1', constants.STATUS_PASSED, '2026-01-01',
-        )
-
-        find_query = col.find_one.call_args[0][0]
-        assert find_query == {constants.ID: 'val-1'}
-        assert result is True

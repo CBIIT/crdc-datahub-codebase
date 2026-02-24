@@ -1057,28 +1057,17 @@ class MongoDao:
             self.log.exception(f"Failed to increment completed batches for {validation_id}: {get_exception_msg()}")
             return None, False, 0, None, []
 
-    def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, unset_fields=None, guard_filter=None):
-        """Update validation status.
-
-        guard_filter -- optional dict merged into the find_one and update_one
-        query so the update is skipped when the document no longer matches
-        (e.g. ``{"metadataEnded": None}`` to prevent double-finalization).
-        """
+    def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, unset_fields=None):
+        """Update validation status."""
         db = self.client[self.db_name]
         data_collection = db[VALIDATION_COLLECTION]
         update_status = True
         update_status_value = status
         update_validation_end_at_value = validation_end_at
-        query = {ID: validation_id}
-        if guard_filter:
-            query.update(guard_filter)
         try:
-            validation_document = data_collection.find_one(query)
+            validation_document = data_collection.find_one({ID: validation_id})
             if validation_document is None:
-                if guard_filter:
-                    self.log.info(f"Validation {validation_id} already finalized (guard_filter did not match); skipping update")
-                else:
-                    self.log.error(f"No validation document found for ID: {validation_id}")
+                self.log.error(f"No validation document found for ID: {validation_id}")
                 return False
             validation_update_dict = {}
             if status_detail is not None:
@@ -1115,7 +1104,7 @@ class MongoDao:
             update_ops = {"$set": validation_update_dict}
             if unset_fields:
                 update_ops["$unset"] = unset_fields
-            result = data_collection.update_one(query, update_ops)
+            result = data_collection.update_one({ID: validation_id}, update_ops)
             return True if result.modified_count > 0 and update_status else False
         except errors.PyMongoError as pe:
             self.log.exception(pe)

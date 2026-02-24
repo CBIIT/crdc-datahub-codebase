@@ -15,7 +15,7 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
     GENERATED_PROPS, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, NAME_PROP, \
     TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX, \
-    COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS, METADATA_ENDED
+    COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS
 from common.utils import current_datetime, get_exception_msg, create_error, get_uuid_str, has_permissive_value
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
@@ -51,7 +51,7 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
     validation_id = data.get(VALIDATION_ID)
     submission_id = data.get(SUBMISSION_ID)
     data_record_ids = data.get(DATA_RECORD_IDS, [])
-    total_batches = data.get(TOTAL_BATCHES)
+    total_batches = data.get(TOTAL_BATCHES, 1)
     batch_index = data.get(BATCH_INDEX, 0)
     scope = data.get(SCOPE)
     validated = False
@@ -65,9 +65,9 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
         log.critical('Batch message rejected: missing validationID; validation may be stuck.')
         return None
 
-    if not total_batches or total_batches < 1:
-        log.error(f'Invalid batch message - totalBatches must be >= 1, got {total_batches!r}: {data}')
-        log.critical(f'Batch message rejected: totalBatches={total_batches!r}; validation may be stuck.')
+    if total_batches < 1:
+        log.error(f'Invalid batch message - total_batches must be >= 1, got {total_batches}: {data}')
+        log.critical(f'Batch message rejected: total_batches={total_batches}; validation may be stuck.')
         return None
 
     log.info(f'Processing batch {batch_index + 1}/{total_batches} for validation {validation_id} '
@@ -115,11 +115,6 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
         else:
             batch_status = STATUS_PASSED
 
-        if batch_status != STATUS_PASSED:
-            error_count = sum(1 for r in data_records if r.get(STATUS) == STATUS_ERROR)
-            warning_count = sum(1 for r in data_records if r.get(STATUS) == STATUS_WARNING)
-            status_detail = f'Batch {batch_index}: {error_count} errors, {warning_count} warnings'
-
     except Exception as ve:
         log.exception(f'Error validating batch {batch_index} for {validation_id}: {ve}')
     finally:
@@ -129,7 +124,7 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
                     validation_id, total_batches,
                     batch_failed=(not validated),
                     batch_status=batch_status,
-                    status_detail=status_detail,
+                    status_detail=status_detail if not validated else None,
                 )
 
             if is_last_batch:
@@ -148,16 +143,15 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
                         COMPLETED_BATCHES: '', FAILED_BATCHES: '',
                         BATCH_STATUS_DETAILS: '', WORST_BATCH_STATUS: '',
                         TOTAL_BATCHES: '',
-                    },
-                    guard_filter={METADATA_ENDED: None},
+                    }
                 )
                 if not update_ok:
-                    log.info(
-                        f'Validation {validation_id}: already finalized by another worker; '
-                        'skipping submission update.'
+                    log.warning(
+                        f'Validation {validation_id}: status update reported no modification; '
+                        'validation record may be stale.'
                     )
 
-                if update_ok and submission:
+                if submission:
                     sub_doc = validator.submission if validator else submission
                     sub_doc[VALIDATION_ENDED] = validation_end_at
                     mongo_dao.set_submission_validation_status(
@@ -195,13 +189,9 @@ def _process_metadata_validation(mongo_dao, model_store, configs, data):
     status = validator.validate(submission_id, scope)
     validation_end_at = current_datetime()
     update_status = mongo_dao.update_validation_status(validation_id, status, validation_end_at, METADATA_VALIDATION, status_detail=None)
-    if validator.submission:
-        if update_status:
-            validator.submission[VALIDATION_ENDED] = validation_end_at
-        mongo_dao.set_submission_validation_status(validator.submission, None, status, None, None, status_detail=None)
-    else:
-        log = get_logger(__name__)
-        log.error(f'Validation {validation_id} completed with status {status} but no submission document available')
+    if update_status:
+        validator.submission[VALIDATION_ENDED] = validation_end_at
+    mongo_dao.set_submission_validation_status(validator.submission, None, status, None, None, status_detail=None)
     return validator
 
 
