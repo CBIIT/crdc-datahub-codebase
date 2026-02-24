@@ -651,6 +651,31 @@ describe('DataRecordService Integration Tests', () => {
       consoleErrorSpy.mockRestore();
     });
 
+    test('should fall back to default batch size when configured size is 0', async () => {
+      mockConfigurationService.findByType.mockResolvedValue({ size: 0 });
+      const ids = Array.from({ length: 1200 }, (_, i) => ({ _id: `rec-${i}` }));
+      mockDataRecordsCollection.countDoc.mockResolvedValue(1200);
+      mockDataRecordsCollection.aggregate.mockResolvedValue(ids);
+      mockAwsService.sendSQSMessage.mockResolvedValue({ success: true });
+
+      const result = await dataRecordService.validateMetadata(
+        'submission-123',
+        [VALIDATION.TYPES.METADATA],
+        VALIDATION.SCOPE.ALL,
+        'validation-456'
+      );
+
+      // 1200 records / 1000 default batch size = 2 batches
+      const metadataCalls = mockAwsService.sendSQSMessage.mock.calls.filter(
+        call => call[0].type === VALIDATION.BATCH_MESSAGE_TYPE
+      );
+      expect(metadataCalls).toHaveLength(2);
+      expect(metadataCalls[0][0].dataRecordIds).toHaveLength(1000);
+      expect(metadataCalls[1][0].dataRecordIds).toHaveLength(200);
+
+      expect(result.success).toBe(true);
+    });
+
     test('should create cross-submission validation message', async () => {
       mockDataRecordsCollection.countDoc.mockResolvedValue(10);
       mockAwsService.sendSQSMessage.mockResolvedValue({ success: true });
