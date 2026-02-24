@@ -594,15 +594,21 @@ model User {
 }
 
 model Validation {
-  id           String    @id @default(uuid()) @map("_id")
-  ended        DateTime? @db.Date
-  scope        String?
-  started      DateTime  @db.Date
-  status       String?
-  statusDetail String[]
-  submissionID String
-  totalBatches Int?
-  type         String[]
+  id                 String    @id @default(uuid()) @map("_id")
+  ended              DateTime? @db.Date
+  metadataEnded      DateTime? @db.Date
+  scope              String?
+  started            DateTime  @db.Date
+  status             String?
+  metadataStatus     String?
+  statusDetail       String[]
+  submissionID       String
+  totalBatches       Int?
+  completedBatches   Int?
+  failedBatches      Int?
+  batchStatusDetails String[]
+  worstBatchStatus   Int?
+  type               String[]
 
   submission Submission @relation(fields: [submissionID], references: [id], onDelete: Cascade)
 
