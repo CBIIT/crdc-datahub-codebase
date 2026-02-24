@@ -1057,7 +1057,7 @@ class MongoDao:
             self.log.exception(f"Failed to increment completed batches for {validation_id}: {get_exception_msg()}")
             return None, False, 0, None, []
 
-    def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, unset_fields=None):
+    def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None):
         """Update validation status."""
         db = self.client[self.db_name]
         data_collection = db[VALIDATION_COLLECTION]
@@ -1101,10 +1101,7 @@ class MongoDao:
             if update_status:
                 validation_update_dict[STATUS] = update_status_value
                 validation_update_dict["ended"] = update_validation_end_at_value
-            update_ops = {"$set": validation_update_dict}
-            if unset_fields:
-                update_ops["$unset"] = unset_fields
-            result = data_collection.update_one({ID: validation_id}, update_ops)
+            result = data_collection.update_one({ID: validation_id}, {"$set": validation_update_dict})
             return True if result.modified_count > 0 and update_status else False
         except errors.PyMongoError as pe:
             self.log.exception(pe)

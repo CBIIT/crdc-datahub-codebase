@@ -375,11 +375,6 @@ class TestBatchHandler:
         assert args[0] == 'val-1'
         assert args[1] == constants.STATUS_PASSED
         assert kwargs['status_detail'] is None
-        assert kwargs['unset_fields'] == {
-            constants.COMPLETED_BATCHES: '', constants.FAILED_BATCHES: '',
-            constants.BATCH_STATUS_DETAILS: '', constants.WORST_BATCH_STATUS: '',
-            constants.TOTAL_BATCHES: '',
-        }
 
         mock_mongo_dao.set_submission_validation_status.assert_called_once()
         sub_kwargs = mock_mongo_dao.set_submission_validation_status.call_args[1]
@@ -681,21 +676,6 @@ class TestBatchHandler:
         mock_mongo_dao.update_validation_status.assert_not_called()
         mock_mongo_dao.set_submission_validation_status.assert_not_called()
         assert any('validation may be stuck' in r.getMessage() for r in caplog.records)
-
-    # -- atomic unset of batch tracking fields --
-
-    def test_last_batch_unsets_all_tracking_fields_atomically(self, mock_configs, mock_model_store, mock_mongo_dao):
-        msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
-        mock_mongo_dao.increment_completed_batches.return_value = (3, True, 0, constants.STATUS_PASSED, [])
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert kwargs['unset_fields'] == {
-            constants.COMPLETED_BATCHES: '', constants.FAILED_BATCHES: '',
-            constants.BATCH_STATUS_DETAILS: '', constants.WORST_BATCH_STATUS: '',
-            constants.TOTAL_BATCHES: '',
-        }
 
     # -- missing validation_id --
 

@@ -140,12 +140,13 @@ Completion is detected when `completedBatches >= totalBatches` (from the message
 
 When the last batch completes, the validator updates both collections in sequence:
 
-**Validation document** (`$set` + `$unset`):
+**Validation document** (`$set`):
 
 | Operation | Fields |
 |-----------|--------|
 | `$set` | `metadataStatus`, `metadataEnded`, `status` (if sole type), `ended`, `statusDetail` |
-| `$unset` | `completedBatches`, `failedBatches`, `batchStatusDetails`, `worstBatchStatus`, `totalBatches` |
+
+Batch-tracking fields (`completedBatches`, `failedBatches`, `batchStatusDetails`, `worstBatchStatus`) are **retained** on the validation document after completion. Since validation documents are never reused, these fields serve as a historical record of how the batched run progressed.
 
 If the validation document's `type` array has more than one entry, overall `status` and `ended` are deferred until both metadata and file validation have finished. The worst of the two determines the overall status.
 
@@ -188,7 +189,6 @@ Backend                          SQS (FIFO)                    Validator
   |-- record validation metadata -> submissions collection        |
   |                                                               |
   |                                          (last batch)         |-- $set final status
-  |                                                               |-- $unset tracking fields
   |                                                               |-- update submission status
 ```
 
@@ -212,7 +212,7 @@ Backend                          SQS (FIFO)                    Validator
 
 ## Schema Gap: Prisma Validation Model
 
-The validator writes transient batch-tracking fields (`completedBatches`, `failedBatches`, `batchStatusDetails`, `worstBatchStatus`) directly to MongoDB. These fields are exposed in the **GraphQL schema** (`Validation` type) for frontend progress tracking, but are **missing from the Prisma `Validation` model**. This means Prisma-based queries will not return them. The fields are `$unset` on completion, so they only matter for in-progress validations. If the frontend needs to display batch progress, either:
+The validator writes batch-tracking fields (`completedBatches`, `failedBatches`, `batchStatusDetails`, `worstBatchStatus`) directly to MongoDB. These fields are exposed in the **GraphQL schema** (`Validation` type) for frontend progress tracking, but are **missing from the Prisma `Validation` model**. This means Prisma-based queries will not return them. Since validation documents are never reused, these fields persist as a historical record after completion. If the frontend or reporting tools need to access them, either:
 
 - Add these fields to the Prisma schema as optional, or
-- Use a raw MongoDB query for validation progress reads.
+- Use a raw MongoDB query for validation reads.

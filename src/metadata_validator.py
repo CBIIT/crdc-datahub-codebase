@@ -14,8 +14,7 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
     GENERATED_PROPS, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, NAME_PROP, \
-    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX, \
-    COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS
+    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX
 from common.utils import current_datetime, get_exception_msg, create_error, get_uuid_str, has_permissive_value
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
@@ -139,11 +138,6 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
                 update_ok = mongo_dao.update_validation_status(
                     validation_id, final_status, validation_end_at, METADATA_VALIDATION,
                     status_detail=final_detail,
-                    unset_fields={
-                        COMPLETED_BATCHES: '', FAILED_BATCHES: '',
-                        BATCH_STATUS_DETAILS: '', WORST_BATCH_STATUS: '',
-                        TOTAL_BATCHES: '',
-                    }
                 )
                 if not update_ok:
                     log.warning(
