@@ -11,8 +11,17 @@ const app = createServer();
 /**
  * Validates environment variables using the defined schema and starts the server.
  */
-const { PORT, AWS_REGION, KNOWLEDGE_BASE_ID, MODEL_ARN, GUARDRAIL_ID, GUARDRAIL_VERSION, RERANK_MODEL_ARN } =
-  envSchema.parse(process.env);
+const {
+  PORT,
+  AWS_REGION,
+  KNOWLEDGE_BASE_ID,
+  MODEL_ARN,
+  GUARDRAIL_ID,
+  GUARDRAIL_VERSION,
+  RERANK_MODEL_ARN,
+  SERVICE_VERSION,
+  DEV_TIER,
+} = envSchema.parse(process.env);
 
 app.use(
   "/question",
@@ -25,6 +34,6 @@ app.use(
     RERANK_MODEL_ARN,
   })
 );
-app.use("/status", createStatusRouter());
+app.use("/status", createStatusRouter({ SERVICE_VERSION, DEV_TIER }));
 
 startServer(app, Number(PORT || 3000));
