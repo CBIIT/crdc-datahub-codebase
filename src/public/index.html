@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chatbot Test UI</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 24px;
+        max-width: 800px;
+      }
+
+      h1 {
+        margin-bottom: 16px;
+      }
+
+      form {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      input[type="text"] {
+        flex: 1;
+        padding: 10px;
+      }
+
+      button {
+        padding: 10px 14px;
+      }
+
+      #responseBox {
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        min-height: 180px;
+        padding: 12px;
+        white-space: pre-wrap;
+      }
+
+      #status {
+        margin: 0 0 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Chatbot Test UI</h1>
+
+    <form id="questionForm">
+      <input id="questionInput" type="text" placeholder="Ask a question" required />
+      <button type="submit">Send</button>
+    </form>
+
+    <p id="status">Ready</p>
+    <div id="responseBox"></div>
+
+    <script>
+      const form = document.getElementById("questionForm");
+      const questionInput = document.getElementById("questionInput");
+      const responseBox = document.getElementById("responseBox");
+      const statusLabel = document.getElementById("status");
+
+      let sessionId = null;
+
+      const setStatus = (text) => {
+        statusLabel.textContent = text;
+      };
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const question = questionInput.value.trim();
+        if (!question) return;
+
+        responseBox.textContent = "";
+        setStatus("Streaming...");
+
+        try {
+          const response = await fetch("/question", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              question,
+              sessionId,
+              conversationHistory: [],
+            }),
+          });
+
+          if (!response.ok || !response.body) {
+            throw new Error("Request failed");
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+
+              try {
+                const chunk = JSON.parse(line);
+
+                if (chunk.sessionId) {
+                  sessionId = chunk.sessionId;
+                }
+
+                if (chunk.output) {
+                  responseBox.textContent += chunk.output;
+                }
+
+                if (chunk.error) {
+                  responseBox.textContent += `\n\nError: ${chunk.error}`;
+                }
+              } catch {
+                responseBox.textContent += `\n[Unparsed chunk] ${line}`;
+              }
+            }
+          }
+
+          setStatus("Done");
+        } catch (error) {
+          setStatus("Failed");
+          responseBox.textContent = `Request error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      });
+    </script>
+  </body>
+</html>

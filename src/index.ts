@@ -2,6 +2,8 @@ import { createServer, startServer } from "./server.ts";
 import { createQuestionRouter } from "./routes/question.ts";
 import { createStatusRouter } from "./routes/status.ts";
 import { envSchema } from "./schemas/env.ts";
+import path from "node:path";
+import express from "express";
 
 /**
  * Initializes and starts the Express server after validating environment variables.
@@ -21,7 +23,12 @@ const {
   RERANK_MODEL_ARN,
   SERVICE_VERSION,
   DEV_TIER,
+  NODE_ENV,
 } = envSchema.parse(process.env);
+
+if (NODE_ENV === "development") {
+  app.get("/", express.static(path.resolve(process.cwd(), "src/public")));
+}
 
 app.use(
   "/question",
