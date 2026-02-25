@@ -98,8 +98,7 @@ export const createQuestionRouter = ({
         searchResults = retrieveResponse.retrievalResults
           .map((result, index) => {
             const content = result.content?.text || "";
-            const source = result.location?.s3Location?.uri || "Unknown source";
-            return `[Document ${index + 1}]\nSource: ${source}\nContent: ${content}\n`;
+            return `[Document ${index + 1}]\nContent: ${content}\n`;
           })
           .join("\n");
 
@@ -150,9 +149,6 @@ export const createQuestionRouter = ({
         guardrailIdentifier: GUARDRAIL_ID,
         guardrailVersion: GUARDRAIL_VERSION,
       },
-      // additionalModelRequestFields: {
-      //   top_k: 100,
-      // },
     };
 
     try {
