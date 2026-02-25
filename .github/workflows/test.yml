@@ -1,20 +1,20 @@
-name: TypeScript
+name: Test
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - main
       - "*.*.*"
+      - "main"
   pull_request:
-    branches: ["*"]
+    branches: "*"
 
 permissions:
   contents: read
 
 jobs:
-  typecheck:
-    name: Typecheck
+  test:
+    name: Test Changes
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -27,7 +27,11 @@ jobs:
           cache: "npm"
 
       - name: Install Dependencies
-        run: npm i
+        run: npm install
 
-      - name: Run Typecheck
-        run: npm run typecheck
+      - name: Run Vitest
+        run: npm run test:ci
+
+      - name: Coveralls GitHub Action
+        uses: coverallsapp/github-action@v2
+        continue-on-error: true

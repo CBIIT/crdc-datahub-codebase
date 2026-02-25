@@ -1,10 +1,10 @@
 # Introduction
 
-This project provides the base implementation for a serverless question-answering system using AWS Bedrock and a Knowledge Base (KB). It handles incoming questions, retrieves relevant context from the KB, and generates answers using the Converse API.
+This project provides the base implementation for a question-answering system using AWS Bedrock and a Knowledge Base (KB). It handles incoming questions, retrieves relevant context from the KB, and generates answers using the Converse API.
 
 Key features include:
 
-- Serverless architecture using AWS Lambda
+- Express API server
 - Integration with a Knowledge Base for context retrieval
 - Streaming responses for real-time interaction
 - Error handling and logging
@@ -19,20 +19,28 @@ Future enhancements may include support for backend-managed conversation memory 
 - Knowledge Base setup
 - Guardrails setup
 
-## Deployment
+## Local Development
 
 1. Clone the repository.
-2. Install dependencies using `npm install`.
-3. Build the project using `npm run build`.
-4. Deploy the Lambda function using AWS SAM or your preferred deployment method.
+2. Copy the `.env.example` file to `.env` and fill in the required environment variables.
+3. Install dependencies using `npm install`.
+4. Start the server using `npm run dev`.
+
+The API is available at:
+
+- `POST /question`
+
+In `development` only, a minimal browser test UI is also available at:
+
+- `GET /` (serves `index.html`)
 
 ## Client Usage
 
-An example client function to interact with the deployed Lambda function is provided below:
+An example client function to interact with the Express API is provided below:
 
 ```JavaScript
 async function askQuestion(question, sessionId = null) {
-  const functionUrl = "https://function-url-goes-here"; // Replace with your function URL
+  const functionUrl = "http://localhost:3000/question"; // Replace with your API URL
   try {
     const response = await fetch(functionUrl, {
       method: "POST",
@@ -104,36 +112,33 @@ async function askQuestion(question, sessionId = null) {
 ```mermaid
 graph TB
     Client["Client Application"]
-    APIGW["API Gateway"]
-    Lambda["AWS Lambda<br/>Handler"]
+    API["Express API"]
     Cache["In-Memory<br/>Conversation Cache"]
-    
+
     KB["Bedrock Knowledge Base"]
     KBDocs["KB Documents<br/>S3 Storage"]
-    
+
     Bedrock["AWS Bedrock<br/>Converse API"]
     Model["Claude Model<br/>claude-3-*"]
     Guardrails["Bedrock Guardrails"]
-    
-    Client -->|POST /question| APIGW
-    APIGW -->|invoke| Lambda
-    
-    Lambda -->|retrieve| KB
+
+    Client -->|POST /question| API
+
+    API -->|retrieve| KB
     KB -->|search vector DB| KBDocs
     KBDocs -->|return docs| KB
-    KB -->|retrieval results| Lambda
-    
-    Lambda -->|cache check| Cache
-    Cache -->|return history| Lambda
-    
-    Lambda -->|stream converse| Bedrock
+    KB -->|retrieval results| API
+
+    API -->|cache check| Cache
+    Cache -->|return history| API
+
+    API -->|stream converse| Bedrock
     Bedrock -->|invoke| Model
     Bedrock -->|apply filters| Guardrails
     Guardrails -->|safe output| Bedrock
     Model -->|response| Bedrock
-    
-    Bedrock -->|stream chunks| Lambda
-    Lambda -->|cache update| Cache
-    Lambda -->|stream output| APIGW
-    APIGW -->|stream| Client
+
+    Bedrock -->|stream chunks| API
+    API -->|cache update| Cache
+    API -->|stream output| Client
 ```

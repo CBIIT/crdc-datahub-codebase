@@ -1,0 +1,228 @@
+openapi: 3.1.0
+info:
+  title: Chatbot Backend API
+  version: 3.6.0
+  description: Express API for the CRDC Submission Portal chatbot.
+servers:
+  - url: http://localhost:3000
+paths:
+  /question:
+    options:
+      summary: CORS preflight
+      responses:
+        "204":
+          description: No content
+    post:
+      summary: Ask a question
+      description: |
+        Validates request and configuration, then streams newline-delimited JSON responses.
+        
+        **Before streaming starts (validation phase):**
+        - Returns 400 for missing or invalid request data (e.g., missing question)
+        - Returns 500 for server/configuration errors (e.g., missing environment variables)
+        
+        **After streaming starts (200 OK):**
+        - The first line includes a `sessionId`
+        - Subsequent lines include `output` chunks
+        - Event lines with `type` and `description` for progress updates
+        - Citation lines with `type: citations` and a `citations` array
+        - Error lines with `error` field for errors during processing (e.g., AWS failures)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InputBody"
+            examples:
+              basic:
+                value:
+                  question: "What is CRDC DataHub?"
+                  sessionId: null
+                  conversationHistory: []
+              withHistory:
+                value:
+                  question: "Can you summarize the data submission steps?"
+                  sessionId: "2e9d6a44-1b34-4c9d-9c85-0a4f1d74d6a1"
+                  conversationHistory:
+                    - role: user
+                      content: "What is CRDC DataHub?"
+                    - role: assistant
+                      content: "CRDC DataHub is the Cancer Research Data Commons DataHub."
+      responses:
+        "200":
+          description: |
+            Streaming response with newline-delimited JSON.
+            Errors during processing (after streaming starts) are sent as error objects in the stream.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamLine"
+              examples:
+                session:
+                  value:
+                    sessionId: "8d17d1d6-0c28-4c31-9ce7-4c7c4d81cfc1"
+                output:
+                  value:
+                    output: "CRDC DataHub is..."
+                event:
+                  value:
+                    type: "pulse"
+                    description: "Generating a response"
+                citations:
+                  value:
+                    type: "citations"
+                    citations:
+                      - documentName: "DocumentXyz.pdf"
+                        documentLink: "https://example.org/docs/DocumentXyz.pdf"
+                error:
+                  value:
+                    error: "AWS bedrock failed to generate response"
+        "400":
+          description: |
+            Bad request - validation error before streaming starts.
+            Examples: missing or invalid question field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingQuestion:
+                  value:
+                    error: "Missing 'question' in request body"
+        "500":
+          description: |
+            Server error before streaming starts.
+            Examples: missing environment variables, configuration errors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingConfig:
+                  value:
+                    error: "Invalid configuration: Missing required environment variables"
+  /status/ping:
+    get:
+      summary: Ping
+      responses:
+        "200":
+          description: Pong
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                pong:
+                  value: "pong"
+  /status/version:
+    get:
+      summary: Service version
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+components:
+  schemas:
+    InputBody:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          minLength: 1
+        sessionId:
+          type: string
+          format: uuid
+          nullable: true
+        conversationHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConversationMessage"
+          default: []
+    ConversationMessage:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+    StreamLine:
+      oneOf:
+        - $ref: "#/components/schemas/SessionLine"
+        - $ref: "#/components/schemas/OutputLine"
+        - $ref: "#/components/schemas/EventLine"
+        - $ref: "#/components/schemas/CitationEventLine"
+        - $ref: "#/components/schemas/ErrorResponse"
+    SessionLine:
+      type: object
+      required:
+        - sessionId
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+    OutputLine:
+      type: object
+      properties:
+        output:
+          type: string
+      required:
+        - output
+    EventLine:
+      type: object
+      required:
+        - type
+        - description
+      properties:
+        type:
+          type: string
+          enum: [pulse]
+        description:
+          type: string
+    CitationEventLine:
+      type: object
+      required:
+        - type
+        - citations
+      properties:
+        type:
+          type: string
+          enum: [citations]
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Citation"
+    Citation:
+      type: object
+      required:
+        - documentName
+        - documentLink
+      properties:
+        documentName:
+          type: string
+        documentLink:
+          type: string
+          format: uri
+          nullable: true
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    VersionResponse:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: string
