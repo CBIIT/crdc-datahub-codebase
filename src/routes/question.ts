@@ -168,6 +168,7 @@ export const createQuestionRouter = ({
         Logger.info("Streaming response from Converse API", { sessionId });
 
         if (citations.length > 0) {
+          Logger.info("Sending citations to client", { sessionId, citations });
           res.write(JSON.stringify(generateCitationEvent(citations)) + "\n");
         }
 
