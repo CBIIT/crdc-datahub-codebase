@@ -30,6 +30,10 @@ The API is available at:
 
 - `POST /question`
 
+In `development` only, a minimal browser test UI is also available at:
+
+- `GET /` (serves `index.html`)
+
 ## Client Usage
 
 An example client function to interact with the Express API is provided below:

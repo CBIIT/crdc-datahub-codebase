@@ -23,7 +23,11 @@ export const createQuestionRouter = ({
   MODEL_ARN,
   GUARDRAIL_ID,
   GUARDRAIL_VERSION,
-}: Pick<AppEnv, "AWS_REGION" | "KNOWLEDGE_BASE_ID" | "MODEL_ARN" | "GUARDRAIL_ID" | "GUARDRAIL_VERSION">) => {
+  RERANK_MODEL_ARN,
+}: Pick<
+  AppEnv,
+  "AWS_REGION" | "KNOWLEDGE_BASE_ID" | "MODEL_ARN" | "GUARDRAIL_ID" | "GUARDRAIL_VERSION" | "RERANK_MODEL_ARN"
+>) => {
   const router = express.Router();
 
   const BEDROCK_AGENT = new BedrockAgentRuntimeClient({ region: AWS_REGION });
@@ -59,7 +63,18 @@ export const createQuestionRouter = ({
       },
       retrievalConfiguration: {
         vectorSearchConfiguration: {
-          numberOfResults: 15,
+          numberOfResults: 20,
+          rerankingConfiguration: RERANK_MODEL_ARN
+            ? {
+                type: "BEDROCK_RERANKING_MODEL",
+                bedrockRerankingConfiguration: {
+                  modelConfiguration: {
+                    modelArn: RERANK_MODEL_ARN,
+                  },
+                  numberOfRerankedResults: 8,
+                },
+              }
+            : undefined,
         },
       },
     };
@@ -83,8 +98,7 @@ export const createQuestionRouter = ({
         searchResults = retrieveResponse.retrievalResults
           .map((result, index) => {
             const content = result.content?.text || "";
-            const source = result.location?.s3Location?.uri || "Unknown source";
-            return `[Document ${index + 1}]\nSource: ${source}\nContent: ${content}\n`;
+            return `[Document ${index + 1}]\nContent: ${content}\n`;
           })
           .join("\n");
 
@@ -135,9 +149,6 @@ export const createQuestionRouter = ({
         guardrailIdentifier: GUARDRAIL_ID,
         guardrailVersion: GUARDRAIL_VERSION,
       },
-      // additionalModelRequestFields: {
-      //   top_k: 100,
-      // },
     };
 
     try {
@@ -153,6 +164,7 @@ export const createQuestionRouter = ({
         Logger.info("Streaming response from Converse API", { sessionId });
 
         if (citations.length > 0) {
+          Logger.info("Sending citations to client", { sessionId, citations });
           res.write(JSON.stringify(generateCitationEvent(citations)) + "\n");
         }
 

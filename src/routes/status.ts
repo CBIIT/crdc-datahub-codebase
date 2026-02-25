@@ -1,6 +1,7 @@
 import express from "express";
+import type { AppEnv } from "../schemas/env.ts";
 
-export const createStatusRouter = (): express.Router => {
+export const createStatusRouter = ({ SERVICE_VERSION, DEV_TIER }: Pick<AppEnv, "SERVICE_VERSION" | "DEV_TIER">) => {
   const router = express.Router();
 
   router.get("/ping", (_, res) => {
@@ -8,8 +9,7 @@ export const createStatusRouter = (): express.Router => {
   });
 
   router.get("/version", (_, res) => {
-    // TODO: Replace with actual version environment variable
-    res.json({ version: "unknown" });
+    res.json({ version: SERVICE_VERSION, tier: DEV_TIER });
   });
 
   return router;
