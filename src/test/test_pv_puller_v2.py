@@ -671,7 +671,7 @@ def test_get_pv_by_property_version_no_version(
     mock_mongo_dao,
     mock_logger
 ):
-    """Test retrieval without version parameter"""
+    """When version is None, no record matches (API returns records with concrete version e.g. "1.0"), so function returns None."""
     mock_api_client = MagicMock()
     mock_api_invoker_class.return_value = mock_api_client
     
@@ -691,8 +691,9 @@ def test_get_pv_by_property_version_no_version(
     
     result = get_pv_by_property_version(configs, mock_logger, "prop1", None, "model1", mock_mongo_dao)
     
-    # Should still return a result but handles no version
-    assert result is not None or mock_api_client.get_all_data_elements.called
+    # When prop_version is None, next() at line 274 finds no match (item[VERSION]="1.0" != None),
+    # so the function correctly returns None.
+    assert result is None
 
 
 # ==================== Test pull_pv_lists_v2 ====================
