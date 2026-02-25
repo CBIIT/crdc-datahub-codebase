@@ -6,4 +6,4 @@ COPY package*.json ./
 RUN npm ci
 COPY  --chown=node:node . .
 EXPOSE 8080
-CMD [ "node", "./bin/www" ]
+CMD [ "npm", "start" ]
