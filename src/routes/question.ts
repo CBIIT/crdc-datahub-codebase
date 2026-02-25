@@ -12,7 +12,12 @@ import {
 import express from "express";
 import { formatUserPrompt } from "../utils/conversation.ts";
 import { Logger } from "../utils/logger.ts";
-import { generateCitationEvent, generatePulseEvent } from "../utils/output.ts";
+import {
+  generateCitationEvent,
+  generatePulseEvent,
+  generateResponseEvent,
+  generateSessionEvent,
+} from "../utils/output.ts";
 import { CitationSchema, InputBodySchema, type Citation, type InputBody } from "../schemas/api.ts";
 import { CHATBOT_PROMPT } from "../config/prompts.ts";
 import type { AppEnv } from "../schemas/env.ts";
@@ -53,7 +58,7 @@ export const createQuestionRouter = ({
     const conversationHistory: NonNullable<InputBody["conversationHistory"]> = body.conversationHistory;
 
     // Initial response with sessionId
-    res.write(JSON.stringify({ sessionId }) + "\n");
+    res.write(JSON.stringify(generateSessionEvent(sessionId)) + "\n");
 
     // Step 1: Retrieve relevant documents from Knowledge Base
     const retrieveParams: RetrieveCommandInput = {
@@ -170,11 +175,7 @@ export const createQuestionRouter = ({
 
         for await (const event of converseResponse.stream) {
           if (event.contentBlockDelta?.delta?.text) {
-            res.write(
-              JSON.stringify({
-                output: event.contentBlockDelta.delta.text,
-              }) + "\n"
-            );
+            res.write(JSON.stringify(generateResponseEvent(event.contentBlockDelta.delta.text)) + "\n");
           }
 
           if (event.messageStop?.stopReason === "guardrail_intervened") {

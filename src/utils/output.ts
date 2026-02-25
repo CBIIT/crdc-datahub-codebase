@@ -1,4 +1,4 @@
-import type { APICitationEvent, APIPulseEvent, Citation } from "../schemas/api.ts";
+import type { APICitationEvent, APIPulseEvent, APIResponseEvent, APISessionEvent, Citation } from "../schemas/api.ts";
 
 /**
  * A utility function to generate an API event of type "pulse".
@@ -20,4 +20,26 @@ export const generatePulseEvent = (description: string): APIPulseEvent => ({
 export const generateCitationEvent = (citations: Citation[]): APICitationEvent => ({
   type: "citations",
   citations,
+});
+
+/**
+ * A utility function to generate an API event of type "session".
+ *
+ * @param sessionId The session ID to include in the event.
+ * @returns An APIEvent object with the specified session ID.
+ */
+export const generateSessionEvent = (sessionId: string): APISessionEvent => ({
+  type: "session",
+  sessionId,
+});
+
+/**
+ * A utility function to generate an API event of type "response".
+ *
+ * @param output The output text to include in the event.
+ * @returns An APIEvent object with the specified output.
+ */
+export const generateResponseEvent = (output: string): APIResponseEvent => ({
+  type: "response",
+  output,
 });

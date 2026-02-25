@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateCitationEvent, generatePulseEvent } from "./output.ts";
+import { generateCitationEvent, generatePulseEvent, generateResponseEvent, generateSessionEvent } from "./output.ts";
 
 describe("generatePulseEvent", () => {
   it("returns a pulse event with the provided description", () => {
@@ -39,6 +39,50 @@ describe("generateCitationEvent", () => {
 
     const first = generateCitationEvent(citations);
     const second = generateCitationEvent(citations);
+
+    expect(first).not.toBe(second);
+  });
+});
+
+describe("generateSessionEvent", () => {
+  it("returns a session event with the provided session ID", () => {
+    const sessionId = "c42e2bfb-3d88-4f40-a107-52b75c9f0922";
+
+    const result = generateSessionEvent(sessionId);
+
+    expect(result).toEqual({
+      type: "session",
+      sessionId,
+    });
+  });
+
+  it("returns a new object for each call", () => {
+    const sessionId = "c42e2bfb-3d88-4f40-a107-52b75c9f0922";
+
+    const first = generateSessionEvent(sessionId);
+    const second = generateSessionEvent(sessionId);
+
+    expect(first).not.toBe(second);
+  });
+});
+
+describe("generateResponseEvent", () => {
+  it("returns a response event with the provided output", () => {
+    const output = "Here is a generated response.";
+
+    const result = generateResponseEvent(output);
+
+    expect(result).toEqual({
+      type: "response",
+      output,
+    });
+  });
+
+  it("returns a new object for each call", () => {
+    const output = "Chunk";
+
+    const first = generateResponseEvent(output);
+    const second = generateResponseEvent(output);
 
     expect(first).not.toBe(second);
   });
