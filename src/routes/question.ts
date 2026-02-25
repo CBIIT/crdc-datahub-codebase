@@ -12,8 +12,13 @@ import {
 import express from "express";
 import { formatUserPrompt } from "../utils/conversation.ts";
 import { Logger } from "../utils/logger.ts";
-import { GenerateEvent } from "../utils/output.ts";
-import { InputBodySchema, type InputBody } from "../schemas/api.ts";
+import {
+  generateCitationEvent,
+  generatePulseEvent,
+  generateResponseEvent,
+  generateSessionEvent,
+} from "../utils/output.ts";
+import { CitationSchema, InputBodySchema, type Citation, type InputBody } from "../schemas/api.ts";
 import { CHATBOT_PROMPT } from "../config/prompts.ts";
 import type { AppEnv } from "../schemas/env.ts";
 
@@ -23,7 +28,11 @@ export const createQuestionRouter = ({
   MODEL_ARN,
   GUARDRAIL_ID,
   GUARDRAIL_VERSION,
-}: Pick<AppEnv, "AWS_REGION" | "KNOWLEDGE_BASE_ID" | "MODEL_ARN" | "GUARDRAIL_ID" | "GUARDRAIL_VERSION">) => {
+  RERANK_MODEL_ARN,
+}: Pick<
+  AppEnv,
+  "AWS_REGION" | "KNOWLEDGE_BASE_ID" | "MODEL_ARN" | "GUARDRAIL_ID" | "GUARDRAIL_VERSION" | "RERANK_MODEL_ARN"
+>) => {
   const router = express.Router();
 
   const BEDROCK_AGENT = new BedrockAgentRuntimeClient({ region: AWS_REGION });
@@ -49,7 +58,7 @@ export const createQuestionRouter = ({
     const conversationHistory: NonNullable<InputBody["conversationHistory"]> = body.conversationHistory;
 
     // Initial response with sessionId
-    res.write(JSON.stringify({ sessionId }) + "\n");
+    res.write(JSON.stringify(generateSessionEvent(sessionId)) + "\n");
 
     // Step 1: Retrieve relevant documents from Knowledge Base
     const retrieveParams: RetrieveCommandInput = {
@@ -59,16 +68,27 @@ export const createQuestionRouter = ({
       },
       retrievalConfiguration: {
         vectorSearchConfiguration: {
-          numberOfResults: 15,
+          numberOfResults: 20,
+          rerankingConfiguration: RERANK_MODEL_ARN
+            ? {
+                type: "BEDROCK_RERANKING_MODEL",
+                bedrockRerankingConfiguration: {
+                  modelConfiguration: {
+                    modelArn: RERANK_MODEL_ARN,
+                  },
+                  numberOfRerankedResults: 8,
+                },
+              }
+            : undefined,
         },
       },
     };
 
     let searchResults = "";
-    // let citations: Citation = {};
+    let citations: Citation[] = [];
 
     try {
-      res.write(JSON.stringify(GenerateEvent("Retrieving relevant documents")) + "\n");
+      res.write(JSON.stringify(generatePulseEvent("Retrieving relevant documents")) + "\n");
 
       const retrieveCommand = new RetrieveCommand(retrieveParams);
       const retrieveResponse = await BEDROCK_AGENT.send(retrieveCommand);
@@ -80,21 +100,26 @@ export const createQuestionRouter = ({
           chunks: retrieveResponse.retrievalResults.length || 0,
         });
 
-        // citations = {
-        //   retrievedReferences: retrieveResponse.retrievalResults.map((result) => ({
-        //     content: { text: result.content?.text },
-        //     location: result.location,
-        //     metadata: result.metadata,
-        //   })),
-        // };
-
         searchResults = retrieveResponse.retrievalResults
           .map((result, index) => {
             const content = result.content?.text || "";
-            const source = result.location?.s3Location?.uri || "Unknown source";
-            return `[Document ${index + 1}]\nSource: ${source}\nContent: ${content}\n`;
+            return `[Document ${index + 1}]\nContent: ${content}\n`;
           })
           .join("\n");
+
+        citations = retrieveResponse.retrievalResults
+          .map((result) => ({
+            documentName: result.metadata?.document_name || null,
+            documentLink: result.metadata?.public_url || null,
+          }))
+          .filter((citation): citation is Citation => CitationSchema.safeParse(citation).success)
+          .filter(
+            (citation, index, self) =>
+              index ===
+              self.findIndex(
+                (c) => c.documentName === citation.documentName && c.documentLink === citation.documentLink
+              )
+          );
       } else {
         Logger.error("No retrieval results from Knowledge Base", { sessionId, query: question });
       }
@@ -129,15 +154,12 @@ export const createQuestionRouter = ({
         guardrailIdentifier: GUARDRAIL_ID,
         guardrailVersion: GUARDRAIL_VERSION,
       },
-      // additionalModelRequestFields: {
-      //   top_k: 100,
-      // },
     };
 
     try {
       Logger.info("Sending request to Converse API", { sessionId, modelId: converseParams.modelId });
 
-      res.write(JSON.stringify(GenerateEvent("Generating a response")) + "\n");
+      res.write(JSON.stringify(generatePulseEvent("Generating a response")) + "\n");
 
       const converseCommand = new ConverseStreamCommand(converseParams);
       const converseResponse = await BEDROCK_RUNTIME.send(converseCommand);
@@ -146,14 +168,14 @@ export const createQuestionRouter = ({
       if (converseResponse.stream) {
         Logger.info("Streaming response from Converse API", { sessionId });
 
+        if (citations.length > 0) {
+          Logger.info("Sending citations to client", { sessionId, citations });
+          res.write(JSON.stringify(generateCitationEvent(citations)) + "\n");
+        }
+
         for await (const event of converseResponse.stream) {
           if (event.contentBlockDelta?.delta?.text) {
-            res.write(
-              JSON.stringify({
-                output: event.contentBlockDelta.delta.text,
-                citation: {}, // citations,
-              }) + "\n"
-            );
+            res.write(JSON.stringify(generateResponseEvent(event.contentBlockDelta.delta.text)) + "\n");
           }
 
           if (event.messageStop?.stopReason === "guardrail_intervened") {

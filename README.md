@@ -30,6 +30,10 @@ The API is available at:
 
 - `POST /question`
 
+In `development` only, a minimal browser test UI is also available at:
+
+- `GET /` (serves `index.html`)
+
 ## Client Usage
 
 An example client function to interact with the Express API is provided below:
@@ -110,30 +114,30 @@ graph TB
     Client["Client Application"]
     API["Express API"]
     Cache["In-Memory<br/>Conversation Cache"]
-    
+
     KB["Bedrock Knowledge Base"]
     KBDocs["KB Documents<br/>S3 Storage"]
-    
+
     Bedrock["AWS Bedrock<br/>Converse API"]
     Model["Claude Model<br/>claude-3-*"]
     Guardrails["Bedrock Guardrails"]
-    
+
     Client -->|POST /question| API
-    
+
     API -->|retrieve| KB
     KB -->|search vector DB| KBDocs
     KBDocs -->|return docs| KB
     KB -->|retrieval results| API
-    
+
     API -->|cache check| Cache
     Cache -->|return history| API
-    
+
     API -->|stream converse| Bedrock
     Bedrock -->|invoke| Model
     Bedrock -->|apply filters| Guardrails
     Guardrails -->|safe output| Bedrock
     Model -->|response| Bedrock
-    
+
     Bedrock -->|stream chunks| API
     API -->|cache update| Cache
     API -->|stream output| Client

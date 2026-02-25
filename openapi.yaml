@@ -23,8 +23,9 @@ paths:
         
         **After streaming starts (200 OK):**
         - The first line includes a `sessionId`
-        - Subsequent lines include `output` chunks with optional `citation`
+        - Subsequent lines include `output` chunks
         - Event lines with `type` and `description` for progress updates
+        - Citation lines with `type: citations` and a `citations` array
         - Error lines with `error` field for errors during processing (e.g., AWS failures)
       requestBody:
         required: true
@@ -63,11 +64,16 @@ paths:
                 output:
                   value:
                     output: "CRDC DataHub is..."
-                    citation: {}
                 event:
                   value:
                     type: "pulse"
                     description: "Generating a response"
+                citations:
+                  value:
+                    type: "citations"
+                    citations:
+                      - documentName: "DocumentXyz.pdf"
+                        documentLink: "https://example.org/docs/DocumentXyz.pdf"
                 error:
                   value:
                     error: "AWS bedrock failed to generate response"
@@ -153,6 +159,7 @@ components:
         - $ref: "#/components/schemas/SessionLine"
         - $ref: "#/components/schemas/OutputLine"
         - $ref: "#/components/schemas/EventLine"
+        - $ref: "#/components/schemas/CitationEventLine"
         - $ref: "#/components/schemas/ErrorResponse"
     SessionLine:
       type: object
@@ -167,8 +174,6 @@ components:
       properties:
         output:
           type: string
-        citation:
-          type: object
       required:
         - output
     EventLine:
@@ -182,6 +187,31 @@ components:
           enum: [pulse]
         description:
           type: string
+    CitationEventLine:
+      type: object
+      required:
+        - type
+        - citations
+      properties:
+        type:
+          type: string
+          enum: [citations]
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Citation"
+    Citation:
+      type: object
+      required:
+        - documentName
+        - documentLink
+      properties:
+        documentName:
+          type: string
+        documentLink:
+          type: string
+          format: uri
+          nullable: true
     ErrorResponse:
       type: object
       properties:

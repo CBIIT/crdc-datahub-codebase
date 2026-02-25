@@ -2,6 +2,8 @@ import { createServer, startServer } from "./server.ts";
 import { createQuestionRouter } from "./routes/question.ts";
 import { createStatusRouter } from "./routes/status.ts";
 import { envSchema } from "./schemas/env.ts";
+import path from "node:path";
+import express from "express";
 
 /**
  * Initializes and starts the Express server after validating environment variables.
@@ -11,14 +13,34 @@ const app = createServer();
 /**
  * Validates environment variables using the defined schema and starts the server.
  */
-const { PORT, AWS_REGION, KNOWLEDGE_BASE_ID, MODEL_ARN, GUARDRAIL_ID, GUARDRAIL_VERSION } = envSchema.parse(
-  process.env
-);
+const {
+  PORT,
+  AWS_REGION,
+  KNOWLEDGE_BASE_ID,
+  MODEL_ARN,
+  GUARDRAIL_ID,
+  GUARDRAIL_VERSION,
+  RERANK_MODEL_ARN,
+  SERVICE_VERSION,
+  DEV_TIER,
+  NODE_ENV,
+} = envSchema.parse(process.env);
+
+if (NODE_ENV === "development") {
+  app.get("/", express.static(path.resolve(process.cwd(), "src/public")));
+}
 
 app.use(
   "/question",
-  createQuestionRouter({ AWS_REGION, KNOWLEDGE_BASE_ID, MODEL_ARN, GUARDRAIL_ID, GUARDRAIL_VERSION })
+  createQuestionRouter({
+    AWS_REGION,
+    KNOWLEDGE_BASE_ID,
+    MODEL_ARN,
+    GUARDRAIL_ID,
+    GUARDRAIL_VERSION,
+    RERANK_MODEL_ARN,
+  })
 );
-app.use("/status", createStatusRouter());
+app.use("/status", createStatusRouter({ SERVICE_VERSION, DEV_TIER }));
 
 startServer(app, Number(PORT || 3000));

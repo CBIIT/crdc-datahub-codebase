@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node src/index.ts",
-    "dev": "node --env-file=.env src/index.ts",
+    "dev": "node --env-file=.env --watch src/index.ts",
     "test": "TZ=UTC vitest",
     "test:ci": "TZ=UTC CI=true vitest --reporter verbose --coverage --maxWorkers=2 --maxConcurrency=2",
     "lint": "eslint .",

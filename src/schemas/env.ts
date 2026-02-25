@@ -31,6 +31,13 @@ export const envSchema = z
      */
     GUARDRAIL_VERSION: z.string().min(1),
     /**
+     * The Bedrock reranking model ARN for Knowledge Base retrieval
+     * If not provided, retrieval results will not be reranked
+     *
+     * @example "arn:aws:bedrock:us-west-2::foundation-model/amazon.rerank-v1"
+     */
+    RERANK_MODEL_ARN: z.string().default(""),
+    /**
      * The deployment environment the app is running in
      */
     NODE_ENV: z.enum(["test", "development", "production"]).default("production"),
@@ -40,6 +47,18 @@ export const envSchema = z
      * @example "3000"
      */
     PORT: z.string().regex(/^\d+$/, "PORT must be a number").default("3000"),
+    /**
+     * The currently deployed tier of the application, used for telemetry and logging purposes.
+     * This can help differentiate between different environments or versions of the app in monitoring tools.
+     */
+    DEV_TIER: z.string().default(""),
+    /**
+     * The current version of the service, following semantic versioning (e.g., "3.6.0.233").
+     */
+    SERVICE_VERSION: z
+      .string()
+      .regex(/^(\d{1,4}\.\d{1,4}\.\d{1,4}).*/, "SERVICE_VERSION is not formatted semantically")
+      .default(""),
   })
   .loose();
 
