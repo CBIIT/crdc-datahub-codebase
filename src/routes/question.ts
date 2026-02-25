@@ -63,7 +63,7 @@ export const createQuestionRouter = ({
       },
       retrievalConfiguration: {
         vectorSearchConfiguration: {
-          numberOfResults: 30, // TODO: Refine number of results
+          numberOfResults: 20,
           rerankingConfiguration: RERANK_MODEL_ARN
             ? {
                 type: "BEDROCK_RERANKING_MODEL",
@@ -71,7 +71,7 @@ export const createQuestionRouter = ({
                   modelConfiguration: {
                     modelArn: RERANK_MODEL_ARN,
                   },
-                  numberOfRerankedResults: 8, // TODO: Refine number of results
+                  numberOfRerankedResults: 8,
                 },
               }
             : undefined,
