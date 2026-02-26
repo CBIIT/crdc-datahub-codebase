@@ -256,7 +256,7 @@ class DataRecordService {
                 v4(),                   // deDuplicationId: unique per message to prevent SQS dedup
                 this.metadataQueueName, // queueName: target SQS FIFO queue
                 submissionID,           // submissionID: used for error logging
-                submissionID            // groupID: SQS FIFO MessageGroupId for ordered delivery
+                `${submissionID}-batch-${batchIndex}`  // groupID: distinct per batch for parallel processing
             );
             if (!result.success) {
                 errors.push(`batch ${batchIndex}/${totalBatches}: ${result.message}`);

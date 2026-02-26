@@ -374,7 +374,7 @@ describe('DataRecordService Integration Tests', () => {
           totalBatches: 1,
           batchIndex: 0
         }),
-        'submission-123',
+        'submission-123-batch-0',
         expect.any(String),
         'metadata-queue'
       );
@@ -519,6 +519,10 @@ describe('DataRecordService Integration Tests', () => {
       expect(metadataCalls[0][0].dataRecordIds).toHaveLength(200);
       expect(metadataCalls[1][0].dataRecordIds).toHaveLength(200);
       expect(metadataCalls[2][0].dataRecordIds).toHaveLength(100);
+      // Each batch uses a distinct MessageGroupId for parallel processing
+      expect(metadataCalls[0][1]).toBe('submission-123-batch-0');
+      expect(metadataCalls[1][1]).toBe('submission-123-batch-1');
+      expect(metadataCalls[2][1]).toBe('submission-123-batch-2');
 
       expect(result.success).toBe(true);
       expect(result.totalBatches).toBe(3);
