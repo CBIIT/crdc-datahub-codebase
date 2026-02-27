@@ -67,6 +67,7 @@ const ChatSubtitle = styled(Typography)({
 const StyledQuestionWrapper = styled(Stack)({
   display: "flex",
   flexDirection: "row",
+  justifyContent: "center",
   alignItems: "center",
   columnGap: "12px",
   rowGap: "5px",
