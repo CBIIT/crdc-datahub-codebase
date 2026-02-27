@@ -150,10 +150,13 @@ export const createQuestionRouter = ({
         temperature: 0.3,
         maxTokens: 4096,
       },
-      guardrailConfig: {
-        guardrailIdentifier: GUARDRAIL_ID,
-        guardrailVersion: GUARDRAIL_VERSION,
-      },
+      ...(GUARDRAIL_ID &&
+        GUARDRAIL_VERSION && {
+          guardrailConfig: {
+            guardrailIdentifier: GUARDRAIL_ID,
+            guardrailVersion: GUARDRAIL_VERSION,
+          },
+        }),
     };
 
     try {
