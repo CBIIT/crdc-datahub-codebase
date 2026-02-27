@@ -13,6 +13,8 @@ type ChatDrawerContextValue = {
   drawerRef: React.RefObject<HTMLDivElement>;
   heightPx: number;
   widthPx: number;
+  positionX: number;
+  positionY: number;
   isDragging: boolean;
   isExpanded: boolean;
   isMinimized: boolean;
@@ -20,6 +22,7 @@ type ChatDrawerContextValue = {
 
   // Drawer actions
   onBeginResize: React.PointerEventHandler<HTMLDivElement>;
+  onBeginMove: React.PointerEventHandler<HTMLDivElement>;
   onToggleExpand: () => void;
   onToggleFullscreen: () => void;
   onMinimize: () => void;
@@ -55,9 +58,12 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
     isExpanded,
     drawerHeightPx,
     drawerWidthPx,
+    drawerPositionX,
+    drawerPositionY,
     openDrawer,
     closeDrawer,
     beginResize,
+    beginMove,
     toggleExpand,
   } = useChatDrawer();
 
@@ -113,6 +119,26 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
   }, []);
 
   /**
+   * Handles the drawer expand button click.
+   * If in fullscreen, exits fullscreen and enters expanded mode.
+   * Otherwise, toggles the expanded state.
+   */
+  const handleToggleExpand = useCallback((): void => {
+    if (isFullscreen && isExpanded) {
+      setIsFullscreen(false);
+      return;
+    }
+
+    if (isFullscreen) {
+      setIsFullscreen(false);
+      toggleExpand();
+      return;
+    }
+
+    toggleExpand();
+  }, [isFullscreen, isExpanded, toggleExpand]);
+
+  /**
    * Begins the "End Conversation" confirmation flow.
    */
   const handleRequestEndConversation = useCallback((): void => {
@@ -144,12 +170,15 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
       drawerRef,
       heightPx: drawerHeightPx,
       widthPx: drawerWidthPx,
+      positionX: drawerPositionX,
+      positionY: drawerPositionY,
       isDragging,
       isExpanded,
       isMinimized,
       isFullscreen,
       onBeginResize: beginResize,
-      onToggleExpand: toggleExpand,
+      onBeginMove: beginMove,
+      onToggleExpand: handleToggleExpand,
       onToggleFullscreen: handleToggleFullscreen,
       onMinimize: handleMinimizeDrawer,
       isConfirmingEndConversation,
@@ -163,12 +192,15 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
       drawerRef,
       drawerHeightPx,
       drawerWidthPx,
+      drawerPositionX,
+      drawerPositionY,
       isDragging,
       isExpanded,
       isMinimized,
       isFullscreen,
       beginResize,
-      toggleExpand,
+      beginMove,
+      handleToggleExpand,
       handleToggleFullscreen,
       handleMinimizeDrawer,
       isConfirmingEndConversation,
