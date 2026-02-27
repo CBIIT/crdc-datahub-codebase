@@ -200,6 +200,14 @@ export const useChatDrawer = (): useChatDrawerResult => {
    */
   const activePointerIdRef = useRef<number | null>(null);
   /**
+   * Stores the requestAnimationFrame ID for throttling drag updates.
+   */
+  const rafIdRef = useRef<number | null>(null);
+  /**
+   * Stores the latest pointer position for RAF-throttled updates.
+   */
+  const pendingPointerPosRef = useRef<{ x: number; y: number } | null>(null);
+  /**
    * Stores the initial pointer position when drag starts.
    */
   const initialPointerPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -382,6 +390,7 @@ export const useChatDrawer = (): useChatDrawerResult => {
 
   /**
    * Handles the pointer move event on the window.
+   * Uses requestAnimationFrame to throttle updates for better performance.
    */
   const handleWindowPointerMove = useCallback(
     (event: PointerEvent): void => {
@@ -394,11 +403,25 @@ export const useChatDrawer = (): useChatDrawerResult => {
         return;
       }
 
-      if (isMoveOperationRef.current) {
-        applyMove(event.clientX, event.clientY);
-      } else {
-        applyResize(event.clientX, event.clientY);
+      pendingPointerPosRef.current = { x: event.clientX, y: event.clientY };
+
+      if (rafIdRef.current !== null) {
+        return;
       }
+
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        const pos = pendingPointerPosRef.current;
+        if (!pos) {
+          return;
+        }
+
+        if (isMoveOperationRef.current) {
+          applyMove(pos.x, pos.y);
+        } else {
+          applyResize(pos.x, pos.y);
+        }
+      });
     },
     [applyResize, applyMove]
   );
@@ -411,12 +434,19 @@ export const useChatDrawer = (): useChatDrawerResult => {
       return;
     }
 
+    // Cancel any pending animation frame
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+
     isDraggingRef.current = false;
     isMoveOperationRef.current = false;
     activePointerIdRef.current = null;
     initialPointerPosRef.current = null;
     initialDimensionsRef.current = null;
     initialPositionRef.current = null;
+    pendingPointerPosRef.current = null;
 
     dispatch({ type: "drag_ended" });
   }, []);
@@ -435,17 +465,34 @@ export const useChatDrawer = (): useChatDrawerResult => {
     [endDrag]
   );
 
+  /**
+   * Handles visibility change to reset drag state when tab becomes hidden.
+   * This prevents stuck drag states when the user switches tabs mid-drag.
+   */
+  const handleVisibilityChange = useCallback((): void => {
+    if (document.hidden && isDraggingRef.current) {
+      endDrag();
+    }
+  }, [endDrag]);
+
   useEffect(() => {
     window.addEventListener("pointermove", handleWindowPointerMove);
     window.addEventListener("pointerup", handleWindowPointerUp);
     window.addEventListener("pointercancel", handleWindowPointerUp);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerUp);
       window.removeEventListener("pointercancel", handleWindowPointerUp);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+      // Clean up any pending animation frame on unmount
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
     };
-  }, [handleWindowPointerMove, handleWindowPointerUp]);
+  }, [handleWindowPointerMove, handleWindowPointerUp, handleVisibilityChange]);
 
   return {
     drawerRef,

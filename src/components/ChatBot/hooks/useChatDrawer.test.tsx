@@ -67,6 +67,13 @@ describe("useChatDrawer", () => {
       viewportHeightPx: 800,
     });
 
+    // Mock requestAnimationFrame to execute synchronously for predictable tests
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 0;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
     Object.defineProperty(document.documentElement, "clientWidth", {
       value: 1024,
       configurable: true,
@@ -1803,6 +1810,99 @@ describe("useChatDrawer", () => {
       );
 
       expect(capturedHook2.beginMove).toBe(beginMoveRef1);
+    });
+  });
+
+  describe("visibilitychange event", () => {
+    it("should end drag when document becomes hidden during drag", async () => {
+      let capturedHook: useChatDrawerResult | null = null;
+
+      const { getByTestId } = render(
+        <TestParent
+          onRender={(hook) => {
+            capturedHook = hook;
+          }}
+        />
+      );
+
+      const openButton = getByTestId("open-drawer");
+      userEvent.click(openButton);
+
+      await waitFor(() => {
+        expect(getByTestId("is-open")).toHaveTextContent("true");
+      });
+
+      const startEvent = {
+        pointerType: "mouse",
+        button: 0,
+        pointerId: 1,
+        clientX: 500,
+        clientY: 500,
+        preventDefault: vi.fn(),
+      } as unknown as React.PointerEvent<HTMLDivElement>;
+
+      act(() => {
+        capturedHook.beginMove(startEvent);
+      });
+
+      expect(getByTestId("is-dragging")).toHaveTextContent("true");
+
+      // Simulate tab becoming hidden
+      Object.defineProperty(document, "hidden", { value: true, configurable: true });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      expect(getByTestId("is-dragging")).toHaveTextContent("false");
+
+      // Restore hidden property
+      Object.defineProperty(document, "hidden", { value: false, configurable: true });
+    });
+
+    it("should not end drag when document becomes visible", async () => {
+      let capturedHook: useChatDrawerResult | null = null;
+
+      const { getByTestId } = render(
+        <TestParent
+          onRender={(hook) => {
+            capturedHook = hook;
+          }}
+        />
+      );
+
+      const openButton = getByTestId("open-drawer");
+      userEvent.click(openButton);
+
+      await waitFor(() => {
+        expect(getByTestId("is-open")).toHaveTextContent("true");
+      });
+
+      const startEvent = {
+        pointerType: "mouse",
+        button: 0,
+        pointerId: 1,
+        clientX: 500,
+        clientY: 500,
+        preventDefault: vi.fn(),
+      } as unknown as React.PointerEvent<HTMLDivElement>;
+
+      act(() => {
+        capturedHook.beginMove(startEvent);
+      });
+
+      expect(getByTestId("is-dragging")).toHaveTextContent("true");
+
+      // Simulate tab becoming visible (document.hidden = false)
+      Object.defineProperty(document, "hidden", { value: false, configurable: true });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      // Should still be dragging since document is visible
+      expect(getByTestId("is-dragging")).toHaveTextContent("true");
+
+      // Clean up drag state
+      dispatchPointerEvent("pointerup", { pointerId: 1 });
     });
   });
 });
