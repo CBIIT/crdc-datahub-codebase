@@ -103,6 +103,10 @@ const StyledChatBody = styled("div")({
   overflow: "hidden",
   position: "relative",
   minHeight: 0,
+  borderRadius: "8px",
+  '&[data-expanded="true"], &[data-fullscreen="true"]': {
+    borderRadius: 0,
+  },
 });
 
 const ConfirmOverlay = styled("div")({
@@ -249,7 +253,10 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
         </StyledHeaderActions>
       </StyledChatHeader>
 
-      <StyledChatBody>
+      <StyledChatBody
+        data-expanded={isExpanded ? "true" : "false"}
+        data-fullscreen={isFullscreen ? "true" : "false"}
+      >
         {children}
 
         {isConfirmingEndConversation ? (
