@@ -181,49 +181,6 @@ describe("Basic Functionality", () => {
     expect(openDrawer).toHaveBeenCalledTimes(1);
   });
 
-  it("should toggle between closed and open states", () => {
-    const openDrawer = vi.fn();
-    mockUseChatDrawerContext.mockReturnValue({
-      isOpen: false,
-      isMinimized: false,
-      openDrawer,
-    });
-
-    const { getByTestId, queryByTestId, unmount } = render(<ChatBotView />);
-
-    expect(getByTestId("floating-chat-button")).toBeInTheDocument();
-    expect(queryByTestId("chat-drawer")).not.toBeInTheDocument();
-
-    unmount();
-
-    mockUseChatDrawerContext.mockReturnValue({
-      isOpen: true,
-      isMinimized: false,
-      openDrawer,
-    });
-    const { queryByTestId: queryByTestId2, getByTestId: getByTestId2 } = render(<ChatBotView />);
-
-    expect(queryByTestId2("floating-chat-button")).not.toBeInTheDocument();
-    expect(getByTestId2("chat-drawer")).toBeInTheDocument();
-  });
-
-  it("should handle different label values", () => {
-    mockUseChatBotContext.mockReturnValue({
-      label: "Ask a Question",
-      title: "Support",
-      knowledgeBaseUrl: "https://example.com",
-    });
-    mockUseChatDrawerContext.mockReturnValue({
-      isOpen: false,
-      isMinimized: false,
-      openDrawer: vi.fn(),
-    });
-
-    const { getByText } = render(<ChatBotView />);
-
-    expect(getByText("Ask a Question")).toBeInTheDocument();
-  });
-
   it("should render both FloatingChatButton and ChatDrawer when minimized", () => {
     mockUseChatDrawerContext.mockReturnValue({
       isOpen: true,

@@ -19,7 +19,7 @@ describe("ChatBotContext > ChatBotProvider", () => {
     });
 
     expect(result.current.title).toBe("Chat");
-    expect(result.current.label).toBe("Chat");
+    expect(result.current.label).toBe("CRDC Assistant");
     expect(result.current.knowledgeBaseUrl).toBe("");
   });
 
@@ -29,7 +29,7 @@ describe("ChatBotContext > ChatBotProvider", () => {
     });
 
     expect(result.current.title).toBe("Support Chat");
-    expect(result.current.label).toBe("Chat");
+    expect(result.current.label).toBe("CRDC Assistant");
     expect(result.current.knowledgeBaseUrl).toBe("");
   });
 
@@ -53,7 +53,7 @@ describe("ChatBotContext > ChatBotProvider", () => {
     });
 
     expect(result.current.title).toBe("Chat");
-    expect(result.current.label).toBe("Chat");
+    expect(result.current.label).toBe("CRDC Assistant");
     expect(result.current.knowledgeBaseUrl).toBe("https://api.example.com/chat");
   });
 

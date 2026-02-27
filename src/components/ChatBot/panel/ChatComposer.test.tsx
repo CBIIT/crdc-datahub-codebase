@@ -19,11 +19,14 @@ const defaultContext = {
   drawerRef: { current: null },
   heightPx: 600,
   widthPx: 384,
+  positionX: 0,
+  positionY: 0,
   isDragging: false,
   isExpanded: true,
   isMinimized: false,
   isOpen: true,
   onBeginResize: vi.fn(),
+  onBeginMove: vi.fn(),
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
@@ -68,7 +71,7 @@ describe("Basic Functionality", () => {
   it("should render input field with placeholder", () => {
     const { getByPlaceholderText } = render(<ChatComposer {...defaultProps} />);
 
-    expect(getByPlaceholderText("Type a message...")).toBeInTheDocument();
+    expect(getByPlaceholderText("Type your message...")).toBeInTheDocument();
   });
 
   it("should render send button", () => {
@@ -87,7 +90,7 @@ describe("Basic Functionality", () => {
     const onChange = vi.fn();
     const { getByPlaceholderText } = render(<ChatComposer {...defaultProps} onChange={onChange} />);
 
-    const input = getByPlaceholderText("Type a message...");
+    const input = getByPlaceholderText("Type your message...");
     userEvent.type(input, "Hello");
 
     await waitFor(() => {
@@ -112,7 +115,7 @@ describe("Basic Functionality", () => {
       <ChatComposer {...defaultProps} onKeyDown={onKeyDown} />
     );
 
-    const input = getByPlaceholderText("Type a message...");
+    const input = getByPlaceholderText("Type your message...");
     userEvent.type(input, "{Enter}");
 
     expect(onKeyDown).toHaveBeenCalled();
@@ -158,58 +161,7 @@ describe("Basic Functionality", () => {
   it("should handle empty value prop", () => {
     const { getByPlaceholderText } = render(<ChatComposer {...defaultProps} value="" />);
 
-    const input = getByPlaceholderText("Type a message...");
+    const input = getByPlaceholderText("Type your message...");
     expect(input).toHaveValue("");
-  });
-
-  it("should apply larger font size and padding to input when in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: true,
-    });
-
-    const { getByPlaceholderText } = render(<ChatComposer {...defaultProps} />);
-    const input = getByPlaceholderText("Type a message...") as HTMLInputElement;
-
-    expect(input).toHaveStyle({ fontSize: "18px" });
-    expect(input).toHaveStyle({ padding: "14px" });
-  });
-
-  it("should apply smaller font size and padding to input when not in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: false,
-    });
-
-    const { getByPlaceholderText } = render(<ChatComposer {...defaultProps} />);
-    const input = getByPlaceholderText("Type a message...") as HTMLInputElement;
-
-    expect(input).not.toHaveStyle({ fontSize: "18px" });
-  });
-
-  it("should apply larger dimensions to send button when in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: true,
-    });
-
-    const { getByLabelText } = render(<ChatComposer {...defaultProps} value="test" />);
-    const sendButton = getByLabelText("Send message");
-
-    expect(sendButton).toHaveStyle({ width: "48px" });
-    expect(sendButton).toHaveStyle({ height: "48px" });
-  });
-
-  it("should apply smaller dimensions to send button when not in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: false,
-    });
-
-    const { getByLabelText } = render(<ChatComposer {...defaultProps} value="test" />);
-    const sendButton = getByLabelText("Send message");
-
-    expect(sendButton).toHaveStyle({ width: "40px" });
-    expect(sendButton).toHaveStyle({ height: "40px" });
   });
 });

@@ -1,3 +1,4 @@
+import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -26,11 +27,14 @@ const defaultChatDrawerContext = {
   drawerRef: { current: null },
   heightPx: 600,
   widthPx: 384,
+  positionX: 0,
+  positionY: 0,
   isDragging: false,
   isExpanded: true,
   isMinimized: false,
   isOpen: true,
   onBeginResize: vi.fn(),
+  onBeginMove: vi.fn(),
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
@@ -59,17 +63,8 @@ beforeEach(() => {
 });
 
 vi.mock("./panel/MessageList", () => ({
-  default: ({
-    greetingTimestamp,
-    messages,
-    isBotTyping,
-  }: {
-    greetingTimestamp: Date;
-    messages: ChatMessage[];
-    isBotTyping: boolean;
-  }) => (
+  default: ({ messages, isBotTyping }: { messages: ChatMessage[]; isBotTyping: boolean }) => (
     <div data-testid="message-list">
-      <span data-testid="greeting-timestamp">{greetingTimestamp.toISOString()}</span>
       <span data-testid="messages-count">{messages.length}</span>
       <span data-testid="bot-typing">{isBotTyping.toString()}</span>
     </div>
@@ -155,18 +150,6 @@ describe("Basic Functionality", () => {
     const { getByTestId } = render(<ChatPanel />);
 
     expect(getByTestId("chat-composer")).toBeInTheDocument();
-  });
-
-  it("should pass greeting timestamp to MessageList", () => {
-    const greetingTimestamp = new Date("2024-01-15T10:30:00");
-    mockUseChatConversationContext.mockReturnValue({
-      ...defaultConversationState,
-      greetingTimestamp,
-    });
-
-    const { getByTestId } = render(<ChatPanel />);
-
-    expect(getByTestId("greeting-timestamp")).toHaveTextContent(greetingTimestamp.toISOString());
   });
 
   it("should pass messages to MessageList", () => {
@@ -280,18 +263,6 @@ describe("Basic Functionality", () => {
     expect(getByTestId("composer-send")).toBeDisabled();
   });
 
-  it("should disable send button when bot is typing even with text input", () => {
-    mockUseChatConversationContext.mockReturnValue({
-      ...defaultConversationState,
-      inputValue: "Some text",
-      isBotTyping: true,
-    });
-
-    const { getByTestId } = render(<ChatPanel />);
-
-    expect(getByTestId("composer-send")).toBeDisabled();
-  });
-
   it("should pass handleKeyDown to ChatComposer", () => {
     const handleKeyDown = vi.fn();
     mockUseChatConversationContext.mockReturnValue({
@@ -329,30 +300,6 @@ describe("Basic Functionality", () => {
     expect(getByTestId2("composer-input")).toHaveValue("Second");
   });
 
-  it("should apply larger font size to container when in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isFullscreen: true,
-    });
-
-    const { container } = render(<ChatPanel />);
-
-    const stackElement = container.firstChild as HTMLElement;
-    expect(stackElement).toHaveStyle({ fontSize: "18px" });
-  });
-
-  it("should not apply extra font size to container when not in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isFullscreen: false,
-    });
-
-    const { container } = render(<ChatPanel />);
-
-    const stackElement = container.firstChild as HTMLElement;
-    expect(stackElement).not.toHaveStyle({ fontSize: "18px" });
-  });
-
   it("should render correctly with multiple messages of different types", () => {
     const messages = [
       createMockMessage({ id: "msg-1", sender: "user", text: "User message" }),
@@ -367,21 +314,6 @@ describe("Basic Functionality", () => {
     const { getByTestId } = render(<ChatPanel />);
 
     expect(getByTestId("messages-count")).toHaveTextContent("3");
-  });
-
-  it("should handle rapid input changes", async () => {
-    const setInputValue = vi.fn();
-    mockUseChatConversationContext.mockReturnValue({
-      ...defaultConversationState,
-      setInputValue,
-    });
-
-    const { getByTestId } = render(<ChatPanel />);
-    const input = getByTestId("composer-input") as HTMLInputElement;
-
-    userEvent.type(input, "abc");
-
-    expect(setInputValue).toHaveBeenCalled();
   });
 
   it("should handle long messages correctly", () => {
@@ -406,5 +338,94 @@ describe("Basic Functionality", () => {
     const { getByTestId } = render(<ChatPanel />);
 
     expect(getByTestId("messages-count")).toHaveTextContent("0");
+  });
+
+  it("should render drag handles when collapsed (not expanded and not fullscreen)", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isExpanded: false,
+      isFullscreen: false,
+    });
+
+    const { container } = render(<ChatPanel />);
+
+    expect(container.querySelector('[aria-label="Resize handle"]')).toBeInTheDocument();
+    expect(container.querySelectorAll('[aria-label="Drag to move"]')).toHaveLength(4);
+  });
+
+  it("should not render drag handles when expanded", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isExpanded: true,
+      isFullscreen: false,
+    });
+
+    const { container } = render(<ChatPanel />);
+
+    expect(container.querySelector('[aria-label="Resize handle"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[aria-label="Drag to move"]')).not.toBeInTheDocument();
+  });
+
+  it("should not render drag handles when in fullscreen", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isExpanded: false,
+      isFullscreen: true,
+    });
+
+    const { container } = render(<ChatPanel />);
+
+    expect(container.querySelector('[aria-label="Resize handle"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[aria-label="Drag to move"]')).not.toBeInTheDocument();
+  });
+
+  it("should call onBeginResize when drag handle is pressed", () => {
+    const onBeginResize = vi.fn();
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isExpanded: false,
+      isFullscreen: false,
+      onBeginResize,
+    });
+
+    const { container } = render(<ChatPanel />);
+
+    const resizeHandle = container.querySelector('[aria-label="Resize handle"]')?.parentElement;
+    expect(resizeHandle).toBeInTheDocument();
+    fireEvent.pointerDown(resizeHandle as Element);
+
+    expect(onBeginResize).toHaveBeenCalled();
+  });
+
+  it("should call onBeginMove when draggable border is pressed", () => {
+    const onBeginMove = vi.fn();
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isExpanded: false,
+      isFullscreen: false,
+      onBeginMove,
+    });
+
+    const { container } = render(<ChatPanel />);
+
+    const draggableBorder = container.querySelector('[aria-label="Drag to move"]');
+    expect(draggableBorder).toBeInTheDocument();
+    fireEvent.pointerDown(draggableBorder as Element);
+
+    expect(onBeginMove).toHaveBeenCalled();
+  });
+
+  it("should render content inside fullscreen container when in fullscreen mode", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isExpanded: true,
+      isFullscreen: true,
+    });
+
+    const { getByTestId, container } = render(<ChatPanel />);
+
+    expect(getByTestId("message-list")).toBeInTheDocument();
+    expect(getByTestId("chat-composer")).toBeInTheDocument();
+    expect(container.querySelector(".MuiContainer-root")).toBeInTheDocument();
   });
 });

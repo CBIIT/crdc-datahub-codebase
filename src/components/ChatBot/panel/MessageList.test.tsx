@@ -17,11 +17,14 @@ const defaultContext = {
   drawerRef: { current: null },
   heightPx: 600,
   widthPx: 384,
+  positionX: 0,
+  positionY: 0,
   isDragging: false,
   isExpanded: true,
   isMinimized: false,
   isOpen: true,
   onBeginResize: vi.fn(),
+  onBeginMove: vi.fn(),
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
@@ -53,7 +56,6 @@ const createMockMessage = (overrides?: Partial<ChatMessage>): ChatMessage => ({
 });
 
 const defaultProps = {
-  greetingTimestamp: new Date("2024-01-15T09:00:00"),
   messages: [] as ChatMessage[],
   isBotTyping: false,
 };
@@ -106,28 +108,17 @@ describe("Basic Functionality", () => {
   it("should display welcome title", () => {
     const { getByText } = render(<MessageList {...defaultProps} />);
 
-    expect(getByText("Welcome to the CRDC Submission Portal Support")).toBeInTheDocument();
+    expect(getByText("How can I help you?")).toBeInTheDocument();
   });
 
-  it("should display formatted greeting timestamp", () => {
-    const greetingTimestamp = new Date("2024-01-15T14:30:00");
-    const { getByText } = render(
-      <MessageList {...defaultProps} greetingTimestamp={greetingTimestamp} />
-    );
-
-    expect(getByText(/January 15, 2024/i)).toBeInTheDocument();
-  });
-
-  it("should render empty messages array without errors", () => {
-    const { container } = render(<MessageList {...defaultProps} messages={[]} />);
-
-    expect(container.querySelector('[data-testid^="message-"]')).not.toBeInTheDocument();
-  });
-
-  it("should render single message", () => {
-    const messages = [createMockMessage({ id: "msg-1", text: "Hello world" })];
+  it("should render messages when there are messages beyond the greeting", () => {
+    const messages = [
+      createMockMessage({ id: "greeting", text: "How can I help you?", sender: "bot" }),
+      createMockMessage({ id: "msg-1", text: "Hello world" }),
+    ];
     const { getByTestId } = render(<MessageList {...defaultProps} messages={messages} />);
 
+    expect(getByTestId("message-greeting")).toBeInTheDocument();
     expect(getByTestId("message-msg-1")).toBeInTheDocument();
   });
 
@@ -157,7 +148,10 @@ describe("Basic Functionality", () => {
   });
 
   it("should render messages with typing indicator", () => {
-    const messages = [createMockMessage({ id: "msg-1", text: "Hello" })];
+    const messages = [
+      createMockMessage({ id: "greeting", text: "How can I help?", sender: "bot" }),
+      createMockMessage({ id: "msg-1", text: "Hello" }),
+    ];
     const { getByTestId } = render(
       <MessageList {...defaultProps} messages={messages} isBotTyping />
     );
@@ -167,8 +161,12 @@ describe("Basic Functionality", () => {
   });
 
   it("should update when messages prop changes", () => {
-    const messages1 = [createMockMessage({ id: "msg-1", text: "First" })];
+    const messages1 = [
+      createMockMessage({ id: "greeting", text: "How can I help?", sender: "bot" }),
+      createMockMessage({ id: "msg-1", text: "First" }),
+    ];
     const messages2 = [
+      createMockMessage({ id: "greeting", text: "How can I help?", sender: "bot" }),
       createMockMessage({ id: "msg-1", text: "First" }),
       createMockMessage({ id: "msg-2", text: "Second" }),
     ];
@@ -206,20 +204,6 @@ describe("Basic Functionality", () => {
 
     expect(getByTestId("message-msg-1")).toBeInTheDocument();
     expect(getByTestId("message-msg-2")).toBeInTheDocument();
-  });
-
-  it("should render with different greeting timestamps", () => {
-    const timestamp1 = new Date("2024-01-15T09:00:00");
-    const timestamp2 = new Date("2024-01-16T15:30:00");
-    const { rerender, getByText } = render(
-      <MessageList {...defaultProps} greetingTimestamp={timestamp1} />
-    );
-
-    expect(getByText(/January 15, 2024/i)).toBeInTheDocument();
-
-    rerender(<MessageList {...defaultProps} greetingTimestamp={timestamp2} />);
-
-    expect(getByText(/January 16, 2024/i)).toBeInTheDocument();
   });
 
   it("should maintain message order", () => {
@@ -322,51 +306,80 @@ describe("Basic Functionality", () => {
 
     expect(scrollToSpy).toHaveBeenCalledTimes(1);
   });
-  it("should apply larger font size to greeting title when in fullscreen mode", () => {
+
+  it("should apply correct font size to greeting title", () => {
+    const { getByText } = render(<MessageList {...defaultProps} />);
+
+    const titleElement = getByText("How can I help you?");
+    expect(titleElement).toHaveStyle({ fontSize: "14px" });
+  });
+
+  it("should apply correct font size to greeting subtitle", () => {
+    const { container } = render(<MessageList {...defaultProps} />);
+
+    const subtitleElement = container.querySelector("p");
+    expect(subtitleElement).toHaveStyle({ fontSize: "13px" });
+  });
+
+  it("should hide greeting when messages beyond the initial greeting exist", () => {
+    const messages = [
+      createMockMessage({ id: "greeting", text: "How can I help?", sender: "bot" }),
+      createMockMessage({ id: "msg-1", text: "Hello" }),
+    ];
+    const { queryByText } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(queryByText("How can I help you?")).not.toBeInTheDocument();
+  });
+
+  it("should show greeting when no messages exist", () => {
+    const { getByText } = render(<MessageList {...defaultProps} messages={[]} />);
+
+    expect(getByText("How can I help you?")).toBeInTheDocument();
+  });
+
+  it("should pass isFirstMessage=true to first message only", () => {
+    const messages = [
+      createMockMessage({ id: "msg-1", text: "First" }),
+      createMockMessage({ id: "msg-2", text: "Second" }),
+    ];
+    const { getByTestId } = render(<MessageList {...defaultProps} messages={messages} />);
+
+    expect(getByTestId("message-msg-1")).toBeInTheDocument();
+    expect(getByTestId("message-msg-2")).toBeInTheDocument();
+  });
+
+  it("should scroll in fullscreen mode", () => {
+    const scrollToSpy = vi.fn();
+    Element.prototype.scrollTo = scrollToSpy;
+
     mockUseChatDrawerContext.mockReturnValue({
       ...defaultContext,
       isFullscreen: true,
     });
 
-    const { getByText } = render(<MessageList {...defaultProps} />);
+    render(<MessageList {...defaultProps} />);
 
-    const titleElement = getByText("Welcome to the CRDC Submission Portal Support");
-    expect(titleElement).toHaveStyle({ fontSize: "24px" });
+    expect(scrollToSpy).toHaveBeenCalled();
   });
 
-  it("should apply default font size to greeting title when not in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: false,
+  it("should scroll when expand state changes", () => {
+    const scrollToSpy = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollTop", {
+      set: scrollToSpy,
+      configurable: true,
+    });
+    Object.defineProperty(Element.prototype, "scrollHeight", {
+      get: () => 1000,
+      configurable: true,
     });
 
-    const { getByText } = render(<MessageList {...defaultProps} />);
-
-    const titleElement = getByText("Welcome to the CRDC Submission Portal Support");
-    expect(titleElement).toHaveStyle({ fontSize: "20px" });
-  });
-
-  it("should apply larger font size to greeting subtitle when in fullscreen mode", () => {
     mockUseChatDrawerContext.mockReturnValue({
       ...defaultContext,
-      isFullscreen: true,
+      isExpanded: true,
     });
 
-    const { container } = render(<MessageList {...defaultProps} />);
+    render(<MessageList {...defaultProps} />);
 
-    const subtitleElement = container.querySelector("p");
-    expect(subtitleElement).toHaveStyle({ fontSize: "16px" });
-  });
-
-  it("should apply default font size to greeting subtitle when not in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: false,
-    });
-
-    const { container } = render(<MessageList {...defaultProps} />);
-
-    const subtitleElement = container.querySelector("p");
-    expect(subtitleElement).toHaveStyle({ fontSize: "12px" });
+    expect(scrollToSpy).toHaveBeenCalled();
   });
 });

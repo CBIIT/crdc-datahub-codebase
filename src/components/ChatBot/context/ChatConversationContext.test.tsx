@@ -89,7 +89,7 @@ const TestParent = () => {
       <button
         type="button"
         data-testid="send-button"
-        onClick={conversation.sendMessage}
+        onClick={() => conversation.sendMessage()}
         disabled={conversation.isBotTyping}
       >
         Send

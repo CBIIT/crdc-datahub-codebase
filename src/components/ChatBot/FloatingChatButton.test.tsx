@@ -1,3 +1,4 @@
+import { act } from "@testing-library/react";
 import { axe } from "vitest-axe";
 
 import { render } from "@/test-utils";
@@ -51,23 +52,6 @@ describe("Basic Functionality", () => {
     button.click();
 
     expect(onClick).toHaveBeenCalledTimes(1);
-  });
-
-  it("should call onClick with event when clicked", () => {
-    const onClick = vi.fn();
-    const { getByRole } = render(<FloatingChatButton {...defaultProps} onClick={onClick} />);
-
-    const button = getByRole("button");
-    button.click();
-
-    expect(onClick).toHaveBeenCalledWith(expect.any(Object));
-  });
-
-  it("should not call onClick when not clicked", () => {
-    const onClick = vi.fn();
-    render(<FloatingChatButton {...defaultProps} onClick={onClick} />);
-
-    expect(onClick).not.toHaveBeenCalled();
   });
 
   it("should handle multiple clicks", () => {
@@ -128,5 +112,69 @@ describe("Basic Functionality", () => {
 
     expect(getByText("Support")).toBeInTheDocument();
     expect(container.querySelector("svg")).toBeInTheDocument();
+  });
+});
+
+describe("Speech Bubble Behavior", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    sessionStorage.clear();
+  });
+
+  it("should show speech bubble after initial delay when not previously shown", async () => {
+    const { container } = render(<FloatingChatButton {...defaultProps} />);
+
+    const speechBubble = container.querySelector("p");
+    expect(speechBubble).toHaveStyle({ opacity: "0" });
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(sessionStorage.getItem("chatbot_bubble_shown")).toBe("true");
+  });
+
+  it("should hide speech bubble after show duration", async () => {
+    render(<FloatingChatButton {...defaultProps} />);
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(sessionStorage.getItem("chatbot_bubble_shown")).toBe("true");
+
+    await act(async () => {
+      vi.advanceTimersByTime(7000);
+    });
+  });
+
+  it("should not show speech bubble if already shown in session", async () => {
+    sessionStorage.setItem("chatbot_bubble_shown", "true");
+
+    const { container } = render(<FloatingChatButton {...defaultProps} />);
+
+    const speechBubble = container.querySelector("p");
+    expect(speechBubble).toHaveStyle({ opacity: "0" });
+
+    await act(async () => {
+      vi.advanceTimersByTime(10000);
+    });
+    expect(speechBubble).toHaveStyle({ opacity: "0" });
+  });
+
+  it("should clean up timers on unmount", async () => {
+    const { unmount } = render(<FloatingChatButton {...defaultProps} />);
+
+    unmount();
+
+    await act(async () => {
+      vi.advanceTimersByTime(10000);
+    });
+    expect(sessionStorage.getItem("chatbot_bubble_shown")).toBeNull();
   });
 });

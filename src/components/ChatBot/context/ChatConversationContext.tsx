@@ -41,7 +41,7 @@ export type ChatConversationActions = {
   inputValue: string;
   isBotTyping: boolean;
   setInputValue: (value: string) => void;
-  sendMessage: () => void;
+  sendMessage: (messageText?: string) => void;
   handleKeyDown: React.KeyboardEventHandler<HTMLDivElement>;
   endConversation: () => void;
 };
@@ -86,7 +86,7 @@ export const chatReducer = (state: ChatState, action: ChatAction): ChatState => 
     }
     case "conversation_reset": {
       return {
-        messages: [createGreetingMessage()],
+        messages: [],
         inputValue: "",
         status: "idle",
         isInitialized: true,
@@ -115,7 +115,7 @@ const useChatConversation = (): ChatConversationActions => {
   const greetingTimestampRef = useRef<Date>(new Date());
 
   const [state, dispatch] = useReducer(chatReducer, {
-    messages: [createGreetingMessage()],
+    messages: [],
     inputValue: "",
     status: "idle",
     isInitialized: false,
@@ -275,43 +275,57 @@ const useChatConversation = (): ChatConversationActions => {
 
   /**
    * Sends the current input message to the bot.
+   * @param messageText - Optional message text to send directly (bypasses input field)
    */
-  const sendMessage = useCallback((): void => {
-    const { current } = stateRef;
-    const value = current.inputValue?.trim();
+  const sendMessage = useCallback(
+    (messageText?: string): void => {
+      const { current } = stateRef;
+      const text = typeof messageText === "string" ? messageText.trim() : "";
+      const value = text || current.inputValue?.trim();
 
-    if (!value) {
-      return;
-    }
-
-    if (current.status === "bot_typing") {
-      return;
-    }
-
-    dispatch({
-      type: "message_added",
-      message: createChatMessage({
-        text: value,
-        sender: "user",
-        senderName: chatConfig.userDisplayName,
-      }),
-    });
-
-    dispatch({ type: "input_cleared" });
-    dispatch({ type: "status_changed", status: "bot_typing" });
-
-    activeRequestRef.current?.abortController.abort();
-
-    const abortController = new AbortController();
-    const requestId = createId("bot_reply_");
-    activeRequestRef.current = { requestId, abortController };
-
-    runReply(value, requestId, abortController).catch((error: unknown) => {
-      if (!isAbortError(error)) {
-        dispatch({ type: "status_changed", status: "idle" });
+      if (!value) {
+        return;
       }
-    });
-  }, [runReply]);
+
+      if (current.status === "bot_typing") {
+        return;
+      }
+
+      if (current.messages.length === 0) {
+        dispatch({
+          type: "message_added",
+          message: createGreetingMessage(),
+        });
+      }
+
+      dispatch({
+        type: "message_added",
+        message: createChatMessage({
+          text: value,
+          sender: "user",
+          senderName: chatConfig.userDisplayName,
+        }),
+      });
+
+      if (!text) {
+        dispatch({ type: "input_cleared" });
+      }
+      dispatch({ type: "status_changed", status: "bot_typing" });
+
+      activeRequestRef.current?.abortController.abort();
+
+      const abortController = new AbortController();
+      const requestId = createId("bot_reply_");
+      activeRequestRef.current = { requestId, abortController };
+
+      runReply(value, requestId, abortController).catch((error: unknown) => {
+        if (!isAbortError(error)) {
+          dispatch({ type: "status_changed", status: "idle" });
+        }
+      });
+    },
+    [runReply]
+  );
 
   /**
    * Handles keyboard events in the chat input.

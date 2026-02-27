@@ -1,88 +1,99 @@
 import CloseIcon from "@mui/icons-material/Close";
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import FullscreenIcon from "@mui/icons-material/Fullscreen";
-import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
 import { Button, IconButton, Paper, Typography, styled } from "@mui/material";
 import React from "react";
 
-import { useChatBotContext } from "./context/ChatBotContext";
+import DrawerViewIcon from "./assets/drawer-view-icon.svg?react";
+import ExitFullScreenIcon from "./assets/exit-full-screen-icon.svg?react";
+import FullScreenIcon from "./assets/full-screen-icon.svg?react";
+import ChatBotLogo from "./components/ChatBotLogo";
+import chatConfig from "./config/chatConfig";
 import { useChatDrawerContext } from "./context/ChatDrawerContext";
 
 const StyledChatDrawer = styled(Paper, {
-  shouldForwardProp: (prop) => prop !== "heightPx" && prop !== "widthPx",
-})<{ heightPx: number; widthPx: number }>(({ heightPx, widthPx }) => ({
-  position: "fixed",
-  right: 0,
-  bottom: 0,
-  width: widthPx,
-  height: heightPx,
-  borderRadius: "24px 0 0 0",
-  zIndex: 12000,
-  display: "flex",
-  flexDirection: "column",
-  boxShadow: "0 12px 40px rgba(0,0,0,0.25)",
-  overflow: "hidden",
-  backgroundColor: "#ffffff",
-  border: 0,
-  opacity: 1,
-  pointerEvents: "auto",
-  '&[data-minimized="true"]': {
-    opacity: 0,
-    pointerEvents: "none",
-  },
+  shouldForwardProp: (prop) =>
+    prop !== "heightPx" && prop !== "widthPx" && prop !== "positionX" && prop !== "positionY",
+})<{ heightPx: number; widthPx: number; positionX: number; positionY: number }>(
+  ({ heightPx, widthPx, positionX, positionY }) => ({
+    position: "fixed",
+    right: positionX,
+    bottom: positionY,
+    width: widthPx,
+    height: heightPx,
+    zIndex: 12000,
+    display: "flex",
+    flexDirection: "column",
+    boxShadow: "none",
+    overflow: "hidden",
+    backgroundColor: "transparent",
+    border: 0,
+    opacity: 1,
+    pointerEvents: "auto",
+    '&[data-minimized="true"]': {
+      opacity: 0,
+      pointerEvents: "none",
+    },
 
-  '&[data-fullscreen="true"]': {
-    inset: 0,
-    width: "100%",
-    height: "100%",
-    borderRadius: 0,
-  },
-}));
+    '&[data-expanded="true"]': {
+      top: 0,
+      right: 0,
+      bottom: 0,
+      width: chatConfig.width.expanded,
+      height: "100%",
+      borderRadius: 0,
+      borderLeft: "2px solid #2982D7",
+    },
 
-const StyledChatHeaderContainer = styled("div")({
-  backgroundColor: "#005EA2",
-});
-
-const StyledDragHandleContainer = styled("div")({
-  height: "8px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  paddingBlock: "12px",
-  cursor: "nwse-resize",
-  transition: "background-color 0.2s ease-out",
-  backgroundColor: "transparent",
-  '&[data-dragging="true"]': {
-    backgroundColor: "rgba(0,94,162,0.95)",
-  },
-});
-
-const StyledDragHandleBar = styled("div")({
-  width: "32px",
-  height: "4px",
-  borderRadius: "4px",
-  backgroundColor: "white",
-  transition: "opacity 0.2s ease-out, background-color 0.2s ease-out",
-});
+    '&[data-fullscreen="true"]': {
+      inset: 0,
+      width: "100%",
+      height: "100%",
+      borderRadius: 0,
+    },
+  })
+);
 
 const StyledChatHeader = styled("div")({
   display: "flex",
   alignItems: "center",
-  justifyContent: "space-between",
-  padding: "4px 16px",
-  borderBottom: "1px solid rgba(0,0,0,0.12)",
+  justifyContent: "flex-end",
+  padding: "0 12px 0 0",
   backgroundColor: "transparent",
   color: "white",
+  '&[data-expanded="true"]': {
+    position: "absolute",
+    top: 0,
+    right: 20,
+    padding: 0,
+    zIndex: 2,
+  },
   '&[data-fullscreen="true"]': {
-    padding: "8px 24px",
+    position: "absolute",
+    top: 0,
+    right: 35,
+    padding: 0,
+    zIndex: 2,
   },
 });
 
 const StyledHeaderActions = styled("div")({
+  boxSizing: "border-box",
   display: "flex",
-  gap: 0,
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "0 10px",
+  gap: "15px",
+  height: "21px",
+  backgroundColor: "#034AA3",
+  borderWidth: "0.75px 0.75px 0px 0.75px",
+  borderStyle: "solid",
+  borderColor: "#FFFFFF",
+  borderRadius: "8px 8px 0 0",
+  '&[data-expanded="true"], &[data-fullscreen="true"]': {
+    borderWidth: "0px 0.75px 0.75px 0.75px",
+    borderRadius: "0 0 8px 8px",
+  },
 });
 
 const StyledChatBody = styled("div")({
@@ -101,26 +112,65 @@ const ConfirmOverlay = styled("div")({
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  gap: "16px",
-  padding: "24px",
-  backgroundColor: "#FFFFFF",
+  padding: "18px 36px",
+  backgroundColor: "#E3E9F2",
+  border: "2px solid #2982D7",
+  borderRadius: "10px",
   zIndex: 1,
+});
+
+const ConfirmTitle = styled(Typography)({
+  fontFamily: "Inter",
+  fontStyle: "normal",
+  fontWeight: 500,
+  fontSize: "15px",
+  lineHeight: "22px",
+  textAlign: "center",
+  color: "#334B5A",
+  marginTop: "30px",
 });
 
 const ConfirmActions = styled("div")({
   display: "flex",
   gap: 12,
   justifyContent: "center",
-});
-
-const StyledChatTitle = styled(Typography)({
-  fontSize: "18px",
-  fontWeight: 600,
-  margin: 0,
+  marginTop: "30px",
 });
 
 const StyledIconButton = styled(IconButton)({
   color: "white",
+  padding: 0,
+  margin: "0 auto",
+  flex: "none",
+  flexGrow: 0,
+});
+
+const DrawerViewIconButton = styled(StyledIconButton)({
+  "& svg": {
+    width: "16px",
+    height: "16px",
+  },
+});
+
+const FullScreenIconButton = styled(StyledIconButton)({
+  "& svg": {
+    width: "11px",
+    height: "11px",
+  },
+});
+
+const MinimizeIconButton = styled(StyledIconButton)({
+  "& svg": {
+    width: "15px",
+    height: "15px",
+  },
+});
+
+const CloseIconButton = styled(StyledIconButton)({
+  "& svg": {
+    width: "15px",
+    height: "15px",
+  },
 });
 
 export type Props = {
@@ -134,16 +184,15 @@ export type Props = {
  * ChatDrawer component provides a resizable, draggable chat interface with fullscreen and minimize capabilities.
  */
 const ChatDrawer = ({ children }: Props): JSX.Element => {
-  const { title } = useChatBotContext();
   const {
     drawerRef,
     heightPx,
     widthPx,
-    isDragging,
+    positionX,
+    positionY,
     isExpanded,
     isMinimized,
     isFullscreen,
-    onBeginResize,
     onToggleExpand,
     onToggleFullscreen,
     onMinimize,
@@ -158,73 +207,55 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
       ref={drawerRef}
       heightPx={heightPx}
       widthPx={widthPx}
+      positionX={positionX}
+      positionY={positionY}
       data-minimized={isMinimized ? "true" : "false"}
+      data-expanded={isExpanded ? "true" : "false"}
       data-fullscreen={isFullscreen ? "true" : "false"}
       aria-hidden={isMinimized ? "true" : "false"}
     >
-      <StyledChatHeaderContainer>
-        {!isFullscreen ? (
-          <StyledDragHandleContainer
-            onPointerDown={onBeginResize}
-            data-dragging={isDragging ? "true" : "false"}
+      <StyledChatHeader
+        data-expanded={isExpanded ? "true" : "false"}
+        data-fullscreen={isFullscreen ? "true" : "false"}
+      >
+        <StyledHeaderActions
+          data-expanded={isExpanded ? "true" : "false"}
+          data-fullscreen={isFullscreen ? "true" : "false"}
+        >
+          <DrawerViewIconButton
+            size="small"
+            onClick={onToggleExpand}
+            aria-label={isExpanded ? "Collapse chat drawer" : "Expand chat drawer"}
           >
-            <StyledDragHandleBar />
-          </StyledDragHandleContainer>
-        ) : null}
-
-        <StyledChatHeader data-fullscreen={isFullscreen ? "true" : "false"}>
-          <StyledChatTitle as="h2">{title}</StyledChatTitle>
-
-          <StyledHeaderActions>
-            {!isFullscreen ? (
-              <StyledIconButton
-                size="small"
-                onClick={onToggleExpand}
-                aria-label={isExpanded ? "Collapse chat drawer" : "Expand chat drawer"}
-              >
-                {isExpanded ? (
-                  <ExpandMoreIcon fontSize="small" />
-                ) : (
-                  <ExpandLessIcon fontSize="small" />
-                )}
-              </StyledIconButton>
-            ) : null}
-
-            <StyledIconButton
-              size="small"
-              onClick={onToggleFullscreen}
-              aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
-            >
-              {isFullscreen ? (
-                <FullscreenExitIcon fontSize="small" />
-              ) : (
-                <FullscreenIcon fontSize="small" />
-              )}
-            </StyledIconButton>
-
-            <StyledIconButton size="small" onClick={onMinimize} aria-label="Minimize chat">
-              <HorizontalRuleIcon fontSize="small" />
-            </StyledIconButton>
-
-            <StyledIconButton
-              size="small"
-              onClick={onRequestEndConversation}
-              aria-label="End conversation"
-            >
-              <CloseIcon fontSize="small" />
-            </StyledIconButton>
-          </StyledHeaderActions>
-        </StyledChatHeader>
-      </StyledChatHeaderContainer>
+            <DrawerViewIcon />
+          </DrawerViewIconButton>
+          <FullScreenIconButton
+            size="small"
+            onClick={onToggleFullscreen}
+            aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+          >
+            {isFullscreen ? <ExitFullScreenIcon /> : <FullScreenIcon />}
+          </FullScreenIconButton>
+          <MinimizeIconButton size="small" onClick={onMinimize} aria-label="Minimize chat">
+            <HorizontalRuleIcon />
+          </MinimizeIconButton>
+          <CloseIconButton
+            size="small"
+            onClick={onRequestEndConversation}
+            aria-label="End conversation"
+          >
+            <CloseIcon />
+          </CloseIconButton>
+        </StyledHeaderActions>
+      </StyledChatHeader>
 
       <StyledChatBody>
         {children}
 
         {isConfirmingEndConversation ? (
           <ConfirmOverlay role="alertdialog" aria-label="End Conversation">
-            <Typography variant="h6" component="div">
-              End Conversation
-            </Typography>
+            <ChatBotLogo ariaLabel="CRDC Assistant Logo" />
+            <ConfirmTitle>End Conversation</ConfirmTitle>
 
             <ConfirmActions>
               <Button

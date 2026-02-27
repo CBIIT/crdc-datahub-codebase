@@ -1,54 +1,81 @@
-import SendIcon from "@mui/icons-material/Send";
-import { Box, IconButton, Stack, styled } from "@mui/material";
+import { East } from "@mui/icons-material";
+import { Box, IconButton, InputAdornment, styled } from "@mui/material";
 import React, { useCallback } from "react";
 
 import StyledOutlinedInput from "@/components/StyledFormComponents/StyledOutlinedInput";
 
 import { useChatDrawerContext } from "../context/ChatDrawerContext";
 
-const StyledBox = styled(Box)({
-  borderTop: "1px solid rgba(0,0,0,0.12)",
-  padding: "12px",
-  backgroundColor: "#FFFFFF",
-});
-
-const StyledTextField = styled(StyledOutlinedInput, {
+const StyledBox = styled(Box, {
   shouldForwardProp: (prop) => prop !== "isFullscreen",
 })<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
+  padding: "15px 14px",
+  ...(isFullscreen && {
+    position: "sticky",
+    bottom: 0,
+    background: "linear-gradient(180deg, rgba(201, 229, 248, 0) 0%, #C9E5F8 20%)",
+    marginTop: "auto",
+  }),
+}));
+
+const StyledTextField = styled(StyledOutlinedInput)({
   "&.MuiOutlinedInput-root": {
     borderRadius: "8px",
     border: "0 !important",
   },
-  "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-    border: "1px solid #005EA2",
-  },
+  "&.Mui-focused .MuiOutlinedInput-notchedOutline, &:hover .MuiOutlinedInput-notchedOutline, & .MuiOutlinedInput-notchedOutline":
+    {
+      border: "1px solid #1545B5",
+    },
   "& .MuiInputBase-input": {
-    fontSize: isFullscreen ? "18px" : "14px",
-    padding: isFullscreen ? "14px" : "10px",
+    padding: "10px 15px",
+    fontFamily: "Inter",
+    fontStyle: "normal",
+    fontWeight: 600,
+    fontSize: "15px",
+    lineHeight: "22px",
+    color: "#3D4143",
   },
-}));
+  "& .MuiInputBase-input::placeholder": {
+    fontFamily: "Inter",
+    fontStyle: "normal",
+    fontWeight: 600,
+    fontSize: "15px",
+    lineHeight: "22px",
+    color: "#727272",
+    opacity: 1,
+  },
+});
 
-const StyledSendButton = styled(IconButton, {
-  shouldForwardProp: (prop) => prop !== "isFullscreen",
-})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
-  backgroundColor: "#005EA2",
-  color: "#FFFFFF",
-  borderRadius: "8px",
-  width: isFullscreen ? "48px" : "40px",
-  height: isFullscreen ? "48px" : "40px",
+const StyledSendButton = styled(IconButton)({
+  padding: 0,
   "&:hover": {
-    backgroundColor: "#115293",
+    backgroundColor: "transparent",
   },
   "&.Mui-disabled": {
-    backgroundColor: "rgba(0,0,0,0.12)",
-    color: "rgba(0,0,0,0.26)",
+    opacity: 0.4,
   },
-  ...(isFullscreen && {
-    "& .MuiSvgIcon-root": {
-      fontSize: "24px",
-    },
-  }),
-}));
+});
+
+const SendIconCircle = styled(Box)({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  margin: "0 auto",
+  width: "28px",
+  height: "28px",
+  boxShadow: "inset 0px 4px 4px rgba(0, 0, 0, 0.25)",
+  filter: "drop-shadow(0px 2px 2px rgba(0, 0, 0, 0.08))",
+  background:
+    "linear-gradient(326.08deg, #000000 5.77%, #000000 17.25%, #191919 62.29%, #FFFFFF 81.7%)",
+  border: "0.75px solid #FBD9D9",
+  borderRadius: "35px",
+});
+
+const StyledArrowIcon = styled(East)({
+  color: "#FFFFFF",
+  fontSize: "20px",
+});
 
 export type Props = {
   /**
@@ -95,27 +122,25 @@ const ChatComposer = ({
   );
 
   return (
-    <StyledBox>
-      <Stack direction="row" gap="8px">
-        <StyledTextField
-          size="small"
-          placeholder="Type a message..."
-          value={value}
-          onChange={handleInputChange}
-          onKeyDown={onKeyDown}
-          isFullscreen={isFullscreen}
-          inputProps={{ "aria-label": "Type a message" }}
-          fullWidth
-        />
-        <StyledSendButton
-          onClick={onSend}
-          disabled={isSendDisabled}
-          aria-label="Send message"
-          isFullscreen={isFullscreen}
-        >
-          <SendIcon fontSize="small" />
-        </StyledSendButton>
-      </Stack>
+    <StyledBox isFullscreen={isFullscreen}>
+      <StyledTextField
+        size="small"
+        placeholder="Type your message..."
+        value={value}
+        onChange={handleInputChange}
+        onKeyDown={onKeyDown}
+        inputProps={{ "aria-label": "Type your message..." }}
+        fullWidth
+        endAdornment={
+          <InputAdornment position="end">
+            <StyledSendButton onClick={onSend} disabled={isSendDisabled} aria-label="Send message">
+              <SendIconCircle>
+                <StyledArrowIcon />
+              </SendIconCircle>
+            </StyledSendButton>
+          </InputAdornment>
+        }
+      />
     </StyledBox>
   );
 };

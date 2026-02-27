@@ -29,25 +29,35 @@ const MessageColumn = styled(Box)({
 
 const MessageMetaRow = styled(Box)({
   display: "flex",
+  alignItems: "center",
   gap: 8,
   marginBottom: "4px",
   paddingInline: "4px",
 });
 
-const MessageSender = styled(Typography, {
-  shouldForwardProp: (prop) => prop !== "isFullscreen",
-})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
-  fontSize: isFullscreen ? "16px" : "12px",
-  fontWeight: 500,
-  color: "rgba(0,0,0,0.7)",
-}));
+const MessageDateText = styled(Typography)({
+  fontFamily: "Nunito",
+  fontStyle: "normal",
+  fontWeight: 300,
+  fontSize: "11px",
+  lineHeight: "19px",
+  color: "#3E3E3E",
+});
 
-const MessageTimestamp = styled(Typography, {
-  shouldForwardProp: (prop) => prop !== "isFullscreen",
-})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
-  fontSize: isFullscreen ? "16px" : "12px",
-  color: "rgba(0,0,0,0.54)",
-}));
+const MessageDateDivider = styled(Box)({
+  width: "0.5px",
+  height: "12px",
+  backgroundColor: "#3E3E3E",
+});
+
+const MessageTimestamp = styled(Typography)({
+  fontFamily: "Nunito",
+  fontStyle: "normal",
+  fontWeight: 300,
+  fontSize: "11px",
+  lineHeight: "19px",
+  color: "#3E3E3E",
+});
 
 /**
  * Style definitions for message bubbles based on message variant.
@@ -55,7 +65,7 @@ const MessageTimestamp = styled(Typography, {
 const BOT_BUBBLE_STYLES: Record<ChatMessageVariant, CSSProperties> = {
   default: {
     backgroundColor: "transparent",
-    color: "#212121",
+    color: "#3D4143",
   },
   info: {
     backgroundColor: "transparent",
@@ -88,12 +98,58 @@ const MessageBubble = styled(Box, {
     fontSize: isFullscreen ? "18px" : "16px",
     lineHeight: 1.5,
     whiteSpace: "pre-line",
+    fontFamily: "Inter",
 
     '&[data-is-user="true"]': {
+      position: "relative",
+      isolation: "isolate",
       width: "fit-content",
-      borderTopRightRadius: 0,
-      backgroundColor: "#005EA2",
+      borderRadius: "8px",
       color: "#FFFFFF",
+      boxShadow: "-2px 4px 8px rgba(0, 0, 0, 0.25)",
+      backgroundImage: "linear-gradient(90deg, #2596E5 0%, #2C68C2 49.67%, #5B53D8 100%)",
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: "left top",
+      backgroundSize: "100% 100%",
+      maxWidth: "100%",
+      minWidth: 0,
+      whiteSpace: "pre-wrap",
+      overflowWrap: "anywhere",
+      wordBreak: "break-word",
+
+      "&::before": {
+        content: '""',
+        position: "absolute",
+        left: 0,
+        bottom: "-7px",
+        width: "100%",
+        height: "17px",
+        zIndex: -1,
+        pointerEvents: "none",
+        backgroundImage: "inherit",
+        backgroundRepeat: "inherit",
+        backgroundPosition: "inherit",
+        backgroundSize: "inherit",
+        clipPath: "circle(8.5px at calc(100% - 26.5px) 8.5px)",
+        WebkitClipPath: "circle(8.5px at calc(100% - 26.5px) 8.5px)",
+      },
+
+      "&::after": {
+        content: '""',
+        position: "absolute",
+        left: 0,
+        bottom: "-12px",
+        width: "100%",
+        height: "8px",
+        zIndex: -1,
+        pointerEvents: "none",
+        backgroundImage: "inherit",
+        backgroundRepeat: "inherit",
+        backgroundPosition: "inherit",
+        backgroundSize: "inherit",
+        clipPath: "circle(4px at calc(100% - 15.5px) 4px)",
+        WebkitClipPath: "circle(4px at calc(100% - 15.5px) 4px)",
+      },
     },
 
     '&[data-is-user="false"]': {
@@ -195,10 +251,18 @@ const MessageBubble = styled(Box, {
       margin: 0,
       marginBottom: "8px",
       fontWeight: 600,
+      color: "#034AA3",
+
       "&:last-child": {
         marginBottom: 0,
       },
     },
+    "& h1": { fontSize: "28px" },
+    "& h2": { fontSize: "26px" },
+    "& h3": { fontSize: "24px" },
+    "& h4": { fontSize: "22px" },
+    "& h5": { fontSize: "20px" },
+    "& h6": { fontSize: "18px" },
     "& blockquote": {
       borderLeft: "4px solid rgba(0,0,0,0.2)",
       paddingLeft: "12px",
@@ -215,10 +279,11 @@ const MessageBubble = styled(Box, {
     },
     "& table": {
       borderCollapse: "collapse",
-      width: "100%",
+      width: "fit-content",
+      maxWidth: "100%",
       marginBottom: "8px",
       fontSize: "14px",
-      backgroundColor: "#FFFFFF",
+      backgroundColor: "transparent",
       display: "block",
       overflowX: "auto",
       "&:last-child": {
@@ -254,28 +319,42 @@ const MessageBubble = styled(Box, {
 const CitationsContainer = styled(Box)({
   display: "flex",
   flexWrap: "wrap",
-  gap: "4px",
-  marginTop: "8px",
-  paddingTop: "8px",
-  borderTop: "1px solid rgba(0, 0, 0, 0.08)",
+  gap: "5px",
+  marginTop: "6px",
 });
 
 const StyledCitationChip = styled(Chip)({
-  fontSize: "11px",
-  height: "20px",
+  display: "flex",
+  flexDirection: "row",
+  justifyContent: "center",
+  alignItems: "center",
+  padding: "1px 7px",
+  gap: "10px",
+  height: "auto",
+  background: "#EBEBEB",
+  borderRadius: "20px",
+  border: "1px solid #B0B0B0",
   cursor: "pointer",
-  backgroundColor: "rgba(0, 0, 0, 0.04)",
-  border: "1px solid rgba(0, 0, 0, 0.12)",
   textDecoration: "none !important",
+  fontFamily: "Inter",
+  fontStyle: "normal",
+  fontWeight: 400,
+  fontSize: "8px",
+  lineHeight: "14px",
+  letterSpacing: "0.01em",
+  color: "#505E6D",
   "&:hover": {
-    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    background: "#E0E0E0",
     textDecoration: "none !important",
   },
   "&:link, &:visited, &:active": {
     textDecoration: "none !important",
   },
   "& .MuiChip-label": {
-    padding: "0 6px",
+    padding: 0,
+    fontSize: "8px",
+    lineHeight: "14px",
+    color: "#505E6D",
   },
 }) as typeof Chip;
 
@@ -358,17 +437,35 @@ export const formatMessageTime = (date: Date): string =>
     hour12: true,
   }).format(date);
 
+/**
+ * Formats a date object into a full date string.
+ *
+ * @param date - The date to format
+ * @return Formatted date string
+ * @example "February 19, 2026"
+ */
+export const formatMessageDate = (date: Date): string =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+
 type Props = {
   /**
    * The chat message object to render.
    */
   message: ChatMessage;
+  /**
+   * Whether this is the first message in the conversation (greeting).
+   */
+  isFirstMessage?: boolean;
 };
 
 /**
  * Renders a single chat message with sender info, timestamp, and styled bubble.
  */
-const ChatMessageItem = ({ message }: Props): JSX.Element => {
+const ChatMessageItem = ({ message, isFirstMessage = false }: Props): JSX.Element => {
   const { isFullscreen } = useChatDrawerContext();
 
   if (!message) {
@@ -383,12 +480,13 @@ const ChatMessageItem = ({ message }: Props): JSX.Element => {
     <MessageRow data-is-user={dataIsUser}>
       <MessageColumn data-is-user={dataIsUser}>
         <MessageMetaRow>
-          {!isUser ? (
-            <MessageSender isFullscreen={isFullscreen}>{message.senderName}</MessageSender>
-          ) : null}
-          <MessageTimestamp isFullscreen={isFullscreen}>
-            {formatMessageTime(message.timestamp)}
-          </MessageTimestamp>
+          {isFirstMessage && (
+            <>
+              <MessageDateText>{formatMessageDate(message.timestamp)}</MessageDateText>
+              <MessageDateDivider />
+            </>
+          )}
+          <MessageTimestamp>{formatMessageTime(message.timestamp)}</MessageTimestamp>
         </MessageMetaRow>
 
         <MessageBubble
