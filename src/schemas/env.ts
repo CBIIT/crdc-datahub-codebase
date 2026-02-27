@@ -23,13 +23,13 @@ export const envSchema = z
     /**
      * The ID of the Bedrock Guardrail to apply to the model responses
      */
-    GUARDRAIL_ID: z.string().min(1),
+    GUARDRAIL_ID: z.string().default(""),
     /**
      * The release version of the Bedrock Guardrail to use
      *
      * @example "v5"
      */
-    GUARDRAIL_VERSION: z.string().min(1),
+    GUARDRAIL_VERSION: z.string().default(""),
     /**
      * The Bedrock reranking model ARN for Knowledge Base retrieval
      * If not provided, retrieval results will not be reranked
