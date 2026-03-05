@@ -175,7 +175,6 @@ const columns: Column<T>[] = [
         ""
       ),
     field: "submittedDate",
-    default: true,
     sx: {
       width: "161px",
     },
@@ -190,6 +189,7 @@ const columns: Column<T>[] = [
       ) : (
         ""
       ),
+    default: true,
     field: "updatedAt",
     sx: {
       width: "181px",
