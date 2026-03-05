@@ -592,4 +592,41 @@ describe("ListView Component", () => {
       expect(getByText("1/2/2021")).toBeInTheDocument();
     });
   });
+
+  it("uses Last Updated Date as the default sort key", async () => {
+    const variableMatcher = vi.fn().mockReturnValue(true);
+
+    const listApplicationsMock: MockedResponse<ListApplicationsResp, ListApplicationsInput> = {
+      request: {
+        query: LIST_APPLICATIONS,
+      },
+      variableMatcher,
+      result: {
+        data: {
+          listApplications: {
+            total: 0,
+            applications: [],
+            programs: [],
+            studies: [],
+          },
+        },
+      },
+    };
+
+    render(
+      <TestParent role="Submitter" mocks={[listApplicationsMock]}>
+        <ListView />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(variableMatcher).toHaveBeenCalled();
+    });
+
+    expect(variableMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: "updatedAt",
+      })
+    );
+  });
 });
