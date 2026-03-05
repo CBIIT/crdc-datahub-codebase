@@ -18,15 +18,15 @@ paths:
         Validates request and configuration, then streams newline-delimited JSON responses.
         
         **Before streaming starts (validation phase):**
-        - Returns 400 for missing or invalid request data (e.g., missing question)
-        - Returns 500 for server/configuration errors (e.g., missing environment variables)
+        - Returns 400 as an error event (`type: error`) for missing/invalid request data
+        - Returns 500 as an error event (`type: error`) for server/configuration/AWS errors
         
         **After streaming starts (200 OK):**
-        - The first line includes a `sessionId`
-        - Subsequent lines include `output` chunks
+        - The first line is a `type: session` event containing `sessionId`
+        - Response chunks are sent as `type: response` events with `output`
         - Event lines with `type` and `description` for progress updates
         - Citation lines with `type: citations` and a `citations` array
-        - Error lines with `error` field for errors during processing (e.g., AWS failures)
+        - Error lines with `type: error` and a `message` field for processing failures (e.g., AWS failures)
       requestBody:
         required: true
         content:
@@ -52,7 +52,7 @@ paths:
         "200":
           description: |
             Streaming response with newline-delimited JSON.
-            Errors during processing (after streaming starts) are sent as error objects in the stream.
+            Errors during processing (after streaming starts) are sent as typed error events in the stream.
           content:
             application/json:
               schema:
@@ -60,9 +60,11 @@ paths:
               examples:
                 session:
                   value:
+                    type: "session"
                     sessionId: "8d17d1d6-0c28-4c31-9ce7-4c7c4d81cfc1"
                 output:
                   value:
+                    type: "response"
                     output: "CRDC DataHub is..."
                 event:
                   value:
@@ -76,7 +78,8 @@ paths:
                         documentLink: "https://example.org/docs/DocumentXyz.pdf"
                 error:
                   value:
-                    error: "AWS bedrock failed to generate response"
+                    type: "error"
+                    message: "AWS bedrock failed to generate response"
         "400":
           description: |
             Bad request - validation error before streaming starts.
@@ -84,23 +87,29 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEventLine"
               examples:
                 missingQuestion:
                   value:
-                    error: "Missing 'question' in request body"
+                    type: "error"
+                    message: "Invalid request body"
         "500":
           description: |
             Server error before streaming starts.
-            Examples: missing environment variables, configuration errors.
+            Examples: AWS retrieval or generation failures.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEventLine"
               examples:
-                missingConfig:
+                retrieveFailure:
                   value:
-                    error: "Invalid configuration: Missing required environment variables"
+                    type: "error"
+                    message: "Failed to retrieve content from Knowledge Base"
+                generateFailure:
+                  value:
+                    type: "error"
+                    message: "Failed to generate response from language model"
   /status/ping:
     get:
       summary: Ping
@@ -156,27 +165,35 @@ components:
           type: string
     StreamLine:
       oneOf:
-        - $ref: "#/components/schemas/SessionLine"
-        - $ref: "#/components/schemas/OutputLine"
-        - $ref: "#/components/schemas/EventLine"
+        - $ref: "#/components/schemas/SessionEventLine"
+        - $ref: "#/components/schemas/ResponseEventLine"
+        - $ref: "#/components/schemas/PulseEventLine"
         - $ref: "#/components/schemas/CitationEventLine"
-        - $ref: "#/components/schemas/ErrorResponse"
-    SessionLine:
+        - $ref: "#/components/schemas/ErrorEventLine"
+    SessionEventLine:
       type: object
       required:
+        - type
         - sessionId
       properties:
+        type:
+          type: string
+          enum: [session]
         sessionId:
           type: string
           format: uuid
-    OutputLine:
+    ResponseEventLine:
       type: object
+      required:
+        - type
+        - output
       properties:
+        type:
+          type: string
+          enum: [response]
         output:
           type: string
-      required:
-        - output
-    EventLine:
+    PulseEventLine:
       type: object
       required:
         - type
@@ -200,6 +217,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Citation"
+    ErrorEventLine:
+      type: object
+      required:
+        - type
+        - message
+      properties:
+        type:
+          type: string
+          enum: [error]
+        message:
+          type: string
     Citation:
       type: object
       required:

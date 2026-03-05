@@ -33,7 +33,7 @@ export const CitationSchema = z.object({
 });
 
 export const BaseAPIEventSchema = z.object({
-  type: z.enum(["pulse", "citations", "session", "response"]),
+  type: z.enum(["pulse", "citations", "session", "response", "error"]),
 });
 
 export const PulseEventSchema = BaseAPIEventSchema.extend({
@@ -56,9 +56,18 @@ export const ResponseEventSchema = BaseAPIEventSchema.extend({
   output: z.string().max(10_000, "Response output cannot exceed 10,000 characters"),
 });
 
+export const ErrorEventSchema = BaseAPIEventSchema.extend({
+  type: z.literal("error"),
+  message: z
+    .string()
+    .min(1, "Error message cannot be empty")
+    .max(10_000, "Error message cannot exceed 10,000 characters"),
+});
+
 export type InputBody = z.infer<typeof InputBodySchema>;
 export type Citation = z.infer<typeof CitationSchema>;
 export type APIPulseEvent = z.infer<typeof PulseEventSchema>;
 export type APICitationEvent = z.infer<typeof CitationEventSchema>;
 export type APISessionEvent = z.infer<typeof SessionEventSchema>;
 export type APIResponseEvent = z.infer<typeof ResponseEventSchema>;
+export type APIErrorEvent = z.infer<typeof ErrorEventSchema>;

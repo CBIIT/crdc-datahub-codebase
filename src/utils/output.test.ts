@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { generateCitationEvent, generatePulseEvent, generateResponseEvent, generateSessionEvent } from "./output.ts";
+import {
+  generateCitationEvent,
+  generateErrorEvent,
+  generatePulseEvent,
+  generateResponseEvent,
+  generateSessionEvent,
+} from "./output.ts";
 
 describe("generatePulseEvent", () => {
   it("returns a pulse event with the provided description", () => {
@@ -83,6 +89,28 @@ describe("generateResponseEvent", () => {
 
     const first = generateResponseEvent(output);
     const second = generateResponseEvent(output);
+
+    expect(first).not.toBe(second);
+  });
+});
+
+describe("generateErrorEvent", () => {
+  it("returns an error event with the provided message", () => {
+    const message = "Unable to complete request";
+
+    const result = generateErrorEvent(message);
+
+    expect(result).toEqual({
+      type: "error",
+      message,
+    });
+  });
+
+  it("returns a new object for each call", () => {
+    const message = "Unable to complete request";
+
+    const first = generateErrorEvent(message);
+    const second = generateErrorEvent(message);
 
     expect(first).not.toBe(second);
   });

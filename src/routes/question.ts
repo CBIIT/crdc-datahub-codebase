@@ -14,6 +14,7 @@ import { formatUserPrompt } from "../utils/conversation.ts";
 import { Logger } from "../utils/logger.ts";
 import {
   generateCitationEvent,
+  generateErrorEvent,
   generatePulseEvent,
   generateResponseEvent,
   generateSessionEvent,
@@ -49,7 +50,7 @@ export const createQuestionRouter = ({
         issues: validationResult.error.issues,
         body: req.body,
       });
-      return res.status(400).json({ error: "Invalid request body" });
+      return res.status(400).json(generateErrorEvent("Invalid request body"));
     }
 
     res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -129,8 +130,7 @@ export const createQuestionRouter = ({
       }
     } catch (retrieveError: unknown) {
       Logger.error("Error retrieving knowledge from Knowledge Base", retrieveError);
-      res.write(JSON.stringify({ error: "Failed to retrieve content from Knowledge Base" }) + "\n");
-      return res.end();
+      return res.status(500).json(generateErrorEvent("Failed to retrieve content from Knowledge Base"));
     }
 
     // Step 2: Build conversation messages with context
@@ -200,8 +200,7 @@ export const createQuestionRouter = ({
       return res.end();
     } catch (converseError: unknown) {
       Logger.error("Error generating response from Converse API", converseError);
-      res.write(JSON.stringify({ error: "AWS bedrock failed to generate response" }) + "\n");
-      return res.end();
+      return res.status(500).json(generateErrorEvent("Failed to generate response from language model"));
     }
   });
 
