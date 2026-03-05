@@ -35,7 +35,22 @@
         border-radius: 4px;
         min-height: 180px;
         padding: 12px;
-        white-space: pre-wrap;
+        white-space: normal;
+      }
+
+      #responseBox p {
+        margin: 0 0 0.75rem;
+      }
+
+      #responseBox pre {
+        overflow-x: auto;
+        background: #f7f7f7;
+        padding: 8px;
+        border-radius: 4px;
+      }
+
+      #responseBox code {
+        font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       }
 
       #citations {
@@ -50,6 +65,17 @@
       #status {
         margin: 0 0 10px;
       }
+
+      #controls {
+        margin: 0 0 10px;
+      }
+
+      #controls label {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        user-select: none;
+      }
     </style>
   </head>
   <body>
@@ -60,18 +86,50 @@
       <button type="submit">Send</button>
     </form>
 
+    <div id="controls">
+      <label for="parseMarkdownToggle">
+        <input id="parseMarkdownToggle" type="checkbox" checked />
+        Parse Markdown
+      </label>
+    </div>
+
     <p id="status">Ready</p>
     <div id="responseBox"></div>
     <div id="citations"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
     <script>
       const form = document.getElementById("questionForm");
       const questionInput = document.getElementById("questionInput");
       const responseBox = document.getElementById("responseBox");
       const statusLabel = document.getElementById("status");
       const citationsBox = document.getElementById("citations");
+      const parseMarkdownToggle = document.getElementById("parseMarkdownToggle");
 
       let sessionId = null;
+      let responseMarkdown = "";
+
+      marked.setOptions({
+        gfm: true,
+        breaks: true,
+      });
+
+      const renderResponseMarkdown = () => {
+        if (!parseMarkdownToggle.checked) {
+          responseBox.style.whiteSpace = "pre-wrap";
+          responseBox.textContent = responseMarkdown;
+          return;
+        }
+
+        responseBox.style.whiteSpace = "normal";
+        const renderedHtml = marked.parse(responseMarkdown);
+        responseBox.innerHTML = DOMPurify.sanitize(renderedHtml);
+      };
+
+      parseMarkdownToggle.addEventListener("change", () => {
+        renderResponseMarkdown();
+      });
 
       const setStatus = (text) => {
         statusLabel.textContent = text;
@@ -117,7 +175,8 @@
         const question = questionInput.value.trim();
         if (!question) return;
 
-        responseBox.textContent = "";
+        responseMarkdown = "";
+        renderResponseMarkdown();
         citationsBox.textContent = "";
         setStatus("Streaming...");
 
@@ -156,23 +215,26 @@
               try {
                 const chunk = JSON.parse(line);
 
-                if (chunk.sessionId) {
+                if (chunk.type === "session" && chunk.sessionId) {
                   sessionId = chunk.sessionId;
                 }
 
-                if (chunk.output) {
-                  responseBox.textContent += chunk.output;
+                if (chunk.type === "response" && chunk.output) {
+                  responseMarkdown += chunk.output;
+                  renderResponseMarkdown();
                 }
 
                 if (chunk.type === "citations" && chunk.citations) {
                   renderCitations(chunk.citations);
                 }
 
-                if (chunk.error) {
-                  responseBox.textContent += `\n\nError: ${chunk.error}`;
+                if (chunk.type === "error" && chunk.message) {
+                  responseMarkdown += `\n\n**Error:** ${chunk.message}`;
+                  renderResponseMarkdown();
                 }
               } catch {
-                responseBox.textContent += `\n[Unparsed chunk] ${line}`;
+                responseMarkdown += `\n\n[Unparsed chunk] ${line}`;
+                renderResponseMarkdown();
               }
             }
           }
@@ -180,7 +242,8 @@
           setStatus("Done");
         } catch (error) {
           setStatus("Failed");
-          responseBox.textContent = `Request error: ${error instanceof Error ? error.message : String(error)}`;
+          responseMarkdown = `Request error: ${error instanceof Error ? error.message : String(error)}`;
+          renderResponseMarkdown();
         }
       });
     </script>
