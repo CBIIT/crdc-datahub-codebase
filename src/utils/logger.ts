@@ -1,7 +1,7 @@
 /**
  * Represents the different log levels that can be used.
  */
-export type LogLevel = "error" | "info";
+export type LogLevel = "error" | "warn" | "info";
 
 /**
  * A simple wrapper for the `console.log` function.
@@ -25,6 +25,9 @@ const LoggingWrapper = (level: LogLevel, message: string, ...optionalParams: unk
       break;
     case "info":
       console.info(`%c[INFO] [${timestamp}] ${message}`, "color: #90D5FF;", ...optionalParams);
+      break;
+    case "warn":
+      console.warn(`%c[WARN] [${timestamp}] ${message}`, "color: #FFD700;", ...optionalParams);
       break;
   }
 };
@@ -50,4 +53,10 @@ export const Logger: Readonly<Record<LogLevel, LoggerFunction>> = {
    * @see {@link LoggingWrapper} for more information.
    */
   info: (message: string, ...optionalParams: unknown[]) => LoggingWrapper("info", message, ...optionalParams),
+  /**
+   * A simple warning logging function.
+   *
+   * @see {@link LoggingWrapper} for more information.
+   */
+  warn: (message: string, ...optionalParams: unknown[]) => LoggingWrapper("warn", message, ...optionalParams),
 };

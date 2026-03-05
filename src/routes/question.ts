@@ -38,10 +38,14 @@ export const createQuestionRouter = ({
   const BEDROCK_AGENT = new BedrockAgentRuntimeClient({ region: AWS_REGION });
   const BEDROCK_RUNTIME = new BedrockRuntimeClient({ region: AWS_REGION });
 
+  if (!GUARDRAIL_ID || !GUARDRAIL_VERSION) {
+    Logger.warn("No AWS Guardrails configured. Responses will not be evaluated against guardrails!");
+  }
+
   router.post("/", async (req, res) => {
     const validationResult = InputBodySchema.safeParse(req.body);
     if (!validationResult.success) {
-      Logger.info("Invalid request body", {
+      Logger.info("Rejected invalid request body", {
         issues: validationResult.error.issues,
         body: req.body,
       });
