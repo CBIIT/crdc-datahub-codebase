@@ -130,7 +130,7 @@ export const createQuestionRouter = ({
       }
     } catch (retrieveError: unknown) {
       Logger.error("Error retrieving knowledge from Knowledge Base", retrieveError);
-      return res.status(500).json(generateErrorEvent("Failed to retrieve content from Knowledge Base"));
+      return res.write(JSON.stringify(generateErrorEvent("Failed to retrieve content from Knowledge Base")) + "\n");
     }
 
     // Step 2: Build conversation messages with context
@@ -200,7 +200,7 @@ export const createQuestionRouter = ({
       return res.end();
     } catch (converseError: unknown) {
       Logger.error("Error generating response from Converse API", converseError);
-      return res.status(500).json(generateErrorEvent("Failed to generate response from language model"));
+      return res.write(JSON.stringify(generateErrorEvent("Failed to generate response from language model")) + "\n");
     }
   });
 
