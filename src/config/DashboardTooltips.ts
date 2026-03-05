@@ -42,7 +42,7 @@ export const TOOLTIP_TEXT = {
         BATCH_IS_UPLOADING:
           "There are ongoing batch uploads. Please wait for the upload to complete.",
       },
-      ENABLED: "Submit the data to CRDC for review and inclusion in a data commons.",
+      ENABLED: "Submit the data to CRDC for review.",
     },
     WITHDRAW: {
       ENABLED: "Withdraw will reverse the submission and control will return to the Submitter.",
