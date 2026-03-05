@@ -65,6 +65,7 @@ STATUS_ERROR = "Error"
 STATUS_WARNING = "Warning"
 STATUS_PASSED = "Passed"
 STATUS_NEW = "New"
+FAILED = "Failed"
 # For batch metadata validation, statusDetail may be a list of failure message strings.
 STATUS_DETAIL = "statusDetail"
 SUBMISSION_ID = "submissionID"
@@ -155,6 +156,7 @@ STATUS_PRECEDENCE = {
     "Passed": 0,
     "Warning": 1,
     "Error": 2,
+    "Failed": 3,
 }
 PRECEDENCE_TO_STATUS = {v: k for k, v in STATUS_PRECEDENCE.items()}
 ADDITION_ERRORS = "additionalErrors"

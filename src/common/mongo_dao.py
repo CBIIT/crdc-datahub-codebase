@@ -5,7 +5,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     SUBMISSION_ID, NODE_ID, NODE_TYPE, S3_FILE_INFO, STATUS, FILE_ERRORS, STATUS_NEW, \
     PARENT_TYPE, PARENT_ID_VAL, PARENTS, FILE_VALIDATION_STATUS, METADATA_VALIDATION_STATUS, TYPE, \
     FILE_MD5_COLLECTION, FILE_NAME, CRDC_ID, RELEASE_COLLECTION, DATA_COMMON_NAME, KEY, \
-    VALUE_PROP, VALIDATED_AT, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, PARENT_ID_NAME, \
+    VALUE_PROP, VALIDATED_AT, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, FAILED, PARENT_ID_NAME, \
     SUBMISSION_REL_STATUS, SUBMISSION_REL_STATUS_DELETED, STUDY_ABBREVIATION, SUBMISSION_STATUS, STUDY_ID, \
     CROSS_SUBMISSION_VALIDATION_STATUS, ADDITION_ERRORS, VALIDATION_COLLECTION, VALIDATION_ENDED, CONFIG_COLLECTION, \
     BATCH_BUCKET, CDE_COLLECTION, CDE_CODE, CDE_VERSION, ENTITY_TYPE, QC_COLLECTION, QC_RESULT_ID, CONFIG_TYPE, \
@@ -295,8 +295,17 @@ class MongoDao:
             self.log.exception(f"Failed to update data file, {file_record[ID]}: {get_exception_msg()}")
             return False
 
-    def set_submission_validation_status(self, submission, file_status, metadata_status, cross_submission_status, fileErrors, is_delete = False, status_detail=None):
-        """Update validation/errors in submissions collection (incl. batch status_detail)."""
+    def set_submission_validation_status(self, submission, file_status, metadata_status, cross_submission_status, fileErrors, is_delete = False, status_detail=None, scope=None):
+        """Update validation/errors in submissions collection (incl. batch status_detail).
+
+        FAILED is only for the validation record; it is not a valid submission status.
+        When metadata_status is FAILED, the submission's metadata status is not updated.
+
+        When scope is 'new' (case-insensitive), submission metadata status is only updated
+        if the new result is worse than or equal to the existing (Error > Warning > Passed).
+        """
+        if metadata_status == FAILED:
+            metadata_status = None
         updated_submission = {UPDATED_AT: current_datetime()}
         if status_detail is not None:
             updated_submission[STATUS_DETAIL] = status_detail
@@ -321,10 +330,18 @@ class MongoDao:
                             overall_metadata_status = STATUS_ERROR
                         else:
                             warning_nodes = self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID], STATUS: STATUS_WARNING})
-                            if warning_nodes > 0: 
+                            if warning_nodes > 0:
                                 overall_metadata_status = STATUS_WARNING
                             else:
                                 overall_metadata_status = metadata_status
+                # When scope is "new", only update submission metadata status if new result is worse than or equal to existing
+                if scope and str(scope).lower() == "new" and overall_metadata_status is not None:
+                    current_status = submission.get(METADATA_VALIDATION_STATUS)
+                    # Treat missing/None current status as Passed (precedence 0) so we only update when new result is worse or equal
+                    new_prec = STATUS_PRECEDENCE.get(overall_metadata_status, 0)
+                    current_prec = STATUS_PRECEDENCE.get(current_status, 0)
+                    if new_prec < current_prec:
+                        overall_metadata_status = current_status
                 # check if all file nodes are deleted
                 if is_delete and (self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID], S3_FILE_INFO: {"$exists": True}}) == 0):
                     # if file nodes are all deleted, update file validation status to new if there are still data files in the bucket otherwise set to None
@@ -1008,18 +1025,27 @@ class MongoDao:
             return False
 
     def increment_completed_batches(self, validation_id, total_batches,
-                                    batch_failed=False, batch_status=None, status_detail=None):
+                                    batch_failed=False, batch_status=None, status_detail=None,
+                                    submission_id=None, batch_index=None):
         """Atomically increment completedBatches counter for a validation.
 
         When batch_failed is True, also increments failedBatches.
         When batch_status is provided, tracks the worst status via $max.
         When status_detail is provided, appends it to batchStatusDetails via $push.
 
+        submission_id and batch_index are optional; when provided (e.g. by batched
+        metadata validation), they are included in log messages.
+
         Returns 5-tuple: (completed_count, is_last_batch, failed_count,
                           worst_status_str, batch_details).
         """
         db = self.client[self.db_name]
         validation_collection = db[VALIDATION_COLLECTION]
+        log_ctx = f'validation_id={validation_id}'
+        if submission_id is not None:
+            log_ctx += f' submission_id={submission_id}'
+        if batch_index is not None:
+            log_ctx += f' batch={batch_index + 1}/{total_batches}'
         try:
             inc_fields = {COMPLETED_BATCHES: 1}
             if batch_failed:
@@ -1043,31 +1069,38 @@ class MongoDao:
                 is_last = completed >= total_batches
                 worst = PRECEDENCE_TO_STATUS.get(result.get(WORST_BATCH_STATUS, 0), STATUS_PASSED)
                 details = result.get(BATCH_STATUS_DETAILS, [])
-                self.log.info(f'Validation {validation_id}: completed {completed}/{total_batches} batches, {failed} failed')
+                self.log.info(f'Validation {log_ctx}: completed {completed}/{total_batches} batches, {failed} failed')
                 return completed, is_last, failed, worst, details
             else:
-                self.log.error(f'Validation document not found: {validation_id}')
+                self.log.error(f'Validation document not found: {log_ctx}')
                 return None, False, 0, None, []
         except errors.PyMongoError as pe:
             self.log.exception(pe)
-            self.log.exception(f"Failed to increment completed batches for {validation_id}: {get_exception_msg()}")
+            self.log.exception(f"Failed to increment completed batches for {log_ctx}: {get_exception_msg()}")
             return None, False, 0, None, []
         except Exception as e:
             self.log.exception(e)
-            self.log.exception(f"Failed to increment completed batches for {validation_id}: {get_exception_msg()}")
+            self.log.exception(f"Failed to increment completed batches for {log_ctx}: {get_exception_msg()}")
             return None, False, 0, None, []
 
-    def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None):
-        """Update validation status."""
+    def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, submission_id=None):
+        """Update validation status.
+
+        submission_id is optional; when provided (e.g. by batched metadata validation),
+        it is included in log messages.
+        """
         db = self.client[self.db_name]
         data_collection = db[VALIDATION_COLLECTION]
         update_status = True
         update_status_value = status
         update_validation_end_at_value = validation_end_at
+        log_ctx = f'validation_id={validation_id}'
+        if submission_id is not None:
+            log_ctx += f' submission_id={submission_id}'
         try:
             validation_document = data_collection.find_one({ID: validation_id})
             if validation_document is None:
-                self.log.error(f"No validation document found for ID: {validation_id}")
+                self.log.error(f"No validation document found for {log_ctx}")
                 return False
             validation_update_dict = {}
             if status_detail is not None:
@@ -1105,11 +1138,11 @@ class MongoDao:
             return True if result.modified_count > 0 and update_status else False
         except errors.PyMongoError as pe:
             self.log.exception(pe)
-            self.log.exception(f"Failed to update validation status for {validation_id}: {get_exception_msg()}")
+            self.log.exception(f"Failed to update validation status for {log_ctx}: {get_exception_msg()}")
             return False
         except Exception as e:
             self.log.exception(e)
-            self.log.exception(f"Failed to update validation status for {validation_id}: {get_exception_msg()}")
+            self.log.exception(f"Failed to update validation status for {log_ctx}: {get_exception_msg()}")
             return False
 
     """

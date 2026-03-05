@@ -391,7 +391,7 @@ class TestBatchHandler:
 
         call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
         assert call_kwargs['batch_failed'] is True
-        assert call_kwargs['batch_status'] == constants.STATUS_ERROR
+        assert call_kwargs['batch_status'] == constants.FAILED
 
     def test_validate_nodes_exception_last_batch_uses_worst_status(self, mock_configs, mock_model_store, mock_mongo_dao):
         msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
@@ -422,7 +422,7 @@ class TestBatchHandler:
         bad_model.get_nodes.return_value = []
         mock_model_store.get_model_by_data_common_version.return_value = bad_model
         mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.STATUS_ERROR, ['CDS model version "1.0" is not available.']
+            1, True, 1, constants.FAILED, ['CDS model version "1.0" is not available.']
         )
 
         msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
@@ -430,8 +430,11 @@ class TestBatchHandler:
 
         args = mock_mongo_dao.update_validation_status.call_args[0]
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.STATUS_ERROR
+        assert args[1] == constants.FAILED
         assert any('not available' in d for d in kwargs['status_detail'])
+        # Caller passes FAILED; DAO does not write it to submission
+        sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
+        assert sub_args[2] == constants.FAILED
 
     # -- missing study --
 
@@ -456,7 +459,7 @@ class TestBatchHandler:
     def test_missing_study_last_batch_sets_failed(self, mock_configs, mock_model_store, mock_mongo_dao):
         mock_mongo_dao.find_study_by_id.return_value = None
         mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.STATUS_ERROR, ['Invalid submission, no study found, sub-1!']
+            1, True, 1, constants.FAILED, ['Invalid submission, no study found, sub-1!']
         )
         msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
 
@@ -464,8 +467,10 @@ class TestBatchHandler:
 
         args = mock_mongo_dao.update_validation_status.call_args[0]
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.STATUS_ERROR
+        assert args[1] == constants.FAILED
         assert any('no study found' in d for d in kwargs['status_detail'])
+        sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
+        assert sub_args[2] == constants.FAILED
 
     # -- submission not found --
 
@@ -479,7 +484,7 @@ class TestBatchHandler:
     def test_submission_not_found_last_batch_sets_failed(self, mock_configs, mock_model_store, mock_mongo_dao):
         mock_mongo_dao.get_submission.return_value = None
         mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.STATUS_ERROR, ['Submission not found: sub-1']
+            1, True, 1, constants.FAILED, ['Submission not found: sub-1']
         )
         msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
 
@@ -487,7 +492,7 @@ class TestBatchHandler:
 
         args = mock_mongo_dao.update_validation_status.call_args[0]
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.STATUS_ERROR
+        assert args[1] == constants.FAILED
         assert any('Submission not found' in d for d in kwargs['status_detail'])
         mock_mongo_dao.set_submission_validation_status.assert_not_called()
 
@@ -503,7 +508,7 @@ class TestBatchHandler:
     def test_no_data_records_last_batch_updates_submission_status(self, mock_configs, mock_model_store, mock_mongo_dao):
         mock_mongo_dao.get_dataRecords_by_ids.return_value = []
         mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.STATUS_ERROR, ['No data records found for provided IDs in batch 0']
+            1, True, 1, constants.FAILED, ['No data records found for provided IDs in batch 0']
         )
         msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
 
@@ -512,13 +517,13 @@ class TestBatchHandler:
         mock_mongo_dao.update_validation_status.assert_called_once()
         args = mock_mongo_dao.update_validation_status.call_args[0]
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.STATUS_ERROR
+        assert args[1] == constants.FAILED
         assert any('No data records found' in d for d in kwargs['status_detail'])
 
         mock_mongo_dao.set_submission_validation_status.assert_called_once()
         sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
         sub_kwargs = mock_mongo_dao.set_submission_validation_status.call_args[1]
-        assert sub_args[2] == constants.STATUS_ERROR
+        assert sub_args[2] == constants.FAILED
         assert any('No data records found' in d for d in sub_kwargs['status_detail'])
 
     # -- missing scope treated as invalid message --
@@ -541,7 +546,7 @@ class TestBatchHandler:
         mock_mongo_dao.get_dataRecords_by_ids.assert_not_called()
         call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
         assert call_kwargs['batch_failed'] is True
-        assert call_kwargs['batch_status'] == constants.STATUS_ERROR
+        assert call_kwargs['batch_status'] == constants.FAILED
         msg.delete.assert_called_once()
 
     def test_missing_scope_last_batch_updates_submission_status(self, mock_configs, mock_model_store, mock_mongo_dao):
@@ -556,7 +561,7 @@ class TestBatchHandler:
         msg = MagicMock()
         msg.body = json.dumps(payload)
         mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.STATUS_ERROR, ['Missing required field: scope']
+            1, True, 1, constants.FAILED, ['Missing required field: scope']
         )
 
         self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
@@ -564,13 +569,13 @@ class TestBatchHandler:
         mock_mongo_dao.update_validation_status.assert_called_once()
         args = mock_mongo_dao.update_validation_status.call_args[0]
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.STATUS_ERROR
+        assert args[1] == constants.FAILED
         assert 'Missing required field: scope' in kwargs['status_detail']
 
         mock_mongo_dao.set_submission_validation_status.assert_called_once()
         sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
         sub_kwargs = mock_mongo_dao.set_submission_validation_status.call_args[1]
-        assert sub_args[2] == constants.STATUS_ERROR
+        assert sub_args[2] == constants.FAILED
         assert 'Missing required field: scope' in sub_kwargs['status_detail']
 
     # -- zero total_batches treated as invalid message --
@@ -601,14 +606,14 @@ class TestBatchHandler:
         the final status must reflect the worst across all batches."""
         msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
         mock_mongo_dao.increment_completed_batches.return_value = (
-            3, True, 1, constants.STATUS_ERROR, ['Batch 1: Submission not found']
+            3, True, 1, constants.FAILED, ['Batch 1: Submission not found']
         )
 
         self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
         args = mock_mongo_dao.update_validation_status.call_args[0]
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.STATUS_ERROR
+        assert args[1] == constants.FAILED
         assert kwargs['status_detail'] == ['Batch 1: Submission not found']
 
     def test_multiple_prior_failures_accumulated_in_details(self, mock_configs, mock_model_store, mock_mongo_dao):
@@ -699,7 +704,7 @@ class TestBatchHandler:
             constants.STUDY_ID: 'study-1',
         }
         mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.STATUS_ERROR, ['Invalid submission, no datacommon found, sub-1!']
+            1, True, 1, constants.FAILED, ['Invalid submission, no datacommon found, sub-1!']
         )
         msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
 
@@ -707,8 +712,10 @@ class TestBatchHandler:
 
         args = mock_mongo_dao.update_validation_status.call_args[0]
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.STATUS_ERROR
+        assert args[1] == constants.FAILED
         assert any('no datacommon found' in d for d in kwargs['status_detail'])
+        sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
+        assert sub_args[2] == constants.FAILED
 
     # -- get_dataRecords_by_ids returns None (DB error) --
 
@@ -720,12 +727,12 @@ class TestBatchHandler:
 
         call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
         assert call_kwargs['batch_failed'] is True
-        assert call_kwargs['batch_status'] == constants.STATUS_ERROR
+        assert call_kwargs['batch_status'] == constants.FAILED
 
     def test_data_records_db_error_last_batch_sets_failed(self, mock_configs, mock_model_store, mock_mongo_dao):
         mock_mongo_dao.get_dataRecords_by_ids.return_value = None
         mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.STATUS_ERROR, ['No data records found for provided IDs in batch 0']
+            1, True, 1, constants.FAILED, ['No data records found for provided IDs in batch 0']
         )
         msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
 
@@ -733,5 +740,5 @@ class TestBatchHandler:
 
         args = mock_mongo_dao.update_validation_status.call_args[0]
         kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.STATUS_ERROR
+        assert args[1] == constants.FAILED
         assert any('No data records found' in d for d in kwargs['status_detail'])

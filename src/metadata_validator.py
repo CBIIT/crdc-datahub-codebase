@@ -4,7 +4,7 @@ from datetime import datetime
 import re
 from bento.common.sqs import VisibilityExtender
 from bento.common.utils import get_logger, DATE_FORMATS
-from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, WARNINGS, STATUS_ERROR, ID, \
+from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, WARNINGS, STATUS_ERROR, FAILED, ID, \
     STATUS_WARNING, STATUS_PASSED, STATUS, UPDATED_AT, MODEL_FILE_DIR, TIER_CONFIG, DATA_COMMON_NAME, MODEL_VERSION, \
     NODE_TYPE, PROPERTIES, TYPE, MIN, MAX, VALUE_EXCLUSIVE, VALUE_PROP, VALIDATION_RESULT, ORIN_FILE_NAME, \
     VALIDATED_AT, SERVICE_TYPE_METADATA, NODE_ID, PROPERTIES, PARENTS, KEY, NODE_ID, PARENT_TYPE, PARENT_ID_NAME, PARENT_ID_VAL, \
@@ -56,47 +56,48 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
     validated = False
     validator = None
     submission = None
-    batch_status = STATUS_ERROR
+    batch_status = FAILED
     status_detail = None
 
     if not validation_id:
-        log.error(f'Invalid batch message - missing validationID: {data}')
+        log.error(f'Invalid batch message - missing validationID submission_id={submission_id}: {data}')
         log.critical('Batch message rejected: missing validationID; validation may be stuck.')
         return None
 
     if total_batches < 1:
-        log.error(f'Invalid batch message - total_batches must be >= 1, got {total_batches}: {data}')
+        log.error(f'Invalid batch message - total_batches must be >= 1, got {total_batches} submission_id={submission_id} validation_id={validation_id}: {data}')
         log.critical(f'Batch message rejected: total_batches={total_batches}; validation may be stuck.')
         return None
 
-    log.info(f'Processing batch {batch_index + 1}/{total_batches} for validation {validation_id} '
+    batch_label = f'batch {batch_index + 1}/{total_batches}'
+    log.info(f'Processing {batch_label} submission_id={submission_id} validation_id={validation_id} '
              f'({len(data_record_ids)} records)')
 
     try:
         submission = mongo_dao.get_submission(submission_id)
         if not submission:
-            batch_status = STATUS_ERROR
+            batch_status = FAILED
             status_detail = f'Submission not found: {submission_id}'
-            log.error(status_detail)
+            log.error(f'{status_detail} validation_id={validation_id} {batch_label}')
             return None
 
         if not scope:
-            batch_status = STATUS_ERROR
+            batch_status = FAILED
             status_detail = 'Missing required field: scope'
-            log.error(f'Invalid batch message - missing scope: {data}')
+            log.error(f'Invalid batch message - missing scope submission_id={submission_id} validation_id={validation_id} {batch_label}: {data}')
             return None
 
         if not data_record_ids:
-            batch_status = STATUS_ERROR
+            batch_status = FAILED
             status_detail = 'Empty dataRecordIds in batch message'
-            log.error(f'Invalid batch message - empty dataRecordIds: {data}')
+            log.error(f'Invalid batch message - empty dataRecordIds submission_id={submission_id} validation_id={validation_id} {batch_label}: {data}')
             return None
 
         data_records = mongo_dao.get_dataRecords_by_ids(data_record_ids)
         if not data_records:
-            batch_status = STATUS_ERROR
+            batch_status = FAILED
             status_detail = f'No data records found for provided IDs in batch {batch_index}'
-            log.error(status_detail)
+            log.error(f'{status_detail} submission_id={submission_id} validation_id={validation_id} {batch_label}')
             return None
 
         validator = MetaDataValidator(mongo_dao, model_store, configs)
@@ -115,7 +116,7 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
             batch_status = STATUS_PASSED
 
     except Exception as ve:
-        log.exception(f'Error validating batch {batch_index} for {validation_id}: {ve}')
+        log.exception(f'Error validating batch submission_id={submission_id} validation_id={validation_id} {batch_label}: {ve}')
     finally:
         try:
             completed_count, is_last_batch, failed_count, worst_status, batch_details = \
@@ -124,25 +125,28 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
                     batch_failed=(not validated),
                     batch_status=batch_status,
                     status_detail=status_detail if not validated else None,
+                    submission_id=submission_id,
+                    batch_index=batch_index,
                 )
 
             if is_last_batch:
-                log.info(f'All {total_batches} batches complete for validation {validation_id}')
+                log.info(f'All {total_batches} batches complete submission_id={submission_id} validation_id={validation_id}')
                 final_status = worst_status
                 # statusDetail is a list of failure messages for batch runs, or None when no failures.
                 final_detail = batch_details if batch_details else None
                 if failed_count > 0:
-                    log.error(f'Validation {validation_id}: {failed_count} of {total_batches} batches failed')
+                    log.error(f'Validation submission_id={submission_id} validation_id={validation_id}: {failed_count} of {total_batches} batches failed')
                 validation_end_at = current_datetime()
 
                 update_ok = mongo_dao.update_validation_status(
                     validation_id, final_status, validation_end_at, METADATA_VALIDATION,
                     status_detail=final_detail,
+                    submission_id=submission_id,
                 )
                 if not update_ok:
                     log.warning(
-                        f'Validation {validation_id}: status update reported no modification; '
-                        'validation record may be stale.'
+                        f'Validation submission_id={submission_id} validation_id={validation_id}: '
+                        'status update reported no modification; validation record may be stale.'
                     )
 
                 if submission:
@@ -150,18 +154,18 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
                     sub_doc[VALIDATION_ENDED] = validation_end_at
                     mongo_dao.set_submission_validation_status(
                         sub_doc, None, final_status, None, None,
-                        status_detail=final_detail
+                        status_detail=final_detail,
+                        scope=scope,
                     )
 
-                log.info(f'Validation {validation_id} completed with status: {final_status}')
+                log.info(f'Validation completed submission_id={submission_id} validation_id={validation_id} status={final_status}')
             elif completed_count is not None:
-                log.info(f'Batch {batch_index + 1} complete, '
+                log.info(f'{batch_label} complete submission_id={submission_id} validation_id={validation_id} '
                          f'{total_batches - completed_count} batches remaining')
             else:
-                log.error(f'Failed to record batch {batch_index + 1} completion for '
-                          f'validation {validation_id} -- validation may be stuck')
+                log.error(f'Failed to record {batch_label} completion submission_id={submission_id} validation_id={validation_id} -- validation may be stuck')
         except Exception as fe:
-            log.exception(f'Failed to finalize batch {batch_index} for {validation_id}: {fe}')
+            log.exception(f'Failed to finalize batch submission_id={submission_id} validation_id={validation_id} {batch_label}: {fe}')
 
     return validator
 
@@ -177,15 +181,15 @@ def _process_metadata_validation(mongo_dao, model_store, configs, data):
     validation_id = data.get(VALIDATION_ID)
     if not scope or not validation_id:
         log = get_logger(__name__)
-        log.error(f'Missing required field for metadata validation: scope={scope!r}, validation_id={validation_id!r}')
+        log.error(f'Missing required field for metadata validation: scope={scope}, validation_id={validation_id}')
         return None
     validator = MetaDataValidator(mongo_dao, model_store, configs)
     status = validator.validate(submission_id, scope)
     validation_end_at = current_datetime()
-    update_status = mongo_dao.update_validation_status(validation_id, status, validation_end_at, METADATA_VALIDATION, status_detail=None)
+    update_status = mongo_dao.update_validation_status(validation_id, status, validation_end_at, METADATA_VALIDATION, status_detail=None, submission_id=submission_id)
     if update_status:
         validator.submission[VALIDATION_ENDED] = validation_end_at
-    mongo_dao.set_submission_validation_status(validator.submission, None, status, None, None, status_detail=None)
+    mongo_dao.set_submission_validation_status(validator.submission, None, status, None, None, status_detail=None, scope=scope)
     return validator
 
 
@@ -298,26 +302,26 @@ class MetaDataValidator:
         if not self.datacommon:
             msg = f'Invalid submission, no datacommon found, {submission_id}!'
             self.log.error(msg)
-            return STATUS_ERROR, msg
+            return FAILED, msg
 
         model_version = submission.get(MODEL_VERSION)
         self.model = self.model_store.get_model_by_data_common_version(self.datacommon, model_version)
         if not self.model.model or not self.model.get_nodes():
             msg = f'{self.datacommon} model version "{model_version}" is not available.'
             self.log.error(msg)
-            return STATUS_ERROR, msg
+            return FAILED, msg
 
         study_id = submission.get(STUDY_ID)
         if not study_id:
             msg = f'Invalid submission, no study id found, {submission_id}!'
             self.log.error(msg)
-            return STATUS_ERROR, msg
+            return FAILED, msg
 
         study = self.mongo_dao.find_study_by_id(study_id)
         if not study:
             msg = f'Invalid submission, no study found, {submission_id}!'
             self.log.error(msg)
-            return STATUS_ERROR, msg
+            return FAILED, msg
 
         self.study_name = study.get("studyName")
         self.program_names = self.mongo_dao.find_organization_name_by_study_id(study_id)
@@ -327,7 +331,7 @@ class MetaDataValidator:
         submission = self.mongo_dao.get_submission(submission_id)
         if not submission:
             self.log.error(f'Invalid submissionID, no submission found, {submission_id}!')
-            return STATUS_ERROR
+            return FAILED
 
         init_error = self._initialize_for_validation(submission, submission_id, scope)
         if init_error:
@@ -341,7 +345,7 @@ class MetaDataValidator:
             if start_index == 0 and (not data_records or len(data_records) == 0):
                 msg = f'No more new metadata to be validated.'
                 self.log.error(msg)
-                return STATUS_ERROR
+                return FAILED
             
             count = len(data_records)             
             validated_count += self.validate_nodes(data_records)
