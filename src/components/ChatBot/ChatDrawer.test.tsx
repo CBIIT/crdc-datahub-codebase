@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
-import { fireEvent, render } from "@/test-utils";
+import { render } from "@/test-utils";
 
 import ChatDrawer from "./ChatDrawer";
 import * as ChatBotContextModule from "./context/ChatBotContext";
@@ -30,12 +30,15 @@ const defaultChatDrawerContext = {
   drawerRef: { current: null },
   heightPx: 600,
   widthPx: 384,
+  positionX: 0,
+  positionY: 0,
   isDragging: false,
   isExpanded: true,
   isMinimized: false,
   isFullscreen: false,
   isOpen: true,
   onBeginResize: vi.fn(),
+  onBeginMove: vi.fn(),
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
@@ -132,21 +135,6 @@ describe("Basic Functionality", () => {
     expect(container).toBeTruthy();
   });
 
-  it("should display the title from context", () => {
-    mockUseChatBotContext.mockReturnValue({
-      ...defaultChatBotContext,
-      title: "Support Chat",
-    });
-
-    const { getByText } = render(
-      <ChatDrawer>
-        <div>Test content</div>
-      </ChatDrawer>
-    );
-
-    expect(getByText("Support Chat")).toBeInTheDocument();
-  });
-
   it("should render children content", () => {
     const { getByText } = render(
       <ChatDrawer>
@@ -155,59 +143,6 @@ describe("Basic Functionality", () => {
     );
 
     expect(getByText("Custom child content")).toBeInTheDocument();
-  });
-
-  it("should show drag handle when not in fullscreen", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isFullscreen: false,
-    });
-
-    const { container } = render(
-      <ChatDrawer>
-        <div>Test content</div>
-      </ChatDrawer>
-    );
-
-    const dragHandle = container.querySelector("[data-dragging]");
-    expect(dragHandle).toBeInTheDocument();
-  });
-
-  it("should hide drag handle when in fullscreen", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isFullscreen: true,
-    });
-
-    const { container } = render(
-      <ChatDrawer>
-        <div>Test content</div>
-      </ChatDrawer>
-    );
-
-    const dragHandle = container.querySelector("[data-dragging]");
-    expect(dragHandle).not.toBeInTheDocument();
-  });
-
-  it("should call onBeginResize when drag handle is clicked", () => {
-    const onBeginResize = vi.fn();
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      onBeginResize,
-    });
-
-    const { container } = render(
-      <ChatDrawer>
-        <div>Test content</div>
-      </ChatDrawer>
-    );
-
-    const dragHandle = container.querySelector("[data-dragging]");
-    if (dragHandle) {
-      fireEvent.pointerDown(dragHandle);
-    }
-
-    expect(onBeginResize).toHaveBeenCalled();
   });
 
   it("should show expand icon when collapsed", () => {
@@ -258,21 +193,20 @@ describe("Basic Functionality", () => {
     expect(onToggleExpand).toHaveBeenCalled();
   });
 
-  it("should hide expand button when in fullscreen", () => {
+  it("should show expand button even in fullscreen", () => {
     mockUseChatDrawerContext.mockReturnValue({
       ...defaultChatDrawerContext,
       isFullscreen: true,
       isExpanded: true,
     });
 
-    const { queryByLabelText } = render(
+    const { getByLabelText } = render(
       <ChatDrawer>
         <div>Test content</div>
       </ChatDrawer>
     );
 
-    expect(queryByLabelText("Collapse chat drawer")).not.toBeInTheDocument();
-    expect(queryByLabelText("Expand chat drawer")).not.toBeInTheDocument();
+    expect(getByLabelText("Collapse chat drawer")).toBeInTheDocument();
   });
 
   it("should show fullscreen icon when not in fullscreen", () => {
@@ -490,51 +424,5 @@ describe("Basic Functionality", () => {
 
     const drawer = container.querySelector('[data-fullscreen="true"]');
     expect(drawer).toBeInTheDocument();
-  });
-
-  it("should apply data-dragging attribute when dragging", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isDragging: true,
-    });
-
-    const { container } = render(
-      <ChatDrawer>
-        <div>Test content</div>
-      </ChatDrawer>
-    );
-
-    const dragHandle = container.querySelector('[data-dragging="true"]');
-    expect(dragHandle).toBeInTheDocument();
-  });
-
-  it("should update when context values change", () => {
-    mockUseChatBotContext.mockReturnValue({
-      ...defaultChatBotContext,
-      title: "First Title",
-    });
-
-    const { getByText, unmount } = render(
-      <ChatDrawer>
-        <div>Test content</div>
-      </ChatDrawer>
-    );
-
-    expect(getByText("First Title")).toBeInTheDocument();
-
-    unmount();
-
-    mockUseChatBotContext.mockReturnValue({
-      ...defaultChatBotContext,
-      title: "Second Title",
-    });
-
-    const { getByText: getByText2 } = render(
-      <ChatDrawer>
-        <div>Test content</div>
-      </ChatDrawer>
-    );
-
-    expect(getByText2("Second Title")).toBeInTheDocument();
   });
 });

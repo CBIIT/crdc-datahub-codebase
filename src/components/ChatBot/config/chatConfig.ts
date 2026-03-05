@@ -13,7 +13,7 @@ const chatConfig = {
   /**
    * The initial message sent by the support bot when the chat starts a new conversation.
    */
-  initialMessage: "Hi there! 👋 How can I help you today?",
+  initialMessage: "How can I help you?",
   /**
    * The height configuration for the chat drawer.
    */
@@ -21,11 +21,11 @@ const chatConfig = {
     /**
      * The height of the chat drawer when it is collapsed.
      */
-    collapsed: 475,
+    collapsed: 368,
     /**
      * The minimum height of the chat drawer.
      */
-    min: 475,
+    min: 368,
     /**
      * The threshold in pixels at which the chat drawer will snap to its expanded height.
      */
@@ -38,11 +38,15 @@ const chatConfig = {
     /**
      * The default width of the chat drawer.
      */
-    default: 384,
+    default: 400,
     /**
      * The minimum width of the chat drawer.
      */
-    min: 384,
+    min: 400,
+    /**
+     * The width of the chat drawer when expanded.
+     */
+    expanded: 417,
   },
 };
 

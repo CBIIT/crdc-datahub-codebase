@@ -1,88 +1,27 @@
-import { Box, Stack, Typography, styled } from "@mui/material";
+import { CircularProgress, Stack, styled } from "@mui/material";
 import React from "react";
 
-import chatConfig from "../config/chatConfig";
-import { useChatDrawerContext } from "../context/ChatDrawerContext";
+import ChatBotLogo from "../components/ChatBotLogo";
 
-const TypingSender = styled(Typography, {
-  shouldForwardProp: (prop) => prop !== "isFullscreen",
-})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
-  fontSize: isFullscreen ? "16px" : "12px",
-  fontWeight: 500,
-  color: "rgba(0,0,0,0.7)",
-  paddingInline: "4px",
-  marginBottom: "4px",
-}));
-
-const TypingBubble = styled(Box, {
-  shouldForwardProp: (prop) => prop !== "isFullscreen",
-})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
-  display: "inline-flex",
+const StyledContainer = styled(Stack)({
   alignItems: "center",
-  gap: isFullscreen ? 14 : 10,
-  paddingInline: isFullscreen ? "18px" : "14px",
-  paddingBlock: isFullscreen ? "14px" : "10px",
-  minHeight: isFullscreen ? "48px" : "36px",
-  borderRadius: "12px",
-  backgroundColor: "#F5F5F5",
-}));
+  marginBottom: "12px",
+});
 
-const TypingDot = styled("span", {
-  shouldForwardProp: (prop) => prop !== "isFullscreen",
-})<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
-  "--dot-size": isFullscreen ? "12px" : "10px",
-  "--dot-border-width": "1px",
-  "--dot-border-color": "rgba(0, 94, 162, 0.28)",
-  "--dot-color-1": "#005EA2",
-  "--dot-color-2": "#2B78B3",
-  "--dot-color-3": "#5A99C8",
-  "--animation-duration": "1200ms",
-  "--animation-delay-step": "260ms",
+const StyledLogoWrapper = styled("div")({
+  marginRight: "2px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  "& > button": {
+    transform: "scale(0.6667)",
+    transformOrigin: "center",
+  },
+});
 
-  width: "var(--dot-size)",
-  height: "var(--dot-size)",
-  borderRadius: "50%",
-  display: "block",
-  boxSizing: "border-box",
-  backgroundColor: "transparent",
-  border: "var(--dot-border-width) solid var(--dot-border-color)",
-  animationName: "typingDotSweep",
-  animationDuration: "var(--animation-duration)",
-  animationIterationCount: "infinite",
-  animationTimingFunction: "ease-in-out",
-
-  "@keyframes typingDotSweep": {
-    "0%": {
-      backgroundColor: "var(--dot-color)",
-      borderColor: "transparent",
-    },
-    "24%": {
-      backgroundColor: "var(--dot-color)",
-      borderColor: "transparent",
-    },
-    "34%": {
-      backgroundColor: "transparent",
-      borderColor: "var(--dot-border-color)",
-    },
-    "100%": {
-      backgroundColor: "transparent",
-      borderColor: "var(--dot-border-color)",
-    },
-  },
-
-  "&:nth-of-type(1)": {
-    ["--dot-color" as string]: "var(--dot-color-1)",
-    animationDelay: "0ms",
-  },
-  "&:nth-of-type(2)": {
-    ["--dot-color" as string]: "var(--dot-color-2)",
-    animationDelay: "var(--animation-delay-step)",
-  },
-  "&:nth-of-type(3)": {
-    ["--dot-color" as string]: "var(--dot-color-3)",
-    animationDelay: "calc(var(--animation-delay-step) * 2)",
-  },
-}));
+const StyledProgress = styled(CircularProgress)({
+  color: "#005EA2",
+});
 
 export type Props = {
   /**
@@ -92,28 +31,15 @@ export type Props = {
 };
 
 /**
- * Displays an animated typing indicator with the bot's name and three animated dots.
+ * Displays an animated typing indicator with the ChatBot logo and a loading spinner.
  */
-const BotTypingIndicator = ({ senderName = chatConfig.supportBotName }: Props): JSX.Element => {
-  const { isFullscreen } = useChatDrawerContext();
-
-  return (
-    <Stack direction="row" justifyContent="flex-start" marginBottom="12px">
-      <Stack direction="column" alignItems="flex-start">
-        <TypingSender isFullscreen={isFullscreen}>{senderName}</TypingSender>
-
-        <TypingBubble
-          role="status"
-          aria-label={`${senderName} is typing`}
-          isFullscreen={isFullscreen}
-        >
-          <TypingDot isFullscreen={isFullscreen} />
-          <TypingDot isFullscreen={isFullscreen} />
-          <TypingDot isFullscreen={isFullscreen} />
-        </TypingBubble>
-      </Stack>
-    </Stack>
-  );
-};
+const BotTypingIndicator = (): JSX.Element => (
+  <StyledContainer direction="row" role="status" aria-label="Assistant is typing">
+    <StyledLogoWrapper>
+      <ChatBotLogo animated ariaLabel="Assistant" />
+    </StyledLogoWrapper>
+    <StyledProgress size={20} thickness={4} aria-label="Loading" />
+  </StyledContainer>
+);
 
 export default React.memo<Props>(BotTypingIndicator);

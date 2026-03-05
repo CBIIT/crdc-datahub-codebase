@@ -97,9 +97,12 @@ const defaultChatDrawerHook = {
   isExpanded: true,
   drawerHeightPx: 600,
   drawerWidthPx: 384,
+  drawerPositionX: 0,
+  drawerPositionY: 0,
   openDrawer: vi.fn(),
   closeDrawer: vi.fn(),
   beginResize: vi.fn(),
+  beginMove: vi.fn(),
   toggleExpand: vi.fn(),
 };
 
@@ -491,6 +494,65 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     const button = getByTestId("toggle-expand");
     userEvent.click(button);
 
+    expect(toggleExpand).toHaveBeenCalled();
+  });
+
+  it("should exit fullscreen when toggle expand is called while fullscreen and expanded", async () => {
+    mockUseChatDrawer.mockReturnValue({
+      ...defaultChatDrawerHook,
+      isOpen: true,
+      isExpanded: true,
+    });
+
+    const { getByTestId } = render(
+      <Wrapper>
+        <TestParent />
+      </Wrapper>
+    );
+
+    const fullscreenButton = getByTestId("toggle-fullscreen");
+    userEvent.click(fullscreenButton);
+
+    await waitFor(() => {
+      expect(getByTestId("is-fullscreen")).toHaveTextContent("true");
+    });
+
+    const expandButton = getByTestId("toggle-expand");
+    userEvent.click(expandButton);
+
+    await waitFor(() => {
+      expect(getByTestId("is-fullscreen")).toHaveTextContent("false");
+    });
+  });
+
+  it("should exit fullscreen and toggle expand when toggle expand is called while fullscreen but not expanded", async () => {
+    const toggleExpand = vi.fn();
+    mockUseChatDrawer.mockReturnValue({
+      ...defaultChatDrawerHook,
+      isOpen: true,
+      isExpanded: false,
+      toggleExpand,
+    });
+
+    const { getByTestId } = render(
+      <Wrapper>
+        <TestParent />
+      </Wrapper>
+    );
+
+    const fullscreenButton = getByTestId("toggle-fullscreen");
+    userEvent.click(fullscreenButton);
+
+    await waitFor(() => {
+      expect(getByTestId("is-fullscreen")).toHaveTextContent("true");
+    });
+
+    const expandButton = getByTestId("toggle-expand");
+    userEvent.click(expandButton);
+
+    await waitFor(() => {
+      expect(getByTestId("is-fullscreen")).toHaveTextContent("false");
+    });
     expect(toggleExpand).toHaveBeenCalled();
   });
 

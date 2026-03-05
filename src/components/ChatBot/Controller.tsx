@@ -25,7 +25,7 @@ type Props = {
 /**
  * Controls the visibility of the ChatBot component and manages its providers.
  */
-const ChatController: FC<Props> = ({ label = "Chat", title = "Chat" }) => {
+const ChatController: FC<Props> = ({ label, title }) => {
   const chatbotEnabled = (env.VITE_CHATBOT_ENABLED || "true")?.toLowerCase() === "true";
   const knowledgeBaseUrl =
     env.VITE_KNOWLEDGE_BASE_URL ||

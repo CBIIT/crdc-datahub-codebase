@@ -18,11 +18,14 @@ const defaultContext = {
   drawerRef: { current: null },
   heightPx: 600,
   widthPx: 384,
+  positionX: 0,
+  positionY: 0,
   isDragging: false,
   isExpanded: true,
   isMinimized: false,
   isOpen: true,
   onBeginResize: vi.fn(),
+  onBeginMove: vi.fn(),
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
@@ -94,20 +97,6 @@ describe("Basic Functionality", () => {
     const { getByText } = render(<ChatMessageItem message={message} />);
 
     expect(getByText("Hello from user")).toBeInTheDocument();
-  });
-
-  it("should display sender name for bot messages", () => {
-    const message = createMockMessage({ senderName: "Support Bot" });
-    const { getByText } = render(<ChatMessageItem message={message} />);
-
-    expect(getByText("Support Bot")).toBeInTheDocument();
-  });
-
-  it("should not display sender name for user messages", () => {
-    const message = createMockMessage({ sender: "user", senderName: "You" });
-    const { queryByText } = render(<ChatMessageItem message={message} />);
-
-    expect(queryByText("You")).not.toBeInTheDocument();
   });
 
   it("should display formatted timestamp", () => {
@@ -449,64 +438,6 @@ describe("Markdown Formatting", () => {
     expect(checkboxes[2]).not.toBeChecked();
   });
 
-  it("should apply larger font size to sender name when in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: true,
-    });
-
-    const message = createMockMessage({ sender: "bot", senderName: "Support Bot" });
-    const { getByText } = render(<ChatMessageItem message={message} />);
-
-    const senderElement = getByText("Support Bot");
-    expect(senderElement).toHaveStyle({ fontSize: "16px" });
-  });
-
-  it("should apply smaller font size to sender name when not in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: false,
-    });
-
-    const message = createMockMessage({ sender: "bot", senderName: "Support Bot" });
-    const { getByText } = render(<ChatMessageItem message={message} />);
-
-    const senderElement = getByText("Support Bot");
-    expect(senderElement).toHaveStyle({ fontSize: "12px" });
-  });
-
-  it("should apply larger font size to timestamp when in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: true,
-    });
-
-    const message = createMockMessage({
-      sender: "bot",
-      timestamp: new Date("2024-01-15T14:30:00"),
-    });
-    const { getByText } = render(<ChatMessageItem message={message} />);
-
-    const timestampElement = getByText("02:30 PM");
-    expect(timestampElement).toHaveStyle({ fontSize: "16px" });
-  });
-
-  it("should apply smaller font size to timestamp when not in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultContext,
-      isFullscreen: false,
-    });
-
-    const message = createMockMessage({
-      sender: "bot",
-      timestamp: new Date("2024-01-15T14:30:00"),
-    });
-    const { getByText } = render(<ChatMessageItem message={message} />);
-
-    const timestampElement = getByText("02:30 PM");
-    expect(timestampElement).toHaveStyle({ fontSize: "12px" });
-  });
-
   it("should apply larger font size and padding to message bubble when in fullscreen mode", () => {
     mockUseChatDrawerContext.mockReturnValue({
       ...defaultContext,
@@ -751,5 +682,95 @@ describe("PreComponent - Copy to Clipboard", () => {
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith("");
     });
+  });
+
+  it("should render date and divider when isFirstMessage is true", () => {
+    const message = createMockMessage({
+      timestamp: new Date("2024-01-15T14:30:00"),
+    });
+    const { container } = render(<ChatMessageItem message={message} isFirstMessage />);
+
+    expect(container.textContent).toContain("January 15, 2024");
+  });
+
+  it("should not render date when isFirstMessage is false", () => {
+    const message = createMockMessage({
+      timestamp: new Date("2024-01-15T14:30:00"),
+    });
+    const { container } = render(<ChatMessageItem message={message} isFirstMessage={false} />);
+
+    expect(container.textContent).not.toContain("January 15, 2024");
+  });
+
+  it("should not render date when isFirstMessage is not provided", () => {
+    const message = createMockMessage({
+      timestamp: new Date("2024-01-15T14:30:00"),
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    expect(container.textContent).not.toContain("January 15, 2024");
+  });
+
+  it("should render citations for bot messages with citations", () => {
+    const message = createMockMessage({
+      sender: "bot",
+      text: "Here is some information",
+      citations: [
+        { title: "Citation 1", url: "https://example.com/1" },
+        { title: "Citation 2", url: "https://example.com/2" },
+      ],
+    });
+    const { getByText } = render(<ChatMessageItem message={message} />);
+
+    expect(getByText("Citation 1")).toBeInTheDocument();
+    expect(getByText("Citation 2")).toBeInTheDocument();
+  });
+
+  it("should render citation chips as links", () => {
+    const message = createMockMessage({
+      sender: "bot",
+      text: "Information with source",
+      citations: [{ title: "Source Doc", url: "https://example.com/doc" }],
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const citationLink = container.querySelector('a[href="https://example.com/doc"]');
+    expect(citationLink).toBeInTheDocument();
+    expect(citationLink).toHaveAttribute("target", "_blank");
+    expect(citationLink).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("should render fallback citation label when title is missing", () => {
+    const message = createMockMessage({
+      sender: "bot",
+      text: "Information",
+      citations: [{ title: "", url: "https://example.com/1" }],
+    });
+    const { getByText } = render(<ChatMessageItem message={message} />);
+
+    expect(getByText("[1]")).toBeInTheDocument();
+  });
+
+  it("should not render citations for user messages", () => {
+    const message = createMockMessage({
+      sender: "user",
+      text: "User query",
+      citations: [{ title: "Citation", url: "https://example.com" }],
+    });
+    const { queryByText } = render(<ChatMessageItem message={message} />);
+
+    expect(queryByText("Citation")).not.toBeInTheDocument();
+  });
+
+  it("should not render citations container when citations array is empty", () => {
+    const message = createMockMessage({
+      sender: "bot",
+      text: "No citations here",
+      citations: [],
+    });
+    const { container } = render(<ChatMessageItem message={message} />);
+
+    const chips = container.querySelectorAll(".MuiChip-root");
+    expect(chips).toHaveLength(0);
   });
 });
