@@ -228,6 +228,7 @@ type Submission implements SubmissionInterface {
     inactiveReminder_30: Boolean
     inactiveReminder_60: Boolean
     dataFileSize: FileSize
+    statusDetail: [String]
 }
 
 type SubmissionList implements SubmissionInterface {
@@ -305,14 +306,22 @@ type ApplicationFormVersion{
     new: String
 }
 
-# not being used currently
 type Validation {
     _id: ID
     submissionID: String
     type: [String]
     scope: String
-    started:  Date # ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
+    started: Date # ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
+    ended: Date
     status: String
+    metadataStatus: String
+    metadataEnded: Date
+    completedBatches: Int
+    totalBatches: Int
+    failedBatches: Int
+    batchStatusDetails: [String]
+    worstBatchStatus: Int
+    statusDetail: [String]
 }
 
 type Batch {

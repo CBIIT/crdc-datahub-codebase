@@ -278,6 +278,7 @@ model Configuration {
   keys                             Json?
   new                              String?
   prefix                           String?
+  size                             Int?
   tag                              ConfigurationTag?
   timeout                          Int?
   type                             String
@@ -518,6 +519,7 @@ model Submission {
   studyID                  String
   submitterID              String
   conciergeID              String?
+  statusDetail             String[]
   validationEnded          DateTime?      @db.Date
   validationScope          String?
   validationStarted        DateTime?      @db.Date
@@ -592,13 +594,21 @@ model User {
 }
 
 model Validation {
-  id           String    @id @default(uuid()) @map("_id")
-  ended        DateTime? @db.Date
-  scope        String?
-  started      DateTime  @db.Date
-  status       String?
-  submissionID String
-  type         String[]
+  id                 String    @id @default(uuid()) @map("_id")
+  ended              DateTime? @db.Date
+  metadataEnded      DateTime? @db.Date
+  scope              String?
+  started            DateTime  @db.Date
+  status             String?
+  metadataStatus     String?
+  statusDetail       String[]
+  submissionID       String
+  totalBatches       Int?
+  completedBatches   Int?
+  failedBatches      Int?
+  batchStatusDetails String[]
+  worstBatchStatus   Int?
+  type               String[]
 
   submission Submission @relation(fields: [submissionID], references: [id], onDelete: Cascade)
 

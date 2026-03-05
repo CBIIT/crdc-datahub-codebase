@@ -885,6 +885,14 @@ class Submission {
             throw new Error(ERROR.FAILED_INSERT_VALIDATION_OBJECT);
         }
         const result = await this.dataRecordService.validateMetadata(params._id, params?.types, params?.scope, validationRecord.id);
+        if (result.totalBatches != null) {
+            const validationUpdate = { totalBatches: result.totalBatches };
+            if (!result.success && result.failedCount > 0) {
+                validationUpdate.status = VALIDATION_STATUS.ERROR;
+                validationUpdate.statusDetail = [`Failed to enqueue ${result.failedCount} of ${result.totalBatches} batch messages`];
+            }
+            await this.validationDAO.update(validationRecord.id, validationUpdate);
+        }
         const updatedSubmission = await this._recordSubmissionValidation(params._id, validationRecord, params?.types, aSubmission);
         // roll back validation if service failed
         if (!result.success) {
@@ -3482,7 +3490,8 @@ function logDaysDifference(inactiveDays, accessedAt, submissionID) {
 }
 
 module.exports = {
-    Submission
+    Submission,
+    SubmissionAttributes
 };
 
 // Potential future enhancement
