@@ -4,6 +4,7 @@ import { Logger } from "./logger.ts";
 describe("Logger", () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
   let consoleInfoSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -11,6 +12,7 @@ describe("Logger", () => {
     process.env.NODE_ENV = "development";
     consoleErrorSpy = vi.spyOn(globalThis.console, "error").mockImplementation(() => {});
     consoleInfoSpy = vi.spyOn(globalThis.console, "info").mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(globalThis.console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -54,13 +56,35 @@ describe("Logger", () => {
     );
   });
 
+  it("logs warn messages with the expected format and style", () => {
+    Logger.warn("Test WARN message");
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "%c[WARN] [2026-02-10T12:34:56.789Z] Test WARN message",
+      "color: #FFD700;"
+    );
+  });
+
+  it("passes through additional parameters for warn logs", () => {
+    Logger.warn("Test WARN message", false, { detail: "warning" });
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "%c[WARN] [2026-02-10T12:34:56.789Z] Test WARN message",
+      "color: #FFD700;",
+      false,
+      { detail: "warning" }
+    );
+  });
+
   it('skips logging when NODE_ENV is "test"', () => {
     process.env.NODE_ENV = "test";
 
     Logger.error("Test error message");
     Logger.info("Test INFO message");
+    Logger.warn("Test WARN message");
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleInfoSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 });

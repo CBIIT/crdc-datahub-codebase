@@ -14,6 +14,7 @@ import { formatUserPrompt } from "../utils/conversation.ts";
 import { Logger } from "../utils/logger.ts";
 import {
   generateCitationEvent,
+  generateErrorEvent,
   generatePulseEvent,
   generateResponseEvent,
   generateSessionEvent,
@@ -38,14 +39,18 @@ export const createQuestionRouter = ({
   const BEDROCK_AGENT = new BedrockAgentRuntimeClient({ region: AWS_REGION });
   const BEDROCK_RUNTIME = new BedrockRuntimeClient({ region: AWS_REGION });
 
+  if (!GUARDRAIL_ID || !GUARDRAIL_VERSION) {
+    Logger.warn("No AWS Guardrails configured. Responses will not be evaluated against guardrails!");
+  }
+
   router.post("/", async (req, res) => {
     const validationResult = InputBodySchema.safeParse(req.body);
     if (!validationResult.success) {
-      Logger.info("Invalid request body", {
+      Logger.info("Rejected invalid request body", {
         issues: validationResult.error.issues,
         body: req.body,
       });
-      return res.status(400).json({ error: "Invalid request body" });
+      return res.status(400).json(generateErrorEvent("Invalid request body"));
     }
 
     res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -125,8 +130,7 @@ export const createQuestionRouter = ({
       }
     } catch (retrieveError: unknown) {
       Logger.error("Error retrieving knowledge from Knowledge Base", retrieveError);
-      res.write(JSON.stringify({ error: "Failed to retrieve content from Knowledge Base" }) + "\n");
-      return res.end();
+      return res.status(500).json(generateErrorEvent("Failed to retrieve content from Knowledge Base"));
     }
 
     // Step 2: Build conversation messages with context
@@ -196,8 +200,7 @@ export const createQuestionRouter = ({
       return res.end();
     } catch (converseError: unknown) {
       Logger.error("Error generating response from Converse API", converseError);
-      res.write(JSON.stringify({ error: "AWS bedrock failed to generate response" }) + "\n");
-      return res.end();
+      return res.status(500).json(generateErrorEvent("Failed to generate response from language model"));
     }
   });
 
