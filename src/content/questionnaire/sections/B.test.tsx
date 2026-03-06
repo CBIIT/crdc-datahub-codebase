@@ -85,6 +85,10 @@ beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
+afterAll(() => {
+  vi.restoreAllMocks();
+});
+
 describe("Basic Functionality", () => {
   it("should render without crashing", () => {
     expect(() => render(<TestParent />)).not.toThrow();
