@@ -2,8 +2,7 @@
  * An object containing all the tooltip text for the Questionnaire/Submission Request page.
  */
 export const TOOLTIP_TEXT: {
-  // TODO: Change to ApplicationStatus
-  STATUS_DESCRIPTIONS: Record<string, string>;
+  STATUS_DESCRIPTIONS: Record<ApplicationStatus, string>;
 } = {
   STATUS_DESCRIPTIONS: {
     New: "The request form was created.",
