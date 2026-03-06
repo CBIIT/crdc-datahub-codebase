@@ -82,7 +82,11 @@ const TestParent: FC<ParentProps> = ({
 };
 
 beforeAll(() => {
-  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  vi.spyOn(window.HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+});
+
+afterAll(() => {
+  vi.restoreAllMocks();
 });
 
 describe("Basic Functionality", () => {
