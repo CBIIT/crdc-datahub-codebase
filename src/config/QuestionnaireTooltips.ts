@@ -3,6 +3,7 @@
  */
 export const TOOLTIP_TEXT: {
   STATUS_DESCRIPTIONS: Record<ApplicationStatus, string>;
+  FIELD_DESCRIPTIONS: Record<string, string>;
 } = {
   STATUS_DESCRIPTIONS: {
     New: "The request form was created.",
@@ -15,6 +16,9 @@ export const TOOLTIP_TEXT: {
     Canceled: "The request form was manually canceled and is no longer active.",
     Deleted:
       "The request form was automatically deleted by the system due to inactivity and is no longer active.",
+  },
+  FIELD_DESCRIPTIONS: {
+    DOI: "Digital Object Identifier, either DOI value or DOI link.",
   },
 } as const;
 
