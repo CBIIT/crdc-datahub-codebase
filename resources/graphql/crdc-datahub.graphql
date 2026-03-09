@@ -841,7 +841,6 @@ type Query {
     listApplications(
         programName: String,
         studyName: String,
-        studyAbbreviation: String,
         statuses: [String],
         submitterName: String,
         first: Int = -1,

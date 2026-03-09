@@ -604,6 +604,99 @@ describe('Application', () => {
             app.applicationDAO.count = jest.fn().mockResolvedValue(0);
             await expect(app.listApplications({}, context)).rejects.toThrow(ERROR.LIST_APPLICATIONS_FETCH_FAILED);
         });
+
+        describe('studyName filter (searches both studyName and studyAbbreviation)', () => {
+            it('passes OR condition when studyName is provided', async () => {
+                const findManyMock = jest.fn().mockResolvedValue([]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                await app.listApplications({ studyName: 'UniqueName' }, context);
+                const filter = findManyMock.mock.calls[0][0];
+                expect(filter.OR).toBeDefined();
+                expect(Array.isArray(filter.OR)).toBe(true);
+                expect(filter.OR).toHaveLength(2);
+                expect(filter.OR[0]).toEqual({ studyName: { contains: 'UniqueName', mode: 'insensitive' } });
+                expect(filter.OR[1]).toEqual({ studyAbbreviation: { contains: 'UniqueName', mode: 'insensitive' } });
+            });
+
+            it('returns applications matching study name when studyName filter is used', async () => {
+                const matchingApp = { id: 'app1', studyName: 'Cancer Study', studyAbbreviation: 'CS', status: NEW, applicant: { fullName: 'Alice' } };
+                const findManyMock = jest.fn().mockResolvedValue([matchingApp]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(1);
+                const result = await app.listApplications({ studyName: 'Cancer' }, context);
+                expect(result.applications.length).toBe(1);
+                expect(result.applications[0].studyName).toBe('Cancer Study');
+                expect(result.total).toBe(1);
+            });
+
+            it('returns applications matching study abbreviation when studyName filter is used', async () => {
+                const matchingApp = { id: 'app2', studyName: 'Other Study', studyAbbreviation: 'BRF', status: NEW, applicant: { fullName: 'Bob' } };
+                const findManyMock = jest.fn().mockResolvedValue([matchingApp]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(1);
+                const result = await app.listApplications({ studyName: 'BRF' }, context);
+                expect(result.applications.length).toBe(1);
+                expect(result.applications[0].studyAbbreviation).toBe('BRF');
+                expect(result.total).toBe(1);
+            });
+
+            it('studyName filter is case-insensitive', async () => {
+                const findManyMock = jest.fn().mockResolvedValue([]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                await app.listApplications({ studyName: 'aBc' }, context);
+                const filter = findManyMock.mock.calls[0][0];
+                expect(filter.OR[0].studyName).toEqual({ contains: 'aBc', mode: 'insensitive' });
+                expect(filter.OR[1].studyAbbreviation).toEqual({ contains: 'aBc', mode: 'insensitive' });
+            });
+
+            it('does not add study filter when studyName is All', async () => {
+                const findManyMock = jest.fn().mockResolvedValue([]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                await app.listApplications({ studyName: 'All' }, context);
+                const filter = findManyMock.mock.calls[0][0];
+                expect(filter.OR).toBeUndefined();
+            });
+
+            it('does not add study filter when studyName is empty string', async () => {
+                const findManyMock = jest.fn().mockResolvedValue([]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                await app.listApplications({ studyName: '' }, context);
+                const filter = findManyMock.mock.calls[0][0];
+                expect(filter.OR).toBeUndefined();
+            });
+
+            it('returns distinct studies and studyAbbreviations when studyName filter is applied', async () => {
+                const apps = [
+                    { id: 'app1', studyName: 'Study One', studyAbbreviation: 'S1', status: NEW, applicant: { fullName: 'A' } },
+                    { id: 'app2', studyName: 'Study One', studyAbbreviation: 'S2', status: NEW, applicant: { fullName: 'B' } }
+                ];
+                const studyDistinctRows = [
+                    { studyName: 'Study One', studyAbbreviation: 'S1' },
+                    { studyName: 'Study One', studyAbbreviation: 'S2' }
+                ];
+                let callIndex = 0;
+                app.applicationDAO.findMany = jest.fn().mockImplementation((filter, options) => {
+                    callIndex++;
+                    if (callIndex === 1) return Promise.resolve(apps);
+                    if (callIndex === 2) {
+                        expect(filter.OR).toBeDefined();
+                        expect(options?.select?.studyName).toBe(true);
+                        expect(options?.select?.studyAbbreviation).toBe(true);
+                        return Promise.resolve(studyDistinctRows);
+                    }
+                    return Promise.resolve([]);
+                });
+                app.applicationDAO.count = jest.fn().mockResolvedValue(2);
+                const result = await app.listApplications({ studyName: 'Study' }, context);
+                expect(result.studies).toEqual(['Study One']);
+                expect(result.studyAbbreviations).toEqual(expect.arrayContaining(['S1', 'S2']));
+                expect(result.studyAbbreviations).toHaveLength(2);
+            });
+        });
     });
 
     describe('_getUserScope', () => {
