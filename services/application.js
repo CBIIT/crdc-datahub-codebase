@@ -488,10 +488,15 @@ class Application {
 
         // When study filter uses OR, fetch studyName + studyAbbreviation once and derive both distinct lists in memory
         let studyFilterDistinctRows = null;
-        if (genericFilterConditions.OR) {
-            studyFilterDistinctRows = await this.applicationDAO.findMany(genericFilterConditions, {
-                select: { studyName: true, studyAbbreviation: true }
-            });
+        if (hasStudyFilter) {
+            try {
+                studyFilterDistinctRows = await this.applicationDAO.findMany(genericFilterConditions, {
+                    select: { studyName: true, studyAbbreviation: true }
+                });
+            } catch (err) {
+                console.error("List applications fetch error: study filter distinct options", err);
+                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching study filter distinct options.");
+            }
         }
 
         // Query distinct filter options in parallel (programs, studies, studyAbbreviations, statuses, submitter names)
@@ -528,7 +533,6 @@ class Application {
                         return Array.from(new Set(abbreviations));
                     }
                     const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.studyAbbreviation;
                     const rows = await this.applicationDAO.findMany(filterConditions, { select: { studyAbbreviation: true }, distinct: ['studyAbbreviation'] });
                     return (rows ?? []).map(item => item.studyAbbreviation).filter(Boolean);
                 }),
