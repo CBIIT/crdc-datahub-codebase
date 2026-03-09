@@ -2,7 +2,11 @@ import { z } from "zod";
 
 export const InputBodySchema = z.object({
   // TODO: Update length constraints based on actual requirements
-  question: z.string().min(1, "Question is required").max(5_000, "Question cannot exceed 5000 characters"),
+  question: z
+    .string()
+    .min(1, "Question is required")
+    .max(5_000, "Question cannot exceed 5000 characters")
+    .regex(/^[\p{L}\p{N}\p{P}\p{Zs}\r\n\t]+$/u, "Question must be alphanumeric and may include punctuation only"),
   sessionId: z.uuid().nullable().optional(),
   conversationHistory: z
     .array(
@@ -14,7 +18,7 @@ export const InputBodySchema = z.object({
           .max(10_000, "Message content cannot exceed 10,000 characters"), // TODO: Adjust max content length based on actual requirements
       })
     )
-    .max(1000, "Conversation history cannot exceed 1000 messages") // TODO: Adjust max messages based on actual requirements
+    .max(100, "Conversation history cannot exceed 100 messages")
     .optional()
     .default([]),
 });

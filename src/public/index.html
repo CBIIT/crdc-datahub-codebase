@@ -193,8 +193,11 @@
             }),
           });
 
-          if (!response.ok || !response.body) {
-            throw new Error("Request failed");
+          if (!response.ok && response.body && response.headers.get("Content-Type")?.includes("application/json")) {
+            const errorText = await response.json();
+            throw new Error(errorText?.message);
+          } else if (!response.ok) {
+            throw new Error("Request failed due to an unknown issue");
           }
 
           const reader = response.body.getReader();
