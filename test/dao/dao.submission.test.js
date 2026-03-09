@@ -290,7 +290,7 @@ describe('SubmissionDAO', () => {
                 );
             });
 
-            it('should apply dbGaPID filter with case-insensitive search', async () => {
+            it('should apply dbGaPID filter with case-insensitive search over study name, abbreviation, and dbGaPID', async () => {
                 const paramsWithDbGaPID = { ...mockParams, dbGaPID: 'phs001234' };
 
                 await dao.listSubmissions(mockUserInfo, mockUserScope, paramsWithDbGaPID);
@@ -298,13 +298,64 @@ describe('SubmissionDAO', () => {
                 expect(prisma.submission.findMany).toHaveBeenCalledWith(
                     expect.objectContaining({
                         where: expect.objectContaining({
-                            dbGaPID: {
-                                contains: 'phs001234',
-                                mode: 'insensitive'
-                            }
+                            AND: expect.arrayContaining([
+                                expect.objectContaining({ OR: expect.arrayContaining([
+                                    expect.objectContaining({ study: { is: { studyName: { contains: 'phs001234', mode: 'insensitive' } } } }),
+                                    expect.objectContaining({ study: { is: { studyAbbreviation: { contains: 'phs001234', mode: 'insensitive' } } } }),
+                                    expect.objectContaining({ study: { is: { dbGaPID: { contains: 'phs001234', mode: 'insensitive' } } } })
+                                ]) })
+                            ])
                         })
                     })
                 );
+            });
+
+            it('should sanitize dbGaPID search term: trim whitespace and remove backslashes, keep forward slashes', async () => {
+                const paramsWithDbGaPID = { ...mockParams, dbGaPID: '  phs123/456\\  ' };
+
+                await dao.listSubmissions(mockUserInfo, mockUserScope, paramsWithDbGaPID);
+
+                const call = prisma.submission.findMany.mock.calls[0][0];
+                const andConditions = call.where.AND || [];
+                const dbGaPIDOrCondition = andConditions.find(c => c.OR && c.OR.some(o => o.study?.is));
+                expect(dbGaPIDOrCondition).toBeDefined();
+                const firstOr = dbGaPIDOrCondition.OR[0];
+                const sanitizedTerm = firstOr.study?.is?.studyName?.contains ?? firstOr.study?.is?.studyAbbreviation?.contains ?? firstOr.study?.is?.dbGaPID?.contains;
+                expect(sanitizedTerm).toBe('phs123/456');
+            });
+
+            it('should include all three match fields (studyName, studyAbbreviation, dbGaPID) in dbGaPID search OR via related study', async () => {
+                const paramsWithDbGaPID = { ...mockParams, dbGaPID: 'phs999' };
+
+                await dao.listSubmissions(mockUserInfo, mockUserScope, paramsWithDbGaPID);
+
+                const call = prisma.submission.findMany.mock.calls[0][0];
+                const andConditions = call.where.AND || [];
+                const dbGaPIDOrCondition = andConditions.find(c => c.OR && c.OR.length === 3);
+                expect(dbGaPIDOrCondition).toBeDefined();
+                const hasStudyName = dbGaPIDOrCondition.OR.some(o => o.study?.is?.studyName?.contains === 'phs999');
+                const hasStudyAbbreviation = dbGaPIDOrCondition.OR.some(o => o.study?.is?.studyAbbreviation?.contains === 'phs999');
+                const hasDbGaPID = dbGaPIDOrCondition.OR.some(o => o.study?.is?.dbGaPID?.contains === 'phs999');
+                expect(hasStudyName && hasStudyAbbreviation && hasDbGaPID).toBe(true);
+            });
+
+            it('should not add dbGaPID search condition when param is empty or only whitespace or only backslashes', async () => {
+                await dao.listSubmissions(mockUserInfo, mockUserScope, { ...mockParams, dbGaPID: '' });
+                let call = prisma.submission.findMany.mock.calls[0][0];
+                let hasDbGaPIDSearch = (call.where.AND || []).some(c => c.OR && c.OR.some(o => o.study?.is));
+                expect(hasDbGaPIDSearch).toBe(false);
+
+                prisma.submission.findMany.mockClear();
+                await dao.listSubmissions(mockUserInfo, mockUserScope, { ...mockParams, dbGaPID: '   ' });
+                call = prisma.submission.findMany.mock.calls[0][0];
+                hasDbGaPIDSearch = (call.where.AND || []).some(c => c.OR && c.OR.some(o => o.study?.is));
+                expect(hasDbGaPIDSearch).toBe(false);
+
+                prisma.submission.findMany.mockClear();
+                await dao.listSubmissions(mockUserInfo, mockUserScope, { ...mockParams, dbGaPID: '\\\\' });
+                call = prisma.submission.findMany.mock.calls[0][0];
+                hasDbGaPIDSearch = (call.where.AND || []).some(c => c.OR && c.OR.some(o => o.study?.is));
+                expect(hasDbGaPIDSearch).toBe(false);
             });
 
             it('should apply data commons filter', async () => {
@@ -586,10 +637,15 @@ describe('SubmissionDAO', () => {
                                 mode: 'insensitive'
                             },
                             status: { in: [NEW, IN_PROGRESS] },
-                            dbGaPID: {
-                                contains: 'phs001234',
-                                mode: 'insensitive'
-                            },
+                            AND: expect.arrayContaining([
+                                expect.objectContaining({
+                                    OR: expect.arrayContaining([
+                                        expect.objectContaining({ study: { is: { studyName: { contains: 'phs001234', mode: 'insensitive' } } } }),
+                                        expect.objectContaining({ study: { is: { studyAbbreviation: { contains: 'phs001234', mode: 'insensitive' } } } }),
+                                        expect.objectContaining({ study: { is: { dbGaPID: { contains: 'phs001234', mode: 'insensitive' } } } })
+                                    ])
+                                })
+                            ]),
                             dataCommons: 'GDC',
                             submitter: {
                                 is: {
