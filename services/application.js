@@ -494,8 +494,8 @@ class Application {
                     select: { studyName: true, studyAbbreviation: true }
                 });
             } catch (err) {
-                console.error("List applications fetch error: study filter distinct options", err);
-                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching study filter distinct options.");
+                console.error("List applications fetch error: gathering distinct study values", err);
+                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: gathering distinct study values.");
             }
         }
 
