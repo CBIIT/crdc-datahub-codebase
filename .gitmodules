@@ -1,3 +1,0 @@
-[submodule "src/bento"]
-	path = apps/validator/src/bento
-	url = https://github.com/CBIIT/bento-common.git
