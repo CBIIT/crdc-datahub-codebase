@@ -16,6 +16,14 @@ describe("InputBodySchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("should reject a question with only whitespace in question attribute", () => {
+    expect(InputBodySchema.safeParse({ question: " " }).success).toBe(false);
+    expect(InputBodySchema.safeParse({ question: "\t" }).success).toBe(false);
+    expect(InputBodySchema.safeParse({ question: "\n" }).success).toBe(false);
+    expect(InputBodySchema.safeParse({ question: "\r\n" }).success).toBe(false);
+    expect(InputBodySchema.safeParse({ question: " \t \r\n " }).success).toBe(false);
+  });
+
   it("should reject question attribute longer than 5000 characters", () => {
     const result = InputBodySchema.safeParse({
       question: "a".repeat(5_001),
