@@ -1,0 +1,46 @@
+{
+  "name": "crdc-datahub-chatbot-backend",
+  "version": "3.6.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.0 <23.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.ts",
+    "dev": "node --env-file=.env --watch src/index.ts",
+    "test": "TZ=UTC vitest",
+    "test:ci": "TZ=UTC CI=true vitest --reporter verbose --coverage --maxWorkers=2 --maxConcurrency=2",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:ci": "eslint . --max-warnings 0",
+    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "author": "amattu2",
+  "license": "AGPL-3.0",
+  "description": "",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.996.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.996.0",
+    "express": "^5.2.1",
+    "typescript": "^5.9.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.3",
+    "@typescript-eslint/eslint-plugin": "^8.52.0",
+    "@typescript-eslint/parser": "^8.52.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/expect": "^4.0.18",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "globals": "^17.0.0",
+    "prettier": "^3.7.4",
+    "vitest": "^4.0.18"
+  }
+}

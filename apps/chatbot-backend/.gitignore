@@ -1,0 +1,11 @@
+dist
+coverage
+*.lcov
+
+node_modules/
+
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example

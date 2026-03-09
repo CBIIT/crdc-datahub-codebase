@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chatbot Test UI</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 24px;
+        max-width: 800px;
+      }
+
+      h1 {
+        margin-bottom: 16px;
+      }
+
+      form {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      input[type="text"] {
+        flex: 1;
+        padding: 10px;
+      }
+
+      button {
+        padding: 10px 14px;
+      }
+
+      #responseBox {
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        min-height: 180px;
+        padding: 12px;
+        white-space: normal;
+      }
+
+      #responseBox p {
+        margin: 0 0 0.75rem;
+      }
+
+      #responseBox pre {
+        overflow-x: auto;
+        background: #f7f7f7;
+        padding: 8px;
+        border-radius: 4px;
+      }
+
+      #responseBox code {
+        font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      }
+
+      #citations {
+        margin-top: 12px;
+      }
+
+      #citations ul {
+        margin: 6px 0 0;
+        padding-left: 20px;
+      }
+
+      #status {
+        margin: 0 0 10px;
+      }
+
+      #controls {
+        margin: 0 0 10px;
+      }
+
+      #controls label {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Chatbot Test UI</h1>
+
+    <form id="questionForm">
+      <input id="questionInput" type="text" placeholder="Ask a question" required />
+      <button type="submit">Send</button>
+    </form>
+
+    <div id="controls">
+      <label for="parseMarkdownToggle">
+        <input id="parseMarkdownToggle" type="checkbox" checked />
+        Parse Markdown
+      </label>
+    </div>
+
+    <p id="status">Ready</p>
+    <div id="responseBox"></div>
+    <div id="citations"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    <script>
+      const form = document.getElementById("questionForm");
+      const questionInput = document.getElementById("questionInput");
+      const responseBox = document.getElementById("responseBox");
+      const statusLabel = document.getElementById("status");
+      const citationsBox = document.getElementById("citations");
+      const parseMarkdownToggle = document.getElementById("parseMarkdownToggle");
+
+      let sessionId = null;
+      let responseMarkdown = "";
+
+      marked.setOptions({
+        gfm: true,
+        breaks: true,
+      });
+
+      const renderResponseMarkdown = () => {
+        if (!parseMarkdownToggle.checked) {
+          responseBox.style.whiteSpace = "pre-wrap";
+          responseBox.textContent = responseMarkdown;
+          return;
+        }
+
+        responseBox.style.whiteSpace = "normal";
+        const renderedHtml = marked.parse(responseMarkdown);
+        responseBox.innerHTML = DOMPurify.sanitize(renderedHtml);
+      };
+
+      parseMarkdownToggle.addEventListener("change", () => {
+        renderResponseMarkdown();
+      });
+
+      const setStatus = (text) => {
+        statusLabel.textContent = text;
+      };
+
+      const renderCitations = (citations) => {
+        if (!Array.isArray(citations) || citations.length === 0) {
+          return;
+        }
+
+        citationsBox.textContent = "";
+
+        const heading = document.createElement("strong");
+        heading.textContent = "Citations";
+
+        const list = document.createElement("ul");
+
+        for (const citation of citations) {
+          const listItem = document.createElement("li");
+          const documentName = citation?.documentName || "Source";
+
+          if (citation?.documentLink) {
+            const link = document.createElement("a");
+            link.href = citation.documentLink;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = `${documentName} (${citation.documentLink})`;
+            listItem.appendChild(link);
+          } else {
+            listItem.textContent = documentName;
+          }
+
+          list.appendChild(listItem);
+        }
+
+        citationsBox.appendChild(heading);
+        citationsBox.appendChild(list);
+      };
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const question = questionInput.value.trim();
+        if (!question) return;
+
+        responseMarkdown = "";
+        renderResponseMarkdown();
+        citationsBox.textContent = "";
+        setStatus("Streaming...");
+
+        try {
+          const response = await fetch("/question", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              question,
+              sessionId,
+              conversationHistory: [],
+            }),
+          });
+
+          if (!response.ok && response.body && response.headers.get("Content-Type")?.includes("application/json")) {
+            const errorText = await response.json();
+            throw new Error(errorText?.message);
+          } else if (!response.ok) {
+            throw new Error("Request failed due to an unknown issue");
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+
+              try {
+                const chunk = JSON.parse(line);
+
+                if (chunk.type === "session" && chunk.sessionId) {
+                  sessionId = chunk.sessionId;
+                }
+
+                if (chunk.type === "response" && chunk.output) {
+                  responseMarkdown += chunk.output;
+                  renderResponseMarkdown();
+                }
+
+                if (chunk.type === "citations" && chunk.citations) {
+                  renderCitations(chunk.citations);
+                }
+
+                if (chunk.type === "error" && chunk.message) {
+                  responseMarkdown += `\n\n**Error:** ${chunk.message}`;
+                  renderResponseMarkdown();
+                }
+              } catch {
+                responseMarkdown += `\n\n[Unparsed chunk] ${line}`;
+                renderResponseMarkdown();
+              }
+            }
+          }
+
+          setStatus("Done");
+        } catch (error) {
+          setStatus("Failed");
+          responseMarkdown = `Request error: ${error instanceof Error ? error.message : String(error)}`;
+          renderResponseMarkdown();
+        }
+      });
+    </script>
+  </body>
+</html>
