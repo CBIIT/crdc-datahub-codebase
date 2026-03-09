@@ -1,0 +1,19 @@
+Notes: Service Versions
+project: crdc dh
+services:
+  frontend:
+    version: 3.4.0.26
+  backend:
+    version: 3.4.0.59
+  authn:
+    version: 3.3.0.141
+  essentialvalidation:
+    version: 3.4.0.5
+  metadatavalidation:
+    version: 3.4.0.5
+  filevalidation:
+    version: 3.4.0.5
+  exportvalidation:
+    version: 3.4.0.5
+  pvpuller:
+    version: 3.3.0.30
