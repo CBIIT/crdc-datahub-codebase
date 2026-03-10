@@ -692,6 +692,7 @@ export class QuestionnaireExcelMiddleware {
         DataTypes.genomics.name,
         DataTypes.imaging.name,
         DataTypes.proteomics.name,
+        "Other",
       ];
       repositoryDataTypeOptions.forEach((file, index) => {
         sheet.getCell(`A${index + 1}`).value = file;

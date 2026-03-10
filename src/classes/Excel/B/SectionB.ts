@@ -501,11 +501,16 @@ export class SectionB extends SectionBase<BKeys, SectionBDeps> {
             DataTypes.genomics.name,
             DataTypes.imaging.name,
             DataTypes.proteomics.name,
+            "Other",
           ];
 
           return dataTypes.includes(item);
         }) as Repository["dataTypesSubmitted"];
-      const otherDataTypesSubmitted = toString(repositoryOtherDataTypesSubmitted?.[i]).trim();
+
+      let otherDataTypesSubmitted = "";
+      if (dataTypesSubmitted.includes("Other")) {
+        otherDataTypesSubmitted = toString(repositoryOtherDataTypesSubmitted?.[i]).trim();
+      }
 
       if (name || studyID || dataTypesSubmitted.length || otherDataTypesSubmitted) {
         repositories.push({ name, studyID, dataTypesSubmitted, otherDataTypesSubmitted });
