@@ -59,12 +59,15 @@ S3_FILE_INFO = "s3FileInfo"
 ID = "_id"
 SIZE ="size"
 MD5 = "md5"
-DATA_COLlECTION = "dataRecords"
+DATA_COLLECTION = "dataRecords"
 FILE_NAME = "fileName"
 STATUS_ERROR = "Error"
 STATUS_WARNING = "Warning"
 STATUS_PASSED = "Passed"
 STATUS_NEW = "New"
+FAILED = "Failed"
+# For batch metadata validation, statusDetail may be a list of failure message strings.
+STATUS_DETAIL = "statusDetail"
 SUBMISSION_ID = "submissionID"
 NODE_ID = "nodeID"
 NODE_TYPE = "nodeType"
@@ -137,9 +140,25 @@ TYPE_FILE_VALIDATE_ALL = "Validate Submission Files"
 TYPE_EXPORT_METADATA = "Export Metadata"
 TYPE_COMPLETE_SUB = "Complete Submission"
 TYPE_CROSS_SUBMISSION = "Validate Cross-submission"
+TYPE_METADATA_VALIDATE_BATCH = "Validate Metadata Batch"
 DATA_COMMONS = "dataCommons"
 RESTORE_DELETED_DATA_FILES = "Restore Deleted Data Files"
-FAILED = "Failed"
+# Batch message fields
+DATA_RECORD_IDS = "dataRecordIds"
+TOTAL_BATCHES = "totalBatches"
+BATCH_INDEX = "batchIndex"
+# Validation document fields for tracking batch progress
+COMPLETED_BATCHES = "completedBatches"
+FAILED_BATCHES = "failedBatches"
+BATCH_STATUS_DETAILS = "batchStatusDetails"
+WORST_BATCH_STATUS = "worstBatchStatus"
+STATUS_PRECEDENCE = {
+    "Passed": 0,
+    "Warning": 1,
+    "Error": 2,
+    "Failed": 3,
+}
+PRECEDENCE_TO_STATUS = {v: k for k, v in STATUS_PRECEDENCE.items()}
 ADDITION_ERRORS = "additionalErrors"
 STUDY_ABBREVIATION = "studyAbbreviation"
 LIST_DELIMITER_PROP = "list-delimiter"
