@@ -430,17 +430,22 @@ class Application {
         const programNameCondition = (params.programName != null && params.programName !== this._ALL_FILTER) 
             ? { programName: params.programName } 
             : {};
-        // Study name filter, trim input and escape backslashes
-        const studyNameParam = params.studyName?.trim().length > 0
-            ? { contains: params.studyName.trim().replace(/\\/g, "\\\\"), mode: "insensitive" }
-            : params.studyName;
-        const studyNameCondition = (params.studyName != null && params.studyName !== this._ALL_FILTER) ? { studyName: studyNameParam } : {};
-        // Study abbreviation filter
-        const studyAbbreviationCondition = (params.studyAbbreviation != null && params.studyAbbreviation !== this._ALL_FILTER) 
-            ? { studyAbbreviation: params.studyAbbreviation } 
-            : {};
+        // Study filter: search both studyName and studyAbbreviation (OR), case-insensitive partial match
+        const studySearchTerm = params.studyName?.trim();
+        const hasStudyFilter = studySearchTerm?.length > 0 && params.studyName !== this._ALL_FILTER;
+        let studyCondition = {};
+        if (hasStudyFilter) {
+            const studySearchTermSanitized = studySearchTerm.replace(/\\/g, "\\\\");
+            const containsOption = { contains: studySearchTermSanitized, mode: "insensitive" };
+            studyCondition = {
+                OR: [
+                    { studyName: containsOption },
+                    { studyAbbreviation: containsOption }
+                ]
+            };
+        }
         // Assemble generic filter conditions, if scope is own, add applicantID filter
-        const baseConditions = { ...statusCondition, ...programNameCondition, ...studyNameCondition, ...studyAbbreviationCondition, ...submitterNameCondition };
+        const baseConditions = { ...statusCondition, ...programNameCondition, ...studyCondition, ...submitterNameCondition };
         const genericFilterConditions = userScope.isOwnScope()
             ? { ...baseConditions, applicantID: userInfo?._id }
             : baseConditions;
@@ -481,6 +486,19 @@ class Application {
             throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching application count.");
         }
 
+        // When study filter uses OR, fetch studyName + studyAbbreviation once and derive both distinct lists in memory
+        let studyFilterDistinctRows = null;
+        if (hasStudyFilter) {
+            try {
+                studyFilterDistinctRows = await this.applicationDAO.findMany(genericFilterConditions, {
+                    select: { studyName: true, studyAbbreviation: true }
+                });
+            } catch (err) {
+                console.error("List applications fetch error: gathering distinct study values", err);
+                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: gathering distinct study values.");
+            }
+        }
+
         // Query distinct filter options in parallel (programs, studies, studyAbbreviations, statuses, submitter names)
         const runQuery = async (queryName, fn) => {
             try {
@@ -500,14 +518,21 @@ class Application {
                     return (rows ?? []).map(item => item.programName).filter(Boolean);
                 }),
                 runQuery("studies", async () => {
+                    if (studyFilterDistinctRows !== null) {
+                        const names = (studyFilterDistinctRows ?? []).map(item => item.studyName).filter(Boolean);
+                        return Array.from(new Set(names));
+                    }
                     const filterConditions = { ...genericFilterConditions };
                     delete filterConditions.studyName;
                     const rows = await this.applicationDAO.findMany(filterConditions, { select: { studyName: true }, distinct: ['studyName'] });
                     return (rows ?? []).map(item => item.studyName).filter(Boolean);
                 }),
                 runQuery("study abbreviations", async () => {
+                    if (studyFilterDistinctRows !== null) {
+                        const abbreviations = (studyFilterDistinctRows ?? []).map(item => item.studyAbbreviation).filter(Boolean);
+                        return Array.from(new Set(abbreviations));
+                    }
                     const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.studyAbbreviation;
                     const rows = await this.applicationDAO.findMany(filterConditions, { select: { studyAbbreviation: true }, distinct: ['studyAbbreviation'] });
                     return (rows ?? []).map(item => item.studyAbbreviation).filter(Boolean);
                 }),
