@@ -99,10 +99,10 @@ export const createQuestionRouter = ({
       const retrieveResponse = await BEDROCK_AGENT.send(retrieveCommand);
 
       if (retrieveResponse?.retrievalResults?.length) {
-        Logger.info("Retrieved documents from Knowledge Base", {
+        Logger.info("Documents retrieved from Knowledge Base", {
           sessionId,
           query: question,
-          chunks: retrieveResponse.retrievalResults.length || 0,
+          chunks: retrieveResponse.retrievalResults || [],
         });
 
         searchResults = retrieveResponse.retrievalResults
