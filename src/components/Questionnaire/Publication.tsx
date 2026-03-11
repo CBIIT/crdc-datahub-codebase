@@ -2,6 +2,8 @@ import RemoveCircleIcon from "@mui/icons-material/RemoveCircle";
 import { Grid, styled } from "@mui/material";
 import React, { FC } from "react";
 
+import { TOOLTIP_TEXT } from "@/config/QuestionnaireTooltips";
+
 import AddRemoveButton from "../AddRemoveButton";
 import { Status as FormStatus, useFormContext } from "../Contexts/FormContext";
 
@@ -68,6 +70,7 @@ const Publication: FC<Props> = ({
           name={`study[publications][${index}][DOI]`}
           value={DOI}
           placeholder="200 characters allowed"
+          tooltipText={TOOLTIP_TEXT.FIELD_DESCRIPTIONS.DOI}
           maxLength={200}
           gridWidth={6}
           readOnly={readOnly}

@@ -1,53 +1,53 @@
 import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import userEvent from "@testing-library/user-event";
-import { FC, useMemo, useRef } from "react";
+import { createRef, FC, useMemo } from "react";
 import { axe } from "vitest-axe";
 
+import {
+  Context as FormContext,
+  ContextState as FormContextState,
+  Status as FormStatus,
+} from "@/components/Contexts/FormContext";
+import {
+  Context as OrganizationListContext,
+  ContextState as OrganizationListContextState,
+  Status as OrganizationStatus,
+} from "@/components/Contexts/OrganizationListContext";
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
+import { publicationFactory } from "@/factories/application/PublicationFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
-
-import {
-  ContextState as FormContextState,
-  Context as FormContext,
-  Status as FormStatus,
-} from "../../../components/Contexts/FormContext";
-import {
-  Context as OrganizationContext,
-  ContextState as OrganizationContextState,
-  Status as OrganizationStatus,
-} from "../../../components/Contexts/OrganizationListContext";
-import { render, RenderResult, waitFor, within } from "../../../test-utils";
+import { fireEvent, render, waitFor, within } from "@/test-utils";
 
 import FormSectionB from "./B";
 
-Element.prototype.scrollIntoView = vi.fn();
-
 const mockUseFormMode = vi.fn();
+
 vi.mock("../../../hooks/useFormMode", () => ({
   default: () => mockUseFormMode(),
 }));
 
-/**
- * Helper to get form elements
- */
-const getFormElements = ({ getByTestId }: Pick<RenderResult, "getByTestId">) => ({
-  programSelect: () => getByTestId("section-b-program"),
-  programTitle: () => getByTestId("section-b-program-title"),
-  programAbbreviation: () => getByTestId("section-b-program-abbreviation"),
-  programDescription: () => getByTestId("section-b-program-description"),
-  studyTitle: () => getByTestId("section-b-study-title"),
-  studyAbbreviation: () => getByTestId("section-b-study-abbreviation-or-acronym"),
-  studyDescription: () => getByTestId("section-b-study-description"),
-  addFundingButton: () => getByTestId("section-b-add-funding-agency-button"),
-  addPublicationButton: () => getByTestId("section-b-add-publication-button"),
-  addPlannedPublicationButton: () => getByTestId("section-b-add-planned-publication-button"),
-  addRepositoryButton: () => getByTestId("section-b-add-repository-button"),
+type ParentProps = {
+  formCtxState?: FormContextState;
+  orgCtxState?: OrganizationListContextState;
+  getFormObjectRef?: React.MutableRefObject<(() => FormObject | null) | null>;
+};
+
+const baseQuestionnaireData = questionnaireDataFactory.build({
+  study: studyFactory.build({
+    publications: [
+      publicationFactory.build({
+        title: "Sample Publication",
+        DOI: "10.1000/example-doi",
+        pubmedID: "123456",
+      }),
+    ],
+  }),
 });
 
-const mockPrograms = [
+const selectablePrograms = [
   organizationFactory.build({
     _id: "program-1",
     name: "Test Program 1",
@@ -62,104 +62,96 @@ const mockPrograms = [
   }),
 ];
 
-const defaultQuestionnaireData = questionnaireDataFactory.build({
-  study: studyFactory.build(),
-});
-
-type TestParentProps = {
-  formStatus?: FormStatus;
-  questionnaireData?: QuestionnaireData;
-  organizationStatus?: OrganizationStatus;
-  programs?: OrganizationContextState["data"];
-  formRef?: React.RefObject<HTMLFormElement>;
-  children: React.ReactNode;
+const baseFormCtxState: FormContextState = {
+  status: FormStatus.LOADED,
+  formRef: createRef<HTMLFormElement>(),
+  data: applicationFactory.build({
+    questionnaireData: baseQuestionnaireData,
+  }),
 };
 
-const TestParent: FC<TestParentProps> = ({
-  formStatus = FormStatus.LOADED,
-  questionnaireData = defaultQuestionnaireData,
-  organizationStatus = OrganizationStatus.LOADED,
-  programs = mockPrograms,
-  formRef,
-  children,
-}: TestParentProps) => {
-  const defaultFormRef = useRef<HTMLFormElement>(null);
-  const actualFormRef = formRef || defaultFormRef;
+const baseOrgCtxState: OrganizationListContextState = {
+  status: OrganizationStatus.LOADED,
+  data: [organizationFactory.build({ _id: "mock-program-1", name: "Mock Program" })],
+  activeOrganizations: [organizationFactory.build({ _id: "mock-program-1", name: "Mock Program" })],
+};
 
-  const formValue = useMemo<FormContextState>(
-    () => ({
-      status: formStatus,
-      formRef: actualFormRef,
-      data: applicationFactory.build({
-        questionnaireData,
-      }),
-    }),
-    [formStatus, questionnaireData, actualFormRef]
-  );
+const getFormElements = ({ getByTestId }: { getByTestId: (testId: string) => HTMLElement }) => ({
+  programSelect: () => getByTestId("section-b-program"),
+  programTitle: () => getByTestId("section-b-program-title"),
+  programAbbreviation: () => getByTestId("section-b-program-abbreviation"),
+  programDescription: () => getByTestId("section-b-program-description"),
+  studyTitle: () => getByTestId("section-b-study-title"),
+  studyAbbreviation: () => getByTestId("section-b-study-abbreviation-or-acronym"),
+  studyDescription: () => getByTestId("section-b-study-description"),
+  addFundingButton: () => getByTestId("section-b-add-funding-agency-button"),
+  addPublicationButton: () => getByTestId("section-b-add-publication-button"),
+  addPlannedPublicationButton: () => getByTestId("section-b-add-planned-publication-button"),
+  addRepositoryButton: () => getByTestId("section-b-add-repository-button"),
+});
 
-  const organizationValue = useMemo<OrganizationContextState>(
+const TestParent: FC<ParentProps> = ({
+  formCtxState = baseFormCtxState,
+  orgCtxState = baseOrgCtxState,
+  getFormObjectRef,
+}: ParentProps) => {
+  const refs = useMemo(
     () => ({
-      status: organizationStatus,
-      data: programs,
-      activeOrganizations: programs.filter((p) => p.status === "Active"),
+      getFormObjectRef: getFormObjectRef ?? { current: null },
     }),
-    [organizationStatus, programs]
+    [getFormObjectRef]
   );
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <OrganizationContext.Provider value={organizationValue}>
-        <FormContext.Provider value={formValue}>{children}</FormContext.Provider>
-      </OrganizationContext.Provider>
+      <OrganizationListContext.Provider value={orgCtxState}>
+        <FormContext.Provider value={formCtxState}>
+          <FormSectionB
+            refs={refs}
+            SectionOption={{
+              id: "B",
+              title: "Program and Study Registration",
+              component: FormSectionB,
+            }}
+          />
+        </FormContext.Provider>
+      </OrganizationListContext.Provider>
     </LocalizationProvider>
   );
 };
 
-/**
- * Creates default FormSectionProps
- */
-const createSectionProps = (): FormSectionProps => ({
-  SectionOption: {
-    title: "Program and Study",
-    id: "B",
-    component: FormSectionB,
-  },
-  refs: {
-    getFormObjectRef: { current: null },
-  },
+beforeAll(() => {
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
-describe("Accessibility", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockUseFormMode.mockReturnValue({ formMode: "EDIT", readOnlyInputs: false });
-  });
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockUseFormMode.mockReturnValue({ formMode: "EDIT", readOnlyInputs: false });
+});
 
-  it("should not have any violations", async () => {
-    const props = createSectionProps();
-
-    const { container } = render(<FormSectionB {...props} />, { wrapper: TestParent });
-
-    expect(await axe(container)).toHaveNoViolations();
-  });
+afterAll(() => {
+  vi.restoreAllMocks();
 });
 
 describe("Basic Functionality", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockUseFormMode.mockReturnValue({ formMode: "EDIT", readOnlyInputs: false });
+  it("should render without crashing", () => {
+    expect(() => render(<TestParent />)).not.toThrow();
   });
 
-  it("should render without crashing", () => {
-    const props = createSectionProps();
+  it("should not have any violations", async () => {
+    const { container } = render(<TestParent />);
 
-    expect(() => render(<FormSectionB {...props} />, { wrapper: TestParent })).not.toThrow();
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it("should render all program information fields", () => {
-    const props = createSectionProps();
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, { wrapper: TestParent });
+    const { getByTestId } = render(<TestParent orgCtxState={orgCtxState} />);
 
     const elements = getFormElements({ getByTestId });
     expect(elements.programSelect()).toBeInTheDocument();
@@ -169,9 +161,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should render all study information fields", () => {
-    const props = createSectionProps();
-
-    const { getByTestId } = render(<FormSectionB {...props} />, { wrapper: TestParent });
+    const { getByTestId } = render(<TestParent />);
 
     const elements = getFormElements({ getByTestId });
     expect(elements.studyTitle()).toBeInTheDocument();
@@ -180,9 +170,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should render all add buttons for repeating sections", () => {
-    const props = createSectionProps();
-
-    const { getByTestId } = render(<FormSectionB {...props} />, { wrapper: TestParent });
+    const { getByTestId } = render(<TestParent />);
 
     const elements = getFormElements({ getByTestId });
     expect(elements.addFundingButton()).toBeInTheDocument();
@@ -192,33 +180,28 @@ describe("Basic Functionality", () => {
   });
 
   it("should display study name value when provided", () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          study: studyFactory.build({
+            name: "My Test Study",
+            abbreviation: "MTS",
+            description: "A description of my test study",
+          }),
+        }),
+      }),
+    };
 
-    const { getByDisplayValue } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            study: studyFactory.build({
-              name: "My Test Study",
-              abbreviation: "MTS",
-              description: "A description of my test study",
-            }),
-          })}
-        />
-      ),
-    });
+    const { getByDisplayValue } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByDisplayValue("My Test Study")).toBeInTheDocument();
     expect(getByDisplayValue("MTS")).toBeInTheDocument();
   });
 
   it("should add a funding agency when Add Agency button is clicked", async () => {
-    const props = createSectionProps();
-
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: TestParent,
-    });
+    const { getByTestId } = render(<TestParent />);
 
     const elements = getFormElements({ getByTestId });
     userEvent.click(elements.addFundingButton());
@@ -229,11 +212,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should add a publication when Add Existing Publication button is clicked", async () => {
-    const props = createSectionProps();
-
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: TestParent,
-    });
+    const { getByTestId } = render(<TestParent />);
 
     const elements = getFormElements({ getByTestId });
     userEvent.click(elements.addPublicationButton());
@@ -244,11 +223,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should add a planned publication when Add Planned Publication button is clicked", async () => {
-    const props = createSectionProps();
-
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: TestParent,
-    });
+    const { getByTestId } = render(<TestParent />);
 
     const elements = getFormElements({ getByTestId });
     userEvent.click(elements.addPlannedPublicationButton());
@@ -259,11 +234,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should add a repository when Add Repository button is clicked", async () => {
-    const props = createSectionProps();
-
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: TestParent,
-    });
+    const { getByTestId } = render(<TestParent />);
 
     const elements = getFormElements({ getByTestId });
     userEvent.click(elements.addRepositoryButton());
@@ -274,11 +245,15 @@ describe("Basic Functionality", () => {
   });
 
   it("should disable add buttons when form status is SAVING", () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.SAVING,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: baseQuestionnaireData,
+      }),
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} formStatus={FormStatus.SAVING} />,
-    });
+    const { getByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     const elements = getFormElements({ getByTestId });
     expect(elements.addFundingButton()).toBeDisabled();
@@ -289,11 +264,8 @@ describe("Basic Functionality", () => {
 
   it("should disable add buttons when readOnly is true", () => {
     mockUseFormMode.mockReturnValue({ formMode: "VIEW", readOnlyInputs: true });
-    const props = createSectionProps();
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: TestParent,
-    });
+    const { getByTestId } = render(<TestParent />);
 
     const elements = getFormElements({ getByTestId });
     expect(elements.addFundingButton()).toBeDisabled();
@@ -304,131 +276,130 @@ describe("Basic Functionality", () => {
 
   it("should assign getFormObject to the ref when component mounts", () => {
     const getFormObjectRef = { current: null };
-    const props: FormSectionProps = {
-      ...createSectionProps(),
-      refs: { getFormObjectRef },
-    };
 
-    render(<FormSectionB {...props} />, { wrapper: TestParent });
+    render(<TestParent getFormObjectRef={getFormObjectRef} />);
 
     expect(getFormObjectRef.current).toBeInstanceOf(Function);
   });
 
   it("should render existing funding agencies from data", () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          study: studyFactory.build({
+            funding: [
+              { agency: "NIH", grantNumbers: "R01", nciProgramOfficer: "John Doe" },
+              { agency: "NCI", grantNumbers: "P01", nciProgramOfficer: "Jane Smith" },
+            ],
+          }),
+        }),
+      }),
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            study: studyFactory.build({
-              funding: [
-                { agency: "NIH", grantNumbers: "R01", nciProgramOfficer: "John Doe" },
-                { agency: "NCI", grantNumbers: "P01", nciProgramOfficer: "Jane Smith" },
-              ],
-            }),
-          })}
-        />
-      ),
-    });
+    const { getByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByTestId("section-b-funding-agency-0")).toBeInTheDocument();
     expect(getByTestId("section-b-funding-agency-1")).toBeInTheDocument();
   });
 
   it("should render existing publications from data", () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          study: studyFactory.build({
+            publications: [{ title: "Publication 1", pubmedID: "12345", DOI: "10.1234" }],
+          }),
+        }),
+      }),
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            study: studyFactory.build({
-              publications: [{ title: "Publication 1", pubmedID: "12345", DOI: "10.1234" }],
-            }),
-          })}
-        />
-      ),
-    });
+    const { getByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByTestId("section-b-publication-0")).toBeInTheDocument();
   });
 
   it("should render existing repositories from data", () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          study: studyFactory.build({
+            repositories: [
+              {
+                name: "GEO",
+                studyID: "GSE123",
+                dataTypesSubmitted: ["genomics"],
+                otherDataTypesSubmitted: "",
+              },
+            ],
+          }),
+        }),
+      }),
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            study: studyFactory.build({
-              repositories: [
-                {
-                  name: "GEO",
-                  studyID: "GSE123",
-                  dataTypesSubmitted: ["genomics"],
-                  otherDataTypesSubmitted: "",
-                },
-              ],
-            }),
-          })}
-        />
-      ),
-    });
+    const { getByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByTestId("section-b-repository-0")).toBeInTheDocument();
   });
 
   it("should render existing planned publications from data", () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          study: studyFactory.build({
+            plannedPublications: [{ title: "Planned Pub 1", expectedDate: "12/31/2026" }],
+          }),
+        }),
+      }),
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            study: studyFactory.build({
-              plannedPublications: [{ title: "Planned Pub 1", expectedDate: "12/31/2026" }],
-            }),
-          })}
-        />
-      ),
-    });
+    const { getByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByTestId("section-b-planned-publication-0")).toBeInTheDocument();
   });
 
   it("should handle empty programs array gracefully", () => {
-    const props = createSectionProps();
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: [],
+      activeOrganizations: [],
+    };
 
-    expect(() =>
-      render(<FormSectionB {...props} />, {
-        wrapper: (p) => <TestParent {...p} programs={[]} />,
-      })
-    ).not.toThrow();
+    expect(() => render(<TestParent orgCtxState={orgCtxState} />)).not.toThrow();
   });
 
   it("should change program when selecting a different program", async () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "program-1",
+            name: "Test Program 1",
+            abbreviation: "TP1",
+            description: "Test Program 1 Description",
+          },
+        }),
+      }),
+    };
 
-    const { getByTestId, getAllByRole, getByText } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: {
-              _id: "program-1",
-              name: "Test Program 1",
-              abbreviation: "TP1",
-              description: "Test Program 1 Description",
-            },
-          })}
-        />
-      ),
-    });
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId, getAllByRole, getByText } = render(
+      <TestParent formCtxState={formCtxState} orgCtxState={orgCtxState} />
+    );
 
     const programSelectContainer = getByTestId("section-b-program");
     const programSelectButton = within(programSelectContainer).getByRole("button");
@@ -449,23 +420,30 @@ describe("Basic Functionality", () => {
   });
 
   it("should change to 'Not Applicable' program when selected", async () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "program-1",
+            name: "Test Program 1",
+            abbreviation: "TP1",
+            description: "Test Program 1 Description",
+          },
+        }),
+      }),
+    };
 
-    const { getByTestId, getAllByRole, getByText } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: {
-              _id: "program-1",
-              name: "Test Program 1",
-              abbreviation: "TP1",
-              description: "Test Program 1 Description",
-            },
-          })}
-        />
-      ),
-    });
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId, getAllByRole, getByText } = render(
+      <TestParent formCtxState={formCtxState} orgCtxState={orgCtxState} />
+    );
 
     const programSelectContainer = getByTestId("section-b-program");
     const programSelectButton = within(programSelectContainer).getByRole("button");
@@ -486,23 +464,30 @@ describe("Basic Functionality", () => {
   });
 
   it("should change to 'Other' program when selected", async () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "program-1",
+            name: "Test Program 1",
+            abbreviation: "TP1",
+            description: "Test Program 1 Description",
+          },
+        }),
+      }),
+    };
 
-    const { getByTestId, getAllByRole, getByText } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: {
-              _id: "program-1",
-              name: "Test Program 1",
-              abbreviation: "TP1",
-              description: "Test Program 1 Description",
-            },
-          })}
-        />
-      ),
-    });
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId, getAllByRole, getByText } = render(
+      <TestParent formCtxState={formCtxState} orgCtxState={orgCtxState} />
+    );
 
     const programSelectContainer = getByTestId("section-b-program");
     const programSelectButton = within(programSelectContainer).getByRole("button");
@@ -524,31 +509,40 @@ describe("Basic Functionality", () => {
 
   it("should return form data when getFormObject is called", async () => {
     const getFormObjectRef = { current: null };
-    const props: FormSectionProps = {
-      ...createSectionProps(),
-      refs: { getFormObjectRef },
+
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "program-1",
+            name: "Test Program 1",
+            abbreviation: "TP1",
+            description: "Test Program 1 Description",
+          },
+          study: studyFactory.build({
+            name: "Test Study",
+            abbreviation: "TS",
+            description: "A test study",
+          }),
+        }),
+      }),
     };
 
-    render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: {
-              _id: "program-1",
-              name: "Test Program 1",
-              abbreviation: "TP1",
-              description: "Test Program 1 Description",
-            },
-            study: studyFactory.build({
-              name: "Test Study",
-              abbreviation: "TS",
-              description: "A test study",
-            }),
-          })}
-        />
-      ),
-    });
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    render(
+      <TestParent
+        formCtxState={formCtxState}
+        orgCtxState={orgCtxState}
+        getFormObjectRef={getFormObjectRef}
+      />
+    );
 
     await waitFor(() => {
       expect(getFormObjectRef.current).toBeInstanceOf(Function);
@@ -563,26 +557,23 @@ describe("Basic Functionality", () => {
 
   it("should handle planned publications with invalid expectedDate", async () => {
     const getFormObjectRef = { current: null };
-    const props: FormSectionProps = {
-      ...createSectionProps(),
-      refs: { getFormObjectRef },
+
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          study: studyFactory.build({
+            plannedPublications: [
+              { title: "Planned Pub 1", expectedDate: "invalid-date" },
+              { title: "Planned Pub 2", expectedDate: "12/31/2026" },
+            ],
+          }),
+        }),
+      }),
     };
 
-    render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            study: studyFactory.build({
-              plannedPublications: [
-                { title: "Planned Pub 1", expectedDate: "invalid-date" },
-                { title: "Planned Pub 2", expectedDate: "12/31/2026" },
-              ],
-            }),
-          })}
-        />
-      ),
-    });
+    render(<TestParent formCtxState={formCtxState} getFormObjectRef={getFormObjectRef} />);
 
     await waitFor(() => {
       expect(getFormObjectRef.current).toBeInstanceOf(Function);
@@ -596,23 +587,30 @@ describe("Basic Functionality", () => {
   });
 
   it("should initialize program state from context data", () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "program-2",
+            name: "Test Program 2",
+            abbreviation: "TP2",
+            description: "Test Program 2 Description",
+          },
+        }),
+      }),
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: {
-              _id: "program-2",
-              name: "Test Program 2",
-              abbreviation: "TP2",
-              description: "Test Program 2 Description",
-            },
-          })}
-        />
-      ),
-    });
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId } = render(
+      <TestParent formCtxState={formCtxState} orgCtxState={orgCtxState} />
+    );
 
     const programSelectContainer = getByTestId("section-b-program");
     const programSelectButton = within(programSelectContainer).getByRole("button");
@@ -620,30 +618,27 @@ describe("Basic Functionality", () => {
   });
 
   it("should initialize study state from context data", () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          study: studyFactory.build({
+            name: "Custom Study Name",
+            abbreviation: "CSN",
+            description: "Custom study description",
+          }),
+        }),
+      }),
+    };
 
-    const { getByDisplayValue } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            study: studyFactory.build({
-              name: "Custom Study Name",
-              abbreviation: "CSN",
-              description: "Custom study description",
-            }),
-          })}
-        />
-      ),
-    });
+    const { getByDisplayValue } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByDisplayValue("Custom Study Name")).toBeInTheDocument();
     expect(getByDisplayValue("CSN")).toBeInTheDocument();
   });
 
   it("should display program name without abbreviation when abbreviation is empty", async () => {
-    const props = createSectionProps();
-
     const programsWithoutAbbreviation = [
       organizationFactory.build({
         _id: "program-no-abbr",
@@ -653,9 +648,15 @@ describe("Basic Functionality", () => {
       }),
     ];
 
-    const { getByTestId, getAllByRole, getByText } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} programs={programsWithoutAbbreviation} />,
-    });
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: programsWithoutAbbreviation,
+      activeOrganizations: programsWithoutAbbreviation,
+    };
+
+    const { getByTestId, getAllByRole, getByText } = render(
+      <TestParent orgCtxState={orgCtxState} />
+    );
 
     const programSelectContainer = getByTestId("section-b-program");
     const programSelectButton = within(programSelectContainer).getByRole("button");
@@ -671,23 +672,30 @@ describe("Basic Functionality", () => {
   });
 
   it("should not change program when selecting the same program", async () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "program-1",
+            name: "Test Program 1",
+            abbreviation: "TP1",
+            description: "Test Program 1 Description",
+          },
+        }),
+      }),
+    };
 
-    const { getByTestId, getAllByRole } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: {
-              _id: "program-1",
-              name: "Test Program 1",
-              abbreviation: "TP1",
-              description: "Test Program 1 Description",
-            },
-          })}
-        />
-      ),
-    });
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId, getAllByRole } = render(
+      <TestParent formCtxState={formCtxState} orgCtxState={orgCtxState} />
+    );
 
     const programSelectContainer = getByTestId("section-b-program");
     const programSelectButton = within(programSelectContainer).getByRole("button");
@@ -706,9 +714,10 @@ describe("Basic Functionality", () => {
 
     const listboxes = getAllByRole("listbox", { hidden: true });
     const listbox = listboxes.find((el) => el.tagName === "UL");
-    const options = within(listbox).getAllByRole("option", { hidden: true });
+    const options = within(listbox as HTMLElement).getAllByRole("option", { hidden: true });
     const sameOption = options.find((o) => o.textContent?.includes("Test Program 1"));
-    userEvent.click(sameOption);
+
+    userEvent.click(sameOption as HTMLElement);
 
     await waitFor(() => {
       expect(listbox).not.toBeVisible();
@@ -720,8 +729,6 @@ describe("Basic Functionality", () => {
   });
 
   it("should filter out readOnly programs from options", () => {
-    const props = createSectionProps();
-
     const programsWithReadOnly = [
       organizationFactory.build({
         _id: "program-normal",
@@ -739,62 +746,66 @@ describe("Basic Functionality", () => {
       }),
     ];
 
-    const { queryByText } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} programs={programsWithReadOnly} />,
-    });
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: programsWithReadOnly,
+      activeOrganizations: programsWithReadOnly,
+    };
+
+    const { queryByText } = render(<TestParent orgCtxState={orgCtxState} />);
 
     expect(queryByText("ReadOnly Program (RP)")).not.toBeInTheDocument();
   });
 
   it("should convert program abbreviation to uppercase when typing", async () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "Other",
+            name: "",
+            abbreviation: "",
+            description: "",
+          },
+        }),
+      }),
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: {
-              _id: "Other",
-              name: "",
-              abbreviation: "",
-              description: "",
-            },
-          })}
-        />
-      ),
-    });
+    const { getByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     const programAbbreviation = within(getByTestId("section-b-program-abbreviation")).getByRole(
       "textbox"
     );
+
     userEvent.type(programAbbreviation, "abc");
 
     await waitFor(() => {
       expect(programAbbreviation).toHaveValue("ABC");
     });
+
     userEvent.clear(programAbbreviation);
   });
 
   it("should convert study abbreviation to uppercase when typing", async () => {
-    const props = createSectionProps();
-
-    const { getByTestId } = render(<FormSectionB {...props} />, { wrapper: TestParent });
+    const { getByTestId } = render(<TestParent />);
 
     const studyAbbreviation = within(
       getByTestId("section-b-study-abbreviation-or-acronym")
     ).getByRole("textbox");
+
     userEvent.clear(studyAbbreviation);
     userEvent.type(studyAbbreviation, "xyz");
 
     await waitFor(() => {
       expect(studyAbbreviation).toHaveValue("XYZ");
     });
+
     userEvent.clear(studyAbbreviation);
   });
 
   it("should remove a funding agency when remove button is clicked", async () => {
-    const props = createSectionProps();
     const dataWithFunding = questionnaireDataFactory.build({
       study: studyFactory.build({
         funding: [
@@ -804,9 +815,17 @@ describe("Basic Functionality", () => {
       }),
     });
 
-    const { getByTestId, queryByTestId, getByRole } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} questionnaireData={dataWithFunding} />,
-    });
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: dataWithFunding,
+      }),
+    };
+
+    const { getByTestId, queryByTestId, getByRole } = render(
+      <TestParent formCtxState={formCtxState} />
+    );
 
     expect(getByTestId("section-b-funding-agency-0")).toBeInTheDocument();
     expect(getByTestId("section-b-funding-agency-1")).toBeInTheDocument();
@@ -820,23 +839,24 @@ describe("Basic Functionality", () => {
   });
 
   it("should remove a publication when remove button is clicked", async () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          study: studyFactory.build({
+            publications: [
+              { title: "Publication 1", pubmedID: "12345", DOI: "10.1234" },
+              { title: "Publication 2", pubmedID: "67890", DOI: "10.5678" },
+            ],
+          }),
+        }),
+      }),
+    };
 
-    const { getByTestId, queryByTestId, getAllByRole } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            study: studyFactory.build({
-              publications: [
-                { title: "Publication 1", pubmedID: "12345", DOI: "10.1234" },
-                { title: "Publication 2", pubmedID: "67890", DOI: "10.5678" },
-              ],
-            }),
-          })}
-        />
-      ),
-    });
+    const { getByTestId, queryByTestId, getAllByRole } = render(
+      <TestParent formCtxState={formCtxState} />
+    );
 
     expect(getByTestId("section-b-publication-0")).toBeInTheDocument();
     expect(getByTestId("section-b-publication-1")).toBeInTheDocument();
@@ -853,7 +873,6 @@ describe("Basic Functionality", () => {
   });
 
   it("should remove a planned publication when remove button is clicked", async () => {
-    const props = createSectionProps();
     const dataWithPlannedPubs = questionnaireDataFactory.build({
       study: studyFactory.build({
         plannedPublications: [
@@ -863,9 +882,17 @@ describe("Basic Functionality", () => {
       }),
     });
 
-    const { getByTestId, queryByTestId, getAllByRole } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} questionnaireData={dataWithPlannedPubs} />,
-    });
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: dataWithPlannedPubs,
+      }),
+    };
+
+    const { getByTestId, queryByTestId, getAllByRole } = render(
+      <TestParent formCtxState={formCtxState} />
+    );
 
     expect(getByTestId("section-b-planned-publication-0")).toBeInTheDocument();
     expect(getByTestId("section-b-planned-publication-1")).toBeInTheDocument();
@@ -882,7 +909,6 @@ describe("Basic Functionality", () => {
   });
 
   it("should remove a repository when remove button is clicked", async () => {
-    const props = createSectionProps();
     const dataWithRepos = questionnaireDataFactory.build({
       study: studyFactory.build({
         repositories: [
@@ -902,9 +928,17 @@ describe("Basic Functionality", () => {
       }),
     });
 
-    const { getByTestId, queryByTestId, getAllByRole } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} questionnaireData={dataWithRepos} />,
-    });
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: dataWithRepos,
+      }),
+    };
+
+    const { getByTestId, queryByTestId, getAllByRole } = render(
+      <TestParent formCtxState={formCtxState} />
+    );
 
     expect(getByTestId("section-b-repository-0")).toBeInTheDocument();
     expect(getByTestId("section-b-repository-1")).toBeInTheDocument();
@@ -921,16 +955,21 @@ describe("Basic Functionality", () => {
   });
 
   it("should add a funding agency when add button is clicked", async () => {
-    const props = createSectionProps();
     const dataWithFunding = questionnaireDataFactory.build({
       study: studyFactory.build({
         funding: [{ agency: "Funding 1", grantNumbers: "123", nciProgramOfficer: "", nciGPA: "" }],
       }),
     });
 
-    const { getByTestId, queryByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} questionnaireData={dataWithFunding} />,
-    });
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: dataWithFunding,
+      }),
+    };
+
+    const { getByTestId, queryByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByTestId("section-b-funding-agency-0")).toBeInTheDocument();
     expect(queryByTestId("section-b-funding-agency-1")).not.toBeInTheDocument();
@@ -944,16 +983,21 @@ describe("Basic Functionality", () => {
   });
 
   it("should add a publication when add button is clicked", async () => {
-    const props = createSectionProps();
     const dataWithPubs = questionnaireDataFactory.build({
       study: studyFactory.build({
         publications: [{ title: "Publication 1", pubmedID: "PUB001", DOI: "10.1234" }],
       }),
     });
 
-    const { getByTestId, queryByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} questionnaireData={dataWithPubs} />,
-    });
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: dataWithPubs,
+      }),
+    };
+
+    const { getByTestId, queryByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByTestId("section-b-publication-0")).toBeInTheDocument();
     expect(queryByTestId("section-b-publication-1")).not.toBeInTheDocument();
@@ -967,16 +1011,21 @@ describe("Basic Functionality", () => {
   });
 
   it("should add a planned publication when add button is clicked", async () => {
-    const props = createSectionProps();
     const dataWithPlannedPubs = questionnaireDataFactory.build({
       study: studyFactory.build({
         plannedPublications: [{ title: "Planned Pub 1", expectedDate: "06/01/2024" }],
       }),
     });
 
-    const { getByTestId, queryByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} questionnaireData={dataWithPlannedPubs} />,
-    });
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: dataWithPlannedPubs,
+      }),
+    };
+
+    const { getByTestId, queryByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByTestId("section-b-planned-publication-0")).toBeInTheDocument();
     expect(queryByTestId("section-b-planned-publication-1")).not.toBeInTheDocument();
@@ -990,7 +1039,6 @@ describe("Basic Functionality", () => {
   });
 
   it("should add a repository when add button is clicked", async () => {
-    const props = createSectionProps();
     const dataWithRepos = questionnaireDataFactory.build({
       study: studyFactory.build({
         repositories: [
@@ -1004,9 +1052,15 @@ describe("Basic Functionality", () => {
       }),
     });
 
-    const { getByTestId, queryByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => <TestParent {...p} questionnaireData={dataWithRepos} />,
-    });
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: dataWithRepos,
+      }),
+    };
+
+    const { getByTestId, queryByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     expect(getByTestId("section-b-repository-0")).toBeInTheDocument();
     expect(queryByTestId("section-b-repository-1")).not.toBeInTheDocument();
@@ -1020,7 +1074,6 @@ describe("Basic Functionality", () => {
   });
 
   it("should render program label from initial data without abbreviation", () => {
-    const props = createSectionProps();
     const programWithoutAbbreviation = organizationFactory.build({
       _id: "program-no-abbrev",
       name: "Program Without Abbreviation",
@@ -1028,17 +1081,25 @@ describe("Basic Functionality", () => {
       description: "Description",
     });
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: programWithoutAbbreviation,
-          })}
-          programs={[programWithoutAbbreviation]}
-        />
-      ),
-    });
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: programWithoutAbbreviation,
+        }),
+      }),
+    };
+
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: [programWithoutAbbreviation],
+      activeOrganizations: [programWithoutAbbreviation],
+    };
+
+    const { getByTestId } = render(
+      <TestParent formCtxState={formCtxState} orgCtxState={orgCtxState} />
+    );
 
     const programSelect = getByTestId("section-b-program");
     expect(within(programSelect).getByRole("button")).toHaveTextContent(
@@ -1049,17 +1110,35 @@ describe("Basic Functionality", () => {
 });
 
 describe("Implementation Requirements", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockUseFormMode.mockReturnValue({ formMode: "EDIT", readOnlyInputs: false });
+  it("should have a tooltip on the DOI field", async () => {
+    const { getByText, findByText } = render(<TestParent />);
+
+    const doiLabel = getByText("DOI");
+    const doiLabelElement = doiLabel.closest("label");
+
+    expect(doiLabelElement).toBeInTheDocument();
+
+    const tooltipToggleButton = within(doiLabelElement as HTMLLabelElement).getByRole("button", {
+      name: "Toggle Tooltip",
+    });
+
+    fireEvent.click(tooltipToggleButton);
+
+    const tooltipText = await findByText(
+      "Digital Object Identifier, either DOI value or DOI link.",
+      { exact: true }
+    );
+    expect(tooltipText).toBeInTheDocument();
   });
 
   it("should include 'Not Applicable' as a program option", async () => {
-    const props = createSectionProps();
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
 
-    const { getByTestId, getAllByRole } = render(<FormSectionB {...props} />, {
-      wrapper: TestParent,
-    });
+    const { getByTestId, getAllByRole } = render(<TestParent orgCtxState={orgCtxState} />);
 
     const programSelectContainer = getByTestId("section-b-program");
     const programSelectButton = within(programSelectContainer).getByRole("button");
@@ -1075,11 +1154,13 @@ describe("Implementation Requirements", () => {
   });
 
   it("should include 'Other' as a program option", async () => {
-    const props = createSectionProps();
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
 
-    const { getByTestId, getAllByRole } = render(<FormSectionB {...props} />, {
-      wrapper: TestParent,
-    });
+    const { getByTestId, getAllByRole } = render(<TestParent orgCtxState={orgCtxState} />);
 
     const programSelectContainer = getByTestId("section-b-program");
     const programSelectButton = within(programSelectContainer).getByRole("button");
@@ -1095,23 +1176,22 @@ describe("Implementation Requirements", () => {
   });
 
   it("should make program title and abbreviation editable when 'Other' is selected", () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "Other",
+            name: "",
+            abbreviation: "",
+            description: "",
+          },
+        }),
+      }),
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: {
-              _id: "Other",
-              name: "",
-              abbreviation: "",
-              description: "",
-            },
-          })}
-        />
-      ),
-    });
+    const { getByTestId } = render(<TestParent formCtxState={formCtxState} />);
 
     const elements = getFormElements({ getByTestId });
     expect(within(elements.programTitle()).getByRole("textbox")).not.toHaveAttribute("readonly");
@@ -1124,23 +1204,30 @@ describe("Implementation Requirements", () => {
   });
 
   it("should make program title and abbreviation readOnly when a standard program is selected", async () => {
-    const props = createSectionProps();
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "program-1",
+            name: "Test Program 1",
+            abbreviation: "TP1",
+            description: "Test Program 1 Description",
+          },
+        }),
+      }),
+    };
 
-    const { getByTestId } = render(<FormSectionB {...props} />, {
-      wrapper: (p) => (
-        <TestParent
-          {...p}
-          questionnaireData={questionnaireDataFactory.build({
-            program: {
-              _id: "program-1",
-              name: "Test Program 1",
-              abbreviation: "TP1",
-              description: "Test Program 1 Description",
-            },
-          })}
-        />
-      ),
-    });
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId } = render(
+      <TestParent formCtxState={formCtxState} orgCtxState={orgCtxState} />
+    );
 
     await waitFor(() => {
       const elements = getFormElements({ getByTestId });
