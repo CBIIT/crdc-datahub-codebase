@@ -507,12 +507,12 @@ export class SectionB extends SectionBase<BKeys, SectionBDeps> {
           return dataTypes.includes(item);
         }) as Repository["dataTypesSubmitted"];
 
-      let otherDataTypesSubmitted = "";
-      if (dataTypesSubmitted.includes("Other")) {
-        otherDataTypesSubmitted = toString(repositoryOtherDataTypesSubmitted?.[i]).trim();
-      }
+      const rawOtherDataTypesSubmitted = toString(repositoryOtherDataTypesSubmitted?.[i]).trim();
+      const otherDataTypesSubmitted = dataTypesSubmitted.includes("Other")
+        ? rawOtherDataTypesSubmitted
+        : "";
 
-      if (name || studyID || dataTypesSubmitted.length || otherDataTypesSubmitted) {
+      if (name || studyID || dataTypesSubmitted.length || rawOtherDataTypesSubmitted) {
         repositories.push({ name, studyID, dataTypesSubmitted, otherDataTypesSubmitted });
       }
     });
