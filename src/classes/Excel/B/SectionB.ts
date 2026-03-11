@@ -168,6 +168,24 @@ export class SectionB extends SectionBase<BKeys, SectionBDeps> {
       ],
     });
 
+    ws.addConditionalFormatting({
+      ref: "S2:S100",
+      rules: [
+        {
+          type: "expression",
+          formulae: ['AND($R2<>"",ISERROR(SEARCH("|Other|","|"&SUBSTITUTE($R2," ","")&"|")))'],
+          style: {
+            fill: {
+              type: "pattern",
+              pattern: "solid",
+              bgColor: { argb: "000000" },
+            },
+          },
+          priority: 1,
+        },
+      ],
+    });
+
     // Program
     A2.dataValidation = {
       type: "list",
