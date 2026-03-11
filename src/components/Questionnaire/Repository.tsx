@@ -42,8 +42,17 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
 
   const { name, studyID, dataTypesSubmitted, otherDataTypesSubmitted } = repository || {};
   const [dataTypes, setDataTypes] = useState<string[]>(dataTypesSubmitted || []);
+  const [otherDataTypes, setOtherDataTypes] = useState<string>(otherDataTypesSubmitted || "");
 
   const isOtherSelected = useMemo(() => dataTypes?.includes("Other"), [dataTypes]);
+
+  const handleDataTypesChange = (value: string[]) => {
+    setDataTypes(value);
+
+    if (!value?.includes("Other")) {
+      setOtherDataTypes("");
+    }
+  };
 
   return (
     <GridContainer container data-testid={idPrefix.concat(`repository-${index}`)}>
@@ -88,7 +97,7 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
           tooltipText="Data type(s) submitted"
           required
           readOnly={readOnly}
-          onChange={(value) => setDataTypes(value as string[])}
+          onChange={handleDataTypesChange}
           data-testid={idPrefix.concat(`repository-${index}-data-types-submitted`)}
         />
         <TextInput
@@ -96,11 +105,12 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
           label="Other Data Type(s)"
           tooltipText='Enter additional Data Types, separated by pipes ("|").'
           name={`study[repositories][${index}][otherDataTypesSubmitted]`}
-          value={otherDataTypesSubmitted}
+          value={otherDataTypes}
           placeholder="Other, specify as free text"
           maxLength={100}
           gridWidth={6}
           readOnly={!isOtherSelected || readOnly}
+          onChange={(e) => setOtherDataTypes(e.target.value)}
           data-testid={idPrefix.concat(`repository-${index}-other-data-types-submitted`)}
         />
       </Grid>
