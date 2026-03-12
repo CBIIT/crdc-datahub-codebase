@@ -168,6 +168,24 @@ export class SectionB extends SectionBase<BKeys, SectionBDeps> {
       ],
     });
 
+    ws.addConditionalFormatting({
+      ref: "S2:S100",
+      rules: [
+        {
+          type: "expression",
+          formulae: ['AND($R2<>"",ISERROR(SEARCH("|Other|","|"&SUBSTITUTE($R2," ","")&"|")))'],
+          style: {
+            fill: {
+              type: "pattern",
+              pattern: "solid",
+              bgColor: { argb: "000000" },
+            },
+          },
+          priority: 1,
+        },
+      ],
+    });
+
     // Program
     A2.dataValidation = {
       type: "list",
@@ -501,13 +519,18 @@ export class SectionB extends SectionBase<BKeys, SectionBDeps> {
             DataTypes.genomics.name,
             DataTypes.imaging.name,
             DataTypes.proteomics.name,
+            "Other",
           ];
 
           return dataTypes.includes(item);
         }) as Repository["dataTypesSubmitted"];
-      const otherDataTypesSubmitted = toString(repositoryOtherDataTypesSubmitted?.[i]).trim();
 
-      if (name || studyID || dataTypesSubmitted.length || otherDataTypesSubmitted) {
+      const rawOtherDataTypesSubmitted = toString(repositoryOtherDataTypesSubmitted?.[i]).trim();
+      const otherDataTypesSubmitted = dataTypesSubmitted.includes("Other")
+        ? rawOtherDataTypesSubmitted
+        : "";
+
+      if (name || studyID || dataTypesSubmitted.length || rawOtherDataTypesSubmitted) {
         repositories.push({ name, studyID, dataTypesSubmitted, otherDataTypesSubmitted });
       }
     });

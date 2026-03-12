@@ -56,7 +56,8 @@ const sectionMetadata = {
       },
       REPOSITORY: {
         title: "REPOSITORY",
-        description: "Add repository if your data has been submitted to another repository",
+        description:
+          "Add repository if your data has been submitted to another non-CRDC repository.",
       },
     },
   },
