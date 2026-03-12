@@ -40,7 +40,7 @@ const PlannedPublication: FC<Props> = ({
   const { title, expectedDate } = plannedPublication;
 
   return (
-    <GridContainer container>
+    <GridContainer container data-testid={idPrefix.concat(`planned-publication-${index}`)}>
       <Grid container item xs={12} rowSpacing={0} columnSpacing={1.5}>
         <TextInput
           id={idPrefix.concat(`planned-publication-${index}-title`)}

@@ -1068,6 +1068,60 @@ describe("Serialization", () => {
       }
     });
 
+    it("should serialize repositories with 'Other' data type correctly", async () => {
+      const mockForm = questionnaireDataFactory.build({
+        study: studyFactory.build({
+          name: "",
+          abbreviation: "",
+          description: "",
+          funding: [],
+          publications: [],
+          plannedPublications: [],
+          repositories: [
+            repositoryFactory.build({
+              name: "Repo With Other Selected",
+              studyID: "RWO-001",
+              dataTypesSubmitted: ["clinicalTrial", "Other"],
+              otherDataTypesSubmitted: "metabolomics | transcriptomics",
+            }),
+            repositoryFactory.build({
+              name: "Repo Without Other Selected",
+              studyID: "RWNO-002",
+              dataTypesSubmitted: ["genomics", "imaging"],
+              otherDataTypesSubmitted: "should be in sheet but ignored on parse",
+            }),
+          ],
+        }),
+      });
+      const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+      // @ts-expect-error Private member
+      const sheet = await middleware.serializeSectionB();
+
+      // @ts-expect-error Private member
+      const wb = middleware.workbook;
+      expect(wb.getWorksheet("Program and Study")).toEqual(sheet);
+
+      expect(sheet.getColumn("P").values).toEqual([
+        undefined,
+        expect.any(String),
+        "Repo With Other Selected",
+        "Repo Without Other Selected",
+      ]);
+      expect(sheet.getColumn("R").values).toEqual([
+        undefined,
+        expect.any(String),
+        "clinicalTrial | Other",
+        "genomics | imaging",
+      ]);
+      expect(sheet.getColumn("S").values).toEqual([
+        undefined,
+        expect.any(String),
+        "metabolomics | transcriptomics",
+        "should be in sheet but ignored on parse",
+      ]);
+    });
+
     it("should generate SectionB sheet with partial data (all null)", async () => {
       const mockForm = questionnaireDataFactory.build({
         program: {
@@ -2263,7 +2317,7 @@ describe("Parsing", () => {
           repositoryFactory.build({
             name: "Repository 1",
             studyID: "02ec12d2-12c2-45b6-b12d-9fd954f696b8",
-            dataTypesSubmitted: ["clinicalTrial", "genomics", "imaging", "proteomics"],
+            dataTypesSubmitted: ["clinicalTrial", "genomics", "imaging", "proteomics", "Other"],
             otherDataTypesSubmitted: "other 1 | other 2 | other 3",
           }),
           repositoryFactory.build({
@@ -2358,16 +2412,92 @@ describe("Parsing", () => {
         expect.objectContaining({
           name: "Repository 1",
           studyID: "02ec12d2-12c2-45b6-b12d-9fd954f696b8",
-          dataTypesSubmitted: ["clinicalTrial", "genomics", "imaging", "proteomics"],
+          dataTypesSubmitted: ["clinicalTrial", "genomics", "imaging", "proteomics", "Other"],
           otherDataTypesSubmitted: "other 1 | other 2 | other 3",
         }),
         expect.objectContaining({
           name: "Repository 2",
           studyID: "03ec12d2-12c2-45b6-b12d-9fd954f696b8",
           dataTypesSubmitted: [],
-          otherDataTypesSubmitted: "other 1",
+          // otherDataTypesSubmitted is ignored when "Other" is not in dataTypesSubmitted
+          otherDataTypesSubmitted: "",
         }),
       ])
+    );
+  });
+
+  it("should ignore otherDataTypesSubmitted when 'Other' is not in dataTypesSubmitted", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        name: "Test Study",
+        abbreviation: "",
+        description: "",
+        funding: [],
+        publications: [],
+        plannedPublications: [],
+        repositories: [
+          repositoryFactory.build({
+            name: "Repo With Other",
+            studyID: "REPO-001",
+            dataTypesSubmitted: ["genomics", "Other"],
+            otherDataTypesSubmitted: "custom data type",
+          }),
+          repositoryFactory.build({
+            name: "Repo Without Other",
+            studyID: "REPO-002",
+            dataTypesSubmitted: ["genomics", "imaging"],
+            otherDataTypesSubmitted: "should be ignored",
+          }),
+          repositoryFactory.build({
+            name: "Repo Empty Types",
+            studyID: "REPO-003",
+            dataTypesSubmitted: [],
+            otherDataTypesSubmitted: "also should be ignored",
+          }),
+        ],
+      }),
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionB();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionB();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+    expect(output.study.repositories).toHaveLength(3);
+
+    expect(output.study.repositories[0]).toEqual(
+      expect.objectContaining({
+        name: "Repo With Other",
+        studyID: "REPO-001",
+        dataTypesSubmitted: ["genomics", "Other"],
+        otherDataTypesSubmitted: "custom data type",
+      })
+    );
+    expect(output.study.repositories[1]).toEqual(
+      expect.objectContaining({
+        name: "Repo Without Other",
+        studyID: "REPO-002",
+        dataTypesSubmitted: ["genomics", "imaging"],
+        otherDataTypesSubmitted: "",
+      })
+    );
+    expect(output.study.repositories[2]).toEqual(
+      expect.objectContaining({
+        name: "Repo Empty Types",
+        studyID: "REPO-003",
+        dataTypesSubmitted: [],
+        otherDataTypesSubmitted: "",
+      })
     );
   });
 

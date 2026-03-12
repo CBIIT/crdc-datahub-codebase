@@ -377,6 +377,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           tooltipText="The name of the broad administrative group that manages the data collection.  Example - Clinical Proteomic Tumor Analysis Consortium."
           required
           readOnly={readOnlyInputs}
+          data-testid="section-b-program"
         />
         <TextInput
           key={`program-name-${program?.name}_${programKeyRef.current}`}
@@ -390,6 +391,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           hideValidation={readOnlyProgram}
           required
           readOnly={readOnlyProgram}
+          data-testid="section-b-program-title"
         />
         <TextInput
           key={`program-abbreviation-${program?.abbreviation}_${programKeyRef.current}`}
@@ -406,6 +408,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           hideValidation={readOnlyProgram}
           required
           readOnly={readOnlyProgram}
+          data-testid="section-b-program-abbreviation"
         />
         <TextInput
           key={`program-description-${program?.description}_${programKeyRef.current}`}
@@ -422,6 +425,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           resize
           required
           readOnly={readOnlyProgram}
+          data-testid="section-b-program-description"
         />
       </SectionGroup>
 
@@ -442,6 +446,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           hideValidation={readOnlyInputs}
           tooltipText="A descriptive name that will be used to identify the study."
           required
+          data-testid="section-b-study-title"
         />
         <TextInput
           id="section-b-study-abbreviation-or-acronym"
@@ -457,6 +462,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           readOnly={readOnlyInputs}
           hideValidation={readOnlyInputs}
           tooltipText="Provide a short abbreviation or acronym (e.g., NCI-MATCH) for the study."
+          data-testid="section-b-study-abbreviation-or-acronym"
         />
         <TextInput
           id="section-b-study-description"
@@ -473,6 +479,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           multiline
           resize
           tooltipText="Describe your study and the data being submitted. Include objectives of the study and provide a brief description of the scientific value of the study."
+          data-testid="section-b-study-description"
         />
       </SectionGroup>
 
@@ -487,6 +494,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
             startIcon={<AddCircleIcon />}
             onClick={addFunding}
             disabled={readOnlyInputs || status === FormStatus.SAVING}
+            data-testid="section-b-add-funding-agency-button"
           />
         }
       >
@@ -523,6 +531,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
             startIcon={<AddCircleIcon />}
             onClick={addPublication}
             disabled={readOnlyInputs || status === FormStatus.SAVING}
+            data-testid="section-b-add-publication-button"
           />
         }
       >
@@ -559,6 +568,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
             startIcon={<AddCircleIcon />}
             onClick={addPlannedPublication}
             disabled={readOnlyInputs || status === FormStatus.SAVING}
+            data-testid="section-b-add-planned-publication-button"
           />
         }
       >
@@ -595,6 +605,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
             startIcon={<AddCircleIcon />}
             onClick={addRepository}
             disabled={readOnlyInputs || status === FormStatus.SAVING}
+            data-testid="section-b-add-repository-button"
           />
         }
       >
