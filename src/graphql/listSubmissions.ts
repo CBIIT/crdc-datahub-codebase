@@ -92,7 +92,6 @@ export type Response = {
       | "dataCommonsDisplayName"
       | "organization"
       | "study"
-      | "dbGaPID"
       | "modelVersion"
       | "status"
       | "archived"
