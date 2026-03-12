@@ -1,3 +1,4 @@
+# GraphQL specification document https://spec.graphql.org/September2025/
 directive @public on FIELD_DEFINITION|QUERY
 scalar Date
 scalar JSON
@@ -12,7 +13,7 @@ interface SubmissionInterface {
     dataCommonsDisplayName: String
     modelVersion: String
     studyAbbreviation: String
-    dbGaPID: String
+    dbGaPID: String @deprecated
     bucketName: String
     rootPath: String
     status: String
@@ -39,7 +40,7 @@ interface SubmissionInterface {
     validationScope: String
     studyID: String
     studyName: String
-    study: ApprovedStudy
+    study: SubmissionStudy
     controlledAccess: Boolean
     ORCID: String
     deletingData: Boolean
@@ -188,8 +189,8 @@ type Submission implements SubmissionInterface {
     dataCommonsDisplayName: String
     modelVersion: String # for future use
     # note: FE should use study object instead
-    studyAbbreviation: String
-    dbGaPID: String # aka. phs number
+    studyAbbreviation: String @deprecated # use the nested field in the study object
+    dbGaPID: String @deprecated # use the nested field in the study object
     bucketName: String # populated from organization
     rootPath: String # "submissions/<submission ID>" to organization's rootPath
     status: String # [New, In Progress, Submitted, Released, Canceled, Transferred, Completed, Archived, Deleted]
@@ -216,8 +217,8 @@ type Submission implements SubmissionInterface {
     validationScope: String
     studyID: String
     # note: FE should use study object instead
-    studyName: String
-    study: ApprovedStudy
+    studyName: String @deprecated # use the nested field in the study object
+    study: SubmissionStudy
     controlledAccess: Boolean
     ORCID: String
     deletingData: Boolean
@@ -242,8 +243,8 @@ type SubmissionList implements SubmissionInterface {
     dataCommonsDisplayName: String
     modelVersion: String # for future use
     # note: FE should use study object instead
-    studyAbbreviation: String
-    dbGaPID: String # aka. phs number
+    studyAbbreviation: String @deprecated # use the nested field in the study object
+    dbGaPID: String @deprecated # use the nested field in the study object
     bucketName: String # populated from organization
     rootPath: String # "submissions/<submission ID>" to organization's rootPath
     status: String # [New, In Progress, Submitted, Released, Canceled, Transferred, Completed, Archived, Deleted]
@@ -270,8 +271,8 @@ type SubmissionList implements SubmissionInterface {
     validationScope: String
     studyID: String
     # note: FE should use study object instead
-    studyName: String
-    study: ApprovedStudy
+    studyName: String @deprecated # use the nested field in the study object
+    study: SubmissionStudy
     controlledAccess: Boolean
     ORCID: String
     deletingData: Boolean
@@ -830,6 +831,14 @@ type idType {
 type TooltipResult {
     key: String!
     value: String
+}
+
+type SubmissionStudy {
+    _id: ID
+    studyName: String
+    studyAbbreviation: String
+    applicationID: String
+    dbGaPID: String
 }
 
 type Query {
