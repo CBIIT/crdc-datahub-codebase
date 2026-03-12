@@ -41,7 +41,7 @@ const Publication: FC<Props> = ({
   const { title, pubmedID, DOI } = publication;
 
   return (
-    <GridContainer container>
+    <GridContainer container data-testid={idPrefix.concat(`publication-${index}`)}>
       <Grid container item xs={12} rowSpacing={0} columnSpacing={1.5}>
         <TextInput
           id={idPrefix.concat(`publication-${index}-title`)}

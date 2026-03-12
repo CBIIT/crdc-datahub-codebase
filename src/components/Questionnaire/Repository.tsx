@@ -1,6 +1,6 @@
 import RemoveCircleIcon from "@mui/icons-material/RemoveCircle";
 import { Grid, styled } from "@mui/material";
-import React, { FC } from "react";
+import React, { FC, useMemo, useState } from "react";
 
 import DataTypes from "../../config/DataTypesConfig";
 import AddRemoveButton from "../AddRemoveButton";
@@ -20,6 +20,7 @@ export const repositoryDataTypesOptions = [
   DataTypes.genomics,
   DataTypes.imaging,
   DataTypes.proteomics,
+  { name: "Other", label: "Other" },
 ];
 
 type Props = {
@@ -40,9 +41,21 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
   const { status } = useFormContext();
 
   const { name, studyID, dataTypesSubmitted, otherDataTypesSubmitted } = repository || {};
+  const [dataTypes, setDataTypes] = useState<string[]>(dataTypesSubmitted || []);
+  const [otherDataTypes, setOtherDataTypes] = useState<string>(otherDataTypesSubmitted || "");
+
+  const isOtherSelected = useMemo(() => dataTypes?.includes("Other"), [dataTypes]);
+
+  const handleDataTypesChange = (value: string[]) => {
+    setDataTypes(value);
+
+    if (!value?.includes("Other")) {
+      setOtherDataTypes("");
+    }
+  };
 
   return (
-    <GridContainer container>
+    <GridContainer container data-testid={idPrefix.concat(`repository-${index}`)}>
       <Grid container item xs={12} rowSpacing={0} columnSpacing={1.5}>
         <TextInput
           id={idPrefix.concat(`repository-${index}-name`)}
@@ -55,6 +68,7 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
           tooltipText="Name of the repository (e.g., GEO, EGA, etc.)"
           required
           readOnly={readOnly}
+          data-testid={idPrefix.concat(`repository-${index}-name`)}
         />
         <TextInput
           id={idPrefix.concat(`repository-${index}-study-id`)}
@@ -67,6 +81,7 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
           tooltipText="Associated repository study identifier"
           required
           readOnly={readOnly}
+          data-testid={idPrefix.concat(`repository-${index}-study-id`)}
         />
         <SelectInput
           id={idPrefix.concat(`repository-${index}-data-types-submitted`)}
@@ -82,17 +97,21 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
           tooltipText="Data type(s) submitted"
           required
           readOnly={readOnly}
+          onChange={handleDataTypesChange}
+          data-testid={idPrefix.concat(`repository-${index}-data-types-submitted`)}
         />
         <TextInput
           id={idPrefix.concat(`repository-${index}-other-data-types-submitted`)}
           label="Other Data Type(s)"
           tooltipText='Enter additional Data Types, separated by pipes ("|").'
           name={`study[repositories][${index}][otherDataTypesSubmitted]`}
-          value={otherDataTypesSubmitted}
+          value={otherDataTypes}
           placeholder="Other, specify as free text"
           maxLength={100}
           gridWidth={6}
-          readOnly={readOnly}
+          readOnly={!isOtherSelected || readOnly}
+          onChange={(e) => setOtherDataTypes(e.target.value)}
+          data-testid={idPrefix.concat(`repository-${index}-other-data-types-submitted`)}
         />
       </Grid>
       <Grid item xs={12}>
@@ -104,6 +123,7 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
           startIcon={<RemoveCircleIcon />}
           iconColor="#E74040"
           disabled={readOnly || status === FormStatus.SAVING}
+          data-testid={idPrefix.concat(`repository-${index}-remove-button`)}
         />
       </Grid>
     </GridContainer>

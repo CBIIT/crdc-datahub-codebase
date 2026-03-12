@@ -1286,4 +1286,29 @@ describe("DataSubmissionListFilters Component", () => {
 
     expect(getByPlaceholderText("Enter Study Name, Acronym, or dbGaP ID")).toBeInTheDocument();
   });
+
+  it("displays 'All' when no statuses are selected", async () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <DataSubmissionListFilters
+          columns={columns}
+          organizations={organizations}
+          submitterNames={submitterNames}
+          dataCommons={dataCommons}
+          dataCommonsDisplayNames={dataCommons}
+          columnVisibilityModel={columnVisibilityModel}
+          onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+          onChange={mockOnChange}
+        />
+      </TestParent>
+    );
+
+    const clearButton = getByTestId("status-clear-button");
+    userEvent.click(clearButton);
+
+    await waitFor(() => {
+      const statusSelect = within(getByTestId("status-select")).getByRole("button");
+      expect(statusSelect).toHaveTextContent("All");
+    });
+  });
 });
