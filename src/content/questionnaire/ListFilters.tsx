@@ -391,9 +391,17 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
                     onOpen={() => setIsStatusesMenuOpen(true)}
                     onClose={() => setIsStatusesMenuOpen(false)}
                     inputProps={{ id: "status-filter" }}
-                    renderValue={(selected: string[]) =>
-                      selected?.length > 1 ? `${selected.length} statuses selected` : selected
-                    }
+                    displayEmpty
+                    renderValue={(selected: string[]) => {
+                      if (!selected?.length) {
+                        return "All";
+                      }
+                      if (selected.length > 1) {
+                        return `${selected.length} statuses selected`;
+                      }
+
+                      return selected;
+                    }}
                     onChange={(e) => {
                       field.onChange(e);
                       handleFilterChange("statuses");
