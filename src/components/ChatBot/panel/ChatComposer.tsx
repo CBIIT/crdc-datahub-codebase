@@ -4,11 +4,14 @@ import React, { useCallback } from "react";
 
 import StyledOutlinedInput from "@/components/StyledFormComponents/StyledOutlinedInput";
 
+import chatConfig from "../config/chatConfig";
 import { useChatDrawerContext } from "../context/ChatDrawerContext";
 
 const StyledBox = styled(Box, {
   shouldForwardProp: (prop) => prop !== "isFullscreen",
 })<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
+  position: "relative",
+  zIndex: 2,
   padding: "15px 14px",
   ...(isFullscreen && {
     position: "sticky",
@@ -116,7 +119,10 @@ const ChatComposer = ({
    */
   const handleInputChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
-      onChange(event.target.value);
+      const newValue = event.target.value;
+      if (newValue.length <= chatConfig.maxInputTextLength) {
+        onChange(newValue);
+      }
     },
     [onChange]
   );
