@@ -2825,7 +2825,7 @@ class Submission {
                 aSubmission.studyName = aSubmission.study.studyName;
                 aSubmission.studyAbbreviation = aSubmission.study.studyAbbreviation;
             }
-            // DEPRECATED: submission.dbgapid will be removed; value is from submission.study.dbgapid. Prefer submission.study.dbgapid and convert callers.
+            // DEPRECATED: submission.dbGaPID will be removed; value is from submission.study.dbGaPID. Prefer submission.study.dbGaPID and convert callers.
             aSubmission.dbGaPID = aSubmission?.study?.dbGaPID ?? aSubmission?.dbGaPID;
 
             // Transform submitter data to match expected format

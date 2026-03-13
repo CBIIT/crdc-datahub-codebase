@@ -556,7 +556,9 @@ class DataRecordService {
         const datacommon = aSubmission.dataCommons;
         const dataDefinitionSourceDir = `resources/data-definition/${datacommon}`;
         const tempFolder = `logs/${aSubmission._id}`;
-        const dbGaPID = aSubmission.study?.dbGaPID || aSubmission.dbGaPID; // prefer nested study.dbgapid; submission.dbgapid will eventually be removed.
+        // prefer nested study.dbGaPID; submission.dbGaPID should eventually be removed.
+        // explicitly defauly to null to prevent undefined error
+        const dbGaPID = aSubmission.study?.dbGaPID || aSubmission.dbGaPID || null; 
         const dbGaPDir = `dbGaP_${dbGaPID}_${aSubmission.name}_${getFormatDateStr(getCurrentTime())}`;
         const download_dir = path.join(tempFolder, dbGaPDir);
         // 1) create subject sample mapping sheet
@@ -668,7 +670,9 @@ class DataRecordService {
                                 const designDescription = genomicInfo.props?.design_description;
                                 const reference_genome_assembly = genomicInfo.props?.reference_genome_assembly;
                                 const alignemnt_software = genomicInfo.props?.sequence_alignment_software;
-                                const dbgapid = aSubmission.study?.dbGaPID || aSubmission.dbGaPID; // prefer nested study.dbgapid; submission.dbgapid will eventually be removed.
+                                // prefer nested study.dbGaPID; submission.dbGaPID should eventually be removed.
+                                // explicitly defauly to null to prevent undefined error
+                                const dbgapid = aSubmission.study?.dbGaPID || aSubmission.dbGaPID || null; 
                                 genomicInfoArr.push({[DATA_SHEET.PHS_ACCESSION]: dbgapid, [DATA_SHEET.SAMPLE_ID]: biosample_accession, 
                                     [DATA_SHEET.LIBRARY_ID]: libraryID, [DATA_SHEET.LIBRARY_STRATEGY]: libraryStrategy, 
                                     [DATA_SHEET.LIBRARY_SELECTION]: librarySelection, [DATA_SHEET.LIBRARY_LAYOUT]: libraryLayout, 

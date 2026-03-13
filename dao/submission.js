@@ -202,7 +202,7 @@ class SubmissionDAO extends GenericDAO {
                     // Will be deprecated fields in the future: Prefer submission.study.studyName; these top-level study properties will be removed.
                     studyName: submission?.study?.studyName,
                     studyAbbreviation: submission?.study?.studyAbbreviation,
-                    // DEPRECATED: submission.dbgapid will be removed; value is from submission.study.dbgapid. Prefer submission.study.dbgapid and convert callers.
+                    // DEPRECATED: submission.dbGaPID will be removed; value is from submission.study.dbGaPID. Prefer submission.study.dbGaPID and convert callers.
                     dbGaPID: submission?.study?.dbGaPID ?? submission?.dbGaPID,
                     dataFileSize: this._transformDataFileSize(submission.status, submission.dataFileSize),
                     // Transform organization to match GraphQL schema (map id to _id)
