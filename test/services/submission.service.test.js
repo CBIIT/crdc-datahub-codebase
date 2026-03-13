@@ -330,19 +330,21 @@ describe('Submission Service - getSubmission', () => {
         });
 
         it('should return dbGaPID from submission.study.dbGaPID', async () => {
-            // _findByID sets dbGaPID from study before returning; mock that contract
-            const submissionWithStudyDbGaPID = {
+            // Use real _findByID so its precedence logic runs; DAO returns raw submission with conflicting values
+            const rawSubmission = {
                 ...mockSubmission,
-                dbGaPID: 'phs001234',
+                dbGaPID: 'old',
                 study: {
                     ...mockSubmission.study,
-                    dbGaPID: 'phs001234'
+                    dbGaPID: 'new'
                 }
             };
-            submissionService._findByID.mockResolvedValue(submissionWithStudyDbGaPID);
+            mockSubmissionDAO.findFirst.mockResolvedValue(rawSubmission);
+            mockProgramDAO.findFirst.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
+            submissionService._findByID = Submission.prototype._findByID.bind(submissionService);
             submissionService._getUserScope.mockResolvedValue(createMockUserScope(false, true));
             submissionService._getS3DirectorySize.mockResolvedValue({ size: 1024, formatted: '1 KB' });
-            mockSubmissionDAO.update.mockResolvedValue(submissionWithStudyDbGaPID);
+            mockSubmissionDAO.update.mockResolvedValue(rawSubmission);
             mockSubmissionDAO.findMany.mockResolvedValue([]);
             mockDataRecordService.countNodesBySubmissionID.mockResolvedValue(5);
             getDataCommonsDisplayNamesForSubmission.mockImplementation((s) => ({
@@ -352,7 +354,7 @@ describe('Submission Service - getSubmission', () => {
 
             const result = await submissionService.getSubmission(mockParams, mockContext);
 
-            expect(result.dbGaPID).toBe('phs001234');
+            expect(result.dbGaPID).toBe('new');
         });
 
         it('should update data file size when it changes', async () => {

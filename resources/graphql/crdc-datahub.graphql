@@ -12,8 +12,8 @@ interface SubmissionInterface {
     dataCommons: String
     dataCommonsDisplayName: String
     modelVersion: String
-    studyAbbreviation: String
-    dbGaPID: String @deprecated
+    studyAbbreviation: String @deprecated # use the nested field in the study object
+    dbGaPID: String @deprecated # use the nested field in the study object
     bucketName: String
     rootPath: String
     status: String
@@ -39,7 +39,7 @@ interface SubmissionInterface {
     validationType: [String]
     validationScope: String
     studyID: String
-    studyName: String
+    studyName: String @deprecated # use the nested field in the study object
     study: SubmissionStudy
     controlledAccess: Boolean
     ORCID: String

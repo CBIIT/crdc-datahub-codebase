@@ -59,6 +59,19 @@ class DataRecordService {
 
     }
 
+    /**
+     * Sanitizes a value for safe use in filesystem path segments (e.g. directory names).
+     * Strips path separators (/, \) and ".." to prevent path traversal or unexpected nesting.
+     * @param {string|null|undefined} value - Value to sanitize (e.g. dbGaPID)
+     * @returns {string|null|undefined} Sanitized string, or original value if null/undefined
+     */
+    _sanitizePathSegment(value) {
+        if (value === null || value === undefined) return value;
+        return String(value)
+            .replace(/[/\\]/g, '_')
+            .replace(/\.\./g, '_');
+    }
+
     async submissionStats(aSubmission) {
         const validNodeStatus = [VALIDATION_STATUS.NEW, VALIDATION_STATUS.PASSED, VALIDATION_STATUS.WARNING, VALIDATION_STATUS.ERROR];
         const res = await Promise.all([
@@ -557,9 +570,10 @@ class DataRecordService {
         const dataDefinitionSourceDir = `resources/data-definition/${datacommon}`;
         const tempFolder = `logs/${aSubmission._id}`;
         // prefer nested study.dbGaPID; submission.dbGaPID should eventually be removed.
-        // explicitly defauly to null to prevent undefined error
-        const dbGaPID = aSubmission.study?.dbGaPID || aSubmission.dbGaPID || null; 
-        const dbGaPDir = `dbGaP_${dbGaPID}_${aSubmission.name}_${getFormatDateStr(getCurrentTime())}`;
+        // explicitly default to null to prevent undefined error
+        const dbGaPID = aSubmission.study?.dbGaPID || aSubmission.dbGaPID || null;
+        const safeDbGaPID = this._sanitizePathSegment(dbGaPID);
+        const dbGaPDir = `dbGaP_${safeDbGaPID}_${aSubmission.name}_${getFormatDateStr(getCurrentTime())}`;
         const download_dir = path.join(tempFolder, dbGaPDir);
         // 1) create subject sample mapping sheet
         const participants = await this.dataRecordsCollection.aggregate([{
