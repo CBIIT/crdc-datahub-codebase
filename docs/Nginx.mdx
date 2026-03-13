@@ -42,7 +42,7 @@ http {
         location /submissions {
             return 301 /submission-requests$is_args$args;
         }
-        
+
         # 3.3.0 MIGRATION: Redirect /submission/:uuid to submission-request/:uuid
         location ~ ^/submission/([a-zA-Z0-9-]+)$ {
             return 301 /submission-request/$1;
@@ -55,6 +55,12 @@ http {
             proxy_pass "https://hub-dev2.datacommons.cancer.gov/api/authn/";
         }
 
+        # Chatbot Knowledge Base
+        location /api/chat {
+            # proxy_pass "https://hub-dev.datacommons.cancer.gov/api/chat";
+            proxy_pass "https://hub-dev2.datacommons.cancer.gov/";
+        }
+
         # Backend
         location /api/graphql {
             # proxy_pass http://localhost:4040/api/graphql;
@@ -65,7 +71,7 @@ http {
         # Frontend
         location / {
             allow all;
-            proxy_buffers 8 2048K;  
+            proxy_buffers 8 2048K;
             proxy_buffer_size 32K;
             proxy_pass http://localhost:3010/;
         }
