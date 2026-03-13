@@ -26,17 +26,18 @@ type Props = {
  * Controls the visibility of the ChatBot component and manages its providers.
  */
 const ChatController: FC<Props> = ({ label, title }) => {
-  const chatbotEnabled = (env.VITE_CHATBOT_ENABLED || "true")?.toLowerCase() === "true";
-  const knowledgeBaseUrl =
-    env.VITE_KNOWLEDGE_BASE_URL ||
-    "https://qimghguigfq2bmnfqqqyze6cva0yscgr.lambda-url.us-east-1.on.aws/";
+  const { VITE_CHATBOT_API_BASE_URL } = env || {};
 
-  if (!chatbotEnabled || !knowledgeBaseUrl?.trim()) {
+  if (!VITE_CHATBOT_API_BASE_URL?.trim()) {
     return null;
   }
 
   return (
-    <MemoizedChatBotProvider title={title} label={label} knowledgeBaseUrl={knowledgeBaseUrl}>
+    <MemoizedChatBotProvider
+      title={title}
+      label={label}
+      knowledgeBaseUrl={VITE_CHATBOT_API_BASE_URL}
+    >
       <MemoizedChatConversationProvider>
         <MemoizedChatDrawerProvider>
           <ChatBotView />

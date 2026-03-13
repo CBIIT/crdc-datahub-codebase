@@ -76,14 +76,7 @@ type AppEnv = {
   /**
    * Knowledge Base URL
    */
-  VITE_KNOWLEDGE_BASE_URL: string;
-  /**
-   * Enable or disable the chatbot feature
-   *
-   * @default "true"
-   * @note Set to "false" to disable the chatbot
-   */
-  VITE_CHATBOT_ENABLED: string;
+  VITE_CHATBOT_API_BASE_URL: string;
   /**
    * The deployment environment the app is running in
    */

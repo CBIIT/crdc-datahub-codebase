@@ -23,15 +23,11 @@ describe("ChatController", () => {
   });
 
   it.each([
-    { value: "true", description: "true" },
-    { value: "TRUE", description: "TRUE" },
-    { value: "True", description: "True" },
-    { value: undefined, description: "undefined" },
-    { value: null, description: "null" },
-    { value: "", description: "empty string" },
-  ])("should render ChatBot when VITE_CHATBOT_ENABLED is $description", async ({ value }) => {
+    { value: "https://example.com/api/chat", description: "a valid URL" },
+    { value: "/api/chat", description: "a relative path" },
+  ])("should render ChatBot when VITE_CHATBOT_API_BASE_URL is $description", async ({ value }) => {
     vi.doMock("@/env", () => ({
-      default: value !== undefined && value !== null ? { VITE_CHATBOT_ENABLED: value } : {},
+      default: { VITE_CHATBOT_API_BASE_URL: value },
     }));
 
     const { default: Controller } = await import("./Controller");
@@ -42,14 +38,35 @@ describe("ChatController", () => {
   });
 
   it.each([
-    { value: "false", description: "false" },
-    { value: "FALSE", description: "FALSE" },
-    { value: "0", description: "0" },
-    { value: "disabled", description: "disabled" },
-    { value: "NaN", description: "NaN" },
-  ])("should not render ChatBot when VITE_CHATBOT_ENABLED is $description", async ({ value }) => {
+    { value: undefined, description: "undefined" },
+    { value: null, description: "null" },
+    { value: "", description: "an empty string" },
+    { value: "   ", description: "whitespace only" },
+  ])(
+    "should not render ChatBot when VITE_CHATBOT_API_BASE_URL is $description",
+    async ({ value }) => {
+      let mockEnv: Record<string, unknown> = {};
+      if (value === null) {
+        mockEnv = { VITE_CHATBOT_API_BASE_URL: null };
+      } else if (value !== undefined) {
+        mockEnv = { VITE_CHATBOT_API_BASE_URL: value };
+      }
+
+      vi.doMock("@/env", () => ({
+        default: mockEnv,
+      }));
+
+      const { default: Controller } = await import("./Controller");
+
+      const { queryByTestId } = render(<Controller title="Test Chat" label="Help" />);
+
+      expect(queryByTestId("chatbot-view")).not.toBeInTheDocument();
+    }
+  );
+
+  it("should not render ChatBot when env is not defined", async () => {
     vi.doMock("@/env", () => ({
-      default: { VITE_CHATBOT_ENABLED: value },
+      default: undefined,
     }));
 
     const { default: Controller } = await import("./Controller");
@@ -62,7 +79,7 @@ describe("ChatController", () => {
   it("should use default props when not provided", async () => {
     vi.doMock("@/env", () => ({
       default: {
-        VITE_CHATBOT_ENABLED: "true",
+        VITE_CHATBOT_API_BASE_URL: "https://example.com/api/chat",
       },
     }));
 

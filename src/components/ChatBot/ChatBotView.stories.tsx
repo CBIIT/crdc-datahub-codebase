@@ -54,7 +54,7 @@ const meta: Meta<StoryArgs> = {
       control: "text",
       description: "The URL for the knowledge base API endpoint.",
       table: {
-        defaultValue: { summary: import.meta.env.VITE_KNOWLEDGE_BASE_URL || "" },
+        defaultValue: { summary: import.meta.env.VITE_CHATBOT_API_BASE_URL || "" },
       },
     },
   },
@@ -69,6 +69,6 @@ export const Button: Story = {
   args: {
     label: "Chat",
     title: "Chat",
-    endpointUrl: import.meta.env.VITE_KNOWLEDGE_BASE_URL || "",
+    endpointUrl: import.meta.env.VITE_CHATBOT_API_BASE_URL || "",
   },
 };

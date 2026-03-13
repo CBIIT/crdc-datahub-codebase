@@ -7,6 +7,8 @@ import { ChatBotProvider } from "./context/ChatBotContext";
 import { ChatConversationProvider } from "./context/ChatConversationContext";
 import { ChatDrawerProvider } from "./context/ChatDrawerContext";
 
+const knowledgeBaseUrl = import.meta.env.VITE_CHATBOT_API_BASE_URL;
+
 type StoryArgs = {
   endpointUrl: string;
 };
@@ -23,7 +25,7 @@ const meta: Meta<StoryArgs> = {
       control: "text",
       description: "The URL for the knowledge base API endpoint.",
       table: {
-        defaultValue: { summary: import.meta.env.VITE_KNOWLEDGE_BASE_URL || "not set" },
+        defaultValue: { summary: knowledgeBaseUrl || "not set" },
       },
     },
   },
@@ -56,13 +58,13 @@ type Story = StoryObj<StoryArgs>;
 export const Default: Story = {
   name: "Chat Panel",
   args: {
-    endpointUrl: import.meta.env.VITE_KNOWLEDGE_BASE_URL || "",
+    endpointUrl: knowledgeBaseUrl || "",
   },
 };
 
 export const WithMessages: Story = {
   args: {
-    endpointUrl: import.meta.env.VITE_KNOWLEDGE_BASE_URL || "",
+    endpointUrl: knowledgeBaseUrl || "",
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -91,7 +93,7 @@ export const WithMessages: Story = {
 
 export const BotTyping: Story = {
   args: {
-    endpointUrl: import.meta.env.VITE_KNOWLEDGE_BASE_URL || "",
+    endpointUrl: knowledgeBaseUrl || "",
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -118,6 +120,6 @@ export const BotTyping: Story = {
 export const Empty: Story = {
   name: "Empty State",
   args: {
-    endpointUrl: import.meta.env.VITE_KNOWLEDGE_BASE_URL || "",
+    endpointUrl: knowledgeBaseUrl || "",
   },
 };
