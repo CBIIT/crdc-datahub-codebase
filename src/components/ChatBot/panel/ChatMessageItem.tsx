@@ -513,10 +513,10 @@ const ChatMessageItem = ({ message, isFirstMessage = false }: Props): JSX.Elemen
                     <StyledCitationChip
                       // eslint-disable-next-line react/no-array-index-key
                       key={`${message.id}-citation-${index}`}
-                      label={citation?.title || `[${index + 1}]`}
+                      label={citation?.documentName || `[${index + 1}]`}
                       size="small"
                       component="a"
-                      href={citation?.url}
+                      href={citation?.documentLink}
                       target="_blank"
                       rel="noopener noreferrer"
                       clickable

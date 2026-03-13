@@ -61,10 +61,10 @@ describe("askQuestion", () => {
 
   it("should successfully stream response chunks and return sessionId", async () => {
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "test-session-123" })}\n`,
-      `${JSON.stringify({ output: { text: "Hello " }, citation: {} })}\n`,
-      `${JSON.stringify({ output: { text: "world" }, citation: {} })}\n`,
-      `${JSON.stringify({ output: { text: "!" }, citation: {} })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "test-session-123" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Hello " })}\n`,
+      `${JSON.stringify({ type: "response", output: "world" })}\n`,
+      `${JSON.stringify({ type: "response", output: "!" })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -91,8 +91,8 @@ describe("askQuestion", () => {
     storeSessionId("existing-session");
 
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "existing-session" })}\n`,
-      `${JSON.stringify({ output: { text: "Response" }, citation: {} })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "existing-session" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Response" })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -120,13 +120,13 @@ describe("askQuestion", () => {
 
   it("should handle multi-line chunks correctly", async () => {
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n${JSON.stringify({
-        output: { text: "First" },
-        citation: {},
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n${JSON.stringify({
+        type: "response",
+        output: "First",
       })}\n`,
-      `${JSON.stringify({ output: { text: " Second" }, citation: {} })}\n${JSON.stringify({
-        output: { text: " Third" },
-        citation: {},
+      `${JSON.stringify({ type: "response", output: " Second" })}\n${JSON.stringify({
+        type: "response",
+        output: " Third",
       })}\n`,
     ];
 
@@ -148,10 +148,10 @@ describe("askQuestion", () => {
   });
 
   it("should handle incomplete JSON lines in buffer", async () => {
-    const partialJson = JSON.stringify({ output: { text: "Part 1" }, citation: {} });
+    const partialJson = JSON.stringify({ type: "response", output: "Part 1" });
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n${partialJson.slice(0, 20)}`,
-      `${partialJson.slice(20)}\n${JSON.stringify({ output: { text: "Part 2" }, citation: {} })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n${partialJson.slice(0, 20)}`,
+      `${partialJson.slice(20)}\n${JSON.stringify({ type: "response", output: "Part 2" })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -171,14 +171,14 @@ describe("askQuestion", () => {
 
   it("should collect and return citations", async () => {
     const mockCitation = {
-      title: "Test Document",
-      url: "https://example.com/doc",
-      snippet: "Test snippet",
+      documentName: "Test Document",
+      documentLink: "https://example.com/doc",
     };
 
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n`,
-      `${JSON.stringify({ output: { text: "Answer" }, citation: mockCitation })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Answer" })}\n`,
+      `${JSON.stringify({ type: "citations", citations: [mockCitation] })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -194,13 +194,15 @@ describe("askQuestion", () => {
 
     expect(result.citations).toEqual([mockCitation]);
     expect(onCitation).toHaveBeenCalledWith(mockCitation);
-    expect(Logger.info).toHaveBeenCalledWith("All citations collected:", [mockCitation]);
+    expect(Logger.info).toHaveBeenCalledWith("[KnowledgeBase] All citations collected:", [
+      mockCitation,
+    ]);
   });
 
-  it("should not collect citations when citation object is empty", async () => {
+  it("should not collect citations when no citations event is sent", async () => {
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n`,
-      `${JSON.stringify({ output: { text: "Answer" }, citation: {} })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Answer" })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -216,8 +218,8 @@ describe("askQuestion", () => {
 
   it("should log errors when present in response", async () => {
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n`,
-      `${JSON.stringify({ error: "Something went wrong", citation: {} })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ type: "response", output: "", error: "Something went wrong" })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -228,7 +230,10 @@ describe("askQuestion", () => {
       url: TEST_API_URL,
     });
 
-    expect(Logger.error).toHaveBeenCalledWith("Error:", "Something went wrong");
+    expect(Logger.error).toHaveBeenCalledWith(
+      "[KnowledgeBase] Stream error:",
+      "Something went wrong"
+    );
   });
 
   it("should throw error when HTTP response is not ok", async () => {
@@ -242,7 +247,7 @@ describe("askQuestion", () => {
       })
     ).rejects.toThrow("HTTP error! status: 500");
 
-    expect(Logger.error).toHaveBeenCalledWith("Error:", expect.any(Error));
+    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase] Request failed:", expect.any(Error));
   });
 
   it("should handle abort signal correctly", async () => {
@@ -268,10 +273,10 @@ describe("askQuestion", () => {
 
   it("should handle malformed JSON lines gracefully", async () => {
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n`,
-      `${JSON.stringify({ output: { text: "Valid" }, citation: {} })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Valid" })}\n`,
       "{invalid json}\n",
-      `${JSON.stringify({ output: { text: "Still works" }, citation: {} })}\n`,
+      `${JSON.stringify({ type: "response", output: "Still works" })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -288,7 +293,7 @@ describe("askQuestion", () => {
     expect(onChunk).toHaveBeenNthCalledWith(1, "Valid");
     expect(onChunk).toHaveBeenNthCalledWith(2, "Still works");
     expect(Logger.error).toHaveBeenCalledWith(
-      "Failed to parse line:",
+      "[KnowledgeBase] Failed to parse line:",
       "{invalid json}",
       expect.any(Error)
     );
@@ -296,11 +301,11 @@ describe("askQuestion", () => {
 
   it("should skip empty lines", async () => {
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n`,
       "\n",
-      `${JSON.stringify({ output: { text: "Text" }, citation: {} })}\n`,
+      `${JSON.stringify({ type: "response", output: "Text" })}\n`,
       "\n\n",
-      `${JSON.stringify({ output: { text: "More" }, citation: {} })}\n`,
+      `${JSON.stringify({ type: "response", output: "More" })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -318,8 +323,8 @@ describe("askQuestion", () => {
 
   it("should work without onChunk callback", async () => {
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n`,
-      `${JSON.stringify({ output: { text: "Text" }, citation: {} })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Text" })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -334,7 +339,7 @@ describe("askQuestion", () => {
   });
 
   it("should return null sessionId when no sessionId is received", async () => {
-    const mockChunks = [`${JSON.stringify({ output: { text: "Text" }, citation: {} })}\n`];
+    const mockChunks = [`${JSON.stringify({ type: "response", output: "Text" })}\n`];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
 
@@ -349,28 +354,25 @@ describe("askQuestion", () => {
     expect(getStoredSessionId()).toBeNull();
   });
 
-  it("should filter duplicate citations by URL", async () => {
+  it("should filter duplicate citations by documentLink", async () => {
     const citation1 = {
-      title: "Document 1",
-      url: "https://example.com/doc1",
-      snippet: "First snippet",
+      documentName: "Document 1",
+      documentLink: "https://example.com/doc1",
     };
     const citation2 = {
-      title: "Document 2",
-      url: "https://example.com/doc2",
-      snippet: "Second snippet",
+      documentName: "Document 2",
+      documentLink: "https://example.com/doc2",
     };
     const duplicateCitation = {
-      title: "Document 1 Updated",
-      url: "https://example.com/doc1",
-      snippet: "Updated snippet",
+      documentName: "Document 1 Updated",
+      documentLink: "https://example.com/doc1",
     };
 
     const mockChunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n`,
-      `${JSON.stringify({ output: { text: "Answer" }, citation: citation1 })}\n`,
-      `${JSON.stringify({ output: { text: "More" }, citation: citation2 })}\n`,
-      `${JSON.stringify({ output: { text: "Text" }, citation: duplicateCitation })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ type: "citations", citations: [citation1] })}\n`,
+      `${JSON.stringify({ type: "citations", citations: [citation2] })}\n`,
+      `${JSON.stringify({ type: "citations", citations: [duplicateCitation] })}\n`,
     ];
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -389,7 +391,7 @@ describe("askQuestion", () => {
   });
 
   it("should pass fetch signal to request", async () => {
-    const mockChunks = [`${JSON.stringify({ sessionId: "session-1" })}\n`];
+    const mockChunks = [`${JSON.stringify({ type: "session", sessionId: "session-1" })}\n`];
     const abortController = new AbortController();
 
     vi.mocked(global.fetch).mockResolvedValue(createMockResponse(mockChunks));
@@ -419,7 +421,7 @@ describe("askQuestion", () => {
       })
     ).rejects.toThrow("Network failure");
 
-    expect(Logger.error).toHaveBeenCalledWith("Error:", networkError);
+    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase] Request failed:", networkError);
   });
 
   it("should handle stream reading errors", async () => {
@@ -459,7 +461,7 @@ describe("processStreamingResponse", () => {
   });
 
   it("should return session ID and citations from stream", async () => {
-    const chunks = [`${JSON.stringify({ sessionId: "test-session-123", output: "Hello" })}\n`];
+    const chunks = [`${JSON.stringify({ type: "session", sessionId: "test-session-123" })}\n`];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
@@ -470,7 +472,7 @@ describe("processStreamingResponse", () => {
   });
 
   it("should return null sessionId when no session ID found in stream", async () => {
-    const chunks = [`${JSON.stringify({ output: "Hello world" })}\n`];
+    const chunks = [`${JSON.stringify({ type: "response", output: "Hello world" })}\n`];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
@@ -482,7 +484,7 @@ describe("processStreamingResponse", () => {
 
   it("should handle incomplete JSON lines in buffer correctly", async () => {
     const onChunk = vi.fn();
-    const chunks = ['{"output": "Hel', 'lo world"}\n'];
+    const chunks = ['{"type": "response", "output": "Hel', 'lo world"}\n'];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
@@ -494,7 +496,10 @@ describe("processStreamingResponse", () => {
   it("should process multiple complete lines in single chunk", async () => {
     const onChunk = vi.fn();
     const chunks = [
-      `${JSON.stringify({ output: "Line 1" })}\n${JSON.stringify({ output: "Line 2" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Line 1" })}\n${JSON.stringify({
+        type: "response",
+        output: "Line 2",
+      })}\n`,
     ];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
@@ -509,8 +514,8 @@ describe("processStreamingResponse", () => {
   it("should not process incomplete final line without newline", async () => {
     const onChunk = vi.fn();
     const chunks = [
-      `${JSON.stringify({ output: "Line 1" })}\n`,
-      JSON.stringify({ output: "Line 2" }),
+      `${JSON.stringify({ type: "response", output: "Line 1" })}\n`,
+      JSON.stringify({ type: "response", output: "Line 2" }),
     ];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
@@ -524,9 +529,9 @@ describe("processStreamingResponse", () => {
   it("should call onChunk for each complete line with output", async () => {
     const onChunk = vi.fn();
     const chunks = [
-      `${JSON.stringify({ output: "First" })}\n`,
-      `${JSON.stringify({ output: "Second" })}\n`,
-      `${JSON.stringify({ output: "Third" })}\n`,
+      `${JSON.stringify({ type: "response", output: "First" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Second" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Third" })}\n`,
     ];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
@@ -542,8 +547,9 @@ describe("processStreamingResponse", () => {
   it("should only return first session ID found in stream", async () => {
     const onChunk = vi.fn();
     const chunks = [
-      `${JSON.stringify({ sessionId: "test-123", output: "First" })}\n`,
-      `${JSON.stringify({ sessionId: "test-456", output: "Second" })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "test-123" })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "test-456" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Text" })}\n`,
     ];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
@@ -552,7 +558,7 @@ describe("processStreamingResponse", () => {
 
     expect(result.sessionId).toBe("test-123");
     expect(onChunk).toHaveBeenCalledTimes(1);
-    expect(onChunk).toHaveBeenCalledWith("Second");
+    expect(onChunk).toHaveBeenCalledWith("Text");
   });
 
   it("should handle empty stream (immediate done)", async () => {
@@ -567,7 +573,7 @@ describe("processStreamingResponse", () => {
 
   it("should decode Uint8Array chunks correctly with TextDecoder", async () => {
     const onChunk = vi.fn();
-    const chunks = [`${JSON.stringify({ output: "Hello 👋" })}\n`];
+    const chunks = [`${JSON.stringify({ type: "response", output: "Hello 👋" })}\n`];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
@@ -578,7 +584,7 @@ describe("processStreamingResponse", () => {
 
   it("should handle chunks with only newlines", async () => {
     const onChunk = vi.fn();
-    const chunks = ["\n\n", `${JSON.stringify({ output: "Hello" })}\n`, "\n"];
+    const chunks = ["\n\n", `${JSON.stringify({ type: "response", output: "Hello" })}\n`, "\n"];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
@@ -591,7 +597,10 @@ describe("processStreamingResponse", () => {
   it("should skip empty lines between valid JSON lines", async () => {
     const onChunk = vi.fn();
     const chunks = [
-      `${JSON.stringify({ output: "First" })}\n\n${JSON.stringify({ output: "Second" })}\n`,
+      `${JSON.stringify({ type: "response", output: "First" })}\n\n${JSON.stringify({
+        type: "response",
+        output: "Second",
+      })}\n`,
     ];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
@@ -604,7 +613,7 @@ describe("processStreamingResponse", () => {
   });
 
   it("should work without onChunk callback", async () => {
-    const chunks = [`${JSON.stringify({ sessionId: "test-123", output: "Hello" })}\n`];
+    const chunks = [`${JSON.stringify({ type: "session", sessionId: "test-123" })}\n`];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
 
@@ -617,8 +626,8 @@ describe("processStreamingResponse", () => {
   it("should apply typewriter effect to multiple output chunks", async () => {
     vi.useFakeTimers();
     const chunks = [
-      `${JSON.stringify({ output: "Hi" })}\n`,
-      `${JSON.stringify({ output: " there" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Hi" })}\n`,
+      `${JSON.stringify({ type: "response", output: " there" })}\n`,
     ];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
@@ -644,20 +653,18 @@ describe("processStreamingResponse", () => {
 
   it("should collect citations from stream", async () => {
     const citation1 = {
-      title: "Doc 1",
-      url: "https://example.com/doc1",
-      snippet: "First doc",
+      documentName: "Doc 1",
+      documentLink: "https://example.com/doc1",
     };
     const citation2 = {
-      title: "Doc 2",
-      url: "https://example.com/doc2",
-      snippet: "Second doc",
+      documentName: "Doc 2",
+      documentLink: "https://example.com/doc2",
     };
 
     const chunks = [
-      `${JSON.stringify({ sessionId: "session-1" })}\n`,
-      `${JSON.stringify({ output: "Text 1", citation: citation1 })}\n`,
-      `${JSON.stringify({ output: "Text 2", citation: citation2 })}\n`,
+      `${JSON.stringify({ type: "session", sessionId: "session-1" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Text 1" })}\n`,
+      `${JSON.stringify({ type: "citations", citations: [citation1, citation2] })}\n`,
     ];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
@@ -671,27 +678,24 @@ describe("processStreamingResponse", () => {
     expect(onCitation).toHaveBeenNthCalledWith(2, citation2);
   });
 
-  it("should filter duplicate citations by URL in stream", async () => {
+  it("should filter duplicate citations by documentLink in stream", async () => {
     const citation1 = {
-      title: "Doc 1",
-      url: "https://example.com/doc1",
-      snippet: "First doc",
+      documentName: "Doc 1",
+      documentLink: "https://example.com/doc1",
     };
     const citation2 = {
-      title: "Doc 2",
-      url: "https://example.com/doc2",
-      snippet: "Second doc",
+      documentName: "Doc 2",
+      documentLink: "https://example.com/doc2",
     };
     const duplicateCitation = {
-      title: "Doc 1 Updated",
-      url: "https://example.com/doc1",
-      snippet: "Updated doc",
+      documentName: "Doc 1 Updated",
+      documentLink: "https://example.com/doc1",
     };
 
     const chunks = [
-      `${JSON.stringify({ output: "Text 1", citation: citation1 })}\n`,
-      `${JSON.stringify({ output: "Text 2", citation: citation2 })}\n`,
-      `${JSON.stringify({ output: "Text 3", citation: duplicateCitation })}\n`,
+      `${JSON.stringify({ type: "citations", citations: [citation1] })}\n`,
+      `${JSON.stringify({ type: "citations", citations: [citation2] })}\n`,
+      `${JSON.stringify({ type: "citations", citations: [duplicateCitation] })}\n`,
     ];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
@@ -707,8 +711,8 @@ describe("processStreamingResponse", () => {
     vi.useFakeTimers();
 
     const chunks = [
-      `${JSON.stringify({ output: "This is a long message" })}\n`,
-      `${JSON.stringify({ output: " that continues on" })}\n`,
+      `${JSON.stringify({ type: "response", output: "This is a long message" })}\n`,
+      `${JSON.stringify({ type: "response", output: " that continues on" })}\n`,
     ];
     const stream = createMockStream(chunks);
     const reader = stream.getReader();
@@ -734,6 +738,39 @@ describe("processStreamingResponse", () => {
     expect(emittedChars).toBeLessThan("This is a long message that continues on".length);
 
     vi.useRealTimers();
+  });
+
+  it("should invoke onPulse callback and log pulse description", async () => {
+    const chunks = [
+      `${JSON.stringify({ type: "pulse", description: "Searching documents..." })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+    const onPulse = vi.fn();
+
+    await processStreamingResponse(reader, undefined, undefined, 0, undefined, onPulse);
+
+    expect(onPulse).toHaveBeenCalledWith("Searching documents...");
+    expect(Logger.info).toHaveBeenCalledWith("[KnowledgeBase] Pulse:", "Searching documents...");
+  });
+
+  it("should silently ignore unknown event types and log them", async () => {
+    const onChunk = vi.fn();
+    const chunks = [
+      `${JSON.stringify({ type: "future_event", data: "something" })}\n`,
+      `${JSON.stringify({ type: "response", output: "Hello" })}\n`,
+    ];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await processStreamingResponse(reader, onChunk, undefined, 0);
+
+    expect(onChunk).toHaveBeenCalledWith("Hello");
+    expect(Logger.info).toHaveBeenCalledWith(
+      "[KnowledgeBase] Unknown event type:",
+      "future_event",
+      expect.objectContaining({ type: "future_event" })
+    );
   });
 });
 

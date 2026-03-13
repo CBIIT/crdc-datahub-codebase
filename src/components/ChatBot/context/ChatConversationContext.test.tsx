@@ -73,7 +73,7 @@ const TestParent = () => {
             {msg.text}
             {msg.citations && msg.citations.length > 0 && (
               <span data-testid={`citations-${msg.id}`}>
-                {msg.citations.map((c) => c.title).join(", ")}
+                {msg.citations.map((c) => c.documentName).join(", ")}
               </span>
             )}
           </div>
@@ -881,9 +881,8 @@ describe("ChatConversationContext", () => {
 
     it("should add citations to bot message when citations are provided", async () => {
       const mockCitation: ChatCitation = {
-        title: "Test Citation",
-        url: "https://example.com",
-        snippet: "Test snippet",
+        documentName: "Test Citation",
+        documentLink: "https://example.com",
       };
 
       mockAskQuestion.mockImplementation(async ({ onChunk, onCitation }) => {
@@ -912,8 +911,8 @@ describe("ChatConversationContext", () => {
 
     it("should handle multiple citations", async () => {
       const citations: ChatCitation[] = [
-        { title: "Citation 1", url: "https://example.com/1", snippet: "Snippet 1" },
-        { title: "Citation 2", url: "https://example.com/2", snippet: "Snippet 2" },
+        { documentName: "Citation 1", documentLink: "https://example.com/1" },
+        { documentName: "Citation 2", documentLink: "https://example.com/2" },
       ];
 
       mockAskQuestion.mockImplementation(async ({ onChunk, onCitation }) => {

@@ -5,9 +5,14 @@ type ChatStatus = "idle" | "bot_typing";
 type ChatMessageVariant = "default" | "error" | "info";
 
 type ChatCitation = {
-  title?: string;
-  url?: string;
-  snippet?: string;
+  /**
+   * The title of the cited document or source.
+   */
+  documentName: string;
+  /**
+   * A link to the cited document or source.
+   */
+  documentLink: string | null;
 };
 
 type ChatMessage = {

@@ -16,6 +16,7 @@ type AskQuestionArgs = {
   conversationHistory?: ConversationHistory[];
   onChunk?: (chunk: string) => void;
   onCitation?: (citation: ChatCitation) => void;
+  onPulse?: (description: string) => void;
   signal?: AbortSignal;
   url: string;
   typewriterDelay?: number;
@@ -71,6 +72,7 @@ export async function emitWithTypewriter(
  * @param {(citation: ChatCitation) => void} [onCitation] - Optional callback to invoke with each citation
  * @param {number} [typewriterDelay=10] - Delay in milliseconds between characters (0 to disable typewriter effect)
  * @param {AbortSignal} [signal] - Optional abort signal to stop the typewriter effect
+ * @param {(description: string) => void} [onPulse] - Optional callback to invoke with pulse status descriptions
  * @returns {Promise<{ sessionId: string | null; citations: ChatCitation[] }>} The session ID and collected citations from the response
  */
 export async function processStreamingResponse(
@@ -78,14 +80,14 @@ export async function processStreamingResponse(
   onChunk?: (chunk: string) => void,
   onCitation?: (citation: ChatCitation) => void,
   typewriterDelay = 10,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onPulse?: (description: string) => void
 ): Promise<{ sessionId: string | null; citations: ChatCitation[] }> {
   const decoder = new TextDecoder();
   let buffer = "";
   let currentSessionId: string | null = null;
   const citations: ChatCitation[] = [];
-  const seenCitationUrls = new Set<string>();
-  let isFirstChunk = true;
+  const seenCitationLinks = new Set<string>();
   let done = false;
 
   while (!done) {
@@ -102,37 +104,67 @@ export async function processStreamingResponse(
     buffer = lines.pop() || "";
 
     for (const line of lines) {
+      if (typeof line !== "string" || !line?.trim()) {
+        Logger.error("[KnowledgeBase] Received non-string or empty line:", line);
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+
       try {
         const parsed = JSON.parse(line);
 
-        if (isFirstChunk && parsed.sessionId !== undefined) {
-          currentSessionId = parsed.sessionId;
-          isFirstChunk = false;
-          // eslint-disable-next-line no-continue
-          continue;
-        }
+        switch (parsed.type) {
+          case "session":
+            if (currentSessionId === null && parsed.sessionId) {
+              Logger.info("[KnowledgeBase] Received session ID:", parsed.sessionId);
+              currentSessionId = parsed.sessionId;
+            }
+            break;
 
-        const outputText = typeof parsed.output === "string" ? parsed.output : parsed.output?.text;
+          case "response":
+            if (parsed.output) {
+              // eslint-disable-next-line no-await-in-loop
+              await emitWithTypewriter(parsed.output, onChunk, typewriterDelay, signal);
+            }
+            break;
 
-        if (outputText) {
-          // eslint-disable-next-line no-await-in-loop
-          await emitWithTypewriter(outputText, onChunk, typewriterDelay, signal);
-        }
+          case "citations":
+            if (!Array.isArray(parsed.citations)) {
+              break;
+            }
 
-        const citationHasContent = !!parsed?.citation && !!parsed?.citation?.url;
-        const citationIsNotDuplicate = !seenCitationUrls.has(parsed?.citation?.url);
+            for (const citation of parsed.citations) {
+              const link = citation.documentLink ?? "";
+              if (link && seenCitationLinks.has(link)) {
+                // eslint-disable-next-line no-continue
+                continue;
+              }
+              if (link) {
+                seenCitationLinks.add(link);
+              }
 
-        if (citationHasContent && citationIsNotDuplicate) {
-          seenCitationUrls.add(parsed.citation?.url);
-          citations.push(parsed.citation);
-          onCitation?.(parsed.citation);
+              citations.push(citation);
+              onCitation?.(citation);
+            }
+            break;
+
+          case "pulse":
+            if (parsed.description) {
+              Logger.info("[KnowledgeBase] Pulse:", parsed.description);
+              onPulse?.(parsed.description);
+            }
+            break;
+
+          default:
+            Logger.info("[KnowledgeBase] Unknown event type:", parsed?.type, parsed);
+            break;
         }
 
         if (parsed.error) {
-          Logger.error("Error:", parsed.error);
+          Logger.error("[KnowledgeBase] Stream error:", parsed.error);
         }
       } catch (e) {
-        Logger.error("Failed to parse line:", line, e);
+        Logger.error("[KnowledgeBase] Failed to parse line:", line, e);
       }
     }
   }
@@ -160,6 +192,7 @@ export async function askQuestion({
   conversationHistory = [],
   onChunk,
   onCitation,
+  onPulse,
   signal,
   url,
   typewriterDelay = 10,
@@ -193,7 +226,8 @@ export async function askQuestion({
       onChunk,
       onCitation,
       typewriterDelay,
-      signal
+      signal,
+      onPulse
     );
 
     if (currentSessionId) {
@@ -201,12 +235,12 @@ export async function askQuestion({
     }
 
     if (citations.length > 0) {
-      Logger.info("All citations collected:", citations);
+      Logger.info("[KnowledgeBase] Citations:", citations);
     }
 
     return { sessionId: currentSessionId, citations };
   } catch (error) {
-    Logger.error("Error:", error);
+    Logger.error("[KnowledgeBase] Error:", error);
     throw error;
   }
 }
