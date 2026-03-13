@@ -1,7 +1,4 @@
-import { clamp } from "lodash";
 import { v4 } from "uuid";
-
-import chatConfig from "../config/chatConfig";
 
 /**
  * Gets the current viewport height, or returns a fallback value if window is unavailable.
@@ -15,25 +12,6 @@ export const getViewportHeightPx = (fallback: number): number => {
   }
 
   return window.innerHeight;
-};
-
-/**
- * Calculates the next drawer height based on mouse position, clamped to min/max bounds.
- *
- * @param {{ drawerElement: HTMLDivElement; clientY: number }} args - Drawer element and mouse Y position
- * @return {{ heightPx: number; viewportHeightPx: number }} Clamped drawer height and current viewport height
- */
-export const computeNextHeightPx = (args: {
-  drawerElement: HTMLDivElement;
-  clientY: number;
-}): { heightPx: number; viewportHeightPx: number } => {
-  const rect = args.drawerElement.getBoundingClientRect();
-  const rawHeightPx = rect.bottom - args.clientY;
-
-  const viewportHeightPx = getViewportHeightPx(chatConfig.height.collapsed);
-  const heightPx = clamp(rawHeightPx, chatConfig.height.min, viewportHeightPx);
-
-  return { heightPx, viewportHeightPx };
 };
 
 /**

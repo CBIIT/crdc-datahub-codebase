@@ -1,8 +1,10 @@
 import CloseIcon from "@mui/icons-material/Close";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
 import { Button, IconButton, Paper, Typography, styled } from "@mui/material";
-import React from "react";
+import React, { useMemo } from "react";
+import { Rnd } from "react-rnd";
 
+import DraggableHandleSvg from "./assets/draggable-handle.svg?react";
 import DrawerViewIcon from "./assets/drawer-view-icon.svg?react";
 import ExitFullScreenIcon from "./assets/exit-full-screen-icon.svg?react";
 import FullScreenIcon from "./assets/full-screen-icon.svg?react";
@@ -10,48 +12,20 @@ import ChatBotLogo from "./components/ChatBotLogo";
 import chatConfig from "./config/chatConfig";
 import { useChatDrawerContext } from "./context/ChatDrawerContext";
 
-const StyledChatDrawer = styled(Paper, {
-  shouldForwardProp: (prop) =>
-    prop !== "heightPx" && prop !== "widthPx" && prop !== "positionX" && prop !== "positionY",
-})<{ heightPx: number; widthPx: number; positionX: number; positionY: number }>(
-  ({ heightPx, widthPx, positionX, positionY }) => ({
-    position: "fixed",
-    right: positionX,
-    bottom: positionY,
-    width: widthPx,
-    height: heightPx,
-    zIndex: 12000,
-    display: "flex",
-    flexDirection: "column",
-    boxShadow: "none",
-    overflow: "hidden",
-    backgroundColor: "transparent",
-    border: 0,
-    opacity: 1,
-    pointerEvents: "auto",
-    '&[data-minimized="true"]': {
-      opacity: 0,
-      pointerEvents: "none",
-    },
-
-    '&[data-expanded="true"]': {
-      top: 0,
-      right: 0,
-      bottom: 0,
-      width: chatConfig.width.expanded,
-      height: "100%",
-      borderRadius: 0,
-      borderLeft: "2px solid #2982D7",
-    },
-
-    '&[data-fullscreen="true"]': {
-      inset: 0,
-      width: "100%",
-      height: "100%",
-      borderRadius: 0,
-    },
-  })
-);
+const StyledChatDrawer = styled(Paper)({
+  position: "relative",
+  width: "100%",
+  height: "100%",
+  display: "flex",
+  flexDirection: "column",
+  boxShadow: "none",
+  overflow: "hidden",
+  backgroundColor: "transparent",
+  border: 0,
+  '&[data-expanded="true"]': {
+    borderLeft: "2px solid #2982D7",
+  },
+});
 
 const StyledChatHeader = styled("div")({
   display: "flex",
@@ -66,6 +40,7 @@ const StyledChatHeader = styled("div")({
     right: 20,
     padding: 0,
     zIndex: 2,
+    cursor: "default",
   },
   '&[data-fullscreen="true"]': {
     position: "absolute",
@@ -73,6 +48,7 @@ const StyledChatHeader = styled("div")({
     right: 35,
     padding: 0,
     zIndex: 2,
+    cursor: "default",
   },
 });
 
@@ -177,6 +153,27 @@ const CloseIconButton = styled(StyledIconButton)({
   },
 });
 
+const StyledRndContainer = styled("div")({
+  position: "fixed",
+  inset: 0,
+  pointerEvents: "none",
+  zIndex: 12000,
+});
+
+const StyledDraggableBorder = styled("div", {
+  shouldForwardProp: (prop) => prop !== "edge",
+})<{ edge: "top" | "right" | "bottom" | "left" }>(({ edge }) => ({
+  position: "absolute",
+  zIndex: 2,
+  background: "transparent",
+  cursor: "move",
+  touchAction: "none",
+  ...(edge === "top" && { top: 0, left: 0, right: 0, height: 12 }),
+  ...(edge === "right" && { top: 21, right: 0, bottom: 0, width: 12 }),
+  ...(edge === "bottom" && { bottom: 0, left: 0, right: 0, height: 12 }),
+  ...(edge === "left" && { top: 21, left: 0, bottom: 0, width: 12 }),
+}));
+
 export type Props = {
   /**
    * Child content rendered in the drawer body.
@@ -192,107 +189,189 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
     drawerRef,
     heightPx,
     widthPx,
-    positionX,
-    positionY,
+    x,
+    y,
     isExpanded,
     isMinimized,
     isFullscreen,
     onToggleExpand,
     onToggleFullscreen,
     onMinimize,
+    onDragStop,
+    onResizeStop,
     isConfirmingEndConversation,
     onRequestEndConversation,
     onConfirmEndConversation,
     onCancelEndConversation,
   } = useChatDrawerContext();
 
+  const rndPosition = useMemo(
+    () => (isFullscreen ? { x: 0, y: 0 } : { x, y }),
+    [isFullscreen, x, y]
+  );
+
+  const rndSize = useMemo<{ width: number; height: number }>(() => {
+    if (isFullscreen) {
+      return { width: window.innerWidth, height: window.innerHeight };
+    }
+    if (isExpanded) {
+      return { width: chatConfig.width.expanded, height: window.innerHeight };
+    }
+
+    return { width: widthPx, height: heightPx };
+  }, [isFullscreen, isExpanded, widthPx, heightPx]);
+
+  const disableInteraction = useMemo(
+    () => isExpanded || isFullscreen || isMinimized,
+    [isExpanded, isFullscreen, isMinimized]
+  );
+
+  const dataAttrs = useMemo(
+    () => ({
+      "data-minimized": String(isMinimized),
+      "data-expanded": String(isExpanded),
+      "data-fullscreen": String(isFullscreen),
+    }),
+    [isMinimized, isExpanded, isFullscreen]
+  );
+
   return (
-    <StyledChatDrawer
-      ref={drawerRef}
-      heightPx={heightPx}
-      widthPx={widthPx}
-      positionX={positionX}
-      positionY={positionY}
-      data-minimized={isMinimized ? "true" : "false"}
-      data-expanded={isExpanded ? "true" : "false"}
-      data-fullscreen={isFullscreen ? "true" : "false"}
-      aria-hidden={isMinimized ? "true" : "false"}
-    >
-      <StyledChatHeader
-        data-expanded={isExpanded ? "true" : "false"}
-        data-fullscreen={isFullscreen ? "true" : "false"}
+    <StyledRndContainer>
+      <Rnd
+        position={rndPosition}
+        size={rndSize}
+        onDragStart={(e) => {
+          e.preventDefault();
+        }}
+        onDragStop={onDragStop}
+        onResizeStop={onResizeStop}
+        minWidth={chatConfig.width.min}
+        minHeight={chatConfig.height.min}
+        enableResizing={disableInteraction ? false : { topLeft: true }}
+        disableDragging={disableInteraction}
+        dragHandleClassName="rnd-drag-handle"
+        cancel="button"
+        bounds="parent"
+        resizeHandleStyles={disableInteraction ? undefined : { topLeft: { top: 30, left: 10 } }}
+        resizeHandleComponent={
+          disableInteraction
+            ? undefined
+            : {
+                topLeft: (
+                  <DraggableHandleSvg
+                    width={13}
+                    height={13}
+                    viewBox="5.5 5.5 12.5 12.5"
+                    aria-label="Resize handle"
+                    style={{ cursor: "nwse-resize" }}
+                  />
+                ),
+              }
+        }
+        style={{
+          opacity: isMinimized ? 0 : 1,
+          pointerEvents: isMinimized ? "none" : "auto",
+        }}
       >
-        <StyledHeaderActions
-          data-expanded={isExpanded ? "true" : "false"}
-          data-fullscreen={isFullscreen ? "true" : "false"}
+        <StyledChatDrawer
+          ref={drawerRef}
+          {...dataAttrs}
+          aria-hidden={isMinimized ? "true" : "false"}
         >
-          <DrawerViewIconButton
-            size="small"
-            onClick={onToggleExpand}
-            aria-label={isExpanded ? "Collapse chat drawer" : "Expand chat drawer"}
-          >
-            <DrawerViewIcon />
-          </DrawerViewIconButton>
-          <FullScreenIconButton
-            size="small"
-            onClick={onToggleFullscreen}
-            aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
-          >
-            {isFullscreen ? <ExitFullScreenIcon /> : <FullScreenIcon />}
-          </FullScreenIconButton>
-          <MinimizeIconButton size="small" onClick={onMinimize} aria-label="Minimize chat">
-            <HorizontalRuleIcon />
-          </MinimizeIconButton>
-          <CloseIconButton
-            size="small"
-            onClick={onRequestEndConversation}
-            aria-label="End conversation"
-          >
-            <CloseIcon />
-          </CloseIconButton>
-        </StyledHeaderActions>
-      </StyledChatHeader>
-
-      <StyledChatBody
-        data-expanded={isExpanded ? "true" : "false"}
-        data-fullscreen={isFullscreen ? "true" : "false"}
-      >
-        {children}
-
-        {isConfirmingEndConversation ? (
-          <ConfirmOverlay role="alertdialog" aria-label="End Conversation">
-            <ChatBotLogo ariaLabel="CRDC Assistant Logo" />
-            <ConfirmTitle>End Conversation</ConfirmTitle>
-
-            <ConfirmActions>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onConfirmEndConversation();
-                }}
-                aria-label="Yes"
+          {!disableInteraction && (
+            <>
+              <StyledDraggableBorder
+                edge="right"
+                className="rnd-drag-handle"
+                aria-label="Drag to move"
+              />
+              <StyledDraggableBorder
+                edge="bottom"
+                className="rnd-drag-handle"
+                aria-label="Drag to move"
+              />
+              <StyledDraggableBorder
+                edge="left"
+                className="rnd-drag-handle"
+                aria-label="Drag to move"
+              />
+            </>
+          )}
+          <StyledChatHeader {...dataAttrs}>
+            <StyledHeaderActions {...dataAttrs}>
+              <DrawerViewIconButton
+                size="small"
+                onClick={onToggleExpand}
+                aria-label={isExpanded ? "Collapse chat drawer" : "Expand chat drawer"}
               >
-                Yes
-              </Button>
-
-              <Button
-                variant="contained"
-                color="info"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCancelEndConversation();
-                }}
-                aria-label="No"
+                <DrawerViewIcon />
+              </DrawerViewIconButton>
+              <FullScreenIconButton
+                size="small"
+                onClick={onToggleFullscreen}
+                aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
               >
-                No
-              </Button>
-            </ConfirmActions>
-          </ConfirmOverlay>
-        ) : null}
-      </StyledChatBody>
-    </StyledChatDrawer>
+                {isFullscreen ? <ExitFullScreenIcon /> : <FullScreenIcon />}
+              </FullScreenIconButton>
+              <MinimizeIconButton size="small" onClick={onMinimize} aria-label="Minimize chat">
+                <HorizontalRuleIcon />
+              </MinimizeIconButton>
+              <CloseIconButton
+                size="small"
+                onClick={onRequestEndConversation}
+                aria-label="End conversation"
+              >
+                <CloseIcon />
+              </CloseIconButton>
+            </StyledHeaderActions>
+          </StyledChatHeader>
+
+          <StyledChatBody {...dataAttrs}>
+            {!disableInteraction && (
+              <StyledDraggableBorder
+                edge="top"
+                className="rnd-drag-handle"
+                aria-label="Drag to move"
+              />
+            )}
+            {children}
+
+            {isConfirmingEndConversation ? (
+              <ConfirmOverlay role="alertdialog" aria-label="End Conversation">
+                <ChatBotLogo ariaLabel="CRDC Assistant Logo" />
+                <ConfirmTitle>End Conversation</ConfirmTitle>
+
+                <ConfirmActions>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onConfirmEndConversation();
+                    }}
+                    aria-label="Yes"
+                  >
+                    Yes
+                  </Button>
+
+                  <Button
+                    variant="contained"
+                    color="info"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCancelEndConversation();
+                    }}
+                    aria-label="No"
+                  >
+                    No
+                  </Button>
+                </ConfirmActions>
+              </ConfirmOverlay>
+            ) : null}
+          </StyledChatBody>
+        </StyledChatDrawer>
+      </Rnd>
+    </StyledRndContainer>
   );
 };
 

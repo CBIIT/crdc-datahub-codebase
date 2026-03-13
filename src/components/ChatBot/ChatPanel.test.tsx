@@ -1,4 +1,3 @@
-import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -27,14 +26,13 @@ const defaultChatDrawerContext = {
   drawerRef: { current: null },
   heightPx: 600,
   widthPx: 384,
-  positionX: 0,
-  positionY: 0,
-  isDragging: false,
+  x: 0,
+  y: 0,
   isExpanded: true,
   isMinimized: false,
   isOpen: true,
-  onBeginResize: vi.fn(),
-  onBeginMove: vi.fn(),
+  onDragStop: vi.fn(),
+  onResizeStop: vi.fn(),
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
@@ -338,81 +336,6 @@ describe("Basic Functionality", () => {
     const { getByTestId } = render(<ChatPanel />);
 
     expect(getByTestId("messages-count")).toHaveTextContent("0");
-  });
-
-  it("should render drag handles when collapsed (not expanded and not fullscreen)", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isExpanded: false,
-      isFullscreen: false,
-    });
-
-    const { container } = render(<ChatPanel />);
-
-    expect(container.querySelector('[aria-label="Resize handle"]')).toBeInTheDocument();
-    expect(container.querySelectorAll('[aria-label="Drag to move"]')).toHaveLength(4);
-  });
-
-  it("should not render drag handles when expanded", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isExpanded: true,
-      isFullscreen: false,
-    });
-
-    const { container } = render(<ChatPanel />);
-
-    expect(container.querySelector('[aria-label="Resize handle"]')).not.toBeInTheDocument();
-    expect(container.querySelector('[aria-label="Drag to move"]')).not.toBeInTheDocument();
-  });
-
-  it("should not render drag handles when in fullscreen", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isExpanded: false,
-      isFullscreen: true,
-    });
-
-    const { container } = render(<ChatPanel />);
-
-    expect(container.querySelector('[aria-label="Resize handle"]')).not.toBeInTheDocument();
-    expect(container.querySelector('[aria-label="Drag to move"]')).not.toBeInTheDocument();
-  });
-
-  it("should call onBeginResize when drag handle is pressed", () => {
-    const onBeginResize = vi.fn();
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isExpanded: false,
-      isFullscreen: false,
-      onBeginResize,
-    });
-
-    const { container } = render(<ChatPanel />);
-
-    const resizeHandle = container.querySelector('[aria-label="Resize handle"]')?.parentElement;
-    expect(resizeHandle).toBeInTheDocument();
-    fireEvent.pointerDown(resizeHandle as Element);
-
-    expect(onBeginResize).toHaveBeenCalled();
-  });
-
-  it("should call onBeginMove when draggable border is pressed", () => {
-    const onBeginMove = vi.fn();
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
-      isExpanded: false,
-      isFullscreen: false,
-      onBeginMove,
-    });
-
-    const { container } = render(<ChatPanel />);
-
-    const draggableBorder = container.querySelector('[aria-label="Drag to move"]');
-    expect(draggableBorder).toBeInTheDocument();
-    fireEvent.pointerDown(draggableBorder as Element);
-
-    expect(onBeginMove).toHaveBeenCalled();
   });
 
   it("should render content inside fullscreen container when in fullscreen mode", () => {

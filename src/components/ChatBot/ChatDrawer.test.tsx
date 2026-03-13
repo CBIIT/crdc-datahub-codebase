@@ -30,15 +30,14 @@ const defaultChatDrawerContext = {
   drawerRef: { current: null },
   heightPx: 600,
   widthPx: 384,
-  positionX: 0,
-  positionY: 0,
-  isDragging: false,
+  x: 0,
+  y: 0,
   isExpanded: true,
   isMinimized: false,
   isFullscreen: false,
   isOpen: true,
-  onBeginResize: vi.fn(),
-  onBeginMove: vi.fn(),
+  onDragStop: vi.fn(),
+  onResizeStop: vi.fn(),
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
@@ -424,5 +423,56 @@ describe("Basic Functionality", () => {
 
     const drawer = container.querySelector('[data-fullscreen="true"]');
     expect(drawer).toBeInTheDocument();
+  });
+
+  it("should render drag borders when collapsed", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isExpanded: false,
+      isFullscreen: false,
+      isMinimized: false,
+    });
+
+    const { container } = render(
+      <ChatDrawer>
+        <div>Test content</div>
+      </ChatDrawer>
+    );
+
+    expect(container.querySelectorAll('[aria-label="Drag to move"]')).toHaveLength(4);
+  });
+
+  it("should not render drag borders when expanded", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isExpanded: true,
+      isFullscreen: false,
+      isMinimized: false,
+    });
+
+    const { container } = render(
+      <ChatDrawer>
+        <div>Test content</div>
+      </ChatDrawer>
+    );
+
+    expect(container.querySelector('[aria-label="Drag to move"]')).not.toBeInTheDocument();
+  });
+
+  it("should not render drag borders when in fullscreen", () => {
+    mockUseChatDrawerContext.mockReturnValue({
+      ...defaultChatDrawerContext,
+      isExpanded: false,
+      isFullscreen: true,
+      isMinimized: false,
+    });
+
+    const { container } = render(
+      <ChatDrawer>
+        <div>Test content</div>
+      </ChatDrawer>
+    );
+
+    expect(container.querySelector('[aria-label="Drag to move"]')).not.toBeInTheDocument();
   });
 });

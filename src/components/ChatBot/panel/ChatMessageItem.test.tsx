@@ -18,14 +18,13 @@ const defaultContext = {
   drawerRef: { current: null },
   heightPx: 600,
   widthPx: 384,
-  positionX: 0,
-  positionY: 0,
-  isDragging: false,
+  x: 0,
+  y: 0,
   isExpanded: true,
   isMinimized: false,
   isOpen: true,
-  onBeginResize: vi.fn(),
-  onBeginMove: vi.fn(),
+  onDragStop: vi.fn(),
+  onResizeStop: vi.fn(),
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
@@ -716,8 +715,8 @@ describe("PreComponent - Copy to Clipboard", () => {
       sender: "bot",
       text: "Here is some information",
       citations: [
-        { title: "Citation 1", url: "https://example.com/1" },
-        { title: "Citation 2", url: "https://example.com/2" },
+        { documentName: "Citation 1", documentLink: "https://example.com/1" },
+        { documentName: "Citation 2", documentLink: "https://example.com/2" },
       ],
     });
     const { getByText } = render(<ChatMessageItem message={message} />);
@@ -730,7 +729,7 @@ describe("PreComponent - Copy to Clipboard", () => {
     const message = createMockMessage({
       sender: "bot",
       text: "Information with source",
-      citations: [{ title: "Source Doc", url: "https://example.com/doc" }],
+      citations: [{ documentName: "Source Doc", documentLink: "https://example.com/doc" }],
     });
     const { container } = render(<ChatMessageItem message={message} />);
 
@@ -744,7 +743,7 @@ describe("PreComponent - Copy to Clipboard", () => {
     const message = createMockMessage({
       sender: "bot",
       text: "Information",
-      citations: [{ title: "", url: "https://example.com/1" }],
+      citations: [{ documentName: "", documentLink: "https://example.com/1" }],
     });
     const { getByText } = render(<ChatMessageItem message={message} />);
 
@@ -755,7 +754,7 @@ describe("PreComponent - Copy to Clipboard", () => {
     const message = createMockMessage({
       sender: "user",
       text: "User query",
-      citations: [{ title: "Citation", url: "https://example.com" }],
+      citations: [{ documentName: "Citation", documentLink: "https://example.com" }],
     });
     const { queryByText } = render(<ChatMessageItem message={message} />);
 

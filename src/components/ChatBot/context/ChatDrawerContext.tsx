@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { RndDragCallback, RndResizeCallback } from "react-rnd";
 
 import { useChatDrawer } from "../hooks/useChatDrawer";
 
@@ -13,16 +14,15 @@ type ChatDrawerContextValue = {
   drawerRef: React.RefObject<HTMLDivElement>;
   heightPx: number;
   widthPx: number;
-  positionX: number;
-  positionY: number;
-  isDragging: boolean;
+  x: number;
+  y: number;
   isExpanded: boolean;
   isMinimized: boolean;
   isFullscreen: boolean;
 
   // Drawer actions
-  onBeginResize: React.PointerEventHandler<HTMLDivElement>;
-  onBeginMove: React.PointerEventHandler<HTMLDivElement>;
+  onDragStop: RndDragCallback;
+  onResizeStop: RndResizeCallback;
   onToggleExpand: () => void;
   onToggleFullscreen: () => void;
   onMinimize: () => void;
@@ -54,16 +54,15 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
   const {
     drawerRef,
     isOpen,
-    isDragging,
     isExpanded,
     drawerHeightPx,
     drawerWidthPx,
-    drawerPositionX,
-    drawerPositionY,
+    drawerX,
+    drawerY,
     openDrawer,
     closeDrawer,
-    beginResize,
-    beginMove,
+    handleDragStop,
+    handleResizeStop,
     toggleExpand,
   } = useChatDrawer();
 
@@ -170,14 +169,13 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
       drawerRef,
       heightPx: drawerHeightPx,
       widthPx: drawerWidthPx,
-      positionX: drawerPositionX,
-      positionY: drawerPositionY,
-      isDragging,
+      x: drawerX,
+      y: drawerY,
       isExpanded,
       isMinimized,
       isFullscreen,
-      onBeginResize: beginResize,
-      onBeginMove: beginMove,
+      onDragStop: handleDragStop,
+      onResizeStop: handleResizeStop,
       onToggleExpand: handleToggleExpand,
       onToggleFullscreen: handleToggleFullscreen,
       onMinimize: handleMinimizeDrawer,
@@ -192,14 +190,13 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
       drawerRef,
       drawerHeightPx,
       drawerWidthPx,
-      drawerPositionX,
-      drawerPositionY,
-      isDragging,
+      drawerX,
+      drawerY,
       isExpanded,
       isMinimized,
       isFullscreen,
-      beginResize,
-      beginMove,
+      handleDragStop,
+      handleResizeStop,
       handleToggleExpand,
       handleToggleFullscreen,
       handleMinimizeDrawer,

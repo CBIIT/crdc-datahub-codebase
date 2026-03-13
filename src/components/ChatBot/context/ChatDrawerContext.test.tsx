@@ -51,7 +51,6 @@ const TestParent = ({ onRender, children }: TestParentProps) => {
   return (
     <div>
       <div data-testid="is-open">{context.isOpen.toString()}</div>
-      <div data-testid="is-dragging">{context.isDragging.toString()}</div>
       <div data-testid="is-expanded">{context.isExpanded.toString()}</div>
       <div data-testid="height-px">{context.heightPx}</div>
       <div data-testid="is-minimized">{context.isMinimized.toString()}</div>
@@ -78,13 +77,6 @@ const TestParent = ({ onRender, children }: TestParentProps) => {
       <button type="button" data-testid="cancel-end" onClick={context.onCancelEndConversation}>
         Cancel End
       </button>
-      <button
-        type="button"
-        data-testid="begin-resize"
-        onClick={(e) => context.onBeginResize(e as unknown as React.PointerEvent<HTMLDivElement>)}
-      >
-        Begin Resize
-      </button>
       {children}
     </div>
   );
@@ -93,16 +85,15 @@ const TestParent = ({ onRender, children }: TestParentProps) => {
 const defaultChatDrawerHook = {
   drawerRef: { current: null },
   isOpen: false,
-  isDragging: false,
   isExpanded: true,
   drawerHeightPx: 600,
   drawerWidthPx: 384,
-  drawerPositionX: 0,
-  drawerPositionY: 0,
+  drawerX: 0,
+  drawerY: 0,
   openDrawer: vi.fn(),
   closeDrawer: vi.fn(),
-  beginResize: vi.fn(),
-  beginMove: vi.fn(),
+  handleDragStop: vi.fn(),
+  handleResizeStop: vi.fn(),
   toggleExpand: vi.fn(),
 };
 
@@ -135,7 +126,6 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     );
 
     expect(getByTestId("is-open")).toHaveTextContent("false");
-    expect(getByTestId("is-dragging")).toHaveTextContent("false");
     expect(getByTestId("is-expanded")).toHaveTextContent("true");
     expect(getByTestId("height-px")).toHaveTextContent("600");
     expect(getByTestId("is-minimized")).toHaveTextContent("false");
@@ -147,7 +137,6 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     mockUseChatDrawer.mockReturnValue({
       ...defaultChatDrawerHook,
       isOpen: true,
-      isDragging: true,
       isExpanded: false,
       drawerHeightPx: 800,
     });
@@ -159,7 +148,6 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     );
 
     expect(getByTestId("is-open")).toHaveTextContent("true");
-    expect(getByTestId("is-dragging")).toHaveTextContent("true");
     expect(getByTestId("is-expanded")).toHaveTextContent("false");
     expect(getByTestId("height-px")).toHaveTextContent("800");
   });
@@ -459,25 +447,6 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     });
   });
 
-  it("should call beginResize when onBeginResize is called", () => {
-    const beginResize = vi.fn();
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
-      beginResize,
-    });
-
-    const { getByTestId } = render(
-      <Wrapper>
-        <TestParent />
-      </Wrapper>
-    );
-
-    const button = getByTestId("begin-resize");
-    userEvent.click(button);
-
-    expect(beginResize).toHaveBeenCalled();
-  });
-
   it("should call toggleExpand when onToggleExpand is called", () => {
     const toggleExpand = vi.fn();
     mockUseChatDrawer.mockReturnValue({
@@ -612,11 +581,11 @@ describe("ChatDrawerContext > useChatDrawerContext", () => {
     expect(capturedContext).toHaveProperty("openDrawer");
     expect(capturedContext).toHaveProperty("drawerRef");
     expect(capturedContext).toHaveProperty("heightPx");
-    expect(capturedContext).toHaveProperty("isDragging");
     expect(capturedContext).toHaveProperty("isExpanded");
     expect(capturedContext).toHaveProperty("isMinimized");
     expect(capturedContext).toHaveProperty("isFullscreen");
-    expect(capturedContext).toHaveProperty("onBeginResize");
+    expect(capturedContext).toHaveProperty("onDragStop");
+    expect(capturedContext).toHaveProperty("onResizeStop");
     expect(capturedContext).toHaveProperty("onToggleExpand");
     expect(capturedContext).toHaveProperty("onToggleFullscreen");
     expect(capturedContext).toHaveProperty("onMinimize");

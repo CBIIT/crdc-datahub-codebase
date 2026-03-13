@@ -1,55 +1,48 @@
 import React, { useCallback, useEffect, useReducer, useRef } from "react";
+import type { RndDragCallback, RndResizeCallback } from "react-rnd";
 
 import chatConfig from "../config/chatConfig";
 import { getViewportHeightPx } from "../utils/chatUtils";
 
 type DrawerState = {
-  /**
-   * Indicates whether the drawer is currently open.
-   */
   isOpen: boolean;
-  /**
-   * Indicates whether the drawer is currently being dragged/resized.
-   */
-  isDragging: boolean;
-  /**
-   * Indicates whether the drawer is currently expanded to its maximum height.
-   */
   isExpanded: boolean;
-  /**
-   * The current height of the drawer in pixels.
-   */
   heightPx: number;
-  /**
-   * The current width of the drawer in pixels.
-   */
   widthPx: number;
-  /**
-   * The current X position offset of the drawer in pixels (from default right: 0).
-   */
-  positionX: number;
-  /**
-   * The current Y position offset of the drawer in pixels (from default bottom: 0).
-   */
-  positionY: number;
+  x: number;
+  y: number;
 };
 
 type DrawerAction =
-  | { type: "opened"; viewportHeightPx: number }
+  | { type: "opened"; viewportWidth: number; viewportHeight: number }
   | { type: "closed" }
-  | { type: "drag_started" }
-  | { type: "drag_ended" }
-  | { type: "height_changed"; heightPx: number }
-  | { type: "width_changed"; widthPx: number }
-  | { type: "position_changed"; positionX: number; positionY: number }
-  | { type: "expand_toggled"; viewportHeightPx: number };
+  | { type: "position_changed"; x: number; y: number }
+  | { type: "dimensions_changed"; x: number; y: number; widthPx: number; heightPx: number }
+  | { type: "expand_toggled"; viewportWidth: number; viewportHeight: number }
+  | { type: "viewport_resized"; viewportWidth: number; viewportHeight: number };
+
+/**
+ * Computes the default collapsed position for the chat drawer.
+ */
+const computeCollapsedPosition = (
+  viewportWidth: number,
+  viewportHeight: number
+): { x: number; y: number } => {
+  const FLOATING_BUTTON_POSITION_RATIO = 0.35;
+
+  const drawerHeight = chatConfig.height.collapsed;
+  const drawerWidth = chatConfig.width.default;
+  const floatingButtonCenterFromBottom = viewportHeight * FLOATING_BUTTON_POSITION_RATIO;
+  const bottomOffset = Math.max(0, floatingButtonCenterFromBottom - drawerHeight / 2);
+
+  return {
+    x: viewportWidth - drawerWidth,
+    y: viewportHeight - drawerHeight - bottomOffset,
+  };
+};
 
 /**
  * Reducer function to manage the state of the chat drawer.
- *
- * @param {DrawerState} state - The current state of the chat drawer.
- * @param {DrawerAction} action - The action to be performed on the chat drawer state.
- * @returns The new state of the chat drawer after applying the action.
  */
 const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
   switch (action.type) {
@@ -58,18 +51,15 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
         return state;
       }
 
-      const drawerHeight = chatConfig.height.collapsed;
-      const floatingButtonCenterFromBottom = action.viewportHeightPx * 0.35;
-      const positionY = Math.max(0, floatingButtonCenterFromBottom - drawerHeight / 2);
+      const { x, y } = computeCollapsedPosition(action.viewportWidth, action.viewportHeight);
 
       return {
         isOpen: true,
-        isDragging: false,
         isExpanded: false,
-        heightPx: drawerHeight,
+        heightPx: chatConfig.height.collapsed,
         widthPx: chatConfig.width.default,
-        positionX: 0,
-        positionY,
+        x,
+        y,
       };
     }
     case "closed": {
@@ -80,45 +70,30 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
       return {
         ...state,
         isOpen: false,
-        isDragging: false,
         isExpanded: false,
         heightPx: chatConfig.height.collapsed,
         widthPx: chatConfig.width.default,
-        positionX: 0,
-        positionY: 0,
-      };
-    }
-    case "drag_started": {
-      if (!state.isOpen || state.isDragging) {
-        return state;
-      }
-
-      return { ...state, isDragging: true };
-    }
-    case "drag_ended": {
-      if (!state.isDragging) {
-        return state;
-      }
-
-      return { ...state, isDragging: false };
-    }
-    case "height_changed": {
-      return {
-        ...state,
-        heightPx: action.heightPx,
-      };
-    }
-    case "width_changed": {
-      return {
-        ...state,
-        widthPx: action.widthPx,
+        x: 0,
+        y: 0,
       };
     }
     case "position_changed": {
+      const maxX = Math.max(0, document.documentElement.clientWidth - state.widthPx);
+      const maxY = Math.max(0, document.documentElement.clientHeight - state.heightPx);
+
       return {
         ...state,
-        positionX: action.positionX,
-        positionY: action.positionY,
+        x: Math.max(0, Math.min(action.x, maxX)),
+        y: Math.max(0, Math.min(action.y, maxY)),
+      };
+    }
+    case "dimensions_changed": {
+      return {
+        ...state,
+        x: action.x,
+        y: action.y,
+        widthPx: action.widthPx,
+        heightPx: action.heightPx,
       };
     }
     case "expand_toggled": {
@@ -127,25 +102,55 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
       }
 
       if (state.isExpanded) {
-        const drawerHeight = chatConfig.height.collapsed;
-        const floatingButtonCenterFromBottom = action.viewportHeightPx * 0.35;
-        const positionY = Math.max(0, floatingButtonCenterFromBottom - drawerHeight / 2);
+        const { x, y } = computeCollapsedPosition(action.viewportWidth, action.viewportHeight);
 
         return {
           ...state,
           isExpanded: false,
-          heightPx: drawerHeight,
+          heightPx: chatConfig.height.collapsed,
           widthPx: chatConfig.width.default,
-          positionX: 0,
-          positionY,
+          x,
+          y,
         };
       }
 
       return {
         ...state,
         isExpanded: true,
-        heightPx: action.viewportHeightPx,
+        x: action.viewportWidth - chatConfig.width.expanded,
+        y: 0,
       };
+    }
+    case "viewport_resized": {
+      if (!state.isOpen) {
+        return state;
+      }
+
+      if (state.isExpanded) {
+        return {
+          ...state,
+          x: action.viewportWidth - chatConfig.width.expanded,
+          y: 0,
+        };
+      }
+
+      const newWidth = Math.min(state.widthPx, action.viewportWidth);
+      const newHeight = Math.min(state.heightPx, action.viewportHeight);
+      const maxX = Math.max(0, action.viewportWidth - newWidth);
+      const maxY = Math.max(0, action.viewportHeight - newHeight);
+      const newX = Math.max(0, Math.min(state.x, maxX));
+      const newY = Math.max(0, Math.min(state.y, maxY));
+
+      if (
+        newX === state.x &&
+        newY === state.y &&
+        newWidth === state.widthPx &&
+        newHeight === state.heightPx
+      ) {
+        return state;
+      }
+
+      return { ...state, x: newX, y: newY, widthPx: newWidth, heightPx: newHeight };
     }
     default: {
       return state;
@@ -156,16 +161,15 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
 export type useChatDrawerResult = {
   drawerRef: React.RefObject<HTMLDivElement>;
   isOpen: boolean;
-  isDragging: boolean;
   isExpanded: boolean;
   drawerHeightPx: number;
   drawerWidthPx: number;
-  drawerPositionX: number;
-  drawerPositionY: number;
+  drawerX: number;
+  drawerY: number;
   openDrawer: () => void;
   closeDrawer: () => void;
-  beginResize: React.PointerEventHandler<HTMLDivElement>;
-  beginMove: React.PointerEventHandler<HTMLDivElement>;
+  handleDragStop: RndDragCallback;
+  handleResizeStop: RndResizeCallback;
   toggleExpand: () => void;
 };
 
@@ -179,334 +183,76 @@ export const useChatDrawer = (): useChatDrawerResult => {
 
   const [state, dispatch] = useReducer(reducer, {
     isOpen: false,
-    isDragging: false,
     isExpanded: false,
     heightPx: chatConfig.height.collapsed,
     widthPx: chatConfig.width.default,
-    positionX: 0,
-    positionY: 0,
+    x: 0,
+    y: 0,
   });
 
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
-  /**
-   * These refs ensure the global event handlers have immediate, up-to-date state
-   * without needing to re-register listeners.
-   */
-  const isDraggingRef = useRef(false);
-  /**
-   * Stores the ID of the active pointer during a drag operation.
-   */
-  const activePointerIdRef = useRef<number | null>(null);
-  /**
-   * Stores the requestAnimationFrame ID for throttling drag updates.
-   */
-  const rafIdRef = useRef<number | null>(null);
-  /**
-   * Stores the latest pointer position for RAF-throttled updates.
-   */
-  const pendingPointerPosRef = useRef<{ x: number; y: number } | null>(null);
-  /**
-   * Stores the initial pointer position when drag starts.
-   */
-  const initialPointerPosRef = useRef<{ x: number; y: number } | null>(null);
-  /**
-   * Stores the initial dimensions when drag starts.
-   */
-  const initialDimensionsRef = useRef<{ width: number; height: number } | null>(null);
-  /**
-   * Stores the initial position when drag starts.
-   */
-  const initialPositionRef = useRef<{ x: number; y: number } | null>(null);
-  /**
-   * Indicates whether the current drag operation is a move (vs resize).
-   */
-  const isMoveOperationRef = useRef(false);
-
-  /**
-   * Opens the chat drawer.
-   */
   const openDrawer = useCallback((): void => {
-    const viewportHeightPx = getViewportHeightPx(chatConfig.height.collapsed);
-    dispatch({ type: "opened", viewportHeightPx });
+    const viewportHeight = getViewportHeightPx(chatConfig.height.collapsed);
+    const viewportWidth = document.documentElement.clientWidth;
+
+    dispatch({ type: "opened", viewportWidth, viewportHeight });
   }, []);
 
-  /**
-   * Closes the chat drawer.
-   */
   const closeDrawer = useCallback((): void => {
-    isDraggingRef.current = false;
-    activePointerIdRef.current = null;
     dispatch({ type: "closed" });
   }, []);
 
-  /**
-   * Toggles the expanded state of the chat drawer.
-   */
   const toggleExpand = useCallback((): void => {
-    const viewportHeightPx = getViewportHeightPx(chatConfig.height.collapsed);
-    dispatch({ type: "expand_toggled", viewportHeightPx });
+    const viewportHeight = getViewportHeightPx(chatConfig.height.collapsed);
+    const viewportWidth = document.documentElement.clientWidth;
+
+    dispatch({ type: "expand_toggled", viewportWidth, viewportHeight });
   }, []);
 
-  /**
-   * Begins the resize operation for the chat drawer.
-   */
-  const beginResize: React.PointerEventHandler<HTMLDivElement> = useCallback((event): void => {
-    if (event.pointerType === "mouse" && event.button !== 0) {
-      return;
-    }
-
-    if (!stateRef.current.isOpen) {
-      return;
-    }
-
-    event.preventDefault();
-
-    isDraggingRef.current = true;
-    isMoveOperationRef.current = false;
-    activePointerIdRef.current = event.pointerId;
-    initialPointerPosRef.current = { x: event.clientX, y: event.clientY };
-    initialDimensionsRef.current = {
-      width: stateRef.current.widthPx,
-      height: stateRef.current.heightPx,
-    };
-
-    dispatch({ type: "drag_started" });
+  const handleDragStop: RndDragCallback = useCallback((_e, data) => {
+    dispatch({ type: "position_changed", x: data.x, y: data.y });
   }, []);
 
-  /**
-   * Begins the move operation for the chat drawer.
-   */
-  const beginMove: React.PointerEventHandler<HTMLDivElement> = useCallback((event): void => {
-    if (event.pointerType === "mouse" && event.button !== 0) {
-      return;
-    }
-
-    if (!stateRef.current.isOpen) {
-      return;
-    }
-
-    event.preventDefault();
-
-    isDraggingRef.current = true;
-    isMoveOperationRef.current = true;
-    activePointerIdRef.current = event.pointerId;
-    initialPointerPosRef.current = { x: event.clientX, y: event.clientY };
-    initialPositionRef.current = {
-      x: stateRef.current.positionX,
-      y: stateRef.current.positionY,
-    };
-
-    dispatch({ type: "drag_started" });
-  }, []);
-
-  /**
-   * Applies the resize, given pointer X and Y positions.
-   */
-  const applyResize = useCallback((clientX: number, clientY: number): void => {
-    const drawerElement = drawerRef.current;
-    if (!drawerElement) {
-      return;
-    }
-
-    const initialPos = initialPointerPosRef.current;
-    const initialDims = initialDimensionsRef.current;
-
-    if (!initialPos || !initialDims) {
-      return;
-    }
-
-    // Calculate deltas from initial position
-    const deltaX = initialPos.x - clientX;
-    const deltaY = initialPos.y - clientY;
-
-    // Apply delta to initial dimensions
-    const newWidth = initialDims.width + deltaX;
-    const newHeight = initialDims.height + deltaY;
-
-    // Calculate scrollbar dimensions to prevent clipping at viewport edges
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    const scrollbarHeight = window.innerHeight - document.documentElement.clientHeight;
-
-    // Update height
-    const viewportHeightPx = getViewportHeightPx(chatConfig.height.collapsed);
-    const maxHeight = viewportHeightPx - stateRef.current.positionY - scrollbarHeight;
-    const heightPx = Math.max(chatConfig.height.min, Math.min(newHeight, maxHeight));
-    dispatch({
-      type: "height_changed",
-      heightPx,
-    });
-
-    // Update width
-    const viewportWidth = window.innerWidth;
-    const maxWidth = viewportWidth - stateRef.current.positionX - scrollbarWidth;
-    const widthPx = Math.max(chatConfig.width.min, Math.min(newWidth, maxWidth));
-    dispatch({
-      type: "width_changed",
-      widthPx,
-    });
-  }, []);
-
-  /**
-   * Applies the move, given pointer X and Y positions.
-   */
-  const applyMove = useCallback((clientX: number, clientY: number): void => {
-    const initialPos = initialPointerPosRef.current;
-    const initialPosition = initialPositionRef.current;
-
-    if (!initialPos || !initialPosition) {
-      return;
-    }
-
-    const deltaX = initialPos.x - clientX;
-    const deltaY = initialPos.y - clientY;
-
-    const newPositionX = initialPosition.x + deltaX;
-    const newPositionY = initialPosition.y + deltaY;
-
-    // Calculate scrollbar dimensions to prevent clipping at viewport edges
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    const scrollbarHeight = window.innerHeight - document.documentElement.clientHeight;
-
-    // Constrain to viewport bounds
-    const viewportWidth = window.innerWidth - scrollbarWidth;
-    const viewportHeight = window.innerHeight - scrollbarHeight;
-    const drawerWidth = stateRef.current.widthPx;
-    const drawerHeight = stateRef.current.heightPx;
-
-    const maxPositionX = viewportWidth - drawerWidth;
-    const maxPositionY = viewportHeight - drawerHeight;
-
-    const positionX = Math.max(0, Math.min(newPositionX, maxPositionX));
-    const positionY = Math.max(0, Math.min(newPositionY, maxPositionY));
-
-    dispatch({
-      type: "position_changed",
-      positionX,
-      positionY,
-    });
-  }, []);
-
-  /**
-   * Handles the pointer move event on the window.
-   * Uses requestAnimationFrame to throttle updates for better performance.
-   */
-  const handleWindowPointerMove = useCallback(
-    (event: PointerEvent): void => {
-      if (!isDraggingRef.current) {
-        return;
-      }
-
-      const activePointerId = activePointerIdRef.current;
-      if (activePointerId !== null && event.pointerId !== activePointerId) {
-        return;
-      }
-
-      pendingPointerPosRef.current = { x: event.clientX, y: event.clientY };
-
-      if (rafIdRef.current !== null) {
-        return;
-      }
-
-      rafIdRef.current = requestAnimationFrame(() => {
-        rafIdRef.current = null;
-        const pos = pendingPointerPosRef.current;
-        if (!pos) {
-          return;
-        }
-
-        if (isMoveOperationRef.current) {
-          applyMove(pos.x, pos.y);
-        } else {
-          applyResize(pos.x, pos.y);
-        }
+  const handleResizeStop: RndResizeCallback = useCallback(
+    (_e, _direction, ref, _delta, position) => {
+      dispatch({
+        type: "dimensions_changed",
+        x: position.x,
+        y: position.y,
+        widthPx: Math.round(parseFloat(ref.style.width)),
+        heightPx: Math.round(parseFloat(ref.style.height)),
       });
     },
-    [applyResize, applyMove]
+    []
   );
-
-  /**
-   * Ends the drag operation for the chat drawer.
-   */
-  const endDrag = useCallback((): void => {
-    if (!isDraggingRef.current) {
-      return;
-    }
-
-    // Cancel any pending animation frame
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
-
-    isDraggingRef.current = false;
-    isMoveOperationRef.current = false;
-    activePointerIdRef.current = null;
-    initialPointerPosRef.current = null;
-    initialDimensionsRef.current = null;
-    initialPositionRef.current = null;
-    pendingPointerPosRef.current = null;
-
-    dispatch({ type: "drag_ended" });
-  }, []);
-
-  /**
-   * Handles the pointer up event on the window.
-   */
-  const handleWindowPointerUp = useCallback(
-    (event: PointerEvent): void => {
-      const activePointerId = activePointerIdRef.current;
-
-      if (activePointerId === null || event.pointerId === activePointerId) {
-        endDrag();
-      }
-    },
-    [endDrag]
-  );
-
-  /**
-   * Handles visibility change to reset drag state when tab becomes hidden.
-   * This prevents stuck drag states when the user switches tabs mid-drag.
-   */
-  const handleVisibilityChange = useCallback((): void => {
-    if (document.hidden && isDraggingRef.current) {
-      endDrag();
-    }
-  }, [endDrag]);
 
   useEffect(() => {
-    window.addEventListener("pointermove", handleWindowPointerMove);
-    window.addEventListener("pointerup", handleWindowPointerUp);
-    window.addEventListener("pointercancel", handleWindowPointerUp);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if (!state.isOpen) {
+      return undefined;
+    }
 
-    return () => {
-      window.removeEventListener("pointermove", handleWindowPointerMove);
-      window.removeEventListener("pointerup", handleWindowPointerUp);
-      window.removeEventListener("pointercancel", handleWindowPointerUp);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    const handleResize = () => {
+      const viewportWidth = document.documentElement.clientWidth;
+      const viewportHeight = document.documentElement.clientHeight;
 
-      // Clean up any pending animation frame on unmount
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
+      dispatch({ type: "viewport_resized", viewportWidth, viewportHeight });
     };
-  }, [handleWindowPointerMove, handleWindowPointerUp, handleVisibilityChange]);
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [state.isOpen]);
 
   return {
     drawerRef,
     isOpen: state.isOpen,
-    isDragging: state.isDragging,
     isExpanded: state.isExpanded,
     drawerHeightPx: state.heightPx,
     drawerWidthPx: state.widthPx,
-    drawerPositionX: state.positionX,
-    drawerPositionY: state.positionY,
+    drawerX: state.x,
+    drawerY: state.y,
     openDrawer,
     closeDrawer,
-    beginResize,
-    beginMove,
+    handleDragStop,
+    handleResizeStop,
     toggleExpand,
   };
 };
