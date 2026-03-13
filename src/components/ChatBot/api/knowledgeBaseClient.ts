@@ -1,5 +1,6 @@
 import { Logger } from "@/utils";
 
+import chatConfig from "../config/chatConfig";
 import { storeSessionId } from "../utils/sessionStorageUtils";
 
 export type AskKnowledgeBaseResponse = {
@@ -168,9 +169,17 @@ export async function askQuestion({
   }
 
   try {
+    const truncatedQuestion = question.slice(0, chatConfig.maxInputTextLength);
+    const truncatedHistory = conversationHistory.slice(-chatConfig.maxConversationHistoryLength);
+
     const response = await fetch(url, {
       method: "POST",
-      body: JSON.stringify({ question, sessionId, conversationHistory }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: truncatedQuestion,
+        sessionId,
+        conversationHistory: truncatedHistory,
+      }),
       signal,
     });
 
