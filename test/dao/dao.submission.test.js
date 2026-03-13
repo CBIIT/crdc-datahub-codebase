@@ -924,7 +924,8 @@ describe('SubmissionDAO', () => {
                     study: {
                         id: 'study-1',
                         studyName: 'Test Study',
-                        studyAbbreviation: 'TS'
+                        studyAbbreviation: 'TS',
+                        dbGaPID: 'phs001234'
                     },
                     organization: {
                         id: 'org-1',
@@ -958,6 +959,71 @@ describe('SubmissionDAO', () => {
                 expect(result.submissions[0]).toHaveProperty('_id', 'sub-1');
                 expect(result.submissions[0]).toHaveProperty('studyName', 'Test Study');
                 expect(result.submissions[0]).toHaveProperty('studyAbbreviation', 'TS');
+                // dbGaPID is populated from submission.study.dbGaPID
+                expect(result.submissions[0]).toHaveProperty('dbGaPID', 'phs001234');
+                // Nested study (SubmissionStudy) has all fields
+                expect(result.submissions[0].study).toEqual({
+                    _id: 'study-1',
+                    studyName: 'Test Study',
+                    studyAbbreviation: 'TS',
+                    applicationID: undefined,
+                    dbGaPID: 'phs001234'
+                });
+            });
+
+            it('should set dbGaPID from submission.study.dbGaPID when study has dbGaPID', async () => {
+                const testSubmission = {
+                    id: 'sub-1',
+                    name: 'Test Submission 1',
+                    status: NEW,
+                    dataCommons: 'test-commons',
+                    studyID: 'study-1',
+                    dbGaPID: 'old-phs',
+                    dataFileSize: { size: 0, formatted: 'NA' },
+                    study: {
+                        id: 'study-1',
+                        studyName: 'Test Study',
+                        studyAbbreviation: 'TS',
+                        dbGaPID: 'phs999999'
+                    },
+                    organization: null,
+                    submitter: { id: 's1', firstName: 'A', lastName: 'B', fullName: 'A B', email: 'a@b.com' },
+                    concierge: null
+                };
+                prisma.submission.findMany.mockImplementation((query) => {
+                    if (query.include) return Promise.resolve([testSubmission]);
+                    if (query.select?.submitter) return Promise.resolve([{ submitter: testSubmission.submitter }]);
+                    return Promise.resolve([testSubmission]);
+                });
+
+                const result = await dao.listSubmissions(mockUserInfo, mockUserScope, mockParams);
+
+                expect(result.submissions[0].dbGaPID).toBe('phs999999');
+            });
+
+            it('should fall back to submission.dbGaPID when study or study.dbGaPID is missing', async () => {
+                const testSubmission = {
+                    id: 'sub-1',
+                    name: 'Test Submission 1',
+                    status: NEW,
+                    dataCommons: 'test-commons',
+                    studyID: 'study-1',
+                    dbGaPID: 'phs-fallback',
+                    dataFileSize: { size: 0, formatted: 'NA' },
+                    study: { id: 'study-1', studyName: 'Test Study', studyAbbreviation: 'TS' },
+                    organization: null,
+                    submitter: { id: 's1', firstName: 'A', lastName: 'B', fullName: 'A B', email: 'a@b.com' },
+                    concierge: null
+                };
+                prisma.submission.findMany.mockImplementation((query) => {
+                    if (query.include) return Promise.resolve([testSubmission]);
+                    if (query.select?.submitter) return Promise.resolve([{ submitter: testSubmission.submitter }]);
+                    return Promise.resolve([testSubmission]);
+                });
+
+                const result = await dao.listSubmissions(mockUserInfo, mockUserScope, mockParams);
+
+                expect(result.submissions[0].dbGaPID).toBe('phs-fallback');
             });
 
             it('should transform dataFileSize for deleted/canceled submissions', async () => {

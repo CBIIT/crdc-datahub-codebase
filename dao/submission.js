@@ -126,7 +126,8 @@ class SubmissionDAO extends GenericDAO {
                     id: true,
                     studyName: true,
                     studyAbbreviation: true,
-                    applicationID: true
+                    applicationID: true,
+                    dbGaPID: true
                 }
             },
             organization: {
@@ -183,19 +184,35 @@ class SubmissionDAO extends GenericDAO {
             const statuses = this._getDistinctStatuses();
 
             // Transform submissions to match expected format
-            const transformedSubmissions = submissions.map(submission => ({
-                ...submission,
-                _id: submission.id,
-                studyName: submission?.study?.studyName,
-                studyAbbreviation: submission?.study?.studyAbbreviation,
-                dataFileSize: this._transformDataFileSize(submission.status, submission.dataFileSize),
-                // Transform organization to match GraphQL schema (map id to _id)
-                organization: formatNestedOrganization(submission.organization),
-                submitterName: submission?.submitter?.fullName || "",
-                conciergeName: submission?.concierge?.fullName || "",
-                conciergeEmail: submission?.concierge?.email || "",
-                submissionRequestID: submission?.study?.applicationID || null,
-            }));
+            const transformedSubmissions = submissions.map(submission => {
+                const study = submission?.study
+                    ? {
+                        _id: submission.study.id,
+                        studyName: submission.study.studyName,
+                        studyAbbreviation: submission.study.studyAbbreviation,
+                        applicationID: submission.study.applicationID,
+                        dbGaPID: submission.study.dbGaPID
+                    }
+                    : null;
+                return {
+                    ...submission,
+                    _id: submission.id,
+                    // Nested study object; prefer submission.study for study properties.
+                    study,
+                    // Will be deprecated fields in the future: Prefer submission.study.studyName; these top-level study properties will be removed.
+                    studyName: submission?.study?.studyName,
+                    studyAbbreviation: submission?.study?.studyAbbreviation,
+                    // DEPRECATED: submission.dbgapid will be removed; value is from submission.study.dbgapid. Prefer submission.study.dbgapid and convert callers.
+                    dbGaPID: submission?.study?.dbGaPID ?? submission?.dbGaPID,
+                    dataFileSize: this._transformDataFileSize(submission.status, submission.dataFileSize),
+                    // Transform organization to match GraphQL schema (map id to _id)
+                    organization: formatNestedOrganization(submission.organization),
+                    submitterName: submission?.submitter?.fullName || "",
+                    conciergeName: submission?.concierge?.fullName || "",
+                    conciergeEmail: submission?.concierge?.email || "",
+                    submissionRequestID: submission?.study?.applicationID || null,
+                };
+            });
 
             return {
                 submissions: transformedSubmissions,

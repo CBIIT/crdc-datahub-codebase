@@ -329,6 +329,32 @@ describe('Submission Service - getSubmission', () => {
                 .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
         });
 
+        it('should return dbGaPID from submission.study.dbGaPID', async () => {
+            // _findByID sets dbGaPID from study before returning; mock that contract
+            const submissionWithStudyDbGaPID = {
+                ...mockSubmission,
+                dbGaPID: 'phs001234',
+                study: {
+                    ...mockSubmission.study,
+                    dbGaPID: 'phs001234'
+                }
+            };
+            submissionService._findByID.mockResolvedValue(submissionWithStudyDbGaPID);
+            submissionService._getUserScope.mockResolvedValue(createMockUserScope(false, true));
+            submissionService._getS3DirectorySize.mockResolvedValue({ size: 1024, formatted: '1 KB' });
+            mockSubmissionDAO.update.mockResolvedValue(submissionWithStudyDbGaPID);
+            mockSubmissionDAO.findMany.mockResolvedValue([]);
+            mockDataRecordService.countNodesBySubmissionID.mockResolvedValue(5);
+            getDataCommonsDisplayNamesForSubmission.mockImplementation((s) => ({
+                ...s,
+                dataCommonsDisplayName: 'Test Commons Display Name'
+            }));
+
+            const result = await submissionService.getSubmission(mockParams, mockContext);
+
+            expect(result.dbGaPID).toBe('phs001234');
+        });
+
         it('should update data file size when it changes', async () => {
             // Setup mocks
             const submissionWithDifferentSize = {
