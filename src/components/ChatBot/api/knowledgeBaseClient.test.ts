@@ -194,9 +194,7 @@ describe("askQuestion", () => {
 
     expect(result.citations).toEqual([mockCitation]);
     expect(onCitation).toHaveBeenCalledWith(mockCitation);
-    expect(Logger.info).toHaveBeenCalledWith("[KnowledgeBase] All citations collected:", [
-      mockCitation,
-    ]);
+    expect(Logger.info).toHaveBeenCalledWith("[KnowledgeBase] Citations:", [mockCitation]);
   });
 
   it("should not collect citations when no citations event is sent", async () => {
@@ -247,7 +245,7 @@ describe("askQuestion", () => {
       })
     ).rejects.toThrow("HTTP error! status: 500");
 
-    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase] Request failed:", expect.any(Error));
+    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase] Error:", expect.any(Error));
   });
 
   it("should handle abort signal correctly", async () => {
@@ -421,7 +419,7 @@ describe("askQuestion", () => {
       })
     ).rejects.toThrow("Network failure");
 
-    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase] Request failed:", networkError);
+    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase] Error:", networkError);
   });
 
   it("should handle stream reading errors", async () => {
