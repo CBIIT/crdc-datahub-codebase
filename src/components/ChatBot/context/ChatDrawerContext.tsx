@@ -124,11 +124,13 @@ export const ChatDrawerProvider: React.FC<ChatDrawerProviderProps> = ({ children
    */
   const handleToggleExpand = useCallback((): void => {
     if (isFullscreen && isExpanded) {
+      document.body.style.overflow = "";
       setIsFullscreen(false);
       return;
     }
 
     if (isFullscreen) {
+      document.body.style.overflow = "";
       setIsFullscreen(false);
       toggleExpand();
       return;
