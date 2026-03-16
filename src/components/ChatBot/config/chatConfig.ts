@@ -54,6 +54,23 @@ const chatConfig = {
      */
     expanded: 417,
   },
+  /**
+   * The floating button configuration.
+   */
+  floatingButton: {
+    /**
+     * The delay in milliseconds before the floating button expands.
+     */
+    initialDelayMs: 3_000,
+    /**
+     * The duration in milliseconds the floating button stays expanded.
+     */
+    showDurationMs: 7_000,
+    /**
+     * The session storage key used to track whether the bubble has been shown.
+     */
+    sessionKey: "chatbot_bubble_shown",
+  },
 };
 
 export default chatConfig;
