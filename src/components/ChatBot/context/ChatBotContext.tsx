@@ -27,7 +27,7 @@ export type ChatBotProviderProps = {
 
 export const ChatBotProvider: React.FC<ChatBotProviderProps> = ({
   title = "Chat",
-  label = "CRDC Assistant",
+  label = "CRDC\nAssistant",
   knowledgeBaseUrl = "",
   children,
 }) => {
