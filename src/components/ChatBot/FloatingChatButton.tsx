@@ -2,6 +2,7 @@ import { Typography, styled } from "@mui/material";
 import React, { useEffect, useState } from "react";
 
 import ChatBotLogo from "./components/ChatBotLogo";
+import chatConfig from "./config/chatConfig";
 
 const StyledFloatingButtonWrapper = styled("div")({
   position: "fixed",
@@ -9,62 +10,49 @@ const StyledFloatingButtonWrapper = styled("div")({
   top: "65%",
   transform: "translateY(-50%)",
   zIndex: 10000,
-});
-
-const StyledSpeechBubble = styled(Typography, {
-  shouldForwardProp: (prop) => prop !== "visible",
-})<{ visible: boolean }>(({ visible }) => ({
-  position: "fixed",
-  right: "29px",
-  top: "calc(65% - 30px + 21px)",
-  minWidth: "187px",
-  zIndex: 9999,
   display: "flex",
   flexDirection: "row",
-  alignItems: "center",
-  padding: "17.5px 42px 17.5px 20px",
-  gap: "10px",
-  background: "#FFFFFF",
-  boxShadow: "0px 4px 4px rgba(0, 0, 0, 0.25)",
-  borderRadius: "18px",
-  fontFamily: "Inter",
+  alignItems: "stretch",
+});
+
+const StyledLabel = styled(Typography)({
+  fontFamily: "'Inter'",
   fontStyle: "normal",
-  fontWeight: 700,
-  fontSize: "16px",
-  lineHeight: "18px",
-  letterSpacing: 0,
-  color: "#0A3E7F",
-  opacity: visible ? 1 : 0,
-  transition: "opacity 0.5s ease-in-out",
-  pointerEvents: visible ? "auto" : "none",
-}));
+  fontWeight: 600,
+  fontSize: "15px",
+  lineHeight: "16px",
+  display: "flex",
+  alignItems: "center",
+  color: "#F9F9F9",
+  paddingRight: "10px",
+  textAlign: "left",
+  whiteSpace: "pre-line",
+});
 
 type Props = {
   label: string;
   onClick: React.MouseEventHandler<HTMLButtonElement>;
 };
 
-const INITIAL_DELAY_MS = 3_000;
-const SHOW_DURATION_MS = 7_000;
-const SESSION_KEY = "chatbot_bubble_shown";
-
 const FloatingChatButton = ({ label, onClick }: Props): JSX.Element => {
-  const [bubbleVisible, setBubbleVisible] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const { initialDelayMs, showDurationMs, sessionKey } = chatConfig.floatingButton;
 
   useEffect(() => {
-    const hasShown = sessionStorage.getItem(SESSION_KEY);
+    const hasShown = sessionStorage.getItem(sessionKey);
     if (hasShown) {
       return undefined;
     }
 
     const showTimeout = setTimeout(() => {
-      setBubbleVisible(true);
-      sessionStorage.setItem(SESSION_KEY, "true");
-    }, INITIAL_DELAY_MS);
+      setExpanded(true);
+      sessionStorage.setItem(sessionKey, "true");
+    }, initialDelayMs);
 
     const hideTimeout = setTimeout(() => {
-      setBubbleVisible(false);
-    }, INITIAL_DELAY_MS + SHOW_DURATION_MS);
+      setExpanded(false);
+    }, initialDelayMs + showDurationMs);
 
     return () => {
       clearTimeout(showTimeout);
@@ -73,17 +61,11 @@ const FloatingChatButton = ({ label, onClick }: Props): JSX.Element => {
   }, []);
 
   return (
-    <>
-      <StyledFloatingButtonWrapper>
-        <ChatBotLogo
-          variant="floating"
-          animated={bubbleVisible}
-          onClick={onClick}
-          ariaLabel={label}
-        />
-      </StyledFloatingButtonWrapper>
-      <StyledSpeechBubble visible={bubbleVisible}>{label}</StyledSpeechBubble>
-    </>
+    <StyledFloatingButtonWrapper>
+      <ChatBotLogo variant="floating" expanded={expanded} onClick={onClick} ariaLabel={label}>
+        <StyledLabel>{label}</StyledLabel>
+      </ChatBotLogo>
+    </StyledFloatingButtonWrapper>
   );
 };
 
