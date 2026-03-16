@@ -1711,6 +1711,7 @@ class Submission {
         const nodeIDs = params.nodeIDs || [];
         const exclusiveIDs = params.exclusiveIDs || [];
         const deleteAll = params.deleteAll || false;
+        const deleteOrphanedDataFiles = params.deleteOrphanedDataFiles === true;
 
         // validate arrays are within the limits
         if (nodeIDs.length > 2000 || exclusiveIDs.length > 2000) {
@@ -1842,7 +1843,8 @@ class Submission {
             nodeType: params.nodeType, 
             deleteAll: deleteAll,
             nodeIDs: deleteAll ? [] : nodeIDs,
-            exclusiveIDs: deleteAll ? exclusiveIDs : []
+            exclusiveIDs: deleteAll ? exclusiveIDs : [],
+            deleteOrphanedDataFiles: deleteOrphanedDataFiles
         };
         // request delete data records
         const success = await this._requestDeleteDataRecords(msg, this.sqsLoaderQueue, params.submissionID, params.submissionID);

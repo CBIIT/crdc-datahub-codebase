@@ -1465,7 +1465,8 @@ describe('Submission Service - getSubmission', () => {
                         nodeType: 'Subject',
                         deleteAll: false,
                         nodeIDs: ['node1', 'node2'],
-                        exclusiveIDs: []
+                        exclusiveIDs: [],
+                        deleteOrphanedDataFiles: false
                     }),
                     'test-queue',
                     'sub-123',
@@ -1507,7 +1508,8 @@ describe('Submission Service - getSubmission', () => {
                         nodeType: 'Subject',
                         deleteAll: true,
                         nodeIDs: [],
-                        exclusiveIDs: []
+                        exclusiveIDs: [],
+                        deleteOrphanedDataFiles: false
                     }),
                     'test-queue',
                     'sub-123',
@@ -1549,7 +1551,51 @@ describe('Submission Service - getSubmission', () => {
                         nodeType: 'Subject',
                         deleteAll: true,
                         nodeIDs: [],
-                        exclusiveIDs: ['node1']
+                        exclusiveIDs: ['node1'],
+                        deleteOrphanedDataFiles: false
+                    }),
+                    'test-queue',
+                    'sub-123',
+                    'sub-123'
+                );
+            });
+
+            it('should send SQS message with deleteOrphanedDataFiles true when provided', async () => {
+                const mockSubmission = {
+                    _id: 'sub-123',
+                    status: NEW,
+                    submitterID: 'user-123'
+                };
+
+                submissionService._findByID.mockResolvedValue(mockSubmission);
+                submissionService._getUserScope.mockResolvedValue({
+                    isOwnScope: () => true,
+                    isStudyScope: () => false,
+                    isDCScope: () => false,
+                    isAllScope: () => false
+                });
+                submissionService._requestDeleteDataRecords.mockResolvedValue({ success: true });
+                mockSubmissionDAO.update.mockResolvedValue(mockSubmission);
+
+                await submissionService.deleteDataRecords(
+                    {
+                        submissionID: 'sub-123',
+                        nodeType: 'Subject',
+                        nodeIDs: ['node1'],
+                        deleteOrphanedDataFiles: true
+                    },
+                    mockContext
+                );
+
+                expect(submissionService._requestDeleteDataRecords).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        type: expect.stringContaining('Delete Metadata'),
+                        submissionID: 'sub-123',
+                        nodeType: 'Subject',
+                        deleteAll: false,
+                        nodeIDs: ['node1'],
+                        exclusiveIDs: [],
+                        deleteOrphanedDataFiles: true
                     }),
                     'test-queue',
                     'sub-123',
