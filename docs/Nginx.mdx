@@ -55,9 +55,15 @@ http {
             proxy_pass "https://hub-dev2.datacommons.cancer.gov/api/authn/";
         }
 
-        # Chatbot Knowledge Base
-        location /api/chat {
+        # Chatbot Backend
+        location = /api/chat {
+            # proxy_pass http://localhost:3000/;
             # proxy_pass "https://hub-dev.datacommons.cancer.gov/api/chat";
+            proxy_pass "https://hub-dev2.datacommons.cancer.gov/api/chat";
+        }
+        location /api/chat/ {
+            # proxy_pass http://localhost:3000/;
+            # proxy_pass "https://hub-dev.datacommons.cancer.gov/";
             proxy_pass "https://hub-dev2.datacommons.cancer.gov/";
         }
 
