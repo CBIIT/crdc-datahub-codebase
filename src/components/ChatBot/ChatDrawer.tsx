@@ -168,10 +168,10 @@ const StyledDraggableBorder = styled("div", {
   background: "transparent",
   cursor: "move",
   touchAction: "none",
-  ...(edge === "top" && { top: 0, left: 0, right: 0, height: 12 }),
-  ...(edge === "right" && { top: 21, right: 0, bottom: 0, width: 12 }),
-  ...(edge === "bottom" && { bottom: 0, left: 0, right: 0, height: 12 }),
-  ...(edge === "left" && { top: 21, left: 0, bottom: 0, width: 12 }),
+  ...(edge === "top" && { top: 0, left: 0, right: 0, height: 10 }),
+  ...(edge === "right" && { top: 21, right: 0, bottom: 0, width: 10 }),
+  ...(edge === "bottom" && { bottom: 0, left: 0, right: 0, height: 10 }),
+  ...(edge === "left" && { top: 21, left: 0, bottom: 0, width: 10 }),
 }));
 
 export type Props = {
@@ -252,7 +252,7 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
         dragHandleClassName="rnd-drag-handle"
         cancel="button"
         bounds="parent"
-        resizeHandleStyles={disableInteraction ? undefined : { topLeft: { top: 30, left: 10 } }}
+        resizeHandleStyles={disableInteraction ? undefined : { topLeft: { top: 25, left: 8 } }}
         resizeHandleComponent={
           disableInteraction
             ? undefined
