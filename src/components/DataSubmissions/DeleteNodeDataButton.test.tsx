@@ -652,12 +652,14 @@ describe("Implementation Requirements", () => {
     userEvent.click(button);
 
     await waitFor(() => {
-      expect(mockMatcher).not.toHaveBeenCalledWith(
-        expect.objectContaining({
-          deleteOrphanedDataFiles: false,
-        })
-      );
+      expect(mockMatcher).toHaveBeenCalled();
     });
+
+    expect(mockMatcher).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        deleteOrphanedDataFiles: expect.anything(),
+      })
+    );
   });
 
   it("should use deleteAll API when selectType is true with no exclusions", async () => {
