@@ -338,7 +338,7 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
 
             {isConfirmingEndConversation ? (
               <ConfirmOverlay role="alertdialog" aria-label="End Conversation">
-                <ChatBotLogo ariaLabel="CRDC Assistant Logo" />
+                <ChatBotLogo ariaLabel="CRDC Assistant Logo" variant="square" />
                 <ConfirmTitle>End Conversation</ConfirmTitle>
 
                 <ConfirmActions>

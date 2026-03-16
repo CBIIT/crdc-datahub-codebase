@@ -13,7 +13,7 @@ const meta: Meta<typeof ChatDrawer> = {
   },
   decorators: [
     (Story) => (
-      <ChatBotProvider title="Chat" label="Chat">
+      <ChatBotProvider label="Chat">
         <ChatConversationProvider>
           <ChatDrawerProvider>
             <Story />

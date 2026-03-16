@@ -126,7 +126,6 @@ describe("ChatConversationContext", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseChatBotContext.mockReturnValue({
-      title: "Test Chat",
       label: "Chat",
       knowledgeBaseUrl: "https://api.example.com/chat",
     });

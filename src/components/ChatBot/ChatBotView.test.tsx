@@ -39,7 +39,6 @@ describe("Accessibility", () => {
     vi.clearAllMocks();
     mockUseChatBotContext.mockReturnValue({
       label: "Chat",
-      title: "Support",
       knowledgeBaseUrl: "https://example.com",
     });
   });
@@ -74,7 +73,6 @@ describe("Basic Functionality", () => {
     vi.clearAllMocks();
     mockUseChatBotContext.mockReturnValue({
       label: "Chat",
-      title: "Support",
       knowledgeBaseUrl: "https://example.com",
     });
   });
@@ -152,7 +150,6 @@ describe("Basic Functionality", () => {
   it("should pass label from context to FloatingChatButton", () => {
     mockUseChatBotContext.mockReturnValue({
       label: "Help Me",
-      title: "Support",
       knowledgeBaseUrl: "https://example.com",
     });
     mockUseChatDrawerContext.mockReturnValue({

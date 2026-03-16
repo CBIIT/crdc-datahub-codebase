@@ -53,7 +53,7 @@ const createGreetingMessage = (): ChatMessage =>
   createChatMessage({
     text: chatConfig.initialMessage,
     sender: "bot",
-    senderName: chatConfig.supportBotName,
+    senderName: chatConfig.botName,
   });
 
 /**
@@ -174,7 +174,7 @@ const useChatConversation = (): ChatConversationActions => {
       message: createChatMessage({
         text: "Sorry, an unexpected error occurred. Please try again later.",
         sender: "bot",
-        senderName: chatConfig.supportBotName,
+        senderName: chatConfig.botName,
         variant: "error",
       }),
     });
@@ -230,7 +230,7 @@ const useChatConversation = (): ChatConversationActions => {
                 id: botMessageId,
                 text: accumulatedText,
                 sender: "bot",
-                senderName: chatConfig.supportBotName,
+                senderName: chatConfig.botName,
               }),
             });
           },
@@ -252,7 +252,7 @@ const useChatConversation = (): ChatConversationActions => {
               id: botMessageId,
               text: accumulatedText,
               sender: "bot",
-              senderName: chatConfig.supportBotName,
+              senderName: chatConfig.botName,
               citations: allCitations,
             }),
           });
@@ -303,7 +303,7 @@ const useChatConversation = (): ChatConversationActions => {
         message: createChatMessage({
           text: value,
           sender: "user",
-          senderName: chatConfig.userDisplayName,
+          senderName: chatConfig.userName,
         }),
       });
 

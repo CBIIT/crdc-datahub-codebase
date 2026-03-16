@@ -32,7 +32,7 @@ describe("ChatController", () => {
 
     const { default: Controller } = await import("./Controller");
 
-    const { getByTestId } = render(<Controller title="Test Chat" label="Help" />);
+    const { getByTestId } = render(<Controller label="Help" />);
 
     expect(getByTestId("chatbot-view")).toBeInTheDocument();
   });
@@ -58,7 +58,7 @@ describe("ChatController", () => {
 
       const { default: Controller } = await import("./Controller");
 
-      const { queryByTestId } = render(<Controller title="Test Chat" label="Help" />);
+      const { queryByTestId } = render(<Controller label="Help" />);
 
       expect(queryByTestId("chatbot-view")).not.toBeInTheDocument();
     }
@@ -71,7 +71,7 @@ describe("ChatController", () => {
 
     const { default: Controller } = await import("./Controller");
 
-    const { queryByTestId } = render(<Controller title="Test Chat" label="Help" />);
+    const { queryByTestId } = render(<Controller label="Help" />);
 
     expect(queryByTestId("chatbot-view")).not.toBeInTheDocument();
   });

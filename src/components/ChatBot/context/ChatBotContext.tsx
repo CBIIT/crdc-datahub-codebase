@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useMemo } from "react";
 
+import chatConfig from "../config/chatConfig";
+
 type ChatBotContextValue = {
-  title: string;
   label: string;
   knowledgeBaseUrl: string;
 };
@@ -19,25 +20,22 @@ export const useChatBotContext = (): ChatBotContextValue => {
 };
 
 export type ChatBotProviderProps = {
-  title?: string;
   label?: string;
   knowledgeBaseUrl?: string;
   children: React.ReactNode;
 };
 
 export const ChatBotProvider: React.FC<ChatBotProviderProps> = ({
-  title = "Chat",
-  label = "CRDC\nAssistant",
+  label = chatConfig.floatingButton.label,
   knowledgeBaseUrl = "",
   children,
 }) => {
   const value = useMemo<ChatBotContextValue>(
     () => ({
-      title,
       label,
       knowledgeBaseUrl,
     }),
-    [title, label, knowledgeBaseUrl]
+    [label, knowledgeBaseUrl]
   );
 
   return <ChatBotContext.Provider value={value}>{children}</ChatBotContext.Provider>;

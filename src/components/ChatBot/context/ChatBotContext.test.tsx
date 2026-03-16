@@ -1,5 +1,7 @@
 import { render, renderHook } from "@/test-utils";
 
+import chatConfig from "../config/chatConfig";
+
 import { ChatBotProvider, useChatBotContext } from "./ChatBotContext";
 
 describe("ChatBotContext > ChatBotProvider", () => {
@@ -18,18 +20,7 @@ describe("ChatBotContext > ChatBotProvider", () => {
       wrapper: ({ children }) => <ChatBotProvider>{children}</ChatBotProvider>,
     });
 
-    expect(result.current.title).toBe("Chat");
-    expect(result.current.label).toBe("CRDC Assistant");
-    expect(result.current.knowledgeBaseUrl).toBe("");
-  });
-
-  it("should render with custom title", () => {
-    const { result } = renderHook(() => useChatBotContext(), {
-      wrapper: ({ children }) => <ChatBotProvider title="Support Chat">{children}</ChatBotProvider>,
-    });
-
-    expect(result.current.title).toBe("Support Chat");
-    expect(result.current.label).toBe("CRDC Assistant");
+    expect(result.current.label).toBe(chatConfig.floatingButton.label);
     expect(result.current.knowledgeBaseUrl).toBe("");
   });
 
@@ -38,7 +29,6 @@ describe("ChatBotContext > ChatBotProvider", () => {
       wrapper: ({ children }) => <ChatBotProvider label="Help Center">{children}</ChatBotProvider>,
     });
 
-    expect(result.current.title).toBe("Chat");
     expect(result.current.label).toBe("Help Center");
     expect(result.current.knowledgeBaseUrl).toBe("");
   });
@@ -52,43 +42,37 @@ describe("ChatBotContext > ChatBotProvider", () => {
       ),
     });
 
-    expect(result.current.title).toBe("Chat");
-    expect(result.current.label).toBe("CRDC Assistant");
+    expect(result.current.label).toBe(chatConfig.floatingButton.label);
     expect(result.current.knowledgeBaseUrl).toBe("https://api.example.com/chat");
   });
 
   it("should render with all custom props", () => {
     const { result } = renderHook(() => useChatBotContext(), {
       wrapper: ({ children }) => (
-        <ChatBotProvider
-          title="Customer Support"
-          label="Support"
-          knowledgeBaseUrl="https://api.example.com/kb"
-        >
+        <ChatBotProvider label="Support" knowledgeBaseUrl="https://api.example.com/kb">
           {children}
         </ChatBotProvider>
       ),
     });
 
-    expect(result.current.title).toBe("Customer Support");
     expect(result.current.label).toBe("Support");
     expect(result.current.knowledgeBaseUrl).toBe("https://api.example.com/kb");
   });
 
   it("should update context when props change", () => {
     const { result, rerender } = renderHook(() => useChatBotContext(), {
-      wrapper: ({ children }) => <ChatBotProvider title="First Title">{children}</ChatBotProvider>,
+      wrapper: ({ children }) => <ChatBotProvider label="First Label">{children}</ChatBotProvider>,
     });
 
-    expect(result.current.title).toBe("First Title");
+    expect(result.current.label).toBe("First Label");
 
     rerender();
 
     const { result: result2 } = renderHook(() => useChatBotContext(), {
-      wrapper: ({ children }) => <ChatBotProvider title="Second Title">{children}</ChatBotProvider>,
+      wrapper: ({ children }) => <ChatBotProvider label="Second Label">{children}</ChatBotProvider>,
     });
 
-    expect(result2.current.title).toBe("Second Title");
+    expect(result2.current.label).toBe("Second Label");
   });
 });
 
@@ -106,14 +90,13 @@ describe("ChatBotContext > useChatBotContext", () => {
   it("should return context value when used inside provider", () => {
     const { result } = renderHook(() => useChatBotContext(), {
       wrapper: ({ children }) => (
-        <ChatBotProvider title="Test Title" label="Test Label" knowledgeBaseUrl="https://test.com">
+        <ChatBotProvider label="Test Label" knowledgeBaseUrl="https://test.com">
           {children}
         </ChatBotProvider>
       ),
     });
 
     expect(result.current).toEqual({
-      title: "Test Title",
       label: "Test Label",
       knowledgeBaseUrl: "https://test.com",
     });
@@ -122,7 +105,7 @@ describe("ChatBotContext > useChatBotContext", () => {
   it("should return same object reference when props don't change", () => {
     const { result, rerender } = renderHook(() => useChatBotContext(), {
       wrapper: ({ children }) => (
-        <ChatBotProvider title="Same Title" label="Same Label" knowledgeBaseUrl="https://same.com">
+        <ChatBotProvider label="Same Label" knowledgeBaseUrl="https://same.com">
           {children}
         </ChatBotProvider>
       ),
@@ -133,28 +116,6 @@ describe("ChatBotContext > useChatBotContext", () => {
     const secondValue = result.current;
 
     expect(firstValue).toBe(secondValue);
-  });
-
-  it("should return new object reference when title changes", () => {
-    const Wrapper = ({ title, children }: { title: string; children: React.ReactNode }) => (
-      <ChatBotProvider title={title}>{children}</ChatBotProvider>
-    );
-
-    const { result, rerender } = renderHook(() => useChatBotContext(), {
-      wrapper: ({ children }) => <Wrapper title="First">{children}</Wrapper>,
-      initialProps: { title: "First" },
-    });
-
-    const firstValue = result.current;
-
-    rerender({ title: "Second" });
-
-    const { result: result2 } = renderHook(() => useChatBotContext(), {
-      wrapper: ({ children }) => <Wrapper title="Second">{children}</Wrapper>,
-    });
-
-    expect(firstValue).not.toBe(result2.current);
-    expect(result2.current.title).toBe("Second");
   });
 
   it("should return new object reference when label changes", () => {

@@ -34,11 +34,7 @@ const meta: Meta<StoryArgs> = {
       const { endpointUrl } = context.args;
 
       return (
-        <ChatBotProvider
-          title="CRDC Data Hub Support"
-          label="Ask a question"
-          knowledgeBaseUrl={endpointUrl}
-        >
+        <ChatBotProvider label="Ask a question" knowledgeBaseUrl={endpointUrl}>
           <ChatConversationProvider>
             <ChatDrawerProvider>
               <div style={{ height: "600px", width: "100%", border: "1px solid #ccc" }}>

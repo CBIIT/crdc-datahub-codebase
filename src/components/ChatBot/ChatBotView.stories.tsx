@@ -7,7 +7,6 @@ import { ChatDrawerProvider } from "./context/ChatDrawerContext";
 
 type StoryArgs = {
   label: string;
-  title: string;
   endpointUrl: string;
 };
 
@@ -20,7 +19,6 @@ const meta: Meta<StoryArgs> = {
   decorators: [
     (Story, context) => (
       <ChatBotProvider
-        title={context.args.title || "Chat"}
         label={context.args.label || "Chat"}
         knowledgeBaseUrl={context.args.endpointUrl}
       >
@@ -37,14 +35,6 @@ const meta: Meta<StoryArgs> = {
       name: "Label",
       control: "text",
       description: "The label text displayed on the floating chat button.",
-      table: {
-        defaultValue: { summary: "Chat" },
-      },
-    },
-    title: {
-      name: "Title",
-      control: "text",
-      description: "The title text displayed in the chat drawer header.",
       table: {
         defaultValue: { summary: "Chat" },
       },
@@ -68,7 +58,6 @@ export const Button: Story = {
   parameters: meta.parameters,
   args: {
     label: "Chat",
-    title: "Chat",
     endpointUrl: import.meta.env.VITE_CHATBOT_API_BASE_URL || "",
   },
 };

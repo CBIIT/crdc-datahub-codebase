@@ -20,10 +20,8 @@ const mockUseChatBotContext = vi.mocked(ChatBotContextModule.useChatBotContext);
 const mockUseChatDrawerContext = vi.mocked(ChatDrawerContextModule.useChatDrawerContext);
 
 const defaultChatBotContext = {
-  title: "Test Chat",
   label: "Chat",
   knowledgeBaseUrl: "http://test.com",
-  metadata: {},
 };
 
 const defaultChatDrawerContext = {

@@ -16,16 +16,12 @@ type Props = {
    * The floating button label.
    */
   label?: string;
-  /**
-   * The title appearing within the chat.
-   */
-  title?: string;
 };
 
 /**
  * Controls the visibility of the ChatBot component and manages its providers.
  */
-const ChatController: FC<Props> = ({ label, title }) => {
+const ChatController: FC<Props> = ({ label }) => {
   const { VITE_CHATBOT_API_BASE_URL } = env || {};
 
   if (!VITE_CHATBOT_API_BASE_URL?.trim()) {
@@ -33,11 +29,7 @@ const ChatController: FC<Props> = ({ label, title }) => {
   }
 
   return (
-    <MemoizedChatBotProvider
-      title={title}
-      label={label}
-      knowledgeBaseUrl={VITE_CHATBOT_API_BASE_URL}
-    >
+    <MemoizedChatBotProvider label={label} knowledgeBaseUrl={VITE_CHATBOT_API_BASE_URL}>
       <MemoizedChatConversationProvider>
         <MemoizedChatDrawerProvider>
           <ChatBotView />

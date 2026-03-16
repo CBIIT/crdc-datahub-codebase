@@ -3,15 +3,15 @@
  */
 const chatConfig = {
   /**
-   * The name of the support bot.
+   * The name of the bot.
    * NOTE: Not visually displayed, but used for message metadata.
    */
-  supportBotName: "CRDC Support",
+  botName: "Bot",
   /**
-   * The display name of the user.
+   * The name of the user.
    * NOTE: Not visually displayed, but used for message metadata.
    */
-  userDisplayName: "You",
+  userName: "User",
   /**
    * The initial message sent by the support bot when the chat starts a new conversation.
    */
@@ -58,6 +58,10 @@ const chatConfig = {
    * The floating button configuration.
    */
   floatingButton: {
+    /**
+     * The default label displayed on the floating chat button.
+     */
+    label: "CRDC\nAssistant",
     /**
      * The delay in milliseconds before the floating button expands.
      */
