@@ -6,9 +6,14 @@ import json
 import os
 from bento.common.utils import get_logger
 from bento.common.s3 import S3Bucket
-from common.constants import DATA_COMMON_NAME,NODE_ID, FILE_NAME, MODEL_VERSION, ROOT_PATH, \
-        SUBMISSION_ID,NODE_TYPE, S3_FILE_INFO, BATCH_BUCKET, PARENT_TYPE, PARENTS
-from common.utils import get_exception_msg
+from common.constants import (
+    DATA_COMMON_NAME, NODE_ID, FILE_NAME, MODEL_VERSION, ROOT_PATH,
+    SUBMISSION_ID, NODE_TYPE, S3_FILE_INFO, BATCH_BUCKET, PARENT_TYPE, PARENTS, ID, TYPE,
+    DATA_FILE_TYPE, S3_LIST_ORPHANS_PAGE_SIZE,
+    SUBMITTED_ID, QC_VALIDATION_TYPE, BATCH_ID, DISPLAY_ID, QC_SEVERITY,
+    UPLOADED_DATE, QC_VALIDATE_DATE, ERRORS, STATUS_ERROR,
+)
+from common.utils import get_exception_msg, create_error, current_datetime
 
 """
 Process delete metadata requests.
@@ -17,6 +22,7 @@ class MetadataRemover:
     
     def __init__(self, mongo_dao, model_store):
         self.fileList = [] #list of files object {file_name, file_path, file_size, invalid_reason}
+        self.errors = []
         self.log = get_logger('Essential Validator')
         self.mongo_dao = mongo_dao
         self.model_store = model_store
@@ -28,7 +34,7 @@ class MetadataRemover:
         self.bucket = None
         self.def_file_nodes = None
 
-    def remove_metadata(self, submission_id, node_type, node_ids):
+    def remove_metadata(self, submission_id, node_type, node_ids, delete_orphaned_data_files=False):
         msg = None
         try:
             #1 validate submission
@@ -36,11 +42,7 @@ class MetadataRemover:
             if not submission or not submission.get(DATA_COMMON_NAME):
                 msg = f'Invalid submission, no record found, {submission_id}!'
                 self.log.error(msg)
-                return False
-            if  not submission.get(DATA_COMMON_NAME):
-                msg = f'Invalid submission, no datacommon found, {submission_id}!'
-                self.log.error(msg)
-                return False
+                return (False, [])
             self.submission = submission
             self.datacommon = submission.get(DATA_COMMON_NAME)
             self.submission_id  = submission_id
@@ -50,19 +52,21 @@ class MetadataRemover:
             if not self.model.model or not self.model.get_nodes():
                 msg = f'{self.datacommon} model version "{model_version}" is not available.'
                 self.log.error(msg)
-                return False
+                return (False, [])
             self.def_file_nodes = self.model.get_file_nodes()
             self.bucket = S3Bucket(submission.get(BATCH_BUCKET))
-            #2. validate meatadata for the type and ids
+            #2. validate metadata for the type and ids
             existed_nodes = self.validate_data(submission_id, node_type, node_ids)
             if not existed_nodes or len(existed_nodes) == 0:
-                return False
-            return self.delete_nodes(existed_nodes)
-        except Exception as e:
-            self.log.exception(e)
-            msg = f'Failed to delete metadata, {get_exception_msg()}!'
-            self.log.exception(msg)
-            return False
+                return (False, [])
+            if not self.delete_nodes(existed_nodes):
+                return (False, [])
+            #3. after successful delete: find orphaned files, optionally delete them, build F008 errors
+            orphan_errors = self._find_orphaned_files_and_build_errors(submission_id, delete_orphaned_data_files)
+            return True, orphan_errors
+        except Exception:
+            self.log.exception(f'Failed to delete metadata, {get_exception_msg()}!')
+            return False, []
     
     def validate_data(self, submission_id, node_type, node_ids):
         """
@@ -158,7 +162,81 @@ class MetadataRemover:
                 self.errors.append(f'Deleting metadata failed with database error.  Please try again and contact the helpdesk if this error persists.')
                 rtn_val = rtn_val and False
         return rtn_val
-    
+
+    def _process_s3_list_page(self, response, manifest_file_names, orphan_s3_infos):
+        """Process one page of list_objects_v2 response; append orphan items to orphan_s3_infos. Return NextContinuationToken."""
+        for item in response.get("Contents") or []:
+            obj_key = item.get("Key") or ""
+            if "/log" in obj_key:
+                continue
+            file_name = obj_key.split("/")[-1]
+            if not file_name or file_name in manifest_file_names:
+                continue
+            orphan_s3_infos.append({
+                FILE_NAME: file_name,
+                "last_modified": item.get("LastModified"),
+            })
+        return response.get("NextContinuationToken")
+
+    def _find_orphaned_files_and_build_errors(self, submission_id, delete_orphaned_data_files):
+        """
+        After metadata deletion: find files in S3 that are no longer referenced by any data record.
+        If delete_orphaned_data_files is True, delete those files from S3.
+        Return a list of file-error dicts (F008) for each orphaned file, matching file_validator shape.
+        """
+        if not self.bucket or not self.root_path:
+            return []
+        orphan_errors = []
+        try:
+            manifest_info_list = self.mongo_dao.get_files_by_submission(submission_id) or []
+            manifest_file_names = set()
+            for manifest_info in manifest_info_list:
+                if manifest_info.get(S3_FILE_INFO) and manifest_info[S3_FILE_INFO].get(FILE_NAME):
+                    manifest_file_names.add(manifest_info[S3_FILE_INFO][FILE_NAME])
+
+            # S3 keys use forward slashes; paginate list_objects_v2 (first page, then while token)
+            key = (os.path.join(self.root_path, "file") + "/").replace("\\", "/")
+            orphan_s3_infos = []
+
+            response = self.bucket.client.list_objects_v2(
+                Bucket=self.bucket.bucket_name,
+                Prefix=key,
+                MaxKeys=S3_LIST_ORPHANS_PAGE_SIZE,
+            )
+            continuation_token = self._process_s3_list_page(response, manifest_file_names, orphan_s3_infos)
+            while continuation_token:
+                response = self.bucket.client.list_objects_v2(
+                    Bucket=self.bucket.bucket_name,
+                    Prefix=key,
+                    MaxKeys=S3_LIST_ORPHANS_PAGE_SIZE,
+                    ContinuationToken=continuation_token,
+                )
+                continuation_token = self._process_s3_list_page(response, manifest_file_names, orphan_s3_infos)
+
+            if delete_orphaned_data_files and orphan_s3_infos:
+                self.delete_files_in_s3([{FILE_NAME: info[FILE_NAME]} for info in orphan_s3_infos])
+
+            for info in orphan_s3_infos:
+                file_name = info[FILE_NAME]
+                file_batch = self.mongo_dao.find_batch_by_file_name(submission_id, DATA_FILE_TYPE, file_name)
+                batch_id = file_batch[ID] if file_batch else "-"
+                display_id = file_batch.get(DISPLAY_ID) if file_batch else None
+                error = {
+                    TYPE: DATA_FILE_TYPE,
+                    QC_VALIDATION_TYPE: DATA_FILE_TYPE,
+                    SUBMITTED_ID: file_name,
+                    BATCH_ID: batch_id,
+                    DISPLAY_ID: display_id,
+                    QC_SEVERITY: STATUS_ERROR,
+                    UPLOADED_DATE: info.get("last_modified"),
+                    QC_VALIDATE_DATE: current_datetime(),
+                    ERRORS: [create_error("F008", [file_name], "file name", file_name)],
+                }
+                orphan_errors.append(error)
+        except Exception:
+            self.log.exception(f"Failed to find orphaned files or build F008 errors: {get_exception_msg()}")
+        return orphan_errors
+
     """
     delete files in s3 after deleted file nodes
     """
