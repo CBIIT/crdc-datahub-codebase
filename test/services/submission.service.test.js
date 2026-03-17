@@ -329,6 +329,34 @@ describe('Submission Service - getSubmission', () => {
                 .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
         });
 
+        it('should return dbGaPID from submission.study.dbGaPID', async () => {
+            // Use real _findByID so its precedence logic runs; DAO returns raw submission with conflicting values
+            const rawSubmission = {
+                ...mockSubmission,
+                dbGaPID: 'old',
+                study: {
+                    ...mockSubmission.study,
+                    dbGaPID: 'new'
+                }
+            };
+            mockSubmissionDAO.findFirst.mockResolvedValue(rawSubmission);
+            mockProgramDAO.findFirst.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
+            submissionService._findByID = Submission.prototype._findByID.bind(submissionService);
+            submissionService._getUserScope.mockResolvedValue(createMockUserScope(false, true));
+            submissionService._getS3DirectorySize.mockResolvedValue({ size: 1024, formatted: '1 KB' });
+            mockSubmissionDAO.update.mockResolvedValue(rawSubmission);
+            mockSubmissionDAO.findMany.mockResolvedValue([]);
+            mockDataRecordService.countNodesBySubmissionID.mockResolvedValue(5);
+            getDataCommonsDisplayNamesForSubmission.mockImplementation((s) => ({
+                ...s,
+                dataCommonsDisplayName: 'Test Commons Display Name'
+            }));
+
+            const result = await submissionService.getSubmission(mockParams, mockContext);
+
+            expect(result.dbGaPID).toBe('new');
+        });
+
         it('should update data file size when it changes', async () => {
             // Setup mocks
             const submissionWithDifferentSize = {

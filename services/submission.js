@@ -2768,7 +2768,9 @@ class Submission {
                             select: {
                                 id: true,
                                 studyName: true,
-                                studyAbbreviation: true
+                                studyAbbreviation: true,
+                                applicationID: true,
+                                dbGaPID: true
                             }
                         },
                         submitter: {
@@ -2823,6 +2825,8 @@ class Submission {
                 aSubmission.studyName = aSubmission.study.studyName;
                 aSubmission.studyAbbreviation = aSubmission.study.studyAbbreviation;
             }
+            // DEPRECATED: submission.dbGaPID will be removed; value is from submission.study.dbGaPID. Prefer submission.study.dbGaPID and convert callers.
+            aSubmission.dbGaPID = aSubmission?.study?.dbGaPID ?? aSubmission?.dbGaPID;
 
             // Transform submitter data to match expected format
             if (aSubmission?.submitter?.id && aSubmission?.submitter?.firstName) {
