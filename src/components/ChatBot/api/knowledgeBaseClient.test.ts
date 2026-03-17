@@ -11,7 +11,7 @@ vi.mock("@/utils", () => ({
   },
 }));
 
-const TEST_API_URL = "https://test-api.example.com/";
+const TEST_API_URL = "https://test-api.example.com";
 
 /**
  * Helper to create a mock ReadableStream that emits line-delimited JSON chunks
@@ -106,7 +106,7 @@ describe("askQuestion", () => {
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      TEST_API_URL,
+      `${TEST_API_URL}/question`,
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -245,7 +245,7 @@ describe("askQuestion", () => {
       })
     ).rejects.toThrow("HTTP error! status: 500");
 
-    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase] Error:", expect.any(Error));
+    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase]", expect.any(Error));
   });
 
   it("should handle abort signal correctly", async () => {
@@ -401,7 +401,7 @@ describe("askQuestion", () => {
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      TEST_API_URL,
+      `${TEST_API_URL}/question`,
       expect.objectContaining({
         signal: abortController.signal,
       })
@@ -419,7 +419,7 @@ describe("askQuestion", () => {
       })
     ).rejects.toThrow("Network failure");
 
-    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase] Error:", networkError);
+    expect(Logger.error).toHaveBeenCalledWith("[KnowledgeBase]", networkError);
   });
 
   it("should handle stream reading errors", async () => {
@@ -750,6 +750,26 @@ describe("processStreamingResponse", () => {
 
     expect(onPulse).toHaveBeenCalledWith("Searching documents...");
     expect(Logger.info).toHaveBeenCalledWith("[KnowledgeBase] Pulse:", "Searching documents...");
+  });
+
+  it("should throw when an error event is received", async () => {
+    const chunks = [`${JSON.stringify({ type: "error", message: "Something went wrong" })}\n`];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await expect(processStreamingResponse(reader, undefined, undefined, 0)).rejects.toThrow(
+      "Something went wrong"
+    );
+  });
+
+  it("should throw a default message when error event has no message", async () => {
+    const chunks = [`${JSON.stringify({ type: "error" })}\n`];
+    const stream = createMockStream(chunks);
+    const reader = stream.getReader();
+
+    await expect(processStreamingResponse(reader, undefined, undefined, 0)).rejects.toThrow(
+      "An error occurred while processing your request"
+    );
   });
 
   it("should silently ignore unknown event types and log them", async () => {

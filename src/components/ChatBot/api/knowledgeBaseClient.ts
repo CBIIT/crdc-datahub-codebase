@@ -155,6 +155,9 @@ export async function processStreamingResponse(
             }
             break;
 
+          case "error":
+            throw new Error(parsed.message || "An error occurred while processing your request");
+
           default:
             Logger.info("[KnowledgeBase] Unknown event type:", parsed?.type, parsed);
             break;
@@ -164,7 +167,11 @@ export async function processStreamingResponse(
           Logger.error("[KnowledgeBase] Stream error:", parsed.error);
         }
       } catch (e) {
-        Logger.error("[KnowledgeBase] Failed to parse line:", line, e);
+        if (e instanceof SyntaxError) {
+          Logger.error("[KnowledgeBase] Failed to parse line:", line, e);
+        } else {
+          throw e;
+        }
       }
     }
   }
@@ -204,8 +211,9 @@ export async function askQuestion({
   try {
     const truncatedQuestion = question.slice(0, chatConfig.maxInputTextLength);
     const truncatedHistory = conversationHistory.slice(-chatConfig.maxConversationHistoryLength);
+    const askQuestionURL = `${url}/question`;
 
-    const response = await fetch(url, {
+    const response = await fetch(askQuestionURL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -240,7 +248,7 @@ export async function askQuestion({
 
     return { sessionId: currentSessionId, citations };
   } catch (error) {
-    Logger.error("[KnowledgeBase] Error:", error);
+    Logger.error("[KnowledgeBase]", error);
     throw error;
   }
 }
