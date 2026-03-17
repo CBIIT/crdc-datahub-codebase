@@ -9,13 +9,13 @@ import MessageList from "./panel/MessageList";
 const StyledStack = styled(Stack, {
   shouldForwardProp: (prop) => prop !== "isExpanded" && prop !== "isFullscreen",
 })<{ isExpanded?: boolean; isFullscreen?: boolean }>(({ isExpanded, isFullscreen }) => ({
-  height: "100%",
-  background: "rgba(255, 255, 255, 0.75)",
-  border: "2px solid #2982D7",
-  boxShadow: "0px 4px 4px rgba(0, 0, 0, 0.45)",
-  backdropFilter: "blur(10px)",
-  borderRadius: "10px",
-  overflow: "hidden",
+  height: "100% !important",
+  background: "rgba(255, 255, 255, 0.75) !important",
+  border: "2px solid #2982D7 !important",
+  boxShadow: "0px 4px 4px rgba(0, 0, 0, 0.45) !important",
+  backdropFilter: "blur(10px) !important",
+  borderRadius: "10px !important",
+  overflow: "hidden !important",
 
   position: "relative",
   ...(isExpanded && {

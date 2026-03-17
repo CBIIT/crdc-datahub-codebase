@@ -51,12 +51,12 @@ const StyledTextField = styled(StyledOutlinedInput)({
 });
 
 const StyledSendButton = styled(IconButton)({
-  padding: 0,
+  padding: "0 !important",
   "&:hover": {
-    backgroundColor: "transparent",
+    backgroundColor: "transparent !important",
   },
   "&.Mui-disabled": {
-    opacity: 0.4,
+    opacity: "0.4 !important",
   },
 });
 
@@ -76,8 +76,8 @@ const SendIconCircle = styled(Box)({
 });
 
 const StyledArrowIcon = styled(East)({
-  color: "#FFFFFF",
-  fontSize: "20px",
+  color: "#FFFFFF !important",
+  fontSize: "20px !important",
 });
 
 export type Props = {

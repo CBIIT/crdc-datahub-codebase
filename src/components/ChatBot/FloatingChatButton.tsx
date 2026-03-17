@@ -16,9 +16,9 @@ const StyledFloatingButtonWrapper = styled("div")({
 });
 
 const StyledLabel = styled(Typography)({
-  fontFamily: "'Inter'",
+  fontFamily: "'Inter', 'Rubik', sans-serif !important",
   fontStyle: "normal",
-  fontWeight: 600,
+  fontWeight: "600 !important",
   fontSize: "15px",
   lineHeight: "16px",
   display: "flex",
@@ -27,6 +27,7 @@ const StyledLabel = styled(Typography)({
   paddingRight: "10px",
   textAlign: "left",
   whiteSpace: "pre-line",
+  textTransform: "none",
 });
 
 type Props = {

@@ -1,7 +1,7 @@
 import CloseIcon from "@mui/icons-material/Close";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
 import { Button, IconButton, Paper, Typography, styled } from "@mui/material";
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Rnd } from "react-rnd";
 
 import DraggableHandleSvg from "./assets/draggable-handle.svg?react";
@@ -14,31 +14,38 @@ import { useChatDrawerContext } from "./context/ChatDrawerContext";
 
 const StyledChatDrawer = styled(Paper)({
   position: "relative",
-  width: "100%",
-  height: "100%",
-  display: "flex",
-  flexDirection: "column",
-  boxShadow: "none",
-  overflow: "hidden",
-  backgroundColor: "transparent",
-  border: 0,
+  width: "100% !important",
+  height: "100% !important",
+  display: "flex !important",
+  flexDirection: "column !important" as never,
+  boxShadow: "none !important",
+  overflow: "hidden !important",
+  backgroundColor: "transparent !important",
+  border: "0 !important",
+  borderRadius: "0 !important",
+  margin: "0 !important",
+  padding: "0 !important",
+  gap: "0 !important",
   '&[data-expanded="true"]': {
-    borderLeft: "2px solid #2982D7",
+    borderLeft: "2px solid #2982D7 !important",
   },
 });
 
 const StyledChatHeader = styled("div")({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  padding: "0 12px 0 0",
-  backgroundColor: "transparent",
+  display: "flex !important",
+  alignItems: "center !important",
+  justifyContent: "flex-end !important",
+  padding: "0 12px 0 0 !important",
+  margin: "0 !important",
+  backgroundColor: "transparent !important",
+  lineHeight: "0 !important",
+  fontSize: "0 !important",
   color: "white",
   '&[data-expanded="true"]': {
     position: "absolute",
     top: 0,
     right: 20,
-    padding: 0,
+    padding: "0 !important",
     zIndex: 2,
     cursor: "default",
   },
@@ -46,42 +53,45 @@ const StyledChatHeader = styled("div")({
     position: "absolute",
     top: 0,
     right: 35,
-    padding: 0,
+    padding: "0 !important",
     zIndex: 2,
     cursor: "default",
   },
 });
 
 const StyledHeaderActions = styled("div")({
-  boxSizing: "border-box",
-  display: "flex",
-  flexDirection: "row",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "0 10px",
-  gap: "15px",
-  height: "21px",
-  backgroundColor: "#034AA3",
-  borderWidth: "0.75px 0.75px 0px 0.75px",
-  borderStyle: "solid",
-  borderColor: "#FFFFFF",
-  borderRadius: "8px 8px 0 0",
+  boxSizing: "border-box !important" as never,
+  display: "flex !important",
+  flexDirection: "row !important" as never,
+  justifyContent: "space-between !important",
+  alignItems: "center !important",
+  padding: "0 10px !important",
+  margin: "0 !important",
+  gap: "15px !important",
+  height: "21px !important",
+  backgroundColor: "#034AA3 !important",
+  borderWidth: "0.75px 0.75px 0px 0.75px !important",
+  borderStyle: "solid !important",
+  borderColor: "#FFFFFF !important",
+  borderRadius: "8px 8px 0 0 !important",
   '&[data-expanded="true"], &[data-fullscreen="true"]': {
-    borderWidth: "0px 0.75px 0.75px 0.75px",
-    borderRadius: "0 0 8px 8px",
+    borderWidth: "0px 0.75px 0.75px 0.75px !important",
+    borderRadius: "0 0 8px 8px !important",
   },
 });
 
 const StyledChatBody = styled("div")({
-  flex: 1,
-  display: "flex",
-  flexDirection: "column",
-  overflow: "hidden",
-  position: "relative",
-  minHeight: 0,
-  borderRadius: "8px",
+  flex: "1 !important",
+  display: "flex !important",
+  flexDirection: "column !important" as never,
+  overflow: "hidden !important",
+  position: "relative !important" as never,
+  minHeight: "0 !important",
+  margin: "0 !important",
+  padding: "0 !important",
+  borderRadius: "0 0 8px 8px !important",
   '&[data-expanded="true"], &[data-fullscreen="true"]': {
-    borderRadius: 0,
+    borderRadius: "0 !important",
   },
 });
 
@@ -92,64 +102,64 @@ const ConfirmOverlay = styled("div")({
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  padding: "18px 36px",
-  backgroundColor: "#E3E9F2",
-  border: "2px solid #2982D7",
-  borderRadius: "10px",
+  padding: "18px 36px !important",
+  backgroundColor: "#E3E9F2 !important",
+  border: "2px solid #2982D7 !important",
+  borderRadius: "10px !important",
   zIndex: 1,
 });
 
 const ConfirmTitle = styled(Typography)({
-  fontFamily: "Inter",
+  fontFamily: "Inter !important",
   fontStyle: "normal",
-  fontWeight: 500,
-  fontSize: "15px",
-  lineHeight: "22px",
-  textAlign: "center",
-  color: "#334B5A",
-  marginTop: "30px",
+  fontWeight: "500 !important",
+  fontSize: "15px !important",
+  lineHeight: "22px !important",
+  textAlign: "center !important" as never,
+  color: "#334B5A !important",
+  marginTop: "30px !important",
 });
 
 const ConfirmActions = styled("div")({
   display: "flex",
-  gap: 12,
-  justifyContent: "center",
-  marginTop: "30px",
+  gap: "12px !important",
+  justifyContent: "center !important",
+  marginTop: "30px !important",
 });
 
 const StyledIconButton = styled(IconButton)({
-  color: "white",
-  padding: 0,
-  margin: "0 auto",
-  flex: "none",
+  color: "white !important",
+  padding: "0 !important",
+  margin: "0 auto !important",
+  flex: "none !important",
   flexGrow: 0,
 });
 
 const DrawerViewIconButton = styled(StyledIconButton)({
   "& svg": {
-    width: "16px",
-    height: "16px",
+    width: "16px !important",
+    height: "16px !important",
   },
 });
 
 const FullScreenIconButton = styled(StyledIconButton)({
   "& svg": {
-    width: "11px",
-    height: "11px",
+    width: "11px !important",
+    height: "11px !important",
   },
 });
 
 const MinimizeIconButton = styled(StyledIconButton)({
   "& svg": {
-    width: "15px",
-    height: "15px",
+    width: "15px !important",
+    height: "15px !important",
   },
 });
 
 const CloseIconButton = styled(StyledIconButton)({
   "& svg": {
-    width: "15px",
-    height: "15px",
+    width: "15px !important",
+    height: "15px !important",
   },
 });
 
@@ -205,6 +215,25 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
     onCancelEndConversation,
   } = useChatDrawerContext();
 
+  const [viewportSize, setViewportSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+
+  const handleResize = useCallback(() => {
+    setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+  }, []);
+
+  useEffect(() => {
+    if (!isFullscreen && !isExpanded) {
+      return undefined;
+    }
+
+    window.addEventListener("resize", handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, [isFullscreen, isExpanded, handleResize]);
+
   const rndPosition = useMemo(
     () => (isFullscreen ? { x: 0, y: 0 } : { x, y }),
     [isFullscreen, x, y]
@@ -212,14 +241,14 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
 
   const rndSize = useMemo<{ width: number; height: number }>(() => {
     if (isFullscreen) {
-      return { width: window.innerWidth, height: window.innerHeight };
+      return { width: viewportSize.width, height: viewportSize.height };
     }
     if (isExpanded) {
-      return { width: chatConfig.width.expanded, height: window.innerHeight };
+      return { width: chatConfig.width.expanded, height: viewportSize.height };
     }
 
     return { width: widthPx, height: heightPx };
-  }, [isFullscreen, isExpanded, widthPx, heightPx]);
+  }, [isFullscreen, isExpanded, widthPx, heightPx, viewportSize]);
 
   const disableInteraction = useMemo(
     () => isExpanded || isFullscreen || isMinimized,
@@ -275,6 +304,7 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
       >
         <StyledChatDrawer
           ref={drawerRef}
+          id="chat-drawer"
           {...dataAttrs}
           aria-hidden={isMinimized ? "true" : "false"}
         >
@@ -326,7 +356,7 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
             </StyledHeaderActions>
           </StyledChatHeader>
 
-          <StyledChatBody {...dataAttrs}>
+          <StyledChatBody id="chat-body" {...dataAttrs}>
             {!disableInteraction && (
               <StyledDraggableBorder
                 edge="top"

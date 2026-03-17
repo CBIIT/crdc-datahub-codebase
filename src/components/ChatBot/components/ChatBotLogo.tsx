@@ -81,23 +81,25 @@ const StyledLogoButton = styled(Button, {
     justifyContent: logoVariant === "floating" ? "flex-start" : "center",
     width: logoVariant === "floating" ? "auto" : "72px",
     height: "60px",
+    letterSpacing: "normal !important",
     minWidth: logoVariant === "floating" ? "69px" : "72px",
     ...(logoVariant === "floating" && {
       maxWidth: expanded ? "400px" : "69px",
     }),
-    padding: 0,
+    padding: "0 !important",
     position: "relative",
     overflow: "hidden",
     boxSizing: "border-box",
     isolation: "isolate",
     transform: "translateZ(0)",
     cursor: disabled ? "default" : "pointer",
-    backgroundColor: "transparent",
-    borderWidth: logoVariant === "floating" ? "2.25px 0px 2.25px 2.25px" : "2.25px",
-    borderStyle: "solid",
-    borderColor: "#FCF1F1",
-    borderRadius: logoVariant === "floating" ? "35px 0px 0px 35px" : "15px",
-    boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.4)",
+    backgroundColor: "transparent !important",
+    border: "2.25px solid #FCF1F1 !important",
+    ...(logoVariant === "floating" && {
+      borderWidth: "2.25px 0px 2.25px 2.25px !important",
+    }),
+    borderRadius: logoVariant === "floating" ? "35px 0px 0px 35px !important" : "15px !important",
+    boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.4) !important",
 
     "--gradient-angle": animated ? "var(--cb-end-angle)" : "var(--cb-start-angle)",
     "--gradient-stop-1": animated ? "var(--cb-end-stop-1)" : "var(--cb-start-stop-1)",
@@ -113,7 +115,7 @@ const StyledLogoButton = styled(Button, {
       var(--gradient-color-1) var(--gradient-stop-1),
       var(--gradient-color-2) var(--gradient-stop-2),
       var(--gradient-color-3) var(--gradient-stop-3)
-    )
+    ) !important
   `,
     ...(logoVariant === "floating" && {
       backgroundPosition: "left",
@@ -127,6 +129,7 @@ const StyledLogoButton = styled(Button, {
     --gradient-color-2 var(--cb-gradient-duration) linear,
     --gradient-color-3 var(--cb-gradient-duration) linear,
     max-width var(--cb-width-duration) ease-in-out
+    !important
   `,
 
     "& svg": {

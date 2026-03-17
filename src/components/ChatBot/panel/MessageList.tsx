@@ -62,6 +62,7 @@ const ChatSubtitle = styled(Typography)({
   fontSize: "13px",
   lineHeight: "18px",
   color: "#3E3E3E",
+  textAlign: "left",
 });
 
 const StyledQuestionWrapper = styled(Stack)({
@@ -69,34 +70,35 @@ const StyledQuestionWrapper = styled(Stack)({
   flexDirection: "row",
   justifyContent: "center",
   alignItems: "center",
-  columnGap: "12px",
-  rowGap: "5px",
-  margin: "12px 0 0",
+  columnGap: "12px !important",
+  rowGap: "5px !important",
+  margin: "12px 0 0 !important",
 });
 
 const StyledQuestion = styled(Button)({
   display: "flex",
   flexDirection: "row",
   alignItems: "center",
-  padding: "0px 8px",
-  background: "#FFFFFF",
-  opacity: 0.8,
-  border: "1px solid #828282",
-  borderRadius: "8px",
+  padding: "0px 8px !important",
+  background: "#FFFFFF !important",
+  opacity: "0.8 !important",
+  border: "1px solid #828282 !important",
+  borderRadius: "8px !important",
 
-  fontFamily: "Nunito",
+  fontFamily: "Nunito !important",
   fontStyle: "normal",
-  fontWeight: 600,
-  fontSize: "11px",
-  lineHeight: "22px",
+  fontWeight: "600 !important",
+  fontSize: "11px !important",
+  lineHeight: "22px !important",
   textAlign: "center",
-  letterSpacing: "-0.0015em",
-  color: "#334B5A",
-  transition: "background 0.1s ease-in-out",
+  letterSpacing: "-0.0015em !important",
+  textTransform: "none !important" as never,
+  color: "#334B5A !important",
+  transition: "background 0.1s ease-in-out !important",
 
   "&:hover": {
-    color: "#FFFFFF",
-    background: "linear-gradient(90deg, #0081DF 0%, #2A70D8 48.08%, #554BEE 100%)",
+    color: "#FFFFFF !important",
+    background: "linear-gradient(90deg, #0081DF 0%, #2A70D8 48.08%, #554BEE 100%) !important",
   },
 });
 
