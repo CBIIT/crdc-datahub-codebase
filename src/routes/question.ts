@@ -170,15 +170,11 @@ export const createQuestionRouter = ({
 
       const converseCommand = new ConverseStreamCommand(converseParams);
       const converseResponse = await BEDROCK_RUNTIME.send(converseCommand);
+      let emitCitations = citations.length > 0;
 
       // Stream the response
       if (converseResponse.stream) {
         Logger.info("Streaming response from Converse API", { sessionId });
-
-        if (citations.length > 0) {
-          Logger.info("Sending citations to client", { sessionId, citations });
-          res.write(JSON.stringify(generateCitationEvent(citations)) + "\n");
-        }
 
         for await (const event of converseResponse.stream) {
           if (event.contentBlockDelta?.delta?.text) {
@@ -187,6 +183,7 @@ export const createQuestionRouter = ({
 
           if (event.messageStop?.stopReason === "guardrail_intervened") {
             Logger.info("Guardrail intervened in the response generation", { sessionId, event });
+            emitCitations = false;
           }
           if (event.messageStop?.stopReason === "max_tokens") {
             Logger.info("Response generation stopped due to max tokens limit", { sessionId, event });
@@ -194,6 +191,11 @@ export const createQuestionRouter = ({
           if (event.messageStop) {
             break;
           }
+        }
+
+        if (emitCitations) {
+          Logger.info("Sending citations to client", { sessionId, citations });
+          res.write(JSON.stringify(generateCitationEvent(citations)) + "\n");
         }
       }
 
