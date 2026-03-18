@@ -1,3 +1,11 @@
-import ChatController from "./Controller";
+import { Suspense, lazy } from "react";
 
-export default ChatController;
+const ChatController = lazy(() => import("./Controller"));
+
+const ChatBot = () => (
+  <Suspense fallback={null}>
+    <ChatController />
+  </Suspense>
+);
+
+export default ChatBot;
