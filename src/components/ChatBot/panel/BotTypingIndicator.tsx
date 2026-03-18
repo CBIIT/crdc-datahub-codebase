@@ -4,23 +4,23 @@ import React from "react";
 import ChatBotLogo from "../components/ChatBotLogo";
 
 const StyledContainer = styled(Stack)({
-  alignItems: "center",
-  marginBottom: "12px",
+  alignItems: "center !important",
+  marginBottom: "12px !important",
 });
 
 const StyledLogoWrapper = styled("div")({
-  marginRight: "2px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
+  marginRight: "2px !important",
+  display: "flex !important",
+  alignItems: "center !important",
+  justifyContent: "center !important",
   "& > button": {
-    transform: "scale(0.6667)",
-    transformOrigin: "center",
+    transform: "scale(0.6667) !important",
+    transformOrigin: "center !important",
   },
 });
 
 const StyledProgress = styled(CircularProgress)({
-  color: "#005EA2",
+  color: "#005EA2 !important",
 });
 
 export type Props = {
