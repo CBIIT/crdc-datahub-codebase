@@ -17,6 +17,11 @@ const chatConfig = {
    */
   initialMessage: "How can I help you?",
   /**
+   * The subtitle displayed below the initial message in the chat header.
+   */
+  initialSubtitle:
+    "Welcome to the CRDC Submission Portal Assistant. I can help with submission requests, data workflows, APIs, validation issues, and data models. I'm here to guide you through the submission process.",
+  /**
    * The maximum number of messages to include in conversation history.
    */
   maxConversationHistoryLength: 100,
@@ -44,15 +49,15 @@ const chatConfig = {
     /**
      * The default width of the chat drawer.
      */
-    default: 400,
+    default: 442,
     /**
      * The minimum width of the chat drawer.
      */
-    min: 400,
+    min: 442,
     /**
      * The width of the chat drawer when expanded.
      */
-    expanded: 417,
+    expanded: 442,
   },
   /**
    * The floating button configuration.

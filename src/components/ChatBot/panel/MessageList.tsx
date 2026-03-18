@@ -102,12 +102,7 @@ const StyledQuestion = styled(Button)({
   },
 });
 
-const defaultQuestions = [
-  "What is a Submission Request",
-  "How do I request access?",
-  "How do I start a submission?",
-  "How do I upload data files",
-];
+const defaultQuestions = ["How do I submit a new request?", "How do I start a data submission?"];
 
 export type Props = {
   /**
@@ -185,11 +180,7 @@ const MessageList = ({ messages, isBotTyping, onQuestionClick }: Props): JSX.Ele
         {!hasMessages && (
           <>
             <ChatTitle variant="h6">{chatConfig.initialMessage}</ChatTitle>
-            <ChatSubtitle>
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
-              incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
-              exercitation ullamco laboris nisi ut aliquip.
-            </ChatSubtitle>
+            <ChatSubtitle>{chatConfig.initialSubtitle}</ChatSubtitle>
 
             <StyledQuestionWrapper direction="row" flexWrap="wrap">
               {defaultQuestions.map((question) => (
