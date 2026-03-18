@@ -41,6 +41,7 @@ const StyledChatHeader = styled("div")({
   lineHeight: "0 !important",
   fontSize: "0 !important",
   color: "white",
+  zIndex: 3,
   '&[data-expanded="true"]': {
     position: "absolute",
     top: 0,
