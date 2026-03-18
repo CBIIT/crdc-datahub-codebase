@@ -7,6 +7,15 @@ import * as chatUtils from "../utils/chatUtils";
 import type { useChatDrawerResult } from "./useChatDrawer";
 import { useChatDrawer } from "./useChatDrawer";
 
+const MOCK_CONFIG = vi.hoisted(() => ({
+  height: { collapsed: 368, min: 368 },
+  width: { default: 400, min: 400, expanded: 420 },
+}));
+
+vi.mock("../config/chatConfig", () => ({
+  default: MOCK_CONFIG,
+}));
+
 vi.mock("../utils/chatUtils", () => ({
   getViewportHeightPx: vi.fn(),
 }));
@@ -80,8 +89,10 @@ describe("useChatDrawer", () => {
     it("should have default dimensions", () => {
       const { getByTestId } = render(<TestParent />);
 
-      expect(getByTestId("drawer-height-px").textContent).toBe("368");
-      expect(getByTestId("drawer-width-px").textContent).toBe("400");
+      expect(getByTestId("drawer-height-px").textContent).toBe(
+        String(MOCK_CONFIG.height.collapsed)
+      );
+      expect(getByTestId("drawer-width-px").textContent).toBe(String(MOCK_CONFIG.width.default));
     });
 
     it("should have zero position when closed", () => {
@@ -127,8 +138,10 @@ describe("useChatDrawer", () => {
 
       userEvent.click(getByTestId("open-drawer"));
 
-      expect(getByTestId("drawer-height-px").textContent).toBe("368");
-      expect(getByTestId("drawer-width-px").textContent).toBe("400");
+      expect(getByTestId("drawer-height-px").textContent).toBe(
+        String(MOCK_CONFIG.height.collapsed)
+      );
+      expect(getByTestId("drawer-width-px").textContent).toBe(String(MOCK_CONFIG.width.default));
     });
 
     it("should compute correct bottom-right aligned position", async () => {
@@ -136,13 +149,15 @@ describe("useChatDrawer", () => {
 
       userEvent.click(getByTestId("open-drawer"));
 
-      // viewportHeight=800, viewportWidth=1024, drawerHeight=368, drawerWidth=400
+      // viewportHeight=800, viewportWidth=1024
       // floatingButtonCenterFromBottom = 800 * 0.35 = 280
-      // bottomOffset = max(0, 280 - 368/2) = max(0, 96) = 96
-      // x = 1024 - 400 = 624
-      // y = 800 - 368 - 96 = 336
-      expect(getByTestId("drawer-x").textContent).toBe("624");
-      expect(getByTestId("drawer-y").textContent).toBe("336");
+      // bottomOffset = max(0, 280 - collapsedHeight/2) = max(0, 280 - 184) = 96
+      // x = 1024 - defaultWidth
+      // y = 800 - collapsedHeight - 96 = 336
+      const expectedX = 1024 - MOCK_CONFIG.width.default;
+      const expectedY = 800 - MOCK_CONFIG.height.collapsed - 96;
+      expect(getByTestId("drawer-x").textContent).toBe(String(expectedX));
+      expect(getByTestId("drawer-y").textContent).toBe(String(expectedY));
     });
 
     it("should not change state if already open", async () => {
@@ -176,8 +191,10 @@ describe("useChatDrawer", () => {
       userEvent.click(getByTestId("open-drawer"));
       userEvent.click(getByTestId("close-drawer"));
 
-      expect(getByTestId("drawer-height-px").textContent).toBe("368");
-      expect(getByTestId("drawer-width-px").textContent).toBe("400");
+      expect(getByTestId("drawer-height-px").textContent).toBe(
+        String(MOCK_CONFIG.height.collapsed)
+      );
+      expect(getByTestId("drawer-width-px").textContent).toBe(String(MOCK_CONFIG.width.default));
       expect(getByTestId("drawer-x").textContent).toBe("0");
       expect(getByTestId("drawer-y").textContent).toBe("0");
     });
@@ -226,10 +243,14 @@ describe("useChatDrawer", () => {
       userEvent.click(getByTestId("toggle-expand"));
 
       expect(getByTestId("is-expanded").textContent).toBe("false");
-      expect(getByTestId("drawer-height-px").textContent).toBe("368");
-      expect(getByTestId("drawer-width-px").textContent).toBe("400");
-      expect(getByTestId("drawer-x").textContent).toBe("624");
-      expect(getByTestId("drawer-y").textContent).toBe("336");
+      expect(getByTestId("drawer-height-px").textContent).toBe(
+        String(MOCK_CONFIG.height.collapsed)
+      );
+      expect(getByTestId("drawer-width-px").textContent).toBe(String(MOCK_CONFIG.width.default));
+      const expectedX = 1024 - MOCK_CONFIG.width.default;
+      const expectedY = 800 - MOCK_CONFIG.height.collapsed - 96;
+      expect(getByTestId("drawer-x").textContent).toBe(String(expectedX));
+      expect(getByTestId("drawer-y").textContent).toBe(String(expectedY));
     });
 
     it("should not change state if drawer is closed", async () => {
@@ -246,8 +267,9 @@ describe("useChatDrawer", () => {
       userEvent.click(getByTestId("open-drawer"));
       userEvent.click(getByTestId("toggle-expand"));
 
-      // viewportWidth=1024, expandedWidth=417 → x = 1024 - 417 = 607
-      expect(getByTestId("drawer-x").textContent).toBe("607");
+      const expandedWidth = Math.max(MOCK_CONFIG.width.expanded, MOCK_CONFIG.width.min);
+      const expectedX = 1024 - expandedWidth;
+      expect(getByTestId("drawer-x").textContent).toBe(String(expectedX));
       expect(getByTestId("drawer-y").textContent).toBe("0");
     });
   });
@@ -336,9 +358,11 @@ describe("useChatDrawer", () => {
         window.dispatchEvent(new Event("resize"));
       });
 
-      // maxX = 600 - 400 = 200, maxY = 400 - 368 = 32
-      expect(getByTestId("drawer-x").textContent).toBe("200");
-      expect(getByTestId("drawer-y").textContent).toBe("32");
+      // maxX = 600 - defaultWidth, maxY = 400 - collapsedHeight
+      const expectedX = 600 - MOCK_CONFIG.width.default;
+      const expectedY = 400 - MOCK_CONFIG.height.collapsed;
+      expect(getByTestId("drawer-x").textContent).toBe(String(expectedX));
+      expect(getByTestId("drawer-y").textContent).toBe(String(expectedY));
     });
 
     it("should update expanded position on viewport resize", () => {
@@ -366,8 +390,9 @@ describe("useChatDrawer", () => {
         window.dispatchEvent(new Event("resize"));
       });
 
-      // x = 800 - 417 = 383
-      expect(getByTestId("drawer-x").textContent).toBe("383");
+      // x = 800 - expandedWidth
+      const expandedWidth = Math.max(MOCK_CONFIG.width.expanded, MOCK_CONFIG.width.min);
+      expect(getByTestId("drawer-x").textContent).toBe(String(800 - expandedWidth));
       expect(getByTestId("drawer-y").textContent).toBe("0");
     });
 
