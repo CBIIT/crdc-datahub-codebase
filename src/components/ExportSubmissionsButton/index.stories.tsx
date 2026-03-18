@@ -4,6 +4,7 @@ import { userEvent, within, screen } from "@storybook/test";
 
 import { Context as AuthContext } from "@/components/Contexts/AuthContext";
 import { Column } from "@/components/GenericTable";
+import { approvedStudyFactory } from "@/factories/approved-study/ApprovedStudyFactory";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
@@ -27,8 +28,12 @@ const baseSubmissions = submissionFactory.build(2, (idx) => ({
     name: `Test Organization ${idx}`,
     abbreviation: `ORG-${idx}`,
   }),
+  study: approvedStudyFactory.pick(["studyName", "studyAbbreviation", "dbGaPID"]).build({
+    studyName: `TEST-NAME-${idx}`,
+    studyAbbreviation: `TEST-${idx}`,
+    dbGaPID: `phs00000${idx}`,
+  }),
   studyAbbreviation: `TEST-${idx}`,
-  dbGaPID: `phs00000${idx}`,
   status: "In Progress",
   conciergeName: `Test Concierge ${idx}`,
   nodeCount: 1000 + idx,
@@ -118,9 +123,9 @@ const defaultColumns: Column<Submission>[] = [
   },
   {
     label: "dbGaP ID",
-    renderValue: (a) => a.dbGaPID,
-    field: "dbGaPID",
-    exportValue: (a) => ({ label: "dbGaP ID", value: a.dbGaPID }),
+    renderValue: (a) => a.study.dbGaPID,
+    fieldKey: "study.dbGaPID",
+    exportValue: (a) => ({ label: "dbGaP ID", value: a.study.dbGaPID }),
   },
   {
     label: "Status",
