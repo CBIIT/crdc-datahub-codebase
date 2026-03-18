@@ -128,6 +128,9 @@ const MessageList = ({ messages, isBotTyping, onQuestionClick }: Props): JSX.Ele
 
   const lastMessage = messages?.length > 0 ? messages[messages.length - 1] : null;
   const lastMessageText = lastMessage?.text || "";
+  const citationsCount = new Set(
+    messages?.flatMap((m) => m?.citations?.map((c) => c?.documentLink) ?? [])
+  ).size;
 
   /**
    * Gets the current scroll container based on view mode.
@@ -163,7 +166,7 @@ const MessageList = ({ messages, isBotTyping, onQuestionClick }: Props): JSX.Ele
       top: container.scrollHeight,
       behavior: "smooth",
     });
-  }, [lastMessageText, isBotTyping]);
+  }, [lastMessageText, citationsCount, isBotTyping]);
 
   const hasMessages = messages.length > 1;
 
