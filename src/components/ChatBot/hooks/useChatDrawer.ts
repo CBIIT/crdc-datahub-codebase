@@ -114,10 +114,12 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
         };
       }
 
+      const expandedWidth = Math.max(chatConfig.width.expanded, chatConfig.width.min);
+
       return {
         ...state,
         isExpanded: true,
-        x: action.viewportWidth - chatConfig.width.expanded,
+        x: action.viewportWidth - expandedWidth,
         y: 0,
       };
     }
@@ -127,9 +129,11 @@ const reducer = (state: DrawerState, action: DrawerAction): DrawerState => {
       }
 
       if (state.isExpanded) {
+        const expandedWidth = Math.max(chatConfig.width.expanded, chatConfig.width.min);
+
         return {
           ...state,
-          x: action.viewportWidth - chatConfig.width.expanded,
+          x: action.viewportWidth - expandedWidth,
           y: 0,
         };
       }

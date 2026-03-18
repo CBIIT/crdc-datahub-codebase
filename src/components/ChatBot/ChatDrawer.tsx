@@ -244,7 +244,10 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
       return { width: viewportSize.width, height: viewportSize.height };
     }
     if (isExpanded) {
-      return { width: chatConfig.width.expanded, height: viewportSize.height };
+      return {
+        width: Math.max(chatConfig.width.expanded, chatConfig.width.min),
+        height: viewportSize.height,
+      };
     }
 
     return { width: widthPx, height: heightPx };
