@@ -370,4 +370,65 @@ describe("Implementation Requirements", () => {
       expect(elements.otherDataTypesInput()).toHaveAttribute("readonly");
     });
   });
+
+  it("should update otherDataTypes when the repository prop changes after initial render", () => {
+    const initialRepository = repositoryFactory.build({
+      dataTypesSubmitted: ["Other"],
+      otherDataTypesSubmitted: "",
+    });
+
+    const { rerender, getByTestId } = render(
+      <TestParent>
+        <Repository index={0} repository={initialRepository} onDelete={vi.fn()} />
+      </TestParent>
+    );
+
+    const elements = getFormElements({ getByTestId }, 0);
+    expect(elements.otherDataTypesInput()).toHaveValue("");
+
+    const updatedRepository = repositoryFactory.build({
+      dataTypesSubmitted: ["Other"],
+      otherDataTypesSubmitted: "imported | values",
+    });
+
+    rerender(
+      <TestParent>
+        <Repository index={0} repository={updatedRepository} onDelete={vi.fn()} />
+      </TestParent>
+    );
+
+    expect(elements.otherDataTypesInput()).toHaveValue("imported | values");
+  });
+
+  it("should update dataTypes when the repository prop changes after initial render", async () => {
+    const initialRepository = repositoryFactory.build({
+      dataTypesSubmitted: [],
+      otherDataTypesSubmitted: "",
+    });
+
+    const { rerender, getByTestId } = render(
+      <TestParent>
+        <Repository index={0} repository={initialRepository} onDelete={vi.fn()} />
+      </TestParent>
+    );
+
+    const elements = getFormElements({ getByTestId }, 0);
+    expect(elements.otherDataTypesInput()).toHaveAttribute("readonly");
+
+    const updatedRepository = repositoryFactory.build({
+      dataTypesSubmitted: ["Other"],
+      otherDataTypesSubmitted: "new data",
+    });
+
+    rerender(
+      <TestParent>
+        <Repository index={0} repository={updatedRepository} onDelete={vi.fn()} />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(elements.otherDataTypesInput()).not.toHaveAttribute("readonly");
+    });
+    expect(elements.otherDataTypesInput()).toHaveValue("new data");
+  });
 });
