@@ -76,23 +76,23 @@ const StyledLogoButton = styled(Button, {
   shouldForwardProp: (prop) => prop !== "logoVariant" && prop !== "animated" && prop !== "expanded",
 })<StyledLogoButtonProps>(
   ({ logoVariant = "square", animated = false, expanded = false, disabled = false }) => ({
-    display: "flex",
-    alignItems: "center",
-    justifyContent: logoVariant === "floating" ? "flex-start" : "center",
-    width: logoVariant === "floating" ? "auto" : "72px",
-    height: "60px",
+    display: "flex !important",
+    alignItems: "center !important",
+    justifyContent: logoVariant === "floating" ? "flex-start !important" : "center !important",
+    width: logoVariant === "floating" ? "auto !important" : "72px !important",
+    height: "60px !important",
     letterSpacing: "normal !important",
-    minWidth: logoVariant === "floating" ? "69px" : "72px",
+    minWidth: logoVariant === "floating" ? "69px !important" : "72px !important",
     ...(logoVariant === "floating" && {
-      maxWidth: expanded ? "400px" : "69px",
+      maxWidth: expanded ? "400px !important" : "69px !important",
     }),
     padding: "0 !important",
-    position: "relative",
-    overflow: "hidden",
-    boxSizing: "border-box",
-    isolation: "isolate",
-    transform: "translateZ(0)",
-    cursor: disabled ? "default" : "pointer",
+    position: "relative !important" as never,
+    overflow: "hidden !important",
+    boxSizing: "border-box !important" as never,
+    isolation: "isolate !important" as never,
+    transform: "translateZ(0) !important",
+    cursor: disabled ? "default !important" : "pointer !important",
     backgroundColor: "transparent !important",
     border: "2.25px solid #FCF1F1 !important",
     ...(logoVariant === "floating" && {
@@ -118,7 +118,7 @@ const StyledLogoButton = styled(Button, {
     ) !important
   `,
     ...(logoVariant === "floating" && {
-      backgroundPosition: "left",
+      backgroundPosition: "left !important",
     }),
     transition: `
     --gradient-angle var(--cb-gradient-duration) linear,
@@ -133,13 +133,13 @@ const StyledLogoButton = styled(Button, {
   `,
 
     "& svg": {
-      width: logoVariant === "floating" ? "47px" : "auto",
-      height: logoVariant === "floating" ? "37px" : "33px",
+      width: logoVariant === "floating" ? "47px !important" : "auto !important",
+      height: logoVariant === "floating" ? "37px !important" : "33px !important",
     },
 
     "& > *": {
-      position: "relative",
-      zIndex: 1,
+      position: "relative !important" as never,
+      zIndex: "1 !important",
     },
 
     ...(!disabled && {
@@ -151,27 +151,27 @@ const StyledLogoButton = styled(Button, {
         "--gradient-color-1": "var(--cb-end-color-1)",
         "--gradient-color-2": "var(--cb-end-color-2)",
         "--gradient-color-3": "var(--cb-end-color-3)",
-        backgroundColor: "transparent",
-        boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.4)",
+        backgroundColor: "transparent !important",
+        boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.4) !important",
       },
     }),
 
     "&.Mui-disabled": {
-      borderColor: "#FCF1F1",
-      boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.4)",
+      borderColor: "#FCF1F1 !important",
+      boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.4) !important",
     },
   })
 );
 
 const StyledIconArea = styled("div")({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-  paddingLeft: "11.75px",
-  paddingRight: "9px",
-  paddingTop: "9.75px",
-  paddingBottom: "8.75px",
+  display: "flex !important",
+  alignItems: "center !important",
+  justifyContent: "center !important",
+  flexShrink: "0 !important",
+  paddingLeft: "11.75px !important",
+  paddingRight: "9px !important",
+  paddingTop: "9.75px !important",
+  paddingBottom: "8.75px !important",
 });
 
 export type ChatBotLogoProps = {

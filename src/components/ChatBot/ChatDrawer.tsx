@@ -46,7 +46,7 @@ const StyledChatHeader = styled("div")({
     top: 0,
     right: 20,
     padding: "0 !important",
-    zIndex: 2,
+    zIndex: 4,
     cursor: "default",
   },
   '&[data-fullscreen="true"]': {
@@ -54,7 +54,7 @@ const StyledChatHeader = styled("div")({
     top: 0,
     right: 35,
     padding: "0 !important",
-    zIndex: 2,
+    zIndex: 4,
     cursor: "default",
   },
 });
@@ -106,7 +106,11 @@ const ConfirmOverlay = styled("div")({
   backgroundColor: "#E3E9F2 !important",
   border: "2px solid #2982D7 !important",
   borderRadius: "10px !important",
-  zIndex: 1,
+  zIndex: 3,
+  '&[data-fullscreen="true"], &[data-expanded="true"]': {
+    border: "none !important",
+    borderRadius: "0 !important",
+  },
 });
 
 const ConfirmTitle = styled(Typography)({
@@ -125,6 +129,80 @@ const ConfirmActions = styled("div")({
   gap: "12px !important",
   justifyContent: "center !important",
   marginTop: "30px !important",
+});
+
+const StyledBaseButton = styled(Button)({
+  fontFamily: "Nunito, sans-serif !important",
+  fontSize: "0.875rem !important",
+  lineHeight: "1.75 !important",
+  letterSpacing: "normal !important",
+  display: "flex !important",
+  justifyContent: "center !important",
+  alignItems: "center !important",
+  color: "#FFF !important",
+  borderRadius: "8px !important",
+  textTransform: "none !important" as never,
+  textAlign: "center !important" as never,
+  zIndex: 3,
+  "&.Mui-disabled": {
+    "&.MuiButton-containedPrimary": {
+      fontWeight: "700 !important",
+      color: "#FFF !important",
+      border: "1.5px solid #08596C !important",
+      background: "#1A8199 !important",
+      opacity: "0.4 !important",
+    },
+    "&.MuiButton-containedError": {
+      fontWeight: "700 !important",
+      color: "#FFF !important",
+      border: "1.5px solid #6C2110 !important",
+      background: "#B34C36 !important",
+      opacity: "0.4 !important",
+    },
+    "&.MuiButton-containedInfo": {
+      fontWeight: "700 !important",
+      color: "#EDEDED !important",
+      background: "#B1B1B1 !important",
+      border: "1.5px solid #6B7294 !important",
+    },
+    "& .MuiButton-startIcon, & .MuiButton-endIcon": {
+      color: "#EDEDED !important",
+    },
+  },
+  "&.MuiButton-containedInfo": {
+    color: "#000 !important",
+  },
+  "& .MuiButton-startIcon": {
+    position: "absolute !important" as never,
+    left: "11px !important",
+    color: "#6B7294 !important",
+  },
+  "& .MuiButton-endIcon": {
+    position: "absolute !important" as never,
+    right: "11px !important",
+    color: "#6B7294 !important",
+  },
+});
+
+const StyledPrimaryButton = styled(StyledBaseButton)({
+  border: "1.5px solid #08596C !important",
+  fontWeight: "700 !important",
+  background: "#1A8199 !important",
+  "&:hover": {
+    border: "1.5px solid #08596C !important",
+    background: "#1A8199 !important",
+    backgroundImage: "linear-gradient(rgb(0 0 0/15%) 0 0) !important",
+  },
+});
+
+const StyledInfoButton = styled(StyledBaseButton)({
+  border: "1.5px solid #6B7294 !important",
+  fontWeight: "700 !important",
+  background: "white !important",
+  "&:hover": {
+    border: "1.5px solid #6B7294 !important",
+    background: "#C0DAF3 !important",
+  },
 });
 
 const StyledIconButton = styled(IconButton)({
@@ -370,12 +448,12 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
             {children}
 
             {isConfirmingEndConversation ? (
-              <ConfirmOverlay role="alertdialog" aria-label="End Conversation">
+              <ConfirmOverlay role="alertdialog" aria-label="End Conversation" {...dataAttrs}>
                 <ChatBotLogo ariaLabel="CRDC Assistant Logo" variant="square" />
                 <ConfirmTitle>End Conversation</ConfirmTitle>
 
                 <ConfirmActions>
-                  <Button
+                  <StyledPrimaryButton
                     variant="contained"
                     color="primary"
                     onClick={(e) => {
@@ -385,9 +463,9 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
                     aria-label="Yes"
                   >
                     Yes
-                  </Button>
+                  </StyledPrimaryButton>
 
-                  <Button
+                  <StyledInfoButton
                     variant="contained"
                     color="info"
                     onClick={(e) => {
@@ -397,7 +475,7 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
                     aria-label="No"
                   >
                     No
-                  </Button>
+                  </StyledInfoButton>
                 </ConfirmActions>
               </ConfirmOverlay>
             ) : null}

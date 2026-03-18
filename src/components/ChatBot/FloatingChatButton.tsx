@@ -5,29 +5,29 @@ import ChatBotLogo from "./components/ChatBotLogo";
 import chatConfig from "./config/chatConfig";
 
 const StyledFloatingButtonWrapper = styled("div")({
-  position: "fixed",
-  right: 0,
-  top: "65%",
-  transform: "translateY(-50%)",
-  zIndex: 10000,
-  display: "flex",
-  flexDirection: "row",
-  alignItems: "stretch",
+  position: "fixed !important" as never,
+  right: "0 !important",
+  top: "65% !important",
+  transform: "translateY(-50%) !important",
+  zIndex: "10000 !important",
+  display: "flex !important",
+  flexDirection: "row !important" as never,
+  alignItems: "stretch !important",
 });
 
 const StyledLabel = styled(Typography)({
   fontFamily: "'Inter', 'Rubik', sans-serif !important",
   fontStyle: "normal",
   fontWeight: "600 !important",
-  fontSize: "15px",
-  lineHeight: "16px",
-  display: "flex",
-  alignItems: "center",
-  color: "#F9F9F9",
-  paddingRight: "10px",
-  textAlign: "left",
-  whiteSpace: "pre-line",
-  textTransform: "none",
+  fontSize: "15px !important",
+  lineHeight: "16px !important",
+  display: "flex !important",
+  alignItems: "center !important",
+  color: "#F9F9F9 !important",
+  paddingRight: "10px !important",
+  textAlign: "left !important" as never,
+  whiteSpace: "pre-line !important" as never,
+  textTransform: "none !important" as never,
 });
 
 type Props = {
