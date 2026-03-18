@@ -181,10 +181,10 @@ const columns: Column<T>[] = [
   },
   {
     label: "dbGaP ID",
-    renderValue: (a) => <TruncatedText text={a.dbGaPID} maxCharacters={15} />,
-    field: "dbGaPID",
+    renderValue: (a) => <TruncatedText text={a?.study?.dbGaPID} maxCharacters={15} />,
+    fieldKey: "study.dbGaPID",
     hideable: true,
-    exportValue: (a) => ({ label: "dbGaP ID", value: a.dbGaPID }),
+    exportValue: (a) => ({ label: "dbGaP ID", value: a.study?.dbGaPID || "" }),
   },
 
   {

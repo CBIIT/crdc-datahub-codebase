@@ -1,6 +1,6 @@
 import RemoveCircleIcon from "@mui/icons-material/RemoveCircle";
 import { Grid, styled } from "@mui/material";
-import React, { FC, useMemo, useState } from "react";
+import React, { FC, useEffect, useMemo, useState } from "react";
 
 import DataTypes from "../../config/DataTypesConfig";
 import AddRemoveButton from "../AddRemoveButton";
@@ -43,6 +43,14 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
   const { name, studyID, dataTypesSubmitted, otherDataTypesSubmitted } = repository || {};
   const [dataTypes, setDataTypes] = useState<string[]>(dataTypesSubmitted || []);
   const [otherDataTypes, setOtherDataTypes] = useState<string>(otherDataTypesSubmitted || "");
+
+  useEffect(() => {
+    setDataTypes(dataTypesSubmitted || []);
+  }, [dataTypesSubmitted]);
+
+  useEffect(() => {
+    setOtherDataTypes(otherDataTypesSubmitted || "");
+  }, [otherDataTypesSubmitted]);
 
   const isOtherSelected = useMemo(() => dataTypes?.includes("Other"), [dataTypes]);
 
