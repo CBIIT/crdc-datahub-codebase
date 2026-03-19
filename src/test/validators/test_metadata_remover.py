@@ -41,6 +41,32 @@ def test_remove_metadata_returns_tuple_on_invalid_submission():
     mock_dao.get_submission.assert_called_once_with("sub-1")
 
 
+def test_remove_metadata_logs_no_record_when_submission_missing(caplog):
+    """Missing submission document logs no-record-found (not missing dataCommons)."""
+    mock_dao = MagicMock()
+    mock_dao.get_submission.return_value = None
+    mock_store = MagicMock()
+    with patch("metadata_remover.S3Bucket"):
+        remover = MetadataRemover(mock_dao, mock_store)
+        with caplog.at_level("ERROR", logger="Essential Validator"):
+            remover.remove_metadata("sub-1", "Subject", ["n1"])
+    assert "no record found" in caplog.text
+    assert f"missing {constants.DATA_COMMON_NAME}" not in caplog.text
+
+
+def test_remove_metadata_logs_missing_datacommons(caplog):
+    """Submission without dataCommons field logs missing field (not no-record-found)."""
+    mock_dao = MagicMock()
+    mock_dao.get_submission.return_value = {"_id": "sub-1"}
+    mock_store = MagicMock()
+    with patch("metadata_remover.S3Bucket"):
+        remover = MetadataRemover(mock_dao, mock_store)
+        with caplog.at_level("ERROR", logger="Essential Validator"):
+            remover.remove_metadata("sub-1", "Subject", ["n1"])
+    assert f"missing {constants.DATA_COMMON_NAME}" in caplog.text
+    assert "no record found" not in caplog.text
+
+
 def test_remove_metadata_returns_tuple_on_no_datacommon():
     """When submission has no dataCommons, remove_metadata returns (False, [])."""
     mock_dao = MagicMock()

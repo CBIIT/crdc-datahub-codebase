@@ -315,11 +315,13 @@ class MongoDao:
         try:
             if file_status:
                 updated_submission[FILE_VALIDATION_STATUS] = file_status if file_status != "None" else None
-                if fileErrors and len(fileErrors) > 0:
-                    updated_submission[FILE_ERRORS] = fileErrors
+                updated_submission[VALIDATION_ENDED] = submission[VALIDATION_ENDED]
+                if fileErrors is not None:
+                    updated_submission[FILE_ERRORS] = fileErrors if fileErrors and len(fileErrors) > 0 else []
                 else:
                     updated_submission[FILE_ERRORS] = []
-                updated_submission[VALIDATION_ENDED] = submission[VALIDATION_ENDED]
+            elif fileErrors is not None:
+                updated_submission[FILE_ERRORS] = fileErrors if fileErrors and len(fileErrors) > 0 else []
             if metadata_status:
                 if not ((is_delete and self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID]}) == 0)):
                     if metadata_status in (STATUS_ERROR, STATUS_NEW):

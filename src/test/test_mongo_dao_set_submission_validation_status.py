@@ -10,6 +10,7 @@ from common.constants import (
     SUBMISSION_ID,
     METADATA_VALIDATION_STATUS,
     VALIDATION_ENDED,
+    FILE_ERRORS,
     STATUS_ERROR,
     STATUS_PASSED,
     STATUS_WARNING,
@@ -91,6 +92,23 @@ def test_scope_new_current_none_treat_as_passed_warning(mock_client_class):
     update_one_call = mock_submission_collection.update_one.call_args
     set_payload = update_one_call[0][1]["$set"]
     assert set_payload[METADATA_VALIDATION_STATUS] == STATUS_WARNING
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_file_errors_persisted_without_file_status(mock_client_class):
+    """fileErrors updates FILE_ERRORS when file_status is None (e.g. delete-metadata orphan F008)."""
+    mock_submission_collection = _setup_mock_db(mock_client_class)
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    file_err = [{"submittedID": "orphan.csv", "errors": [{"code": "F008"}]}]
+    with patch.object(dao, "count_docs", return_value=0):
+        with patch.object(dao.s3_service, "submissionHasDataFile", return_value=False):
+            submission = {ID: "sub_1", METADATA_VALIDATION_STATUS: STATUS_PASSED}
+            dao.set_submission_validation_status(
+                submission, None, STATUS_PASSED, None, file_err, is_delete=True
+            )
+    update_one_call = mock_submission_collection.update_one.call_args
+    set_payload = update_one_call[0][1]["$set"]
+    assert set_payload[FILE_ERRORS] == file_err
 
 
 @patch("common.mongo_dao.MongoClient")

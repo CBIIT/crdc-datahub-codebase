@@ -49,8 +49,12 @@ class MetadataRemover:
         try:
             #1 validate submission
             submission = self.mongo_dao.get_submission(submission_id)
-            if not submission or not submission.get(DATA_COMMON_NAME):
+            if not submission:
                 msg = f'Invalid submission, no record found, {submission_id}!'
+                self.log.error(msg)
+                return (False, [])
+            if not submission.get(DATA_COMMON_NAME):
+                msg = f'Invalid submission, missing {DATA_COMMON_NAME}, {submission_id}!'
                 self.log.error(msg)
                 return (False, [])
             self.submission = submission
