@@ -159,6 +159,7 @@ export const createQuestionRouter = ({
           guardrailConfig: {
             guardrailIdentifier: GUARDRAIL_ID,
             guardrailVersion: GUARDRAIL_VERSION,
+            trace: "enabled_full",
           },
         }),
     };
@@ -171,25 +172,38 @@ export const createQuestionRouter = ({
       const converseCommand = new ConverseStreamCommand(converseParams);
       const converseResponse = await BEDROCK_RUNTIME.send(converseCommand);
       let emitCitations = citations.length > 0;
+      let guardrailIntervened: boolean = false;
 
       // Stream the response
       if (converseResponse.stream) {
         Logger.info("Streaming response from Converse API", { sessionId });
 
         for await (const event of converseResponse.stream) {
+          // Emit the generated text to the client as it arrives
           if (event.contentBlockDelta?.delta?.text) {
             res.write(JSON.stringify(generateResponseEvent(event.contentBlockDelta.delta.text)) + "\n");
           }
 
-          if (event.messageStop?.stopReason === "guardrail_intervened") {
-            Logger.info("Guardrail intervened in the response generation", { sessionId, event });
-            emitCitations = false;
+          // Identify if response generation was stopped due to non-standard events
+          if (event.messageStop && event.messageStop?.stopReason !== "end_turn") {
+            Logger.info("Received non-standard message stop event from Converse API", {
+              sessionId,
+              reason: event.messageStop.stopReason,
+            });
+
+            // Do not emit citations for guardrail interventions
+            if (event.messageStop.stopReason === "guardrail_intervened") {
+              guardrailIntervened = true;
+              emitCitations = false;
+            }
           }
-          if (event.messageStop?.stopReason === "max_tokens") {
-            Logger.info("Response generation stopped due to max tokens limit", { sessionId, event });
-          }
-          if (event.messageStop) {
-            break;
+
+          // Log guardrail trace if present in the response metadata
+          if (guardrailIntervened && event.metadata?.trace?.guardrail) {
+            Logger.info("Received guardrail trace in Converse API response", {
+              sessionId,
+              guardrailTrace: JSON.stringify(event.metadata.trace.guardrail, null, 2),
+            });
           }
         }
 
