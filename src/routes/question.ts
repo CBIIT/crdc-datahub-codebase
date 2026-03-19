@@ -202,7 +202,7 @@ export const createQuestionRouter = ({
           if (guardrailIntervened && event.metadata?.trace?.guardrail) {
             Logger.info("Received guardrail trace in Converse API response", {
               sessionId,
-              event: JSON.stringify(event.metadata.trace.guardrail, null, 2),
+              guardrailTrace: JSON.stringify(event.metadata.trace.guardrail, null, 2),
             });
           }
         }
