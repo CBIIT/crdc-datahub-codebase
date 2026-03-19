@@ -35,6 +35,16 @@ class MetadataRemover:
         self.def_file_nodes = None
 
     def remove_metadata(self, submission_id, node_type, node_ids, delete_orphaned_data_files=False):
+        """
+        Delete metadata dataRecords for the given submission / node type / ids.
+
+        delete_orphaned_data_files:
+            False (default): Remove Mongo dataRecords only (including cascaded children).
+                Do not delete S3 objects for removed file nodes; orphan scan still emits F008
+                for unreferenced keys and does not delete them from S3.
+            True: Also delete S3 objects for removed file nodes during the cascade, delete
+                orphan keys in the post-pass scan, and emit F008 as today.
+        """
         msg = None
         try:
             #1 validate submission
@@ -59,7 +69,7 @@ class MetadataRemover:
             existed_nodes = self.validate_data(submission_id, node_type, node_ids)
             if not existed_nodes or len(existed_nodes) == 0:
                 return (False, [])
-            if not self.delete_nodes(existed_nodes):
+            if not self.delete_nodes(existed_nodes, delete_orphaned_data_files):
                 return (False, [])
             #3. after successful delete: find orphaned files, optionally delete them, build F008 errors
             orphan_errors = self._find_orphaned_files_and_build_errors(submission_id, delete_orphaned_data_files)
@@ -92,16 +102,23 @@ class MetadataRemover:
 
         return existed_nodes
     
-    def delete_nodes(self, existed_nodes):
+    def delete_nodes(self, existed_nodes, delete_orphaned_data_files=False):
         """
-        remove metadata
+        Remove dataRecords for the given nodes. When delete_orphaned_data_files is True,
+        also remove their S3 file objects; when False, skip S3 for this batch and rely on
+        the orphan pass for F008 reporting.
         """
         if len(existed_nodes) == 0:
             return True
         deleted_file_nodes = [node[S3_FILE_INFO] for node in existed_nodes if node.get(S3_FILE_INFO)]
         try:    
             if self.mongo_dao.delete_data_records(existed_nodes):
-                return self.delete_files_in_s3(deleted_file_nodes) and self.process_children(existed_nodes) 
+                s3_ok = (
+                    self.delete_files_in_s3(deleted_file_nodes)
+                    if delete_orphaned_data_files
+                    else True
+                )
+                return s3_ok and self.process_children(existed_nodes, delete_orphaned_data_files)
             else:
                 self.errors.append(f'deleting metadata failed with database error.  Please try again and contact the helpdesk if this error persists.')
                 return False
@@ -110,10 +127,12 @@ class MetadataRemover:
             self.log.exception(msg)
             return False
        
-    """
-    process related children record in dataRecords
-    """
-    def process_children(self, deleted_nodes):
+    def process_children(self, deleted_nodes, delete_orphaned_data_files=False):
+        """
+        Update or delete child dataRecords after parents are removed.
+        When delete_orphaned_data_files is False, child file nodes are removed from Mongo
+        but their S3 objects are left in place (orphan scan reports F008).
+        """
         # retrieve child nodes
         status, child_nodes = self.mongo_dao.get_nodes_by_parents(deleted_nodes, self.submission_id)
         if not status: # if exception occurred
@@ -150,10 +169,13 @@ class MetadataRemover:
         if len(deleted_child_nodes) > 0:
             deleted_results = self.mongo_dao.delete_data_records(deleted_child_nodes)
             if updated_results and deleted_results: 
-                #delete files
-                result = self.delete_files_in_s3(file_nodes)
+                result = (
+                    self.delete_files_in_s3(file_nodes)
+                    if delete_orphaned_data_files
+                    else True
+                )
                 if result: # delete grand children...
-                    if not self.process_children(deleted_child_nodes):
+                    if not self.process_children(deleted_child_nodes, delete_orphaned_data_files):
                         self.errors.append(f'deleting metadata failed with database error.  Please try again and contact the helpdesk if this error persists.')
                         rtn_val = rtn_val and False
                 else:
@@ -180,9 +202,10 @@ class MetadataRemover:
 
     def _find_orphaned_files_and_build_errors(self, submission_id, delete_orphaned_data_files):
         """
-        After metadata deletion: find files in S3 that are no longer referenced by any data record.
-        If delete_orphaned_data_files is True, delete those files from S3.
-        Return a list of file-error dicts (F008) for each orphaned file, matching file_validator shape.
+        After metadata deletion: find S3 keys under file/ not referenced by any remaining dataRecord.
+        Always returns F008-shaped errors for those orphans.
+        If delete_orphaned_data_files is True, also delete those orphan objects from S3.
+        If False, only report F008 (objects remain in the bucket).
         """
         if not self.bucket or not self.root_path:
             return []

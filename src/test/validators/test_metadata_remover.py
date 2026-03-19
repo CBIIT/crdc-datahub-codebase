@@ -143,6 +143,95 @@ def test_remove_metadata_success_returns_true_and_orphan_errors():
     assert orphan_errors[0]["errors"][0]["code"] == "F008"
 
 
+def test_delete_nodes_skips_s3_when_delete_orphaned_false():
+    """When delete_orphaned_data_files is False, delete_nodes does not call delete_files_in_s3."""
+    mock_dao = MagicMock()
+    mock_dao.delete_data_records.return_value = True
+    s3_info = {constants.FILE_NAME: "data.tsv"}
+    nodes = [
+        {
+            constants.NODE_ID: "n1",
+            constants.NODE_TYPE: "File",
+            constants.S3_FILE_INFO: s3_info,
+        }
+    ]
+    with patch("metadata_remover.S3Bucket"):
+        remover = MetadataRemover(mock_dao, MagicMock())
+        remover.submission_id = "sub-1"
+        remover.def_file_nodes = {}
+        with patch.object(remover, "delete_files_in_s3") as del_s3:
+            with patch.object(remover, "process_children", return_value=True):
+                assert remover.delete_nodes(nodes, delete_orphaned_data_files=False) is True
+        del_s3.assert_not_called()
+        mock_dao.delete_data_records.assert_called_once_with(nodes)
+
+
+def test_process_children_skips_s3_when_delete_orphaned_false():
+    """Cascaded child file node: Mongo delete runs but S3 is skipped when flag is False."""
+    mock_dao = MagicMock()
+    deleted_parent = {constants.NODE_TYPE: "Study", constants.NODE_ID: "p1"}
+    child = {
+        constants.NODE_TYPE: "CDSFile",
+        constants.NODE_ID: "f1",
+        constants.PARENTS: [{constants.PARENT_TYPE: "Study", constants.PARENT_ID_VAL: "p1"}],
+        constants.S3_FILE_INFO: {constants.FILE_NAME: "child.tsv"},
+    }
+    mock_dao.get_nodes_by_parents.side_effect = [(True, [child]), (True, [])]
+    mock_dao.delete_data_records.return_value = True
+    with patch("metadata_remover.S3Bucket"):
+        remover = MetadataRemover(mock_dao, MagicMock())
+        remover.submission_id = "sub-1"
+        remover.def_file_nodes = {"CDSFile": {}}
+        with patch.object(remover, "delete_files_in_s3") as del_s3:
+            assert remover.process_children([deleted_parent], delete_orphaned_data_files=False) is True
+        del_s3.assert_not_called()
+    mock_dao.delete_data_records.assert_called_once_with([child])
+
+
+def test_process_children_calls_s3_when_delete_orphaned_true():
+    """Cascaded child file node: delete_files_in_s3 runs when flag is True."""
+    mock_dao = MagicMock()
+    deleted_parent = {constants.NODE_TYPE: "Study", constants.NODE_ID: "p1"}
+    s3_info = {constants.FILE_NAME: "child.tsv"}
+    child = {
+        constants.NODE_TYPE: "CDSFile",
+        constants.NODE_ID: "f1",
+        constants.PARENTS: [{constants.PARENT_TYPE: "Study", constants.PARENT_ID_VAL: "p1"}],
+        constants.S3_FILE_INFO: s3_info,
+    }
+    mock_dao.get_nodes_by_parents.side_effect = [(True, [child]), (True, [])]
+    mock_dao.delete_data_records.return_value = True
+    with patch("metadata_remover.S3Bucket"):
+        remover = MetadataRemover(mock_dao, MagicMock())
+        remover.submission_id = "sub-1"
+        remover.def_file_nodes = {"CDSFile": {}}
+        with patch.object(remover, "delete_files_in_s3", return_value=True) as del_s3:
+            assert remover.process_children([deleted_parent], delete_orphaned_data_files=True) is True
+        del_s3.assert_called_once_with([s3_info])
+
+
+def test_delete_nodes_calls_s3_when_delete_orphaned_true():
+    """When delete_orphaned_data_files is True, delete_nodes calls delete_files_in_s3 for file nodes."""
+    mock_dao = MagicMock()
+    mock_dao.delete_data_records.return_value = True
+    s3_info = {constants.FILE_NAME: "data.tsv"}
+    nodes = [
+        {
+            constants.NODE_ID: "n1",
+            constants.NODE_TYPE: "File",
+            constants.S3_FILE_INFO: s3_info,
+        }
+    ]
+    with patch("metadata_remover.S3Bucket"):
+        remover = MetadataRemover(mock_dao, MagicMock())
+        remover.submission_id = "sub-1"
+        remover.def_file_nodes = {}
+        with patch.object(remover, "delete_files_in_s3", return_value=True) as del_s3:
+            with patch.object(remover, "process_children", return_value=True):
+                assert remover.delete_nodes(nodes, delete_orphaned_data_files=True) is True
+        del_s3.assert_called_once_with([s3_info])
+
+
 def test_remove_metadata_passes_delete_orphaned_data_files_to_find_orphans():
     """remove_metadata passes delete_orphaned_data_files flag to _find_orphaned_files_and_build_errors."""
     mock_dao = MagicMock()
