@@ -186,7 +186,10 @@ export const createQuestionRouter = ({
 
           // Identify if response generation was stopped due to non-standard events
           if (event.messageStop && event.messageStop?.stopReason !== "end_turn") {
-            Logger.info("Received non-standard message stop event from Converse API", { sessionId, event });
+            Logger.info("Received non-standard message stop event from Converse API", {
+              sessionId,
+              reason: event.messageStop.stopReason,
+            });
 
             // Do not emit citations for guardrail interventions
             if (event.messageStop.stopReason === "guardrail_intervened") {
