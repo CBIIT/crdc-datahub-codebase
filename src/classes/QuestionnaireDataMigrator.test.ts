@@ -1,6 +1,7 @@
 import { v4 } from "uuid";
 import { vi } from "vitest";
 
+import DataTypes from "@/config/DataTypesConfig";
 import { contactFactory } from "@/factories/application/ContactFactory";
 import { fundingFactory } from "@/factories/application/FundingFactory";
 import { piFactory } from "@/factories/application/PIFactory";
@@ -1417,7 +1418,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
         repositories: repositoryFactory.build(1, {
           name: "GEO",
           studyID: "S001",
-          dataTypesSubmitted: ["Genomics"],
+          dataTypesSubmitted: [DataTypes.genomics.name],
           otherDataTypesSubmitted: "Custom Type",
         }),
       }),
@@ -1434,7 +1435,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
     const result = migrator.getData();
 
     expect(result.study.repositories[0].dataTypesSubmitted).toContain("Other");
-    expect(result.study.repositories[0].dataTypesSubmitted).toContain("Genomics");
+    expect(result.study.repositories[0].dataTypesSubmitted).toContain(DataTypes.genomics.name);
     expect(Logger.info).toHaveBeenCalledWith(
       "_migrateRepositoryOtherDataTypes: Adding 'Other' to dataTypesSubmitted",
       expect.any(Object)
@@ -1473,7 +1474,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
         repositories: repositoryFactory.build(1, {
           name: "GEO",
           studyID: "S001",
-          dataTypesSubmitted: ["Genomics"],
+          dataTypesSubmitted: [DataTypes.genomics.name],
           otherDataTypesSubmitted: "",
         }),
       }),
@@ -1489,7 +1490,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
     await migrator._migrateRepositoryOtherDataTypes();
     const result = migrator.getData();
 
-    expect(result.study.repositories[0].dataTypesSubmitted).toEqual(["Genomics"]);
+    expect(result.study.repositories[0].dataTypesSubmitted).toEqual([DataTypes.genomics.name]);
     expect(Logger.info).not.toHaveBeenCalled();
   });
 
@@ -1499,7 +1500,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
         repositories: repositoryFactory.build(1, {
           name: "GEO",
           studyID: "S001",
-          dataTypesSubmitted: ["Genomics"],
+          dataTypesSubmitted: [DataTypes.genomics.name],
           otherDataTypesSubmitted: "   ",
         }),
       }),
@@ -1515,7 +1516,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
     await migrator._migrateRepositoryOtherDataTypes();
     const result = migrator.getData();
 
-    expect(result.study.repositories[0].dataTypesSubmitted).toEqual(["Genomics"]);
+    expect(result.study.repositories[0].dataTypesSubmitted).toEqual([DataTypes.genomics.name]);
     expect(Logger.info).not.toHaveBeenCalled();
   });
 
@@ -1525,7 +1526,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
         repositories: repositoryFactory.build(1, {
           name: "GEO",
           studyID: "S001",
-          dataTypesSubmitted: ["Genomics"],
+          dataTypesSubmitted: [DataTypes.genomics.name],
         }),
       }),
     });
@@ -1540,7 +1541,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
     await migrator._migrateRepositoryOtherDataTypes();
     const result = migrator.getData();
 
-    expect(result.study.repositories[0].dataTypesSubmitted).toEqual(["Genomics"]);
+    expect(result.study.repositories[0].dataTypesSubmitted).toEqual([DataTypes.genomics.name]);
     expect(Logger.info).not.toHaveBeenCalled();
   });
 
@@ -1551,19 +1552,19 @@ describe("_migrateRepositoryOtherDataTypes", () => {
           repositoryFactory.build({
             name: "GEO",
             studyID: "S001",
-            dataTypesSubmitted: ["Genomics"],
+            dataTypesSubmitted: [DataTypes.genomics.name],
             otherDataTypesSubmitted: "Custom Type",
           }),
           repositoryFactory.build({
             name: "EGA",
             studyID: "S002",
-            dataTypesSubmitted: ["Imaging", "Other"],
+            dataTypesSubmitted: [DataTypes.imaging.name, "Other"],
             otherDataTypesSubmitted: "Already has Other",
           }),
           repositoryFactory.build({
             name: "SRA",
             studyID: "S003",
-            dataTypesSubmitted: ["Proteomics"],
+            dataTypesSubmitted: [DataTypes.proteomics.name],
             otherDataTypesSubmitted: "",
           }),
         ],
@@ -1581,9 +1582,12 @@ describe("_migrateRepositoryOtherDataTypes", () => {
     const result = migrator.getData();
 
     expect(result.study.repositories[0].dataTypesSubmitted).toContain("Other");
-    expect(result.study.repositories[0].dataTypesSubmitted).toContain("Genomics");
-    expect(result.study.repositories[1].dataTypesSubmitted).toEqual(["Imaging", "Other"]);
-    expect(result.study.repositories[2].dataTypesSubmitted).toEqual(["Proteomics"]);
+    expect(result.study.repositories[0].dataTypesSubmitted).toContain(DataTypes.genomics.name);
+    expect(result.study.repositories[1].dataTypesSubmitted).toEqual([
+      DataTypes.imaging.name,
+      "Other",
+    ]);
+    expect(result.study.repositories[2].dataTypesSubmitted).toEqual([DataTypes.proteomics.name]);
     expect(Logger.info).toHaveBeenCalledTimes(1);
   });
 
