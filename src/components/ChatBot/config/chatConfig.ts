@@ -20,7 +20,7 @@ const chatConfig = {
    * The subtitle displayed below the initial message in the chat header.
    */
   initialSubtitle:
-    "Welcome to the CRDC Submission Portal Assistant. I can help with submission requests, data workflows, APIs, validation issues, and data models. I'm here to guide you through the submission process.",
+    "Welcome to the CRDC Submission Portal Assistant. I can help you with everything from creating a new submission request to starting a data submission, as well as answering questions about APIs, validation issues, and data models. I'm here to guide you through every step of the submission process.",
   /**
    * The maximum number of messages to include in conversation history.
    */
