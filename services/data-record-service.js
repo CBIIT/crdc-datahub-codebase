@@ -59,6 +59,19 @@ class DataRecordService {
 
     }
 
+    /**
+     * Sanitizes a value for safe use in filesystem path segments (e.g. directory names).
+     * Strips path separators (/, \) and ".." to prevent path traversal or unexpected nesting.
+     * @param {string|null|undefined} value - Value to sanitize (e.g. dbGaPID)
+     * @returns {string|null|undefined} Sanitized string, or original value if null/undefined
+     */
+    _sanitizePathSegment(value) {
+        if (value === null || value === undefined) return value;
+        return String(value)
+            .replace(/[/\\]/g, '_')
+            .replace(/\.\./g, '_');
+    }
+
     async submissionStats(aSubmission) {
         const validNodeStatus = [VALIDATION_STATUS.NEW, VALIDATION_STATUS.PASSED, VALIDATION_STATUS.WARNING, VALIDATION_STATUS.ERROR];
         const res = await Promise.all([
@@ -556,7 +569,11 @@ class DataRecordService {
         const datacommon = aSubmission.dataCommons;
         const dataDefinitionSourceDir = `resources/data-definition/${datacommon}`;
         const tempFolder = `logs/${aSubmission._id}`;
-        const dbGaPDir = `dbGaP_${aSubmission.dbGaPID}_${aSubmission.name}_${getFormatDateStr(getCurrentTime())}`;
+        // prefer nested study.dbGaPID; submission.dbGaPID should eventually be removed.
+        // explicitly default to null to prevent undefined error
+        const dbGaPID = aSubmission.study?.dbGaPID || aSubmission.dbGaPID || null;
+        const safeDbGaPID = this._sanitizePathSegment(dbGaPID);
+        const dbGaPDir = `dbGaP_${safeDbGaPID}_${aSubmission.name}_${getFormatDateStr(getCurrentTime())}`;
         const download_dir = path.join(tempFolder, dbGaPDir);
         // 1) create subject sample mapping sheet
         const participants = await this.dataRecordsCollection.aggregate([{
@@ -667,7 +684,10 @@ class DataRecordService {
                                 const designDescription = genomicInfo.props?.design_description;
                                 const reference_genome_assembly = genomicInfo.props?.reference_genome_assembly;
                                 const alignemnt_software = genomicInfo.props?.sequence_alignment_software;
-                                genomicInfoArr.push({[DATA_SHEET.PHS_ACCESSION]: aSubmission.dbGaPID, [DATA_SHEET.SAMPLE_ID]: biosample_accession, 
+                                // prefer nested study.dbGaPID; submission.dbGaPID should eventually be removed.
+                                // explicitly defauly to null to prevent undefined error
+                                const dbgapid = aSubmission.study?.dbGaPID || aSubmission.dbGaPID || null; 
+                                genomicInfoArr.push({[DATA_SHEET.PHS_ACCESSION]: dbgapid, [DATA_SHEET.SAMPLE_ID]: biosample_accession, 
                                     [DATA_SHEET.LIBRARY_ID]: libraryID, [DATA_SHEET.LIBRARY_STRATEGY]: libraryStrategy, 
                                     [DATA_SHEET.LIBRARY_SELECTION]: librarySelection, [DATA_SHEET.LIBRARY_LAYOUT]: libraryLayout, 
                                     [DATA_SHEET.PLATFORM]: platform,[DATA_SHEET.INSTRUMENT_MODEL]: instrumentModel, 
