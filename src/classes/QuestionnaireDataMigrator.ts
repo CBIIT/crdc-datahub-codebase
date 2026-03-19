@@ -52,6 +52,7 @@ export class QuestionnaireDataMigrator {
     await this._migrateInstitutionsToID();
     await this._migrateInstitutionNames();
     await this._migrateGPA();
+    await this._migrateRepositoryOtherDataTypes();
 
     return this.data;
   }
@@ -201,6 +202,34 @@ export class QuestionnaireDataMigrator {
       if (newInstitution && apiData && apiData._id !== institutionID) {
         Logger.info("_migrateExistingInstitutions: Migrating to API ID", { ...contact }, apiData);
         contact.institutionID = apiData._id;
+      }
+    });
+  }
+
+  /**
+   * Migrates repositories that have otherDataTypesSubmitted values
+   * but are missing "Other" in their dataTypesSubmitted array.
+   *
+   * This ensures the "Other" option is selected so the otherDataTypesSubmitted
+   * field remains visible and editable.
+   */
+  private async _migrateRepositoryOtherDataTypes(): Promise<void> {
+    const repositories = this.data?.study?.repositories;
+    if (!repositories?.length) {
+      return;
+    }
+
+    repositories.forEach((repo) => {
+      const hasOtherText =
+        typeof repo.otherDataTypesSubmitted === "string" &&
+        repo.otherDataTypesSubmitted?.trim()?.length > 0;
+      const hasOtherSelected = repo.dataTypesSubmitted?.includes("Other");
+
+      if (hasOtherText && !hasOtherSelected) {
+        Logger.info("_migrateRepositoryOtherDataTypes: Adding 'Other' to dataTypesSubmitted", {
+          ...repo,
+        });
+        repo.dataTypesSubmitted = [...(repo.dataTypesSubmitted || []), "Other"];
       }
     });
   }
