@@ -1,10 +1,12 @@
 import { v4 } from "uuid";
 import { vi } from "vitest";
 
+import DataTypes from "@/config/DataTypesConfig";
 import { contactFactory } from "@/factories/application/ContactFactory";
 import { fundingFactory } from "@/factories/application/FundingFactory";
 import { piFactory } from "@/factories/application/PIFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
+import { repositoryFactory } from "@/factories/application/RepositoryFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
 import { institutionFactory } from "@/factories/institution/InstitutionFactory";
 import { Logger } from "@/utils/logger";
@@ -1406,5 +1408,239 @@ describe("_migrateGPA", () => {
     expect(result.study.funding[0]).not.toHaveProperty("nciGPA");
     expect(result.study.funding[0].agency).toBe("NCI");
     expect(result.study.funding[0].grantNumbers).toBe("1a0x35b");
+  });
+});
+
+describe("_migrateRepositoryOtherDataTypes", () => {
+  it("should add 'Other' to dataTypesSubmitted when otherDataTypesSubmitted has a value", async () => {
+    const data = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        repositories: repositoryFactory.build(1, {
+          name: "GEO",
+          studyID: "S001",
+          dataTypesSubmitted: [DataTypes.genomics.name],
+          otherDataTypesSubmitted: "Custom Type",
+        }),
+      }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateRepositoryOtherDataTypes();
+    const result = migrator.getData();
+
+    expect(result.study.repositories[0].dataTypesSubmitted).toContain("Other");
+    expect(result.study.repositories[0].dataTypesSubmitted).toContain(DataTypes.genomics.name);
+    expect(Logger.info).toHaveBeenCalledWith(
+      "_migrateRepositoryOtherDataTypes: Adding 'Other' to dataTypesSubmitted",
+      expect.any(Object)
+    );
+  });
+
+  it("should not modify dataTypesSubmitted when 'Other' is already selected", async () => {
+    const data = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        repositories: repositoryFactory.build(1, {
+          name: "GEO",
+          studyID: "S001",
+          dataTypesSubmitted: ["Genomics", "Other"],
+          otherDataTypesSubmitted: "Custom Type",
+        }),
+      }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateRepositoryOtherDataTypes();
+    const result = migrator.getData();
+
+    expect(result.study.repositories[0].dataTypesSubmitted).toEqual(["Genomics", "Other"]);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should not modify dataTypesSubmitted when otherDataTypesSubmitted is empty", async () => {
+    const data = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        repositories: repositoryFactory.build(1, {
+          name: "GEO",
+          studyID: "S001",
+          dataTypesSubmitted: [DataTypes.genomics.name],
+          otherDataTypesSubmitted: "",
+        }),
+      }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateRepositoryOtherDataTypes();
+    const result = migrator.getData();
+
+    expect(result.study.repositories[0].dataTypesSubmitted).toEqual([DataTypes.genomics.name]);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should not modify dataTypesSubmitted when otherDataTypesSubmitted is whitespace only", async () => {
+    const data = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        repositories: repositoryFactory.build(1, {
+          name: "GEO",
+          studyID: "S001",
+          dataTypesSubmitted: [DataTypes.genomics.name],
+          otherDataTypesSubmitted: "   ",
+        }),
+      }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateRepositoryOtherDataTypes();
+    const result = migrator.getData();
+
+    expect(result.study.repositories[0].dataTypesSubmitted).toEqual([DataTypes.genomics.name]);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should not modify dataTypesSubmitted when otherDataTypesSubmitted is undefined", async () => {
+    const data = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        repositories: repositoryFactory.build(1, {
+          name: "GEO",
+          studyID: "S001",
+          dataTypesSubmitted: [DataTypes.genomics.name],
+        }),
+      }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateRepositoryOtherDataTypes();
+    const result = migrator.getData();
+
+    expect(result.study.repositories[0].dataTypesSubmitted).toEqual([DataTypes.genomics.name]);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should handle multiple repositories and only migrate those needing it", async () => {
+    const data = questionnaireDataFactory.build({
+      study: studyFactory.build({
+        repositories: [
+          repositoryFactory.build({
+            name: "GEO",
+            studyID: "S001",
+            dataTypesSubmitted: [DataTypes.genomics.name],
+            otherDataTypesSubmitted: "Custom Type",
+          }),
+          repositoryFactory.build({
+            name: "EGA",
+            studyID: "S002",
+            dataTypesSubmitted: [DataTypes.imaging.name, "Other"],
+            otherDataTypesSubmitted: "Already has Other",
+          }),
+          repositoryFactory.build({
+            name: "SRA",
+            studyID: "S003",
+            dataTypesSubmitted: [DataTypes.proteomics.name],
+            otherDataTypesSubmitted: "",
+          }),
+        ],
+      }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateRepositoryOtherDataTypes();
+    const result = migrator.getData();
+
+    expect(result.study.repositories[0].dataTypesSubmitted).toContain("Other");
+    expect(result.study.repositories[0].dataTypesSubmitted).toContain(DataTypes.genomics.name);
+    expect(result.study.repositories[1].dataTypesSubmitted).toEqual([
+      DataTypes.imaging.name,
+      "Other",
+    ]);
+    expect(result.study.repositories[2].dataTypesSubmitted).toEqual([DataTypes.proteomics.name]);
+    expect(Logger.info).toHaveBeenCalledTimes(1);
+  });
+
+  it("should do nothing when repositories array is empty", async () => {
+    const data = questionnaireDataFactory.build({
+      study: studyFactory.build({ repositories: [] }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateRepositoryOtherDataTypes();
+    const result = migrator.getData();
+
+    expect(result).toEqual(data);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should do nothing when study is null", async () => {
+    const data = questionnaireDataFactory.build({ study: null });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateRepositoryOtherDataTypes();
+    const result = migrator.getData();
+
+    expect(result).toEqual(data);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should do nothing when study is undefined", async () => {
+    const data = questionnaireDataFactory.build({ study: undefined });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateRepositoryOtherDataTypes();
+    const result = migrator.getData();
+
+    expect(result).toEqual(data);
+    expect(Logger.info).not.toHaveBeenCalled();
   });
 });
