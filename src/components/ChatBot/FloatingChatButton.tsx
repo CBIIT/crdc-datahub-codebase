@@ -9,7 +9,7 @@ const StyledFloatingButtonWrapper = styled("div")({
   right: "0 !important",
   top: "65% !important",
   transform: "translateY(-50%) !important",
-  zIndex: "10000 !important",
+  zIndex: "1250 !important",
   display: "flex !important",
   flexDirection: "row !important" as never,
   alignItems: "stretch !important",

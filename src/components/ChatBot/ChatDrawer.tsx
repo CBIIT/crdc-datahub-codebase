@@ -246,7 +246,7 @@ const StyledRndContainer = styled("div")({
   position: "fixed",
   inset: 0,
   pointerEvents: "none",
-  zIndex: 12000,
+  zIndex: 1250,
 });
 
 const StyledDraggableBorder = styled("div", {
