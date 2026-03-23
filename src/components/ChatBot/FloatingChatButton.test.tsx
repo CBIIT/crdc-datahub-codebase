@@ -116,6 +116,52 @@ describe("Basic Functionality", () => {
     expect(getByText("Support")).toBeInTheDocument();
     expect(container.querySelector("svg")).toBeInTheDocument();
   });
+
+  it("should render expanded immediately when forceExpanded is true", () => {
+    vi.useFakeTimers();
+    sessionStorage.clear();
+
+    const { getByRole } = render(<FloatingChatButton {...defaultProps} forceExpanded />);
+
+    const button = getByRole("button");
+    expect(button).toHaveStyle({ maxWidth: "400px" });
+
+    vi.useRealTimers();
+    sessionStorage.clear();
+  });
+
+  it("should stay expanded and not collapse after timers elapse", async () => {
+    vi.useFakeTimers();
+    sessionStorage.clear();
+
+    const { getByRole } = render(<FloatingChatButton {...defaultProps} forceExpanded />);
+
+    await act(async () => {
+      vi.advanceTimersByTime(initialDelayMs + showDurationMs);
+    });
+
+    const button = getByRole("button");
+    expect(button).toHaveStyle({ maxWidth: "400px" });
+
+    vi.useRealTimers();
+    sessionStorage.clear();
+  });
+
+  it("should not set sessionStorage when forceExpanded is true", async () => {
+    vi.useFakeTimers();
+    sessionStorage.clear();
+
+    render(<FloatingChatButton {...defaultProps} forceExpanded />);
+
+    await act(async () => {
+      vi.advanceTimersByTime(initialDelayMs + showDurationMs);
+    });
+
+    expect(sessionStorage.getItem(sessionKey)).toBeNull();
+
+    vi.useRealTimers();
+    sessionStorage.clear();
+  });
 });
 
 describe("Slide Animation Behavior", () => {
