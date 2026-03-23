@@ -165,13 +165,15 @@ describe("InstitutionListFilters Component", () => {
 });
 
 describe("Implementation Requirements", () => {
-  it("should default the status filter to Active", () => {
+  it("should default the status filter to Active", async () => {
     const { getByTestId } = render(
       <TestParent>
         <InstitutionListFilters />
       </TestParent>
     );
 
-    expect(getByTestId("status-select-input")).toHaveValue("Active");
+    await waitFor(() => {
+      expect(getByTestId("status-select-input")).toHaveValue("Active");
+    });
   });
 });

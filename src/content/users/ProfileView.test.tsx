@@ -287,9 +287,7 @@ describe("Implementation Requirements", () => {
     userEvent.type(input, "a");
     userEvent.clear(input);
 
-    await waitFor(async () => {
-      const options = await findAllByRole("option");
-      expect(options).toHaveLength(2);
-    });
+    const options = await findAllByRole("option");
+    expect(options).toHaveLength(2);
   });
 });
