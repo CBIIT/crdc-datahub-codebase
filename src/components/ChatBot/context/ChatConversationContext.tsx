@@ -372,7 +372,7 @@ const useChatConversation = (): ChatConversationActions => {
 
 type ChatConversationContextValue = ChatConversationActions;
 
-const ChatConversationContext = createContext<ChatConversationContextValue | null>(null);
+export const ChatConversationContext = createContext<ChatConversationContextValue | null>(null);
 
 export const useChatConversationContext = (): ChatConversationContextValue => {
   const context = useContext(ChatConversationContext);
