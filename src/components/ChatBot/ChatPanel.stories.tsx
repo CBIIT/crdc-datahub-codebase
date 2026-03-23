@@ -53,17 +53,6 @@ const meta: Meta<StoryArgs> = {
         init();
       }, []);
 
-      React.useEffect(() => {
-        if (!forceBotTyping) {
-          return undefined;
-        }
-        const originalFetch = window.fetch;
-        window.fetch = () => new Promise<Response>(() => {});
-        return () => {
-          window.fetch = originalFetch;
-        };
-      }, [forceBotTyping]);
-
       if (!ready) {
         return null;
       }
