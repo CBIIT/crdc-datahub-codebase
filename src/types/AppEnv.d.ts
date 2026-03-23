@@ -74,6 +74,10 @@ type AppEnv = {
    */
   VITE_HIDDEN_MODELS: string;
   /**
+   * Knowledge Base URL
+   */
+  VITE_CHATBOT_API_BASE_URL: string;
+  /**
    * The deployment environment the app is running in
    */
   NODE_ENV?: "test" | "development" | "production";
