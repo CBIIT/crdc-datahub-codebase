@@ -73,6 +73,7 @@ const ERROR = {
     CREATE_SUBMISSION_INVALID_DATA_TYPE: "submission data type is invalid",
     CREATE_SUBMISSION_INVALID_DELETE_INTENTION: "when intention is Delete, only 'Metadata Only' is allowed",
     UPDATE_SUBMISSION_ERROR: "An error occurred while attempting to update the submission in the database",
+    INVALID_DATA_COMMONS_NOT_ALLOWED: "The provided dataCommons value $item$ is not allowed. Allowed data commons are: $accepted$.",
     INVALID_DATA_MODEL_NOT_ALLOWED: "The provided model $item$ is not one of the accepted models. Accepted models are: $accepted$.",
     RETRIEVE_PVS_INVALID_MODEL: "The model input must be a non-empty string.",
     RETRIEVE_PVS_INVALID_PROPERTY_NAME: "The propertyName input must be a non-empty string.",
