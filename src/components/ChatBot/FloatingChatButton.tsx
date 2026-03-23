@@ -33,14 +33,19 @@ const StyledLabel = styled(Typography)({
 type Props = {
   label: string;
   onClick: React.MouseEventHandler<HTMLButtonElement>;
+  forceExpanded?: boolean;
 };
 
-const FloatingChatButton = ({ label, onClick }: Props): JSX.Element => {
-  const [expanded, setExpanded] = useState(false);
+const FloatingChatButton = ({ label, onClick, forceExpanded = false }: Props): JSX.Element => {
+  const [expanded, setExpanded] = useState(forceExpanded);
 
   const { initialDelayMs, showDurationMs, sessionKey } = chatConfig.floatingButton;
 
   useEffect(() => {
+    if (forceExpanded) {
+      return undefined;
+    }
+
     const hasShown = sessionStorage.getItem(sessionKey);
     if (hasShown) {
       return undefined;
