@@ -3277,7 +3277,17 @@ function validateCreateSubmissionParams (params, allowedDataCommons, hiddenDataC
         throw new Error(replaceErrorString(ERROR.CREATE_SUBMISSION_INVALID_NAME, `${CONSTRAINTS.NAME_MAX_LENGTH}`));
     }
     if (hiddenDataCommons.has(params.dataCommons) || !allowedDataCommons.has(params.dataCommons)) {
-        throw new Error(replaceErrorString(ERROR.CREATE_SUBMISSION_INVALID_DATA_COMMONS, `'${params.dataCommons}'`));
+        const visibleAllowed = [...allowedDataCommons]
+            .filter((dc) => !hiddenDataCommons.has(dc))
+            .sort();
+        const acceptedDisplay = visibleAllowed.length ? visibleAllowed.join(", ") : "(none available)";
+        throw new Error(
+            replaceErrorString(
+                replaceErrorString(ERROR.INVALID_DATA_MODEL_NOT_ALLOWED, `'${params.dataCommons.trim()}'`),
+                acceptedDisplay,
+                /\$accepted\$/g
+            )
+        );
     }
     if (!intention) {
         throw new Error(ERROR.CREATE_SUBMISSION_INVALID_INTENTION);

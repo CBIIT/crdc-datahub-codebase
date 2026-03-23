@@ -383,6 +383,18 @@ model PendingPVs {
   @@map("pendingPvs")
 }
 
+model PropertyPVs {
+  id                 String    @id @default(uuid()) @map("_id")
+  property           String
+  model              String
+  version            String
+  permissibleValues  String[]  @map("PermissibleValues")
+  createdAt          DateTime? @default(now()) @db.Date
+  updatedAt          DateTime? @updatedAt @db.Date
+
+  @@map("propertyPVs")
+}
+
 model Institution {
   id             String    @id @default(uuid()) @map("_id")
   name           String

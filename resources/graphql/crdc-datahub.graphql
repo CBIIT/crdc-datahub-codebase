@@ -841,6 +841,16 @@ type SubmissionStudy {
     dbGaPID: String
 }
 
+type propertyPVs {
+    _id: ID,
+    property: String,
+    model: String,
+    version: String,
+    permissibleValues: [String],
+    createdAt: Date,
+    updatedAt: Date
+}
+
 type Query {
     "User or Fed lead initiated operations"
     getApplication (_id: ID!): Application
@@ -1058,6 +1068,12 @@ type Query {
     retrievePropsForNodeType(studyID: String!, dataCommonsDisplayName: String!, nodeType: String!): [nodeProp]
     downloadAllReleasedNodes(studyID: String!, dataCommonsDisplayName: String!): String #presigned url of s3
     getSubmissionSummary(submissionID: ID!): [nodeTypeSummary]
+
+    retrievePVsByPropertyName (
+        propertyName: String!,
+        model: String!, # GC, CTDC, ICDC, PSDC
+        version: String!
+    ) : propertyPVs
 }
 type Mutation {
     "User initiated operations"
