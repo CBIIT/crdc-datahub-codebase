@@ -109,7 +109,7 @@ export const Default: Story = {
 
 export const WithMessages: Story = {
   args: {
-    endpointUrl: "https://mock-knowledge-base",
+    endpointUrl: "",
   },
   parameters: {
     seedMessages: [
@@ -182,7 +182,7 @@ export const WithMessages: Story = {
 
 export const BotTyping: Story = {
   args: {
-    endpointUrl: "https://mock-knowledge-base",
+    endpointUrl: "",
   },
   parameters: {
     forceBotTyping: true,
