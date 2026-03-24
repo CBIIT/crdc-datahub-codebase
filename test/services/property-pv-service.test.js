@@ -42,7 +42,7 @@ describe('PropertyPVService.retrievePVsByPropertyName', () => {
     it('queries with exact model string passed in', async () => {
         configurationService.findByType.mockResolvedValue({ key: ['CDS', 'ICDC'] });
         propertyPVDAO.findByPropertyVersionAndModel.mockResolvedValue({
-            _id: 'doc1',
+            id: 'doc1',
             property: 'study_id',
             model: 'CDS',
             version: '1.0',

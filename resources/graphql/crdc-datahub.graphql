@@ -842,7 +842,7 @@ type SubmissionStudy {
 }
 
 type propertyPVs {
-    _id: ID,
+    id: ID,
     property: String,
     model: String,
     version: String,
