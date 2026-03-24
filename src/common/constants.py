@@ -82,6 +82,9 @@ RAW_DATA = "rawData"
 NODE_IDS = "nodeIDs"
 DELETE_ALL = "deleteAll"
 EXCLUSIVE_IDS = "exclusiveIDs"
+DELETE_ORPHANED_DATA_FILES = "deleteOrphanedDataFiles"
+DATA_FILE_TYPE = "data file"
+S3_LIST_ORPHANS_PAGE_SIZE = 1000
 
 FILE_NAME_FIELD = "name-field"
 FILE_SIZE_FIELD = "size-field"
