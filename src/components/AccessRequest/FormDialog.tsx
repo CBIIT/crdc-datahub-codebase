@@ -99,6 +99,7 @@ const FormDialog: FC<Props> = ({ onClose, ...rest }) => {
       variables: {
         orderBy: "studyName",
         sortDirection: "asc",
+        status: "Active",
       },
       context: { clientName: "backend" },
       fetchPolicy: "cache-first",

@@ -246,4 +246,41 @@ describe("Implementation Requirements", () => {
       expect(await findByText("Beta Oncology Institute")).toBeInTheDocument();
     });
   });
+
+  it("should only fetch active approved studies", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const activeStudiesMock: MockedResponse<ListApprovedStudiesResp, ListApprovedStudiesInput> = {
+      request: {
+        query: LIST_APPROVED_STUDIES,
+      },
+      variableMatcher: mockMatcher,
+      result: {
+        data: {
+          listApprovedStudies: {
+            total: 0,
+            studies: [],
+          },
+        },
+      },
+      maxUsageCount: Infinity,
+    };
+
+    render(
+      <TestParent
+        mocks={[
+          getUserMock,
+          activeStudiesMock,
+          listInstitutionsMock,
+          retrievePBACDefaults,
+          getTooltipsMock,
+        ]}
+      >
+        <ProfileView _id="test-id" viewType="users" />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ status: "Active" }));
+    });
+  });
 });

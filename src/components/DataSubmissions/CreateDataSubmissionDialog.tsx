@@ -255,7 +255,12 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
   const { data: allStudies } = useQuery<ListApprovedStudiesResp, ListApprovedStudiesInput>(
     LIST_APPROVED_STUDIES,
     {
-      variables: { first: -1, orderBy: "studyAbbreviation", sortDirection: "asc" },
+      variables: {
+        first: -1,
+        orderBy: "studyAbbreviation",
+        sortDirection: "asc",
+        status: "Active",
+      },
       context: { clientName: "backend" },
       fetchPolicy: "cache-and-network",
       skip: !shouldFetchAllStudies,
