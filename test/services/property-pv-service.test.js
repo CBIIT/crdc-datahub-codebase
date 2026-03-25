@@ -17,7 +17,7 @@ describe('PropertyPVService.retrievePVsByPropertyName', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         configurationService = { findByType: jest.fn() };
-        propertyPVDAO = { findByPropertyVersionAndModel: jest.fn() };
+        propertyPVDAO = { findByPropertiesVersionAndModel: jest.fn() };
         service = new PropertyPVService(configurationService, propertyPVDAO);
         context = { userInfo: { _id: 'u1' } };
     });
@@ -26,7 +26,7 @@ describe('PropertyPVService.retrievePVsByPropertyName', () => {
         configurationService.findByType.mockResolvedValue({ key: ['ICDC', 'CTDC'] });
         await expect(
             service.retrievePVsByPropertyName(
-                { propertyName: 'p', model: 'CDS', version: '1' },
+                { propertyNames: ['p'], model: 'CDS', version: '1' },
                 context
             )
         ).rejects.toThrow(
@@ -36,66 +36,144 @@ describe('PropertyPVService.retrievePVsByPropertyName', () => {
                 /\$accepted\$/g
             )
         );
-        expect(propertyPVDAO.findByPropertyVersionAndModel).not.toHaveBeenCalled();
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).not.toHaveBeenCalled();
     });
 
     it('queries with exact model string passed in', async () => {
         configurationService.findByType.mockResolvedValue({ key: ['CDS', 'ICDC'] });
-        propertyPVDAO.findByPropertyVersionAndModel.mockResolvedValue({
+        const doc = {
             id: 'doc1',
             property: 'study_id',
             model: 'CDS',
             version: '1.0',
             permissibleValues: ['a']
-        });
+        };
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([doc]);
 
         const result = await service.retrievePVsByPropertyName(
-            { propertyName: ' study_id ', model: 'CDS', version: ' 1.0 ' },
+            { propertyNames: [' study_id '], model: 'CDS', version: ' 1.0 ' },
             context
         );
 
-        expect(result.property).toBe('study_id');
-        expect(propertyPVDAO.findByPropertyVersionAndModel).toHaveBeenCalledWith('study_id', '1.0', 'CDS');
+        expect(result).toEqual([doc]);
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).toHaveBeenCalledWith(
+            ['study_id'],
+            '1.0',
+            'CDS'
+        );
     });
 
     it('accepts GC when GC is listed and searches for model GC', async () => {
         configurationService.findByType.mockResolvedValue({ key: ['GC', 'ICDC'] });
-        propertyPVDAO.findByPropertyVersionAndModel.mockResolvedValue(null);
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([]);
 
         await service.retrievePVsByPropertyName(
-            { propertyName: 'p', model: 'GC', version: '1' },
+            { propertyNames: ['p'], model: 'GC', version: '1' },
             context
         );
 
-        expect(propertyPVDAO.findByPropertyVersionAndModel).toHaveBeenCalledWith('p', '1', 'GC');
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).toHaveBeenCalledWith(['p'], '1', 'GC');
     });
 
-    it('returns null when DAO finds no document', async () => {
+    it('returns [] when DAO finds no documents', async () => {
         configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
-        propertyPVDAO.findByPropertyVersionAndModel.mockResolvedValue(null);
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([]);
 
         const result = await service.retrievePVsByPropertyName(
-            { propertyName: 'p', model: 'ICDC', version: '1' },
+            { propertyNames: ['p'], model: 'ICDC', version: '1' },
             context
         );
 
-        expect(result).toBeNull();
+        expect(result).toEqual([]);
+    });
+
+    it('returns [] for empty propertyNames list without calling DAO', async () => {
+        configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
+
+        const result = await service.retrievePVsByPropertyName(
+            { propertyNames: [], model: 'ICDC', version: '1' },
+            context
+        );
+
+        expect(result).toEqual([]);
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).not.toHaveBeenCalled();
+    });
+
+    it('returns only hits in first-occurrence order for unique names', async () => {
+        configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
+        const b = {
+            id: 'b',
+            property: 'b',
+            model: 'ICDC',
+            version: '1',
+            permissibleValues: ['x']
+        };
+        const c = {
+            id: 'c',
+            property: 'c',
+            model: 'ICDC',
+            version: '1',
+            permissibleValues: ['y']
+        };
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([c, b]);
+
+        const result = await service.retrievePVsByPropertyName(
+            { propertyNames: ['a', 'b', 'c', 'd'], model: 'ICDC', version: '1' },
+            context
+        );
+
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).toHaveBeenCalledWith(
+            ['a', 'b', 'c', 'd'],
+            '1',
+            'ICDC'
+        );
+        expect(result).toEqual([b, c]);
+    });
+
+    it('dedupes duplicate property names before querying', async () => {
+        configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
+        const doc = {
+            id: '1',
+            property: 'x',
+            model: 'ICDC',
+            version: '1',
+            permissibleValues: []
+        };
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([doc]);
+
+        const result = await service.retrievePVsByPropertyName(
+            { propertyNames: ['x', ' x ', 'x'], model: 'ICDC', version: '1' },
+            context
+        );
+
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).toHaveBeenCalledWith(['x'], '1', 'ICDC');
+        expect(result).toEqual([doc]);
     });
 
     it('throws for whitespace-only model', async () => {
         await expect(
             service.retrievePVsByPropertyName(
-                { propertyName: 'p', model: '   ', version: '1' },
+                { propertyNames: ['p'], model: '   ', version: '1' },
                 context
             )
         ).rejects.toThrow(ERROR.RETRIEVE_PVS_INVALID_MODEL);
         expect(configurationService.findByType).not.toHaveBeenCalled();
     });
 
-    it('throws for empty propertyName before config lookup', async () => {
+    it('throws for invalid propertyNames before config lookup', async () => {
         await expect(
             service.retrievePVsByPropertyName(
-                { propertyName: '', model: 'ICDC', version: '1' },
+                { propertyNames: [''], model: 'ICDC', version: '1' },
+                context
+            )
+        ).rejects.toThrow(ERROR.RETRIEVE_PVS_INVALID_PROPERTY_NAME);
+        expect(configurationService.findByType).not.toHaveBeenCalled();
+    });
+
+    it('throws when propertyNames is not an array', async () => {
+        await expect(
+            service.retrievePVsByPropertyName(
+                { propertyNames: 'study_id', model: 'ICDC', version: '1' },
                 context
             )
         ).rejects.toThrow(ERROR.RETRIEVE_PVS_INVALID_PROPERTY_NAME);
@@ -105,7 +183,7 @@ describe('PropertyPVService.retrievePVsByPropertyName', () => {
     it('throws for whitespace-only version before config lookup', async () => {
         await expect(
             service.retrievePVsByPropertyName(
-                { propertyName: 'p', model: 'ICDC', version: '   ' },
+                { propertyNames: ['p'], model: 'ICDC', version: '   ' },
                 context
             )
         ).rejects.toThrow(ERROR.RETRIEVE_PVS_INVALID_VERSION);
@@ -116,7 +194,7 @@ describe('PropertyPVService.retrievePVsByPropertyName', () => {
         configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
         await expect(
             service.retrievePVsByPropertyName(
-                { propertyName: 'p', model: '  CDS  ', version: '1' },
+                { propertyNames: ['p'], model: '  CDS  ', version: '1' },
                 context
             )
         ).rejects.toThrow(
@@ -125,6 +203,54 @@ describe('PropertyPVService.retrievePVsByPropertyName', () => {
                 'ICDC',
                 /\$accepted\$/g
             )
+        );
+    });
+
+    it('extracts x.y.z from version for the DAO when embedded in a prefix', async () => {
+        configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([]);
+
+        await service.retrievePVsByPropertyName(
+            { propertyNames: ['p'], model: 'ICDC', version: 'v11.0.4' },
+            context
+        );
+
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).toHaveBeenCalledWith(
+            ['p'],
+            '11.0.4',
+            'ICDC'
+        );
+    });
+
+    it('extracts first x.y.z from version when surrounded by other text', async () => {
+        configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([]);
+
+        await service.retrievePVsByPropertyName(
+            { propertyNames: ['p'], model: 'ICDC', version: 'release-2.3.4-build' },
+            context
+        );
+
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).toHaveBeenCalledWith(
+            ['p'],
+            '2.3.4',
+            'ICDC'
+        );
+    });
+
+    it('falls back to trimmed version when no semver triple is present', async () => {
+        configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([]);
+
+        await service.retrievePVsByPropertyName(
+            { propertyNames: ['p'], model: 'ICDC', version: ' 1.0 ' },
+            context
+        );
+
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).toHaveBeenCalledWith(
+            ['p'],
+            '1.0',
+            'ICDC'
         );
     });
 });

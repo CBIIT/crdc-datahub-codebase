@@ -1070,10 +1070,10 @@ type Query {
     getSubmissionSummary(submissionID: ID!): [nodeTypeSummary]
 
     retrievePVsByPropertyName (
-        propertyName: String!,
+        propertyNames: [String!]!,
         model: String!, # GC, CTDC, ICDC, PSDC
         version: String!
-    ) : propertyPVs
+    ) : [propertyPVs]
 }
 type Mutation {
     "User initiated operations"

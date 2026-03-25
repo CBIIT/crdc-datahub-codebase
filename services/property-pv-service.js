@@ -4,6 +4,39 @@ const ERROR = require("../constants/error-constants");
 
 const DATA_COMMONS_LIST_TYPE = "DATA_COMMONS_LIST";
 
+// Extracts the semver version from the trimmed version string
+// logic matches the tranformation performed by MDB data ingestion 
+// https://github.com/CBIIT/bento-mdb/blob/f18dbf41ecb244c11fa22db10547f3337cbeeb60/scripts/check_new_mdfs.py#L27
+function versionForPropertyPvQuery(trimmedVersion) {
+    const m = trimmedVersion.match(/\d+\.\d+\.\d+/);
+    return m ? m[0] : trimmedVersion;
+}
+
+// Verifies each element of the array is a non-empty string
+// Trims the strings and removes duplicates while maintaining order
+// Returns an array of unique, trimmed, ordered, non-empty strings
+function normalizePropertyNames(propertyNames) {
+    if (!Array.isArray(propertyNames)) {
+        throw new Error(ERROR.RETRIEVE_PVS_INVALID_PROPERTY_NAME);
+    }
+    const trimmed = [];
+    for (const name of propertyNames) {
+        if (typeof name !== "string" || !name.trim()) {
+            throw new Error(ERROR.RETRIEVE_PVS_INVALID_PROPERTY_NAME);
+        }
+        trimmed.push(name.trim());
+    }
+    const seen = new Set();
+    const uniqueOrdered = [];
+    for (const t of trimmed) {
+        if (!seen.has(t)) {
+            seen.add(t);
+            uniqueOrdered.push(t);
+        }
+    }
+    return uniqueOrdered;
+}
+
 class PropertyPVService {
     constructor(configurationService, propertyPVDAO) {
         this.configurationService = configurationService;
@@ -12,18 +45,16 @@ class PropertyPVService {
 
     async retrievePVsByPropertyName(params, context) {
         verifySession(context).verifyInitialized();
-        const { propertyName, model, version } = params;
-        if (typeof propertyName !== "string" || !propertyName.trim()) {
-            throw new Error(ERROR.RETRIEVE_PVS_INVALID_PROPERTY_NAME);
-        }
+        const { propertyNames, model, version } = params;
+        const uniqueOrderedNames = normalizePropertyNames(propertyNames);
         if (typeof version !== "string" || !version.trim()) {
             throw new Error(ERROR.RETRIEVE_PVS_INVALID_VERSION);
         }
         if (typeof model !== "string" || !model.trim()) {
             throw new Error(ERROR.RETRIEVE_PVS_INVALID_MODEL);
         }
-        const propertyNameTrimmed = propertyName.trim();
         const versionTrimmed = version.trim();
+        const versionForQuery = versionForPropertyPvQuery(versionTrimmed);
         const modelTrimmed = model.trim();
         const listDoc = await this.configurationService.findByType(DATA_COMMONS_LIST_TYPE);
         const allowed = listDoc?.key || [];
@@ -37,11 +68,28 @@ class PropertyPVService {
                 )
             );
         }
-        return await this.propertyPVDAO.findByPropertyVersionAndModel(
-            propertyNameTrimmed,
-            versionTrimmed,
+        if (uniqueOrderedNames.length === 0) {
+            return [];
+        }
+        const rows = await this.propertyPVDAO.findByPropertiesVersionAndModel(
+            uniqueOrderedNames,
+            versionForQuery,
             modelTrimmed
         );
+        const byProperty = new Map();
+        for (const row of rows) {
+            if (!byProperty.has(row.property)) {
+                byProperty.set(row.property, row);
+            }
+        }
+        const results = [];
+        for (const name of uniqueOrderedNames) {
+            const doc = byProperty.get(name);
+            if (doc) {
+                results.push(doc);
+            }
+        }
+        return results;
     }
 }
 

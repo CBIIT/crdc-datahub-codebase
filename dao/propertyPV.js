@@ -19,6 +19,23 @@ class PropertyPVDAO extends GenericDAO {
             model,
         });
     }
+
+    /**
+     * @param {string[]} propertyNames non-empty deduped list
+     * @param {string} version
+     * @param {string} model
+     * @returns {Promise<Object[]>}
+     */
+    async findByPropertiesVersionAndModel(propertyNames, version, model) {
+        if (!propertyNames.length) {
+            return [];
+        }
+        return await this.findMany({
+            property: { $in: propertyNames },
+            version,
+            model,
+        });
+    }
 }
 
 module.exports = PropertyPVDAO;
