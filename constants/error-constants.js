@@ -77,6 +77,8 @@ const ERROR = {
     INVALID_DATA_MODEL_NOT_ALLOWED: "The provided model $item$ is not one of the accepted models. Accepted models are: $accepted$.",
     RETRIEVE_PVS_INVALID_MODEL: "The model input must be a non-empty string.",
     RETRIEVE_PVS_INVALID_PROPERTY_NAME: "The propertyNames input must be an array of non-empty strings (each element non-empty after trim).",
+    RETRIEVE_PVS_TOO_MANY_PROPERTY_NAMES:
+        "The propertyNames list cannot exceed 500 entries (matches API batch limits and database $in query size).",
     RETRIEVE_PVS_INVALID_VERSION: "The version input must be a non-empty string.",
     CREATE_SUBMISSION_NO_MATCHING_STUDY: "The study provided does not match an approved study within the user's studies",
     CREATE_SUBMISSION_NO_ASSOCIATED_PROGRAM: "The study is not associated with any program. Please contact your data concierge to resolve this issue.",

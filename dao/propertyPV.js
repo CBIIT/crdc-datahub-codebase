@@ -7,20 +7,6 @@ class PropertyPVDAO extends GenericDAO {
     }
 
     /**
-     * @param {string} propertyName
-     * @param {string} version
-     * @param {string} model
-     * @returns {Promise<Object|null>}
-     */
-    async findByPropertyVersionAndModel(propertyName, version, model) {
-        return await this.findFirst({
-            property: propertyName,
-            version,
-            model,
-        });
-    }
-
-    /**
      * @param {string[]} propertyNames non-empty deduped list
      * @param {string} version
      * @param {string} model

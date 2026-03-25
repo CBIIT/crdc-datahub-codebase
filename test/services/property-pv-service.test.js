@@ -180,6 +180,30 @@ describe('PropertyPVService.retrievePVsByPropertyName', () => {
         expect(configurationService.findByType).not.toHaveBeenCalled();
     });
 
+    it('throws when propertyNames exceeds the maximum list length', async () => {
+        const tooMany = Array.from({ length: 501 }, (_, i) => `p${i}`);
+        await expect(
+            service.retrievePVsByPropertyName(
+                { propertyNames: tooMany, model: 'ICDC', version: '1' },
+                context
+            )
+        ).rejects.toThrow(ERROR.RETRIEVE_PVS_TOO_MANY_PROPERTY_NAMES);
+        expect(configurationService.findByType).not.toHaveBeenCalled();
+    });
+
+    it('accepts propertyNames at the maximum list length', async () => {
+        configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([]);
+        const names = Array.from({ length: 500 }, (_, i) => `p${i}`);
+
+        await service.retrievePVsByPropertyName(
+            { propertyNames: names, model: 'ICDC', version: '1' },
+            context
+        );
+
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).toHaveBeenCalledWith(names, '1', 'ICDC');
+    });
+
     it('throws for whitespace-only version before config lookup', async () => {
         await expect(
             service.retrievePVsByPropertyName(

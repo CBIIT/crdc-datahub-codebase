@@ -3,9 +3,11 @@ const { replaceErrorString } = require("../utility/string-util");
 const ERROR = require("../constants/error-constants");
 
 const DATA_COMMONS_LIST_TYPE = "DATA_COMMONS_LIST";
+/** Limits $in query size and response size for retrievePVsByPropertyName. */
+const MAX_RETRIEVE_PVS_PROPERTY_NAMES = 500;
 
 // Extracts the semver version from the trimmed version string
-// logic matches the tranformation performed by MDB data ingestion 
+// logic matches the transformation performed by MDB data ingestion
 // https://github.com/CBIIT/bento-mdb/blob/f18dbf41ecb244c11fa22db10547f3337cbeeb60/scripts/check_new_mdfs.py#L27
 function versionForPropertyPvQuery(trimmedVersion) {
     const m = trimmedVersion.match(/\d+\.\d+\.\d+/);
@@ -18,6 +20,9 @@ function versionForPropertyPvQuery(trimmedVersion) {
 function normalizePropertyNames(propertyNames) {
     if (!Array.isArray(propertyNames)) {
         throw new Error(ERROR.RETRIEVE_PVS_INVALID_PROPERTY_NAME);
+    }
+    if (propertyNames.length > MAX_RETRIEVE_PVS_PROPERTY_NAMES) {
+        throw new Error(ERROR.RETRIEVE_PVS_TOO_MANY_PROPERTY_NAMES);
     }
     const trimmed = [];
     for (const name of propertyNames) {
