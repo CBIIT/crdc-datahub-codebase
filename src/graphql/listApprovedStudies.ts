@@ -11,6 +11,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
     $controlledAccess: String
     $study: String
     $programID: ID
+    $status: String
   ) {
     listApprovedStudies(
       first: $first
@@ -21,6 +22,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
       controlledAccess: $controlledAccess
       study: $study
       programID: $programID
+      status: $status
     ) {
       total
       studies {
@@ -46,6 +48,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         useProgramPC
         pendingModelChange
         isPendingGPA
+        status
         createdAt
       }
     }
@@ -62,6 +65,7 @@ export type Input = {
   openAccess?: boolean;
   study?: string;
   programID?: string;
+  status?: "Active" | "Inactive";
 };
 
 export type Response = {
