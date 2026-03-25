@@ -60,6 +60,10 @@ type ApprovedStudy = {
    */
   GPAName: string;
   /**
+   * Indicates whether the study is currently active or inactive.
+   */
+  status: "Active" | "Inactive";
+  /**
    * Submission Request approval date or manual record creation date
    */
   createdAt: string;

@@ -20,6 +20,7 @@ export const baseApprovedStudy: ApprovedStudy = {
   pendingModelChange: false,
   isPendingGPA: false,
   GPAName: "",
+  status: "Active",
   createdAt: "",
 };
 
