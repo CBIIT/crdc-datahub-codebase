@@ -61,6 +61,7 @@ describe("Basic Functionality", () => {
     expect(mockOnSubmit).toHaveBeenCalledWith({
       reviewComment: "mock-comment",
       pendingModelChange: false,
+      pendingImageDeIdentification: false,
     });
   });
 
@@ -106,6 +107,7 @@ describe("Implementation Requirements", () => {
     expect(mockOnSubmit).toHaveBeenCalledWith({
       reviewComment: expect.stringMatching(/^X{500}$/),
       pendingModelChange: false,
+      pendingImageDeIdentification: false,
     });
     expect(mockOnSubmit).toHaveBeenCalledTimes(1);
   });
@@ -130,6 +132,7 @@ describe("Implementation Requirements", () => {
     expect(mockOnSubmit).toHaveBeenCalledWith({
       reviewComment: expect.stringMatching(/^X{500}$/),
       pendingModelChange: false,
+      pendingImageDeIdentification: false,
     });
     expect(mockOnSubmit).toHaveBeenCalledTimes(1);
   });
@@ -154,6 +157,7 @@ describe("Implementation Requirements", () => {
     expect(mockOnSubmit).toHaveBeenCalledWith({
       reviewComment: expect.stringMatching(/^X{10}$/),
       pendingModelChange: true,
+      pendingImageDeIdentification: false,
     });
     expect(mockOnSubmit).toHaveBeenCalledTimes(1);
   });

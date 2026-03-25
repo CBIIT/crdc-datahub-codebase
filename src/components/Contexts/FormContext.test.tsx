@@ -322,7 +322,11 @@ describe("approveForm Tests", () => {
 
     await act(async () => {
       const approveResp = await result.current.approveForm(
-        { reviewComment: "mock approval comment", pendingModelChange: false },
+        {
+          reviewComment: "mock approval comment",
+          pendingModelChange: false,
+          pendingImageDeIdentification: false,
+        },
         true
       );
       expect(approveResp).toEqual({
@@ -364,7 +368,7 @@ describe("approveForm Tests", () => {
 
     await act(async () => {
       const approveResp = await result.current.approveForm(
-        { reviewComment: "", pendingModelChange: false },
+        { reviewComment: "", pendingModelChange: false, pendingImageDeIdentification: false },
         true
       );
       expect(approveResp).toEqual({
@@ -398,7 +402,7 @@ describe("approveForm Tests", () => {
 
     await act(async () => {
       const approveResp = await result.current.approveForm(
-        { reviewComment: "", pendingModelChange: false },
+        { reviewComment: "", pendingModelChange: false, pendingImageDeIdentification: false },
         true
       );
       expect(approveResp).toEqual({
