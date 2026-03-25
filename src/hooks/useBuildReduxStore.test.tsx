@@ -3,7 +3,11 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import * as dmn from "data-model-navigator";
 import { vi } from "vitest";
 
-import { RETRIEVE_CDEs, RetrieveCDEsInput, RetrieveCDEsResp } from "@/graphql";
+import {
+  RETRIEVE_PVS_BY_PROPERTY_NAME,
+  RetrievePVsByPropertyNameInput,
+  RetrievePVsByPropertyNameResponse,
+} from "@/graphql";
 import * as utils from "@/utils";
 
 import useBuildReduxStore from "./useBuildReduxStore";
@@ -27,8 +31,8 @@ vi.mock("@/utils", async () => {
     buildAssetUrls: vi.fn(),
     buildBaseFilterContainers: vi.fn(),
     buildFilterOptionsList: vi.fn(),
-    extractSupportedCDEs: vi.fn(),
-    populateCDEData: vi.fn(),
+    extractModelProperties: vi.fn(),
+    populatePermissibleValues: vi.fn(),
   };
 });
 
@@ -68,8 +72,8 @@ describe("useBuildReduxStore", () => {
 
     vi.mocked(utils.buildBaseFilterContainers).mockReturnValue({});
     vi.mocked(utils.buildFilterOptionsList).mockReturnValue([]);
-    vi.mocked(utils.extractSupportedCDEs).mockReturnValue([]);
-    vi.mocked(utils.populateCDEData).mockImplementation(() => {});
+    vi.mocked(utils.extractModelProperties).mockReturnValue([]);
+    vi.mocked(utils.populatePermissibleValues).mockImplementation(() => {});
   });
 
   it("should initialize with status 'waiting'", () => {
@@ -123,17 +127,48 @@ describe("useBuildReduxStore", () => {
 
   it("should successfully populate store when all data is valid", async () => {
     const mockDictionary = { nodes: [], edges: [] };
-    const mockVersion = "1.0.0";
+    const mockVersion = { model: "1.0.0" };
     const mockChangelog = "# Changelog\n\n- Feature 1";
+    const mockPVs = [
+      { property: "property1", permissibleValues: ["value1", "value2"] },
+      { property: "property2", permissibleValues: ["value3", "value4"] },
+    ];
 
     vi.mocked(dmn.getModelExploreData).mockResolvedValue({
       data: mockDictionary,
       version: mockVersion,
     });
     vi.mocked(dmn.getChangelog).mockResolvedValue(mockChangelog);
+    vi.mocked(utils.extractModelProperties).mockReturnValue(["property1", "property2"]);
+
+    const mockPVResponse: MockedResponse<
+      RetrievePVsByPropertyNameResponse,
+      RetrievePVsByPropertyNameInput
+    > = {
+      request: {
+        query: RETRIEVE_PVS_BY_PROPERTY_NAME,
+      },
+      variableMatcher: (variables) => {
+        expect(variables).toEqual({
+          modelName: "TestModel",
+          modelVersion: "1.0.0",
+          propertyNames: ["property1", "property2"],
+        });
+        return true;
+      },
+      result: {
+        data: {
+          retrievePVsByPropertyName: mockPVs,
+        },
+      },
+    };
 
     const { result } = renderHook(() => useBuildReduxStore(), {
-      wrapper: ({ children }) => <MockedProvider>{children}</MockedProvider>,
+      wrapper: ({ children }) => (
+        <MockedProvider mocks={[mockPVResponse]} addTypename={false}>
+          {children}
+        </MockedProvider>
+      ),
     });
 
     const [, populateStore] = result.current;
@@ -148,21 +183,46 @@ describe("useBuildReduxStore", () => {
 
     expect(vi.mocked(dmn.getModelExploreData)).toHaveBeenCalled();
     expect(vi.mocked(dmn.getChangelog)).toHaveBeenCalled();
+    expect(vi.mocked(utils.extractModelProperties)).toHaveBeenCalledWith(mockDictionary);
+    expect(vi.mocked(utils.populatePermissibleValues)).toHaveBeenCalledWith(
+      mockDictionary,
+      ["property1", "property2"],
+      mockPVs
+    );
   });
 
   it("should dispatch RECEIVE_CHANGELOG_INFO when changelog is successfully retrieved", async () => {
     const mockDictionary = { nodes: [], edges: [] };
-    const mockVersion = "1.0.0";
+    const mockVersion = { model: "1.0.0" };
     const mockChangelog = "# Changelog\n\n- Feature 1";
+    const mockPVResponse: MockedResponse<
+      RetrievePVsByPropertyNameResponse,
+      RetrievePVsByPropertyNameInput
+    > = {
+      request: {
+        query: RETRIEVE_PVS_BY_PROPERTY_NAME,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          retrievePVsByPropertyName: [{ property: "property1", permissibleValues: ["value1"] }],
+        },
+      },
+    };
 
     vi.mocked(dmn.getModelExploreData).mockResolvedValue({
       data: mockDictionary,
       version: mockVersion,
     });
     vi.mocked(dmn.getChangelog).mockResolvedValue(mockChangelog);
+    vi.mocked(utils.extractModelProperties).mockReturnValue(["property1"]);
 
     const { result } = renderHook(() => useBuildReduxStore(), {
-      wrapper: ({ children }) => <MockedProvider>{children}</MockedProvider>,
+      wrapper: ({ children }) => (
+        <MockedProvider mocks={[mockPVResponse]} addTypename={false}>
+          {children}
+        </MockedProvider>
+      ),
     });
 
     const [{ store }, populateStore] = result.current;
@@ -189,16 +249,35 @@ describe("useBuildReduxStore", () => {
 
   it("should not dispatch RECEIVE_CHANGELOG_INFO when changelog retrieval fails", async () => {
     const mockDictionary = { nodes: [], edges: [] };
-    const mockVersion = "1.0.0";
+    const mockVersion = { model: "1.0.0" };
+    const mockPVResponse: MockedResponse<
+      RetrievePVsByPropertyNameResponse,
+      RetrievePVsByPropertyNameInput
+    > = {
+      request: {
+        query: RETRIEVE_PVS_BY_PROPERTY_NAME,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          retrievePVsByPropertyName: [{ property: "property1", permissibleValues: ["value1"] }],
+        },
+      },
+    };
 
     vi.mocked(dmn.getModelExploreData).mockResolvedValue({
       data: mockDictionary,
       version: mockVersion,
     });
     vi.mocked(dmn.getChangelog).mockResolvedValue(null);
+    vi.mocked(utils.extractModelProperties).mockReturnValue(["property1"]);
 
     const { result } = renderHook(() => useBuildReduxStore(), {
-      wrapper: ({ children }) => <MockedProvider>{children}</MockedProvider>,
+      wrapper: ({ children }) => (
+        <MockedProvider mocks={[mockPVResponse]} addTypename={false}>
+          {children}
+        </MockedProvider>
+      ),
     });
 
     const [{ store }, populateStore] = result.current;
@@ -219,12 +298,13 @@ describe("useBuildReduxStore", () => {
     );
   });
 
-  it("should retrieve and populate CDEs when supported CDEs are found", async () => {
+  it("should retrieve and populate permissible values from the property query", async () => {
     const mockDictionary = { nodes: [], edges: [] };
-    const mockVersion = "1.0.0";
-    const mockCDEs: CDEInfo[] = [
-      { CDECode: "CDE001", CDEVersion: "1.0", CDEOrigin: "caDSR" },
-      { CDECode: "CDE002", CDEVersion: "2.0", CDEOrigin: "caDSR" },
+    const mockVersion = { model: "1.0.0" };
+    const mockProperties = ["property1", "property2"];
+    const mockPVs = [
+      { property: "property1", permissibleValues: ["value1", "value2"] },
+      { property: "property2", permissibleValues: ["value3", "value4"] },
     ];
 
     vi.mocked(dmn.getModelExploreData).mockResolvedValue({
@@ -232,36 +312,26 @@ describe("useBuildReduxStore", () => {
       version: mockVersion,
     });
     vi.mocked(dmn.getChangelog).mockResolvedValue(null);
-    vi.mocked(utils.extractSupportedCDEs).mockReturnValue(mockCDEs);
+    vi.mocked(utils.extractModelProperties).mockReturnValue(mockProperties);
 
-    const mockCDEResponse: MockedResponse<RetrieveCDEsResp, RetrieveCDEsInput> = {
+    const mockPVResponse: MockedResponse<
+      RetrievePVsByPropertyNameResponse,
+      RetrievePVsByPropertyNameInput
+    > = {
       request: {
-        query: RETRIEVE_CDEs,
+        query: RETRIEVE_PVS_BY_PROPERTY_NAME,
       },
       variableMatcher: () => true,
       result: {
         data: {
-          retrieveCDEs: [
-            {
-              CDEFullName: "CDE 001 Full Name",
-              CDECode: "CDE001",
-              CDEVersion: "1.0",
-              PermissibleValues: ["value1", "value2"],
-            },
-            {
-              CDEFullName: "CDE 002 Full Name",
-              CDECode: "CDE002",
-              CDEVersion: "2.0",
-              PermissibleValues: ["value3", "value4"],
-            },
-          ],
+          retrievePVsByPropertyName: mockPVs,
         },
       },
     };
 
     const { result } = renderHook(() => useBuildReduxStore(), {
       wrapper: ({ children }) => (
-        <MockedProvider mocks={[mockCDEResponse]} addTypename={false}>
+        <MockedProvider mocks={[mockPVResponse]} addTypename={false}>
           {children}
         </MockedProvider>
       ),
@@ -277,46 +347,40 @@ describe("useBuildReduxStore", () => {
       expect(result.current[0].status).toBe("success");
     });
 
-    expect(vi.mocked(utils.extractSupportedCDEs)).toHaveBeenCalledWith(mockDictionary);
-    expect(vi.mocked(utils.populateCDEData)).toHaveBeenCalledWith(mockDictionary, [
-      {
-        CDEFullName: "CDE 001 Full Name",
-        CDECode: "CDE001",
-        CDEVersion: "1.0",
-        PermissibleValues: ["value1", "value2"],
-      },
-      {
-        CDEFullName: "CDE 002 Full Name",
-        CDECode: "CDE002",
-        CDEVersion: "2.0",
-        PermissibleValues: ["value3", "value4"],
-      },
-    ]);
+    expect(vi.mocked(utils.extractModelProperties)).toHaveBeenCalledWith(mockDictionary);
+    expect(vi.mocked(utils.populatePermissibleValues)).toHaveBeenCalledWith(
+      mockDictionary,
+      mockProperties,
+      mockPVs
+    );
   });
 
-  it("should handle CDE retrieval errors gracefully", async () => {
+  it("should handle permissible value retrieval errors gracefully", async () => {
     const mockDictionary = { nodes: [], edges: [] };
-    const mockVersion = "1.0.0";
-    const mockCDEs: CDEInfo[] = [{ CDECode: "CDE001", CDEVersion: "1.0", CDEOrigin: "caDSR" }];
+    const mockVersion = { model: "1.0.0" };
+    const mockProperties = ["property1"];
 
     vi.mocked(dmn.getModelExploreData).mockResolvedValue({
       data: mockDictionary,
       version: mockVersion,
     });
     vi.mocked(dmn.getChangelog).mockResolvedValue(null);
-    vi.mocked(utils.extractSupportedCDEs).mockReturnValue(mockCDEs);
+    vi.mocked(utils.extractModelProperties).mockReturnValue(mockProperties);
 
-    const mockCDEResponse: MockedResponse<RetrieveCDEsResp, RetrieveCDEsInput> = {
+    const mockPVResponse: MockedResponse<
+      RetrievePVsByPropertyNameResponse,
+      RetrievePVsByPropertyNameInput
+    > = {
       request: {
-        query: RETRIEVE_CDEs,
+        query: RETRIEVE_PVS_BY_PROPERTY_NAME,
       },
       variableMatcher: () => true,
-      error: new Error("CDE retrieval failed"),
+      error: new Error("PV retrieval failed"),
     };
 
     const { result } = renderHook(() => useBuildReduxStore(), {
       wrapper: ({ children }) => (
-        <MockedProvider mocks={[mockCDEResponse]} addTypename={false}>
+        <MockedProvider mocks={[mockPVResponse]} addTypename={false}>
           {children}
         </MockedProvider>
       ),
@@ -332,22 +396,46 @@ describe("useBuildReduxStore", () => {
       expect(result.current[0].status).toBe("success");
     });
 
-    expect(vi.mocked(utils.populateCDEData)).toHaveBeenCalledWith(mockDictionary, []);
+    expect(vi.mocked(utils.populatePermissibleValues)).toHaveBeenCalledWith(
+      mockDictionary,
+      mockProperties,
+      []
+    );
   });
 
-  it("should not attempt CDE retrieval when no supported CDEs are found", async () => {
+  it("should fall back to empty permissible values when API returns no data", async () => {
     const mockDictionary = { nodes: [], edges: [] };
-    const mockVersion = "1.0.0";
+    const mockVersion = { model: "1.0.0" };
+    const mockProperties = ["property1"];
 
     vi.mocked(dmn.getModelExploreData).mockResolvedValue({
       data: mockDictionary,
       version: mockVersion,
     });
     vi.mocked(dmn.getChangelog).mockResolvedValue(null);
-    vi.mocked(utils.extractSupportedCDEs).mockReturnValue([]);
+    vi.mocked(utils.extractModelProperties).mockReturnValue(mockProperties);
+
+    const mockPVResponse: MockedResponse<
+      RetrievePVsByPropertyNameResponse,
+      RetrievePVsByPropertyNameInput
+    > = {
+      request: {
+        query: RETRIEVE_PVS_BY_PROPERTY_NAME,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          retrievePVsByPropertyName: [],
+        },
+      },
+    };
 
     const { result } = renderHook(() => useBuildReduxStore(), {
-      wrapper: ({ children }) => <MockedProvider>{children}</MockedProvider>,
+      wrapper: ({ children }) => (
+        <MockedProvider mocks={[mockPVResponse]} addTypename={false}>
+          {children}
+        </MockedProvider>
+      ),
     });
 
     const [, populateStore] = result.current;
@@ -360,23 +448,46 @@ describe("useBuildReduxStore", () => {
       expect(result.current[0].status).toBe("success");
     });
 
-    expect(vi.mocked(utils.extractSupportedCDEs)).toHaveBeenCalledWith(mockDictionary);
-    expect(vi.mocked(utils.populateCDEData)).not.toHaveBeenCalled();
+    expect(vi.mocked(utils.extractModelProperties)).toHaveBeenCalledWith(mockDictionary);
+    expect(vi.mocked(utils.populatePermissibleValues)).toHaveBeenCalledWith(
+      mockDictionary,
+      mockProperties,
+      []
+    );
   });
 
   it("should dispatch all required actions when both changelog and model data succeed", async () => {
     const mockDictionary = { nodes: [], edges: [] };
-    const mockVersion = "1.0.0";
+    const mockVersion = { model: "1.0.0" };
     const mockChangelog = "# Changelog";
+    const mockPVResponse: MockedResponse<
+      RetrievePVsByPropertyNameResponse,
+      RetrievePVsByPropertyNameInput
+    > = {
+      request: {
+        query: RETRIEVE_PVS_BY_PROPERTY_NAME,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          retrievePVsByPropertyName: [{ property: "property1", permissibleValues: ["value1"] }],
+        },
+      },
+    };
 
     vi.mocked(dmn.getModelExploreData).mockResolvedValue({
       data: mockDictionary,
       version: mockVersion,
     });
     vi.mocked(dmn.getChangelog).mockResolvedValue(mockChangelog);
+    vi.mocked(utils.extractModelProperties).mockReturnValue(["property1"]);
 
     const { result } = renderHook(() => useBuildReduxStore(), {
-      wrapper: ({ children }) => <MockedProvider>{children}</MockedProvider>,
+      wrapper: ({ children }) => (
+        <MockedProvider mocks={[mockPVResponse]} addTypename={false}>
+          {children}
+        </MockedProvider>
+      ),
     });
 
     const [{ store }, populateStore] = result.current;
