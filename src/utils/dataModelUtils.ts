@@ -1,8 +1,8 @@
-import { chain, values } from "lodash";
+import { chain, keys } from "lodash";
 
-import { MODEL_FILE_REPO } from "../config/DataCommons";
-import env from "../env";
-import { RetrieveCDEsResp } from "../graphql";
+import { MODEL_FILE_REPO } from "@/config/DataCommons";
+import env from "@/env";
+import { RetrievePVsByPropertyNameResponse } from "@/graphql";
 
 import { Logger } from "./logger";
 
@@ -136,101 +136,73 @@ export const buildFilterOptionsList = (config: ModelNavigatorConfig): string[] =
 };
 
 /**
- * A utility to populate CDE data into the dictionary.
+ * A utility to extract all unique property names from the MDF dictionary.
  *
- * Key details on handling:
- * 1. Updates the Value field (CDE Name)
- * 2. Updates the property enum
- * 3. Updates the property type
- *
- * @param dictionary the MDF dictionary to populate with data
- * @param data the API response data
+ * @param dictionary the MDF dictionary to extract property names from
+ * @returns An array of unique property names
  */
-export const populateCDEData = (
-  dictionary: MDFDictionary,
-  data: RetrieveCDEsResp["retrieveCDEs"]
-): void => {
-  if (!dictionary || Object.keys(dictionary).length === 0) {
-    return;
-  }
-
-  const mappedCDEs = new Map<string, RetrieveCDEsResp["retrieveCDEs"][number]>();
-  data?.forEach((cde) => {
-    mappedCDEs.set(`${cde.CDECode}:${cde.CDEVersion}`, cde);
-  });
-
-  Object.values(dictionary)
-    .flatMap((node) => Object.values(node?.properties ?? {}))
-    .forEach((prop) => {
-      if (!Array.isArray(prop?.Term)) {
-        return;
-      }
-      prop.Term?.forEach((term) => {
-        const apiData = mappedCDEs.get(`${term.Code}:${term.Version}`);
-
-        if (!isSupportedOrigin(term)) {
-          return;
-        }
-
-        if (apiData) {
-          // Update CDE Name
-          term.Value = apiData.CDEFullName;
-
-          // Populate Permissible Values if available from API
-          if (Array.isArray(apiData.PermissibleValues) && apiData.PermissibleValues.length > 0) {
-            prop.enum = apiData.PermissibleValues;
-            // Permissible Values from API are empty, convert property to "string" type
-          } else if (
-            Array.isArray(apiData.PermissibleValues) &&
-            apiData.PermissibleValues.length === 0 &&
-            prop.enum
-          ) {
-            delete prop.enum;
-            prop.type = "string";
-          }
-        } else if (!apiData && prop.enum) {
-          Logger.error("dataModelUtils: Unable to match CDE for property", prop, term);
-          prop.enum = [
-            "Permissible values are currently not available. Please contact the CRDC Submission Portal HelpDesk at NCICRDCHelpDesk@mail.nih.gov",
-          ];
-        }
-      });
-    });
-};
-
-/**
- * A utility to extract all unique caDSR CDEs from the MDF dictionary.
- *
- * @note Since the only supported CDE Origin is "caDSR", we ignore the uniqueness of the Origin field.
- * @param dictionary the MDF dictionary to extract CDEs from
- * @return An array of objects containing the CDE Code/Version/Origin
- */
-export const extractSupportedCDEs = (dictionary: MDFDictionary): CDEInfo[] => {
+export const extractModelProperties = (dictionary: MDFDictionary): string[] => {
   if (!dictionary || Object.keys(dictionary).length === 0) {
     return [];
   }
 
   return chain(dictionary)
     .values()
-    .flatMap((node) => values(node?.properties ?? {}))
-    .flatMap("Term")
-    .filter((t) => t?.Code && t?.Version && t?.Origin)
-    .filter(isSupportedOrigin)
-    .uniqBy((t) => `${t.Code}:${t.Version}`)
-    .map((t) => ({
-      CDECode: t.Code,
-      CDEVersion: t.Version,
-      CDEOrigin: t.Origin,
-    }))
+    .flatMap((node) => keys(node?.properties ?? {}))
+    .uniq()
     .value();
 };
 
-/**
- * A base utility to determine if a CDE origin is supported.
- *
- * @param term The CDE term to check
- * @returns True if the origin is supported, false otherwise
- */
-const isSupportedOrigin = (
-  term: MDFDictionary[number]["properties"][number]["Term"][number]
-): boolean => term?.Origin?.toLowerCase()?.indexOf("cadsr") >= 0;
+export const populatePermissibleValues = (
+  dictionary: MDFDictionary,
+  properties: string[],
+  data: RetrievePVsByPropertyNameResponse["retrievePVsByPropertyName"]
+): void => {
+  if (!dictionary || Object.keys(dictionary).length === 0) {
+    return;
+  }
+
+  // Map requested properties to their permissible values for faster lookup during dictionary population
+  const mappedPVs = new Map<string, string[] | null>();
+  properties.forEach((propertyName) => {
+    mappedPVs.set(
+      propertyName,
+      data?.find(({ property }) => property === propertyName)?.permissibleValues || null
+    );
+  });
+
+  chain(dictionary)
+    .values()
+    .flatMap((node) =>
+      chain(node?.properties ?? {})
+        .toPairs()
+        .map(([propertyName, property]) => ({ propertyName, property }))
+        .value()
+    )
+    .value()
+    .forEach(({ propertyName, property }) => {
+      const permissibleValues = mappedPVs.get(propertyName);
+      if (permissibleValues) {
+        // Populate Permissible Values if available from API
+        if (Array.isArray(permissibleValues) && permissibleValues.length > 0) {
+          property.enum = permissibleValues;
+          // Permissible Values from API are empty, convert property to "string" type
+        } else if (
+          Array.isArray(permissibleValues) &&
+          permissibleValues.length === 0 &&
+          property.enum
+        ) {
+          delete property.enum;
+          property.type = "string";
+        }
+        // The API did not return data for this property, but it has an enum defined in the MDF.
+        // This likely means the API is missing data for this property.
+        // Update the enum to reflect that permissible values are not currently available.
+      } else if (!permissibleValues && property.enum) {
+        Logger.error("dataModelUtils: Unable to match CDE for property", property, propertyName);
+        property.enum = [
+          "Permissible values are currently not available. Please contact the CRDC Submission Portal HelpDesk at NCICRDCHelpDesk@mail.nih.gov",
+        ];
+      }
+    });
+};
