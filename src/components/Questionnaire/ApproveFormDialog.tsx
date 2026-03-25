@@ -81,6 +81,7 @@ const StyledOutlinedInput = styled(BaseOutlinedInput, {
 
 export type FormInput = {
   pendingModelChange: boolean;
+  pendingImageDeIdentification: boolean;
   reviewComment: string;
 };
 
@@ -102,6 +103,7 @@ const ApproveFormDialog: FC<Props> = ({ open, loading, onCancel, onSubmit, onClo
     reValidateMode: "onSubmit",
     defaultValues: {
       pendingModelChange: false,
+      pendingImageDeIdentification: false,
       reviewComment: "",
     },
   });
@@ -200,6 +202,34 @@ const ApproveFormDialog: FC<Props> = ({ open, loading, onCancel, onSubmit, onClo
       {errors?.pendingModelChange?.message?.length > 0 && (
         <StyledHelperText data-testid="pending-model-change-dialog-error">
           {errors.pendingModelChange.message}
+        </StyledHelperText>
+      )}
+
+      <Controller
+        name="pendingImageDeIdentification"
+        control={control}
+        render={({ field }) => (
+          <FormControlLabel
+            control={
+              <StyledCheckbox
+                {...field}
+                checkedIcon={<CheckedIcon readOnly={loading} />}
+                icon={<UncheckedIcon readOnly={loading} />}
+                disabled={loading}
+                inputProps={
+                  {
+                    "data-testid": "pendingImageDeIdentification-checkbox",
+                  } as CheckboxProps["inputProps"]
+                }
+              />
+            }
+            label="Require Image De-identification Protocol"
+          />
+        )}
+      />
+      {errors?.pendingImageDeIdentification?.message?.length > 0 && (
+        <StyledHelperText data-testid="pending-image-de-identification-dialog-error">
+          {errors.pendingImageDeIdentification.message}
         </StyledHelperText>
       )}
     </StyledDialog>

@@ -312,6 +312,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         comment: data?.reviewComment,
         wholeProgram,
         pendingModelChange: data?.pendingModelChange,
+        pendingImageDeIdentification: data?.pendingImageDeIdentification,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 
