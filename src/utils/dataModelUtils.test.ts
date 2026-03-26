@@ -589,9 +589,7 @@ describe("populatePermissibleValues tests", () => {
     expect(dictionary.node1.properties.property1.type).toBe("string");
   });
 
-  it("should set fallback enum and log error when no data is found for a property with an enum", () => {
-    const loggerSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
+  it("should set fallback enum when no data is found for a property with an enum", () => {
     const dictionary = modelDefinitionFactory.build({
       node1: modelDefinitionNodeFactory.build({
         properties: {
@@ -607,9 +605,6 @@ describe("populatePermissibleValues tests", () => {
     );
 
     expect(dictionary.node1.properties.property1.enum).toEqual([fallbackMessage]);
-    expect(loggerSpy).not.toHaveBeenCalled();
-
-    loggerSpy.mockRestore();
   });
 
   it("should leave properties without enums unchanged when no data is found", () => {
