@@ -72,14 +72,24 @@ class Organization {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
       throw new Error(ERROR.NOT_LOGGED_IN)
     }
-    const {first, offset, orderBy, sortDirection, status} = params;
-    const validStatuses = [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE];
-    if (status !== this._ALL && !validStatuses.includes(status)) {
-      throw new Error(replaceErrorString(ERROR.INVALID_PROGRAM_STATUS, status));
+    const {first, offset, orderBy, sortDirection, status: statusRaw} = params;
+    let status = statusRaw;
+    if (status === undefined || status === null || (typeof status === "string" && status.trim() === "")) {
+      status = this._ALL;
     }
-
-    const statusCondition = status && status !== this._ALL ?
-      {status: status} : {status: {$in: validStatuses}};
+    const normalizedStatus = String(status).trim().toLowerCase();
+    let statusCondition;
+    if (normalizedStatus === this._ALL.toLowerCase()) {
+      statusCondition = {status: {$in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE]}};
+    } else if (normalizedStatus === ORGANIZATION.STATUSES.ACTIVE.toLowerCase()) {
+      statusCondition = {status: ORGANIZATION.STATUSES.ACTIVE};
+    } else if (normalizedStatus === ORGANIZATION.STATUSES.INACTIVE.toLowerCase()) {
+      statusCondition = {status: ORGANIZATION.STATUSES.INACTIVE};
+    } else {
+      throw new Error(
+        replaceErrorString(ERROR.INVALID_PROGRAM_STATUS, String(params?.status ?? "").trim() || normalizedStatus)
+      );
+    }
 
     const programList = await this.programDAO.listPrograms(first, offset, orderBy, sortDirection, statusCondition);
     return {
@@ -122,17 +132,42 @@ class Organization {
    */
   async editOrganization(orgID, params) {
     const currentOrg = await this.getOrganizationByID(orgID);
-    // Check for read-only violation
+    if (!currentOrg) {
+      throw new Error(ERROR.ORG_NOT_FOUND);
+    }
     if (this.checkForReadOnlyViolation(currentOrg, params)) {
       throw new Error(ERROR.CANNOT_UPDATE_READ_ONLY_PROGRAM);
     }
     const updatedOrg = {updateAt: getCurrentTime()};
-    if (!currentOrg) {
-      throw new Error(ERROR.ORG_NOT_FOUND);
-    }
+
+    const attemptingToSetInactive =
+      typeof params?.status === "string" && params.status === ORGANIZATION.STATUSES.INACTIVE;
+    const attemptingToSetActive =
+      typeof params?.status === "string" && params.status === ORGANIZATION.STATUSES.ACTIVE;
 
     if (!currentOrg?.abbreviation && !params?.abbreviation?.trim()) {
       throw new Error(ERROR.ORGANIZATION_INVALID_ABBREVIATION);
+    }
+
+    if (currentOrg?.name?.trim()?.toLowerCase() === NA_PROGRAM.toLowerCase() && attemptingToSetInactive) {
+      throw new Error(ERROR.NA_PROGRAM_CANNOT_BE_INACTIVATED);
+    }
+
+    if (attemptingToSetInactive) {
+      if (params?.studies?.length > 0) {
+        throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
+      }
+      const studyCount = await this.approvedStudyDAO.count({ programID: orgID });
+      if (studyCount > 0) {
+        throw new Error(ERROR.PROGRAM_CANNOT_INACTIVATE_WITH_STUDIES);
+      }
+    }
+
+    // Reject study assignment while program is inactive before any DB write (unless reactivating in this request)
+    if (params?.studies?.length > 0) {
+      if (!attemptingToSetActive && currentOrg?.status === ORGANIZATION.STATUSES.INACTIVE) {
+        throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
+      }
     }
 
     if (params?.name?.toLowerCase() !== currentOrg.name?.toLowerCase()) {
@@ -341,6 +376,11 @@ class Organization {
     
     if (studyIDs.length === 0) {
       return;
+    }
+
+    const targetProgram = await this.getOrganizationByID(orgID);
+    if (targetProgram?.status === ORGANIZATION.STATUSES.INACTIVE) {
+      throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
     }
 
     // First, verify that all provided studyIDs exist

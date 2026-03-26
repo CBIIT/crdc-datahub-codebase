@@ -31,5 +31,8 @@ module.exports = Object.freeze({
         CANNOT_UPDATE_READ_ONLY_PROGRAM: "This program is read only and cannot be updated or deactivated.",
         UPDATE_FAILED_STUDY_IDS_NOT_EXIST: "Update failed, these provided study IDs do not exist",
         NOT_ALL_STUDIES_UPDATED: "Not all studies were updated successfully, please see the logs for additional information.",
+        PROGRAM_CANNOT_INACTIVATE_WITH_STUDIES: "This program has assigned studies, all studies must be reassigned before it can be set to inactive.",
+        STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM: "Studies cannot be assigned to an inactive program.",
+        NA_PROGRAM_CANNOT_BE_INACTIVATED: "The system NA program cannot be set to inactive.",
     },
 });
