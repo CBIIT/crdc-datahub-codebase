@@ -960,6 +960,9 @@ describe("Submission.createSubmission", () => {
         // Mock _findByID to return the created submission
         submissionService._findByID = jest.fn().mockResolvedValue({ _id: "submission1", ...mockParams });
 
+        const { getDataCommonsDisplayNamesForSubmission: mockDisplayNamesForSubmission } = require('../../utility/data-commons-remapper');
+        mockDisplayNamesForSubmission.mockImplementation((submission) => submission);
+
         // Patch global.ERROR if not present
         // if (!global.ERROR) {
         //     global.ERROR = ERROR;

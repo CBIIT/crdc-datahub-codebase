@@ -51,6 +51,8 @@ const {replaceErrorString} = require("../utility/string-util");
 const {ADMIN} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {Release} = require("../services/release-service");
 const DataModelService = require("../services/data-model-service");
+const PropertyPVDAO = require("../dao/propertyPV");
+const { PropertyPVService } = require("../services/property-pv-service");
 
 // Create schema with constraint directive
 const schema = constraintDirective()(
@@ -75,6 +77,8 @@ dbConnector.connect().then(async () => {
 
     const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
     const configurationService = new ConfigurationService();
+    const propertyPVDAO = new PropertyPVDAO();
+    const propertyPVService = new PropertyPVService(configurationService, propertyPVDAO);
     const authorizationService = new AuthorizationService(configurationService);
     const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
     const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
@@ -263,6 +267,7 @@ dbConnector.connect().then(async () => {
         getOMB: configurationService.getOMB.bind(configurationService),
         downloadAllReleasedNodes: releaseService.downloadAllReleasedNodes.bind(releaseService),
         getSubmissionSummary: submissionService.getSubmissionSummary.bind(submissionService),
+        retrievePVsByPropertyName: propertyPVService.retrievePVsByPropertyName.bind(propertyPVService),
     };
 });
 
