@@ -203,7 +203,7 @@ export const populatePermissibleValues = (
         // This likely means the API is missing data for this property.
         // Update the enum to reflect that permissible values are not currently available.
       } else if (!permissibleValues && property.enum) {
-        Logger.error("dataModelUtils: Unable to match CDE for property", property, propertyName);
+        Logger.error("No permissible values returned for property", propertyName, property);
         property.enum = [
           "Permissible values are currently not available. Please contact the CRDC Submission Portal HelpDesk at NCICRDCHelpDesk@mail.nih.gov",
         ];
