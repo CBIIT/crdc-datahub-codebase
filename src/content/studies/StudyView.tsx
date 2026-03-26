@@ -225,6 +225,7 @@ type FormInput = Pick<
   | "controlledAccess"
   | "useProgramPC"
   | "pendingModelChange"
+  | "pendingImageDeIdentification"
   | "GPAName"
 > & { primaryContactID: string; program: Organization };
 
@@ -261,6 +262,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       openAccess: false,
       controlledAccess: false,
       pendingModelChange: false,
+      pendingImageDeIdentification: false,
       GPAName: "",
     },
   });
@@ -311,6 +313,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
           controlledAccess,
           useProgramPC,
           pendingModelChange,
+          pendingImageDeIdentification,
           GPAName,
         } = data?.getApprovedStudy || {};
 
@@ -331,6 +334,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
           useProgramPC,
           primaryContactID: primaryContact?._id,
           pendingModelChange,
+          pendingImageDeIdentification,
           GPAName,
         });
       },
@@ -389,6 +393,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
     program,
     primaryContactID,
     pendingModelChange,
+    pendingImageDeIdentification,
     GPAName,
   }: FormInput) => {
     reset({
@@ -402,6 +407,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       program: program || null,
       primaryContactID: primaryContactID || "",
       pendingModelChange: pendingModelChange || false,
+      pendingImageDeIdentification: pendingImageDeIdentification || false,
       GPAName: GPAName || "",
     });
   };
@@ -848,6 +854,31 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                             />
                           }
                           label="Pending on Data Model Update"
+                        />
+                      )}
+                    />
+
+                    <Controller
+                      name="pendingImageDeIdentification"
+                      control={control}
+                      render={({ field }) => (
+                        <StyledFormControlLabel
+                          control={
+                            <StyledCheckbox
+                              {...field}
+                              checked={!!field.value}
+                              onChange={(_, checked) => field.onChange(checked)}
+                              checkedIcon={<CheckedIcon readOnly={saving || retrievingStudy} />}
+                              icon={<UncheckedIcon readOnly={saving || retrievingStudy} />}
+                              disabled={saving || retrievingStudy}
+                              inputProps={
+                                {
+                                  "data-testid": "pendingConditions-imageDeIdentification-checkbox",
+                                } as unknown
+                              }
+                            />
+                          }
+                          label="Pending on Image De-identification Protocol"
                         />
                       )}
                     />

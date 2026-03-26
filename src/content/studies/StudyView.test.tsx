@@ -414,6 +414,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
         },
@@ -518,6 +519,7 @@ describe("StudyView Component", () => {
             useProgramPC: true,
             createdAt: "",
             pendingModelChange: false,
+            pendingImageDeIdentification: false,
             GPAName: "GPA Name",
           }),
         },
@@ -543,6 +545,7 @@ describe("StudyView Component", () => {
           primaryContactID: undefined,
           useProgramPC: true,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "GPA Name",
           isPendingGPA: false,
         },
@@ -611,6 +614,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "",
           isPendingGPA: false,
         },
@@ -701,6 +705,7 @@ describe("StudyView Component", () => {
             useProgramPC: true,
             createdAt: "",
             pendingModelChange: false,
+            pendingImageDeIdentification: false,
             GPAName: "Test GPA Name",
           }),
         },
@@ -726,6 +731,7 @@ describe("StudyView Component", () => {
           primaryContactID: undefined,
           useProgramPC: true,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
         },
@@ -792,6 +798,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "",
           isPendingGPA: false,
         },
@@ -981,6 +988,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "",
           isPendingGPA: false,
         },
@@ -1069,6 +1077,7 @@ describe("StudyView Component", () => {
             useProgramPC: true,
             createdAt: "",
             pendingModelChange: false,
+            pendingImageDeIdentification: false,
             GPAName: "Test GPA Name",
           }),
         },
@@ -1094,6 +1103,7 @@ describe("StudyView Component", () => {
           primaryContactID: undefined,
           useProgramPC: true,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
         },
@@ -1151,6 +1161,20 @@ describe("StudyView Component", () => {
     expect(getByTestId("pendingConditions-checkbox")).toBeInTheDocument();
   });
 
+  it("renders the pending image de-identification checkbox", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <TestParent>
+        <StudyView _id="new" />
+      </TestParent>
+    );
+
+    await waitFor(async () => {
+      expect(queryByTestId("study-view-suspense-loader")).not.toBeInTheDocument();
+    });
+
+    expect(getByTestId("pendingConditions-imageDeIdentification-checkbox")).toBeInTheDocument();
+  });
+
   it("allows toggling the pendingModelChange checkbox", async () => {
     const { getByTestId, queryByTestId } = render(
       <TestParent>
@@ -1163,6 +1187,30 @@ describe("StudyView Component", () => {
     });
 
     const checkbox = getByTestId("pendingConditions-checkbox") as HTMLInputElement;
+
+    expect(checkbox.checked).toBe(false);
+
+    userEvent.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+
+    userEvent.click(checkbox);
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it("allows toggling the pending image de-identification checkbox", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <TestParent>
+        <StudyView _id="new" />
+      </TestParent>
+    );
+
+    await waitFor(async () => {
+      expect(queryByTestId("study-view-suspense-loader")).not.toBeInTheDocument();
+    });
+
+    const checkbox = getByTestId(
+      "pendingConditions-imageDeIdentification-checkbox"
+    ) as HTMLInputElement;
 
     expect(checkbox.checked).toBe(false);
 
@@ -1192,6 +1240,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: true,
+          pendingImageDeIdentification: true,
           GPAName: "",
           isPendingGPA: false,
         },
@@ -1233,6 +1282,7 @@ describe("StudyView Component", () => {
     userEvent.click(getByTestId("openAccess-checkbox"));
     userEvent.click(getByTestId("sameAsProgramPrimaryContact-checkbox"));
     userEvent.click(getByTestId("pendingConditions-checkbox"));
+    userEvent.click(getByTestId("pendingConditions-imageDeIdentification-checkbox"));
     userEvent.click(primaryContactIDSelect);
 
     let muiSelectOptions;
@@ -1276,6 +1326,7 @@ describe("StudyView Component", () => {
             useProgramPC: true,
             createdAt: "",
             pendingModelChange: false,
+            pendingImageDeIdentification: false,
             GPAName: "Test GPA Name",
           }),
         },
@@ -1301,6 +1352,7 @@ describe("StudyView Component", () => {
           primaryContactID: undefined,
           useProgramPC: true,
           pendingModelChange: true,
+          pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
         },

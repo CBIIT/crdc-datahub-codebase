@@ -127,6 +127,10 @@ const columns: Column<ApprovedStudy>[] = [
           tooltip: "Data submission is Pending on Data Model Update.",
         },
         {
+          check: a.pendingImageDeIdentification,
+          tooltip: "Data submission is Pending on Image De-identification Protocol.",
+        },
+        {
           check: a.isPendingGPA,
           tooltip: "Data submission is Pending on GPA info.",
         },
