@@ -162,13 +162,17 @@ export const populatePermissibleValues = (
     return;
   }
 
-  // Map requested properties to their permissible values for faster lookup during dictionary population
+  // Create a mapping of API-provided property names to their permissible values for efficient lookup
+  const propertyToPVs = new Map<string, string[] | null>();
+  data?.forEach(({ property, permissibleValues }) => {
+    propertyToPVs.set(property, permissibleValues ?? null);
+  });
+
+  // Map the REQUESTED properties to their corresponding permissible values from the API
+  // If the requested property is not found in the API response, it will be set to null to indicate missing data
   const mappedPVs = new Map<string, string[] | null>();
   properties.forEach((propertyName) => {
-    mappedPVs.set(
-      propertyName,
-      data?.find(({ property }) => property === propertyName)?.permissibleValues || null
-    );
+    mappedPVs.set(propertyName, propertyToPVs.get(propertyName) ?? null);
   });
 
   chain(dictionary)
