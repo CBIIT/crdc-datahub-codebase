@@ -2,12 +2,12 @@
 
 ## 3.6.0 (Released 05/21/2026)
 
-### Submission Request
+#### Submission Request
 
 - Enhanced study filter to search by both study name and abbreviation
     for improved flexibility.
 
-### Data Submission
+#### Data Submission
 
 - Added study name and acronym search capability alongside dbGaP ID to
     help users locate specific submissions more efficiently.
@@ -28,24 +28,24 @@
 - Metadata validation performance significantly improved through
     parallel processing and batch validation for large submissions.
 
-### Data Model Navigator
+#### Data Model Navigator
 
 - System now automatically detects and displays model version history
     when a version-history.md file exists in the data model repository.
 
-### Operations Dashboard
+#### Operations Dashboard
 
 - Added accumulative mode to Data Submission Metrics, displaying
     all-time totals by default with optional date range filtering.
 - Enhanced tooltips for control labels and status legends for better
     user guidance.
 
-### MDB/STS Integration
+#### MDB/STS Integration
 
 - Updated all MDB/STS API calls to version 2 for improved
     compatibility and performance.
 
-### Research & Technical Improvements
+#### Research & Technical Improvements
 
 - Completed research assessment for migrating self-hosted MongoDB to
     AWS DocumentDB, evaluating compatibility, performance, and
