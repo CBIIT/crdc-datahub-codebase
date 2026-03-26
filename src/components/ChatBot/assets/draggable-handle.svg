@@ -1,0 +1,15 @@
+<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="dropShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2.5" flood-color="rgba(0, 0, 0, 0.08)" />
+    </filter>
+  </defs>
+  <g filter="url(#dropShadow)">
+    <path
+      d="M7.70755 17.2928C7.07761 17.9228 6.00047 17.4767 6.00044 16.5858L6.00004 7.00004C6.00002 6.44774 6.44774 6 7.00004 6L16.5858 6C17.4767 6 17.9229 7.07713 17.293 7.70709L7.70755 17.2928Z"
+      fill="white" />
+    <path
+      d="M7.53125 17.1162C7.05883 17.5886 6.25016 17.254 6.25 16.5859L6.25 7C6.25 6.5858 6.5858 6.25002 7 6.25L16.5859 6.25C17.254 6.25007 17.5886 7.05781 17.1162 7.53027L7.53125 17.1162Z"
+      stroke="#C6C6C6" stroke-width="0.5" />
+  </g>
+</svg>
