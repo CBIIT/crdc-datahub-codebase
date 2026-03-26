@@ -1,6 +1,6 @@
 const {ERROR} = require("../constants/error-constants");
 const {USER} = require("../constants/user-constants");
-const {ORGANIZATION, NA_PROGRAM} = require("../constants/organization-constants");
+const {ORGANIZATION} = require("../constants/organization-constants");
 const {getCurrentTime} = require("../utility/time-utility");
 const {getDataCommonsDisplayNamesForUserOrganization} = require("../../utility/data-commons-remapper");
 const {replaceErrorString} = require("../../utility/string-util");
@@ -149,10 +149,6 @@ class Organization {
       throw new Error(ERROR.ORGANIZATION_INVALID_ABBREVIATION);
     }
 
-    if (currentOrg?.name?.trim()?.toLowerCase() === NA_PROGRAM.toLowerCase() && attemptingToSetInactive) {
-      throw new Error(ERROR.NA_PROGRAM_CANNOT_BE_INACTIVATED);
-    }
-
     if (attemptingToSetInactive) {
       if (params?.studies?.length > 0) {
         throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
@@ -170,12 +166,18 @@ class Organization {
       }
     }
 
-    if (params?.name?.toLowerCase() !== currentOrg.name?.toLowerCase()) {
-      const existingOrg = await this.getOrganizationByName(params.name);
-      if (existingOrg) {
-        throw new Error(ERROR.DUPLICATE_ORG_NAME);
+    if (typeof params?.name === "string") {
+      const trimmedName = params.name.trim();
+      if (
+        trimmedName &&
+        trimmedName.toLowerCase() !== currentOrg.name?.toLowerCase()
+      ) {
+        const existingOrg = await this.getOrganizationByName(trimmedName);
+        if (existingOrg) {
+          throw new Error(ERROR.DUPLICATE_ORG_NAME);
+        }
+        updatedOrg.name = trimmedName;
       }
-      updatedOrg.name = params.name;
     }
 
     const conciergeProvided = typeof params.conciergeID !== "undefined";
