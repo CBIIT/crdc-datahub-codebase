@@ -11,28 +11,20 @@
 
 - Added study name and acronym search capability alongside dbGaP ID to
     help users locate specific submissions more efficiently.
-
 - Users can now navigate directly to Submission Request Forms from the
     Data Submissions list through clickable form icons.
-
 - Added \"Clear All\" functionality to Status multi-select filters for
     faster filter management.
-
 - Users can now export Data Submissions lists to CSV format with
     current filter and sort criteria applied.
-
 - Validation now accepts standard Null CDE permissible values for
     consistent handling of missing data scenarios.
-
 - Submitters can now use alternate permissible values listed in CDEs
     during validation.
-
 - Validation now supports \"Draft New\" status CDEs to prevent
     submission delays while CDEs are being finalized.
-
 - API tokens have been optimized to support all submitter profiles
     regardless of the number of assigned studies.
-
 - Metadata validation performance significantly improved through
     parallel processing and batch validation for large submissions.
 
@@ -45,7 +37,6 @@
 
 - Added accumulative mode to Data Submission Metrics, displaying
     all-time totals by default with optional date range filtering.
-
 - Enhanced tooltips for control labels and status legends for better
     user guidance.
 
