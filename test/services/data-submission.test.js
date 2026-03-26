@@ -1001,6 +1001,22 @@ describe("Submission.createSubmission", () => {
         expect(mockSubmissionDAO.create).toHaveBeenCalled();
     });
 
+    it("should throw when study program is inactive", async () => {
+        submissionService._getUserScope.mockResolvedValueOnce({
+            isNoneScope: () => false,
+            isAllScope: () => true,
+            isOwnScope: () => false,
+            isStudyScope: () => false,
+            isDCScope: () => false
+        });
+        mockOrganizationService.findOneByStudyID.mockResolvedValue({ ...mockProgram, status: "Inactive" });
+
+        await expect(submissionService.createSubmission(mockParams, mockContext)).rejects.toThrow(
+            ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM
+        );
+        expect(mockSubmissionDAO.create).not.toHaveBeenCalled();
+    });
+
     it("should allow submission creation for user with OWN scope and assigned study", async () => {
         submissionService._getUserScope.mockResolvedValueOnce({
             isNoneScope: () => false,

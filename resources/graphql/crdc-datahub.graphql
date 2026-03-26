@@ -954,7 +954,7 @@ type Query {
     getUser(userID: ID!): User
 
     listPrograms(
-        status: String!, # ["All", "Active", "Inactive"]
+        status: String = "All", # All | Active | Inactive (case-insensitive); other values error
         first: Int = -1
         offset: Int = 0
         orderBy: String = "updateAt"

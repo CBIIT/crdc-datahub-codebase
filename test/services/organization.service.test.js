@@ -2,7 +2,7 @@ const { Organization } = require('../../crdc-datahub-database-drivers/services/o
 const { ORGANIZATION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
 const {ERROR : SUBMODULE_ERROR}  = require('../../crdc-datahub-database-drivers/constants/error-constants');
 const ERROR = require('../../constants/error-constants');
-const {replaceErrorString} = require("../../utility/string-util");
+const {replaceErrorString} = require('../../utility/string-util');
 
 jest.mock('../../utility/data-commons-remapper', () => ({
   getDataCommonsDisplayNamesForUserOrganization: jest.fn((org) => org)
@@ -63,10 +63,16 @@ describe('Organization.listPrograms', () => {
     const result = await organization.listPrograms(params, context);
     expect(result.total).toBe(1);
     expect(result.programs).toEqual(mockPrograms);
-    expect(mockProgramDAO.listPrograms).toHaveBeenCalled();
+    expect(mockProgramDAO.listPrograms).toHaveBeenCalledWith(
+      10,
+      0,
+      'name',
+      'asc',
+      { status: ORGANIZATION.STATUSES.ACTIVE }
+    );
   });
 
-  it('should throw error for invalid status', async () => {
+  it('should throw for invalid status input', async () => {
     const params = {
       first: 10,
       offset: 0,
@@ -74,7 +80,66 @@ describe('Organization.listPrograms', () => {
       sortDirection: 'asc',
       status: 'INVALID_STATUS'
     };
-    await expect(organization.listPrograms(params, context)).rejects.toThrow(replaceErrorString(SUBMODULE_ERROR.INVALID_PROGRAM_STATUS, params.status));
+    await expect(organization.listPrograms(params, context)).rejects.toThrow(
+      replaceErrorString(SUBMODULE_ERROR.INVALID_PROGRAM_STATUS, params.status)
+    );
+    expect(mockProgramDAO.listPrograms).not.toHaveBeenCalled();
+  });
+
+  it('should support case-insensitive status input', async () => {
+    const params = {
+      first: 10,
+      offset: 0,
+      orderBy: 'name',
+      sortDirection: 'asc',
+      status: 'aCtIvE'
+    };
+    mockProgramDAO.listPrograms.mockResolvedValue({ total: 0, results: [] });
+    await organization.listPrograms(params, context);
+    expect(mockProgramDAO.listPrograms).toHaveBeenCalledWith(
+      10,
+      0,
+      'name',
+      'asc',
+      { status: ORGANIZATION.STATUSES.ACTIVE }
+    );
+  });
+
+  it('should treat case-insensitive All as all statuses', async () => {
+    const params = {
+      first: 10,
+      offset: 0,
+      orderBy: 'name',
+      sortDirection: 'asc',
+      status: 'aLl'
+    };
+    mockProgramDAO.listPrograms.mockResolvedValue({ total: 0, results: [] });
+    await organization.listPrograms(params, context);
+    expect(mockProgramDAO.listPrograms).toHaveBeenCalledWith(
+      10,
+      0,
+      'name',
+      'asc',
+      { status: { $in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE] } }
+    );
+  });
+
+  it('should default status to All when omitted', async () => {
+    const params = {
+      first: 10,
+      offset: 0,
+      orderBy: 'name',
+      sortDirection: 'asc'
+    };
+    mockProgramDAO.listPrograms.mockResolvedValue({ total: 0, results: [] });
+    await organization.listPrograms(params, context);
+    expect(mockProgramDAO.listPrograms).toHaveBeenCalledWith(
+      10,
+      0,
+      'name',
+      'asc',
+      { status: { $in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE] } }
+    );
   });
 
   it('should throw error if not logged in', async () => {
@@ -99,11 +164,11 @@ describe('Organization.createOrganization', () => {
   let mockApprovedStudyDAO;
 
   beforeEach(() => {
-    mockProgramDAO = { getOrganizationByName: jest.fn(), create: jest.fn() };
+    mockProgramDAO = { getOrganizationByName: jest.fn(), getOrganizationByID: jest.fn(), create: jest.fn() };
     mockUserDAO = { findFirst: jest.fn() };
     mockSubmissionDAO = {};
     mockApplicationDAO = {};
-    mockApprovedStudyDAO = { findMany: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() };
+    mockApprovedStudyDAO = { findMany: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn(), count: jest.fn() };
     ProgramDAO.mockImplementation(() => mockProgramDAO);
     UserDAO.mockImplementation(() => mockUserDAO);
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
@@ -205,6 +270,7 @@ describe('Organization.createOrganization', () => {
 
     mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
     mockProgramDAO.create.mockResolvedValue(createdOrg);
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(createdOrg);
     mockApprovedStudyDAO.findMany.mockResolvedValue(existingStudies);
     mockApprovedStudyDAO.updateMany.mockResolvedValue({ count: 2 });
 
@@ -234,6 +300,7 @@ describe('Organization.createOrganization', () => {
 
     mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
     mockProgramDAO.create.mockResolvedValue(createdOrg);
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(createdOrg);
     mockApprovedStudyDAO.findMany.mockResolvedValue(existingStudies);
 
     await expect(organization.createOrganization(params))
@@ -242,6 +309,24 @@ describe('Organization.createOrganization', () => {
     expect(mockProgramDAO.create).toHaveBeenCalled();
     expect(mockApprovedStudyDAO.findMany).toHaveBeenCalled();
     expect(mockApprovedStudyDAO.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('should throw when assigning studies to an inactive program via createOrganization', async () => {
+    const params = {
+      name: 'Test Org',
+      abbreviation: 'TST',
+      description: 'desc',
+      studies: [{ studyID: 'study-1' }]
+    };
+    const createdOrg = { _id: 'org-123', name: 'Test Org', abbreviation: 'TST', description: 'desc', status: ORGANIZATION.STATUSES.INACTIVE };
+    mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
+    mockProgramDAO.create.mockResolvedValue(createdOrg);
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(createdOrg);
+
+    await expect(organization.createOrganization(params)).rejects.toThrow(
+      SUBMODULE_ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM
+    );
+    expect(mockApprovedStudyDAO.findMany).not.toHaveBeenCalled();
   });
 });
 
@@ -309,7 +394,7 @@ describe('Organization.editOrganization', () => {
     mockUserDAO = { findFirst: jest.fn(), updateUserOrg: jest.fn() };
     mockSubmissionDAO = {};
     mockApplicationDAO = { updateApplicationOrg: jest.fn() };
-    mockApprovedStudyDAO = { findMany: jest.fn(), updateMany: jest.fn() };
+    mockApprovedStudyDAO = { findMany: jest.fn(), updateMany: jest.fn(), count: jest.fn() };
     
     ProgramDAO.mockImplementation(() => mockProgramDAO);
     UserDAO.mockImplementation(() => mockUserDAO);
@@ -396,5 +481,95 @@ describe('Organization.editOrganization', () => {
     expect(mockProgramDAO.updateMany).toHaveBeenCalled();
     expect(mockApprovedStudyDAO.findMany).toHaveBeenCalled();
     expect(mockApprovedStudyDAO.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('should throw when setting status Inactive while program has assigned studies', async () => {
+    const orgID = 'org-123';
+    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST' };
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
+    mockApprovedStudyDAO.count.mockResolvedValue(2);
+
+    await expect(organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.INACTIVE })).rejects.toThrow(
+      SUBMODULE_ERROR.PROGRAM_CANNOT_INACTIVATE_WITH_STUDIES
+    );
+    expect(mockProgramDAO.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('should throw when setting status Inactive and studies are provided in the same request', async () => {
+    const orgID = 'org-123';
+    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST' };
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
+    mockApprovedStudyDAO.count.mockResolvedValue(0);
+
+    await expect(
+      organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.INACTIVE, studies: [{ studyID: 'study-1' }] })
+    ).rejects.toThrow(SUBMODULE_ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
+    expect(mockProgramDAO.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('should set status Active when explicitly requested', async () => {
+    const orgID = 'org-123';
+    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: ORGANIZATION.STATUSES.INACTIVE };
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
+    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+
+    const result = await organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.ACTIVE });
+
+    expect(result.status).toBe(ORGANIZATION.STATUSES.ACTIVE);
+    expect(mockProgramDAO.updateMany).toHaveBeenCalledWith(
+      { id: orgID },
+      expect.objectContaining({ status: ORGANIZATION.STATUSES.ACTIVE, updateAt: expect.any(Date) })
+    );
+  });
+
+  it('should throw when assigning studies to an inactive program via editOrganization', async () => {
+    const orgID = 'org-123';
+    const inactiveOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: ORGANIZATION.STATUSES.INACTIVE };
+    const params = {
+      name: 'Test Org',
+      studies: [{ studyID: 'study-1' }]
+    };
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(inactiveOrg);
+    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+
+    await expect(organization.editOrganization(orgID, params)).rejects.toThrow(
+      SUBMODULE_ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM
+    );
+    expect(mockProgramDAO.updateMany).not.toHaveBeenCalled();
+    expect(mockApprovedStudyDAO.findMany).not.toHaveBeenCalled();
+  });
+
+  it('should allow assigning studies when reactivating program in the same request', async () => {
+    const orgID = 'org-123';
+    const inactiveOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: ORGANIZATION.STATUSES.INACTIVE };
+    const reactivatedOrg = { ...inactiveOrg, status: ORGANIZATION.STATUSES.ACTIVE };
+    const params = {
+      name: 'Test Org',
+      status: ORGANIZATION.STATUSES.ACTIVE,
+      studies: [{ studyID: 'study-1' }]
+    };
+    mockProgramDAO.getOrganizationByID
+      .mockResolvedValueOnce(inactiveOrg)
+      .mockResolvedValue(reactivatedOrg);
+    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+    mockApprovedStudyDAO.findMany.mockResolvedValue([{ id: 'study-1' }]);
+    mockApprovedStudyDAO.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await organization.editOrganization(orgID, params);
+
+    expect(mockProgramDAO.updateMany).toHaveBeenCalled();
+    expect(mockApprovedStudyDAO.findMany).toHaveBeenCalled();
+    expect(result.status).toBe(ORGANIZATION.STATUSES.ACTIVE);
+  });
+
+  it('should throw NA_PROGRAM_CANNOT_BE_INACTIVATED when deactivating the NA program', async () => {
+    const orgID = 'na-org-id';
+    const currentOrg = { _id: orgID, name: 'NA', abbreviation: 'NA' };
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
+
+    await expect(organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.INACTIVE })).rejects.toThrow(
+      SUBMODULE_ERROR.NA_PROGRAM_CANNOT_BE_INACTIVATED
+    );
+    expect(mockProgramDAO.updateMany).not.toHaveBeenCalled();
   });
 });
