@@ -507,6 +507,29 @@ describe('Organization.editOrganization', () => {
     expect(mockProgramDAO.updateMany).not.toHaveBeenCalled();
   });
 
+  it('should omit duplicate-name lookup when only status is updated (no name in params)', async () => {
+    const orgID = 'org-123';
+    const currentOrg = {
+      _id: orgID,
+      name: 'Test Org',
+      abbreviation: 'TST',
+      status: ORGANIZATION.STATUSES.ACTIVE
+    };
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
+    mockApprovedStudyDAO.count.mockResolvedValue(0);
+    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+    mockProgramDAO.getOrganizationByName.mockResolvedValue({ _id: 'other-id', name: 'collision' });
+
+    const result = await organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.INACTIVE });
+
+    expect(mockProgramDAO.getOrganizationByName).not.toHaveBeenCalled();
+    expect(mockProgramDAO.updateMany).toHaveBeenCalledWith(
+      { id: orgID },
+      expect.objectContaining({ status: ORGANIZATION.STATUSES.INACTIVE, updateAt: expect.any(Date) })
+    );
+    expect(result.status).toBe(ORGANIZATION.STATUSES.INACTIVE);
+  });
+
   it('should set status Active when explicitly requested', async () => {
     const orgID = 'org-123';
     const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: ORGANIZATION.STATUSES.INACTIVE };
@@ -562,13 +585,19 @@ describe('Organization.editOrganization', () => {
     expect(result.status).toBe(ORGANIZATION.STATUSES.ACTIVE);
   });
 
-  it('should throw NA_PROGRAM_CANNOT_BE_INACTIVATED when deactivating the NA program', async () => {
-    const orgID = 'na-org-id';
-    const currentOrg = { _id: orgID, name: 'NA', abbreviation: 'NA' };
+  it('should reject inactivating a read-only program (e.g. system catch-all)', async () => {
+    const orgID = 'readonly-org-id';
+    const currentOrg = {
+      _id: orgID,
+      name: 'NA',
+      abbreviation: 'NA',
+      readOnly: true,
+      status: ORGANIZATION.STATUSES.ACTIVE
+    };
     mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
 
     await expect(organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.INACTIVE })).rejects.toThrow(
-      SUBMODULE_ERROR.NA_PROGRAM_CANNOT_BE_INACTIVATED
+      SUBMODULE_ERROR.CANNOT_UPDATE_READ_ONLY_PROGRAM
     );
     expect(mockProgramDAO.updateMany).not.toHaveBeenCalled();
   });
