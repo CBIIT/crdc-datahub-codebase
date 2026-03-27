@@ -381,7 +381,10 @@ class Organization {
     }
 
     const targetProgram = await this.getOrganizationByID(orgID);
-    if (targetProgram?.status === ORGANIZATION.STATUSES.INACTIVE) {
+    if (!targetProgram) {
+      throw new Error(ERROR.ORG_NOT_FOUND);
+    }
+    if (targetProgram?.status !== ORGANIZATION.STATUSES.ACTIVE) {
       throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
     }
 
