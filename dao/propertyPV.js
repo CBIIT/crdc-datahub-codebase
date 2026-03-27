@@ -28,6 +28,8 @@ class PropertyPVDAO {
                     model: '$model',
                     version: '$version',
                     permissibleValues: '$PermissibleValues',
+                    createdAt: '$createdAt',
+                    updatedAt: '$updatedAt',
                 }
             }
         ]);
