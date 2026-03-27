@@ -1,4 +1,3 @@
-const { verifySession } = require("../verifier/user-info-verifier");
 const { replaceErrorString } = require("../utility/string-util");
 const ERROR = require("../constants/error-constants");
 
@@ -48,8 +47,7 @@ class PropertyPVService {
         this.propertyPVDAO = propertyPVDAO;
     }
 
-    async retrievePVsByPropertyName(params, context) {
-        verifySession(context).verifyInitialized();
+    async retrievePVsByPropertyName(params) {
         const { propertyNames, model, version } = params;
         const uniqueOrderedNames = normalizePropertyNames(propertyNames);
         if (typeof version !== "string" || !version.trim()) {

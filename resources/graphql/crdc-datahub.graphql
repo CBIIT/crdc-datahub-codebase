@@ -1073,7 +1073,7 @@ type Query {
         propertyNames: [String!]!,
         model: String!, # GC, CTDC, ICDC, PSDC
         version: String!
-    ) : [propertyPVs]
+    ) : [propertyPVs] @public
 }
 type Mutation {
     "User initiated operations"
