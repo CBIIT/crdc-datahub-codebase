@@ -1,9 +1,6 @@
-const GenericDAO = require("./generic");
-const { MODEL_NAME } = require("../constants/db-constants");
-
-class PropertyPVDAO extends GenericDAO {
-    constructor() {
-        super(MODEL_NAME.PROPERTY_PVS);
+class PropertyPVDAO {
+    constructor(collection) {
+        this.collection = collection;
     }
 
     /**
@@ -16,11 +13,26 @@ class PropertyPVDAO extends GenericDAO {
         if (!propertyNames.length) {
             return [];
         }
-        return await this.findMany({
-            property: { $in: propertyNames },
-            version,
-            model,
-        });
+        return await this.collection.aggregate([
+            {
+                $match: {
+                    property: { $in: propertyNames },
+                    version,
+                    model
+                }
+            },
+            {
+                $project: {
+                    id: '$_id',
+                    property: '$property',
+                    model: '$model',
+                    version: '$version',
+                    permissibleValues: '$PermissibleValues',
+                    createdAt: '$createdAt',
+                    updatedAt: '$updatedAt',
+                }
+            }
+        ]);
     }
 }
 

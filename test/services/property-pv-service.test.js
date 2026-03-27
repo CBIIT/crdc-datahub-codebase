@@ -1,9 +1,3 @@
-jest.mock('../../verifier/user-info-verifier', () => ({
-    verifySession: jest.fn(() => ({
-        verifyInitialized: jest.fn()
-    }))
-}));
-
 const { PropertyPVService } = require('../../services/property-pv-service');
 const ERROR = require('../../constants/error-constants');
 const { replaceErrorString } = require('../../utility/string-util');
@@ -37,6 +31,20 @@ describe('PropertyPVService.retrievePVsByPropertyName', () => {
             )
         );
         expect(propertyPVDAO.findByPropertiesVersionAndModel).not.toHaveBeenCalled();
+    });
+
+    it('does not require an authenticated session', async () => {
+        configurationService.findByType.mockResolvedValue({ key: ['ICDC'] });
+        propertyPVDAO.findByPropertiesVersionAndModel.mockResolvedValue([]);
+
+        await expect(
+            service.retrievePVsByPropertyName(
+                { propertyNames: ['p'], model: 'ICDC', version: '1' },
+                {}
+            )
+        ).resolves.toEqual([]);
+
+        expect(propertyPVDAO.findByPropertiesVersionAndModel).toHaveBeenCalled();
     });
 
     it('queries with exact model string passed in', async () => {
