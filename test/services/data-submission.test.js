@@ -17,6 +17,7 @@ const {INTENTION, DATA_TYPE, IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRA
 const {getDataCommonsDisplayNamesForSubmission} = require("../../utility/data-commons-remapper");
 const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {USER, ROLES} = require("../../crdc-datahub-database-drivers/constants/user-constants"); // ← adjust path if needed
+const { ORGANIZATION } = require("../../crdc-datahub-database-drivers/constants/organization-constants");
 
 // Mock Prisma
 jest.mock("../../prisma", () => {
@@ -1009,7 +1010,7 @@ describe("Submission.createSubmission", () => {
             isStudyScope: () => false,
             isDCScope: () => false
         });
-        mockOrganizationService.findOneByStudyID.mockResolvedValue({ ...mockProgram, status: "Inactive" });
+        mockOrganizationService.findOneByStudyID.mockResolvedValue({ ...mockProgram, status: ORGANIZATION.STATUSES.INACTIVE });
 
         await expect(submissionService.createSubmission(mockParams, mockContext)).rejects.toThrow(
             ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM

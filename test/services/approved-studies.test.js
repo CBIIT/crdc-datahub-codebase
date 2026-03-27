@@ -5,6 +5,7 @@ const { verifySession } = require('../../verifier/user-info-verifier');
 const { getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesForUser } = require('../../utility/data-commons-remapper');
 const TEST_CONSTANTS = require('../test-constants');
 const USER = require('../../crdc-datahub-database-drivers/constants/user-constants');
+const { ORGANIZATION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
 const {ApprovedStudies} = require("../../crdc-datahub-database-drivers/domain/approved-studies");
 const { NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED } = require('../../constants/submission-constants');
 
@@ -258,7 +259,7 @@ describe('ApprovedStudiesService', () => {
         });
 
         it('should throw when programID resolves to an inactive program', async () => {
-            const inactiveProgram = { _id: 'inactive-prog', name: 'Inactive', status: 'Inactive' };
+            const inactiveProgram = { _id: 'inactive-prog', name: 'Inactive', status: ORGANIZATION.STATUSES.INACTIVE };
             service.organizationService.getOrganizationByID = jest.fn().mockResolvedValue(inactiveProgram);
             await expect(
                 service.addApprovedStudyAPI({ ...mockParams, programID: 'inactive-prog' }, mockContext)
@@ -351,7 +352,7 @@ describe('ApprovedStudiesService', () => {
         });
 
         it('should throw when updating study to an inactive program', async () => {
-            const inactiveProgram = { _id: 'inactive-pid', name: 'Inactive', status: 'Inactive' };
+            const inactiveProgram = { _id: 'inactive-pid', name: 'Inactive', status: ORGANIZATION.STATUSES.INACTIVE };
             service.organizationService.getOrganizationByID = jest.fn().mockResolvedValue(inactiveProgram);
             await expect(
                 service.editApprovedStudyAPI({ ...mockParams, programID: 'inactive-pid' }, mockContext)
@@ -1152,7 +1153,7 @@ describe('ApprovedStudiesService', () => {
 
             it('should throw when resolved program is inactive', async () => {
                 const validProgramID = 'inactive-program-id';
-                const inactiveProgram = { _id: validProgramID, name: 'Inactive Program', status: 'Inactive' };
+                const inactiveProgram = { _id: validProgramID, name: 'Inactive Program', status: ORGANIZATION.STATUSES.INACTIVE };
                 mockOrganizationService.getOrganizationByID.mockResolvedValue(inactiveProgram);
 
                 await expect(
@@ -1165,7 +1166,7 @@ describe('ApprovedStudiesService', () => {
             });
 
             it('should throw when NA fallback program is inactive', async () => {
-                const inactiveNA = { _id: 'na-id', name: 'NA', status: 'Inactive' };
+                const inactiveNA = { _id: 'na-id', name: 'NA', status: ORGANIZATION.STATUSES.INACTIVE };
                 mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
                 mockOrganizationService.getOrganizationByName.mockResolvedValue(inactiveNA);
 

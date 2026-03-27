@@ -262,7 +262,13 @@ describe('Organization.createOrganization', () => {
         { studyID: 'study-2' }
       ]
     };
-    const createdOrg = { _id: 'org-123', name: 'Test Org', abbreviation: 'TST', description: 'desc' };
+    const createdOrg = {
+      _id: 'org-123',
+      name: 'Test Org',
+      abbreviation: 'TST',
+      description: 'desc',
+      status: ORGANIZATION.STATUSES.ACTIVE,
+    };
     const existingStudies = [
       { id: 'study-1' },
       { id: 'study-2' }
@@ -295,7 +301,13 @@ describe('Organization.createOrganization', () => {
         { studyID: 'study-2' }
       ]
     };
-    const createdOrg = { _id: 'org-123', name: 'Test Org', abbreviation: 'TST', description: 'desc' };
+    const createdOrg = {
+      _id: 'org-123',
+      name: 'Test Org',
+      abbreviation: 'TST',
+      description: 'desc',
+      status: ORGANIZATION.STATUSES.ACTIVE,
+    };
     const existingStudies = [{ id: 'study-1' }]; // Only study-1 exists
 
     mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
@@ -326,6 +338,23 @@ describe('Organization.createOrganization', () => {
     await expect(organization.createOrganization(params)).rejects.toThrow(
       SUBMODULE_ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM
     );
+    expect(mockApprovedStudyDAO.findMany).not.toHaveBeenCalled();
+  });
+
+  it('should throw when organization does not exist while updating studies programID', async () => {
+    const params = {
+      name: 'Test Org',
+      abbreviation: 'TST',
+      description: 'desc',
+      studies: [{ studyID: 'study-1' }],
+    };
+    const createdOrg = { _id: 'org-missing', name: 'Test Org', abbreviation: 'TST', description: 'desc' };
+    mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
+    mockProgramDAO.create.mockResolvedValue(createdOrg);
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(null);
+
+    await expect(organization.createOrganization(params)).rejects.toThrow(SUBMODULE_ERROR.ORG_NOT_FOUND);
+    expect(mockProgramDAO.create).toHaveBeenCalled();
     expect(mockApprovedStudyDAO.findMany).not.toHaveBeenCalled();
   });
 });
@@ -415,7 +444,7 @@ describe('Organization.editOrganization', () => {
         { studyID: 'study-2' }
       ]
     };
-    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST' };
+    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: ORGANIZATION.STATUSES.ACTIVE };
     const existingStudies = [
       { id: 'study-1' },
       { id: 'study-2' }
@@ -467,7 +496,7 @@ describe('Organization.editOrganization', () => {
         { studyID: 'study-2' }
       ]
     };
-    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST' };
+    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: ORGANIZATION.STATUSES.ACTIVE };
     const existingStudies = [{ id: 'study-1' }]; // Only study-1 exists
 
     mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
@@ -483,7 +512,7 @@ describe('Organization.editOrganization', () => {
     expect(mockApprovedStudyDAO.updateMany).not.toHaveBeenCalled();
   });
 
-  it('should throw when setting status Inactive while program has assigned studies', async () => {
+  it(`should throw when setting status ${ORGANIZATION.STATUSES.INACTIVE} while program has assigned studies`, async () => {
     const orgID = 'org-123';
     const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST' };
     mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
@@ -495,7 +524,7 @@ describe('Organization.editOrganization', () => {
     expect(mockProgramDAO.updateMany).not.toHaveBeenCalled();
   });
 
-  it('should throw when setting status Inactive and studies are provided in the same request', async () => {
+  it(`should throw when setting status ${ORGANIZATION.STATUSES.INACTIVE} and studies are provided in the same request`, async () => {
     const orgID = 'org-123';
     const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST' };
     mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
