@@ -205,6 +205,9 @@ class Submission {
     async createSubmission(params, context) {
         verifySession(context)
             .verifyInitialized();
+        if (params?.dataCommons != null) {
+            params.dataCommons = String(params.dataCommons).trim();
+        }
         // Check user permission to create submission
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE);
         // User has ALL scope - can create submissions for any study
@@ -231,7 +234,7 @@ class Submission {
 
         const intention = [INTENTION.UPDATE, INTENTION.DELETE].find((i) => i.toLowerCase() === params?.intention.toLowerCase());
         const dataType = [DATA_TYPE.METADATA_AND_DATA_FILES, DATA_TYPE.METADATA_ONLY].find((i) => i.toLowerCase() === params?.dataType.toLowerCase());
-        validateCreateSubmissionParams(params, this.allowedDataCommons, this.hiddenDataCommons, intention, dataType, context?.userInfo);
+        validateCreateSubmissionParams(params, this.allowedDataCommons, this.hiddenDataCommons, intention, dataType);
         const [approvedStudies, modelVersion, program] = await Promise.all([
             this._findApprovedStudies([params.studyID]),
             (async () => {
@@ -3272,14 +3275,29 @@ const getUserEmails = (users) => {
 }
 
 function validateCreateSubmissionParams (params, allowedDataCommons, hiddenDataCommons, intention, dataType) {
-    if (!params.name || params?.name?.trim().length === 0 || !params.studyID || !params.dataCommons) {
+    const dataCommons =
+        params.dataCommons === undefined || params.dataCommons === null
+            ? ''
+            : String(params.dataCommons).trim();
+
+    if (!params.name || params?.name?.trim().length === 0 || !params.studyID || !dataCommons) {
         throw new Error(ERROR.CREATE_SUBMISSION_INVALID_PARAMS);
     }
     if (params?.name?.length > CONSTRAINTS.NAME_MAX_LENGTH) {
         throw new Error(replaceErrorString(ERROR.CREATE_SUBMISSION_INVALID_NAME, `${CONSTRAINTS.NAME_MAX_LENGTH}`));
     }
-    if (hiddenDataCommons.has(params.dataCommons) || !allowedDataCommons.has(params.dataCommons)) {
-        throw new Error(replaceErrorString(ERROR.CREATE_SUBMISSION_INVALID_DATA_COMMONS, `'${params.dataCommons}'`));
+    if (hiddenDataCommons.has(dataCommons) || !allowedDataCommons.has(dataCommons)) {
+        const visibleAllowed = [...allowedDataCommons]
+            .filter((dc) => !hiddenDataCommons.has(dc))
+            .sort();
+        const acceptedDisplay = visibleAllowed.length ? visibleAllowed.join(", ") : "(none available)";
+        throw new Error(
+            replaceErrorString(
+                replaceErrorString(ERROR.INVALID_DATA_COMMONS_NOT_ALLOWED, `'${dataCommons}'`),
+                acceptedDisplay,
+                /\$accepted\$/g
+            )
+        );
     }
     if (!intention) {
         throw new Error(ERROR.CREATE_SUBMISSION_INVALID_INTENTION);
@@ -3290,6 +3308,7 @@ function validateCreateSubmissionParams (params, allowedDataCommons, hiddenDataC
     if (intention === INTENTION.DELETE && dataType !== DATA_TYPE.METADATA_ONLY) {
         throw new Error(ERROR.CREATE_SUBMISSION_INVALID_DELETE_INTENTION);
     }
+    params.dataCommons = dataCommons;
 }
 
 class ValidationRecord {
