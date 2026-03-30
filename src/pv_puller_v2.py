@@ -169,13 +169,8 @@ def extract_pv_list(property_pv_list):
     pv_list = []
     if property_pv_list is None:
         pv_list = None
-    if property_pv_list and len(property_pv_list) > 0 and property_pv_list[0].get(NCIT_VALUE): 
-        pv_list = [item.get(NCIT_VALUE) for item in property_pv_list if item.get(NCIT_VALUE) is not None]
     if property_pv_list and any(item.get(NCIT_VALUE) for item in property_pv_list):
         pv_list = [item[NCIT_VALUE] for item in property_pv_list if NCIT_VALUE in item and item[NCIT_VALUE] is not None]
-        contains_http = any(s for s in pv_list if isinstance(s, str) and s.startswith(("http:", "https:")))
-        if contains_http:
-            return None
         # strip white space if the value is a string
         if pv_list and isinstance(pv_list[0], str): 
             pv_list = [item.strip() for item in pv_list]
