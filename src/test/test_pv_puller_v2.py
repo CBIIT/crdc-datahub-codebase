@@ -426,7 +426,7 @@ def test_extract_pv_list_empty():
     """Test extraction from empty list"""
     result = extract_pv_list([])
     
-    assert result is None
+    assert result == []
 
 
 def test_extract_pv_list_none_values():
