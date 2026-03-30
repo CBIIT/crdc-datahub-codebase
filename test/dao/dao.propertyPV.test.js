@@ -20,8 +20,8 @@ describe('PropertyPVDAO.findByPropertiesVersionAndModel', () => {
                 version: '$version',
                 permissibleValues: '$PermissibleValues',
                 createdAt: '$createdAt',
-                updatedAt: '$  "query": "query retrievePVsByPropertyName($propertyNames: [String!]!, $model: String!, $version: String!) {\n  retrievePVsByPropertyName(\n    propertyNames: $propertyNames,\n    model: $model,\n    version: $version\n  ) {id property model version permissibleValues createdAt updatedAt}\n}",',
-            }
+                updatedAt: '$updatedAt',
+            },
         },
     ];
 
