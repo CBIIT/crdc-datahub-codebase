@@ -166,7 +166,9 @@ def extract_pv_list(property_pv_list):
     """
     extract pv list from property pv list
     """
-    pv_list = None
+    pv_list = []
+    if property_pv_list is None:
+        pv_list = None
     if property_pv_list and len(property_pv_list) > 0 and property_pv_list[0].get(NCIT_VALUE): 
         pv_list = [item.get(NCIT_VALUE) for item in property_pv_list if item.get(NCIT_VALUE) is not None]
     if property_pv_list and any(item.get(NCIT_VALUE) for item in property_pv_list):
