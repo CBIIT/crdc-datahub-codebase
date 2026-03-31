@@ -9,6 +9,7 @@ on:
       environment:
         description: env to build
         type: environment
+        default: build
 #      code_branch:
 #        description: branch to build
 #        required: false
@@ -27,7 +28,7 @@ jobs:
     environment: ${{ inputs.environment }}
     env:
       ECR_REPO: "crdc-hub-authn"
-      SERVICE: "authn"
+      #SERVICE: "authn"
       REGION: "us-east-1"
 #      CODE_BRANCH: "${{ github.event.inputs.code_branch }}"
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -89,6 +90,7 @@ jobs:
       - name: Build Docker Image
         id: build-image
         env:
+          ECR_REPO: "crdc-hub-authn"
           REGISTRY_URL: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
           #IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ env.branch }}.${{ github.run_number }}
           IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ env.IMAGE_TAG }}
