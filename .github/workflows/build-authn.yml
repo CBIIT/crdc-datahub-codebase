@@ -94,7 +94,7 @@ jobs:
           IMAGE_NAME: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ env.IMAGE_TAG }}
         run: |
           echo "Building: $IMAGE_NAME"
-          docker build --no-cache -t $IMAGE_NAME -f apps/authn/Dockerfile .
+          docker build --no-cache -t $IMAGE_NAME -f apps/authn/Dockerfile apps/authn 
 
       - name: Run Trivy test scan
         id: trivy-scan
