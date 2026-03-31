@@ -124,7 +124,7 @@ class Organization {
    * Edit an organization by it's `_id` and a set of parameters
    *
    * @async
-   * @typedef {{ orgID: string, name: string, conciergeID: string, studies: Object[], status: string }} EditOrganizationInput
+   * @typedef {{ orgID: string, name: string, conciergeID: string, status: string }} EditOrganizationInput
    * @throws {Error} If the organization is not found or the update fails
    * @param {string} orgID The ID of the organization to edit
    * @param {EditOrganizationInput} params The organization input
@@ -142,27 +142,15 @@ class Organization {
 
     const attemptingToSetInactive =
       typeof params?.status === "string" && params.status === ORGANIZATION.STATUSES.INACTIVE;
-    const attemptingToSetActive =
-      typeof params?.status === "string" && params.status === ORGANIZATION.STATUSES.ACTIVE;
 
     if (!currentOrg?.abbreviation && !params?.abbreviation?.trim()) {
       throw new Error(ERROR.ORGANIZATION_INVALID_ABBREVIATION);
     }
 
     if (attemptingToSetInactive) {
-      if (params?.studies?.length > 0) {
-        throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
-      }
       const studyCount = await this.approvedStudyDAO.count({ programID: orgID });
       if (studyCount > 0) {
         throw new Error(ERROR.PROGRAM_CANNOT_INACTIVATE_WITH_STUDIES);
-      }
-    }
-
-    // Reject study assignment while program is inactive before any DB write (unless reactivating in this request)
-    if (params?.studies?.length > 0) {
-      if (!attemptingToSetActive && currentOrg?.status === ORGANIZATION.STATUSES.INACTIVE) {
-        throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
       }
     }
 
@@ -245,11 +233,6 @@ class Organization {
       }
     }
 
-    // Update studies to reference this organization via programID
-    if (params?.studies) {
-      await this._updateStudiesProgramID(orgID, params.studies);
-    }
-
     return { ...currentOrg, ...updatedOrg };
   }
 
@@ -312,7 +295,7 @@ class Organization {
    * Create a new Organization
    *
    * @async
-   * @typedef {{ name: string, conciergeID?: string, studies?: Object[] }} CreateOrganizationInput
+   * @typedef {{ name: string, conciergeID?: string }} CreateOrganizationInput
    * @throws {Error} If the organization name is already taken or the create action fails
    * @param {CreateOrganizationInput} params The organization input
    * @returns {Promise<Object>} The newly created organization
@@ -355,109 +338,7 @@ class Organization {
       throw new Error(ERROR.CREATE_FAILED);
     }
 
-    // Update studies to reference this new organization via programID
-    if (params?.studies && params.studies.length > 0) {
-      await this._updateStudiesProgramID(res._id, params.studies);
-    }
-
     return res;
-  }
-
-  /**
-   * Update studies to reference the specified organization via programID
-   * @param {string} orgID The organization ID to assign to studies
-   * @param {Array} studies Array of study objects with studyID
-   * @throws {Error} If any study updates fail or if studyIDs don't exist
-   */
-  async _updateStudiesProgramID(orgID, studies) {
-    if (!studies || studies.length === 0) {
-      return;
-    }
-
-    const studyIDs = studies.map(study => study?.studyID).filter(id => id != null);
-    
-    if (studyIDs.length === 0) {
-      return;
-    }
-
-    const targetProgram = await this.getOrganizationByID(orgID);
-    if (!targetProgram) {
-      throw new Error(ERROR.ORG_NOT_FOUND);
-    }
-    if (targetProgram?.status !== ORGANIZATION.STATUSES.ACTIVE) {
-      throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
-    }
-
-    // First, verify that all provided studyIDs exist
-    const existingStudies = await this.approvedStudyDAO.findMany({ id: { in: studyIDs } });
-    const existingStudyIDs = existingStudies.map(study => study.id);
-    const nonExistentStudyIDs = studyIDs.filter(id => !existingStudyIDs.includes(id));
-
-    if (nonExistentStudyIDs.length > 0) {
-      console.error(`Study ID validation failed for organization ${orgID}:`, {
-        existingStudyIDs: existingStudyIDs,
-        nonExistentStudyIDs: nonExistentStudyIDs,
-        totalExisting: existingStudyIDs.length,
-        totalNonExistent: nonExistentStudyIDs.length
-      });
-      
-      throw new Error(`${ERROR.UPDATE_FAILED_STUDY_IDS_NOT_EXIST}: ${nonExistentStudyIDs.join(', ')}`);
-    }
-
-    // Update each study's programID to reference this organization
-    const updateResult = await this.approvedStudyDAO.updateMany(
-      { id: { in: studyIDs } },
-      { programID: orgID, updatedAt: getCurrentTime() }
-    );
-
-    // Verify all studies were updated successfully
-    if (!updateResult) {
-      console.error(`No response when updating ${studyIDs.length} studies to reference organization ${orgID}: ${studyIDs.join(', ')}`);
-      throw new Error(ERROR.DATABASE_OPERATION_FAILED);
-    }
-
-    if (updateResult.count !== studyIDs.length) {
-      // Re-query to determine which studies were not updated
-      const updatedStudies = await this.approvedStudyDAO.findMany({ id: { in: studyIDs } });
-      const actuallyUpdatedStudyIDs = updatedStudies
-        .filter(study => study.programID === orgID)
-        .map(study => study.id);
-      const failedStudyIDs = studyIDs.filter(id => !actuallyUpdatedStudyIDs.includes(id));
-      const successfulStudyIDs = actuallyUpdatedStudyIDs;
-      const failedCount = failedStudyIDs.length;
-      
-      console.error(`Partial update failure for organization ${orgID}:`, {
-        totalStudies: studyIDs.length,
-        successfulUpdates: successfulStudyIDs.length,
-        failedUpdates: failedCount,
-        successfulStudyIDs: successfulStudyIDs,
-        failedStudyIDs: failedStudyIDs
-      });
-      
-      throw new Error(ERROR.NOT_ALL_STUDIES_UPDATED);
-    }
-  }
-
-
-  /**
-   * Retrieves approved studies in the approved studies collection.
-   *
-   * @param {object} studies - The studies object with studyID.
-   * @returns {Promise<Object>} The approved studies
-   */
-  async _getApprovedStudies(studies) {
-    const studyIDs = studies
-      .filter((study) => study?.studyID)
-      .map((study) => study.studyID);
-    const approvedStudies = await this.approvedStudyDAO.findMany({
-        id: { in: studyIDs },
-    });
-
-    if (approvedStudies.length !== studyIDs.length) {
-      throw new Error(ERROR.INVALID_APPROVED_STUDY_ID);
-    }
-
-    return approvedStudies?.map((study) => ({id: study?._id}));
   }
 
   async upsertByProgramName(programName, abbreviation, description) {
