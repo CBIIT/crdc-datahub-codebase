@@ -275,6 +275,10 @@ class Submission {
             throw new Error(ERROR.PENDING_APPROVED_STUDY);
         }
 
+        if (isTrue(approvedStudy?.pendingImageDeIdentification)) {
+            throw new Error(ERROR.PENDING_IMAGE_DEIDENTIFICATION_SUBMISSION);
+        }
+
         if (approvedStudy?.primaryContactID) {
             approvedStudy.primaryContact = await this.userService.getUserByID(approvedStudy.primaryContactID)
         }

@@ -218,6 +218,18 @@ describe('Application', () => {
             expect(application.pendingConditions).toContain(ERROR.PENDING_APPROVED_STUDY);
         });
 
+        it('includes pending image de-identification in pendingConditions when applicable', async () => {
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([{
+                controlledAccess: false,
+                pendingModelChange: false,
+                pendingImageDeIdentification: true
+            }]);
+            const application = { studyName: 'study1' };
+            await app._checkConditionalApproval(application);
+            expect(application.conditional).toBe(true);
+            expect(application.pendingConditions).toContain(ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION);
+        });
+
         it('does nothing if no studies found', async () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             const application = { studyName: 'study1' };

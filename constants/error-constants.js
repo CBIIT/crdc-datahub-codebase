@@ -86,6 +86,10 @@ const ERROR = {
     MISSING_CREATE_SUBMISSION_PENDING_GPA: "Submission cannot be created while GPA approval is pending for this controlled-access study.",
     PENDING_APPROVED_STUDY: "The Data Commons team is reviewing this study for potential data model changes. Data submissions cannot be created until any required model updates are released.",
     PENDING_APPROVED_STUDY_NO_GPA_INFO: "Data submissions cannot be created until the required GPA updates are provided.",
+    PENDING_IMAGE_DEIDENTIFICATION_SUBMISSION:
+        "This study has a pending image de-identification condition. Data submissions cannot be created for this study until this condition is cleared.",
+    PENDING_IMAGE_DEIDENTIFICATION_CONDITION:
+        "The approved study for this submission request has a pending image de-identification condition.",
     // List Submissions
     LIST_SUBMISSION_INVALID_STATUS_FILTER: "The status filter is invalid",
     INVALID_SUBMISSION_PERMISSION: "You do not have the correct permissions to list submissions",
