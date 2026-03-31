@@ -493,10 +493,6 @@ input UpdateUserInput {
     lastName: String!
 }
 
-input ApprovedStudyInput {
-  studyID: String!
-}
-
 type SubmissionStats {
     submissionID: ID
     stats: [Stats]
@@ -1106,7 +1102,6 @@ type Mutation {
     createOrganization(
         name: String!, # BE needs to check uniqueness of the new name
         conciergeID: String, # BE needs to save ID, email and name (first + last) of the concierge
-        studies: [ApprovedStudyInput], # Will update each study's programID to reference this organization
         abbreviation: String!,
         description: String
     ) : UserOrganization
@@ -1114,7 +1109,6 @@ type Mutation {
         orgID: ID!,
         name: String, # BE needs to check uniqueness of the new name
         conciergeID: String, # BE needs to save ID, email and name (first + last) of the concierge
-        studies: [ApprovedStudyInput], # Will update each study's programID to reference this organization
         status: String, # in [Active, Inactive]
         abbreviation: String,
         description: String
