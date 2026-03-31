@@ -749,7 +749,42 @@ describe('Application', () => {
                 'Program One', 'PO', 'Program Description'
             );
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, undefined, mockNewProgram
+                true, mockQuestionnaire, undefined, undefined, undefined, mockNewProgram
+            );
+        });
+
+        it('should pass pendingImageDeIdentification to _saveApprovedStudies when provided', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                programName: 'Program One',
+                programAbbreviation: 'PO',
+                programDescription: 'Program Description',
+                questionnaireData: JSON.stringify({ program: { _id: null } })
+            };
+            const mockQuestionnaire = { program: { _id: null } };
+            const mockNewProgram = { _id: 'new-program-1', name: 'Program One' };
+
+            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockOrganizationService.upsertByProgramName.mockResolvedValue(mockNewProgram);
+            app.applicationDAO.update = jest.fn().mockResolvedValue(true);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+
+            await app.approveApplication({
+                _id: 'app1',
+                comment: 'Approved',
+                pendingImageDeIdentification: true
+            }, context);
+
+            expect(app._saveApprovedStudies).toHaveBeenCalledWith(
+                true, mockQuestionnaire, undefined, true, undefined, mockNewProgram
             );
         });
 
@@ -779,7 +814,7 @@ describe('Application', () => {
 
             expect(mockOrganizationService.upsertByProgramName).not.toHaveBeenCalled();
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, undefined, mockExistingProgram
+                true, mockQuestionnaire, undefined, undefined, undefined, mockExistingProgram
             );
         });
 
@@ -830,7 +865,7 @@ describe('Application', () => {
             await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, undefined, mockExistingProgram
+                true, mockQuestionnaire, undefined, undefined, undefined, mockExistingProgram
             );
         });
     });
@@ -861,7 +896,7 @@ describe('Application', () => {
                 };
                 mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-                await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+                await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
                 expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
                 const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
@@ -898,7 +933,7 @@ describe('Application', () => {
                 };
                 mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-                await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+                await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
                 expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
                 const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
@@ -923,7 +958,7 @@ describe('Application', () => {
             };
             mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-            await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
             expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
             const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
@@ -947,7 +982,7 @@ describe('Application', () => {
             };
             mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-            await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
             expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
             const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
@@ -970,7 +1005,7 @@ describe('Application', () => {
             };
             mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-            await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
             expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
             const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];

@@ -815,7 +815,7 @@ class Application {
                     // Await program creation before creating approved study to avoid race condition
                     program = await this.organizationService.upsertByProgramName(name, abbreviation, description);
                 }
-                const newApprovedStudy = await this._saveApprovedStudies(updated, questionnaire, document?.pendingModelChange, isPendingGPA, program);
+                const newApprovedStudy = await this._saveApprovedStudies(updated, questionnaire, document?.pendingModelChange, document?.pendingImageDeIdentification, isPendingGPA, program);
                 // added approved studies into user collection
                 const applicants = await this._findUsersByApplicantIDs([application]);
                 if (applicants?.length > 0) {
@@ -1300,7 +1300,7 @@ class Application {
         }, {[`${this._FINAL_INACTIVE_REMINDER}`]: status});
     }
 
-    async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, isPendingGPA, existingProgram) {
+    async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
         // use study name when study abbreviation is not available
         const studyAbbreviation = !!aApplication?.studyAbbreviation?.trim() ? aApplication?.studyAbbreviation : questionnaire?.study?.name;
         const controlledAccess = aApplication?.controlledAccess;
@@ -1323,7 +1323,7 @@ class Application {
         const primaryContactID = null;
         return await this.approvedStudiesService.storeApprovedStudies(
             aApplication?._id, aApplication?.studyName, studyAbbreviation, baseDbGaP, aApplication?.organization?.name, controlledAccess, aApplication?.ORCID,
-            aApplication?.PI, aApplication?.openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID
+            aApplication?.PI, aApplication?.openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification
         );
     }
 

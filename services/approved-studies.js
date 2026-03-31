@@ -44,12 +44,12 @@ class ApprovedStudiesService {
         this.applicationDAO = new ApplicationDAO();
     }
 
-    async storeApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID) {
+    async storeApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification) {
         // Validate programID and fall back to NA program if needed
         const program = await this._validateProgramID(programID);
         const validatedProgramID = program?._id;
 
-        const approvedStudies = ApprovedStudies.createApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, validatedProgramID);
+        const approvedStudies = ApprovedStudies.createApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, validatedProgramID, pendingImageDeIdentification);
         const res = await this.approvedStudyDAO.create(approvedStudies);
 
         if (!res) {
@@ -188,6 +188,7 @@ class ApprovedStudiesService {
             primaryContactID,
             useProgramPC,
             pendingModelChange,
+            pendingImageDeIdentification,
             isPendingGPA,
             GPAName,
             programID
@@ -218,7 +219,7 @@ class ApprovedStudiesService {
             dbGaPID = this._validateDbGaPID(dbGaPID);
         }
         // store the new study
-        let newStudy = await this.storeApprovedStudies(null, name, acronym, dbGaPID, null, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID);
+        let newStudy = await this.storeApprovedStudies(null, name, acronym, dbGaPID, null, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification);
         return {_id: newStudy?._id};
     }
     /**
