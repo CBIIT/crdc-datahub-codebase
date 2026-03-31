@@ -165,14 +165,13 @@ export const populatePermissibleValues = (
   // Create a mapping of API-provided property names to their permissible values for efficient lookup
   const propertyToPVs = new Map<string, string[] | null>();
   data?.forEach(({ property, permissibleValues }) => {
-    propertyToPVs.set(property, permissibleValues ?? null);
+    propertyToPVs.set(property, permissibleValues);
   });
 
   // Map the REQUESTED properties to their corresponding permissible values from the API
-  // If the requested property is not found in the API response, it will be set to null to indicate missing data
-  const mappedPVs = new Map<string, string[] | null>();
+  const mappedPVs = new Map<string, string[] | null | undefined>();
   properties.forEach((propertyName) => {
-    mappedPVs.set(propertyName, propertyToPVs.get(propertyName) ?? null);
+    mappedPVs.set(propertyName, propertyToPVs.get(propertyName));
   });
 
   chain(dictionary)
@@ -202,7 +201,9 @@ export const populatePermissibleValues = (
         // The API did not return data for this property, but it has an enum defined in the MDF.
         // This likely means the API is missing data for this property.
         // Update the enum to reflect that permissible values are not currently available.
-      } else if (!permissibleValues && property.enum) {
+        //
+        // Critical Note: If pvs are null, that is explicitly a NO-OP and means we should not modify the MDF.
+      } else if (typeof permissibleValues === "undefined" && property.enum) {
         Logger.error("No permissible values returned for property", propertyName, property);
         property.enum = [
           "Permissible values are currently not available. Please contact the CRDC Submission Portal HelpDesk at NCICRDCHelpDesk@mail.nih.gov",

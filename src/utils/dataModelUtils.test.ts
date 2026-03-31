@@ -629,6 +629,48 @@ describe("populatePermissibleValues tests", () => {
     expect(dictionary.node1.properties.property1.type).toBe("list");
   });
 
+  it("should treat null permissible values from API as a no-op", () => {
+    const dictionary = modelDefinitionFactory.build({
+      node1: modelDefinitionNodeFactory.build({
+        properties: {
+          property1: modelDefinitionNodePropertyFactory.build({
+            type: "enum",
+            enum: ["old"],
+          }),
+        },
+      }),
+    });
+
+    const apiData: RetrievePVsByPropertyNameResponse["retrievePVsByPropertyName"] = [
+      { property: "property1", permissibleValues: null },
+    ];
+
+    utils.populatePermissibleValues(dictionary, ["property1"], apiData);
+
+    expect(dictionary.node1.properties.property1.enum).toEqual(["old"]);
+    expect(dictionary.node1.properties.property1.type).toBe("enum");
+  });
+
+  it("should no-op null PVs while still applying fallback for missing properties", () => {
+    const dictionary = modelDefinitionFactory.build({
+      node1: modelDefinitionNodeFactory.build({
+        properties: {
+          property1: modelDefinitionNodePropertyFactory.build({ enum: ["keep-me"] }),
+          property2: modelDefinitionNodePropertyFactory.build({ enum: ["replace-me"] }),
+        },
+      }),
+    });
+
+    const apiData: RetrievePVsByPropertyNameResponse["retrievePVsByPropertyName"] = [
+      { property: "property1", permissibleValues: null },
+    ];
+
+    utils.populatePermissibleValues(dictionary, ["property1", "property2"], apiData);
+
+    expect(dictionary.node1.properties.property1.enum).toEqual(["keep-me"]);
+    expect(dictionary.node1.properties.property2.enum).toEqual([fallbackMessage]);
+  });
+
   it("should apply the same permissible values to matching property names across multiple nodes", () => {
     const dictionary = modelDefinitionFactory.build({
       node1: modelDefinitionNodeFactory.build({
