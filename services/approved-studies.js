@@ -249,6 +249,7 @@ class ApprovedStudiesService {
             primaryContactID,
             useProgramPC,
             pendingModelChange,
+            pendingImageDeIdentification,
             isPendingGPA,
             GPAName,
             programID
@@ -307,8 +308,12 @@ class ApprovedStudiesService {
             updateStudy.PI = PI;
         }
         const currPendingModelChange = updateStudy.pendingModelChange;
+        const currPendingImageDeIdentification = updateStudy.pendingImageDeIdentification;
         if (pendingModelChange !== undefined) {
             updateStudy.pendingModelChange = isTrue(pendingModelChange);
+        }
+        if (pendingImageDeIdentification !== undefined) {
+            updateStudy.pendingImageDeIdentification = isTrue(pendingImageDeIdentification);
         }
         updateStudy.programID = program?._id ?? null;
         if (isTrue(updateStudy.controlledAccess)) {
@@ -376,9 +381,11 @@ class ApprovedStudiesService {
         // if the notification fails, an error response will be thrown but the study will still be updated
         const pendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(updateStudy?.dbGaPID) : false;
         const pendingGPA = isTrue(updateStudy.controlledAccess) ? Boolean(updateStudy?.isPendingGPA) : false;
-        const allPendingsCleared = !isTrue(updateStudy?.pendingModelChange) && !pendingGPA && !pendingDbGaPID;
+        const allPendingsCleared = !isTrue(updateStudy?.pendingModelChange) && !pendingGPA && !pendingDbGaPID
+            && !isTrue(updateStudy?.pendingImageDeIdentification);
         const wasPendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(currDbGaPID) : false;
-        const hadPendingsConditions = isTrue(currPendingModelChange) || isTrue(currPendingGPA) || wasPendingDbGaPID;
+        const hadPendingsConditions = isTrue(currPendingModelChange) || isTrue(currPendingGPA) || wasPendingDbGaPID
+            || isTrue(currPendingImageDeIdentification);
         if (allPendingsCleared && hadPendingsConditions && updateStudy?.applicationID) {
             await this._notifyClearPendingState(updateStudy);
         }
