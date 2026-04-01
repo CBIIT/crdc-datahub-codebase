@@ -1,0 +1,255 @@
+name: Build Images for CRDC DH
+permissions: 
+  contents: write
+  id-token: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Build from Github Actions
+        type: environment
+        default: build
+      build:
+        description: build docker images
+        required: true
+        type: boolean
+        default: true
+      trivy_scan:
+        description: "Run Trivy Scan" 
+        required: true
+        type: boolean
+        default: true
+run-name: "Build Docker Images for CRDC DH"
+
+jobs:
+
+  build:
+    name: Build Image Job 
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      ECR_AUTHN: "crdc-hub-authn"
+      ECR_BE: "crdc-hub-backend"
+      ECR_FE: "crdc-hub-frontend"
+      ECR_CHATBOTBE: "crdc-hub-chatbot-be"
+      ECR_ESSENTIAL: "crdc-hub-essentialvalidation"
+      ECR_EXPORT: "crdc-hub-exportvalidation"
+      ECR_FILE: "crdc-hub-filevalidation"
+      ECR_METADATA: "crdc-hub-metadatavalidation"
+      ECR_PVPULLER: "crdc-hub-pvpuller"
+      REGION: "us-east-1"
+#      CODE_BRANCH: "${{ github.event.inputs.code_branch }}"
+      AWS_BUILD_ROLE_TO_ASSUME: ${{ secrets.AWS_BUILD_ROLE_TO_ASSUME }}
+      AWS_ECR_ACCOUNT_ID: ${{ secrets.AWS_ECR_ACCOUNT_ID }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    steps:
+
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+        with:
+          #ref: ${{ env.CODE_BRANCH }}
+          ref: ${{ github.ref_name }}
+          submodules: true
+
+      - name: extract branch name and set tag image
+        id: extract_branch
+        run: |
+          BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_ENV"
+          echo "Current branch is: $BRANCH_NAME"
+          git fetch --tags --force --quiet
+          #tag=$(git tag -l $BRANCH_NAME* | tail -1)
+          tag=$(git tag -l $BRANCH_NAME* | sort -V | tail -1)
+          if  [ ! -z "$tag" ];
+          then
+            # Increment the build number if a tag is found
+            build_num=$(echo "${tag##*.}")
+            build_num=$((build_num+1))
+            echo "IMAGE_TAG=$BRANCH_NAME.$build_num" >> $GITHUB_ENV
+          else
+            # If no tag is found create a new tag name
+            build_num=1
+            echo "IMAGE_TAG=$BRANCH_NAME.$build_num" >> $GITHUB_ENV
+          fi
+
+      - name: Build Docker Image
+        id: build-image
+        #if: github.event.inputs.build_be == 'true'
+        env:
+          ECR_AUTHN: "crdc-hub-authn"
+          ECR_BE: "crdc-gen-backend"
+          ECR_FE: "crdc-hub-frontend"
+          ECR_CHATBOTBE: "crdc-hub-chatbot-be"
+          ECR_ESSENTIAL: "crdc-hub-essentialvalidation"
+          ECR_EXPORT: "crdc-hub-exportvalidation"
+          ECR_FILE: "crdc-hub-filevalidation"
+          ECR_METADATA: "crdc-hub-metadatavalidation"
+          ECR_PVPULLER: "crdc-hub-pvpuller"
+          REGION: "us-east-1"
+          AWS_BUILD_ROLE_TO_ASSUME: ${{ secrets.AWS_BUILD_ROLE_TO_ASSUME }}
+          AWS_ECR_ACCOUNT_ID: ${{ secrets.AWS_ECR_ACCOUNT_ID }}
+          REGISTRY_URL: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          AUTHN_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_AUTHN }}:${{ env.IMAGE_TAG }}
+          BE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_BE }}:${{ env.IMAGE_TAG }}
+          FE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FE }}:${{ env.IMAGE_TAG }}
+          CHATBOTBE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_CHATBOTBE }}:${{ env.IMAGE_TAG }}
+          ESSENTIAL_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_ESSENTIAL }}:${{ env.IMAGE_TAG }}
+          EXPORT_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_EXPORT }}:${{ env.IMAGE_TAG }}
+          FILE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FILE }}:${{ env.IMAGE_TAG }}
+          METADATA_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_METADATA }}:${{ env.IMAGE_TAG }}
+          PVPULLER_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_PVPULLER }}:${{ env.IMAGE_TAG }}
+        run: |
+          docker build --no-cache -t $AUTHN_IMAGE_NAME -f apps/authn/Dockerfile apps/authn
+          docker build --no-cache -t $BE_IMAGE_NAME -f apps/backend/Dockerfile apps/backend
+          docker build --no-cache -t $FE_IMAGE_NAME -f apps/frontend/Dockerfile apps/frontend
+          docker build --no-cache -t $CHATBOTBE_IMAGE_NAME -f apps/chatbot-backend/Dockerfile apps/chatbot-backend
+          docker build --no-cache -t $ESSENTIAL_IMAGE_NAME -f apps/validator/essentialvalidation.dockerfile apps/validator
+          docker build --no-cache -t $EXPORT_IMAGE_NAME -f apps/validator/export.dockerfile apps/validator
+          docker build --no-cache -t $FILE_IMAGE_NAME -f apps/validator/filevalidation.dockerfile apps/validator
+          docker build --no-cache -t $METADATA_IMAGE_NAME -f apps/validator/metadatavalidation.dockerfile apps/validator
+          docker build --no-cache -t $PVPULLER_IMAGE_NAME -f apps/validator/pv_puller.dockerfile apps/validator
+
+      - name: Run Trivy test scan for Docker Image
+        id: trivy-scan
+        if: github.event.inputs.trivy_scan == 'true'
+        env:
+          REGISTRY_URL: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          AUTHN_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_AUTHN }}:${{ env.IMAGE_TAG }}
+          BE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_BE }}:${{ env.IMAGE_TAG }}
+          FE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FE }}:${{ env.IMAGE_TAG }}
+          CHATBOTBE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_CHATBOTBE }}:${{ env.IMAGE_TAG }}
+          ESSENTIAL_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_ESSENTIAL }}:${{ env.IMAGE_TAG }}
+          EXPORT_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_EXPORT }}:${{ env.IMAGE_TAG }}
+          FILE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FILE }}:${{ env.IMAGE_TAG }}
+          METADATA_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_METADATA }}:${{ env.IMAGE_TAG }}
+          PVPULLER_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_PVPULLER }}:${{ env.IMAGE_TAG }}
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          IMAGES=(
+            "$AUTHN_IMAGE_NAME"
+            "$BE_IMAGE_NAME"
+            "$FE_IMAGE_NAME"
+            "$CHATBOTBE_IMAGE_NAME"
+            "$ESSENTIAL_IMAGE_NAME"
+            "$EXPORT_IMAGE_NAME"
+            "$FILE_IMAGE_NAME"
+            "$METADATA_IMAGE_NAME"
+            "$PVPULLER_IMAGE_NAME"
+          )
+
+          FAILED=0
+          for IMAGE in "${IMAGES[@]}"; do
+            echo "Scanning: $IMAGE"
+            trivy image \
+              --exit-code 1 \
+              --severity CRITICAL,HIGH \
+              --no-progress \
+              --format table \
+              "$IMAGE" || FAILED=1
+          done
+
+          if [ $FAILED -ne 0 ]; then
+            echo "Trivy scan found CRITICAL or HIGH vulnerabilities in one or more images."
+            exit 1
+          fi
+
+        #strategy:
+          #fail-fast: false
+          #matrix:
+            #image-ref:
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_AUTHN }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_BE }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FE }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_CHATBOTBE }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_ESSENTIAL }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_EXPORT }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FILE }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_METADATA }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_PVPULLER }}:${{ env.IMAGE_TAG }}
+        #uses: aquasecurity/trivy-action@master
+        #with:
+          #image-ref: '${{ matrix.image_ref }}'
+          #format: 'table'
+          #exit-code: 1
+          #severity: 'CRITICAL,HIGH'
+
+      - name: Create git tag for image
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git tag ${{ env.IMAGE_TAG }}
+          git push origin ${{ env.IMAGE_TAG }}
+
+      - name: Configure AWS Role to assume using OIDC authentication
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_BUILD_ROLE_TO_ASSUME }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        env:
+          REGISTRY_URL: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+        run:  |
+          aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REGISTRY_URL
+
+      - name: Push BE docker Image
+        if: success()
+        env:
+          ECR_AUTHN: "crdc-hub-authn"
+          ECR_BE: "crdc-gen-backend"
+          ECR_FE: "crdc-hub-frontend"
+          ECR_CHATBOTBE: "crdc-hub-chatbot-be"
+          ECR_ESSENTIAL: "crdc-hub-essentialvalidation"
+          ECR_EXPORT: "crdc-hub-exportvalidation"
+          ECR_FILE: "crdc-hub-filevalidation"
+          ECR_METADATA: "crdc-hub-metadatavalidation"
+          ECR_PVPULLER: "crdc-hub-pvpuller"
+          REGISTRY_URL: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com
+          AUTHN_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_AUTHN }}:${{ env.IMAGE_TAG }}
+          BE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_BE }}:${{ env.IMAGE_TAG }}
+          FE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FE }}:${{ env.IMAGE_TAG }}
+          CHATBOTBE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_CHATBOTBE }}:${{ env.IMAGE_TAG }}
+          ESSENTIAL_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_ESSENTIAL }}:${{ env.IMAGE_TAG }}
+          EXPORT_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_EXPORT }}:${{ env.IMAGE_TAG }}
+          FILE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FILE }}:${{ env.IMAGE_TAG }}
+          METADATA_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_METADATA }}:${{ env.IMAGE_TAG }}
+          PVPULLER_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_PVPULLER }}:${{ env.IMAGE_TAG }}
+        run: |
+          echo "Pushing: $AUTHN_IMAGE_NAME"
+          docker push $AUTHN_IMAGE_NAME
+
+          echo "Pushing: $BE_IMAGE_NAME"
+          docker push $BE_IMAGE_NAME
+
+          echo "Pushing: $FE_IMAGE_NAME"
+          docker push $FE_IMAGE_NAME
+
+          echo "Pushing: $CHATBOTBE_IMAGE_NAME"
+          docker push $CHATBOTBE_IMAGE_NAME
+
+          echo "Pushing: $ESSENTIAL_IMAGE_NAME"
+          docker push $ESSENTIAL_IMAGE_NAME
+
+          echo "Pushing: $EXPORT_IMAGE_NAME"
+          docker push $EXPORT_IMAGE_NAME
+
+          echo "Pushing: $FILE_IMAGE_NAME"
+          docker push $FILE_IMAGE_NAME
+
+          echo "Pushing: $METADATA_IMAGE_NAME"
+          docker push $METADATA_IMAGE_NAME
+
+          echo "Pushing: $PVPULLER_IMAGE_NAME"
+          docker push $PVPULLER_IMAGE_NAME
+
+
+      - name: Slack Notification
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        uses: act10ns/slack@87c73aef9f8838eb6feae81589a6b1487a4a9e08     # v1.6.0
+        with:
+          status: ${{ job.status }}
+          steps: ${{ toJson(steps) }}
+        if: always()
