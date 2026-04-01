@@ -77,7 +77,7 @@ jobs:
             dockerfile: apps/authn/Dockerfile
             context: apps/authn
           - name: backend
-            ecr_repo: crdc-gen-backend
+            ecr_repo: crdc-hub-backend
             dockerfile: apps/backend/Dockerfile
             context: apps/backend
           - name: frontend
