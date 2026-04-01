@@ -182,10 +182,10 @@ jobs:
           FE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FE }}:${{ env.IMAGE_TAG }}
           CHATBOTBE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_CHATBOTBE }}:${{ env.IMAGE_TAG }}
           ESSENTIAL_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_ESSENTIAL }}:${{ env.IMAGE_TAG }
-          EXPORT_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_EXPORT }}:${{ env.IMAGE_TAG }
-          FILE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FILE }}:${{ env.IMAGE_TAG }
-          METADATA_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_METADATA }}:${{ env.IMAGE_TAG }
-          PVPULLER_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_PVPULLER }}:${{ env.IMAGE_TAG }
+          EXPORT_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_EXPORT }}:${{ env.IMAGE_TAG }}
+          FILE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FILE }}:${{ env.IMAGE_TAG }}
+          METADATA_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_METADATA }}:${{ env.IMAGE_TAG }}
+          PVPULLER_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_PVPULLER }}:${{ env.IMAGE_TAG }}
         run: |
           echo "Pushing: $AUTHN_IMAGE_NAME"
           docker push $AUTHN_IMAGE_NAME
