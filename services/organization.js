@@ -1,6 +1,6 @@
 const {ERROR} = require("../constants/error-constants");
 const {USER} = require("../constants/user-constants");
-const {ORGANIZATION, NA_PROGRAM} = require("../constants/organization-constants");
+const {ORGANIZATION} = require("../constants/organization-constants");
 const {getCurrentTime} = require("../utility/time-utility");
 const {getDataCommonsDisplayNamesForUserOrganization} = require("../../utility/data-commons-remapper");
 const {replaceErrorString} = require("../../utility/string-util");
@@ -72,14 +72,24 @@ class Organization {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
       throw new Error(ERROR.NOT_LOGGED_IN)
     }
-    const {first, offset, orderBy, sortDirection, status} = params;
-    const validStatuses = [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE];
-    if (status !== this._ALL && !validStatuses.includes(status)) {
-      throw new Error(replaceErrorString(ERROR.INVALID_PROGRAM_STATUS, status));
+    const {first, offset, orderBy, sortDirection, status: statusRaw} = params;
+    let status = statusRaw;
+    if (status === undefined || status === null || (typeof status === "string" && status.trim() === "")) {
+      status = this._ALL;
     }
-
-    const statusCondition = status && status !== this._ALL ?
-      {status: status} : {status: {$in: validStatuses}};
+    const normalizedStatus = String(status).trim().toLowerCase();
+    let statusCondition;
+    if (normalizedStatus === this._ALL.toLowerCase()) {
+      statusCondition = {status: {$in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE]}};
+    } else if (normalizedStatus === ORGANIZATION.STATUSES.ACTIVE.toLowerCase()) {
+      statusCondition = {status: ORGANIZATION.STATUSES.ACTIVE};
+    } else if (normalizedStatus === ORGANIZATION.STATUSES.INACTIVE.toLowerCase()) {
+      statusCondition = {status: ORGANIZATION.STATUSES.INACTIVE};
+    } else {
+      throw new Error(
+        replaceErrorString(ERROR.INVALID_PROGRAM_STATUS, String(params?.status ?? "").trim() || normalizedStatus)
+      );
+    }
 
     const programList = await this.programDAO.listPrograms(first, offset, orderBy, sortDirection, statusCondition);
     return {
@@ -114,7 +124,7 @@ class Organization {
    * Edit an organization by it's `_id` and a set of parameters
    *
    * @async
-   * @typedef {{ orgID: string, name: string, conciergeID: string, studies: Object[], status: string }} EditOrganizationInput
+   * @typedef {{ orgID: string, name: string, conciergeID: string, status: string }} EditOrganizationInput
    * @throws {Error} If the organization is not found or the update fails
    * @param {string} orgID The ID of the organization to edit
    * @param {EditOrganizationInput} params The organization input
@@ -122,25 +132,40 @@ class Organization {
    */
   async editOrganization(orgID, params) {
     const currentOrg = await this.getOrganizationByID(orgID);
-    // Check for read-only violation
+    if (!currentOrg) {
+      throw new Error(ERROR.ORG_NOT_FOUND);
+    }
     if (this.checkForReadOnlyViolation(currentOrg, params)) {
       throw new Error(ERROR.CANNOT_UPDATE_READ_ONLY_PROGRAM);
     }
     const updatedOrg = {updateAt: getCurrentTime()};
-    if (!currentOrg) {
-      throw new Error(ERROR.ORG_NOT_FOUND);
-    }
+
+    const attemptingToSetInactive =
+      typeof params?.status === "string" && params.status === ORGANIZATION.STATUSES.INACTIVE;
 
     if (!currentOrg?.abbreviation && !params?.abbreviation?.trim()) {
       throw new Error(ERROR.ORGANIZATION_INVALID_ABBREVIATION);
     }
 
-    if (params?.name?.toLowerCase() !== currentOrg.name?.toLowerCase()) {
-      const existingOrg = await this.getOrganizationByName(params.name);
-      if (existingOrg) {
-        throw new Error(ERROR.DUPLICATE_ORG_NAME);
+    if (attemptingToSetInactive) {
+      const studyCount = await this.approvedStudyDAO.count({ programID: orgID });
+      if (studyCount > 0) {
+        throw new Error(ERROR.PROGRAM_CANNOT_INACTIVATE_WITH_STUDIES);
       }
-      updatedOrg.name = params.name;
+    }
+
+    if (typeof params?.name === "string") {
+      const trimmedName = params.name.trim();
+      if (
+        trimmedName &&
+        trimmedName.toLowerCase() !== currentOrg.name?.toLowerCase()
+      ) {
+        const existingOrg = await this.getOrganizationByName(trimmedName);
+        if (existingOrg) {
+          throw new Error(ERROR.DUPLICATE_ORG_NAME);
+        }
+        updatedOrg.name = trimmedName;
+      }
     }
 
     const conciergeProvided = typeof params.conciergeID !== "undefined";
@@ -208,11 +233,6 @@ class Organization {
       }
     }
 
-    // Update studies to reference this organization via programID
-    if (params?.studies) {
-      await this._updateStudiesProgramID(orgID, params.studies);
-    }
-
     return { ...currentOrg, ...updatedOrg };
   }
 
@@ -275,7 +295,7 @@ class Organization {
    * Create a new Organization
    *
    * @async
-   * @typedef {{ name: string, conciergeID?: string, studies?: Object[] }} CreateOrganizationInput
+   * @typedef {{ name: string, conciergeID?: string }} CreateOrganizationInput
    * @throws {Error} If the organization name is already taken or the create action fails
    * @param {CreateOrganizationInput} params The organization input
    * @returns {Promise<Object>} The newly created organization
@@ -318,101 +338,7 @@ class Organization {
       throw new Error(ERROR.CREATE_FAILED);
     }
 
-    // Update studies to reference this new organization via programID
-    if (params?.studies && params.studies.length > 0) {
-      await this._updateStudiesProgramID(res._id, params.studies);
-    }
-
     return res;
-  }
-
-  /**
-   * Update studies to reference the specified organization via programID
-   * @param {string} orgID The organization ID to assign to studies
-   * @param {Array} studies Array of study objects with studyID
-   * @throws {Error} If any study updates fail or if studyIDs don't exist
-   */
-  async _updateStudiesProgramID(orgID, studies) {
-    if (!studies || studies.length === 0) {
-      return;
-    }
-
-    const studyIDs = studies.map(study => study?.studyID).filter(id => id != null);
-    
-    if (studyIDs.length === 0) {
-      return;
-    }
-
-    // First, verify that all provided studyIDs exist
-    const existingStudies = await this.approvedStudyDAO.findMany({ id: { in: studyIDs } });
-    const existingStudyIDs = existingStudies.map(study => study.id);
-    const nonExistentStudyIDs = studyIDs.filter(id => !existingStudyIDs.includes(id));
-
-    if (nonExistentStudyIDs.length > 0) {
-      console.error(`Study ID validation failed for organization ${orgID}:`, {
-        existingStudyIDs: existingStudyIDs,
-        nonExistentStudyIDs: nonExistentStudyIDs,
-        totalExisting: existingStudyIDs.length,
-        totalNonExistent: nonExistentStudyIDs.length
-      });
-      
-      throw new Error(`${ERROR.UPDATE_FAILED_STUDY_IDS_NOT_EXIST}: ${nonExistentStudyIDs.join(', ')}`);
-    }
-
-    // Update each study's programID to reference this organization
-    const updateResult = await this.approvedStudyDAO.updateMany(
-      { id: { in: studyIDs } },
-      { programID: orgID, updatedAt: getCurrentTime() }
-    );
-
-    // Verify all studies were updated successfully
-    if (!updateResult) {
-      console.error(`No response when updating ${studyIDs.length} studies to reference organization ${orgID}: ${studyIDs.join(', ')}`);
-      throw new Error(ERROR.DATABASE_OPERATION_FAILED);
-    }
-
-    if (updateResult.count !== studyIDs.length) {
-      // Re-query to determine which studies were not updated
-      const updatedStudies = await this.approvedStudyDAO.findMany({ id: { in: studyIDs } });
-      const actuallyUpdatedStudyIDs = updatedStudies
-        .filter(study => study.programID === orgID)
-        .map(study => study.id);
-      const failedStudyIDs = studyIDs.filter(id => !actuallyUpdatedStudyIDs.includes(id));
-      const successfulStudyIDs = actuallyUpdatedStudyIDs;
-      const failedCount = failedStudyIDs.length;
-      
-      console.error(`Partial update failure for organization ${orgID}:`, {
-        totalStudies: studyIDs.length,
-        successfulUpdates: successfulStudyIDs.length,
-        failedUpdates: failedCount,
-        successfulStudyIDs: successfulStudyIDs,
-        failedStudyIDs: failedStudyIDs
-      });
-      
-      throw new Error(ERROR.NOT_ALL_STUDIES_UPDATED);
-    }
-  }
-
-
-  /**
-   * Retrieves approved studies in the approved studies collection.
-   *
-   * @param {object} studies - The studies object with studyID.
-   * @returns {Promise<Object>} The approved studies
-   */
-  async _getApprovedStudies(studies) {
-    const studyIDs = studies
-      .filter((study) => study?.studyID)
-      .map((study) => study.studyID);
-    const approvedStudies = await this.approvedStudyDAO.findMany({
-        id: { in: studyIDs },
-    });
-
-    if (approvedStudies.length !== studyIDs.length) {
-      throw new Error(ERROR.INVALID_APPROVED_STUDY_ID);
-    }
-
-    return approvedStudies?.map((study) => ({id: study?._id}));
   }
 
   async upsertByProgramName(programName, abbreviation, description) {
