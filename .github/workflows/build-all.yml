@@ -129,8 +129,8 @@ jobs:
           #fail-fast: false
           #matrix:
             #image-ref:
-              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_AUTHN }}:${{ env.IMAGE_TAG }
-              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_BE }}:${{ env.IMAGE_TAG }
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_AUTHN }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_BE }}:${{ env.IMAGE_TAG }}
               #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FE }}:${{ env.IMAGE_TAG }}
               #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_CHATBOTBE }}:${{ env.IMAGE_TAG }}
               #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_ESSENTIAL }}:${{ env.IMAGE_TAG }}
