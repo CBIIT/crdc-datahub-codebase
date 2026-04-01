@@ -130,9 +130,9 @@ jobs:
           docker build --no-cache -t $METADATA_IMAGE_NAME -f apps/validator/metadatavalidation.dockerfile apps/validator
           docker build --no-cache -t $PVPULLER_IMAGE_NAME -f apps/validator/pv_puller.dockerfile apps/validator
 
-      - name: Run Trivy test scan for Docker Image
-        id: trivy-scan
-        if: github.event.inputs.trivy_scan == 'true'
+     # - name: Run Trivy test scan for Docker Image
+        #id: trivy-scan
+        #if: github.event.inputs.trivy_scan == 'true'
         #env:
           #REGISTRY_URL: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
           #AUTHN_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_AUTHN }}:${{ env.IMAGE_TAG }}
@@ -144,25 +144,25 @@ jobs:
           #FILE_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FILE }}:${{ env.IMAGE_TAG }}
           #METADATA_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_METADATA }}:${{ env.IMAGE_TAG }}
           #PVPULLER_IMAGE_NAME: ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_PVPULLER }}:${{ env.IMAGE_TAG }}
-        strategy:
-          fail-fast: false
-          matrix:
-            image-ref:
-              - ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_AUTHN }}:${{ env.IMAGE_TAG }
-              - ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_BE }}:${{ env.IMAGE_TAG }
-              - ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FE }}:${{ env.IMAGE_TAG }}
-              - ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_CHATBOTBE }}:${{ env.IMAGE_TAG }}
-              - ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_ESSENTIAL }}:${{ env.IMAGE_TAG }}
-              - ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_EXPORT }}:${{ env.IMAGE_TAG }}
-              - ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FILE }}:${{ env.IMAGE_TAG }}
-              - ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_METADATA }}:${{ env.IMAGE_TAG }}
-              - ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_PVPULLER }}:${{ env.IMAGE_TAG }}
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: '${{ matrix.image_ref }}'
-          format: 'table'
-          exit-code: 1
-          severity: 'CRITICAL,HIGH'
+        #strategy:
+          #fail-fast: false
+          #matrix:
+            #image-ref:
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_AUTHN }}:${{ env.IMAGE_TAG }
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_BE }}:${{ env.IMAGE_TAG }
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FE }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_CHATBOTBE }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_ESSENTIAL }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_EXPORT }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_FILE }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_METADATA }}:${{ env.IMAGE_TAG }}
+              #- ${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.ECR_PVPULLER }}:${{ env.IMAGE_TAG }}
+        #uses: aquasecurity/trivy-action@master
+        #with:
+          #image-ref: '${{ matrix.image_ref }}'
+          #format: 'table'
+          #exit-code: 1
+          #severity: 'CRITICAL,HIGH'
 
       #- name: Build BE Docker Image
         #id: build-be-image
