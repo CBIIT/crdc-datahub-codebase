@@ -289,6 +289,9 @@ class ApprovedStudiesService {
             }
         }
 
+        const origIsPendingGPA = updateStudy.isPendingGPA;
+        const origDbGaPID = updateStudy.dbGaPID;
+
         // update the study object
         updateStudy.studyName = name;
         updateStudy.controlledAccess = controlledAccess;
@@ -376,16 +379,14 @@ class ApprovedStudiesService {
             }
         }
 
-        // extract the current pending GPA and dbGaPID to variables
-        const {isPendingGPA: currPendingGPA, dbGaPID: currDbGaPID} = updateStudy;
         // notify the submitter that the pending state has been cleared
         // if the notification fails, an error response will be thrown but the study will still be updated
         const pendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(updateStudy?.dbGaPID) : false;
         const pendingGPA = isTrue(updateStudy.controlledAccess) ? Boolean(updateStudy?.isPendingGPA) : false;
         const allPendingsCleared = !isTrue(updateStudy?.pendingModelChange) && !pendingGPA && !pendingDbGaPID
             && !isTrue(updateStudy?.pendingImageDeIdentification);
-        const wasPendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(currDbGaPID) : false;
-        const hadPendingsConditions = isTrue(currPendingModelChange) || isTrue(currPendingGPA) || wasPendingDbGaPID
+        const wasPendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(origDbGaPID) : false;
+        const hadPendingsConditions = isTrue(currPendingModelChange) || isTrue(origIsPendingGPA) || wasPendingDbGaPID
             || isTrue(currPendingImageDeIdentification);
         if (allPendingsCleared && hadPendingsConditions && updateStudy?.applicationID) {
             await this._notifyClearPendingState(updateStudy);
