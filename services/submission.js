@@ -29,6 +29,7 @@ const {verifyToken} = require("../verifier/token-verifier");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {EMAIL_NOTIFICATIONS: EN} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
+const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const { isAllStudy } = require("../utility/study-utility");
 const {getDataCommonsDisplayNamesForSubmission, getDataCommonsDisplayNamesForListSubmissions,
@@ -260,6 +261,10 @@ class Submission {
 
         if (!program) {
             throw new Error(ERROR.CREATE_SUBMISSION_NO_ASSOCIATED_PROGRAM);
+        }
+
+        if (program?.status === ORGANIZATION.STATUSES.INACTIVE) {
+            throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
         }
 
         let approvedStudy = approvedStudies[0];
