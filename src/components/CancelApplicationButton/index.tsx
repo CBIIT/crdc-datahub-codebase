@@ -110,6 +110,12 @@ const CancelApplicationButton = ({ disabled, onCancel, ...rest }: Props) => {
   };
 
   const onConfirmDialog = useCallback(async () => {
+    if (data?._id === "new") {
+      setConfirmOpen(false);
+      onCancel?.();
+      return;
+    }
+
     setLoading(true);
     try {
       const { data: d, errors } = await cancelApp({
@@ -128,7 +134,7 @@ const CancelApplicationButton = ({ disabled, onCancel, ...rest }: Props) => {
     } finally {
       setLoading(false);
     }
-  }, [comment, cancelApp, enqueueSnackbar, onCancel]);
+  }, [data?._id, comment, cancelApp, enqueueSnackbar, onCancel]);
 
   if (!canSeeButton) {
     return null;
