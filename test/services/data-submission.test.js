@@ -961,6 +961,9 @@ describe("Submission.createSubmission", () => {
         // Mock _findByID to return the created submission
         submissionService._findByID = jest.fn().mockResolvedValue({ _id: "submission1", ...mockParams });
 
+        const { getDataCommonsDisplayNamesForSubmission: mockDisplayNamesForSubmission } = require('../../utility/data-commons-remapper');
+        mockDisplayNamesForSubmission.mockImplementation((submission) => submission);
+
         // Patch global.ERROR if not present
         // if (!global.ERROR) {
         //     global.ERROR = ERROR;
@@ -1016,6 +1019,58 @@ describe("Submission.createSubmission", () => {
             ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM
         );
         expect(mockSubmissionDAO.create).not.toHaveBeenCalled();
+    });
+
+    it("should trim dataCommons whitespace and pass allowed-data-commons validation for ALL scope", async () => {
+        submissionService._getUserScope.mockResolvedValueOnce({
+            isNoneScope: () => false,
+            isAllScope: () => true,
+            isOwnScope: () => false,
+            isStudyScope: () => false,
+            isDCScope: () => false
+        });
+
+        const paramsWithPaddedDc = { ...mockParams, dataCommons: "  commonsA  " };
+        await submissionService.createSubmission(paramsWithPaddedDc, mockContext);
+
+        expect(mockSubmissionDAO.create).toHaveBeenCalledWith(
+            expect.objectContaining({ dataCommons: "commonsA" })
+        );
+    });
+
+    it("should reject whitespace-only dataCommons with invalid params error (ALL scope)", async () => {
+        submissionService._getUserScope.mockResolvedValueOnce({
+            isNoneScope: () => false,
+            isAllScope: () => true,
+            isOwnScope: () => false,
+            isStudyScope: () => false,
+            isDCScope: () => false
+        });
+
+        const paramsWhitespaceOnly = { ...mockParams, dataCommons: "   \t  " };
+        await expect(submissionService.createSubmission(paramsWhitespaceOnly, mockContext))
+            .rejects
+            .toThrow(ERROR.CREATE_SUBMISSION_INVALID_PARAMS);
+    });
+
+    it("should use trimmed dataCommons in not-allowed error message (ALL scope)", async () => {
+        submissionService._getUserScope.mockResolvedValueOnce({
+            isNoneScope: () => false,
+            isAllScope: () => true,
+            isOwnScope: () => false,
+            isStudyScope: () => false,
+            isDCScope: () => false
+        });
+
+        const paramsUnknownPadded = { ...mockParams, dataCommons: "  notInList  " };
+        const expectedMessage = replaceErrorString(
+            replaceErrorString(ERROR.INVALID_DATA_COMMONS_NOT_ALLOWED, `'notInList'`),
+            "commonsA",
+            /\$accepted\$/g
+        );
+        await expect(submissionService.createSubmission(paramsUnknownPadded, mockContext))
+            .rejects
+            .toThrow(expectedMessage);
     });
 
     it("should allow submission creation for user with OWN scope and assigned study", async () => {
@@ -1101,6 +1156,26 @@ describe("Submission.createSubmission", () => {
         const result = await submissionService.createSubmission(mockParams, mockContext);
         expect(result).toBeDefined();
         expect(mockSubmissionDAO.create).toHaveBeenCalled();
+    });
+
+    it("should trim dataCommons for DC scope access check and persist trimmed value", async () => {
+        submissionService._getUserScope.mockResolvedValueOnce({
+            isNoneScope: () => false,
+            isAllScope: () => false,
+            isOwnScope: () => false,
+            isStudyScope: () => false,
+            isDCScope: () => true
+        });
+
+        mockContext.userInfo.dataCommons = ["commonsA"];
+
+        const paramsWithPaddedDc = { ...mockParams, dataCommons: "  commonsA  " };
+        const result = await submissionService.createSubmission(paramsWithPaddedDc, mockContext);
+
+        expect(result).toBeDefined();
+        expect(mockSubmissionDAO.create).toHaveBeenCalledWith(
+            expect.objectContaining({ dataCommons: "commonsA" })
+        );
     });
 
     it("should throw error for user with DC scope but no matching data commons", async () => {

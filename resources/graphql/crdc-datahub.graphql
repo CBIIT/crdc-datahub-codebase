@@ -837,6 +837,16 @@ type SubmissionStudy {
     dbGaPID: String
 }
 
+type propertyPVs {
+    id: ID,
+    property: String,
+    model: String,
+    version: String,
+    permissibleValues: [String],
+    createdAt: Date,
+    updatedAt: Date
+}
+
 type Query {
     "User or Fed lead initiated operations"
     getApplication (_id: ID!): Application
@@ -1054,6 +1064,12 @@ type Query {
     retrievePropsForNodeType(studyID: String!, dataCommonsDisplayName: String!, nodeType: String!): [nodeProp]
     downloadAllReleasedNodes(studyID: String!, dataCommonsDisplayName: String!): String #presigned url of s3
     getSubmissionSummary(submissionID: ID!): [nodeTypeSummary]
+
+    retrievePVsByPropertyName (
+        propertyNames: [String!]!,
+        model: String!, # GC, CTDC, ICDC, PSDC
+        version: String!
+    ) : [propertyPVs] @public
 }
 type Mutation {
     "User initiated operations"
@@ -1083,7 +1099,7 @@ type Mutation {
         comment: String
     ): Submission
 
-    deleteDataRecords(submissionID: String!, nodeType: String!, nodeIDs: [String!] = [], deleteAll: Boolean = false, exclusiveIDs: [String!] = []): DataValidation
+    deleteDataRecords(submissionID: String!, nodeType: String!, nodeIDs: [String!] = [], deleteAll: Boolean = false, exclusiveIDs: [String!] = [], deleteOrphanedDataFiles: Boolean = false): DataValidation
     createBatch (submissionID: ID!, type: String, files: [String!]!): NewBatch
     updateBatch (batchID: ID!, files: [UploadResult], uploading: Boolean): Batch #uploading param is for CLI heartbeat.
     createTempCredentials (submissionID: ID!): TempCredentials  

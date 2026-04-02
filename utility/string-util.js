@@ -16,7 +16,10 @@ function isElementInArrayCaseInsensitive(array, target) {
 }
 
 const replaceErrorString = (original, replacement, pattern = /\$item\$/g) => {
-   return (!original || !replacement) ? original : original.replace(pattern, replacement);
+    if (!original || replacement === undefined || replacement === null) {
+        return original;
+    }
+    return original.replace(pattern, replacement);
 }
 
 // For a MongoDB regex search, the dot '.' means any character in the keyword. It should be removed from the user-input.

@@ -6,6 +6,7 @@
  *         (or directly: node documentation/3-6-0/3-6-0-migration.js)
  * 
  * Migration files:
+ * - create-property-pvs-collection.js: Create propertyPVs MongoDB collection if missing
  * - rename-application-id.js: Rename pendingApplicationID to applicationID in ApprovedStudies
  * - init-metadata-validation-batch-size.js: Initialize METADATA_VALIDATION_BATCH_SIZE config entry
  * - add-sts-resource-config.js: Add STS_RESOURCE configuration (tier-based URL)
@@ -76,6 +77,29 @@ async function closeDatabaseConnection(client) {
 // ============================================================================
 // MIGRATION FUNCTIONS
 // ============================================================================
+
+/**
+ * Execute propertyPVs collection creation
+ */
+async function executePropertyPVsCollectionMigration(db) {
+    console.log('🔄 Executing propertyPVs collection creation...');
+
+    try {
+        const migration = require('./create-property-pvs-collection');
+        const result = await migration.createPropertyPVsCollection(db);
+
+        if (result.success) {
+            console.log('✅ propertyPVs collection migration completed successfully');
+        } else {
+            console.log('❌ propertyPVs collection migration failed');
+        }
+
+        return result;
+    } catch (error) {
+        console.error('❌ Error executing propertyPVs collection migration:', error.message);
+        return { success: false, error: error.message };
+    }
+}
 
 /**
  * Execute METADATA_VALIDATION_BATCH_SIZE config initialization
@@ -179,6 +203,11 @@ async function orchestrateMigration() {
         //     execute: () => executeMigrationFunction(db)
         // }
         const availableMigrations = [
+            {
+                name: "Create propertyPVs collection",
+                file: "create-property-pvs-collection.js",
+                execute: () => executePropertyPVsCollectionMigration(db)
+            },
             {
                 name: "Rename pendingApplicationID to applicationID",
                 file: "rename-application-id.js",
