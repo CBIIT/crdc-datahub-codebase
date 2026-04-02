@@ -46,7 +46,13 @@ jobs:
           BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
           echo "Current branch is: $BRANCH_NAME"
           git fetch --tags --force --quiet
-          tag=$(git tag -l $BRANCH_NAME* | sort -V | tail -1)
+          #tag=$(git tag -l $BRANCH_NAME* | sort -V | tail -1)
+          tag=$(git ls-remote --tags origin "$BRANCH_NAME.*" \
+            | awk '{print $2}' \
+            | sed 's|refs/tags/||' \
+            | sort -V \
+            | tail -1)
+          echo "Latest git tag: $tag" 
           if [ ! -z "$tag" ]; then
             build_num=$(echo "${tag##*.}")
             build_num=$((build_num+1))
@@ -55,6 +61,13 @@ jobs:
           fi
           IMAGE_TAG="$BRANCH_NAME.$build_num"
           echo "IMAGE_TAG=$IMAGE_TAG"
+
+          # Tag the commit immediately so the next run always sees it, even if the build fails
+          git config user.name "GitHub Actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git tag $IMAGE_TAG
+          git push origin $IMAGE_TAG
+
           echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
   # ──────────────────────────────────────────────
@@ -160,22 +173,22 @@ jobs:
   # ──────────────────────────────────────────────
   # Job 3: Tag the commit only after all builds pass
   # ──────────────────────────────────────────────
-  tag:
-    name: Create Git Tag
-    runs-on: ubuntu-latest
-    needs: [prepare, build]
-    steps:
-      - name: Checkout Code Repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
+  #tag:
+    #name: Create Git Tag
+    #runs-on: ubuntu-latest
+    #needs: [prepare, build]
+    #steps:
+      #- name: Checkout Code Repository
+        #uses: actions/checkout@v4
+        #with:
+          #ref: ${{ github.ref_name }}
 
-      - name: Create and push git tag
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git tag ${{ needs.prepare.outputs.image_tag }}
-          git push origin ${{ needs.prepare.outputs.image_tag }}
+      #- name: Create and push git tag
+        #run: |
+          #git config user.name "GitHub Actions"
+          #git config user.email "github-actions@users.noreply.github.com"
+          #git tag ${{ needs.prepare.outputs.image_tag }}
+          #git push origin ${{ needs.prepare.outputs.image_tag }}
 
   # ──────────────────────────────────────────────
   # Job 4: Slack notification (always runs)
