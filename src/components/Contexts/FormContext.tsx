@@ -27,6 +27,8 @@ import {
   LIST_INSTITUTIONS,
   ListInstitutionsInput,
   ListInstitutionsResp,
+  GetApplicationFormVersionResp,
+  GET_APPLICATION_FORM_VERSION,
 } from "@/graphql";
 import { Logger } from "@/utils";
 
@@ -121,6 +123,15 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       context: { clientName: "backend" },
       fetchPolicy: "cache-first",
       onError: (e) => Logger.error("FormContext listInstitutions API error:", e),
+    }
+  );
+
+  const [retrieveFormVersion] = useLazyQuery<GetApplicationFormVersionResp>(
+    GET_APPLICATION_FORM_VERSION,
+    {
+      context: { clientName: "backend" },
+      fetchPolicy: "cache-first",
+      onError: (e) => Logger.error("FormContext getFormVersion API error:", e),
     }
   );
 
@@ -423,6 +434,8 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         );
         const migratedData = await migrator.run();
 
+        const formVersion = await retrieveFormVersion();
+
         setState({
           status: Status.LOADED,
           formRef: state.formRef,
@@ -433,6 +446,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
               applicantName: `${user?.firstName || ""} ${user?.lastName || ""}`.trim(),
               applicantEmail: user?.email,
             },
+            version: formVersion?.data?.getApplicationFormVersion?.version || "",
             questionnaireData: migratedData,
           },
           error: null,
