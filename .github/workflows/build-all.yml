@@ -196,7 +196,7 @@ jobs:
   notify:
     name: Slack Notification
     runs-on: ubuntu-latest
-    needs: [build, tag]
+    needs: [build]
     if: always()
     steps:
       - name: Slack Notification
