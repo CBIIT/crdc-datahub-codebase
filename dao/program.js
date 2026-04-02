@@ -20,7 +20,7 @@ class ProgramDAO extends GenericDAO {
             name: name?.trim()
         });
     }
-    async listPrograms(first, offset, orderBy, sortDirection, statusCondition) {
+    async listPrograms(first, offset, orderBy, sortDirection, statusCondition = {}) {
         const pagination = new MongoPagination(first, offset, orderBy, sortDirection);
         const paginationPipeline = pagination.getPaginationPipeline();
         const programs = await this.organizationCollection.aggregate([

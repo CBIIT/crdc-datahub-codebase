@@ -3,6 +3,7 @@ const prisma = require('../../prisma');
 const { NEW, IN_PROGRESS, SUBMITTED, RELEASED, COMPLETED, ARCHIVED, REJECTED, WITHDRAWN, CANCELED, DELETED } = require('../../constants/submission-constants');
 const { COLLABORATOR_PERMISSIONS } = require('../../constants/submission-constants');
 const ERROR = require('../../constants/error-constants');
+const { ORGANIZATION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
 
 // Mock Prisma
 jest.mock('../../prisma', () => ({
@@ -1152,7 +1153,7 @@ describe('SubmissionDAO', () => {
                     expect.objectContaining({
                         where: {
                             status: {
-                                in: ['Active', 'Inactive']
+                                in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE]
                             }
                         },
                         select: {
@@ -1280,7 +1281,7 @@ describe('SubmissionDAO', () => {
                 expect(prisma.program.findMany).toHaveBeenCalledWith(
                     expect.objectContaining({
                         where: {
-                            status: { in: ['Active', 'Inactive'] }
+                            status: { in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE] }
                         }
                     })
                 );

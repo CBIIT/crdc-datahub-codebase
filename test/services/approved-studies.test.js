@@ -5,6 +5,7 @@ const { verifySession } = require('../../verifier/user-info-verifier');
 const { getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesForUser } = require('../../utility/data-commons-remapper');
 const TEST_CONSTANTS = require('../test-constants');
 const USER = require('../../crdc-datahub-database-drivers/constants/user-constants');
+const { ORGANIZATION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
 const {ApprovedStudies} = require("../../crdc-datahub-database-drivers/domain/approved-studies");
 const { NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED } = require('../../constants/submission-constants');
 
@@ -256,6 +257,15 @@ describe('ApprovedStudiesService', () => {
             );
             expect(result).toEqual({_id: "new-study-id"});
         });
+
+        it('should throw when programID resolves to an inactive program', async () => {
+            const inactiveProgram = { _id: 'inactive-prog', name: 'Inactive', status: ORGANIZATION.STATUSES.INACTIVE };
+            service.organizationService.getOrganizationByID = jest.fn().mockResolvedValue(inactiveProgram);
+            await expect(
+                service.addApprovedStudyAPI({ ...mockParams, programID: 'inactive-prog' }, mockContext)
+            ).rejects.toThrow(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
+            expect(service.storeApprovedStudies).not.toHaveBeenCalled();
+        });
     });
 
     describe('editApprovedStudyAPI', () => {
@@ -339,6 +349,15 @@ describe('ApprovedStudiesService', () => {
             expect(service.submissionDAO.updateMany).toHaveBeenCalled();
             expect(getDataCommonsDisplayNamesForApprovedStudy).toHaveBeenCalled();
             expect(result).toEqual(mockDisplayStudy);
+        });
+
+        it('should throw when updating study to an inactive program', async () => {
+            const inactiveProgram = { _id: 'inactive-pid', name: 'Inactive', status: ORGANIZATION.STATUSES.INACTIVE };
+            service.organizationService.getOrganizationByID = jest.fn().mockResolvedValue(inactiveProgram);
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, programID: 'inactive-pid' }, mockContext)
+            ).rejects.toThrow(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
         });
 
         it('should throw error if user does not have permission', async () => {
@@ -1130,6 +1149,34 @@ describe('ApprovedStudiesService', () => {
                 const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];
                 const passedProgramID = callArgs[callArgs.length - 1];
                 expect(passedProgramID).toBe(validProgramID);
+            });
+
+            it('should throw when resolved program is inactive', async () => {
+                const validProgramID = 'inactive-program-id';
+                const inactiveProgram = { _id: validProgramID, name: 'Inactive Program', status: ORGANIZATION.STATUSES.INACTIVE };
+                mockOrganizationService.getOrganizationByID.mockResolvedValue(inactiveProgram);
+
+                await expect(
+                    service.storeApprovedStudies(
+                        null, studyName, studyAbbreviation, dbGaPID, organizationName,
+                        controlledAccess, ORCID, PI, openAccess, useProgramPC,
+                        pendingModelChange, primaryContactID, null, validProgramID
+                    )
+                ).rejects.toThrow(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
+            });
+
+            it('should throw when NA fallback program is inactive', async () => {
+                const inactiveNA = { _id: 'na-id', name: 'NA', status: ORGANIZATION.STATUSES.INACTIVE };
+                mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
+                mockOrganizationService.getOrganizationByName.mockResolvedValue(inactiveNA);
+
+                await expect(
+                    service.storeApprovedStudies(
+                        null, studyName, studyAbbreviation, dbGaPID, organizationName,
+                        controlledAccess, ORCID, PI, openAccess, useProgramPC,
+                        pendingModelChange, primaryContactID, null, null
+                    )
+                ).rejects.toThrow(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
             });
 
             it('should throw error when programID is null and NA program is not found', async () => {
