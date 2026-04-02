@@ -415,6 +415,7 @@ type ApprovedStudy {
     primaryContact: User
     useProgramPC: Boolean
     pendingModelChange: Boolean
+    pendingImageDeIdentification: Boolean
     isPendingGPA: Boolean
     GPAName: String
 }
@@ -1082,7 +1083,8 @@ type Mutation {
     approveApplication (
         _id: ID!, wholeProgram: Boolean,
         comment: String,
-        pendingModelChange: Boolean = false
+        pendingModelChange: Boolean = false,
+        pendingImageDeIdentification: Boolean = false
     ): Application
     rejectApplication (_id: ID!, comment: String!): Application
     inquireApplication (_id: ID!, comment: String!): Application
@@ -1157,6 +1159,7 @@ type Mutation {
         primaryContactID: String #data concierge user ID
         useProgramPC: Boolean!
         pendingModelChange: Boolean
+        pendingImageDeIdentification: Boolean
         isPendingGPA: Boolean
         GPAName: String # optional 
         programID: ID # optional

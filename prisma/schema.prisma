@@ -209,6 +209,7 @@ model ApprovedStudy {
   studyName         String
   useProgramPC      Boolean?
   pendingModelChange Boolean?
+  pendingImageDeIdentification Boolean?
   createdAt         DateTime @default(now()) @db.Date
   updatedAt         DateTime @updatedAt @db.Date
   applicationID String?

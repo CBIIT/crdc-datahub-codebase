@@ -40,7 +40,8 @@ describe('ApprovedStudies Domain Object', () => {
                     baseParams.pendingModelChange,
                     baseParams.primaryContactID,
                     baseParams.pendingGPA,
-                    baseParams.programID
+                    baseParams.programID,
+                    baseParams.pendingImageDeIdentification
                 );
 
                 expect(study.applicationID).toBe('app-123');
@@ -61,7 +62,8 @@ describe('ApprovedStudies Domain Object', () => {
                     baseParams.pendingModelChange,
                     baseParams.primaryContactID,
                     baseParams.pendingGPA,
-                    baseParams.programID
+                    baseParams.programID,
+                    baseParams.pendingImageDeIdentification
                 );
 
                 expect(study.applicationID).toBeUndefined();
@@ -82,7 +84,8 @@ describe('ApprovedStudies Domain Object', () => {
                     baseParams.pendingModelChange,
                     baseParams.primaryContactID,
                     baseParams.pendingGPA,
-                    baseParams.programID
+                    baseParams.programID,
+                    baseParams.pendingImageDeIdentification
                 );
 
                 expect(study.applicationID).toBeUndefined();
@@ -103,7 +106,8 @@ describe('ApprovedStudies Domain Object', () => {
                     baseParams.pendingModelChange,
                     baseParams.primaryContactID,
                     baseParams.pendingGPA,
-                    baseParams.programID
+                    baseParams.programID,
+                    baseParams.pendingImageDeIdentification
                 );
 
                 expect(study.applicationID).toBeUndefined();
@@ -124,6 +128,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     false,
                     false,
+                    null,
                     null,
                     null,
                     null
@@ -147,6 +152,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     null,
                     null,
+                    null,
                     null
                 );
 
@@ -166,6 +172,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     false,
                     false,
+                    null,
                     null,
                     null,
                     null
@@ -189,6 +196,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     null,
                     null,
+                    null,
                     null
                 );
 
@@ -208,6 +216,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     false,
                     false,
+                    null,
                     null,
                     null,
                     null
@@ -232,7 +241,8 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     null,
                     null,
-                    'program-456'
+                    'program-456',
+                    null
                 );
 
                 expect(study.programID).toBe('program-456');
@@ -253,6 +263,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     false,
                     false,
+                    null,
                     null,
                     null,
                     null
@@ -276,6 +287,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     null,
                     null,
+                    null,
                     null
                 );
 
@@ -295,6 +307,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     false,
                     false,
+                    null,
                     null,
                     null,
                     null
@@ -318,6 +331,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     null,
                     null,
+                    null,
                     null
                 );
 
@@ -337,6 +351,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     false,
                     false,
+                    null,
                     null,
                     null,
                     null
@@ -359,6 +374,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     false,
                     'contact-123',
+                    null,
                     null,
                     null
                 );
@@ -383,6 +399,7 @@ describe('ApprovedStudies Domain Object', () => {
                     true,
                     null,
                     null,
+                    null,
                     null
                 );
 
@@ -402,6 +419,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     false,
                     false,
+                    null,
                     null,
                     null,
                     null
@@ -425,10 +443,79 @@ describe('ApprovedStudies Domain Object', () => {
                     null,
                     null,
                     null,
+                    null,
                     null
                 );
 
                 expect(study.pendingModelChange).toBe(true);
+            });
+        });
+
+        describe('pendingImageDeIdentification handling', () => {
+            it('should set pendingImageDeIdentification to true when true', () => {
+                const study = new ApprovedStudies(
+                    null,
+                    'Study',
+                    'S',
+                    null,
+                    null,
+                    false,
+                    null,
+                    null,
+                    false,
+                    false,
+                    false,
+                    null,
+                    null,
+                    null,
+                    true
+                );
+
+                expect(study.pendingImageDeIdentification).toBe(true);
+            });
+
+            it('should set pendingImageDeIdentification to false when false', () => {
+                const study = new ApprovedStudies(
+                    null,
+                    'Study',
+                    'S',
+                    null,
+                    null,
+                    false,
+                    null,
+                    null,
+                    false,
+                    false,
+                    false,
+                    null,
+                    null,
+                    null,
+                    false
+                );
+
+                expect(study.pendingImageDeIdentification).toBe(false);
+            });
+
+            it('should default pendingImageDeIdentification to false when null/undefined', () => {
+                const study = new ApprovedStudies(
+                    null,
+                    'Study',
+                    'S',
+                    null,
+                    null,
+                    false,
+                    null,
+                    null,
+                    false,
+                    false,
+                    false,
+                    null,
+                    null,
+                    null,
+                    null
+                );
+
+                expect(study.pendingImageDeIdentification).toBe(false);
             });
         });
 
@@ -448,6 +535,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     null,
                     { GPAName: 'Test GPA', isPendingGPA: true },
+                    null,
                     null
                 );
 
@@ -469,6 +557,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     null,
                     { GPAName: 'Test GPA', isPendingGPA: true },
+                    null,
                     null
                 );
 
@@ -490,6 +579,7 @@ describe('ApprovedStudies Domain Object', () => {
                     false,
                     null,
                     { GPAName: 'Test GPA', isPendingGPA: true },
+                    null,
                     null
                 );
 
@@ -514,7 +604,8 @@ describe('ApprovedStudies Domain Object', () => {
                 baseParams.pendingModelChange,
                 baseParams.primaryContactID,
                 baseParams.pendingGPA,
-                baseParams.programID
+                baseParams.programID,
+                baseParams.pendingImageDeIdentification
             );
 
             expect(study).toBeInstanceOf(ApprovedStudies);
@@ -537,7 +628,8 @@ describe('ApprovedStudies Domain Object', () => {
                 baseParams.pendingModelChange,
                 baseParams.primaryContactID,
                 baseParams.pendingGPA,
-                baseParams.programID
+                baseParams.programID,
+                baseParams.pendingImageDeIdentification
             );
 
             expect(study).toBeInstanceOf(ApprovedStudies);
