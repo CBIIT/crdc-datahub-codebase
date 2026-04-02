@@ -18,6 +18,7 @@ describe('ConfigurationService.isChatBotEnabled', () => {
         });
 
         await expect(configurationService.isChatBotEnabled()).resolves.toBe(true);
+        expect(configurationService.configurationDAO.findByType).toHaveBeenCalledWith('CHATBOT');
     });
 
     it('returns false when configuration document is missing', async () => {
