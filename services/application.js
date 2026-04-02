@@ -225,7 +225,7 @@ class Application {
             if (userScope.isNoneScope()) {
                 throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
             }
-            const requestedStatus = params?.status || NEW;
+            const requestedStatus = params?.status ?? NEW;
             if (![NEW, IN_PROGRESS].includes(requestedStatus)) {
                 throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
             }
