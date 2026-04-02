@@ -157,4 +157,24 @@ describe("Implementation Requirements", () => {
     });
     expect(mockOnSubmit).toHaveBeenCalledTimes(1);
   });
+
+  it("should display a character counter that updates as the user types", () => {
+    const { getByTestId } = render(<ReviewDialog open />);
+
+    expect(getByTestId("review-comment-character-count")).toHaveTextContent("0 / 10,000");
+
+    const input = within(getByTestId("review-comment")).getByRole("textbox");
+    userEvent.type(input, "Hello");
+
+    expect(getByTestId("review-comment-character-count")).toHaveTextContent("5 / 10,000");
+  });
+
+  it("should format the character count", () => {
+    const { getByTestId } = render(<ReviewDialog open />);
+
+    const input = within(getByTestId("review-comment")).getByRole("textbox");
+    userEvent.paste(input, "X".repeat(1234));
+
+    expect(getByTestId("review-comment-character-count")).toHaveTextContent("1,234 / 10,000");
+  });
 });

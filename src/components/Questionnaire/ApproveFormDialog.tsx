@@ -1,15 +1,16 @@
 import { LoadingButton } from "@mui/lab";
 import {
+  Box,
   Button,
   Checkbox,
   CheckboxProps,
   DialogProps,
   FormControlLabel,
-  OutlinedInputProps,
+  Typography,
   styled,
 } from "@mui/material";
 import { isEqual } from "lodash";
-import { FC, memo } from "react";
+import { FC, memo, useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 
 import CheckboxCheckedIconSvg from "../../assets/icons/checkbox_checked.svg?url";
@@ -42,7 +43,9 @@ const StyledDialog = styled(Dialog)({
   "& .MuiDialog-paper": {
     maxWidth: "none",
     borderRadius: "8px",
-    width: "567px !important",
+    "& .MuiDialogContent-root": {
+      overflow: "hidden",
+    },
   },
 });
 
@@ -59,25 +62,53 @@ const StyledCheckbox = styled(Checkbox)({
 });
 
 const StyledOutlinedInput = styled(BaseOutlinedInput, {
-  shouldForwardProp: (prop) => prop !== "resize" && prop !== "rowHeight",
-})<OutlinedInputProps & { resize: boolean; rowHeight?: number }>(
-  ({ resize, rowHeight = 25, rows, minRows, maxRows }) => ({
-    marginTop: "24px",
-    "&.MuiInputBase-multiline": {
-      padding: "12px",
-    },
-    "& .MuiInputBase-inputMultiline": {
-      resize: resize ? "vertical" : "none",
-      minHeight: resize && rowHeight ? `${(+rows || +minRows || 1) * rowHeight}px` : 0,
-      maxHeight: resize && maxRows && rowHeight ? `${+maxRows * rowHeight}px` : "none",
-      overflow: "auto",
-    },
-    "&.MuiInputBase-multiline .MuiInputBase-input": {
-      lineHeight: `${rowHeight}px`,
-      padding: 0,
-    },
-  })
-);
+  shouldForwardProp: (prop) => prop !== "resize",
+})<{ resize?: boolean }>(({ resize }) => ({
+  marginTop: "24px",
+  "&.MuiInputBase-multiline": {
+    padding: "12px",
+    alignItems: "flex-start",
+  },
+  "& textarea.MuiInputBase-inputMultiline": {
+    resize: resize ? "both" : "none",
+    overflow: "auto !important",
+    padding: 0,
+    lineHeight: "25px",
+    width: "600px",
+    minWidth: "600px",
+    maxWidth: "750px",
+    height: "375px",
+    minHeight: "375px",
+    maxHeight: "500px",
+    boxSizing: "border-box",
+  },
+}));
+
+const StyledCharacterCount = styled(Box)({
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "flex-start",
+  gap: "8px",
+  marginTop: "4px",
+  width: 0,
+  minWidth: "100%",
+  overflow: "hidden",
+});
+
+const StyledErrorText = styled(StyledHelperText)({
+  marginTop: 0,
+  flex: 1,
+  minWidth: 0,
+  wordBreak: "break-word",
+});
+
+const StyledCountLabel = styled(Typography)({
+  fontSize: "12px",
+  lineHeight: "20px",
+  whiteSpace: "nowrap",
+});
+
+const MAX_REVIEW_COMMENT_LIMIT = 10_000;
 
 export type FormInput = {
   pendingModelChange: boolean;
@@ -105,7 +136,16 @@ const ApproveFormDialog: FC<Props> = ({ open, loading, onCancel, onSubmit, onClo
       reviewComment: "",
     },
   });
+
   const reviewComment = watch("reviewComment");
+  const reviewCommentLengthLabel = useMemo(
+    () =>
+      Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(reviewComment?.length || 0),
+    [reviewComment]
+  );
+  const reviewCommentLimitLabel = Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(MAX_REVIEW_COMMENT_LIMIT);
 
   const handleOnSubmit = (data: FormInput) => {
     onSubmit?.(data);
@@ -121,7 +161,6 @@ const ApproveFormDialog: FC<Props> = ({ open, loading, onCancel, onSubmit, onClo
     <StyledDialog
       open={open}
       onClose={onClose}
-      scroll="body"
       title="Approve Submission Request"
       data-testid="approve-form-dialog"
       actions={
@@ -148,21 +187,20 @@ const ApproveFormDialog: FC<Props> = ({ open, loading, onCancel, onSubmit, onClo
         rules={{
           validate: {
             required: (v: string) => v.trim() !== "" || "This field is required",
-            maxLength: (v: string) => v.trim().length <= 500 || "Maximum of 500 characters allowed",
+            maxLength: (v: string) =>
+              v.trim().length <= MAX_REVIEW_COMMENT_LIMIT ||
+              `Maximum of ${reviewCommentLimitLabel} characters allowed`,
           },
         }}
         render={({ field }) => (
           <StyledOutlinedInput
             {...field}
             inputProps={{
-              maxLength: 500,
-              style: { height: "auto !important" },
+              maxLength: MAX_REVIEW_COMMENT_LIMIT,
               "aria-label": "Review comment input",
             }}
             name="reviewComment"
-            placeholder="500 characters allowed"
-            minRows={5}
-            maxRows={15}
+            placeholder={`${reviewCommentLimitLabel} characters allowed`}
             data-testid="review-comment"
             sx={{ paddingY: "16px" }}
             required
@@ -171,11 +209,17 @@ const ApproveFormDialog: FC<Props> = ({ open, loading, onCancel, onSubmit, onClo
           />
         )}
       />
-      {errors?.reviewComment?.message?.length > 0 && (
-        <StyledHelperText data-testid="review-comment-dialog-error">
-          {errors.reviewComment.message}
-        </StyledHelperText>
-      )}
+
+      <StyledCharacterCount>
+        {errors?.reviewComment?.message?.length > 0 && (
+          <StyledErrorText data-testid="review-comment-dialog-error">
+            {errors.reviewComment.message}
+          </StyledErrorText>
+        )}
+        <StyledCountLabel data-testid="review-comment-character-count">
+          {reviewCommentLengthLabel} / {reviewCommentLimitLabel}
+        </StyledCountLabel>
+      </StyledCharacterCount>
 
       <Controller
         name="pendingModelChange"
