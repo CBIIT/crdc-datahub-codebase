@@ -4,8 +4,7 @@ import React, { FC, createContext, useContext, useEffect, useMemo, useState } fr
 import { v4 } from "uuid";
 
 import { QuestionnaireDataMigrator } from "@/classes/QuestionnaireDataMigrator";
-
-import { InitialApplication, InitialQuestionnaire } from "../../config/InitialValues";
+import { InitialApplication, InitialQuestionnaire } from "@/config/InitialValues";
 import {
   APPROVE_APP,
   GET_APP,
@@ -28,9 +27,12 @@ import {
   LIST_INSTITUTIONS,
   ListInstitutionsInput,
   ListInstitutionsResp,
-} from "../../graphql";
-import { Logger } from "../../utils";
+} from "@/graphql";
+import { Logger } from "@/utils";
+
 import { FormInput as ApproveFormInput } from "../Questionnaire/ApproveFormDialog";
+
+import { useAuthContext } from "./AuthContext";
 
 export type SetDataReturnType =
   | { status: "success"; id: string }
@@ -110,6 +112,7 @@ type ProviderProps = {
  */
 export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps) => {
   const [state, setState] = useState<ContextState>(initialState);
+  const { user } = useAuthContext();
 
   const [getInstitutions] = useLazyQuery<ListInstitutionsResp, ListInstitutionsInput>(
     LIST_INSTITUTIONS,
@@ -408,6 +411,35 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     }
 
     (async () => {
+      if (id === "new") {
+        // Run the migrator to populate the last application data
+        const migrator = new QuestionnaireDataMigrator(
+          { ...InitialQuestionnaire },
+          {
+            getInstitutions,
+            newInstitutions: [],
+            getLastApplication: lastApp,
+          }
+        );
+        const migratedData = await migrator.run();
+
+        setState({
+          status: Status.LOADED,
+          formRef: state.formRef,
+          data: {
+            ...InitialApplication,
+            applicant: {
+              applicantID: user?._id,
+              applicantName: `${user?.firstName || ""} ${user?.lastName || ""}`.trim(),
+              applicantEmail: user?.email,
+            },
+            questionnaireData: migratedData,
+          },
+          error: null,
+        });
+        return;
+      }
+
       const { data: d, error } = await getApp();
       if (error || !d?.getApplication?.questionnaireData) {
         setState({
@@ -442,7 +474,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         },
       });
     })();
-  }, [id]);
+  }, [id, user]);
 
   const value = useMemo(
     () => ({

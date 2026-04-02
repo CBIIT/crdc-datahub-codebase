@@ -296,15 +296,6 @@ const ListingView: FC = () => {
 
   const handleCreate = useCallback(
     (_id: string) => {
-      if (!_id) {
-        navigate("", {
-          state: {
-            error: "Unable to create a submission request. Please try again later",
-          },
-        });
-        return;
-      }
-
       navigate(`/submission-request/${_id}`, {
         state: { from: "/submission-requests" },
       });

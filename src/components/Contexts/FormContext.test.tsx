@@ -171,6 +171,28 @@ describe("FormContext > FormProvider Tests", () => {
     expect(getByTestId("pi-last-name").textContent).toEqual("Fetched");
   });
 
+  it("should initialize local form data for the legacy 'new' route", async () => {
+    const mocks = [
+      {
+        request: {
+          query: GET_LAST_APP,
+        },
+        result: {
+          data: {
+            getMyLastApplication: null,
+          },
+        },
+      },
+    ];
+
+    const { findByTestId, getByTestId } = render(<TestParent mocks={mocks} appId="new" />);
+
+    await findByTestId("status");
+
+    expect(getByTestId("status").textContent).toEqual(FormStatus.LOADED);
+    expect(getByTestId("app-id").textContent).toEqual("new");
+  });
+
   it("should autofill PI details if Section A is not started", async () => {
     const mocks = [
       {

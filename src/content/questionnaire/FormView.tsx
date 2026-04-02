@@ -2,8 +2,8 @@ import { LoadingButton } from "@mui/lab";
 import { Container, Divider, Stack, styled } from "@mui/material";
 import { isEqual, cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
-import React, { FC, useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useBlocker, Blocker, Navigate } from "react-router-dom";
+import { FC, useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useBlocker, Blocker, Navigate, useLocation } from "react-router-dom";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
 import ChevronLeft from "../../assets/icons/chevron_left.svg?react";
@@ -144,6 +144,7 @@ type Props = {
  */
 const FormView: FC<Props> = ({ section }: Props) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { enqueueSnackbar } = useSnackbar();
   const {
     status,
@@ -189,6 +190,12 @@ const FormView: FC<Props> = ({ section }: Props) => {
   };
 
   usePageTitle(`Submission Request ${data?._id || ""}`);
+
+  const replaceNewIdInPath = useCallback(
+    (path: string, id: string): string =>
+      path.replace("/submission-request/new", `/submission-request/${id}`),
+    []
+  );
 
   /**
    * Determines if the form has unsaved changes.
@@ -427,8 +434,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
       data._id === "new" &&
       saveResult.id !== data?._id
     ) {
-      // NOTE: This currently triggers a form data refetch, which is not ideal
-      navigate(`/submission-request/${saveResult.id}/${activeSection}`, {
+      navigate(replaceNewIdInPath(location.pathname, saveResult.id), {
         replace: true,
         preventScrollReset: true,
       });
@@ -500,14 +506,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     return sectionsClone?.every((section) => section.status === "Completed");
   };
 
-  /**
-   * Provides a save handler for the Unsaved Changes
-   * dialog. Will save the form and then navigate to the
-   * blocked section.
-   *
-   * @returns {void}
-   */
-  const saveAndNavigate = async () => {
+  const saveAndNavigate = async (): Promise<void> => {
     // Wait for the save handler to complete
     const res = await saveForm();
     const reviewSectionUrl = `/submission-request/${data._id}/REVIEW`; // TODO: Update to dynamic url instead
@@ -533,13 +532,10 @@ const FormView: FC<Props> = ({ section }: Props) => {
   };
 
   /**
-   * Provides a discard handler for the Unsaved Changes
-   * dialog. Will discard the form changes and then navigate to the
-   * blocked section.
-   *
-   * @returns {void}
+   * Provides a discard handler for the Unsaved Changes dialog.
+   * Will discard the form changes and then navigate to the blocked section.
    */
-  const discardAndNavigate = () => {
+  const discardAndNavigate = (): void => {
     setBlockedNavigate(false);
     blocker.proceed?.();
   };
