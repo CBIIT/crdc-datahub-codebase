@@ -251,6 +251,7 @@ dbConnector.connect().then(async () => {
         getApplicationFormVersion: configurationService.getApplicationFormVersion.bind(configurationService),
         userIsPrimaryContact: userService.isUserPrimaryContact.bind(userService),
         isMaintenanceMode: configurationService.isMaintenanceMode.bind(configurationService),
+        isChatBotEnabled: configurationService.isChatBotEnabled.bind(configurationService),
         getTooltips: tooltipService.getTooltips.bind(tooltipService),
         getSubmissionAttributes: submissionService.getSubmissionAttributes.bind(submissionService),
         listReleasedStudies: releaseService.listReleasedStudies.bind(releaseService),
