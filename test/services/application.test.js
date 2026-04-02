@@ -300,15 +300,62 @@ describe('Application', () => {
             expect(app.applicationDAO.insert).toHaveBeenCalled();
             expect(mockLogCollection.insert).toHaveBeenCalled();
         });
+
+        it('defaults to New when no status is requested for new applications', async () => {
+            app.applicationDAO = {
+                insert: jest.fn().mockResolvedValue({ acknowledged: true }),
+            };
+            mockLogCollection.insert.mockResolvedValue();
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+
+            const application = { controlledAccess: true };
+            const userInfo = context.userInfo;
+
+            const result = await app.createApplication(application, userInfo);
+
+            expect(result.status).toBe(NEW);
+            expect(result.history).toHaveLength(1);
+            expect(result.history[0]).toMatchObject({ userID: userInfo._id, status: NEW });
+            expect(app.applicationDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ status: NEW }));
+        });
+
+        it('adds a New event before In Progress when requested', async () => {
+            app.applicationDAO = {
+                insert: jest.fn().mockResolvedValue({ acknowledged: true }),
+            };
+            mockLogCollection.insert.mockResolvedValue();
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+
+            const application = { controlledAccess: true };
+            const userInfo = context.userInfo;
+
+            const result = await app.createApplication(application, userInfo, IN_PROGRESS);
+
+            expect(result.status).toBe(IN_PROGRESS);
+            expect(result.history).toHaveLength(2);
+            expect(result.history[0]).toMatchObject({ userID: userInfo._id, status: NEW });
+            expect(result.history[1]).toMatchObject({ userID: userInfo._id, status: IN_PROGRESS });
+            expect(app.applicationDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ status: IN_PROGRESS }));
+        });
     });
 
     describe('saveApplication', () => {
-        it('creates new application if no id', async () => {
+        it('creates new application with New status if no status is provided', async () => {
             userScopeMock.isNoneScope.mockReturnValue(false);
             userScopeMock.isAllScope.mockReturnValue(true);
             const params = { application: {} };
             jest.spyOn(app, 'createApplication').mockResolvedValue({ _id: 'app2' });
             await expect(app.saveApplication(params, context)).resolves.toEqual({ _id: 'app2' });
+            expect(app.createApplication).toHaveBeenCalledWith({}, context.userInfo, NEW);
+        });
+
+        it('creates new application with In Progress status when requested', async () => {
+            userScopeMock.isNoneScope.mockReturnValue(false);
+            userScopeMock.isAllScope.mockReturnValue(true);
+            const params = { application: {}, status: IN_PROGRESS };
+            jest.spyOn(app, 'createApplication').mockResolvedValue({ _id: 'app2' });
+            await expect(app.saveApplication(params, context)).resolves.toEqual({ _id: 'app2' });
+            expect(app.createApplication).toHaveBeenCalledWith({}, context.userInfo, IN_PROGRESS);
         });
 
         it("should throw an error when the application does not exist", async () => {

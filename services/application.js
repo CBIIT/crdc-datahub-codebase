@@ -166,19 +166,25 @@ class Application {
         return application || null;
     }
 
-    async createApplication(application, userInfo) {
+    async createApplication(application, userInfo, status = NEW) {
         const timestamp = getCurrentTime();
+
+        const history = [HistoryEventBuilder.createEvent(userInfo._id, NEW, null)];
+        if (status === IN_PROGRESS) {
+            history.push(HistoryEventBuilder.createEvent(userInfo._id, IN_PROGRESS, null));
+        }
+
         let newApplicationProperties = {
             _id: v4(undefined, undefined, undefined),
-            status: NEW,
+            status,
             controlledAccess: application?.controlledAccess,
             applicantID: userInfo._id,
-            history: [HistoryEventBuilder.createEvent(userInfo._id, NEW, null)],
+            history,
             createdAt: timestamp,
             updatedAt: timestamp,
             programAbbreviation: application?.programAbbreviation,
             programDescription: application?.programDescription,
-            version: (application?.version)? application.version : await this._getApplicationVersionByStatus(NEW),
+            version: (application?.version)? application.version : await this._getApplicationVersionByStatus(status),
             inactiveReminder: false, // If deleted, it will set true
             inactiveReminder_7: false,
             inactiveReminder_15: false,
@@ -220,7 +226,11 @@ class Application {
             if (userScope.isNoneScope()) {
                 throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
             }
-            return await this.createApplication(inputApplication, context.userInfo);
+            const requestedStatus = params?.status ?? NEW;
+            if (![NEW, IN_PROGRESS].includes(requestedStatus)) {
+                throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+            }
+            return await this.createApplication(inputApplication, context.userInfo, requestedStatus);
         }
 
         const storedApplication = await this.getApplicationById(id);
