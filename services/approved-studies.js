@@ -24,6 +24,7 @@ const {replaceErrorString} = require("../utility/string-util");
 const NA_PROGRAM = "NA";
 const NA = "NA";
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
+const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const ProgramDAO = require("../dao/program");
 const UserDAO = require("../dao/user");
 const SubmissionDAO = require("../dao/submission");
@@ -551,6 +552,9 @@ class ApprovedStudiesService {
         if (!program){
             console.error("Unable to find a program with the provided programID then unable to find the NA program as a fallback. Please verify that the NA program has been properly initialized.");
             throw new Error(ERROR.STUDY_CREATION_FAILED);
+        }
+        if (program?.status === ORGANIZATION.STATUSES.INACTIVE) {
+            throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
         }
         return program;
     }

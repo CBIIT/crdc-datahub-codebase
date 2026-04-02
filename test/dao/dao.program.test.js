@@ -419,4 +419,15 @@ describe('ProgramDAO', () => {
                 .rejects.toThrow('Failed to find Program by ID');
         });
     });
+
+    describe('listPrograms', () => {
+        it('should $match using the provided statusCondition', async () => {
+            mockOrganizationCollection.aggregate.mockResolvedValue([{ total: 0, results: [] }]);
+            const statusCondition = { status: 'Active' };
+            await programDAO.listPrograms(10, 0, 'updateAt', 'ASC', statusCondition);
+            const pipeline = mockOrganizationCollection.aggregate.mock.calls[0][0];
+            const matchStage = pipeline.find((stage) => stage.$match);
+            expect(matchStage.$match).toEqual(statusCondition);
+        });
+    });
 });
