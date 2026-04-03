@@ -326,7 +326,7 @@ describe('Organization.getOrganizationByID', () => {
 
   it('should throw when includeStudiesList is omitted', async () => {
     await expect(organization.getOrganizationByID('org123')).rejects.toThrow(
-      'Organization.getOrganizationByID requires a boolean includeStudiesList argument'
+      SUBMODULE_ERROR.INVALID_INCLUDE_STUDIES_LIST_ARGUMENT
     );
     expect(mockProgramDAO.getOrganizationByID).not.toHaveBeenCalled();
   });

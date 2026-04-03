@@ -2,6 +2,7 @@ const GenericDAO = require("./generic");
 const { MODEL_NAME } = require('../constants/db-constants');
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {APPROVED_STUDIES_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
+const { ERROR } = require("../crdc-datahub-database-drivers/constants/error-constants");
 
 
 class ProgramDAO extends GenericDAO {
@@ -15,7 +16,7 @@ class ProgramDAO extends GenericDAO {
      */
     async getOrganizationByID(id, includeStudies) {
         if (typeof includeStudies !== 'boolean') {
-            throw new Error('ProgramDAO.getOrganizationByID requires a boolean includeStudies argument');
+            throw new Error(ERROR.INVALID_INCLUDE_STUDIES_LIST_ARGUMENT);
         }
         if (!includeStudies) {
             return await this.findById(id);

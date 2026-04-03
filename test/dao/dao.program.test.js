@@ -1,4 +1,5 @@
 const ProgramDAO = require('../../dao/program');
+const { ERROR: SUBMODULE_ERROR } = require('../../crdc-datahub-database-drivers/constants/error-constants');
 
 // Mock Prisma
 jest.mock('../../prisma', () => ({
@@ -387,7 +388,7 @@ describe('ProgramDAO', () => {
     describe('getOrganizationByID', () => {
         it('should throw when includeStudies is omitted', async () => {
             await expect(programDAO.getOrganizationByID('org123')).rejects.toThrow(
-                'ProgramDAO.getOrganizationByID requires a boolean includeStudies argument'
+                SUBMODULE_ERROR.INVALID_INCLUDE_STUDIES_LIST_ARGUMENT
             );
         });
 
