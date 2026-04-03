@@ -53,7 +53,7 @@ class Organization {
    */
   async getOrganizationByID(id, includeStudiesList) {
     if (typeof includeStudiesList !== 'boolean') {
-      throw new Error('Organization.getOrganizationByID requires a boolean includeStudiesList argument');
+      throw new Error(ERROR.INVALID_INCLUDE_STUDIES_LIST_ARGUMENT);
     }
     if (!id) {
       return null;
