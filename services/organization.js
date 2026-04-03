@@ -39,7 +39,7 @@ class Organization {
       throw new Error(ERROR.INVALID_ORG_ID);
     }
 
-    let userOrganization = await this.getOrganizationByID(params.orgID, false);
+    let userOrganization = await this.getOrganizationByID(params.orgID, true);
     return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
   }
 
@@ -48,14 +48,17 @@ class Organization {
    *
    * @async
    * @param {string} id The UUID of the organization to search for
-   * @param {boolean} [omitStudyLookup] Whether to omit the study lookup in the pipeline. For backward compatibility, default is false.
+   * @param {boolean} includeStudiesList When true, loads related approved studies (e.g. getOrganization). Pass false when studies are not needed.
    * @returns {Promise<Object | null>} The organization with the given `id` or null if not found
    */
-  async getOrganizationByID(id) {
+  async getOrganizationByID(id, includeStudiesList) {
+    if (typeof includeStudiesList !== 'boolean') {
+      throw new Error('Organization.getOrganizationByID requires a boolean includeStudiesList argument');
+    }
     if (!id) {
       return null;
     }
-    return await this.programDAO.getOrganizationByID(id);
+    return await this.programDAO.getOrganizationByID(id, includeStudiesList);
   }
 
   /**
@@ -116,7 +119,8 @@ class Organization {
       throw new Error(ERROR.INVALID_ORG_ID);
     }
 
-    let userOrganization = await this.editOrganization(params.orgID, params);
+    await this.editOrganization(params.orgID, params);
+    const userOrganization = await this.getOrganizationByID(params.orgID, true);
     return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
   }
 
@@ -131,7 +135,7 @@ class Organization {
    * @returns {Promise<Object>} The modified organization
    */
   async editOrganization(orgID, params) {
-    const currentOrg = await this.getOrganizationByID(orgID);
+    const currentOrg = await this.getOrganizationByID(orgID, false);
     if (!currentOrg) {
       throw new Error(ERROR.ORG_NOT_FOUND);
     }
@@ -287,7 +291,9 @@ class Organization {
       throw new Error(ERROR.ORGANIZATION_INVALID_ABBREVIATION);
     }
 
-    let userOrganization = await this.createOrganization(params);
+    const created = await this.createOrganization(params);
+    const userOrganization =
+      (await this.getOrganizationByID(created?._id, true)) ?? created;
     return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
   }
 
@@ -385,7 +391,7 @@ class Organization {
     }
     
     // Get the program by programID
-    return await this.getOrganizationByID(approvedStudy?.programID);
+    return await this.getOrganizationByID(approvedStudy?.programID, false);
   }
 
   /**
