@@ -3007,7 +3007,7 @@ const sendEmails = {
             userService.getUserByID(aSubmission?.submitterID),
             userService.getUsersByNotifications([EN.DATA_SUBMISSION.COMPLETE],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            organizationService.getOrganizationByID(aSubmission?.organization?._id),
+            organizationService.getOrganizationByID(aSubmission?.organization?._id, false),
             userService.approvedStudiesCollection.find(aSubmission?.studyID)
         ]);
 
@@ -3035,7 +3035,7 @@ const sendEmails = {
             userService.getUserByID(aSubmission?.submitterID),
             userService.getUsersByNotifications([EN.DATA_SUBMISSION.CANCEL],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            organizationService.getOrganizationByID(aSubmission?.organization?._id),
+            organizationService.getOrganizationByID(aSubmission?.organization?._id, false),
             userService.approvedStudiesCollection.find(aSubmission?.studyID)
         ]);
 
@@ -3131,7 +3131,7 @@ const sendEmails = {
             userService.getUserByID(aSubmission?.submitterID),
             userService.getUsersByNotifications([EN.DATA_SUBMISSION.REJECT],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            organizationService.getOrganizationByID(aSubmission?.organization?._id)
+            organizationService.getOrganizationByID(aSubmission?.organization?._id, false)
         ]);
 
         if (!aSubmitter?.email) {
