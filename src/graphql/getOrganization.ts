@@ -11,6 +11,9 @@ export const query: TypedDocumentNode<Response, Input> = gql`
       status
       conciergeID
       conciergeName
+      studies {
+        _id
+      }
       readOnly
       createdAt
       updateAt
