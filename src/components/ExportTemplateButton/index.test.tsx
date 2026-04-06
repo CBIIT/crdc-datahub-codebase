@@ -329,4 +329,25 @@ describe("Implementation Requirements", () => {
       );
     });
   });
+
+  it("should only fetch active programs", async () => {
+    const strictListOrgsMock: MockedResponse<ListOrgsResp, ListOrgsInput> = {
+      ...listOrgsMock,
+      variableMatcher: (variables) => variables.status === "Active",
+    };
+
+    const { getByTestId } = render(<ExportTemplateButton />, {
+      wrapper: ({ children }) => (
+        <MockParent mocks={[institutionsMock, formVersionMock, strictListOrgsMock]}>
+          {children}
+        </MockParent>
+      ),
+    });
+
+    userEvent.click(getByTestId("export-application-excel-template-button"));
+
+    await waitFor(() => {
+      expect(mockDownloadBlob).toHaveBeenCalledTimes(1);
+    });
+  });
 });

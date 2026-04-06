@@ -246,4 +246,23 @@ describe("Implementation Requirements", () => {
       );
     });
   });
+
+  it("should only fetch active programs", async () => {
+    const strictListOrgsMock: MockedResponse<ListOrgsResp, ListOrgsInput> = {
+      ...listOrgsMock,
+      variableMatcher: (variables) => variables.status === "Active",
+    };
+
+    const { getByTestId } = render(<ExportApplicationButton />, {
+      wrapper: ({ children }) => (
+        <MockParent mocks={[institutionsMock, strictListOrgsMock]}>{children}</MockParent>
+      ),
+    });
+
+    userEvent.click(getByTestId("export-application-excel-button"));
+
+    await waitFor(() => {
+      expect(mockDownloadBlob).toHaveBeenCalledTimes(1);
+    });
+  });
 });
