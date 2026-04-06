@@ -2,6 +2,7 @@ import { LazyQueryExecFunction } from "@apollo/client";
 import { cloneDeep, unset } from "lodash";
 import { validate as validateUUID } from "uuid";
 
+import { InitialQuestionnaire } from "@/config/InitialValues";
 import { LastAppResp, ListInstitutionsResp } from "@/graphql";
 import { safeParse } from "@/utils";
 import { Logger } from "@/utils/logger";
@@ -13,6 +14,7 @@ type MigratorDependencies = {
   getInstitutions: LazyQueryExecFunction<ListInstitutionsResp, unknown>;
   newInstitutions: Array<{ id: string; name: string }>;
   getLastApplication: LazyQueryExecFunction<LastAppResp, unknown>;
+  activePrograms: Pick<Organization, "_id">[];
 };
 
 /**
@@ -53,6 +55,7 @@ export class QuestionnaireDataMigrator {
     await this._migrateInstitutionNames();
     await this._migrateGPA();
     await this._migrateRepositoryOtherDataTypes();
+    await this._migrateInactiveProgram();
 
     return this.data;
   }
@@ -232,6 +235,26 @@ export class QuestionnaireDataMigrator {
         repo.dataTypesSubmitted = [...(repo.dataTypesSubmitted || []), "Other"];
       }
     });
+  }
+
+  /**
+   * Clears the program selection when the previously saved program is no longer active.
+   */
+  private async _migrateInactiveProgram(): Promise<void> {
+    const { program } = this.data;
+    const { activePrograms } = this.dependencies;
+
+    if (!program?._id || !validateUUID(program._id)) {
+      return;
+    }
+
+    const isActive = activePrograms.some((p) => p._id === program._id);
+    if (isActive) {
+      return;
+    }
+
+    Logger.info("_migrateInactiveProgram: Clearing inactive program", { ...program });
+    this.data.program = { ...InitialQuestionnaire.program };
   }
 
   /**

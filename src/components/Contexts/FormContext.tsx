@@ -32,6 +32,8 @@ import {
 import { Logger } from "../../utils";
 import { FormInput as ApproveFormInput } from "../Questionnaire/ApproveFormDialog";
 
+import { useOrganizationListContext } from "./OrganizationListContext";
+
 export type SetDataReturnType =
   | { status: "success"; id: string }
   | { status: "failed"; errorMessage: string };
@@ -110,6 +112,7 @@ type ProviderProps = {
  */
 export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps) => {
   const [state, setState] = useState<ContextState>(initialState);
+  const { activeOrganizations } = useOrganizationListContext();
 
   const [getInstitutions] = useLazyQuery<ListInstitutionsResp, ListInstitutionsInput>(
     LIST_INSTITUTIONS,
@@ -428,6 +431,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         getInstitutions,
         newInstitutions: getApplication?.newInstitutions || [],
         getLastApplication: lastApp,
+        activePrograms: activeOrganizations || [],
       });
       const migratedData = await migrator.run();
 
