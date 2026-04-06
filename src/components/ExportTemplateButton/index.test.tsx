@@ -230,6 +230,10 @@ describe("Basic Functionality", () => {
 });
 
 describe("Implementation Requirements", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("should render a button with the correct text", () => {
     const { getByText } = render(<ExportTemplateButton />, {
       wrapper: ({ children }) => (
