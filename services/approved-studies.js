@@ -250,6 +250,7 @@ class ApprovedStudiesService {
             primaryContactID,
             useProgramPC,
             pendingModelChange,
+            pendingImageDeIdentification,
             isPendingGPA,
             GPAName,
             programID
@@ -310,6 +311,9 @@ class ApprovedStudiesService {
         const currPendingModelChange = updateStudy.pendingModelChange;
         if (pendingModelChange !== undefined) {
             updateStudy.pendingModelChange = isTrue(pendingModelChange);
+        }
+        if (pendingImageDeIdentification !== undefined) {
+            updateStudy.pendingImageDeIdentification = pendingImageDeIdentification;
         }
         updateStudy.programID = program?._id ?? null;
         if (isTrue(updateStudy.controlledAccess)) {
@@ -506,6 +510,9 @@ class ApprovedStudiesService {
         // validate that ORCID if it exists
         if (!!params.ORCID && !this._validateIdentifier(params.ORCID)) {
             throw new Error(ERROR.INVALID_ORCID);
+        }
+        if (params.pendingImageDeIdentification !== undefined && typeof params.pendingImageDeIdentification !== 'boolean') {
+            throw new Error(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
         }
         return params;
     }
