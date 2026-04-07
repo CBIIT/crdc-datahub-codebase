@@ -33,6 +33,7 @@ import { Logger } from "../../utils";
 
 export type ApproveFormInput = {
   pendingModelChange: boolean;
+  pendingImageDeIdentification: boolean;
   reviewComment: string;
 };
 
