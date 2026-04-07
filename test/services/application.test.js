@@ -323,6 +323,7 @@ describe('Application', () => {
             expect(result.history).toHaveLength(2);
             expect(result.history[0]).toMatchObject({ userID: userInfo._id, status: NEW });
             expect(result.history[1]).toMatchObject({ userID: userInfo._id, status: IN_PROGRESS });
+            expect(new Date(result.history[0].dateTime).getTime()).toBeLessThan(new Date(result.history[1].dateTime).getTime());
             expect(app.applicationDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ status: IN_PROGRESS }));
         });
     });
