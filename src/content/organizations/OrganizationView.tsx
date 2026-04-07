@@ -252,6 +252,7 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
   };
 
   const handleBypassWarning = () => {
+    setInactiveWarningOpen(false);
     handleSubmit(onSubmit)();
   };
 
