@@ -170,7 +170,7 @@ class Application {
 
         const history = [HistoryEventBuilder.createEvent(userInfo._id, NEW, null)];
         if (status === IN_PROGRESS) {
-            history.push(HistoryEventBuilder.createEvent(userInfo._id, IN_PROGRESS, null));
+            history.push(HistoryEventBuilder.createEvent(userInfo._id, IN_PROGRESS, null, new Date(timestamp.getTime() + 1000)));
         }
 
         let newApplicationProperties = {
