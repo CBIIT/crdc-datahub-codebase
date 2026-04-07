@@ -32,7 +32,7 @@ import {
 import { Logger } from "../../utils";
 import { FormInput as ApproveFormInput } from "../Questionnaire/ApproveFormDialog";
 
-import { useOrganizationListContext } from "./OrganizationListContext";
+import { useOrganizationListContext, Status as ProgramStatus } from "./OrganizationListContext";
 
 export type SetDataReturnType =
   | { status: "success"; id: string }
@@ -112,7 +112,7 @@ type ProviderProps = {
  */
 export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps) => {
   const [state, setState] = useState<ContextState>(initialState);
-  const { activeOrganizations } = useOrganizationListContext();
+  const { activeOrganizations, status: programStatus } = useOrganizationListContext();
 
   const [getInstitutions] = useLazyQuery<ListInstitutionsResp, ListInstitutionsInput>(
     LIST_INSTITUTIONS,
@@ -400,6 +400,9 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   };
 
   useEffect(() => {
+    if (programStatus !== ProgramStatus.LOADED) {
+      return;
+    }
     if (!id || !id.trim()) {
       setState({
         status: Status.ERROR,
@@ -446,7 +449,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         },
       });
     })();
-  }, [id]);
+  }, [id, programStatus]);
 
   const value = useMemo(
     () => ({
