@@ -84,7 +84,7 @@ type Props = {
 const ReviewFormDialog: FC<Props> = ({
   open,
   header,
-  confirmText,
+  confirmText = "Confirm",
   confirmButtonProps = {},
   loading,
   onCancel,
