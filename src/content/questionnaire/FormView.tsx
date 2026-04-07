@@ -714,7 +714,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
                   variant="contained"
                   color="success"
                   loading={status === FormStatus.SAVING}
-                  onClick={() => saveForm()}
+                  onClick={saveForm}
                 >
                   Save
                 </StyledLoadingButton>
