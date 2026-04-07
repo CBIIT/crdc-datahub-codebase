@@ -128,7 +128,8 @@ const columns: Column<ApprovedStudy>[] = [
         },
         {
           check: a.pendingImageDeIdentification,
-          tooltip: "Data submission is Pending on Image De-identification Protocol.",
+          tooltip:
+            "Pending submission of the risk mitigation document and the image de-identification protocol.",
         },
         {
           check: a.isPendingGPA,

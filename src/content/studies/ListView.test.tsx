@@ -353,7 +353,7 @@ describe("Implementation Requirements", () => {
     userEvent.hover(asterisk);
 
     const pendingImageDeIdentificationTooltip = await findByText(
-      "Data submission is Pending on Image De-identification Protocol."
+      "Pending submission of the risk mitigation document and the image de-identification protocol."
     );
     expect(pendingImageDeIdentificationTooltip).toBeInTheDocument();
   });
@@ -406,7 +406,7 @@ describe("Implementation Requirements", () => {
     const dbGaPIDTooltip = await findByText("Data submission is Pending on dbGaPID Registration.");
     const modelReviewTooltip = await findByText("Data submission is Pending on Data Model Update.");
     const pendingImageDeIdentificationTooltip = await findByText(
-      "Data submission is Pending on Image De-identification Protocol."
+      "Pending submission of the risk mitigation document and the image de-identification protocol."
     );
     const gpaTooltip = await findByText("Data submission is Pending on GPA info.");
 

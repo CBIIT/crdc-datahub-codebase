@@ -878,7 +878,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                               }
                             />
                           }
-                          label="Pending on Image De-identification Protocol"
+                          label="Pending on Risk Mitigation document & De-identification protocol"
                         />
                       )}
                     />
