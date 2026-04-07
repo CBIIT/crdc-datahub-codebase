@@ -8,16 +8,16 @@ import Dialog from "../GenericDialog";
 import StyledHelperText from "../StyledFormComponents/StyledHelperText";
 import BaseOutlinedInput from "../StyledFormComponents/StyledOutlinedInput";
 
-const StyledOutlinedInput = styled(BaseOutlinedInput, {
-  shouldForwardProp: (prop) => prop !== "resize",
-})<{ resize?: boolean }>(({ resize }) => ({
+const StyledOutlinedInput = styled(BaseOutlinedInput)({
   marginTop: "24px",
+  width: "fit-content",
+  maxWidth: "100%",
   "&.MuiInputBase-multiline": {
     padding: "12px",
     alignItems: "flex-start",
   },
   "& textarea.MuiInputBase-inputMultiline": {
-    resize: resize ? "both" : "none",
+    resize: "both",
     overflow: "auto !important",
     padding: 0,
     lineHeight: "25px",
@@ -29,7 +29,7 @@ const StyledOutlinedInput = styled(BaseOutlinedInput, {
     maxHeight: "500px",
     boxSizing: "border-box",
   },
-}));
+});
 
 const StyledCharacterCount = styled(Box)({
   display: "flex",
@@ -57,7 +57,8 @@ const StyledCountLabel = styled(Typography)({
 
 const StyledDialog = styled(Dialog)({
   "& .MuiDialog-paper": {
-    maxWidth: "none",
+    width: "fit-content",
+    maxWidth: "calc(100% - 64px)",
     borderRadius: "8px",
     "& .MuiDialogContent-root": {
       overflow: "hidden",
@@ -144,7 +145,7 @@ const ReviewFormDialog: FC<Props> = ({
           <LoadingButton
             data-testid="review-form-dialog-confirm-button"
             onClick={handleSubmit(handleOnSubmit)}
-            disabled={!reviewComment || loading}
+            disabled={!reviewComment?.trim()?.length || loading}
             loading={loading}
             {...confirmButtonProps}
           >
@@ -178,7 +179,6 @@ const ReviewFormDialog: FC<Props> = ({
             sx={{ paddingY: "16px" }}
             required
             multiline
-            resize
           />
         )}
       />
