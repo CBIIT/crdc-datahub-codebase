@@ -170,7 +170,9 @@ class Application {
 
         const history = [HistoryEventBuilder.createEvent(userInfo._id, NEW, null)];
         if (status === IN_PROGRESS) {
-            history.push(HistoryEventBuilder.createEvent(userInfo._id, IN_PROGRESS, null, new Date(timestamp.getTime() + 1000)));
+            // Add an additional 1s to the timestamp to ensure the events can be correctly sorted
+            const eventTime = new Date(history[0].dateTime.getTime() + 1000);
+            history.push(HistoryEventBuilder.createEvent(userInfo._id, IN_PROGRESS, null, eventTime));
         }
 
         let newApplicationProperties = {
