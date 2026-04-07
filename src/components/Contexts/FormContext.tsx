@@ -30,7 +30,12 @@ import {
   ListInstitutionsResp,
 } from "../../graphql";
 import { Logger } from "../../utils";
-import { FormInput as ApproveFormInput } from "../Questionnaire/ApproveFormDialog";
+
+export type ApproveFormInput = {
+  pendingModelChange: boolean;
+  pendingImageDeIdentification: boolean;
+  reviewComment: string;
+};
 
 export type SetDataReturnType =
   | { status: "success"; id: string }
