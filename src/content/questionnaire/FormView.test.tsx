@@ -12,7 +12,7 @@ import {
   ContextState as FormContextState,
   Status as FormStatus,
 } from "../../components/Contexts/FormContext";
-import { render, waitFor } from "../../test-utils";
+import { render, waitFor, within } from "../../test-utils";
 import { applicationFactory } from "../../test-utils/factories/application/ApplicationFactory";
 import { authCtxStateFactory } from "../../test-utils/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "../../test-utils/factories/auth/UserFactory";
@@ -29,8 +29,15 @@ vi.mock("../../hooks/usePageTitle", () => ({
   default: () => {},
 }));
 
+let mockFormObject: FormObject | null = null;
+
 vi.mock("./sections", () => ({
-  default: () => <div data-testid="mock-section">Mock Section</div>,
+  default: ({ refs }: FormSectionProps) => {
+    if (refs?.getFormObjectRef) {
+      refs.getFormObjectRef.current = () => mockFormObject;
+    }
+    return <div data-testid="mock-section">Mock Section</div>;
+  },
 }));
 
 vi.mock("../../components/PageBanner", () => ({
@@ -53,6 +60,13 @@ vi.mock("../../components/CancelApplicationButton", () => ({
   default: () => <div data-testid="mock-cancel-button">Cancel</div>,
 }));
 
+const completedSections: Section[] = [
+  { name: "A", status: "Completed" },
+  { name: "B", status: "Completed" },
+  { name: "C", status: "Completed" },
+  { name: "D", status: "Completed" },
+];
+
 const baseFormCtxState: FormContextState = {
   status: FormStatus.LOADED,
   formRef: { current: null },
@@ -60,12 +74,7 @@ const baseFormCtxState: FormContextState = {
     _id: "test-app-id",
     status: "In Review",
     questionnaireData: {
-      sections: [
-        { name: "A", status: "Completed" },
-        { name: "B", status: "Completed" },
-        { name: "C", status: "Completed" },
-        { name: "D", status: "Completed" },
-      ],
+      sections: completedSections,
     } as QuestionnaireData,
   }),
   approveForm: vi.fn(),
@@ -111,6 +120,7 @@ const TestParent: FC<ParentProps> = ({
 describe("Accessibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFormObject = null;
   });
 
   it("should have no violations", async () => {
@@ -126,6 +136,7 @@ describe("Accessibility", () => {
 describe("Basic Functionality", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFormObject = null;
   });
 
   it("should render without crashing", () => {
@@ -167,6 +178,7 @@ describe("Basic Functionality", () => {
 describe("Implementation Requirements", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFormObject = null;
   });
 
   it("should render the Approve ReviewFormDialog with correct props", async () => {
@@ -184,6 +196,43 @@ describe("Implementation Requirements", () => {
     expect(
       getByText("Require Risk Mitigation document & De-identification protocol")
     ).toBeInTheDocument();
+  });
+
+  it("should send the correct properties to approveForm on confirm", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Review", readOnlyInputs: true });
+    mockFormObject = {
+      ref: { current: document.createElement("form") },
+      data: {
+        sections: completedSections,
+      } as QuestionnaireData,
+    };
+
+    const { getByRole, getByTestId } = render(<TestParent />);
+
+    userEvent.click(getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => {
+      expect(getByTestId("pendingModelChange-checkbox")).toBeInTheDocument();
+    });
+
+    userEvent.click(getByTestId("pendingModelChange-checkbox"));
+    userEvent.click(getByTestId("pendingImageDeIdentification-checkbox"));
+
+    const textarea = within(getByTestId("review-comment")).getByRole("textbox");
+    userEvent.type(textarea, "Approved with conditions");
+
+    userEvent.click(getByTestId("review-form-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(baseFormCtxState.approveForm).toHaveBeenCalledWith(
+        {
+          reviewComment: "Approved with conditions",
+          pendingModelChange: true,
+          pendingImageDeIdentification: true,
+        },
+        true
+      );
+    });
   });
 
   it("should render the Reject ReviewFormDialog with correct props", async () => {
