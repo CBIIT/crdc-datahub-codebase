@@ -119,11 +119,9 @@ const ReviewFormDialog: FC<Props> = ({
 
   const handleOnSubmit = (data: ReviewFormFields) => {
     onSubmit?.(data.reviewComment);
-    reset();
   };
 
   const handleOnCancel = () => {
-    reset();
     onCancel?.();
   };
 
@@ -131,6 +129,7 @@ const ReviewFormDialog: FC<Props> = ({
     <StyledDialog
       open={open}
       onClose={handleOnCancel}
+      TransitionProps={{ onExited: () => reset() }}
       title={header}
       scroll="body"
       actions={
