@@ -2,7 +2,6 @@ import { LazyQueryExecFunction } from "@apollo/client";
 import { cloneDeep, unset } from "lodash";
 import { validate as validateUUID } from "uuid";
 
-import { InitialQuestionnaire } from "@/config/InitialValues";
 import { LastAppResp, ListInstitutionsResp } from "@/graphql";
 import { safeParse } from "@/utils";
 import { Logger } from "@/utils/logger";
@@ -238,7 +237,7 @@ export class QuestionnaireDataMigrator {
   }
 
   /**
-   * Clears the program selection when the previously saved program is no longer active.
+   * Migrates an inactive program to "Other", preserving the old program's data.
    */
   private async _migrateInactiveProgram(): Promise<void> {
     const { program } = this.data;
@@ -253,8 +252,13 @@ export class QuestionnaireDataMigrator {
       return;
     }
 
-    Logger.info("_migrateInactiveProgram: Clearing inactive program", { ...program });
-    this.data.program = { ...InitialQuestionnaire.program };
+    Logger.info("_migrateInactiveProgram: Migrating inactive program to Other", { ...program });
+    this.data.program = {
+      _id: "Other",
+      name: program.name || "",
+      abbreviation: program.abbreviation || "",
+      description: program.description || "",
+    };
   }
 
   /**

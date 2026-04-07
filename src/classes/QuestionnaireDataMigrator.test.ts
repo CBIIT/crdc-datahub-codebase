@@ -1694,7 +1694,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
 });
 
 describe("_migrateInactiveProgram", () => {
-  it("should clear the program when it is no longer active", async () => {
+  it("should migrate an inactive program to Other with the old program's data", async () => {
     const inactiveProgramId = v4();
     const data = questionnaireDataFactory.build({
       program: programInputFactory.build({
@@ -1716,12 +1716,12 @@ describe("_migrateInactiveProgram", () => {
     await migrator._migrateInactiveProgram();
     const result = migrator.getData();
 
-    expect(result.program._id).toBe("");
-    expect(result.program.name).toBe("");
-    expect(result.program.abbreviation).toBe("");
-    expect(result.program.description).toBe("");
+    expect(result.program._id).toBe("Other");
+    expect(result.program.name).toBe("Old Inactive Program");
+    expect(result.program.abbreviation).toBe("OIP");
+    expect(result.program.description).toBe("An old program that is now inactive");
     expect(Logger.info).toHaveBeenCalledWith(
-      "_migrateInactiveProgram: Clearing inactive program",
+      "_migrateInactiveProgram: Migrating inactive program to Other",
       expect.objectContaining({ _id: inactiveProgramId })
     );
   });
