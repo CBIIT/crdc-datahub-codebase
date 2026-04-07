@@ -1164,7 +1164,7 @@ describe('ApprovedStudiesService', () => {
                 );
 
                 // Should have validated the program by ID
-                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(validProgramID);
+                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(validProgramID, false);
                 // Should NOT have fallen back to NA program
                 expect(mockOrganizationService.getOrganizationByName).not.toHaveBeenCalled();
                 
@@ -1232,7 +1232,7 @@ describe('ApprovedStudiesService', () => {
                     pendingModelChange, primaryContactID, null, invalidProgramID, undefined
                 );
 
-                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(invalidProgramID);
+                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(invalidProgramID, false);
                 expect(mockOrganizationService.getOrganizationByName).toHaveBeenCalledWith('NA');
                 
                 const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];

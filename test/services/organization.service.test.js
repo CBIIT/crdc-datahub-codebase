@@ -286,7 +286,20 @@ describe('Organization.getOrganizationAPI', () => {
     mockProgramDAO.getOrganizationByID.mockResolvedValue(mockOrg);
     const result = await organization.getOrganizationAPI(params, context);
     expect(result).toEqual(mockOrg);
-    expect(mockProgramDAO.getOrganizationByID).toHaveBeenCalledWith('org123');
+    expect(mockProgramDAO.getOrganizationByID).toHaveBeenCalledWith('org123', true);
+  });
+
+  it('should request studies from DAO and preserve them in the response', async () => {
+    const params = { orgID: 'org123' };
+    const mockOrg = {
+      _id: 'org123',
+      name: 'Test Org',
+      studies: [{ _id: 's1', id: 's1', studyAbbreviation: 'TST', studyName: 'Trial' }],
+    };
+    mockProgramDAO.getOrganizationByID.mockResolvedValue(mockOrg);
+    const result = await organization.getOrganizationAPI(params, context);
+    expect(mockProgramDAO.getOrganizationByID).toHaveBeenCalledWith('org123', true);
+    expect(result.studies).toEqual(mockOrg.studies);
   });
 
   it('should throw error if orgID is missing', async () => {
@@ -297,6 +310,25 @@ describe('Organization.getOrganizationAPI', () => {
     const params = { orgID: 'org123' };
     const badContext = { userInfo: {} };
     await expect(organization.getOrganizationAPI(params, badContext)).rejects.toThrow(ERROR.NOT_LOGGED_IN);
+  });
+});
+
+describe('Organization.getOrganizationByID', () => {
+  let organization;
+  let mockProgramDAO;
+
+  beforeEach(() => {
+    mockProgramDAO = { getOrganizationByID: jest.fn() };
+    ProgramDAO.mockImplementation(() => mockProgramDAO);
+    organization = new Organization({}, {}, {}, {}, {});
+    jest.clearAllMocks();
+  });
+
+  it('should throw when includeStudiesList is omitted', async () => {
+    await expect(organization.getOrganizationByID('org123')).rejects.toThrow(
+      SUBMODULE_ERROR.INVALID_INCLUDE_STUDIES_LIST_ARGUMENT
+    );
+    expect(mockProgramDAO.getOrganizationByID).not.toHaveBeenCalled();
   });
 });
 

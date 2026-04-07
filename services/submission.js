@@ -3003,11 +3003,10 @@ const sendEmails = {
     },
     completeSubmission: async (userInfo, aSubmission, userService, organizationService, notificationsService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
-        const [aSubmitter, BCCUsers, aOrganization, approvedStudy] = await Promise.all([
+        const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
             userService.getUsersByNotifications([EN.DATA_SUBMISSION.COMPLETE],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            organizationService.getOrganizationByID(aSubmission?.organization?._id),
             userService.approvedStudiesCollection.find(aSubmission?.studyID)
         ]);
 
@@ -3031,11 +3030,10 @@ const sendEmails = {
     },
     cancelSubmission: async (userInfo, aSubmission, userService, organizationService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
-        const [aSubmitter, BCCUsers, aOrganization, approvedStudy] = await Promise.all([
+        const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
             userService.getUsersByNotifications([EN.DATA_SUBMISSION.CANCEL],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            organizationService.getOrganizationByID(aSubmission?.organization?._id),
             userService.approvedStudiesCollection.find(aSubmission?.studyID)
         ]);
 
@@ -3127,11 +3125,10 @@ const sendEmails = {
     },
     rejectSubmission: async (userInfo, aSubmission, userService, organizationService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
-        const [aSubmitter, BCCUsers, aOrganization] = await Promise.all([
+        const [aSubmitter, BCCUsers] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
             userService.getUsersByNotifications([EN.DATA_SUBMISSION.REJECT],
-                [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            organizationService.getOrganizationByID(aSubmission?.organization?._id)
+                [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
         ]);
 
         if (!aSubmitter?.email) {
