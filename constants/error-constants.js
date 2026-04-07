@@ -33,5 +33,7 @@ module.exports = Object.freeze({
         NOT_ALL_STUDIES_UPDATED: "Not all studies were updated successfully, please see the logs for additional information.",
         PROGRAM_CANNOT_INACTIVATE_WITH_STUDIES: "This program has assigned studies, all studies must be reassigned before it can be set to inactive.",
         STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM: "Studies cannot be assigned to an inactive program.",
+        INVALID_INCLUDE_STUDIES_LIST_ARGUMENT:
+            "A boolean is required for the include-studies option when loading an organization by ID.",
     },
 });
