@@ -3,7 +3,7 @@ import { Container, Divider, Stack, styled } from "@mui/material";
 import { isEqual, cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
 import { FC, useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useBlocker, Blocker, Navigate, useLocation } from "react-router-dom";
+import { useNavigate, useBlocker, Blocker, Navigate } from "react-router-dom";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
 import ChevronLeft from "../../assets/icons/chevron_left.svg?react";
@@ -144,7 +144,6 @@ type Props = {
  */
 const FormView: FC<Props> = ({ section }: Props) => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { enqueueSnackbar } = useSnackbar();
   const {
     status,
@@ -189,13 +188,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     getFormObjectRef: useRef<(() => FormObject) | null>(null),
   };
 
-  usePageTitle(`Submission Request ${data?._id || ""}`);
-
-  const replaceNewIdInPath = useCallback(
-    (path: string, id: string): string =>
-      path.replace("/submission-request/new", `/submission-request/${id}`),
-    []
-  );
+  usePageTitle(`Submission Request ${data?._id && data?._id !== "new" ? `- ${data._id}` : ""}`);
 
   /**
    * Determines if the form has unsaved changes.
@@ -389,7 +382,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
     }
 
     const { ref, data: newData } = refs.getFormObjectRef.current?.() || {};
-
     if (!ref?.current || !newData) {
       return {
         status: "failed",
@@ -428,17 +420,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
       );
     }
 
-    if (
-      !blockedNavigate &&
-      saveResult?.status === "success" &&
-      data._id === "new" &&
-      saveResult.id !== data?._id
-    ) {
-      navigate(replaceNewIdInPath(location.pathname, saveResult.id), {
-        replace: true,
-        preventScrollReset: true,
-      });
-    }
+    // TODO: If there is no active navigation (i.e. user is just clicking "Save" button),
+    // we need to replace the URL with the new ID instead of "new"
 
     if (saveResult?.status === "success") {
       return {
