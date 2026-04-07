@@ -1,11 +1,20 @@
 import { LoadingButton } from "@mui/lab";
-import { Container, Divider, Stack, styled } from "@mui/material";
+import {
+  Checkbox,
+  CheckboxProps,
+  Container,
+  Divider,
+  FormControlLabel,
+  Stack,
+  styled,
+} from "@mui/material";
 import { isEqual, cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
 import React, { FC, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useBlocker, Blocker, Navigate } from "react-router-dom";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
+import CheckboxCheckedIconSvg from "../../assets/icons/checkbox_checked.svg?url";
 import ChevronLeft from "../../assets/icons/chevron_left.svg?react";
 import ChevronRight from "../../assets/icons/chevron_right.svg?react";
 import CancelApplicationButton from "../../components/CancelApplicationButton";
@@ -13,11 +22,7 @@ import { Status as AuthStatus, useAuthContext } from "../../components/Contexts/
 import { Status as FormStatus, useFormContext } from "../../components/Contexts/FormContext";
 import PageBanner from "../../components/PageBanner";
 import ProgressBar from "../../components/ProgressBar/ProgressBar";
-import ApproveFormDialog, {
-  FormInput as ApproveFormInput,
-} from "../../components/Questionnaire/ApproveFormDialog";
-import InquireFormDialog from "../../components/Questionnaire/InquireFormDialog";
-import RejectFormDialog from "../../components/Questionnaire/RejectFormDialog";
+import ReviewFormDialog from "../../components/Questionnaire/ReviewFormDialog";
 import SubmitFormDialog from "../../components/Questionnaire/SubmitFormDialog";
 import UnsavedChangesDialog from "../../components/Questionnaire/UnsavedChangesDialog";
 import StatusBar from "../../components/StatusBar/StatusBar";
@@ -125,6 +130,39 @@ const StyledTooltip = styled(StyledFormTooltip)({
   },
 });
 
+const UncheckedIcon = styled("div")<{ readOnly?: boolean }>(({ readOnly }) => ({
+  outline: "2px solid #1D91AB",
+  outlineOffset: -2,
+  width: "24px",
+  height: "24px",
+  backgroundColor: readOnly ? "#E5EEF4" : "initial",
+  color: "#083A50",
+  cursor: readOnly ? "not-allowed" : "pointer",
+}));
+
+const CheckedIcon = styled("div")<{ readOnly?: boolean }>(({ readOnly }) => ({
+  backgroundImage: `url("${CheckboxCheckedIconSvg}")`,
+  backgroundSize: "auto",
+  backgroundRepeat: "no-repeat",
+  width: "24px",
+  height: "24px",
+  backgroundColor: readOnly ? "#E5EEF4" : "initial",
+  color: "#1D91AB",
+  cursor: readOnly ? "not-allowed" : "pointer",
+}));
+
+const StyledCheckbox = styled(Checkbox)({
+  "&.MuiCheckbox-root": {
+    padding: "10px",
+  },
+  "& .MuiSvgIcon-root": {
+    fontSize: "24px",
+  },
+  "&.Mui-disabled": {
+    cursor: "not-allowed",
+  },
+});
+
 const validateSection = (section: string): section is SectionKey =>
   typeof map[section] !== "undefined";
 
@@ -167,6 +205,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const [openApproveDialog, setOpenApproveDialog] = useState<boolean>(false);
   const [openInquireDialog, setOpenInquireDialog] = useState<boolean>(false);
   const [openRejectDialog, setOpenRejectDialog] = useState<boolean>(false);
+  const [pendingModelChange, setPendingModelChange] = useState<boolean>(false);
   const [allSectionsComplete, setAllSectionsComplete] = useState<boolean>(false);
 
   const sectionKeys = Object.keys(map);
@@ -255,7 +294,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
    *
    * @returns {Promise<boolean>} true if the approval submission was successful, false otherwise
    */
-  const submitApproveForm = async (data: ApproveFormInput): Promise<string | boolean> => {
+  const submitApproveForm = async (reviewComment: string): Promise<string | boolean> => {
     if (formMode !== "Review") {
       return false;
     }
@@ -265,8 +304,9 @@ const FormView: FC<Props> = ({ section }: Props) => {
       return false;
     }
 
-    const res = await approveForm(data, true);
+    const res = await approveForm({ reviewComment, pendingModelChange }, true);
     setOpenApproveDialog(false);
+    setPendingModelChange(false);
     if (res?.status === "success") {
       navigate("/submission-requests");
     } else {
@@ -575,6 +615,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
 
   const handleCloseApproveFormDialog = () => {
     setOpenApproveDialog(false);
+    setPendingModelChange(false);
   };
 
   const handleCloseInquireFormDialog = () => {
@@ -803,19 +844,42 @@ const FormView: FC<Props> = ({ section }: Props) => {
         onSubmit={submitForm}
         disableActions={status === FormStatus.SUBMITTING}
       />
-      <ApproveFormDialog
+      <ReviewFormDialog
         open={openApproveDialog}
+        header="Approve Submission Request"
+        confirmText="Confirm to Approve"
+        confirmButtonProps={{ color: "success" }}
         onCancel={handleCloseApproveFormDialog}
-        onSubmit={(data) => submitApproveForm(data)}
+        onSubmit={(reviewComment) => submitApproveForm(reviewComment)}
         loading={status === FormStatus.SUBMITTING}
-      />
-      <InquireFormDialog
+      >
+        <FormControlLabel
+          control={
+            <StyledCheckbox
+              checked={pendingModelChange}
+              onChange={(e) => setPendingModelChange(e.target.checked)}
+              checkedIcon={<CheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+              icon={<UncheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+              disabled={status === FormStatus.SUBMITTING}
+              inputProps={
+                { "data-testid": "pendingModelChange-checkbox" } as CheckboxProps["inputProps"]
+              }
+            />
+          }
+          label="Require Data Model changes"
+        />
+      </ReviewFormDialog>
+      <ReviewFormDialog
         open={openInquireDialog}
+        header="Request Additional Changes"
+        confirmText="Confirm to move to Inquired"
         onCancel={handleCloseInquireFormDialog}
         onSubmit={(reviewComment) => submitInquireForm(reviewComment)}
       />
-      <RejectFormDialog
+      <ReviewFormDialog
         open={openRejectDialog}
+        header="Reject Submission Request"
+        confirmText="Confirm to Reject"
         onCancel={handleCloseRejectFormDialog}
         onSubmit={(reviewComment) => submitRejectForm(reviewComment)}
       />
