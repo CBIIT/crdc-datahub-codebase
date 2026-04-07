@@ -112,7 +112,7 @@ class ApprovedStudiesService {
         }
         // find program/organization by programID reference
         if (approvedStudy?.programID) {
-            approvedStudy.program = await this.organizationService.getOrganizationByID(approvedStudy.programID);
+            approvedStudy.program = await this.organizationService.getOrganizationByID(approvedStudy.programID, true);
         }
         // find primaryContact
         if (approvedStudy?.primaryContactID)
@@ -392,7 +392,14 @@ class ApprovedStudiesService {
             await this._notifyClearPendingState(updateStudy);
         }
 
-        let approvedStudy = {...updateStudy, program: program, primaryContact: primaryContact};
+        let programForGraphQL = program;
+        if (program?._id) {
+            const programWithStudiesList = await this.organizationService.getOrganizationByID(program._id, true);
+            if (programWithStudiesList) {
+                programForGraphQL = programWithStudiesList;
+            }
+        }
+        let approvedStudy = {...updateStudy, program: programForGraphQL, primaryContact: primaryContact};
         return getDataCommonsDisplayNamesForApprovedStudy(approvedStudy);
     }
     _validateDbGaPID(dbGaPID) {
@@ -515,6 +522,9 @@ class ApprovedStudiesService {
         if (!!params.ORCID && !this._validateIdentifier(params.ORCID)) {
             throw new Error(ERROR.INVALID_ORCID);
         }
+        if (params.pendingImageDeIdentification !== undefined && typeof params.pendingImageDeIdentification !== 'boolean') {
+            throw new Error(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+        }
         return params;
     }
 
@@ -543,7 +553,7 @@ class ApprovedStudiesService {
         let program = null;
          // verify the provided programID is valid
         if (programID){
-            program = await this.organizationService.getOrganizationByID(programID);
+            program = await this.organizationService.getOrganizationByID(programID, false);
         }
         // if the provided programID is not valid was not provided then use the NA program as a fallback
         if (!program){

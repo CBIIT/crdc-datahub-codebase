@@ -379,6 +379,27 @@ describe('ApprovedStudiesService', () => {
             );
         });
 
+        it('should throw when pendingImageDeIdentification is null', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: null }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
+        it('should throw when pendingImageDeIdentification is a string', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: 'true' }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
+        it('should throw when pendingImageDeIdentification is a number', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: 1 }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
         it('should throw when updating study to an inactive program', async () => {
             const inactiveProgram = { _id: 'inactive-pid', name: 'Inactive', status: ORGANIZATION.STATUSES.INACTIVE };
             service.organizationService.getOrganizationByID = jest.fn().mockResolvedValue(inactiveProgram);
@@ -1208,7 +1229,7 @@ describe('ApprovedStudiesService', () => {
                 );
 
                 // Should have validated the program by ID
-                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(validProgramID);
+                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(validProgramID, false);
                 // Should NOT have fallen back to NA program
                 expect(mockOrganizationService.getOrganizationByName).not.toHaveBeenCalled();
                 
@@ -1276,7 +1297,7 @@ describe('ApprovedStudiesService', () => {
                     pendingModelChange, primaryContactID, null, invalidProgramID, undefined
                 );
 
-                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(invalidProgramID);
+                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(invalidProgramID, false);
                 expect(mockOrganizationService.getOrganizationByName).toHaveBeenCalledWith('NA');
                 
                 const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];

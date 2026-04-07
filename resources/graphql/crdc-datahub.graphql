@@ -1071,6 +1071,8 @@ type Query {
         model: String!, # GC, CTDC, ICDC, PSDC
         version: String!
     ) : [propertyPVs] @public
+
+    isChatBotEnabled: Boolean @public
 }
 type Mutation {
     "User initiated operations"
@@ -1181,6 +1183,7 @@ type Mutation {
         isPendingGPA: Boolean
         GPAName: String # optional 
         programID: ID # optional
+        pendingImageDeIdentification: Boolean #optional
     ): idType
 
     requestAccess(

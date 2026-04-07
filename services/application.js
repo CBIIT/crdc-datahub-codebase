@@ -784,7 +784,7 @@ class Application {
         const questionnaire = getApplicationQuestionnaire(application);
         const [approvedStudies, existingProgram, duplicatePrograms] = await Promise.all([
             this.approvedStudiesService.findByStudyName(application?.studyName),
-            this.organizationService.getOrganizationByID(questionnaire?.program?._id),
+            this.organizationService.getOrganizationByID(questionnaire?.program?._id, false),
             this.organizationService.findOneByProgramName(application?.programName),
             (async () => {
                 application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
