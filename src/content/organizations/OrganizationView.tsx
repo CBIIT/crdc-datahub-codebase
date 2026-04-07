@@ -265,7 +265,7 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
       );
       return;
     }
-    if (data.status === "Inactive") {
+    if (organization?.status === "Active" && data.status === "Inactive") {
       setInactiveWarningOpen(true);
       return;
     }

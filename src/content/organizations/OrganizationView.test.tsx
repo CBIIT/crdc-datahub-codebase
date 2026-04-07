@@ -44,6 +44,16 @@ const orgWithStudies = organizationFactory.build({
   studies: [approvedStudyFactory.build({ _id: "study-1" })],
 });
 
+const inactiveOrgWithStudies = organizationFactory.build({
+  _id: "org-3",
+  name: "Inactive Program With Studies",
+  abbreviation: "IPWS",
+  description: "An inactive program with studies",
+  status: "Inactive",
+  conciergeID: "",
+  studies: [approvedStudyFactory.build({ _id: "study-2" })],
+});
+
 const getOrgMock: MockedResponse<GetOrgResp, GetOrgInput> = {
   request: {
     query: GET_ORG,
@@ -64,6 +74,18 @@ const getOrgWithStudiesMock: MockedResponse<GetOrgResp, GetOrgInput> = {
   result: {
     data: {
       getOrganization: orgWithStudies,
+    },
+  },
+};
+
+const getInactiveOrgWithStudiesMock: MockedResponse<GetOrgResp, GetOrgInput> = {
+  request: {
+    query: GET_ORG,
+    variables: { orgID: "org-3" },
+  },
+  result: {
+    data: {
+      getOrganization: inactiveOrgWithStudies,
     },
   },
 };
@@ -210,6 +232,25 @@ describe("Implementation Requirements", () => {
 
     const cancelButton = getByRole("button", { name: "Cancel button" });
     userEvent.click(cancelButton);
+
+    await waitFor(() => {
+      expect(queryByTestId("delete-dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("should not show the inactive warning dialog when saving an already Inactive program", async () => {
+    const { findByText, getByRole, queryByTestId } = render(<OrganizationView _id="org-3" />, {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[listActiveDCPsMock, getInactiveOrgWithStudiesMock]}>
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await findByText("Edit Program");
+
+    const saveButton = getByRole("button", { name: "Save" });
+    userEvent.click(saveButton);
 
     await waitFor(() => {
       expect(queryByTestId("delete-dialog")).not.toBeInTheDocument();
