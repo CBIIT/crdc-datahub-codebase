@@ -1071,6 +1071,8 @@ type Query {
         model: String!, # GC, CTDC, ICDC, PSDC
         version: String!
     ) : [propertyPVs] @public
+
+    isChatBotEnabled: Boolean @public
 }
 type Mutation {
     "User initiated operations"

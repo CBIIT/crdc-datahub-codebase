@@ -10,6 +10,7 @@
  * - rename-application-id.js: Rename pendingApplicationID to applicationID in ApprovedStudies
  * - init-metadata-validation-batch-size.js: Initialize METADATA_VALIDATION_BATCH_SIZE config entry
  * - add-sts-resource-config.js: Add STS_RESOURCE configuration (tier-based URL)
+ * - add-chatbot-enabled-config.js: Add CHATBOT configuration (keys.enabled feature flag)
  */
 
 const { MongoClient } = require('mongodb');
@@ -175,6 +176,29 @@ async function executeStsResourceConfigMigration(db) {
     }
 }
 
+/**
+ * Execute CHATBOT configuration migration
+ */
+async function executeChatbotEnabledConfigMigration(db) {
+    console.log('🔄 Executing CHATBOT configuration migration...');
+
+    try {
+        const chatbotEnabledConfigMigration = require('./add-chatbot-enabled-config');
+        const result = await chatbotEnabledConfigMigration.addChatbotEnabledConfig(db);
+
+        if (result.success) {
+            console.log('✅ CHATBOT configuration migration completed successfully');
+        } else {
+            console.log('❌ CHATBOT configuration migration failed');
+        }
+
+        return result;
+    } catch (error) {
+        console.error('❌ Error executing CHATBOT configuration migration:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
 // ============================================================================
 // MIGRATION ORCHESTRATOR
 // ============================================================================
@@ -222,6 +246,11 @@ async function orchestrateMigration() {
                 name: "Add STS_RESOURCE configuration (tier-based URL)",
                 file: "add-sts-resource-config.js",
                 execute: () => executeStsResourceConfigMigration(db)
+            },
+            {
+                name: "Add CHATBOT configuration",
+                file: "add-chatbot-enabled-config.js",
+                execute: () => executeChatbotEnabledConfigMigration(db)
             }
         ];
         
