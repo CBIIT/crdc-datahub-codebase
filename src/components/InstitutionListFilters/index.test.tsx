@@ -95,7 +95,7 @@ describe("InstitutionListFilters Component", () => {
     );
 
     await waitFor(() => {
-      expect(mockOnChange).toHaveBeenCalledWith({ name: "", status: "All" });
+      expect(mockOnChange).toHaveBeenCalledWith({ name: "", status: "Active" });
     });
   });
 
@@ -134,7 +134,7 @@ describe("InstitutionListFilters Component", () => {
     vi.advanceTimersByTime(500);
 
     await waitFor(() => {
-      expect(mockOnChange).toHaveBeenCalledWith({ name: "Test", status: "All" });
+      expect(mockOnChange).toHaveBeenCalledWith({ name: "Test", status: "Active" });
     });
     vi.useRealTimers();
   });
@@ -152,14 +152,28 @@ describe("InstitutionListFilters Component", () => {
     userEvent.type(nameInput, "TestName");
     vi.advanceTimersByTime(500);
     await waitFor(() => {
-      expect(mockOnChange).toHaveBeenCalledWith({ name: "TestName", status: "All" });
+      expect(mockOnChange).toHaveBeenCalledWith({ name: "TestName", status: "Active" });
     });
 
     userEvent.clear(nameInput);
     vi.advanceTimersByTime(500);
     await waitFor(() => {
-      expect(mockOnChange).toHaveBeenCalledWith({ name: "", status: "All" });
+      expect(mockOnChange).toHaveBeenCalledWith({ name: "", status: "Active" });
     });
     vi.useRealTimers();
+  });
+});
+
+describe("Implementation Requirements", () => {
+  it("should default the status filter to Active", async () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <InstitutionListFilters />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("status-select-input")).toHaveValue("Active");
+    });
   });
 });

@@ -52,7 +52,7 @@ const InstitutionListFilters = ({ onChange }: Props) => {
   const { watch, register, control, setValue, getValues } = useForm<FilterForm>({
     defaultValues: {
       name: "",
-      status: "All",
+      status: "Active",
     },
   });
 
