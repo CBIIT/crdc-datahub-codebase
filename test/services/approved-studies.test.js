@@ -362,6 +362,39 @@ describe('ApprovedStudiesService', () => {
             expect(result).toEqual(mockDisplayStudy);
         });
 
+        it('should set pendingImageDeIdentification on update when provided as true', async () => {
+            await service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: true }, mockContext);
+            const updatePayload = service.approvedStudyDAO.update.mock.calls[0][1];
+            expect(updatePayload.pendingImageDeIdentification).toBe(true);
+        });
+
+        it('should set pendingImageDeIdentification on update when provided as false', async () => {
+            await service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: false }, mockContext);
+            const updatePayload = service.approvedStudyDAO.update.mock.calls[0][1];
+            expect(updatePayload.pendingImageDeIdentification).toBe(false);
+        });
+
+        it('should throw when pendingImageDeIdentification is null', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: null }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
+        it('should throw when pendingImageDeIdentification is a string', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: 'true' }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
+        it('should throw when pendingImageDeIdentification is a number', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: 1 }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
         it('should throw when updating study to an inactive program', async () => {
             const inactiveProgram = { _id: 'inactive-pid', name: 'Inactive', status: ORGANIZATION.STATUSES.INACTIVE };
             service.organizationService.getOrganizationByID = jest.fn().mockResolvedValue(inactiveProgram);
