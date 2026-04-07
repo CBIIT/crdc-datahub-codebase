@@ -1179,6 +1179,7 @@ type Mutation {
         primaryContactID: String #data concierge user ID
         useProgramPC: Boolean!
         pendingModelChange: Boolean
+        pendingImageDeIdentification: Boolean
         isPendingGPA: Boolean
         GPAName: String # optional 
         programID: ID # optional

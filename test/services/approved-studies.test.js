@@ -362,16 +362,21 @@ describe('ApprovedStudiesService', () => {
             expect(result).toEqual(mockDisplayStudy);
         });
 
-        it('should set pendingImageDeIdentification on update when provided as true', async () => {
+        it('should pass pendingImageDeIdentification to approvedStudyDAO.update when provided', async () => {
             await service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: true }, mockContext);
-            const updatePayload = service.approvedStudyDAO.update.mock.calls[0][1];
-            expect(updatePayload.pendingImageDeIdentification).toBe(true);
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'study-id',
+                expect.objectContaining({ pendingImageDeIdentification: true })
+            );
         });
 
-        it('should set pendingImageDeIdentification on update when provided as false', async () => {
+        it('should set pendingImageDeIdentification to false on update when explicitly false', async () => {
+            service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue({ ...mockStudy, pendingImageDeIdentification: true });
             await service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: false }, mockContext);
-            const updatePayload = service.approvedStudyDAO.update.mock.calls[0][1];
-            expect(updatePayload.pendingImageDeIdentification).toBe(false);
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'study-id',
+                expect.objectContaining({ pendingImageDeIdentification: false })
+            );
         });
 
         it('should throw when pendingImageDeIdentification is null', async () => {
@@ -905,6 +910,22 @@ describe('ApprovedStudiesService', () => {
             expect(result).toEqual(mockDisplayList);
         });
 
+        it('should preserve pendingImageDeIdentification on each study in the list', async () => {
+            const daoStudies = [
+                { _id: 'study1', studyName: 'Study 1', pendingImageDeIdentification: true },
+                { _id: 'study2', studyName: 'Study 2', pendingImageDeIdentification: false }
+            ];
+            service.approvedStudyDAO.listApprovedStudies = jest.fn().mockResolvedValue([{ total: 2, results: daoStudies }]);
+            const remapper = require('../../utility/data-commons-remapper');
+            remapper.getDataCommonsDisplayNamesForApprovedStudyList.mockImplementation((list) => ({
+                total: list.total,
+                studies: list.studies.map((s) => ({ ...s, dataCommonsDisplayName: s.studyName }))
+            }));
+            const result = await service.listApprovedStudiesAPI({ ...mockParams }, mockContext);
+            expect(result.studies[0].pendingImageDeIdentification).toBe(true);
+            expect(result.studies[1].pendingImageDeIdentification).toBe(false);
+        });
+
         it('should handle empty DAO results gracefully', async () => {
             service.approvedStudyDAO.listApprovedStudies = jest.fn().mockResolvedValue([]);
             require('../../utility/data-commons-remapper').getDataCommonsDisplayNamesForApprovedStudyList.mockReturnValue({ total: 0, studies: [] });
@@ -947,6 +968,17 @@ describe('ApprovedStudiesService', () => {
             expect(service.getApprovedStudy).toHaveBeenCalledWith(mockParams);
             expect(getDataCommonsDisplayNamesForApprovedStudy).toHaveBeenCalledWith(mockApprovedStudy);
             expect(result).toEqual(mockDisplayStudy);
+        });
+
+        it('should include pendingImageDeIdentification in the API response when present', async () => {
+            const studyWithFlag = { ...mockApprovedStudy, pendingImageDeIdentification: true };
+            service.getApprovedStudy = jest.fn().mockResolvedValue(studyWithFlag);
+            getDataCommonsDisplayNamesForApprovedStudy.mockImplementation((study) => ({
+                ...study,
+                dataCommonsDisplayName: 'Test Study Display'
+            }));
+            const result = await service.getApprovedStudyAPI({ ...mockParams }, mockContext);
+            expect(result.pendingImageDeIdentification).toBe(true);
         });
 
         it('should throw if verifySession fails', async () => {

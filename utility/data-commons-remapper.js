@@ -1,4 +1,5 @@
 const DISPLAY_NAMES_MAP = require("../constants/data-commons-display-names-map");
+const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 
 
 function getDataCommonsDisplayName(datacommons){
@@ -63,6 +64,7 @@ function getDataCommonsDisplayNamesForApprovedStudy(approvedStudy){
     if (!approvedStudy){
         return null;
     }
+    approvedStudy.pendingImageDeIdentification = isTrue(approvedStudy.pendingImageDeIdentification);
     if (approvedStudy.programs){
         approvedStudy.programs = genericGetDataCommonsDisplayNames(approvedStudy.programs, getDataCommonsDisplayNamesForUserOrganization);
     }
