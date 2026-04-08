@@ -218,6 +218,18 @@ describe('Application', () => {
             expect(application.pendingConditions).toContain(ERROR.PENDING_APPROVED_STUDY);
         });
 
+        it('includes pending image de-identification in pendingConditions when applicable', async () => {
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([{
+                controlledAccess: false,
+                pendingModelChange: false,
+                pendingImageDeIdentification: true
+            }]);
+            const application = { studyName: 'study1' };
+            await app._checkConditionalApproval(application);
+            expect(application.conditional).toBe(true);
+            expect(application.pendingConditions).toContain(ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION);
+        });
+
         it('does nothing if no studies found', async () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             const application = { studyName: 'study1' };
@@ -778,13 +790,14 @@ describe('Application', () => {
             };
             const mockQuestionnaire = { program: { _id: null } };
             const mockNewProgram = { _id: 'new-program-1', name: 'Program One' };
-            
-            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
             mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
             mockOrganizationService.upsertByProgramName.mockResolvedValue(mockNewProgram);
-            app.applicationDAO.update = jest.fn().mockResolvedValue(true);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
@@ -797,7 +810,17 @@ describe('Application', () => {
                 'Program One', 'PO', 'Program Description'
             );
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, undefined, undefined, mockNewProgram
+                expect.objectContaining({
+                    _id: 'app1',
+                    studyName: 'study1',
+                    status: APPROVED,
+                    reviewComment: 'Approved',
+                }),
+                mockQuestionnaire,
+                undefined,
+                undefined,
+                undefined,
+                mockNewProgram
             );
         });
 
@@ -819,7 +842,9 @@ describe('Application', () => {
             mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
             mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
             mockOrganizationService.upsertByProgramName.mockResolvedValue(mockNewProgram);
-            app.applicationDAO.update = jest.fn().mockResolvedValue(true);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
             app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
             mockLogCollection.insert.mockResolvedValue();
@@ -832,7 +857,17 @@ describe('Application', () => {
             }, context);
 
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, true, undefined, mockNewProgram
+                expect.objectContaining({
+                    _id: 'app1',
+                    studyName: 'study1',
+                    status: APPROVED,
+                    reviewComment: 'Approved',
+                }),
+                mockQuestionnaire,
+                undefined,
+                true,
+                undefined,
+                mockNewProgram
             );
         });
 
@@ -846,12 +881,13 @@ describe('Application', () => {
             };
             const mockQuestionnaire = { program: { _id: 'program1' } };
             const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
-            
-            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
             mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockResolvedValue(true);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
@@ -862,7 +898,17 @@ describe('Application', () => {
 
             expect(mockOrganizationService.upsertByProgramName).not.toHaveBeenCalled();
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, undefined, undefined, mockExistingProgram
+                expect.objectContaining({
+                    _id: 'app1',
+                    studyName: 'study1',
+                    status: APPROVED,
+                    reviewComment: 'Approved',
+                }),
+                mockQuestionnaire,
+                undefined,
+                undefined,
+                undefined,
+                mockExistingProgram
             );
         });
 
@@ -898,12 +944,13 @@ describe('Application', () => {
             const mockQuestionnaire = { program: { _id: 'program1' } };
             const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
             const mockDuplicateProgram = { _id: 'duplicate1', name: 'Existing Program' };
-            
-            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
             mockOrganizationService.findOneByProgramName.mockResolvedValue(mockDuplicateProgram);
-            app.applicationDAO.update = jest.fn().mockResolvedValue(true);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
@@ -913,7 +960,17 @@ describe('Application', () => {
             await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, undefined, undefined, mockExistingProgram
+                expect.objectContaining({
+                    _id: 'app1',
+                    studyName: 'study1',
+                    status: APPROVED,
+                    reviewComment: 'Approved',
+                }),
+                mockQuestionnaire,
+                undefined,
+                undefined,
+                undefined,
+                mockExistingProgram
             );
         });
     });

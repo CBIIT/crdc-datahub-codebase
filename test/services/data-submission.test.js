@@ -1371,6 +1371,15 @@ describe("Submission.createSubmission", () => {
             .toThrow(ERROR.PENDING_APPROVED_STUDY);
     });
 
+    it("should throw error if approved study has pending image de-identification", async () => {
+        submissionService._findApprovedStudies.mockResolvedValueOnce([
+            { ...mockApprovedStudy, pendingImageDeIdentification: true }
+        ]);
+        await expect(submissionService.createSubmission(mockParams, mockContext))
+            .rejects
+            .toThrow(ERROR.PENDING_IMAGE_DEIDENTIFICATION_SUBMISSION);
+    });
+
     it("should successfully create a submission with all required data", async () => {
         // Mock the data commons remapper utility by overriding the method on the service
         const originalMethod = submissionService.getDataCommonsDisplayNamesForSubmission;
