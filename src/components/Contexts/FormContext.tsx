@@ -33,6 +33,7 @@ import { Logger } from "../../utils";
 
 export type ApproveFormInput = {
   pendingModelChange: boolean;
+  pendingImageDeIdentification: boolean;
   reviewComment: string;
 };
 
@@ -316,6 +317,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         comment: data?.reviewComment,
         wholeProgram,
         pendingModelChange: data?.pendingModelChange,
+        pendingImageDeIdentification: data?.pendingImageDeIdentification,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 

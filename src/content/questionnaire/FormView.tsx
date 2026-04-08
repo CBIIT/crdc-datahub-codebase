@@ -206,6 +206,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const [openInquireDialog, setOpenInquireDialog] = useState<boolean>(false);
   const [openRejectDialog, setOpenRejectDialog] = useState<boolean>(false);
   const [pendingModelChange, setPendingModelChange] = useState<boolean>(false);
+  const [pendingImageDeIdentification, setPendingImageDeIdentification] = useState<boolean>(false);
   const [allSectionsComplete, setAllSectionsComplete] = useState<boolean>(false);
 
   const sectionKeys = Object.keys(map);
@@ -304,9 +305,13 @@ const FormView: FC<Props> = ({ section }: Props) => {
       return false;
     }
 
-    const res = await approveForm({ reviewComment, pendingModelChange }, true);
+    const res = await approveForm(
+      { reviewComment, pendingModelChange, pendingImageDeIdentification },
+      true
+    );
     setOpenApproveDialog(false);
     setPendingModelChange(false);
+    setPendingImageDeIdentification(false);
     if (res?.status === "success") {
       navigate("/submission-requests");
     } else {
@@ -616,6 +621,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const handleCloseApproveFormDialog = () => {
     setOpenApproveDialog(false);
     setPendingModelChange(false);
+    setPendingImageDeIdentification(false);
   };
 
   const handleCloseInquireFormDialog = () => {
@@ -853,21 +859,40 @@ const FormView: FC<Props> = ({ section }: Props) => {
         onSubmit={(reviewComment) => submitApproveForm(reviewComment)}
         loading={status === FormStatus.SUBMITTING}
       >
-        <FormControlLabel
-          control={
-            <StyledCheckbox
-              checked={pendingModelChange}
-              onChange={(e) => setPendingModelChange(e.target.checked)}
-              checkedIcon={<CheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
-              icon={<UncheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
-              disabled={status === FormStatus.SUBMITTING}
-              inputProps={
-                { "data-testid": "pendingModelChange-checkbox" } as CheckboxProps["inputProps"]
-              }
-            />
-          }
-          label="Require Data Model changes"
-        />
+        <Stack direction="column">
+          <FormControlLabel
+            control={
+              <StyledCheckbox
+                checked={pendingModelChange}
+                onChange={(e) => setPendingModelChange(e.target.checked)}
+                checkedIcon={<CheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+                icon={<UncheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+                disabled={status === FormStatus.SUBMITTING}
+                inputProps={
+                  { "data-testid": "pendingModelChange-checkbox" } as CheckboxProps["inputProps"]
+                }
+              />
+            }
+            label="Require Data Model changes"
+          />
+          <FormControlLabel
+            control={
+              <StyledCheckbox
+                checked={pendingImageDeIdentification}
+                onChange={(e) => setPendingImageDeIdentification(e.target.checked)}
+                checkedIcon={<CheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+                icon={<UncheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+                disabled={status === FormStatus.SUBMITTING}
+                inputProps={
+                  {
+                    "data-testid": "pendingImageDeIdentification-checkbox",
+                  } as CheckboxProps["inputProps"]
+                }
+              />
+            }
+            label="Require Risk Mitigation document & De-identification protocol"
+          />
+        </Stack>
       </ReviewFormDialog>
       <ReviewFormDialog
         open={openInquireDialog}
