@@ -31,13 +31,13 @@ import {
 } from "../../graphql";
 import { Logger } from "../../utils";
 
+import { useOrganizationListContext, Status as ProgramStatus } from "./OrganizationListContext";
+
 export type ApproveFormInput = {
   pendingModelChange: boolean;
   pendingImageDeIdentification: boolean;
   reviewComment: string;
 };
-
-import { useOrganizationListContext, Status as ProgramStatus } from "./OrganizationListContext";
 
 export type SetDataReturnType =
   | { status: "success"; id: string }
