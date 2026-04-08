@@ -7,7 +7,7 @@ import { IS_CHATBOT_ENABLED, IsChatBotEnabledResp } from "../../graphql";
 import { Logger } from "../../utils/logger";
 
 type Props = {
-  children?: React.ReactNode;
+  children: React.ReactNode;
 };
 
 /**
