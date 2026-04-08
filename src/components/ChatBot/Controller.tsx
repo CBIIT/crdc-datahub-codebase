@@ -24,10 +24,6 @@ type Props = {
 const ChatController: FC<Props> = ({ label }) => {
   const { VITE_CHATBOT_API_BASE_URL } = env || {};
 
-  if (!VITE_CHATBOT_API_BASE_URL?.trim()) {
-    return null;
-  }
-
   return (
     <MemoizedChatBotProvider label={label} knowledgeBaseUrl={VITE_CHATBOT_API_BASE_URL}>
       <MemoizedChatConversationProvider>

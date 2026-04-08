@@ -3,6 +3,7 @@ import { FC, ReactNode } from "react";
 import { Outlet, ScrollRestoration } from "react-router-dom";
 
 import ChatBot from "@/components/ChatBot";
+import ChatBotGate from "@/components/ChatBotGate";
 
 import { SearchParamsProvider } from "../components/Contexts/SearchParamsContext";
 import Footer from "../components/Footer";
@@ -30,7 +31,9 @@ const Layout: FC<LayoutProps> = ({ children }) => (
     </StyledWrapper>
     <Footer />
     <InactivityDialog />
-    <ChatBot />
+    <ChatBotGate>
+      <ChatBot />
+    </ChatBotGate>
   </SearchParamsProvider>
 );
 
