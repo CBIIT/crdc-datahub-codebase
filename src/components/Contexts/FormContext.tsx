@@ -30,7 +30,12 @@ import {
   ListInstitutionsResp,
 } from "../../graphql";
 import { Logger } from "../../utils";
-import { FormInput as ApproveFormInput } from "../Questionnaire/ApproveFormDialog";
+
+export type ApproveFormInput = {
+  pendingModelChange: boolean;
+  pendingImageDeIdentification: boolean;
+  reviewComment: string;
+};
 
 import { useOrganizationListContext, Status as ProgramStatus } from "./OrganizationListContext";
 
@@ -330,6 +335,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         comment: data?.reviewComment,
         wholeProgram,
         pendingModelChange: data?.pendingModelChange,
+        pendingImageDeIdentification: data?.pendingImageDeIdentification,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 

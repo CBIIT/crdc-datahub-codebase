@@ -323,3 +323,7 @@ export type {
   Input as EditSubmissionNameInput,
   Response as EditSubmissionNameResp,
 } from "./editSubmission";
+
+// ChatBot
+export { IS_CHATBOT_ENABLED } from "./isChatBotEnabled";
+export type { Response as IsChatBotEnabledResp } from "./isChatBotEnabled";
