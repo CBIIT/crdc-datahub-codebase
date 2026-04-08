@@ -21,12 +21,12 @@ const StyledOutlinedInput = styled(BaseOutlinedInput)({
     overflow: "auto !important",
     padding: 0,
     lineHeight: "25px",
-    width: "600px",
-    minWidth: "600px",
-    maxWidth: "750px",
-    height: "375px",
-    minHeight: "375px",
-    maxHeight: "500px",
+    width: "min(600px, calc(100vw - 150px))",
+    minWidth: "min(750px, calc(100vw - 150px))",
+    maxWidth: "min(1440px, 80vw)",
+    height: "min(375px, calc(100vh - 340px))",
+    minHeight: "clamp(100px, calc(100vh - 340px), 375px)",
+    maxHeight: "min(500px, calc(100vh - 340px))",
     boxSizing: "border-box",
   },
 });
@@ -59,6 +59,7 @@ const StyledDialog = styled(Dialog)({
   "& .MuiDialog-paper": {
     width: "fit-content",
     maxWidth: "calc(100% - 64px)",
+    maxHeight: "calc(100vh - 64px)",
     borderRadius: "8px",
     "& .MuiDialogContent-root": {
       overflow: "hidden",
