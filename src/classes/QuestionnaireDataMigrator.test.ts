@@ -225,6 +225,59 @@ describe("run", () => {
       })
     );
   });
+
+  it("should skip _migrateLastApp when skipLastApp option is true", async () => {
+    const data = questionnaireDataFactory.build({
+      pi: piFactory.build({ firstName: "Imported", lastName: "User" }),
+      primaryContact: contactFactory.build(),
+      additionalContacts: [],
+    });
+
+    mockGetInstitutions.mockResolvedValue({
+      data: {
+        listInstitutions: {
+          institutions: [
+            institutionFactory.build({
+              _id: data.pi.institutionID,
+              name: data.pi.institution,
+            }),
+            institutionFactory.build({
+              _id: data.primaryContact.institutionID,
+              name: data.primaryContact.institution,
+            }),
+          ],
+        },
+      },
+    });
+
+    mockGetLastApplication.mockResolvedValue({
+      data: {
+        getMyLastApplication: {
+          questionnaireData: JSON.stringify(
+            questionnaireDataFactory.build({
+              pi: piFactory.build({
+                firstName: "PreviousApp",
+                lastName: "PI",
+              }),
+            })
+          ),
+        },
+      },
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [],
+    });
+
+    const result = await migrator.run({ skipLastApp: true });
+
+    expect(result.pi.firstName).toBe("Imported");
+    expect(result.pi.lastName).toBe("User");
+    expect(mockGetLastApplication).not.toHaveBeenCalled();
+  });
 });
 
 describe("getData", () => {

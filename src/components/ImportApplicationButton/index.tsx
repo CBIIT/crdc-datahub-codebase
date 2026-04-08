@@ -163,7 +163,7 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
     }
 
     const isCompleted = parsedForm?.sections?.every((section) => section.status === "Completed");
-    const res = await setData(parsedForm, { skipSave: false });
+    const res = await setData(parsedForm, { skipSave: false, runMigrations: true });
 
     if (res?.status === "success") {
       enqueueSnackbar(

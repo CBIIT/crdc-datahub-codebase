@@ -45,10 +45,14 @@ export class QuestionnaireDataMigrator {
   /**
    * Executes all migration steps in a predefined order.
    *
+   * @param opts Optional configuration for the migration run.
+   * @param opts.skipLastApp If true, skips the _migrateLastApp step.
    * @returns The fully migrated questionnaireData object.
    */
-  public async run(): Promise<QuestionnaireData> {
-    await this._migrateLastApp();
+  public async run(opts?: { skipLastApp?: boolean }): Promise<QuestionnaireData> {
+    if (!opts?.skipLastApp) {
+      await this._migrateLastApp();
+    }
     await this._migrateExistingInstitutions();
     await this._migrateInstitutionsToID();
     await this._migrateInstitutionNames();
