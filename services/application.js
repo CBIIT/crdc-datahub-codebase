@@ -169,9 +169,11 @@ class Application {
     async createApplication(application, userInfo, status = NEW) {
         const timestamp = getCurrentTime();
 
-        const history = [HistoryEventBuilder.createEvent(userInfo._id, NEW, null)];
+        const history = [HistoryEventBuilder.createEvent(userInfo._id, NEW, null, timestamp)];
         if (status === IN_PROGRESS) {
-            history.push(HistoryEventBuilder.createEvent(userInfo._id, IN_PROGRESS, null));
+            // Add an additional 1s to the timestamp to ensure the events can be correctly sorted
+            const eventTime = new Date(timestamp.getTime() + 1000);
+            history.push(HistoryEventBuilder.createEvent(userInfo._id, IN_PROGRESS, null, eventTime));
         }
 
         let newApplicationProperties = {
@@ -785,7 +787,7 @@ class Application {
         const questionnaire = getApplicationQuestionnaire(application);
         const [approvedStudies, existingProgram, duplicatePrograms] = await Promise.all([
             this.approvedStudiesService.findByStudyName(application?.studyName),
-            this.organizationService.getOrganizationByID(questionnaire?.program?._id),
+            this.organizationService.getOrganizationByID(questionnaire?.program?._id, false),
             this.organizationService.findOneByProgramName(application?.programName),
             (async () => {
                 application.version = await this._getApplicationVersionByStatus(application.status, application?.version);

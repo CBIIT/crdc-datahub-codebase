@@ -298,6 +298,106 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                 expect(notificationSpy).not.toHaveBeenCalled();
             });
 
+            it('should attempt notification when only pendingImageDeIdentification is cleared', async () => {
+                const studyImagePending = {
+                    ...mockStudy,
+                    pendingModelChange: false,
+                    isPendingGPA: false,
+                    dbGaPID: 'phs000000',
+                    pendingImageDeIdentification: true,
+                    applicationID: 'app-id'
+                };
+                service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue(studyImagePending);
+                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
+                service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
+                service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
+
+                const notificationSpy = jest.spyOn(service, '_notifyClearPendingState');
+                const paramsClearImage = {
+                    ...mockParams,
+                    pendingModelChange: false,
+                    pendingImageDeIdentification: false,
+                    isPendingGPA: false
+                };
+
+                await service.editApprovedStudyAPI(paramsClearImage, mockContext);
+
+                expect(notificationSpy).toHaveBeenCalled();
+                expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                    'study-id',
+                    expect.objectContaining({ pendingImageDeIdentification: false })
+                );
+            });
+
+            it('should attempt notification when isPendingGPA is cleared and the study has no other pending conditions', async () => {
+                const studyGpaPending = {
+                    ...mockStudy,
+                    pendingModelChange: false,
+                    pendingImageDeIdentification: false,
+                    isPendingGPA: true,
+                    dbGaPID: 'phs000000',
+                    GPAName: '',
+                    applicationID: 'app-id'
+                };
+                service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue(studyGpaPending);
+                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
+                service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
+                service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
+
+                const notificationSpy = jest.spyOn(service, '_notifyClearPendingState');
+                const paramsClearGpaOnly = {
+                    ...mockParams,
+                    pendingModelChange: false,
+                    isPendingGPA: false,
+                    GPAName: 'Test GPA',
+                    dbGaPID: 'phs000000'
+                };
+
+                await service.editApprovedStudyAPI(paramsClearGpaOnly, mockContext);
+
+                expect(notificationSpy).toHaveBeenCalled();
+                expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                    'study-id',
+                    expect.objectContaining({ isPendingGPA: false, GPAName: 'Test GPA' })
+                );
+            });
+
+            it('should attempt notification when dbGaPID is newly set and the study has no other pending conditions', async () => {
+                const studyMissingDbGaP = {
+                    ...mockStudy,
+                    pendingModelChange: false,
+                    pendingImageDeIdentification: false,
+                    isPendingGPA: false,
+                    dbGaPID: null,
+                    GPAName: 'Existing GPA',
+                    applicationID: 'app-id'
+                };
+                service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue(studyMissingDbGaP);
+                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
+                service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
+                service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
+
+                const notificationSpy = jest.spyOn(service, '_notifyClearPendingState');
+                const paramsAddDbGaP = {
+                    ...mockParams,
+                    pendingModelChange: false,
+                    isPendingGPA: false,
+                    GPAName: 'Existing GPA',
+                    dbGaPID: 'phs111111'
+                };
+
+                await service.editApprovedStudyAPI(paramsAddDbGaP, mockContext);
+
+                expect(notificationSpy).toHaveBeenCalled();
+                expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                    'study-id',
+                    expect.objectContaining({ dbGaPID: 'phs111111' })
+                );
+            });
+
             it('should call notification service with correct parameters', async () => {
                 service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);

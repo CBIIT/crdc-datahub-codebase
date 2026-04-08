@@ -362,6 +362,44 @@ describe('ApprovedStudiesService', () => {
             expect(result).toEqual(mockDisplayStudy);
         });
 
+        it('should pass pendingImageDeIdentification to approvedStudyDAO.update when provided', async () => {
+            await service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: true }, mockContext);
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'study-id',
+                expect.objectContaining({ pendingImageDeIdentification: true })
+            );
+        });
+
+        it('should set pendingImageDeIdentification to false on update when explicitly false', async () => {
+            service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue({ ...mockStudy, pendingImageDeIdentification: true });
+            await service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: false }, mockContext);
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'study-id',
+                expect.objectContaining({ pendingImageDeIdentification: false })
+            );
+        });
+
+        it('should throw when pendingImageDeIdentification is null', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: null }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
+        it('should throw when pendingImageDeIdentification is a string', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: 'true' }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
+        it('should throw when pendingImageDeIdentification is a number', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, pendingImageDeIdentification: 1 }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
         it('should throw when updating study to an inactive program', async () => {
             const inactiveProgram = { _id: 'inactive-pid', name: 'Inactive', status: ORGANIZATION.STATUSES.INACTIVE };
             service.organizationService.getOrganizationByID = jest.fn().mockResolvedValue(inactiveProgram);
@@ -872,6 +910,22 @@ describe('ApprovedStudiesService', () => {
             expect(result).toEqual(mockDisplayList);
         });
 
+        it('should preserve pendingImageDeIdentification on each study in the list', async () => {
+            const daoStudies = [
+                { _id: 'study1', studyName: 'Study 1', pendingImageDeIdentification: true },
+                { _id: 'study2', studyName: 'Study 2', pendingImageDeIdentification: false }
+            ];
+            service.approvedStudyDAO.listApprovedStudies = jest.fn().mockResolvedValue([{ total: 2, results: daoStudies }]);
+            const remapper = require('../../utility/data-commons-remapper');
+            remapper.getDataCommonsDisplayNamesForApprovedStudyList.mockImplementation((list) => ({
+                total: list.total,
+                studies: list.studies.map((s) => ({ ...s, dataCommonsDisplayName: s.studyName }))
+            }));
+            const result = await service.listApprovedStudiesAPI({ ...mockParams }, mockContext);
+            expect(result.studies[0].pendingImageDeIdentification).toBe(true);
+            expect(result.studies[1].pendingImageDeIdentification).toBe(false);
+        });
+
         it('should handle empty DAO results gracefully', async () => {
             service.approvedStudyDAO.listApprovedStudies = jest.fn().mockResolvedValue([]);
             require('../../utility/data-commons-remapper').getDataCommonsDisplayNamesForApprovedStudyList.mockReturnValue({ total: 0, studies: [] });
@@ -914,6 +968,17 @@ describe('ApprovedStudiesService', () => {
             expect(service.getApprovedStudy).toHaveBeenCalledWith(mockParams);
             expect(getDataCommonsDisplayNamesForApprovedStudy).toHaveBeenCalledWith(mockApprovedStudy);
             expect(result).toEqual(mockDisplayStudy);
+        });
+
+        it('should include pendingImageDeIdentification in the API response when present', async () => {
+            const studyWithFlag = { ...mockApprovedStudy, pendingImageDeIdentification: true };
+            service.getApprovedStudy = jest.fn().mockResolvedValue(studyWithFlag);
+            getDataCommonsDisplayNamesForApprovedStudy.mockImplementation((study) => ({
+                ...study,
+                dataCommonsDisplayName: 'Test Study Display'
+            }));
+            const result = await service.getApprovedStudyAPI({ ...mockParams }, mockContext);
+            expect(result.pendingImageDeIdentification).toBe(true);
         });
 
         it('should throw if verifySession fails', async () => {
@@ -1164,7 +1229,7 @@ describe('ApprovedStudiesService', () => {
                 );
 
                 // Should have validated the program by ID
-                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(validProgramID);
+                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(validProgramID, false);
                 // Should NOT have fallen back to NA program
                 expect(mockOrganizationService.getOrganizationByName).not.toHaveBeenCalled();
                 
@@ -1232,7 +1297,7 @@ describe('ApprovedStudiesService', () => {
                     pendingModelChange, primaryContactID, null, invalidProgramID, undefined
                 );
 
-                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(invalidProgramID);
+                expect(mockOrganizationService.getOrganizationByID).toHaveBeenCalledWith(invalidProgramID, false);
                 expect(mockOrganizationService.getOrganizationByName).toHaveBeenCalledWith('NA');
                 
                 const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];

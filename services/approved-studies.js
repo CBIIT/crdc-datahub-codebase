@@ -112,7 +112,7 @@ class ApprovedStudiesService {
         }
         // find program/organization by programID reference
         if (approvedStudy?.programID) {
-            approvedStudy.program = await this.organizationService.getOrganizationByID(approvedStudy.programID);
+            approvedStudy.program = await this.organizationService.getOrganizationByID(approvedStudy.programID, true);
         }
         // find primaryContact
         if (approvedStudy?.primaryContactID)
@@ -250,6 +250,7 @@ class ApprovedStudiesService {
             primaryContactID,
             useProgramPC,
             pendingModelChange,
+            pendingImageDeIdentification,
             isPendingGPA,
             GPAName,
             programID
@@ -288,6 +289,9 @@ class ApprovedStudiesService {
             }
         }
 
+        const origIsPendingGPA = updateStudy.isPendingGPA;
+        const origDbGaPID = updateStudy.dbGaPID;
+
         // update the study object
         updateStudy.studyName = name;
         updateStudy.controlledAccess = controlledAccess;
@@ -308,8 +312,12 @@ class ApprovedStudiesService {
             updateStudy.PI = PI;
         }
         const currPendingModelChange = updateStudy.pendingModelChange;
+        const currPendingImageDeIdentification = updateStudy.pendingImageDeIdentification;
         if (pendingModelChange !== undefined) {
             updateStudy.pendingModelChange = isTrue(pendingModelChange);
+        }
+        if (pendingImageDeIdentification !== undefined) {
+            updateStudy.pendingImageDeIdentification = isTrue(pendingImageDeIdentification);
         }
         updateStudy.programID = program?._id ?? null;
         if (isTrue(updateStudy.controlledAccess)) {
@@ -371,20 +379,27 @@ class ApprovedStudiesService {
             }
         }
 
-        // extract the current pending GPA and dbGaPID to variables
-        const {isPendingGPA: currPendingGPA, dbGaPID: currDbGaPID} = updateStudy;
         // notify the submitter that the pending state has been cleared
         // if the notification fails, an error response will be thrown but the study will still be updated
         const pendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(updateStudy?.dbGaPID) : false;
         const pendingGPA = isTrue(updateStudy.controlledAccess) ? Boolean(updateStudy?.isPendingGPA) : false;
-        const allPendingsCleared = !isTrue(updateStudy?.pendingModelChange) && !pendingGPA && !pendingDbGaPID;
-        const wasPendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(currDbGaPID) : false;
-        const hadPendingsConditions = isTrue(currPendingModelChange) || isTrue(currPendingGPA) || wasPendingDbGaPID;
+        const allPendingsCleared = !isTrue(updateStudy?.pendingModelChange) && !pendingGPA && !pendingDbGaPID
+            && !isTrue(updateStudy?.pendingImageDeIdentification);
+        const wasPendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(origDbGaPID) : false;
+        const hadPendingsConditions = isTrue(currPendingModelChange) || isTrue(origIsPendingGPA) || wasPendingDbGaPID
+            || isTrue(currPendingImageDeIdentification);
         if (allPendingsCleared && hadPendingsConditions && updateStudy?.applicationID) {
             await this._notifyClearPendingState(updateStudy);
         }
 
-        let approvedStudy = {...updateStudy, program: program, primaryContact: primaryContact};
+        let programForGraphQL = program;
+        if (program?._id) {
+            const programWithStudiesList = await this.organizationService.getOrganizationByID(program._id, true);
+            if (programWithStudiesList) {
+                programForGraphQL = programWithStudiesList;
+            }
+        }
+        let approvedStudy = {...updateStudy, program: programForGraphQL, primaryContact: primaryContact};
         return getDataCommonsDisplayNamesForApprovedStudy(approvedStudy);
     }
     _validateDbGaPID(dbGaPID) {
@@ -507,6 +522,9 @@ class ApprovedStudiesService {
         if (!!params.ORCID && !this._validateIdentifier(params.ORCID)) {
             throw new Error(ERROR.INVALID_ORCID);
         }
+        if (params.pendingImageDeIdentification !== undefined && typeof params.pendingImageDeIdentification !== 'boolean') {
+            throw new Error(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+        }
         return params;
     }
 
@@ -535,7 +553,7 @@ class ApprovedStudiesService {
         let program = null;
          // verify the provided programID is valid
         if (programID){
-            program = await this.organizationService.getOrganizationByID(programID);
+            program = await this.organizationService.getOrganizationByID(programID, false);
         }
         // if the provided programID is not valid was not provided then use the NA program as a fallback
         if (!program){

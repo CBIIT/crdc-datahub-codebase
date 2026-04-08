@@ -193,6 +193,7 @@ const ERROR = {
     FAILED_APPROVED_STUDY_UPDATE: "Failed to update the approved study.",
     FAILED_PRIMARY_CONTACT_UPDATE: "Failed to update the data concierge in the approved study.",
     INVALID_PENDING_GPA: "Invalid pending GPA is requested.",
+    INVALID_PENDING_IMAGE_DE_IDENTIFICATION: "pendingImageDeIdentification must be a boolean.",
     FAILED_TO_NOTIFY_CLEAR_PENDING_STATE: "Failed to send notification for clearing the approved study; $item$",
     APPROVED_STUDY_NOT_FOUND: "Approved study not found.",
     OMB_NOT_FOUND: "OMB information not found.",
