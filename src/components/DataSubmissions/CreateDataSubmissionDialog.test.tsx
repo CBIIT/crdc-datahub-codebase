@@ -815,7 +815,7 @@ describe("Basic Functionality", () => {
 describe("Implementation Requirements", () => {
   it("should disable the Create button if dbGaP ID is required and not added to the study", async () => {
     const ApprovedStudyNoDbGaPID: GetMyUserResp["getMyUser"]["studies"] = [
-      {
+      approvedStudyFactory.build({
         _id: "controlled",
         studyName: "controlled-study",
         studyAbbreviation: "CS",
@@ -823,7 +823,7 @@ describe("Implementation Requirements", () => {
         controlledAccess: true,
         pendingModelChange: false,
         isPendingGPA: false,
-      },
+      }),
     ];
 
     const { getByRole, getByTestId } = render(<CreateDataSubmissionDialog onCreate={vi.fn()} />, {
@@ -872,7 +872,7 @@ describe("Implementation Requirements", () => {
 
   it("should show an alert icon next to dbGaPID if it is required and not added to the study", async () => {
     const ApprovedStudyNoDbGaPID: GetMyUserResp["getMyUser"]["studies"] = [
-      {
+      approvedStudyFactory.build({
         _id: "controlled",
         studyName: "controlled-study",
         studyAbbreviation: "CS",
@@ -880,7 +880,7 @@ describe("Implementation Requirements", () => {
         controlledAccess: true,
         pendingModelChange: false,
         isPendingGPA: false,
-      },
+      }),
     ];
 
     const { getByRole, getByTestId } = render(<CreateDataSubmissionDialog onCreate={vi.fn()} />, {
@@ -940,7 +940,7 @@ describe("Implementation Requirements", () => {
 
   it("should hide the dbGaPID field if controlledAccess is false", async () => {
     const ApprovedStudyNoDbGaPID: GetMyUserResp["getMyUser"]["studies"] = [
-      {
+      approvedStudyFactory.build({
         _id: "controlled",
         studyName: "controlled-study",
         studyAbbreviation: "CS",
@@ -948,8 +948,8 @@ describe("Implementation Requirements", () => {
         controlledAccess: true,
         pendingModelChange: false,
         isPendingGPA: false,
-      },
-      {
+      }),
+      approvedStudyFactory.build({
         _id: "non-controlled",
         studyName: "non-controlled-study",
         studyAbbreviation: "NCS",
@@ -957,7 +957,7 @@ describe("Implementation Requirements", () => {
         controlledAccess: false,
         pendingModelChange: false,
         isPendingGPA: false,
-      },
+      }),
     ];
 
     const { getByRole, getByTestId } = render(<CreateDataSubmissionDialog onCreate={vi.fn()} />, {
@@ -1020,7 +1020,7 @@ describe("Implementation Requirements", () => {
 
   it("should have a tooltip for the dbGaPID field explaining why it is required", async () => {
     const ApprovedStudyNoDbGaPID: GetMyUserResp["getMyUser"]["studies"] = [
-      {
+      approvedStudyFactory.build({
         _id: "controlled",
         studyName: "controlled-study",
         studyAbbreviation: "CS",
@@ -1028,7 +1028,7 @@ describe("Implementation Requirements", () => {
         controlledAccess: true,
         pendingModelChange: false,
         isPendingGPA: false,
-      },
+      }),
     ];
 
     const { getByRole, getByTestId } = render(<CreateDataSubmissionDialog onCreate={vi.fn()} />, {
