@@ -2,10 +2,23 @@ import { MockedResponse, MockedProvider } from "@apollo/client/testing";
 import { GraphQLError } from "graphql";
 import { FC } from "react";
 
+import { Logger } from "@/utils/logger";
+
 import { IS_CHATBOT_ENABLED, IsChatBotEnabledResp } from "../../graphql";
 import { render, waitFor } from "../../test-utils";
 
 import ChatBotGate from "./index";
+
+vi.mock("@/env", () => ({
+  default: { VITE_CHATBOT_API_BASE_URL: "https://example.com/chatbot" },
+}));
+
+vi.mock("@/utils/logger", () => ({
+  Logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 const ChatBotEnabledMock: MockedResponse<IsChatBotEnabledResp> = {
   request: {
@@ -72,7 +85,7 @@ describe("Basic Functionality", () => {
     expect(queryByText("MOCK-CHATBOT")).not.toBeInTheDocument();
   });
 
-  it("should handle error when fetching ChatBot enabled status (Network)", () => {
+  it("should handle error when fetching ChatBot enabled status (Network)", async () => {
     const errorMock: MockedResponse<IsChatBotEnabledResp> = {
       request: {
         query: IS_CHATBOT_ENABLED,
@@ -82,10 +95,17 @@ describe("Basic Functionality", () => {
 
     const { queryByText } = render(<MockParent mocks={[errorMock]} />);
 
+    await waitFor(() => {
+      expect(Logger.error).toHaveBeenCalledWith(
+        "Unable to fetch ChatBot enabled status. Assuming disabled.",
+        expect.any(Error)
+      );
+    });
+
     expect(queryByText("MOCK-CHATBOT")).not.toBeInTheDocument();
   });
 
-  it("should handle error when fetching ChatBot enabled status (GraphQL)", () => {
+  it("should handle error when fetching ChatBot enabled status (GraphQL)", async () => {
     const errorMock: MockedResponse<IsChatBotEnabledResp> = {
       request: {
         query: IS_CHATBOT_ENABLED,
@@ -96,6 +116,13 @@ describe("Basic Functionality", () => {
     };
 
     const { queryByText } = render(<MockParent mocks={[errorMock]} />);
+
+    await waitFor(() => {
+      expect(Logger.error).toHaveBeenCalledWith(
+        "Unable to fetch ChatBot enabled status. Assuming disabled.",
+        expect.any(Error)
+      );
+    });
 
     expect(queryByText("MOCK-CHATBOT")).not.toBeInTheDocument();
   });
