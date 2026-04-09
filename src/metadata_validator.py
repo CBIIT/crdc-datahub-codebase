@@ -427,6 +427,7 @@ class MetaDataValidator:
         timings = {}
         try:
             def _print_validation_timings():
+                return #disable for now
                 parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
                 print(f"validate_node timings {msg_prefix}: {'; '.join(parts)}")
 
@@ -793,10 +794,19 @@ class MetaDataValidator:
     def validate_prop_value(self, prop_name, value, prop_def, msg_prefix, data_record):
         # set default return values
         errors = []
+        timings = {}
+
+        def _print_prop_value_timings():
+            parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
+            print(f"validate_prop_value '{prop_name}' timings {msg_prefix}: {'; '.join(parts)}")
+
+        t0 = time.perf_counter()
         type = prop_def.get(TYPE)
         if not type or not type in valid_prop_types:
             errors.append(create_error("M009", [msg_prefix, prop_name, type], prop_name, value))
+            timings["type_guard"] = time.perf_counter() - t0
         else:
+            timings["type_guard"] = time.perf_counter() - t0
             val = None
             if type == PROPERTY_PATTERN:
                 pattern = prop_def.get(PROPERTY_PATTERN)
@@ -810,14 +820,23 @@ class MetaDataValidator:
                         errors.append(create_error("M032", [msg_prefix, pattern, prop_name], prop_name, pattern))
                 else:
                     errors.append(create_error("M032", [msg_prefix, pattern, prop_name], prop_name, pattern))
+                timings["pattern"] = time.perf_counter() - t0
+                _print_prop_value_timings()
                 return errors
             
+            t0 = time.perf_counter()
             minimum = prop_def.get(MIN)
             maximum = prop_def.get(MAX)
             model = self.model.get_data_commons()
+            timings["get_data_commons"] = time.perf_counter() - t0
+            t0 = time.perf_counter()
             permissive_vals, msg, check_concept_code = self.get_permissive_value(prop_def)
+            timings["get_permissive_value"] = time.perf_counter() - t0
+            t0 = time.perf_counter()
             if check_concept_code == True:
                 self.set_concept_code(data_record, prop_name, value, model)
+            timings["set_concept_code"] = time.perf_counter() - t0
+            t0 = time.perf_counter()
             if type == "string":
                 val = str(value)
                 result, error, corrected_value = check_permissive(val, permissive_vals, msg_prefix, prop_name, self.mongo_dao)
@@ -827,11 +846,14 @@ class MetaDataValidator:
                     # Update with corrected case if different
                     if corrected_value != value:
                         data_record[PROPERTIES][prop_name] = corrected_value
+                timings["check_pv"] = time.perf_counter() - t0
             elif type == "integer":
                 try:
                     val = int(value)
                 except ValueError as e:
                     errors.append(create_error("M004",[msg_prefix, prop_name, value], prop_name, value))
+                    timings["int_type"] = time.perf_counter() - t0
+                    _print_prop_value_timings()
                     return errors
 
                 result, error, corrected_value = check_permissive(val, permissive_vals, msg_prefix, prop_name, self.mongo_dao)
@@ -841,6 +863,7 @@ class MetaDataValidator:
                 errs = check_boundary(val, minimum, maximum, msg_prefix, prop_name)
                 if len(errs) > 0:
                     errors.extend(errs)
+                timings["int_type"] = time.perf_counter() - t0
 
             elif type == "number":
                 try:
@@ -854,6 +877,7 @@ class MetaDataValidator:
                 errs = check_boundary(val, minimum, maximum, msg_prefix, prop_name)
                 if len(errs) > 0:
                     errors.extend(errs)
+                timings["number_type"] = time.perf_counter() - t0
 
             elif type == "date" or type == "datetime":
                 val = None
@@ -865,6 +889,7 @@ class MetaDataValidator:
                         continue
                 if val is None:
                     errors.append(create_error("M007",[msg_prefix, prop_name, value], prop_name, value))
+                timings["date_type"] = time.perf_counter() - t0
 
             elif type == "boolean":
                 pv_list = ["yes", "true", "no", "false"]
@@ -875,8 +900,11 @@ class MetaDataValidator:
                         matched_val = next((item for item in pv_list if item == value.lower()))
                         data_record[PROPERTIES][prop_name] = (matched_val in ["yes", "true"]) #transform to boolean
 
+                timings["boolean_type"] = time.perf_counter() - t0
             elif (type == "array" or type == "value-list"):
                 if not permissive_vals or len(permissive_vals) == 0: 
+                    timings["type_specific"] = time.perf_counter() - t0
+                    _print_prop_value_timings()
                     return errors #skip validation by crdcdh-1723
                 val = str(value)
                 list_delimiter = self.model.get_list_delimiter()
@@ -893,9 +921,12 @@ class MetaDataValidator:
                 # Update the property with all corrected items joined back together
                 if len(errors) == 0:  # Only update if all items are valid
                     data_record[PROPERTIES][prop_name] = list_delimiter.join([str(item) for item in corrected_items])
+                timings["array_or_value_list"] = time.perf_counter() - t0
             else:
                 errors.append(create_error("M009", [msg_prefix, prop_name, value], prop_name, value))
 
+
+        _print_prop_value_timings()
         return errors
     
     def set_concept_code(self, data_record, prop_name, value, model):
