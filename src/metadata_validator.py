@@ -816,9 +816,9 @@ class MetaDataValidator:
         errors = []
         timings = {}
 
-        def _print_prop_value_timings():
-            parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items() if name != "total"]
-            print(f"validate_prop_value '{prop_name}': {timings['total'] * 1000:.2f}ms, timings {msg_prefix}: {'; '.join(parts)}")
+        def _print_prop_value_timings(total_time):
+            parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
+            print(f"validate_prop_value '{prop_name}': {total_time * 1000:.2f}ms, timings {msg_prefix}: {'; '.join(parts)}")
 
         t0 = time.perf_counter()
         t1 = t0
@@ -842,7 +842,7 @@ class MetaDataValidator:
                 else:
                     errors.append(create_error("M032", [msg_prefix, pattern, prop_name], prop_name, pattern))
                 timings["pattern"] = time.perf_counter() - t0
-                _print_prop_value_timings()
+                _print_prop_value_timings(time.perf_counter() - t1)
                 return errors
             
             t0 = time.perf_counter()
@@ -874,7 +874,7 @@ class MetaDataValidator:
                 except ValueError as e:
                     errors.append(create_error("M004",[msg_prefix, prop_name, value], prop_name, value))
                     timings["int_type"] = time.perf_counter() - t0
-                    _print_prop_value_timings()
+                    _print_prop_value_timings(time.perf_counter() - t1)
                     return errors
 
                 result, error, corrected_value = check_permissive(val, permissive_vals, msg_prefix, prop_name, self.mongo_dao)
@@ -925,7 +925,7 @@ class MetaDataValidator:
             elif (type == "array" or type == "value-list"):
                 if not permissive_vals or len(permissive_vals) == 0: 
                     timings["type_specific"] = time.perf_counter() - t0
-                    _print_prop_value_timings()
+                    _print_prop_value_timings(time.perf_counter() - t1)
                     return errors #skip validation by crdcdh-1723
                 val = str(value)
                 list_delimiter = self.model.get_list_delimiter()
@@ -947,9 +947,7 @@ class MetaDataValidator:
                 errors.append(create_error("M009", [msg_prefix, prop_name, value], prop_name, value))
 
 
-        _print_prop_value_timings()
-        timings["total"] = time.perf_counter() - t1
-        _print_prop_value_timings()
+        _print_prop_value_timings(time.perf_counter() - t1)
         return errors
     
     def set_concept_code(self, data_record, prop_name, value, model):
