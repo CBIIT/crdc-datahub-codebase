@@ -28,6 +28,7 @@ class MongoDao:
       self.s3_service = S3Service()
       self.props = {}
       self.concept_codes = {}
+      self._pvs_by_synonym_cache = {}
 
     """
     get batch by id
@@ -1418,11 +1419,16 @@ class MongoDao:
     :param synonym:
     """   
     def find_pvs_by_synonym(self, synonym):
+        cache_key = str(synonym).lower()
+        if cache_key in self._pvs_by_synonym_cache:
+            return list(self._pvs_by_synonym_cache[cache_key])
         db = self.client[self.db_name]
         data_collection = db[SYNONYM_COLLECTION]
         query ={SYNONYM_TERM: {"$regex": f"^{re.escape(synonym)}$", "$options": "i"}} #case-insensitive , 
         try:
-            return list(data_collection.find(query))
+            results = list(data_collection.find(query))
+            self._pvs_by_synonym_cache[cache_key] = results
+            return list(results)
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to get synonyms for {synonym}: {get_exception_msg()}")
