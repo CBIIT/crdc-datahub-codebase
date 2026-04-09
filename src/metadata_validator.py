@@ -432,6 +432,7 @@ class MetaDataValidator:
 
             # call validate_required_props
             t0 = time.perf_counter()
+            t1 = t0
             result_required = self.validate_required_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix)
             timings["required_or_file"] = time.perf_counter() - t0
             # call validate_prop_value
@@ -478,6 +479,7 @@ class MetaDataValidator:
             if len(warnings) > 0:
                 _print_validation_timings()
                 return STATUS_WARNING, errors, warnings
+            timings["total"] = time.perf_counter() - t1
             _print_validation_timings()
         except Exception as e:
             self.log.exception(e)
