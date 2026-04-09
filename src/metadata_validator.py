@@ -648,19 +648,34 @@ class MetaDataValidator:
     
     def validate_relationship(self, data_record, msg_prefix):
         # set default return values
+        timings = {}
+
+        def _print_validate_relationship_timings():
+            parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
+            print(f"validate_relationship timings {msg_prefix}: {'; '.join(parts)}")
+
         result = {"result": STATUS_ERROR, ERRORS: [], WARNINGS: []}
+        t0 = time.perf_counter()
         node_type = data_record.get(NODE_TYPE)
         node_id = data_record.get(NODE_ID)
         node_relationships = self.model.get_node_relationships(node_type)
         if not node_relationships or len(node_relationships) == 0: 
             result["result"] = STATUS_PASSED
+            timings["model_relationships"] = time.perf_counter() - t0
+            _print_validate_relationship_timings()
             return result
+        timings["model_relationships"] = time.perf_counter() - t0
+        t0 = time.perf_counter()
         data_record_parent_nodes = data_record.get(PARENTS)
         if not data_record_parent_nodes or len(data_record_parent_nodes) == 0:
             result["result"] = STATUS_WARNING
             result[ERRORS].append(create_error("M013", [msg_prefix], node_type, node_id))
+            timings["parents_presence"] = time.perf_counter() - t0
+            _print_validate_relationship_timings()
             return result
+        timings["parents_presence"] = time.perf_counter() - t0
 
+        t0 = time.perf_counter()
         node_keys = self.model.get_node_keys()
         node_relationships = self.model.get_node_relationships(node_type)
         parent_nodes = self.get_parent_nodes(data_record_parent_nodes)
@@ -721,6 +736,8 @@ class MetaDataValidator:
                 if child_node_ids and len(child_node_ids) > 1:
                     result[ERRORS].append(create_error("M024", 
                                 f'"{msg_prefix}": associated node “{parent_type}”: “{parent_id_value}" has multiple nodes associated: {json.dumps(child_node_ids)}.', node_type, node_id))
+        timings["parent_loop"] = time.perf_counter() - t0
+        t0 = time.perf_counter()
         # check if the node type is file  node
         if node_type in self.model.get_file_nodes():
             # check if the file node has parents
@@ -752,11 +769,15 @@ class MetaDataValidator:
                         result[ERRORS].append(create_error("M036", [msg_prefix], node_type, node_id))
                         
                             
+        timings["file_consent"] = time.perf_counter() - t0
+        t0 = time.perf_counter()
         if len(result[WARNINGS]) > 0:
             result["result"] = STATUS_WARNING
 
         if len(result[ERRORS]) == 0 and len(result[WARNINGS]) == 0:
             result["result"] = STATUS_PASSED
+        timings["finalize"] = time.perf_counter() - t0
+        _print_validate_relationship_timings()
         return result
 
     def get_file_consent_code(self, parent_type, parent_id_value, consent_group_parents, visited=None):
