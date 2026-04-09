@@ -58,6 +58,14 @@ class Application {
         this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
     }
 
+    _normalizeApplicationStatus(status) {
+        return String(status ?? "").trim().toLowerCase();
+    }
+
+    _isApprovedApplication(application) {
+        return this._normalizeApplicationStatus(application?.status) === this._normalizeApplicationStatus(APPROVED);
+    }
+
     async getApplication(params, context) {
         verifySession(context)
             .verifyInitialized()
@@ -68,7 +76,7 @@ class Application {
 
         let application = await this.getApplicationById(params._id);
         // add logics to check if conditional approval
-        if (application.status === APPROVED){
+        if (this._isApprovedApplication(application)) {
             await this._checkConditionalApproval(application);
         }
         // populate the version with auto upgrade based on configuration
@@ -85,11 +93,14 @@ class Application {
         return [NEW, IN_PROGRESS, INQUIRED].includes(status) ? newStatusVersion : (!version)? currentVersion : version;
     }
 
-    async _checkConditionalApproval(application) {
-        // 1) controlled study missing dbGaPID
-        const studyArr = await this.approvedStudiesService.findByStudyName(application.studyName);
+    /**
+     * Computes conditional / pendingConditions from the approved study for this application study name.
+     * @returns {{ conditional: boolean, pendingConditions: string[] }}
+     */
+    async _computeConditionalApprovalFields(studyName) {
+        const studyArr = await this.approvedStudiesService.findByStudyName(studyName);
         if (!studyArr || studyArr.length < 1) {
-            return;
+            return { conditional: false, pendingConditions: [] };
         }
         const study = studyArr[0];
         const pendingConditions = [
@@ -98,12 +109,16 @@ class Application {
             ...((isTrue(study?.controlledAccess) && isTrue(study?.isPendingGPA)) ? [ERROR.PENDING_APPROVED_STUDY_NO_GPA_INFO] : []),
             ...(isTrue(study?.pendingImageDeIdentification) ? [ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION] : []),
         ];
+        return {
+            conditional: pendingConditions.length > 0,
+            pendingConditions,
+        };
+    }
 
-        application.conditional = pendingConditions.length > 0;
-
-        if (pendingConditions.length > 0) {
-            application.pendingConditions = pendingConditions;
-        }
+    async _checkConditionalApproval(application) {
+        const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(application.studyName);
+        application.conditional = conditional;
+        application.pendingConditions = pendingConditions;
     }
 
     async getApplicationById(id) {
@@ -322,6 +337,9 @@ class Application {
         }
         // auto upgrade version
         const res = await this.getApplicationById(application._id);
+        if (this._isApprovedApplication(res)) {
+            await this._checkConditionalApproval(res);
+        }
         res.version = await this._getApplicationVersionByStatus(IN_PROGRESS);
         return res;
     }
@@ -573,18 +591,28 @@ class Application {
             throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Please see logs for more information.");
         }
 
-        // Format application list (run _checkConditionalApproval sequentially to avoid DB/read spikes when first = -1 or large)
-        const approvedApps = applications.filter(a => a.status === APPROVED);
-        for (const app of approvedApps) {
-            await this._checkConditionalApproval(app);
-        }
-        applications.forEach((app) => {
-            app.applicant = {
+        // Hydrate conditional approval for Approved rows (sequential study lookups) and map to plain objects
+        // so GraphQL always receives conditional / pendingConditions (Prisma entities may drop ad-hoc properties).
+        const mappedApplications = [];
+        for (const app of applications) {
+            const applicant = {
                 applicantID: app?.applicant ? app?.applicant?.id : "",
                 applicantName: app?.applicant ? app?.applicant?.fullName : "",
                 applicantEmail: app?.applicant ? app?.applicant?.email : "",
             };
-        });
+            if (!this._isApprovedApplication(app)) {
+                mappedApplications.push({ ...app, applicant });
+                continue;
+            }
+            const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(app.studyName);
+            mappedApplications.push({
+                ...app,
+                applicant,
+                conditional,
+                pendingConditions,
+            });
+        }
+        applications = mappedApplications;
 
         // Sort statuses in display order
         const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, APPROVED, REJECTED, CANCELED, DELETED];
@@ -845,9 +873,12 @@ class Application {
                 UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, APPROVED)
             ));
         }
-        return await Promise.all(promises).then(results => {
-            return results[0];
-        })
+        const results = await Promise.all(promises);
+        const applicationResult = updated ? results[0] : null;
+        if (applicationResult?.status === APPROVED) {
+            await this._checkConditionalApproval(applicationResult);
+        }
+        return applicationResult ?? results[0];
     }
 
     async rejectApplication(document, context) {

@@ -23,6 +23,7 @@ const {UserScope} = require("../domain/user-scope");
 const {replaceErrorString} = require("../utility/string-util");
 const NA_PROGRAM = "NA";
 const NA = "NA";
+const prisma = require("../prisma");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const ProgramDAO = require("../dao/program");
@@ -61,18 +62,28 @@ class ApprovedStudiesService {
 
     /**
      * List Approved Studies by a studyName API.
+     * Case-insensitive match on studyName (Prisma Mongo `equals` + `mode: insensitive`).
      * @api
      * @param {string} studyName
-     * @returns {Promise<Object[]>} An array of ApprovedStudies
+     * @returns {Promise<Object[]>} At most one approved study (same shape as legacy aggregate: array with `_id`)
      */
-    // note: prisma does not work for insensitive search
     async findByStudyName(studyName) {
-        return await this.approvedStudiesCollection.aggregate([{"$match": {$expr: {
-            $eq: [
-                { $toLower: "$studyName" },
-                studyName?.trim()?.toLowerCase()
-            ]
-        }}}, {"$limit": 1}]);
+        const trimmed = studyName?.trim();
+        if (!trimmed) {
+            return [];
+        }
+        const row = await prisma.approvedStudy.findFirst({
+            where: {
+                studyName: {
+                    equals: trimmed,
+                    mode: "insensitive"
+                }
+            }
+        });
+        if (!row) {
+            return [];
+        }
+        return [{ ...row, _id: row.id }];
     }
 
     /**
