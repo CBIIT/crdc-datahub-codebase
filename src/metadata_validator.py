@@ -677,7 +677,6 @@ class MetaDataValidator:
 
         t0 = time.perf_counter()
         node_keys = self.model.get_node_keys()
-        node_relationships = self.model.get_node_relationships(node_type)
         parent_nodes = self.get_parent_nodes(data_record_parent_nodes)
         data_common = data_record.get(DATA_COMMON_NAME)
         multi_parents = []
@@ -818,10 +817,11 @@ class MetaDataValidator:
         timings = {}
 
         def _print_prop_value_timings():
-            parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
-            print(f"validate_prop_value '{prop_name}' timings {msg_prefix}: {'; '.join(parts)}")
+            parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items() if name != "total"]
+            print(f"validate_prop_value '{prop_name}': {timings['total'] * 1000:.2f}ms, timings {msg_prefix}: {'; '.join(parts)}")
 
         t0 = time.perf_counter()
+        t1 = t0
         type = prop_def.get(TYPE)
         if not type or not type in valid_prop_types:
             errors.append(create_error("M009", [msg_prefix, prop_name, type], prop_name, value))
@@ -947,6 +947,8 @@ class MetaDataValidator:
                 errors.append(create_error("M009", [msg_prefix, prop_name, value], prop_name, value))
 
 
+        _print_prop_value_timings()
+        timings["total"] = time.perf_counter() - t1
         _print_prop_value_timings()
         return errors
     
