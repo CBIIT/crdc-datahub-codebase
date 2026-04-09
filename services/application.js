@@ -95,7 +95,7 @@ class Application {
 
     /**
      * Computes conditional / pendingConditions from the approved study for this application study name.
-     * @returns {{ conditional: boolean, pendingConditions: string[] }}
+     * @returns {Promise<{ conditional: boolean, pendingConditions: string[] }>}
      */
     async _computeConditionalApprovalFields(studyName) {
         const studyArr = await this.approvedStudiesService.findByStudyName(studyName);
