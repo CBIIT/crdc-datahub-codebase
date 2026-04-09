@@ -818,7 +818,7 @@ class MetaDataValidator:
 
         def _print_prop_value_timings(total_time):
             parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
-            print(f"validate_prop_value '{prop_name}': {total_time * 1000:.2f}ms, timings {msg_prefix}: {'; '.join(parts)}")
+            print(f"validate_prop_value '{prop_name}''({value})': {total_time * 1000:.2f}ms, timings {msg_prefix}: {'; '.join(parts)}")
 
         t0 = time.perf_counter()
         t1 = t0
