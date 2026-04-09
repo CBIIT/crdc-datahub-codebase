@@ -841,6 +841,9 @@ class Application {
             version: application.version,
             history: [...(application.history || []), history]
         });
+        if (!updated) {
+            throw new Error(ERROR.UPDATE_FAILED);
+        }
         const isDbGapMissing = (questionnaire?.accessTypes?.includes("Controlled Access") && !questionnaire?.study?.dbGaPPPHSNumber);
         const isPendingGPA = (questionnaire?.accessTypes?.includes("Controlled Access") && Boolean(!updated?.GPAName?.trim()));
         let promises = [];
@@ -874,11 +877,11 @@ class Application {
             ));
         }
         const results = await Promise.all(promises);
-        const applicationResult = updated ? results[0] : null;
-        if (applicationResult?.status === APPROVED) {
+        const applicationResult = results[0];
+        if (this._isApprovedApplication(applicationResult)) {
             await this._checkConditionalApproval(applicationResult);
         }
-        return applicationResult ?? results[0];
+        return applicationResult;
     }
 
     async rejectApplication(document, context) {

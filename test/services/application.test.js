@@ -824,6 +824,26 @@ describe('Application', () => {
                 .rejects.toThrow(/duplicate/i);
         });
 
+        it('throws UPDATE_FAILED when DAO update returns falsy and does not call addNewInstitutions', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('1.0');
+            app.applicationDAO.update = jest.fn().mockResolvedValue(null);
+
+            await expect(app.approveApplication({ _id: 'app1', comment: 'Approved' }, context))
+                .rejects.toThrow(ERROR.UPDATE_FAILED);
+
+            expect(mockInstitutionService.addNewInstitutions).not.toHaveBeenCalled();
+        });
+
         it('should create program before creating study when no existing program', async () => {
             const mockApplication = { 
                 _id: 'app1', 
