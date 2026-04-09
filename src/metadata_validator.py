@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import time
 from datetime import datetime
 import re
 from bento.common.sqs import VisibilityExtender
@@ -423,18 +424,33 @@ class MetaDataValidator:
         def_file_nodes = self.model.get_file_nodes()
         # submission-level validation
         sub_intention = self.submission.get(SUBMISSION_INTENTION)
+        timings = {}
         try:
+            def _print_validation_timings():
+                parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
+                print(f"validate_node timings {msg_prefix}: {'; '.join(parts)}")
+
             # call validate_required_props
-            result_required= self.validate_required_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix)
+            t0 = time.perf_counter()
+            result_required = self.validate_required_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix)
+            timings["required_or_file"] = time.perf_counter() - t0
             # call validate_prop_value
+            t0 = time.perf_counter()
             result_prop_value = self.validate_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
+            timings["props"] = time.perf_counter() - t0
             # call validate_relationship
+            t0 = time.perf_counter()
             result_rel = self.validate_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
+            timings["relationship"] = time.perf_counter() - t0
+            # combine errors and warnings
+            t0 = time.perf_counter()
 
             # concatenation of all errors
             errors = result_required.get(ERRORS, []) +  result_prop_value.get(ERRORS, []) + result_rel.get(ERRORS, [])
             # concatenation of all warnings
             warnings = result_required.get(WARNINGS, []) +  result_prop_value.get(WARNINGS, []) + result_rel.get(WARNINGS, [])
+            timings["combine_errors_and_warnings"] = time.perf_counter() - t0
+            t0 = time.perf_counter()
             #check if existed nodes in release collection
             if sub_intention and sub_intention in [SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE]:
                 exist_release = self.mongo_dao.search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
@@ -453,12 +469,16 @@ class MetaDataValidator:
                                                         NODE_ID, self.model.get_node_id(node_type)))
                 elif sub_intention == SUBMISSION_INTENTION_DELETE and not exist_release:
                     errors.append(create_error("M019", [msg_prefix, node_type, data_record[NODE_ID]], NODE_ID, self.model.get_node_id(node_type)))
+            timings["release_diff"] = time.perf_counter() - t0
             # if there are any errors set the result to "Error"
             if len(errors) > 0:
+                _print_validation_timings()
                 return STATUS_ERROR, errors, warnings
             # if there are no errors but warnings,  set the result to "Warning"
             if len(warnings) > 0:
+                _print_validation_timings()
                 return STATUS_WARNING, errors, warnings
+            _print_validation_timings()
         except Exception as e:
             self.log.exception(e)
             msg = f'Failed to validate dataRecords for the submission, {self.submission_id} at scope, {self.scope}!'
