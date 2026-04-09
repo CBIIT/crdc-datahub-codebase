@@ -1,5 +1,6 @@
 const {getCurrentTime} = require("../utility/time-utility");
 const {isTrue} = require("../utility/string-utility");
+const { APPROVED_STUDY_STATUS } = require("../constants/approved-study-constants");
 
 
 class ApprovedStudies {
@@ -24,6 +25,7 @@ class ApprovedStudies {
         }
 
         this.openAccess = isTrue(openAccess);
+        this.status = APPROVED_STUDY_STATUS.ACTIVE;
         this.createdAt = this.updatedAt = getCurrentTime();
         this.useProgramPC = isTrue(useProgramPC);
         this.pendingModelChange = isTrue(pendingModelChange ?? true);
