@@ -24,6 +24,27 @@ describe('ApprovedStudies Domain Object', () => {
     };
 
     describe('constructor', () => {
+        it('should set status to Active for new approved studies', () => {
+            const study = new ApprovedStudies(
+                'app-123',
+                baseParams.studyName,
+                baseParams.studyAbbreviation,
+                baseParams.dbGaPID,
+                baseParams.organizationName,
+                baseParams.controlledAccess,
+                baseParams.ORCID,
+                baseParams.PI,
+                baseParams.openAccess,
+                baseParams.useProgramPC,
+                baseParams.pendingModelChange,
+                baseParams.primaryContactID,
+                baseParams.pendingGPA,
+                baseParams.programID,
+                baseParams.pendingImageDeIdentification
+            );
+            expect(study.status).toBe('Active');
+        });
+
         describe('applicationID handling', () => {
             it('should store applicationID when provided', () => {
                 const study = new ApprovedStudies(

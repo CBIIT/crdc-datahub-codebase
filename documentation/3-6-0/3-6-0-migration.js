@@ -11,6 +11,7 @@
  * - init-metadata-validation-batch-size.js: Initialize METADATA_VALIDATION_BATCH_SIZE config entry
  * - add-sts-resource-config.js: Add STS_RESOURCE configuration (tier-based URL)
  * - add-chatbot-enabled-config.js: Add CHATBOT configuration (keys.enabled feature flag)
+ * - backfill-approved-study-status.js: Set status Active on approvedStudies where missing
  */
 
 const { MongoClient } = require('mongodb');
@@ -177,6 +178,29 @@ async function executeStsResourceConfigMigration(db) {
 }
 
 /**
+ * Execute ApprovedStudy.status backfill (Active where missing)
+ */
+async function executeApprovedStudyStatusBackfill(db) {
+    console.log("🔄 Executing ApprovedStudy.status backfill...");
+
+    try {
+        const migration = require("./backfill-approved-study-status");
+        const result = await migration.backfillApprovedStudyStatus(db);
+
+        if (result.success) {
+            console.log("✅ ApprovedStudy.status backfill completed successfully");
+        } else {
+            console.log("❌ ApprovedStudy.status backfill failed");
+        }
+
+        return result;
+    } catch (error) {
+        console.error("❌ Error executing ApprovedStudy.status backfill:", error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Execute CHATBOT configuration migration
  */
 async function executeChatbotEnabledConfigMigration(db) {
@@ -251,6 +275,11 @@ async function orchestrateMigration() {
                 name: "Add CHATBOT configuration",
                 file: "add-chatbot-enabled-config.js",
                 execute: () => executeChatbotEnabledConfigMigration(db)
+            },
+            {
+                name: "Backfill ApprovedStudy.status (Active where missing)",
+                file: "backfill-approved-study-status.js",
+                execute: () => executeApprovedStudyStatusBackfill(db)
             }
         ];
         

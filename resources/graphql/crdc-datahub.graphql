@@ -402,6 +402,7 @@ type ReleasedStudy {
 
 type ApprovedStudy {
     _id: ID
+    status: String # [Active, Inactive]
     originalOrg: String # organization at the time of approval, can be absent if a submission request doesn't have an organization associated
     studyName: String
     studyAbbreviation: String # must be unique
@@ -1183,6 +1184,7 @@ type Mutation {
         isPendingGPA: Boolean
         GPAName: String # optional 
         programID: ID # optional
+        status: String # optional; [Active, Inactive]
     ): idType
 
     requestAccess(

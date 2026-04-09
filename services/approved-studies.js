@@ -31,6 +31,7 @@ const UserDAO = require("../dao/user");
 const SubmissionDAO = require("../dao/submission");
 const ApplicationDAO = require("../dao/application");
 const {PendingGPA} = require("../domain/pending-gpa");
+const { APPROVED_STUDY_STATUS } = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
 class ApprovedStudiesService {
     constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
         this.approvedStudiesCollection = approvedStudiesCollection;
@@ -264,7 +265,8 @@ class ApprovedStudiesService {
             pendingImageDeIdentification,
             isPendingGPA,
             GPAName,
-            programID
+            programID,
+            status
         } = this._verifyAndFormatStudyParams(params);
         // Find the study to update
         let updateStudy = await this.approvedStudyDAO.findFirst({id: studyID});
@@ -341,6 +343,9 @@ class ApprovedStudiesService {
         }
         if (GPAName !== undefined) {
             updateStudy.GPAName = GPAName?.trim() || "";
+        }
+        if (status !== undefined) {
+            updateStudy.status = status;
         }
         updateStudy.primaryContactID = useProgramPC ? null : primaryContactID;
         updateStudy.updatedAt = getCurrentTime();
@@ -535,6 +540,15 @@ class ApprovedStudiesService {
         }
         if (params.pendingImageDeIdentification !== undefined && typeof params.pendingImageDeIdentification !== 'boolean') {
             throw new Error(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+        }
+        if (params.status !== undefined && params.status !== null) {
+            const s = String(params.status).trim();
+            if (s !== APPROVED_STUDY_STATUS.ACTIVE && s !== APPROVED_STUDY_STATUS.INACTIVE) {
+                throw new Error(ERROR.INVALID_APPROVED_STUDY_STATUS);
+            }
+            params.status = s;
+        } else {
+            params.status = undefined;
         }
         return params;
     }

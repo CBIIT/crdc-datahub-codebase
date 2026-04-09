@@ -312,7 +312,8 @@ describe('ApprovedStudiesService', () => {
             primaryContactID: null,
             useProgramPC: false,
             pendingModelChange: false,
-            programID: 'program-id'  // New field in relationships model
+            programID: 'program-id',  // New field in relationships model
+            status: 'Active',
         };
         const mockPrimaryContact = {
             _id: 'contact-id',
@@ -346,6 +347,21 @@ describe('ApprovedStudiesService', () => {
             service.submissionDAO.updateMany = jest.fn().mockResolvedValue({ count: 0 });
             service._getConcierge = jest.fn().mockReturnValue(['Concierge Name', 'concierge@email.com']);
             getDataCommonsDisplayNamesForApprovedStudy.mockReturnValue(mockDisplayStudy);
+        });
+
+        it('should apply status when provided', async () => {
+            await service.editApprovedStudyAPI({ ...mockParams, status: 'Inactive' }, mockContext);
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'study-id',
+                expect.objectContaining({ status: 'Inactive' })
+            );
+        });
+
+        it('should throw when status is invalid', async () => {
+            await expect(
+                service.editApprovedStudyAPI({ ...mockParams, status: 'Retired' }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_APPROVED_STUDY_STATUS);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
         });
 
         it('should successfully update an approved study', async () => {
@@ -1352,6 +1368,21 @@ describe('ApprovedStudiesService', () => {
                     ORCID: 'invalid-orcid'
                 };
                 expect(() => service._verifyAndFormatStudyParams(params)).toThrow(ERROR.INVALID_ORCID);
+            });
+
+            it('should accept status Active or Inactive and trim', () => {
+                const p1 = { name: 'S', controlledAccess: false, status: ' Active ' };
+                service._verifyAndFormatStudyParams(p1);
+                expect(p1.status).toBe('Active');
+                const p2 = { name: 'S', controlledAccess: false, status: 'Inactive' };
+                service._verifyAndFormatStudyParams(p2);
+                expect(p2.status).toBe('Inactive');
+            });
+
+            it('should throw INVALID_APPROVED_STUDY_STATUS when status is not Active or Inactive', () => {
+                expect(() =>
+                    service._verifyAndFormatStudyParams({ name: 'S', controlledAccess: false, status: 'Pending' })
+                ).toThrow(ERROR.INVALID_APPROVED_STUDY_STATUS);
             });
         });
 
