@@ -551,6 +551,22 @@ def test_compose_synonym_record_duplicate_synonyms():
     assert len(synonym_set) == 1
 
 
+def test_compose_synonym_record_lowercases_term():
+    """Synonym terms are stored lowercase; case variants dedupe."""
+    property_item = {
+        "permissibleValues": [
+            {
+                "value": "val1",
+                "synonyms": ["Foo", " FOO ", "foo"]
+            }
+        ]
+    }
+    synonym_set = set()
+    compose_synonym_record(property_item, synonym_set)
+    assert len(synonym_set) == 1
+    assert ("foo", "val1") in synonym_set
+
+
 def test_compose_synonym_record_none_pv_list():
     """Test with None permissibleValues list"""
     property_item = {"permissibleValues": None}
