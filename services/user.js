@@ -17,14 +17,13 @@ const {
 } = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {getDataCommonsDisplayNamesForUser} = require("../utility/data-commons-remapper");
 const {UserScope} = require("../domain/user-scope");
-const { isAllStudy } = require("../utility/study-utility");
+const { isAllStudy, isApprovedStudyActive } = require("../utility/study-utility");
 const {COMPLETED, CANCELED, DELETED, COLLABORATOR_PERMISSIONS} = require("../constants/submission-constants");
 const SCOPES = require("../constants/permission-scope-constants");
 const UserDAO = require("../dao/user");
 const ApprovedStudyDAO = require("../dao/approvedStudy");
 const SubmissionDAO = require("../dao/submission");
 const {formatName} = require("../utility/format-name");
-const { isApprovedStudyActive } = require("../utility/study-utility");
 
 const isLoggedInOrThrow = (context) => {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) throw new Error(SUBMODULE_ERROR.NOT_LOGGED_IN);
