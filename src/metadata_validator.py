@@ -427,8 +427,7 @@ class MetaDataValidator:
         timings = {}
         try:
             def _print_validation_timings():
-                return #disable for now
-                parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
+                parts = [f"{name}={dur * 1000 * 1000:.2f}us" for name, dur in timings.items()]
                 print(f"validate_node timings {msg_prefix}: {'; '.join(parts)}")
 
             # call validate_required_props
@@ -651,6 +650,7 @@ class MetaDataValidator:
         timings = {}
 
         def _print_validate_relationship_timings():
+            return
             parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
             print(f"validate_relationship timings {msg_prefix}: {'; '.join(parts)}")
 
@@ -817,6 +817,7 @@ class MetaDataValidator:
         timings = {}
 
         def _print_prop_value_timings(total_time):
+            return
             parts = [f"{name}={dur * 1000:.2f}ms" for name, dur in timings.items()]
             print(f"validate_prop_value '{prop_name}''({value})': {total_time * 1000:.2f}ms, timings {msg_prefix}: {'; '.join(parts)}")
 
