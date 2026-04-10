@@ -203,6 +203,8 @@ const TOOLTIPS = {
   pendingModelChange:
     "The CRDC team is reviewing the data requirements of this study for potential data model changes. Data submissions cannot be created until any required model updates are released.",
   pendingGPA: "Data submissions cannot be created until the required GPA updates are provided.",
+  pendingImageDeIdentification:
+    "Pending submission of the risk mitigation document and the image de-identification protocol.",
 };
 
 type Props = {
@@ -279,14 +281,22 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
 
     const mappedStudy = studies?.find((s) => s?._id === studyID);
 
-    const conditions = [];
-    if (mappedStudy?.pendingModelChange) {
-      conditions.push(TOOLTIPS.pendingModelChange);
-    }
-    if (mappedStudy?.isPendingGPA) {
-      conditions.push(TOOLTIPS.pendingGPA);
-    }
-    return conditions;
+    return [
+      {
+        check: mappedStudy?.pendingModelChange,
+        tooltip: TOOLTIPS.pendingModelChange,
+      },
+      {
+        check: mappedStudy?.isPendingGPA,
+        tooltip: TOOLTIPS.pendingGPA,
+      },
+      {
+        check: mappedStudy?.pendingImageDeIdentification,
+        tooltip: TOOLTIPS.pendingImageDeIdentification,
+      },
+    ]
+      .filter((pc) => pc.check)
+      .map((pc) => pc.tooltip);
   }, [studyID, studies]);
 
   const submissionTypeOptions: RadioOption[] = [
