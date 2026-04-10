@@ -58,7 +58,7 @@ const ExportTemplateButton = ({ disabled, ...rest }: Props) => {
 
   const [listOrgs] = useLazyQuery<ListOrgsResp, ListOrgsInput>(LIST_ORGS, {
     context: { clientName: "backend" },
-    variables: { status: "All", first: -1, orderBy: "name", sortDirection: "asc" },
+    variables: { status: "Active", first: -1, orderBy: "name", sortDirection: "asc" },
     fetchPolicy: "cache-first",
     onError: (e) => Logger.error("ExportTemplateButton: listOrgs API error:", e),
   });

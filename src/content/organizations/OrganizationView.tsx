@@ -7,9 +7,10 @@ import { FC, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
+import BaseDialog from "@/components/DeleteDialog";
+
 import bannerSvg from "../../assets/banner/profile_banner.png";
 import programIcon from "../../assets/icons/program_icon.svg?url";
-import ConfirmDialog from "../../components/AdminPortal/Organizations/ConfirmDialog";
 import { useSearchParamsContext } from "../../components/Contexts/SearchParamsContext";
 import BaseAsterisk from "../../components/StyledFormComponents/StyledAsterisk";
 import BaseOutlinedInput from "../../components/StyledFormComponents/StyledOutlinedInput";
@@ -145,7 +146,7 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
-  const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
+  const [inactiveWarningOpen, setInactiveWarningOpen] = useState<boolean>(false);
 
   const manageOrgPageUrl = `/programs${lastSearchParams?.["/programs"] ?? ""}`;
 
@@ -155,7 +156,15 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
     reset,
     formState: { errors },
     control,
-  } = useForm<FormInput>();
+  } = useForm<FormInput>({
+    defaultValues: {
+      name: "",
+      abbreviation: "",
+      description: "",
+      conciergeID: "",
+      status: "Active",
+    },
+  });
 
   const { data: activeDCPs } = useQuery<ListActiveDCPsResp>(LIST_ACTIVE_DCPS, {
     context: { clientName: "backend" },
@@ -243,14 +252,25 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
   };
 
   const handleBypassWarning = () => {
-    if (confirmOpen) {
-      setConfirmOpen(false);
-    }
-
+    setInactiveWarningOpen(false);
     handleSubmit(onSubmit)();
   };
 
   const handlePreSubmit = (data: FormInput) => {
+    if (organization?.studies?.length > 0 && data.status === "Inactive") {
+      enqueueSnackbar(
+        "This Program has assigned Studies. Please remove or reassign the associated Studies before proceeding.",
+        {
+          variant: "error",
+        }
+      );
+      return;
+    }
+    if (organization?.status === "Active" && data.status === "Inactive") {
+      setInactiveWarningOpen(true);
+      return;
+    }
+
     onSubmit(data);
   };
 
@@ -444,10 +464,15 @@ const OrganizationView: FC<Props> = ({ _id }: Props) => {
           </StyledContentStack>
         </Stack>
       </StyledContainer>
-      <ConfirmDialog
-        open={confirmOpen}
-        onSubmit={handleBypassWarning}
-        onClose={() => setConfirmOpen(false)}
+      <BaseDialog
+        scroll="body"
+        open={inactiveWarningOpen}
+        onClose={() => setInactiveWarningOpen(false)}
+        header=""
+        description="This Program has no assigned Studies. Marking it as Inactive will prevent future use. Do you want to continue?"
+        confirmText="Confirm"
+        onConfirm={handleBypassWarning}
+        confirmButtonProps={{ disabled: saving }}
       />
     </>
   );
