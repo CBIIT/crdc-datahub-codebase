@@ -64,6 +64,13 @@ const ERROR = {
     DUPLICATE_PROGRAM_NAME: "This is a duplicate program name. The $item$ program already exists in the system.",
     STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM: "Studies cannot be assigned to an inactive program.",
     STUDY_CREATION_FAILED: "An internal error occured while initializing a new study. Please alert the admins.",
+    INVALID_APPROVED_STUDY_STATUS: "Approved study status must be Active or Inactive.",
+    CREATE_SUBMISSION_INACTIVE_APPROVED_STUDY:
+        "Data submissions cannot be created for an inactive study.",
+    INVALID_APPROVED_STUDIES_ACCESS_INACTIVE:
+        "Access cannot be requested for inactive studies.",
+    INACTIVE_APPROVED_STUDY_CANNOT_ASSIGN:
+        "Users cannot be assigned access to an inactive study.",
     // Submission Permission
     INVALID_SUBMISSION_STATUS: "The batch creation is aborted because the current submission is not in the valid state to be created.",
     // Create Submission

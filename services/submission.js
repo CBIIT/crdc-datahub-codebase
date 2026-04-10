@@ -31,7 +31,7 @@ const {EMAIL_NOTIFICATIONS: EN} = require("../crdc-datahub-database-drivers/cons
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
-const { isAllStudy } = require("../utility/study-utility");
+const { isApprovedStudyActive, isAllStudy } = require("../utility/study-utility");
 const {getDataCommonsDisplayNamesForSubmission, getDataCommonsDisplayNamesForListSubmissions,
     getDataCommonsDisplayNamesForUser, getDataCommonsDisplayNamesForReleasedNode
 } = require("../utility/data-commons-remapper");
@@ -268,6 +268,10 @@ class Submission {
         }
 
         let approvedStudy = approvedStudies[0];
+        if (!isApprovedStudyActive(approvedStudy)) {
+            throw new Error(ERROR.CREATE_SUBMISSION_INACTIVE_APPROVED_STUDY);
+        }
+
         if (approvedStudy.controlledAccess && !approvedStudy?.dbGaPID) {
             throw new Error(ERROR.MISSING_CREATE_SUBMISSION_DBGAPID);
         }

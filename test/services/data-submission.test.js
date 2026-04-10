@@ -917,6 +917,7 @@ describe("Submission.createSubmission", () => {
             dbGaPID: "dbgap-123",
             controlledAccess: false,
             pendingModelChange: false,
+            status: "Active",
         };
 
         mockProgram = {
@@ -1332,6 +1333,15 @@ describe("Submission.createSubmission", () => {
         const result = await submissionService.createSubmission(mockParams, mockContext);
         expect(result).toBeDefined();
         expect(mockSubmissionDAO.create).toHaveBeenCalled();
+    });
+
+    it("should throw error if approved study is not Active", async () => {
+        submissionService._findApprovedStudies.mockResolvedValueOnce([
+            { ...mockApprovedStudy, status: "Inactive" },
+        ]);
+        await expect(submissionService.createSubmission(mockParams, mockContext))
+            .rejects
+            .toThrow(ERROR.CREATE_SUBMISSION_INACTIVE_APPROVED_STUDY);
     });
 
     it("should throw error if no approved study found", async () => {

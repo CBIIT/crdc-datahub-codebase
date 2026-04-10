@@ -207,6 +207,7 @@ model ApprovedStudy {
   programID         String?
   studyAbbreviation String
   studyName         String
+  status            String   @default("Active")
   useProgramPC      Boolean?
   pendingModelChange Boolean?
   pendingImageDeIdentification Boolean?
