@@ -186,6 +186,20 @@ describe('Application', () => {
             expect(app._checkConditionalApproval).toHaveBeenCalledWith(expect.objectContaining({ _id: 'app1', status: APPROVED, version: '2.0' }));
             expect(app._getApplicationVersionByStatus).toHaveBeenCalledWith(APPROVED, '2.0');
         });
+
+        it('calls _checkConditionalApproval when status matches Approved case-insensitively', async () => {
+            userScopeMock.isNoneScope.mockReturnValue(false);
+            userScopeMock.isAllScope.mockReturnValue(true);
+            UserScope.create.mockReturnValue(userScopeMock);
+
+            app.getApplicationById = jest.fn().mockResolvedValue({ _id: 'app1', status: 'approved', version: '2.0' });
+            app._checkConditionalApproval = jest.fn().mockResolvedValue(undefined);
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('2.0');
+
+            await app.getApplication({ _id: 'app1' }, context);
+
+            expect(app._checkConditionalApproval).toHaveBeenCalledWith(expect.objectContaining({ _id: 'app1', status: 'approved' }));
+        });
     });
 
     describe('_getApplicationVersionByStatus', () => {
@@ -230,11 +244,12 @@ describe('Application', () => {
             expect(application.pendingConditions).toContain(ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION);
         });
 
-        it('does nothing if no studies found', async () => {
+        it('sets conditional false and empty pendingConditions when no studies found', async () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             const application = { studyName: 'study1' };
             await app._checkConditionalApproval(application);
-            expect(application.conditional).toBeUndefined();
+            expect(application.conditional).toBe(false);
+            expect(application.pendingConditions).toEqual([]);
         });
     });
 
@@ -416,6 +431,37 @@ describe('Application', () => {
 
             const result = await app.getMyLastApplication({}, context);
             expect(result).toMatchObject({ _id: 'app1', version: '3.0', institution: { id: 'inst1', _id: 'inst1' } });
+        });
+
+        it('hydrates conditional and pendingConditions when approved study has pending image de-identification', async () => {
+            userScopeMock.isNoneScope.mockReturnValue(false);
+            userScopeMock.isAllScope.mockReturnValue(true);
+            UserScope.create.mockReturnValue(userScopeMock);
+            app.applicationDAO = {
+                aggregate: jest.fn().mockResolvedValue([{ _id: 'app1', status: APPROVED }])
+            };
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([{
+                controlledAccess: false,
+                pendingModelChange: false,
+                pendingImageDeIdentification: true
+            }]);
+            jest.spyOn(app, 'getApplicationById').mockResolvedValue({
+                _id: 'app1',
+                status: APPROVED,
+                studyName: 'study1',
+                institution: { id: 'inst1', _id: 'inst1' }
+            });
+
+            const result = await app.getMyLastApplication({}, context);
+
+            expect(result).toMatchObject({
+                _id: 'app1',
+                version: '3.0',
+                conditional: true,
+                institution: { id: 'inst1', _id: 'inst1' }
+            });
+            expect(result.pendingConditions).toContain(ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION);
         });
 
         it('returns null when no previous approved application exists', async () => {
@@ -778,6 +824,26 @@ describe('Application', () => {
                 .rejects.toThrow(/duplicate/i);
         });
 
+        it('throws UPDATE_FAILED when DAO update returns falsy and does not call addNewInstitutions', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('1.0');
+            app.applicationDAO.update = jest.fn().mockResolvedValue(null);
+
+            await expect(app.approveApplication({ _id: 'app1', comment: 'Approved' }, context))
+                .rejects.toThrow(ERROR.UPDATE_FAILED);
+
+            expect(mockInstitutionService.addNewInstitutions).not.toHaveBeenCalled();
+        });
+
         it('should create program before creating study when no existing program', async () => {
             const mockApplication = { 
                 _id: 'app1', 
@@ -869,6 +935,50 @@ describe('Application', () => {
                 undefined,
                 mockNewProgram
             );
+        });
+
+        it('returns conditional and pendingConditions on the approved application when the study has pending image de-identification', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                programName: 'Existing Program',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' } };
+            const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Approved',
+                history: []
+            };
+
+            mockApprovedStudiesService.findByStudyName
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{
+                    controlledAccess: false,
+                    pendingModelChange: false,
+                    pendingImageDeIdentification: true
+                }]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+
+            const result = await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
+
+            expect(result.status).toBe(APPROVED);
+            expect(result.conditional).toBe(true);
+            expect(result.pendingConditions).toContain(ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION);
         });
 
         it('should use existing program when program exists', async () => {
