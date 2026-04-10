@@ -1355,7 +1355,7 @@ describe("Implementation Requirements", () => {
     ).toBeInTheDocument();
     expect(
       await findByText(
-        /The Submission Review Committee is waiting reviewing image de-identification protocol of this study/i
+        /Pending submission of the risk mitigation document and the image de-identification protocol./i
       )
     ).toBeInTheDocument();
   });
@@ -1409,7 +1409,7 @@ describe("Implementation Requirements", () => {
     userEvent.hover(createButtonWrapper);
     expect(
       await findByText(
-        /The Submission Review Committee is waiting reviewing image de-identification protocol of this study/i
+        /Pending submission of the risk mitigation document and the image de-identification protocol./i
       )
     ).toBeInTheDocument();
   });

@@ -204,7 +204,7 @@ const TOOLTIPS = {
     "The CRDC team is reviewing the data requirements of this study for potential data model changes. Data submissions cannot be created until any required model updates are released.",
   pendingGPA: "Data submissions cannot be created until the required GPA updates are provided.",
   pendingImageDeIdentification:
-    "The Submission Review Committee is waiting reviewing image de-identification protocol of this study. Data submissions cannot be created until Image De-identification process is approved.",
+    "Pending submission of the risk mitigation document and the image de-identification protocol.",
 };
 
 type Props = {

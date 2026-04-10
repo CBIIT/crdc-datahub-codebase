@@ -278,7 +278,7 @@ export const DialogWithPendingImageDeIdentification: Story = {
     const createButtonWrapper = createButton.parentElement as HTMLElement;
     await userEvent.hover(createButtonWrapper);
     const tooltip = await screen.findByText(
-      /The Submission Review Committee is waiting reviewing image de-identification protocol of this study/i
+      /Pending submission of the risk mitigation document and the image de-identification protocol./i
     );
     expect(tooltip).toBeInTheDocument();
   },
