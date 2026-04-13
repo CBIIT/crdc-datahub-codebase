@@ -6,7 +6,7 @@ const APPROVED_STUDY_STATUS = Object.freeze({
     INACTIVE: "Inactive",
 });
 
-/** Max length of the `statuses` filter array for listApprovedStudies (one slot per distinct valid status). */
+/** Maximum number of distinct approved study statuses defined in APPROVED_STUDY_STATUS. */
 const APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH = Object.keys(APPROVED_STUDY_STATUS).length;
 
 module.exports = Object.freeze({
