@@ -2,7 +2,16 @@
  * Utility functions for study-related operations
  */
 
+const ERROR = require("../constants/error-constants");
 const { APPROVED_STUDY_STATUS } = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+
+/**
+ * @param {string} status
+ * @returns {boolean}
+ */
+function isValidApprovedStudyStatus(status) {
+    return status === APPROVED_STUDY_STATUS.ACTIVE || status === APPROVED_STUDY_STATUS.INACTIVE;
+}
 
 /**
  * True when the approved study document is usable as an active study (status === Active).
@@ -11,6 +20,20 @@ const { APPROVED_STUDY_STATUS } = require("../crdc-datahub-database-drivers/cons
  */
 function isApprovedStudyActive(study) {
     return study?.status === APPROVED_STUDY_STATUS.ACTIVE;
+}
+
+/**
+ * Trims and validates a value for ApprovedStudy.status (or listApprovedStudies statuses filter).
+ * @param {unknown} raw
+ * @returns {string} "Active" or "Inactive"
+ * @throws {Error} when not Active or Inactive after trim
+ */
+function parseApprovedStudyStatusInput(raw) {
+    const s = String(raw).trim();
+    if (!isValidApprovedStudyStatus(s)) {
+        throw new Error(ERROR.INVALID_APPROVED_STUDY_STATUS);
+    }
+    return s;
 }
 
 /**
@@ -33,4 +56,6 @@ const isAllStudy = (userStudies) => {
 module.exports = {
     isAllStudy,
     isApprovedStudyActive,
+    isValidApprovedStudyStatus,
+    parseApprovedStudyStatusInput,
 };
