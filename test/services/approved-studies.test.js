@@ -1,6 +1,8 @@
 const { ApprovedStudiesService } = require('../../services/approved-studies');
 const { ADMIN } = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
 const ERROR = require('../../constants/error-constants');
+const { replaceErrorString } = require('../../utility/string-util');
+const { APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH } = require('../../crdc-datahub-database-drivers/constants/approved-study-constants');
 const { verifySession } = require('../../verifier/user-info-verifier');
 const { getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesForUser } = require('../../utility/data-commons-remapper');
 const TEST_CONSTANTS = require('../test-constants');
@@ -997,6 +999,31 @@ describe('ApprovedStudiesService', () => {
             expect(service.approvedStudyDAO.listApprovedStudies).toHaveBeenCalledWith(
                 'Test', 'Controlled', '1234', 'program-id', ['Active', 'Inactive'], 10, 0, 'studyName', 'desc'
             );
+        });
+
+        it('should dedupe statuses before passing to DAO', async () => {
+            await service.listApprovedStudiesAPI(
+                { ...mockParams, statuses: ['Active', ' Active '] },
+                mockContext
+            );
+            expect(service.approvedStudyDAO.listApprovedStudies).toHaveBeenCalledWith(
+                'Test', 'Controlled', '1234', 'program-id', ['Active'], 10, 0, 'studyName', 'desc'
+            );
+        });
+
+        it('should throw when statuses filter has more than the max allowed entries', async () => {
+            await expect(
+                service.listApprovedStudiesAPI(
+                    { ...mockParams, statuses: ['Active', 'Inactive', 'Active'] },
+                    mockContext
+                )
+            ).rejects.toThrow(
+                replaceErrorString(
+                    ERROR.LIST_APPROVED_STUDIES_STATUSES_FILTER_TOO_MANY,
+                    String(APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH)
+                )
+            );
+            expect(service.approvedStudyDAO.listApprovedStudies).not.toHaveBeenCalled();
         });
     });
 

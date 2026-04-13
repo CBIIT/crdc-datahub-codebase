@@ -3,7 +3,11 @@
  */
 
 const ERROR = require("../constants/error-constants");
-const { APPROVED_STUDY_STATUS } = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+const {
+    APPROVED_STUDY_STATUS,
+    APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH,
+} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+const { replaceErrorString } = require("./string-util");
 
 /**
  * @param {string} status
@@ -37,6 +41,34 @@ function parseApprovedStudyStatusInput(raw) {
 }
 
 /**
+ * Validates, deduplicates (first occurrence wins), and enforces max length for listApprovedStudies `statuses`.
+ * @param {unknown} statuses
+ * @returns {string[]|null} Canonical Active/Inactive list, or null when absent/empty
+ */
+function parseApprovedStudyStatusesFilterInput(statuses) {
+    if (!Array.isArray(statuses) || statuses.length === 0) {
+        return null;
+    }
+    if (statuses.length > APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH) {
+        throw new Error(
+            replaceErrorString(
+                ERROR.LIST_APPROVED_STUDIES_STATUSES_FILTER_TOO_MANY,
+                String(APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH)
+            )
+        );
+    }
+
+    const statusSet = new Set();
+    statuses.forEach((status) => {
+        const s = parseApprovedStudyStatusInput(status);
+        if (!statusSet.has(s)) {
+            statusSet.add(s);
+        }
+    });
+    return Array.from(statusSet);
+}
+
+/**
  * Checks if a user has access to all studies.
  * Determines whether the user studies array contains an "All" value, indicating
  * unrestricted access to all studies in the system.
@@ -58,4 +90,5 @@ module.exports = {
     isApprovedStudyActive,
     isValidApprovedStudyStatus,
     parseApprovedStudyStatusInput,
+    parseApprovedStudyStatusesFilterInput,
 };

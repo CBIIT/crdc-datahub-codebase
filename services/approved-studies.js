@@ -31,7 +31,7 @@ const UserDAO = require("../dao/user");
 const SubmissionDAO = require("../dao/submission");
 const ApplicationDAO = require("../dao/application");
 const {PendingGPA} = require("../domain/pending-gpa");
-const { parseApprovedStudyStatusInput } = require("../utility/study-utility");
+const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } = require("../utility/study-utility");
 class ApprovedStudiesService {
     constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
         this.approvedStudiesCollection = approvedStudiesCollection;
@@ -169,10 +169,7 @@ class ApprovedStudiesService {
             statuses
         } = params;
 
-        let statusesFilter = null;
-        if (Array.isArray(statuses) && statuses.length > 0) {
-            statusesFilter = statuses.map((status) => parseApprovedStudyStatusInput(status));
-        }
+        const statusesFilter = parseApprovedStudyStatusesFilterInput(statuses);
 
         let dataRecords = await this.approvedStudyDAO.listApprovedStudies(study, controlledAccess, dbGaPID, programID, statusesFilter, first, offset, orderBy, sortDirection);
         dataRecords = dataRecords.length > 0 ? dataRecords[0] : {}
