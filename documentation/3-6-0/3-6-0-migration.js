@@ -12,6 +12,7 @@
  * - add-sts-resource-config.js: Add STS_RESOURCE configuration (tier-based URL)
  * - add-chatbot-enabled-config.js: Add CHATBOT configuration (keys.enabled feature flag)
  * - backfill-approved-study-status.js: Set status Active on approvedStudies where missing
+ * - lowercase-synonym-terms.js: Lowercase string synonym_term in synonyms (skips missing/non-string)
  */
 
 const { MongoClient } = require('mongodb');
@@ -201,6 +202,29 @@ async function executeApprovedStudyStatusBackfill(db) {
 }
 
 /**
+ * Execute synonym_term lowercase migration
+ */
+async function executeLowercaseSynonymTermsMigration(db) {
+    console.log("🔄 Executing synonym_term lowercase migration...");
+
+    try {
+        const migration = require("./lowercase-synonym-terms");
+        const result = await migration.lowercaseSynonymTerms(db);
+
+        if (result.success) {
+            console.log("✅ synonym_term lowercase migration completed successfully");
+        } else {
+            console.log("❌ synonym_term lowercase migration failed");
+        }
+
+        return result;
+    } catch (error) {
+        console.error("❌ Error executing synonym_term lowercase migration:", error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Execute CHATBOT configuration migration
  */
 async function executeChatbotEnabledConfigMigration(db) {
@@ -280,6 +304,11 @@ async function orchestrateMigration() {
                 name: "Backfill ApprovedStudy.status (Active where missing)",
                 file: "backfill-approved-study-status.js",
                 execute: () => executeApprovedStudyStatusBackfill(db)
+            },
+            {
+                name: "Lowercase synonym_term in synonyms collection",
+                file: "lowercase-synonym-terms.js",
+                execute: () => executeLowercaseSynonymTermsMigration(db)
             }
         ];
         
