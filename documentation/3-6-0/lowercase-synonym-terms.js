@@ -1,8 +1,10 @@
 /**
- * Migration: Lowercase synonym_term on all synonyms documents
+ * Migration: Lowercase synonym_term on synonyms documents that have a string synonym_term
  *
  * Normalizes synonym_term for consistent lookup and indexing. Idempotent: safe
- * to run multiple times (already-lowercase values are unchanged).
+ * to run multiple times (already-lowercase values are unchanged). Documents without
+ * synonym_term or with a non-string synonym_term are skipped (avoids nulling missing
+ * fields or failing $toLower on wrong types).
  *
  * Requires MongoDB 4.2+ (aggregation pipeline update).
  *
@@ -21,10 +23,12 @@ async function lowercaseSynonymTerms(db) {
     const collection = db.collection(SYNONYMS_COLLECTION);
 
     try {
-        const result = await collection.updateMany(
-            {},
-            [{ $set: { synonym_term: { $toLower: "$synonym_term" } } }]
-        );
+        const filter = {
+            synonym_term: { $exists: true, $type: "string" },
+        };
+        const result = await collection.updateMany(filter, [
+            { $set: { synonym_term: { $toLower: "$synonym_term" } } },
+        ]);
 
         console.log(`   ✅ Matched ${result.matchedCount}, modified ${result.modifiedCount}`);
         return {
