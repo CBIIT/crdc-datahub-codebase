@@ -2,7 +2,20 @@
  * Utility functions for study-related operations
  */
 
-const { APPROVED_STUDY_STATUS } = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+const ERROR = require("../constants/error-constants");
+const {
+    APPROVED_STUDY_STATUS,
+    APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH,
+} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+const { replaceErrorString } = require("./string-util");
+
+/**
+ * @param {string} status
+ * @returns {boolean}
+ */
+function isValidApprovedStudyStatus(status) {
+    return status === APPROVED_STUDY_STATUS.ACTIVE || status === APPROVED_STUDY_STATUS.INACTIVE;
+}
 
 /**
  * True when the approved study document is usable as an active study (status === Active).
@@ -11,6 +24,48 @@ const { APPROVED_STUDY_STATUS } = require("../crdc-datahub-database-drivers/cons
  */
 function isApprovedStudyActive(study) {
     return study?.status === APPROVED_STUDY_STATUS.ACTIVE;
+}
+
+/**
+ * Trims and validates a value for ApprovedStudy.status (or listApprovedStudies statuses filter).
+ * @param {unknown} raw
+ * @returns {string} "Active" or "Inactive"
+ * @throws {Error} when not Active or Inactive after trim
+ */
+function parseApprovedStudyStatusInput(raw) {
+    const s = String(raw).trim();
+    if (!isValidApprovedStudyStatus(s)) {
+        throw new Error(ERROR.INVALID_APPROVED_STUDY_STATUS);
+    }
+    return s;
+}
+
+/**
+ * Validates, deduplicates (first occurrence wins), and enforces max length for listApprovedStudies `statuses`.
+ * @param {unknown} statuses
+ * @returns {string[]|null} Canonical Active/Inactive list, or null when absent/empty
+ */
+function parseApprovedStudyStatusesFilterInput(statuses) {
+    if (!Array.isArray(statuses) || statuses.length === 0) {
+        return null;
+    }
+    if (statuses.length > APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH) {
+        throw new Error(
+            replaceErrorString(
+                ERROR.LIST_APPROVED_STUDIES_STATUSES_FILTER_TOO_MANY,
+                String(APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH)
+            )
+        );
+    }
+
+    const statusSet = new Set();
+    statuses.forEach((status) => {
+        const s = parseApprovedStudyStatusInput(status);
+        if (!statusSet.has(s)) {
+            statusSet.add(s);
+        }
+    });
+    return Array.from(statusSet);
 }
 
 /**
@@ -33,4 +88,7 @@ const isAllStudy = (userStudies) => {
 module.exports = {
     isAllStudy,
     isApprovedStudyActive,
+    isValidApprovedStudyStatus,
+    parseApprovedStudyStatusInput,
+    parseApprovedStudyStatusesFilterInput,
 };

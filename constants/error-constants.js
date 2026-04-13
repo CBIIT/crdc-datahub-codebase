@@ -65,6 +65,8 @@ const ERROR = {
     STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM: "Studies cannot be assigned to an inactive program.",
     STUDY_CREATION_FAILED: "An internal error occured while initializing a new study. Please alert the admins.",
     INVALID_APPROVED_STUDY_STATUS: "Approved study status must be Active or Inactive.",
+    LIST_APPROVED_STUDIES_STATUSES_FILTER_TOO_MANY:
+        "The statuses filter may include at most $item$ value(s), matching the number of valid study statuses.",
     CREATE_SUBMISSION_INACTIVE_APPROVED_STUDY:
         "Data submissions cannot be created for an inactive study.",
     INVALID_APPROVED_STUDIES_ACCESS_INACTIVE:

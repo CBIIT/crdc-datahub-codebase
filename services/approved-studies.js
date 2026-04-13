@@ -31,7 +31,7 @@ const UserDAO = require("../dao/user");
 const SubmissionDAO = require("../dao/submission");
 const ApplicationDAO = require("../dao/application");
 const {PendingGPA} = require("../domain/pending-gpa");
-const { APPROVED_STUDY_STATUS } = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } = require("../utility/study-utility");
 class ApprovedStudiesService {
     constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
         this.approvedStudiesCollection = approvedStudiesCollection;
@@ -165,10 +165,13 @@ class ApprovedStudiesService {
             offset,
             orderBy,
             sortDirection,
-            programID
+            programID,
+            statuses
         } = params;
 
-        let dataRecords = await this.approvedStudyDAO.listApprovedStudies(study, controlledAccess, dbGaPID, programID, first, offset, orderBy, sortDirection);
+        const statusesFilter = parseApprovedStudyStatusesFilterInput(statuses);
+
+        let dataRecords = await this.approvedStudyDAO.listApprovedStudies(study, controlledAccess, dbGaPID, programID, statusesFilter, first, offset, orderBy, sortDirection);
         dataRecords = dataRecords.length > 0 ? dataRecords[0] : {}
         let approvedStudyList = {total: dataRecords?.total || 0,
             studies: dataRecords?.results || []}
@@ -542,11 +545,7 @@ class ApprovedStudiesService {
             throw new Error(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
         }
         if (params.status !== undefined && params.status !== null) {
-            const s = String(params.status).trim();
-            if (s !== APPROVED_STUDY_STATUS.ACTIVE && s !== APPROVED_STUDY_STATUS.INACTIVE) {
-                throw new Error(ERROR.INVALID_APPROVED_STUDY_STATUS);
-            }
-            params.status = s;
+            params.status = parseApprovedStudyStatusInput(params.status);
         } else {
             params.status = undefined;
         }

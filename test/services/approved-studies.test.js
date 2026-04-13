@@ -1,6 +1,8 @@
 const { ApprovedStudiesService } = require('../../services/approved-studies');
 const { ADMIN } = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
 const ERROR = require('../../constants/error-constants');
+const { replaceErrorString } = require('../../utility/string-util');
+const { APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH } = require('../../crdc-datahub-database-drivers/constants/approved-study-constants');
 const { verifySession } = require('../../verifier/user-info-verifier');
 const { getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesForUser } = require('../../utility/data-commons-remapper');
 const TEST_CONSTANTS = require('../test-constants');
@@ -914,7 +916,7 @@ describe('ApprovedStudiesService', () => {
             expect(verifySession).toHaveBeenCalledWith(mockContext);
             expect(verifySession(mockContext).verifyInitialized).toHaveBeenCalled();
             expect(service.approvedStudyDAO.listApprovedStudies).toHaveBeenCalledWith(
-                'Test', 'Controlled', '1234', 'program-id', 10, 0, 'studyName', 'desc'
+                'Test', 'Controlled', '1234', 'program-id', null, 10, 0, 'studyName', 'desc'
             );
             expect(require('../../utility/data-commons-remapper').getDataCommonsDisplayNamesForApprovedStudyList).toHaveBeenCalledWith({
                 total: 2,
@@ -952,6 +954,76 @@ describe('ApprovedStudiesService', () => {
         it('should throw if verifySession fails', async () => {
             verifySession.mockImplementation(() => { throw new Error('Session error'); });
             await expect(service.listApprovedStudiesAPI({ ...mockParams }, mockContext)).rejects.toThrow('Session error');
+        });
+
+        it('should pass statuses to DAO when non-empty', async () => {
+            await service.listApprovedStudiesAPI({ ...mockParams, statuses: ['Active'] }, mockContext);
+            expect(service.approvedStudyDAO.listApprovedStudies).toHaveBeenCalledWith(
+                'Test', 'Controlled', '1234', 'program-id', ['Active'], 10, 0, 'studyName', 'desc'
+            );
+        });
+
+        it('should pass trimmed statuses to DAO', async () => {
+            await service.listApprovedStudiesAPI(
+                { ...mockParams, statuses: [' Active ', ' Inactive '] },
+                mockContext
+            );
+            expect(service.approvedStudyDAO.listApprovedStudies).toHaveBeenCalledWith(
+                'Test', 'Controlled', '1234', 'program-id', ['Active', 'Inactive'], 10, 0, 'studyName', 'desc'
+            );
+        });
+
+        it('should pass null for statuses when empty array', async () => {
+            await service.listApprovedStudiesAPI({ ...mockParams, statuses: [] }, mockContext);
+            expect(service.approvedStudyDAO.listApprovedStudies).toHaveBeenCalledWith(
+                'Test', 'Controlled', '1234', 'program-id', null, 10, 0, 'studyName', 'desc'
+            );
+        });
+
+        it('should pass null for statuses when argument is null', async () => {
+            await service.listApprovedStudiesAPI({ ...mockParams, statuses: null }, mockContext);
+            expect(service.approvedStudyDAO.listApprovedStudies).toHaveBeenCalledWith(
+                'Test', 'Controlled', '1234', 'program-id', null, 10, 0, 'studyName', 'desc'
+            );
+        });
+
+        it('should throw INVALID_APPROVED_STUDY_STATUS when a filter value is not Active or Inactive', async () => {
+            await expect(
+                service.listApprovedStudiesAPI({ ...mockParams, statuses: ['Active', 'Pending'] }, mockContext)
+            ).rejects.toThrow(ERROR.INVALID_APPROVED_STUDY_STATUS);
+            expect(service.approvedStudyDAO.listApprovedStudies).not.toHaveBeenCalled();
+        });
+
+        it('should accept Active and Inactive together in statuses filter', async () => {
+            await service.listApprovedStudiesAPI({ ...mockParams, statuses: ['Active', 'Inactive'] }, mockContext);
+            expect(service.approvedStudyDAO.listApprovedStudies).toHaveBeenCalledWith(
+                'Test', 'Controlled', '1234', 'program-id', ['Active', 'Inactive'], 10, 0, 'studyName', 'desc'
+            );
+        });
+
+        it('should dedupe statuses before passing to DAO', async () => {
+            await service.listApprovedStudiesAPI(
+                { ...mockParams, statuses: ['Active', ' Active '] },
+                mockContext
+            );
+            expect(service.approvedStudyDAO.listApprovedStudies).toHaveBeenCalledWith(
+                'Test', 'Controlled', '1234', 'program-id', ['Active'], 10, 0, 'studyName', 'desc'
+            );
+        });
+
+        it('should throw when statuses filter has more than the max allowed entries', async () => {
+            await expect(
+                service.listApprovedStudiesAPI(
+                    { ...mockParams, statuses: ['Active', 'Inactive', 'Active'] },
+                    mockContext
+                )
+            ).rejects.toThrow(
+                replaceErrorString(
+                    ERROR.LIST_APPROVED_STUDIES_STATUSES_FILTER_TOO_MANY,
+                    String(APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH)
+                )
+            );
+            expect(service.approvedStudyDAO.listApprovedStudies).not.toHaveBeenCalled();
         });
     });
 
