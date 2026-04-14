@@ -280,7 +280,7 @@ describe("Basic Functionality", () => {
     });
   });
 
-  it("should short-circuit the cancel operation when the application id is new", async () => {
+  it("should directly call onCancel without opening the dialog when the application id is new", async () => {
     const mockMatcher = vi.fn().mockImplementation(() => true);
     const mocks: MockedResponse<CancelAppResp, CancelAppInput>[] = [
       {
@@ -300,7 +300,7 @@ describe("Basic Functionality", () => {
 
     const onCancelMock = vi.fn();
 
-    const { getByRole, getByTestId } = render(<Button onCancel={onCancelMock} />, {
+    const { getByTestId, queryByRole } = render(<Button onCancel={onCancelMock} />, {
       wrapper: ({ children }) => (
         <TestParent
           mocks={mocks}
@@ -318,21 +318,11 @@ describe("Basic Functionality", () => {
 
     userEvent.click(getByTestId("cancel-application-button"));
 
-    const input = await within(getByRole("dialog")).findByRole("textbox");
-    userEvent.type(input, "mock reason");
-
-    const button = await within(getByRole("dialog")).findByRole("button", { name: /confirm/i });
-
-    await waitFor(() => {
-      expect(button).toBeEnabled();
-    });
-
-    userEvent.click(button);
-
     await waitFor(() => {
       expect(onCancelMock).toHaveBeenCalledTimes(1);
     });
 
+    expect(queryByRole("dialog")).not.toBeInTheDocument();
     expect(mockMatcher).not.toHaveBeenCalled();
     expect(global.mockEnqueue).not.toHaveBeenCalled();
   });
@@ -512,6 +502,7 @@ describe("Implementation Requirements", () => {
         <TestParent
           user={userFactory.build({ _id: "owner", permissions: ["submission_request:cancel"] })}
           application={applicationFactory.build({
+            _id: "mock-id-dismiss-dialog",
             status: "In Progress",
             applicant: applicantFactory.build({ applicantID: "owner" }),
           })}
@@ -606,7 +597,8 @@ describe("Implementation Requirements", () => {
         <TestParent
           user={userFactory.build({ _id: "owner", permissions: ["submission_request:cancel"] })}
           application={applicationFactory.build({
-            status: "New",
+            _id: "mock-id-study-abbrev",
+            status: "In Progress",
             studyAbbreviation: "TEST",
             applicant: applicantFactory.build({ applicantID: "owner" }),
           })}
@@ -630,7 +622,8 @@ describe("Implementation Requirements", () => {
         <TestParent
           user={userFactory.build({ _id: "owner", permissions: ["submission_request:cancel"] })}
           application={applicationFactory.build({
-            status: "New",
+            _id: "mock-id-study-abbrev-na",
+            status: "In Progress",
             studyAbbreviation: "",
             applicant: applicantFactory.build({ applicantID: "owner" }),
           })}
