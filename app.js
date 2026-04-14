@@ -79,7 +79,8 @@ app.use("/api/graphql", graphqlRouter);
     dbConnector.connect().then( async () => {
         const config = await configuration.updateConfig(dbConnector);
         const emailService = new EmailService(config.email_transport, config.emails_enabled);
-        const notificationsService = new NotifyUser(emailService, config.tier);
+        const configurationService = new ConfigurationService();
+        const notificationsService = new NotifyUser(emailService, config.tier, configurationService);
         const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
         const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
         const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
@@ -91,7 +92,6 @@ app.use("/api/graphql", graphqlRouter);
 
         
         const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
-        const configurationService = new ConfigurationService();
         const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
         const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
         const organizationService = new Organization(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection);

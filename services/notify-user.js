@@ -3,6 +3,10 @@ const fs = require('fs');
 const {createEmailTemplate} = require("../lib/create-email-template");
 const sanitizeHtml = require('sanitize-html');
 const {replaceMessageVariables} = require("../utility/string-util");
+const {
+    mergeSubmissionRequestApprovalEmailConstants,
+    confirmAllConstantsAreInitialized
+} = require("../utility/submission-request-approval-email-config");
 const NOTIFICATION_USER_HTML_TEMPLATE = "notification-template-user.html";
 const ROLE = "Role";
 const DATA_COMMONS = "Data Commons";
@@ -30,7 +34,7 @@ const JUSTIFICATION = "Justification";
 
 class NotifyUser {
 
-    constructor(emailService, tier) {
+    constructor(emailService, tier, configurationService = null) {
         this.emailService = emailService;
         this.email_constants = undefined
         try {
@@ -39,6 +43,25 @@ class NotifyUser {
             console.error(e)
         }
         this.tier = tier;
+        this.configurationService = configurationService;
+    }
+
+    /**
+     * Resolved per send: DB configuration overrides YAML for SR approval emails only.
+     * Confirms all SR approval keys are initialized (YAML backfill + error log if still missing).
+     */
+    async _resolveSubmissionRequestApprovalConstants() {
+        if (!this.email_constants) {
+            return null;
+        }
+        let merged = this.configurationService
+            ? await this.configurationService.getSubmissionRequestApprovalEmailConstants(this.email_constants)
+            : mergeSubmissionRequestApprovalEmailConstants(this.email_constants, null);
+        if (!merged || typeof merged !== 'object') {
+            console.error('Submission request approval email: merge returned invalid result; using YAML-only merge.');
+            merged = mergeSubmissionRequestApprovalEmailConstants(this.email_constants, null);
+        }
+        return confirmAllConstantsAreInitialized(merged, this.email_constants);
     }
 
     async send(fn){
@@ -181,13 +204,14 @@ class NotifyUser {
     }
 
     async approveQuestionNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.APPROVE_CONTENT, messageVariables);
-        const secondMessage = replaceMessageVariables(this.email_constants.APPROVE_SECOND_CONTENT, messageVariables);
-        const thirdMessage = replaceMessageVariables(this.email_constants.APPROVE_THIRD_CONTENT, messageVariables);
-        const subject = this.email_constants.APPROVE_SUBJECT;
         return await this.send(async () => {
+            const c = await this._resolveSubmissionRequestApprovalConstants();
+            const message = replaceMessageVariables(c.APPROVE_CONTENT, messageVariables);
+            const secondMessage = replaceMessageVariables(c.APPROVE_SECOND_CONTENT, messageVariables);
+            const thirdMessage = replaceMessageVariables(c.APPROVE_THIRD_CONTENT, messageVariables);
+            const subject = c.APPROVE_SUBJECT;
             await this.emailService.sendNotification(
-                this.email_constants.NOTIFICATION_SENDER,
+                c.NOTIFICATION_SENDER,
                 isTierAdded(this.tier) ? `${this.tier} ${subject}` : subject,
                 await createEmailTemplate("notification-template.html", {
                     message, secondMessage, thirdMessage, ...templateParams
@@ -200,12 +224,13 @@ class NotifyUser {
     }
 
     async dbGapMissingApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams) {
-        const subject = this.email_constants.APPROVE_SUBJECT;
-        const topMessage = replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
-        const dataModelPendingCondition = replaceMessageVariables(this.email_constants.MISSING_DBGAP_PENDING_CHANGE, templateParams);
         return await this.send(async () => {
+            const c = await this._resolveSubmissionRequestApprovalConstants();
+            const subject = c.APPROVE_SUBJECT;
+            const topMessage = replaceMessageVariables(c.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
+            const dataModelPendingCondition = replaceMessageVariables(c.MISSING_DBGAP_PENDING_CHANGE, templateParams);
             await this.emailService.sendNotification(
-                this.email_constants.NOTIFICATION_SENDER,
+                c.NOTIFICATION_SENDER,
                 isTierAdded(this.tier) ? `${this.tier} ${subject}` : subject,
                 await createEmailTemplate("notification-template-SR-pending-conditions.html", {
                     pendingConditions: [dataModelPendingCondition],
@@ -219,12 +244,13 @@ class NotifyUser {
     }
 
     async pendingGPANotification(email, CCEmails, BCCEmails, templateParams) {
-        const subject = this.email_constants.APPROVE_SUBJECT;
-        const topMessage = replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
-        const GPAPendingCondition = replaceMessageVariables(this.email_constants.MISSING_GPA_INFO, templateParams);
         return await this.send(async () => {
+            const c = await this._resolveSubmissionRequestApprovalConstants();
+            const subject = c.APPROVE_SUBJECT;
+            const topMessage = replaceMessageVariables(c.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
+            const GPAPendingCondition = replaceMessageVariables(c.MISSING_GPA_INFO, templateParams);
             await this.emailService.sendNotification(
-                this.email_constants.NOTIFICATION_SENDER,
+                c.NOTIFICATION_SENDER,
                 isTierAdded(this.tier) ? `${this.tier} ${subject}` : subject,
                 await createEmailTemplate("notification-template-SR-pending-conditions.html", {
                     pendingConditions: [GPAPendingCondition],
@@ -240,12 +266,13 @@ class NotifyUser {
 
 
     async dataModelChangeApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams) {
-        const subject = this.email_constants.APPROVE_SUBJECT;
-        const topMessage = replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
-        const dataModelPendingCondition = replaceMessageVariables(this.email_constants.DATA_MODEL_PENDING_CHANGE, {});
         return await this.send(async () => {
+            const c = await this._resolveSubmissionRequestApprovalConstants();
+            const subject = c.APPROVE_SUBJECT;
+            const topMessage = replaceMessageVariables(c.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
+            const dataModelPendingCondition = replaceMessageVariables(c.DATA_MODEL_PENDING_CHANGE, {});
             await this.emailService.sendNotification(
-                this.email_constants.NOTIFICATION_SENDER,
+                c.NOTIFICATION_SENDER,
                 isTierAdded(this.tier) ? `${this.tier} ${subject}` : subject,
                 await createEmailTemplate("notification-template-SR-pending-conditions.html", {
                     pendingConditions: [dataModelPendingCondition],
@@ -259,31 +286,57 @@ class NotifyUser {
         });
     }
 
-    async multipleChangesApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams, isDbGapMissing, isPendingModelChange, isPendingGPA) {
-        const subject = this.email_constants.APPROVE_SUBJECT;
-        const topMessage = replaceMessageVariables(this.email_constants.CONDITIONAL_PENDING_MULTIPLE_CHANGES, templateParams);
-        const dataModelPendingCondition = replaceMessageVariables(this.email_constants.DATA_MODEL_PENDING_CHANGE, {});
-        const missingDbGapPendingCondition = replaceMessageVariables(this.email_constants.MISSING_DBGAP_PENDING_CHANGE_MULTIPLE, templateParams);
-        const missingGPAPendingCondition = replaceMessageVariables(this.email_constants.MISSING_GPA_INFO, templateParams);
-        // Only include valid pending conditions
-        const pendingConditions = [
-            isDbGapMissing && missingDbGapPendingCondition,
-            isPendingModelChange && dataModelPendingCondition,
-            isPendingGPA && missingGPAPendingCondition,
-        ].filter(Boolean);
-
-        if (pendingConditions.length === 0) {
-            console.warn(`Sending Approve Question Email Notification to ${email} with no pending conditions.`);
-        }
-
+    async pendingImageDeIdentificationApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams) {
         return await this.send(async () => {
+            const c = await this._resolveSubmissionRequestApprovalConstants();
+            const subject = c.APPROVE_SUBJECT;
+            const topMessage = replaceMessageVariables(c.IMAGE_DEIDENTIFICATION_PENDING_TOP_MESSAGE, templateParams);
+            const imagePendingCondition = replaceMessageVariables(c.PENDING_IMAGE_DEIDENTIFICATION_APPROVE_EMAIL, templateParams);
             await this.emailService.sendNotification(
-                this.email_constants.NOTIFICATION_SENDER,
+                c.NOTIFICATION_SENDER,
+                isTierAdded(this.tier) ? `${this.tier} ${subject}` : subject,
+                await createEmailTemplate("notification-template-SR-pending-conditions.html", {
+                    pendingConditions: [imagePendingCondition],
+                    topMessage,
+                    ...templateParams,
+                    omitSubmissionGuideInFooter: true
+                }),
+                email,
+                CCEmails,
+                BCCEmails
+            );
+        });
+    }
+
+    async multipleChangesApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams, isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification) {
+        return await this.send(async () => {
+            const c = await this._resolveSubmissionRequestApprovalConstants();
+            const subject = c.APPROVE_SUBJECT;
+            const topMessage = replaceMessageVariables(c.CONDITIONAL_PENDING_MULTIPLE_CHANGES, templateParams);
+            const dataModelPendingCondition = replaceMessageVariables(c.DATA_MODEL_PENDING_CHANGE, {});
+            const missingDbGapPendingCondition = replaceMessageVariables(c.MISSING_DBGAP_PENDING_CHANGE_MULTIPLE, templateParams);
+            const missingGPAPendingCondition = replaceMessageVariables(c.MISSING_GPA_INFO, templateParams);
+            const imagePendingCondition = replaceMessageVariables(c.PENDING_IMAGE_DEIDENTIFICATION_APPROVE_EMAIL_MULTIPLE, templateParams);
+            // Only include valid pending conditions
+            const pendingConditions = [
+                isDbGapMissing && missingDbGapPendingCondition,
+                isPendingModelChange && dataModelPendingCondition,
+                isPendingGPA && missingGPAPendingCondition,
+                isPendingImageDeIdentification && imagePendingCondition,
+            ].filter(Boolean);
+
+            if (pendingConditions.length === 0) {
+                console.warn(`Sending Approve Question Email Notification to ${email} with no pending conditions.`);
+            }
+
+            await this.emailService.sendNotification(
+                c.NOTIFICATION_SENDER,
                 isTierAdded(this.tier) ? `${this.tier} ${subject}` : subject,
                 await createEmailTemplate("notification-template-SR-pending-conditions.html", {
                     pendingConditions: pendingConditions,
                     topMessage,
-                    ...templateParams
+                    ...templateParams,
+                    omitSubmissionGuideInFooter: Boolean(isPendingImageDeIdentification)
                 }),
                 email,
                 CCEmails,
