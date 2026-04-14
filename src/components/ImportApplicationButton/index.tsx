@@ -1,6 +1,7 @@
 import { Button, ButtonProps, Stack, styled, Typography } from "@mui/material";
 import { useSnackbar } from "notistack";
 import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import ImportIconSvg from "@/assets/icons/import_icon.svg?react";
 import config from "@/config/SectionConfig";
@@ -85,6 +86,9 @@ type Props = {
  * @returns JSX.Element
  */
 const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: Props) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const { enqueueSnackbar } = useSnackbar();
   const { user } = useAuthContext();
   const { data, formRef, setData } = useFormContext();
@@ -177,6 +181,15 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
     } else {
       enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
       setIsUploading(false);
+    }
+
+    // If the import is successful and the user is on the new submission request page, update the URL to reflect the new submission request ID.
+    if (res?.status === "success" && location.pathname.includes("/submission-request/new")) {
+      Logger.info("Imported template to a new form. Updating the URL to include the UUID.");
+      navigate(
+        location.pathname.replace("/submission-request/new", `/submission-request/${res?.id}`),
+        { replace: true, preventScrollReset: true }
+      );
     }
   };
 
