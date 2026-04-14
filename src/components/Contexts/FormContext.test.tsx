@@ -4,6 +4,8 @@ import React, { FC } from "react";
 
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
+import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
+import { userFactory } from "@/factories/auth/UserFactory";
 
 import {
   APPROVE_APP,
@@ -16,6 +18,7 @@ import {
   REOPEN_APP,
   RejectAppResp,
   ReopenAppResp,
+  GET_APPLICATION_FORM_VERSION,
   SAVE_APP,
   SaveAppInput,
   SaveAppResp,
@@ -24,6 +27,7 @@ import { query as GET_APP, GetAppInput } from "../../graphql/getApplication";
 import { query as GET_LAST_APP } from "../../graphql/getMyLastApplication";
 import { act, render, renderHook, waitFor } from "../../test-utils";
 
+import { Context as AuthContext, ContextState as AuthContextState } from "./AuthContext";
 import { Status as FormStatus, FormProvider, useFormContext } from "./FormContext";
 import {
   Context as OrganizationListContext,
@@ -73,10 +77,21 @@ const baseOrgCtxState: OrganizationListContextState = {
   activeOrganizations: [],
 };
 
+const baseAuthCtxState: AuthContextState = authCtxStateFactory.build({
+  user: userFactory.build({
+    _id: "test-user-id",
+    firstName: "Test",
+    lastName: "User",
+    email: "test.user@nih.gov",
+  }),
+});
+
 const TestParent: FC<Props> = ({ mocks, appId, children }: Props) => (
   <MockedProvider mocks={mocks}>
     <OrganizationListContext.Provider value={baseOrgCtxState}>
-      <FormProvider id={appId}>{children ?? <TestChild />}</FormProvider>
+      <AuthContext.Provider value={baseAuthCtxState}>
+        <FormProvider id={appId}>{children ?? <TestChild />}</FormProvider>
+      </AuthContext.Provider>
     </OrganizationListContext.Provider>
   </MockedProvider>
 );
@@ -196,6 +211,19 @@ describe("FormContext > FormProvider Tests", () => {
           },
         },
       },
+      {
+        request: {
+          query: GET_APPLICATION_FORM_VERSION,
+        },
+        result: {
+          data: {
+            getApplicationFormVersion: {
+              _id: "mock-form-version-id",
+              version: "1.0.0",
+            },
+          },
+        },
+      },
     ];
 
     const { findByTestId, getByTestId } = render(<TestParent mocks={mocks} appId="new" />);
@@ -204,6 +232,42 @@ describe("FormContext > FormProvider Tests", () => {
 
     expect(getByTestId("status").textContent).toEqual(FormStatus.LOADED);
     expect(getByTestId("app-id").textContent).toEqual("new");
+  });
+
+  it("should initialize local form data for 'new' when form version request fails", async () => {
+    const mocks = [
+      {
+        request: {
+          query: GET_LAST_APP,
+        },
+        result: {
+          data: {
+            getMyLastApplication: null,
+          },
+        },
+      },
+      {
+        request: {
+          query: GET_APPLICATION_FORM_VERSION,
+        },
+        error: new Error("Test form version network error"),
+      },
+    ];
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={mocks} appId="new">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    expect(result.current.data?._id).toEqual("new");
+    expect(result.current.data?.version).toEqual("");
   });
 
   it("should autofill PI details if Section A is not started", async () => {
