@@ -99,7 +99,7 @@ const ERROR = {
     PENDING_IMAGE_DEIDENTIFICATION_SUBMISSION:
         "This study requires a risk mitigation document & de-identification protocol. Data submissions cannot be created for this study until these conditions are cleared.",
     PENDING_IMAGE_DEIDENTIFICATION_CONDITION:
-        "The approved study for this submission request requires a risk mitigation document & de-identification protocol.",
+        "Pending submission of the risk mitigation document and the image de-identification protocol.",
     // List Submissions
     LIST_SUBMISSION_INVALID_STATUS_FILTER: "The status filter is invalid",
     INVALID_SUBMISSION_PERMISSION: "You do not have the correct permissions to list submissions",
