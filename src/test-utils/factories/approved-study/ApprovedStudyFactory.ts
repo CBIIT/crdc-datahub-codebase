@@ -21,6 +21,7 @@ export const baseApprovedStudy: ApprovedStudy = {
   isPendingGPA: false,
   GPAName: "",
   status: "Active",
+  pendingImageDeIdentification: false,
   createdAt: "",
 };
 

@@ -47,6 +47,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         }
         useProgramPC
         pendingModelChange
+        pendingImageDeIdentification
         isPendingGPA
         status
         createdAt

@@ -5,6 +5,7 @@ import DataTypes from "@/config/DataTypesConfig";
 import { contactFactory } from "@/factories/application/ContactFactory";
 import { fundingFactory } from "@/factories/application/FundingFactory";
 import { piFactory } from "@/factories/application/PIFactory";
+import { programInputFactory } from "@/factories/application/ProgramInputFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { repositoryFactory } from "@/factories/application/RepositoryFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
@@ -97,6 +98,7 @@ describe("run", () => {
         { id: data.additionalContacts[2].institutionID, name: "This Is No Longer New" },
       ],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     const result = await migrator.run();
@@ -159,6 +161,7 @@ describe("run", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     const result = await migrator.run();
@@ -210,6 +213,7 @@ describe("run", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     const result = await migrator.run();
@@ -221,6 +225,59 @@ describe("run", () => {
       })
     );
   });
+
+  it("should skip _migrateLastApp when skipLastApp option is true", async () => {
+    const data = questionnaireDataFactory.build({
+      pi: piFactory.build({ firstName: "Imported", lastName: "User" }),
+      primaryContact: contactFactory.build(),
+      additionalContacts: [],
+    });
+
+    mockGetInstitutions.mockResolvedValue({
+      data: {
+        listInstitutions: {
+          institutions: [
+            institutionFactory.build({
+              _id: data.pi.institutionID,
+              name: data.pi.institution,
+            }),
+            institutionFactory.build({
+              _id: data.primaryContact.institutionID,
+              name: data.primaryContact.institution,
+            }),
+          ],
+        },
+      },
+    });
+
+    mockGetLastApplication.mockResolvedValue({
+      data: {
+        getMyLastApplication: {
+          questionnaireData: JSON.stringify(
+            questionnaireDataFactory.build({
+              pi: piFactory.build({
+                firstName: "PreviousApp",
+                lastName: "PI",
+              }),
+            })
+          ),
+        },
+      },
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [],
+    });
+
+    const result = await migrator.run({ skipLastApp: true });
+
+    expect(result.pi.firstName).toBe("Imported");
+    expect(result.pi.lastName).toBe("User");
+    expect(mockGetLastApplication).not.toHaveBeenCalled();
+  });
 });
 
 describe("getData", () => {
@@ -231,6 +288,7 @@ describe("getData", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // NOTE: We're not running the migration here, so the data should be identical
@@ -246,12 +304,14 @@ describe("getDependencies", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     expect(migrator.getDependencies()).toEqual({
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
   });
 });
@@ -283,6 +343,7 @@ describe("_migrateLastApp", () => {
         getInstitutions: mockGetInstitutions,
         newInstitutions: [],
         getLastApplication: mockGetLastApplication,
+        activePrograms: [],
       });
 
       // @ts-expect-error Calling private helper function
@@ -334,6 +395,7 @@ describe("_migrateLastApp", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -364,6 +426,7 @@ describe("_migrateLastApp", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -393,6 +456,7 @@ describe("_migrateInstitutionsToID", () => {
       newInstitutions: [],
 
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -420,6 +484,7 @@ describe("_migrateInstitutionsToID", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -447,6 +512,7 @@ describe("_migrateInstitutionsToID", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -474,6 +540,7 @@ describe("_migrateInstitutionsToID", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -503,6 +570,7 @@ describe("_migrateInstitutionsToID", () => {
         getInstitutions: mockGetInstitutions,
         newInstitutions: [],
         getLastApplication: mockGetLastApplication,
+        activePrograms: [],
       });
 
       // @ts-expect-error Calling private helper function
@@ -537,6 +605,7 @@ describe("_migrateInstitutionsToID", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -580,6 +649,7 @@ describe("_migrateInstitutionsToID", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -648,6 +718,7 @@ describe("_migrateInstitutionNames", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -678,6 +749,7 @@ describe("_migrateInstitutionNames", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -708,6 +780,7 @@ describe("_migrateInstitutionNames", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -742,6 +815,7 @@ describe("_migrateInstitutionNames", () => {
         getInstitutions: mockGetInstitutions,
         newInstitutions: [],
         getLastApplication: mockGetLastApplication,
+        activePrograms: [],
       });
 
       // @ts-expect-error Calling private helper function
@@ -781,6 +855,7 @@ describe("_migrateInstitutionNames", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -841,6 +916,7 @@ describe("_migrateInstitutionNames", () => {
       newInstitutions: [],
 
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -913,6 +989,7 @@ describe("_migrateInstitutionNames", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -947,6 +1024,7 @@ describe("_migrateInstitutionNames", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [{ id: data.pi.institutionID, name: "Institution A" }],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -999,6 +1077,7 @@ describe("_migrateExistingInstitutions", () => {
         },
       ],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1068,6 +1147,7 @@ describe("_migrateExistingInstitutions", () => {
         { id: mockInstitutions[2]._id, name: mockInstitutions[2].name },
       ],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1111,6 +1191,7 @@ describe("_migrateExistingInstitutions", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1144,6 +1225,7 @@ describe("_migrateExistingInstitutions", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1177,6 +1259,7 @@ describe("_migrateExistingInstitutions", () => {
         getInstitutions: mockGetInstitutions,
         newInstitutions: [],
         getLastApplication: mockGetLastApplication,
+        activePrograms: [],
       });
 
       // @ts-expect-error Calling private helper function
@@ -1209,6 +1292,7 @@ describe("_migrateGPA", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1252,6 +1336,7 @@ describe("_migrateGPA", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1274,6 +1359,7 @@ describe("_migrateGPA", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1295,6 +1381,7 @@ describe("_migrateGPA", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1314,6 +1401,7 @@ describe("_migrateGPA", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1333,6 +1421,7 @@ describe("_migrateGPA", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1350,6 +1439,7 @@ describe("_migrateGPA", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1367,6 +1457,7 @@ describe("_migrateGPA", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1395,6 +1486,7 @@ describe("_migrateGPA", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1428,6 +1520,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1458,6 +1551,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1484,6 +1578,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1510,6 +1605,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1535,6 +1631,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1575,6 +1672,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1600,6 +1698,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1617,6 +1716,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1634,6 +1734,7 @@ describe("_migrateRepositoryOtherDataTypes", () => {
       getInstitutions: mockGetInstitutions,
       newInstitutions: [],
       getLastApplication: mockGetLastApplication,
+      activePrograms: [],
     });
 
     // @ts-expect-error Calling private helper function
@@ -1641,6 +1742,129 @@ describe("_migrateRepositoryOtherDataTypes", () => {
     const result = migrator.getData();
 
     expect(result).toEqual(data);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+});
+
+describe("_migrateInactiveProgram", () => {
+  it("should migrate an inactive program to Other with the old program's data", async () => {
+    const inactiveProgramId = v4();
+    const data = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: inactiveProgramId,
+        name: "Old Inactive Program",
+        abbreviation: "OIP",
+        description: "An old program that is now inactive",
+      }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [{ _id: v4() }, { _id: v4() }],
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateInactiveProgram();
+    const result = migrator.getData();
+
+    expect(result.program._id).toBe("Other");
+    expect(result.program.name).toBe("Old Inactive Program");
+    expect(result.program.abbreviation).toBe("OIP");
+    expect(result.program.description).toBe("An old program that is now inactive");
+    expect(Logger.info).toHaveBeenCalledWith(
+      "_migrateInactiveProgram: Migrating inactive program to Other",
+      expect.objectContaining({ _id: inactiveProgramId })
+    );
+  });
+
+  it("should not migrate a program that is still active", async () => {
+    const activeProgramId = v4();
+    const data = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: activeProgramId,
+        name: "Active Program",
+        abbreviation: "AP",
+        description: "A currently active program",
+      }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [{ _id: activeProgramId }],
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateInactiveProgram();
+    const result = migrator.getData();
+
+    expect(result.program._id).toBe(activeProgramId);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should not migrate a program with _id 'Other'", async () => {
+    const data = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: "Other",
+        name: "Custom Program",
+        abbreviation: "CP",
+        description: "A custom program",
+      }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [],
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateInactiveProgram();
+    const result = migrator.getData();
+
+    expect(result.program._id).toBe("Other");
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should not migrate a program with _id 'Not Applicable'", async () => {
+    const data = questionnaireDataFactory.build({
+      program: programInputFactory.build({ _id: "Not Applicable" }),
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [],
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateInactiveProgram();
+    const result = migrator.getData();
+
+    expect(result.program._id).toBe("Not Applicable");
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should not migrate when program is null or undefined", async () => {
+    const data = questionnaireDataFactory.build({ program: null });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [],
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateInactiveProgram();
+    const result = migrator.getData();
+
+    expect(result.program).toBeNull();
     expect(Logger.info).not.toHaveBeenCalled();
   });
 });

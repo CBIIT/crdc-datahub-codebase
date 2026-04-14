@@ -309,6 +309,55 @@ describe("Implementation Requirements", () => {
     expect(gpaTooltip).toBeInTheDocument();
   });
 
+  it("should render asterisk and correct tooltip for pending image de-identification condition", async () => {
+    const studies = [
+      approvedStudyFactory.build({
+        studyAbbreviation: "IMG",
+        controlledAccess: false,
+        dbGaPID: "phs-001",
+        pendingModelChange: false,
+        pendingImageDeIdentification: true,
+      }),
+    ];
+    const listApprovedStudiesMock: MockedResponse<
+      ListApprovedStudiesResp,
+      ListApprovedStudiesInput
+    > = {
+      request: {
+        query: LIST_APPROVED_STUDIES,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          listApprovedStudies: {
+            studies,
+            total: 1,
+          },
+        },
+      },
+    };
+
+    const { getByText, getByTestId, findByText } = render(
+      <TestParent mocks={[listApprovedStudiesMock, ...programMocks]}>
+        <ListView />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByText("IMG")).toBeInTheDocument();
+    });
+
+    const asterisk = getByTestId("asterisk-IMG");
+    expect(asterisk).toBeInTheDocument();
+
+    userEvent.hover(asterisk);
+
+    const pendingImageDeIdentificationTooltip = await findByText(
+      "Pending submission of the risk mitigation document and the image de-identification protocol."
+    );
+    expect(pendingImageDeIdentificationTooltip).toBeInTheDocument();
+  });
+
   it("should render asterisk and all tooltips when all pending conditions are true", async () => {
     const studies = [
       approvedStudyFactory.build({
@@ -316,6 +365,7 @@ describe("Implementation Requirements", () => {
         controlledAccess: true,
         dbGaPID: "",
         pendingModelChange: true,
+        pendingImageDeIdentification: true,
         GPAName: "",
         isPendingGPA: true,
       }),
@@ -355,10 +405,14 @@ describe("Implementation Requirements", () => {
 
     const dbGaPIDTooltip = await findByText("Data submission is Pending on dbGaPID Registration.");
     const modelReviewTooltip = await findByText("Data submission is Pending on Data Model Update.");
+    const pendingImageDeIdentificationTooltip = await findByText(
+      "Pending submission of the risk mitigation document and the image de-identification protocol."
+    );
     const gpaTooltip = await findByText("Data submission is Pending on GPA info.");
 
     expect(dbGaPIDTooltip).toBeInTheDocument();
     expect(modelReviewTooltip).toBeInTheDocument();
+    expect(pendingImageDeIdentificationTooltip).toBeInTheDocument();
     expect(gpaTooltip).toBeInTheDocument();
   });
 

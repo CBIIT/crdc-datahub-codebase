@@ -64,6 +64,10 @@ type ApprovedStudy = {
    */
   status: "Active" | "Inactive";
   /**
+   * Indicates whether the study has a pending image de-identification requirement
+   */
+  pendingImageDeIdentification: boolean;
+  /**
    * Submission Request approval date or manual record creation date
    */
   createdAt: string;

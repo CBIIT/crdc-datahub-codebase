@@ -30,7 +30,14 @@ import {
   ListInstitutionsResp,
 } from "../../graphql";
 import { Logger } from "../../utils";
-import { FormInput as ApproveFormInput } from "../Questionnaire/ApproveFormDialog";
+
+import { useOrganizationListContext, Status as ProgramStatus } from "./OrganizationListContext";
+
+export type ApproveFormInput = {
+  pendingModelChange: boolean;
+  pendingImageDeIdentification: boolean;
+  reviewComment: string;
+};
 
 export type SetDataReturnType =
   | { status: "success"; id: string }
@@ -47,7 +54,7 @@ export type ContextState = {
   rejectForm?: (comment: string) => Promise<string | boolean>;
   setData?: (
     questionnaire: QuestionnaireData,
-    opts?: { skipSave?: boolean }
+    opts?: { skipSave?: boolean; runMigrations?: boolean }
   ) => Promise<SetDataReturnType>;
   error?: string;
 };
@@ -110,6 +117,7 @@ type ProviderProps = {
  */
 export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps) => {
   const [state, setState] = useState<ContextState>(initialState);
+  const { activeOrganizations, status: programStatus } = useOrganizationListContext();
 
   const [getInstitutions] = useLazyQuery<ListInstitutionsResp, ListInstitutionsInput>(
     LIST_INSTITUTIONS,
@@ -168,20 +176,35 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
 
   const setData = async (
     data: QuestionnaireData,
-    opts?: { skipSave?: boolean }
+    opts?: { skipSave?: boolean; runMigrations?: boolean }
   ): Promise<SetDataReturnType> => {
+    let processedData = data;
+    if (opts?.runMigrations) {
+      const migrator = new QuestionnaireDataMigrator(data, {
+        getInstitutions,
+        newInstitutions: state.data?.newInstitutions || [],
+        getLastApplication: lastApp,
+        activePrograms: activeOrganizations || [],
+      });
+      processedData = await migrator.run({ skipLastApp: true });
+    }
+
     const newState = {
       ...state,
       data: {
         ...state.data,
-        questionnaireData: data,
+        questionnaireData: processedData,
       },
     };
 
     setState((prevState) => ({ ...prevState, status: Status.SAVING }));
-    const fullPIName = `${data?.pi?.firstName || ""} ${data?.pi?.lastName || ""}`.trim();
+    const fullPIName = `${processedData?.pi?.firstName || ""} ${
+      processedData?.pi?.lastName || ""
+    }`.trim();
 
-    const newStatus: ApplicationStatus = data?.sections?.some((s) => s.status !== "Not Started")
+    const newStatus: ApplicationStatus = processedData?.sections?.some(
+      (s) => s.status !== "Not Started"
+    )
       ? "In Progress"
       : "New";
 
@@ -218,20 +241,20 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       variables: {
         application: {
           _id: newState?.data?._id === "new" ? undefined : newState?.data?._id,
-          studyName: data?.study?.name,
-          studyAbbreviation: data?.study?.abbreviation || data?.study?.name,
-          questionnaireData: JSON.stringify(data),
-          controlledAccess: data?.accessTypes?.includes("Controlled Access") || false,
-          openAccess: data?.accessTypes?.includes("Open Access") || false,
-          ORCID: data?.pi?.ORCID,
+          studyName: processedData?.study?.name,
+          studyAbbreviation: processedData?.study?.abbreviation || processedData?.study?.name,
+          questionnaireData: JSON.stringify(processedData),
+          controlledAccess: processedData?.accessTypes?.includes("Controlled Access") || false,
+          openAccess: processedData?.accessTypes?.includes("Open Access") || false,
+          ORCID: processedData?.pi?.ORCID,
           PI: fullPIName,
-          programName: data?.program?.name,
-          programAbbreviation: data?.program?.abbreviation,
-          programDescription: data?.program?.description,
+          programName: processedData?.program?.name,
+          programAbbreviation: processedData?.program?.abbreviation,
+          programDescription: processedData?.program?.description,
           newInstitutions: newInstitutions
             .filter((inst) => contacts.findIndex((c) => c.institutionID === inst.id) !== -1)
             .map(({ id, name }) => ({ id, name })),
-          GPAName: data?.study?.GPAName,
+          GPAName: processedData?.study?.GPAName,
         },
         status: newStatus,
       },
@@ -254,7 +277,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     }
 
     // eslint-disable-next-line @typescript-eslint/dot-notation
-    if (d?.saveApplication?._id && data["_id"] === "new") {
+    if (d?.saveApplication?._id && processedData["_id"] === "new") {
       newState.data = {
         ...newState.data,
         _id: d.saveApplication._id,
@@ -312,6 +335,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         comment: data?.reviewComment,
         wholeProgram,
         pendingModelChange: data?.pendingModelChange,
+        pendingImageDeIdentification: data?.pendingImageDeIdentification,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 
@@ -397,6 +421,9 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   };
 
   useEffect(() => {
+    if (programStatus !== ProgramStatus.LOADED) {
+      return;
+    }
     if (!id || !id.trim()) {
       setState({
         status: Status.ERROR,
@@ -428,6 +455,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         getInstitutions,
         newInstitutions: getApplication?.newInstitutions || [],
         getLastApplication: lastApp,
+        activePrograms: activeOrganizations || [],
       });
       const migratedData = await migrator.run();
 
@@ -442,7 +470,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         },
       });
     })();
-  }, [id]);
+  }, [id, programStatus]);
 
   const value = useMemo(
     () => ({

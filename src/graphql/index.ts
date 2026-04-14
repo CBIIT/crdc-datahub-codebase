@@ -35,8 +35,11 @@ export type { GetAppInput, Response as GetAppResp } from "./getApplication";
 export { mutation as UPDATE_MY_USER } from "./updateMyUser";
 export type { Input as UpdateMyUserInput, Response as UpdateMyUserResp } from "./updateMyUser";
 
-export { query as RETRIEVE_CDEs } from "./retrieveCDEs";
-export type { Response as RetrieveCDEsResp, Input as RetrieveCDEsInput } from "./retrieveCDEs";
+export { RETRIEVE_PVS_BY_PROPERTY_NAME } from "./retrievePVsByPropertyName";
+export type {
+  RetrievePVsByPropertyNameInput,
+  RetrievePVsByPropertyNameResponse,
+} from "./retrievePVsByPropertyName";
 
 export { query as LIST_APPLICATIONS } from "./listApplications";
 export type {
@@ -320,3 +323,7 @@ export type {
   Input as EditSubmissionNameInput,
   Response as EditSubmissionNameResp,
 } from "./editSubmission";
+
+// ChatBot
+export { IS_CHATBOT_ENABLED } from "./isChatBotEnabled";
+export type { Response as IsChatBotEnabledResp } from "./isChatBotEnabled";

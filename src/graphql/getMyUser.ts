@@ -20,6 +20,7 @@ export const query: TypedDocumentNode<Response> = gql`
         dbGaPID
         controlledAccess
         pendingModelChange
+        pendingImageDeIdentification
         isPendingGPA
       }
       institution {
@@ -44,6 +45,7 @@ export type Response = {
       | "dbGaPID"
       | "controlledAccess"
       | "pendingModelChange"
+      | "pendingImageDeIdentification"
       | "isPendingGPA"
     >[];
   };
