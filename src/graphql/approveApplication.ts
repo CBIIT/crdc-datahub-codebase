@@ -7,12 +7,14 @@ export const mutation: TypedDocumentNode<Response, Input> = gql`
     $comment: String
     $wholeProgram: Boolean
     $pendingModelChange: Boolean
+    $pendingImageDeIdentification: Boolean
   ) {
     approveApplication(
       _id: $id
       wholeProgram: $wholeProgram
       comment: $comment
       pendingModelChange: $pendingModelChange
+      pendingImageDeIdentification: $pendingImageDeIdentification
     ) {
       _id
     }
@@ -24,6 +26,7 @@ export type Input = {
   comment: string;
   wholeProgram: boolean;
   pendingModelChange: boolean;
+  pendingImageDeIdentification: boolean;
 };
 
 export type Response = {

@@ -25,6 +25,11 @@ import { query as GET_LAST_APP } from "../../graphql/getMyLastApplication";
 import { act, render, renderHook, waitFor } from "../../test-utils";
 
 import { Status as FormStatus, FormProvider, useFormContext } from "./FormContext";
+import {
+  Context as OrganizationListContext,
+  ContextState as OrganizationListContextState,
+  Status as OrgStatus,
+} from "./OrganizationListContext";
 
 const baseApplication: Omit<Application, "questionnaireData"> = applicationFactory.build({
   questionnaireData: undefined,
@@ -62,9 +67,17 @@ const TestChild: FC = () => {
   );
 };
 
+const baseOrgCtxState: OrganizationListContextState = {
+  status: OrgStatus.LOADED,
+  data: [],
+  activeOrganizations: [],
+};
+
 const TestParent: FC<Props> = ({ mocks, appId, children }: Props) => (
   <MockedProvider mocks={mocks}>
-    <FormProvider id={appId}>{children ?? <TestChild />}</FormProvider>
+    <OrganizationListContext.Provider value={baseOrgCtxState}>
+      <FormProvider id={appId}>{children ?? <TestChild />}</FormProvider>
+    </OrganizationListContext.Provider>
   </MockedProvider>
 );
 
@@ -344,7 +357,11 @@ describe("approveForm Tests", () => {
 
     await act(async () => {
       const approveResp = await result.current.approveForm(
-        { reviewComment: "mock approval comment", pendingModelChange: false },
+        {
+          reviewComment: "mock approval comment",
+          pendingModelChange: false,
+          pendingImageDeIdentification: false,
+        },
         true
       );
       expect(approveResp).toEqual({
@@ -386,7 +403,7 @@ describe("approveForm Tests", () => {
 
     await act(async () => {
       const approveResp = await result.current.approveForm(
-        { reviewComment: "", pendingModelChange: false },
+        { reviewComment: "", pendingModelChange: false, pendingImageDeIdentification: false },
         true
       );
       expect(approveResp).toEqual({
@@ -420,7 +437,7 @@ describe("approveForm Tests", () => {
 
     await act(async () => {
       const approveResp = await result.current.approveForm(
-        { reviewComment: "", pendingModelChange: false },
+        { reviewComment: "", pendingModelChange: false, pendingImageDeIdentification: false },
         true
       );
       expect(approveResp).toEqual({

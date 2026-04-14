@@ -20,6 +20,7 @@ export const baseApprovedStudy: ApprovedStudy = {
   pendingModelChange: false,
   isPendingGPA: false,
   GPAName: "",
+  pendingImageDeIdentification: false,
   createdAt: "",
 };
 

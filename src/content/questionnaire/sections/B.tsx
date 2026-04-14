@@ -57,7 +57,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
     data: { questionnaireData: data },
     formRef,
   } = useFormContext();
-  const { data: programs } = useOrganizationListContext();
+  const { activeOrganizations: programs } = useOrganizationListContext();
   const { readOnlyInputs } = useFormMode();
   const { B: SectionBMetadata } = SectionMetadata;
 

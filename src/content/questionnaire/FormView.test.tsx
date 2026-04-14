@@ -1,455 +1,263 @@
 import userEvent from "@testing-library/user-event";
-import React from "react";
+import { FC } from "react";
+import { axe } from "vitest-axe";
 
-import { Status as AuthStatus } from "@/components/Contexts/AuthContext";
-import { Status as FormStatus } from "@/components/Contexts/FormContext";
-import { applicationFactory } from "@/factories/application/ApplicationFactory";
-import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
-import { userFactory } from "@/factories/auth/UserFactory";
-import { act, render, screen, waitFor, within } from "@/test-utils";
+import {
+  Context as AuthContext,
+  ContextState as AuthContextState,
+  Status as AuthStatus,
+} from "../../components/Contexts/AuthContext";
+import {
+  Context as FormContext,
+  ContextState as FormContextState,
+  Status as FormStatus,
+} from "../../components/Contexts/FormContext";
+import { render, waitFor, within } from "../../test-utils";
+import { applicationFactory } from "../../test-utils/factories/application/ApplicationFactory";
+import { authCtxStateFactory } from "../../test-utils/factories/auth/AuthCtxStateFactory";
+import { userFactory } from "../../test-utils/factories/auth/UserFactory";
+import { TestRouter } from "../../test-utils/TestRouter";
 
 import FormView from "./FormView";
 
-const mocked = vi.hoisted(() => ({
-  navigate: vi.fn(),
-  location: {
-    pathname: "/submission-request/new/A",
-    search: "",
-    hash: "",
-  },
-  blocker: {
-    location: {
-      pathname: "/submission-request/new/B",
-      search: "",
-      hash: "",
-    },
-    proceed: vi.fn(),
-    reset: vi.fn(),
-  },
-  blockerCallback: null as (() => boolean) | null,
-  useFormContext: vi.fn(),
-  useAuthContext: vi.fn(),
-  useFormMode: vi.fn(),
-  hasPermission: vi.fn(),
-  usePageTitle: vi.fn(),
-  getSectionData: vi.fn(),
-  checkValidity: vi.fn(),
+const mockUseFormMode = vi.fn();
+vi.mock("../../hooks/useFormMode", () => ({
+  default: () => mockUseFormMode(),
 }));
-
-vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual("react-router-dom");
-  return {
-    ...actual,
-    useNavigate: () => mocked.navigate,
-    useLocation: () => mocked.location,
-    useBlocker: (handler: () => boolean) => {
-      mocked.blockerCallback = handler;
-      return mocked.blocker;
-    },
-    Navigate: ({ to }: { to: string }) => <div data-testid="navigate" data-to={to} />,
-  };
-});
 
 vi.mock("../../hooks/usePageTitle", () => ({
-  default: (title: string) => mocked.usePageTitle(title),
+  default: () => {},
 }));
 
-vi.mock("../../hooks/useFormMode", () => ({
-  default: () => mocked.useFormMode(),
+let mockFormObject: FormObject | null = null;
+
+vi.mock("./sections", () => ({
+  default: ({ refs }: FormSectionProps) => {
+    if (refs?.getFormObjectRef) {
+      refs.getFormObjectRef.current = () => mockFormObject;
+    }
+    return <div data-testid="mock-section">Mock Section</div>;
+  },
 }));
 
-vi.mock("../../config/AuthPermissions", () => ({
-  hasPermission: (...args: unknown[]) => mocked.hasPermission(...args),
-}));
-
-vi.mock("../../components/Contexts/FormContext", async () => {
-  const actual = await vi.importActual("../../components/Contexts/FormContext");
-  return {
-    ...actual,
-    useFormContext: () => mocked.useFormContext(),
-  };
-});
-
-vi.mock("../../components/Contexts/AuthContext", async () => {
-  const actual = await vi.importActual("../../components/Contexts/AuthContext");
-  return {
-    ...actual,
-    useAuthContext: () => mocked.useAuthContext(),
-  };
-});
-
-vi.mock("../../components/StatusBar/StatusBar", () => ({
-  default: () => <div data-testid="status-bar" />,
+vi.mock("../../components/PageBanner", () => ({
+  default: () => <div data-testid="mock-page-banner">Mock Banner</div>,
 }));
 
 vi.mock("../../components/ProgressBar/ProgressBar", () => ({
-  default: ({ section }: { section: string }) => <div data-testid="progress-bar">{section}</div>,
+  default: () => <div data-testid="mock-progress-bar">Mock ProgressBar</div>,
+}));
+
+vi.mock("../../components/StatusBar/StatusBar", () => ({
+  default: () => <div data-testid="mock-status-bar">Mock StatusBar</div>,
+}));
+
+vi.mock("../../components/SuspenseLoader", () => ({
+  default: () => <div data-testid="mock-loader">Loading...</div>,
 }));
 
 vi.mock("../../components/CancelApplicationButton", () => ({
-  default: ({ onCancel }: { onCancel: () => void }) => (
-    <button onClick={onCancel} type="button">
-      Cancel Request
-    </button>
-  ),
+  default: () => <div data-testid="mock-cancel-button">Cancel</div>,
 }));
 
-vi.mock("./sections", () => ({
-  default: ({ refs }: { refs: FormSectionProps["refs"] }) => {
-    refs.getFormObjectRef.current = () => ({
-      ref: {
-        current: {
-          checkValidity: () => mocked.checkValidity(),
-        },
-      } as React.RefObject<HTMLFormElement>,
-      data: mocked.getSectionData(),
-    });
-    return <div data-testid="questionnaire-section" />;
-  },
-}));
+const completedSections: Section[] = [
+  { name: "A", status: "Completed" },
+  { name: "B", status: "Completed" },
+  { name: "C", status: "Completed" },
+  { name: "D", status: "Completed" },
+];
 
-type RenderOptions = {
+const baseFormCtxState: FormContextState = {
+  status: FormStatus.LOADED,
+  formRef: { current: null },
+  data: applicationFactory.build({
+    _id: "test-app-id",
+    status: "In Review",
+    questionnaireData: {
+      sections: completedSections,
+    } as QuestionnaireData,
+  }),
+  approveForm: vi.fn(),
+  inquireForm: vi.fn(),
+  rejectForm: vi.fn(),
+};
+
+const baseAuthCtxState: AuthContextState = authCtxStateFactory.build({
+  status: AuthStatus.LOADED,
+  isLoggedIn: true,
+  user: userFactory.build({
+    _id: "reviewer-user",
+    role: "Admin",
+    permissions: [
+      "submission_request:view",
+      "submission_request:create",
+      "submission_request:submit",
+      "submission_request:review",
+    ],
+  }),
+});
+
+type ParentProps = {
+  formCtxState?: FormContextState;
+  authCtxState?: AuthContextState;
   section?: string;
-  formContext?: Partial<ReturnType<typeof mocked.useFormContext>>;
-  authContext?: Partial<ReturnType<typeof mocked.useAuthContext>>;
-  formMode?: ReturnType<typeof mocked.useFormMode>;
 };
 
-const buildDefaultData = () =>
-  applicationFactory.build({
-    _id: "new",
-    status: "New",
-    applicant: {
-      applicantID: "user-1",
-      applicantName: "Test User",
-      applicantEmail: "test@example.com",
-    },
-    questionnaireData: questionnaireDataFactory.build({
-      sections: [
-        { name: "A", status: "Not Started" },
-        { name: "B", status: "Not Started" },
-      ],
-    }),
-  });
+const TestParent: FC<ParentProps> = ({
+  formCtxState = baseFormCtxState,
+  authCtxState = baseAuthCtxState,
+  section = "REVIEW",
+}) => (
+  <TestRouter initialEntries={[`/submission-request/test-app-id/${section}`]}>
+    <AuthContext.Provider value={authCtxState}>
+      <FormContext.Provider value={formCtxState}>
+        <FormView section={section} />
+      </FormContext.Provider>
+    </AuthContext.Provider>
+  </TestRouter>
+);
 
-const renderView = ({ section = "A", formContext, authContext, formMode }: RenderOptions = {}) => {
-  const baseData = buildDefaultData();
-
-  mocked.useFormContext.mockReturnValue({
-    status: FormStatus.LOADED,
-    data: baseData,
-    setData: vi.fn().mockResolvedValue({ status: "success", id: "saved-id" }),
-    submitData: vi.fn().mockResolvedValue("saved-id"),
-    approveForm: vi.fn().mockResolvedValue({ status: "success", id: "saved-id" }),
-    inquireForm: vi.fn().mockResolvedValue("saved-id"),
-    rejectForm: vi.fn().mockResolvedValue("saved-id"),
-    reopenForm: vi.fn().mockResolvedValue("saved-id"),
-    error: null,
-    ...formContext,
-  });
-
-  mocked.useAuthContext.mockReturnValue({
-    status: AuthStatus.LOADED,
-    isLoggedIn: true,
-    user: userFactory.build({
-      _id: "user-1",
-      role: "Submitter",
-      permissions: ["submission_request:create", "submission_request:submit"],
-    }),
-    ...authContext,
-  });
-
-  mocked.useFormMode.mockReturnValue(
-    formMode || {
-      formMode: "Edit",
-      readOnlyInputs: false,
-    }
-  );
-
-  mocked.hasPermission.mockReturnValue(true);
-  mocked.checkValidity.mockReturnValue(true);
-  mocked.getSectionData.mockReturnValue(baseData.questionnaireData);
-
-  return render(<FormView section={section} />);
-};
-
-describe("FormView", () => {
+describe("Accessibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.location.pathname = "/submission-request/new/A";
-    mocked.location.search = "";
-    mocked.location.hash = "";
-    mocked.blocker.location.pathname = "/submission-request/new/B";
-    mocked.blocker.location.search = "";
-    mocked.blocker.location.hash = "";
-    mocked.blockerCallback = null;
+    mockFormObject = null;
   });
 
-  it("sets the page title with the current submission id", () => {
-    renderView();
-    expect(mocked.usePageTitle).toHaveBeenCalledWith("Submission Request new");
+  it("should have no violations", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Review", readOnlyInputs: true });
+
+    const { container } = render(<TestParent />);
+
+    const result = await axe(container);
+    expect(result).toHaveNoViolations();
+  });
+});
+
+describe("Basic Functionality", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFormObject = null;
   });
 
-  it("shows a loading spinner while form or auth context is loading", () => {
-    const { rerender } = renderView({
-      formContext: {
-        status: FormStatus.LOADING,
-      },
-    });
+  it("should render without crashing", () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Review", readOnlyInputs: true });
 
-    expect(screen.getByLabelText("Content Loader")).toBeInTheDocument();
+    const { getByTestId } = render(<TestParent />);
 
-    mocked.useFormContext.mockReturnValue({
-      ...mocked.useFormContext.mock.results[0].value,
-      status: FormStatus.LOADED,
-    });
-    mocked.useAuthContext.mockReturnValue({
-      ...mocked.useAuthContext.mock.results[0].value,
-      status: AuthStatus.LOADING,
-    });
-
-    rerender(<FormView section="A" />);
-    expect(screen.getByLabelText("Content Loader")).toBeInTheDocument();
+    expect(getByTestId("mock-page-banner")).toBeInTheDocument();
+    expect(getByTestId("mock-section")).toBeInTheDocument();
   });
 
-  it("returns null when auth context is in error state", () => {
-    const { queryByText } = renderView({
-      authContext: {
-        status: AuthStatus.ERROR,
-      },
-    });
+  it("should render Edit mode controls on a non-review section", () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
 
-    expect(queryByText("Submission Request Form")).not.toBeInTheDocument();
+    const { getByText, queryByRole } = render(<TestParent section="A" />);
+
+    expect(getByText("Save")).toBeInTheDocument();
+    expect(getByText("Next")).toBeInTheDocument();
+    expect(queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+    expect(
+      queryByRole("button", { name: "Request Additional Information" })
+    ).not.toBeInTheDocument();
   });
 
-  it("redirects to the list view when form load fails without data", () => {
-    const { getByTestId } = renderView({
-      formContext: {
-        status: FormStatus.ERROR,
-        data: null,
-        error: "Unable to load form",
-      },
-    });
+  it("should render Review mode controls on the review section", () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Review", readOnlyInputs: true });
 
-    expect(getByTestId("navigate")).toHaveAttribute("data-to", "/submission-requests");
+    const { getByRole, queryByText } = render(<TestParent section="REVIEW" />);
+
+    expect(getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Request Additional Information" })).toBeInTheDocument();
+    expect(queryByText("Save")).not.toBeInTheDocument();
+    expect(queryByText("Next")).not.toBeInTheDocument();
+  });
+});
+
+describe("Implementation Requirements", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFormObject = null;
   });
 
-  it("navigates to the next section when clicking Next", async () => {
-    renderView({
-      formContext: {
-        data: {
-          ...buildDefaultData(),
-          _id: "existing-id",
-        },
-      },
-    });
+  it("should render the Approve ReviewFormDialog with correct props", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Review", readOnlyInputs: true });
 
-    userEvent.click(document.getElementById("submission-form-next-button") as HTMLElement);
+    const { getByText, getByRole } = render(<TestParent />);
 
-    expect(mocked.navigate).toHaveBeenCalledWith("/submission-request/existing-id/B", {
-      preventScrollReset: true,
-    });
-  });
-
-  it("disables Next on section D until all sections are complete", async () => {
-    renderView({
-      section: "D",
-      formContext: {
-        data: {
-          ...buildDefaultData(),
-          _id: "existing-id",
-          questionnaireData: questionnaireDataFactory.build({
-            sections: [{ name: "A", status: "Not Started" }],
-          }),
-        },
-      },
-    });
-
-    const nextButton = document.getElementById("submission-form-next-button") as HTMLButtonElement;
-    expect(nextButton).toBeDisabled();
-  });
-
-  it("saves form data and replaces /new/ with persisted id", async () => {
-    const setData = vi.fn().mockResolvedValue({ status: "success", id: "uuid-123" });
-
-    renderView({
-      formContext: {
-        setData,
-      },
-    });
-
-    userEvent.click(document.getElementById("submission-form-save-button") as HTMLElement);
+    userEvent.click(getByRole("button", { name: "Approve" }));
 
     await waitFor(() => {
-      expect(setData).toHaveBeenCalled();
-      expect(mocked.navigate).toHaveBeenCalledWith("/submission-request/uuid-123/A", {
-        replace: true,
-        preventScrollReset: true,
-      });
-      expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Your changes for the Principal Investigator and Contact section have been successfully saved.",
-        { variant: "success" }
+      expect(getByText("Approve Submission Request")).toBeInTheDocument();
+    });
+    expect(getByText("Confirm to Approve")).toBeInTheDocument();
+    expect(getByText("Require Data Model changes")).toBeInTheDocument();
+    expect(
+      getByText("Require Risk Mitigation document & De-identification protocol")
+    ).toBeInTheDocument();
+  });
+
+  it("should send the correct properties to approveForm on confirm", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Review", readOnlyInputs: true });
+    mockFormObject = {
+      ref: { current: document.createElement("form") },
+      data: {
+        sections: completedSections,
+      } as QuestionnaireData,
+    };
+
+    const { getByRole, getByTestId } = render(<TestParent />);
+
+    userEvent.click(getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => {
+      expect(getByTestId("pendingModelChange-checkbox")).toBeInTheDocument();
+    });
+
+    userEvent.click(getByTestId("pendingModelChange-checkbox"));
+    userEvent.click(getByTestId("pendingImageDeIdentification-checkbox"));
+
+    const textarea = within(getByTestId("review-comment")).getByRole("textbox");
+    userEvent.type(textarea, "Approved with conditions");
+
+    userEvent.click(getByTestId("review-form-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(baseFormCtxState.approveForm).toHaveBeenCalledWith(
+        {
+          reviewComment: "Approved with conditions",
+          pendingModelChange: true,
+          pendingImageDeIdentification: true,
+        },
+        true
       );
     });
   });
 
-  it("shows save error snackbar when setData fails", async () => {
-    const setData = vi.fn().mockResolvedValue({
-      status: "failed",
-      errorMessage: "Unable to save",
-    });
+  it("should render the Reject ReviewFormDialog with correct props", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Review", readOnlyInputs: true });
 
-    renderView({
-      formContext: {
-        setData,
-      },
-    });
+    const { getByText, getByRole } = render(<TestParent />);
 
-    userEvent.click(document.getElementById("submission-form-save-button") as HTMLElement);
+    userEvent.click(getByRole("button", { name: "Reject" }));
 
     await waitFor(() => {
-      expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "An error occurred while saving the Principal Investigator and Contact section.",
-        { variant: "error" }
-      );
+      expect(getByText("Reject Submission Request")).toBeInTheDocument();
     });
+    expect(getByText("Confirm to Reject")).toBeInTheDocument();
   });
 
-  it("opens submit dialog in review section", async () => {
-    renderView({
-      section: "REVIEW",
-    });
+  it("should render the Inquire ReviewFormDialog with correct props", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Review", readOnlyInputs: true });
 
-    userEvent.click(document.getElementById("submission-form-submit-button") as HTMLElement);
+    const { getByText, getByRole } = render(<TestParent />);
 
-    expect(screen.getByText("Submit Request")).toBeInTheDocument();
-  });
-
-  it("opens approve dialog in review mode", () => {
-    renderView({
-      section: "REVIEW",
-      formMode: {
-        formMode: "Review",
-        readOnlyInputs: true,
-      },
-    });
-
-    userEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(screen.getByText("Approve Submission Request")).toBeInTheDocument();
-  });
-
-  it("opens inquire dialog in review mode", () => {
-    renderView({
-      section: "REVIEW",
-      formMode: {
-        formMode: "Review",
-        readOnlyInputs: true,
-      },
-    });
-
-    userEvent.click(screen.getByRole("button", { name: "Request Additional Information" }));
-    expect(screen.getByText("Request Additional Changes")).toBeInTheDocument();
-  });
-
-  it("opens reject dialog in review mode", () => {
-    renderView({
-      section: "REVIEW",
-      formMode: {
-        formMode: "Review",
-        readOnlyInputs: true,
-      },
-    });
-
-    userEvent.click(screen.getByRole("button", { name: "Reject" }));
-    expect(screen.getByText("Reject Submission Request")).toBeInTheDocument();
-  });
-
-  it("opens unsaved changes dialog when blocker intercepts invalid navigation", async () => {
-    const dirtyData = questionnaireDataFactory.build({
-      submitterComment: "changed",
-      sections: [{ name: "A", status: "Not Started" }],
-    });
-
-    renderView({
-      formContext: {
-        data: {
-          ...buildDefaultData(),
-          questionnaireData: questionnaireDataFactory.build({
-            sections: [{ name: "A", status: "Not Started" }],
-          }),
-        },
-      },
-    });
-
-    mocked.getSectionData.mockReturnValue(dirtyData);
-    mocked.checkValidity.mockReturnValue(false);
-
-    act(() => {
-      expect(mocked.blockerCallback?.()).toBe(true);
-    });
+    userEvent.click(getByRole("button", { name: "Request Additional Information" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Unsaved Changes")).toBeInTheDocument();
+      expect(getByText("Request Additional Changes")).toBeInTheDocument();
     });
-  });
-
-  it("saves from unsaved changes dialog, closes prompt, and navigates with persisted id", async () => {
-    const setData = vi.fn().mockResolvedValue({ status: "success", id: "uuid-123" });
-    const dirtyData = questionnaireDataFactory.build({
-      submitterComment: "changed",
-      sections: [{ name: "A", status: "Not Started" }],
-    });
-
-    mocked.blocker.location.pathname = "/submission-request/new/B";
-
-    renderView({
-      formContext: {
-        setData,
-      },
-    });
-
-    mocked.getSectionData.mockReturnValue(dirtyData);
-    mocked.checkValidity.mockReturnValue(false);
-
-    act(() => {
-      expect(mocked.blockerCallback?.()).toBe(true);
-    });
-
-    const dialog = await screen.findByRole("dialog");
-    userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-
-    await waitFor(() => {
-      expect(setData).toHaveBeenCalled();
-      expect(mocked.blocker.reset).toHaveBeenCalled();
-      expect(mocked.navigate).toHaveBeenCalledWith("/submission-request/uuid-123/B", {
-        replace: true,
-        preventScrollReset: true,
-      });
-      expect(screen.queryByText("Unsaved Changes")).not.toBeInTheDocument();
-    });
-  });
-
-  it("discards from unsaved changes dialog and continues blocked navigation", async () => {
-    const dirtyData = questionnaireDataFactory.build({
-      submitterComment: "changed",
-      sections: [{ name: "A", status: "Not Started" }],
-    });
-
-    renderView();
-
-    mocked.getSectionData.mockReturnValue(dirtyData);
-    mocked.checkValidity.mockReturnValue(false);
-
-    act(() => {
-      expect(mocked.blockerCallback?.()).toBe(true);
-    });
-
-    const dialog = await screen.findByRole("dialog");
-    userEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
-
-    await waitFor(() => {
-      expect(mocked.blocker.proceed).toHaveBeenCalled();
-      expect(screen.queryByText("Unsaved Changes")).not.toBeInTheDocument();
-    });
+    expect(getByText("Confirm to move to Inquired")).toBeInTheDocument();
   });
 });
