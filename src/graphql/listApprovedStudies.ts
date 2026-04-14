@@ -11,7 +11,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
     $controlledAccess: String
     $study: String
     $programID: ID
-    $status: String
+    $statuses: [String!] = []
   ) {
     listApprovedStudies(
       first: $first
@@ -22,7 +22,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
       controlledAccess: $controlledAccess
       study: $study
       programID: $programID
-      status: $status
+      statuses: $statuses
     ) {
       total
       studies {
@@ -66,7 +66,7 @@ export type Input = {
   openAccess?: boolean;
   study?: string;
   programID?: string;
-  status?: "Active" | "Inactive";
+  statuses?: Array<"Active" | "Inactive">;
 };
 
 export type Response = {
