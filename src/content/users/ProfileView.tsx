@@ -269,7 +269,7 @@ const ProfileView: FC<Props> = ({ _id, viewType }: Props) => {
     ListApprovedStudiesResp,
     ListApprovedStudiesInput
   >(LIST_APPROVED_STUDIES, {
-    variables: { first: -1, orderBy: "studyName", sortDirection: "asc", status: "Active" },
+    variables: { first: -1, orderBy: "studyName", sortDirection: "asc", statuses: ["Active"] },
     context: { clientName: "backend" },
     fetchPolicy: "cache-and-network",
     skip: fieldset.studies !== "UNLOCKED",
