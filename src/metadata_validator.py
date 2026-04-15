@@ -10,7 +10,7 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     NODE_TYPE, PROPERTIES, TYPE, MIN, MAX, VALUE_EXCLUSIVE, VALUE_PROP, VALIDATION_RESULT, ORIN_FILE_NAME, \
     VALIDATED_AT, SERVICE_TYPE_METADATA, NODE_ID, PROPERTIES, PARENTS, KEY, NODE_ID, PARENT_TYPE, PARENT_ID_NAME, PARENT_ID_VAL, \
     SUBMISSION_INTENTION, SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE, TYPE_METADATA_VALIDATE, TYPE_CROSS_SUBMISSION, \
-    SUBMISSION_REL_STATUS_RELEASED, VALIDATION_ID, VALIDATION_ENDED, PROPERTY_TERM, \
+    VALIDATION_ID, VALIDATION_ENDED, PROPERTY_TERM, \
     QC_RESULT_ID, BATCH_IDS, VALIDATION_TYPE_METADATA, S3_FILE_INFO, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, QC_ORIGIN, \
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
@@ -26,6 +26,26 @@ from pv_puller_v2 import get_all_pvs_by_version
 VISIBILITY_TIMEOUT = 20
 BATCH_SIZE = 1000
 PROPERTY_NOT_FOUND = "Permissible values not available"
+
+# Process-wide validation lookup per submission_id: submission_nodes index + released_cache (lazy hits/misses).
+_validation_lookup_registry = {}
+
+
+def _validation_context_for_batch(mongo_dao, submission_id, batch_index):
+    """Build or reuse lookup context. Batch 0 (or missing registry) (re)builds submission index."""
+    if batch_index == 0 or submission_id not in _validation_lookup_registry:
+        submission_nodes = mongo_dao.build_submission_node_lookup(submission_id)
+        if submission_nodes is None:
+            submission_nodes = {}
+        _validation_lookup_registry[submission_id] = {
+            "submission_nodes": submission_nodes,
+            "released_cache": {"hits": {}, "misses": set()},
+        }
+    return _validation_lookup_registry[submission_id]
+
+
+def _clear_validation_context(submission_id):
+    _validation_lookup_registry.pop(submission_id, None)
 
 
 def _process_metadata_batch(mongo_dao, model_store, configs, data):
@@ -101,7 +121,8 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
             log.error(f'{status_detail} submission_id={submission_id} validation_id={validation_id} {batch_label}')
             return None
 
-        validator = MetaDataValidator(mongo_dao, model_store, configs)
+        validation_context = _validation_context_for_batch(mongo_dao, submission_id, batch_index)
+        validator = MetaDataValidator(mongo_dao, model_store, configs, validation_context=validation_context)
         init_error = validator._initialize_for_validation(submission, submission_id, scope)
         if init_error:
             batch_status, status_detail = init_error
@@ -160,6 +181,7 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
                     )
 
                 log.info(f'Validation completed submission_id={submission_id} validation_id={validation_id} status={final_status}')
+                _clear_validation_context(submission_id)
             elif completed_count is not None:
                 log.info(f'{batch_label} complete submission_id={submission_id} validation_id={validation_id} '
                          f'{total_batches - completed_count} batches remaining')
@@ -184,8 +206,12 @@ def _process_metadata_validation(mongo_dao, model_store, configs, data):
         log = get_logger(__name__)
         log.error(f'Missing required field for metadata validation: scope={scope}, validation_id={validation_id}')
         return None
-    validator = MetaDataValidator(mongo_dao, model_store, configs)
-    status = validator.validate(submission_id, scope)
+    validation_context = _validation_context_for_batch(mongo_dao, submission_id, 0)
+    validator = MetaDataValidator(mongo_dao, model_store, configs, validation_context=validation_context)
+    try:
+        status = validator.validate(submission_id, scope)
+    finally:
+        _clear_validation_context(submission_id)
     validation_end_at = current_datetime()
     update_status = mongo_dao.update_validation_status(validation_id, status, validation_end_at, METADATA_VALIDATION, status_detail=None, submission_id=submission_id)
     if update_status:
@@ -274,11 +300,12 @@ def metadataValidate(configs, job_queue, mongo_dao):
 
 class MetaDataValidator:
     
-    def __init__(self, mongo_dao, model_store, config):
+    def __init__(self, mongo_dao, model_store, config, validation_context=None):
         self.log = get_logger('MetaData Validator')
         self.mongo_dao = mongo_dao
         self.model_store = model_store
         self.config = config
+        self.validation_context = validation_context
         self.model = None
         self.submission_id = None
         self.scope = None
@@ -327,6 +354,10 @@ class MetaDataValidator:
         self.study_name = study.get("studyName")
         self.program_names = self.mongo_dao.find_organization_name_by_study_id(study_id)
         return None
+
+    def _get_released_node_cached(self, data_common, node_type, node_id):
+        rc = self.validation_context.get("released_cache") if self.validation_context else None
+        return self.mongo_dao.get_released_node_cached(data_common, node_type, node_id, rc)
 
     def validate(self, submission_id, scope):
         submission = self.mongo_dao.get_submission(submission_id)
@@ -413,6 +444,8 @@ class MetaDataValidator:
             msg = f'Failed to update dataRecords for the submission, {self.submission_id} at scope, {self.scope}!'
             self.log.error(msg)
             self.isError = True
+        elif self.validation_context and updated_records:
+            self.mongo_dao.merge_submission_node_lookup(self.validation_context["submission_nodes"], updated_records)
         return validated_count
 
     def validate_node(self, data_record):
@@ -454,7 +487,7 @@ class MetaDataValidator:
             t0 = time.perf_counter()
             #check if existed nodes in release collection
             if sub_intention and sub_intention in [SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE]:
-                exist_release = self.mongo_dao.search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
+                exist_release = self._get_released_node_cached(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID])
                 if exist_release:
                     #do not raise "missing required property(M003)" and "Relationship not specified(M013)" errors when updating data
                     errors = [e for e in errors if str(e.get("code", "")) != "M003" and str(e.get("code", "")) != "M013"]
@@ -542,8 +575,15 @@ class MetaDataValidator:
             result[ERRORS].append(create_error("M022", [msg_prefix, id_property_key], id_property_key, ""))
         else:
             # check if duplicate records
-            results = self.mongo_dao.search_nodes_by_index([{TYPE: node_type, KEY: id_property_key, VALUE_PROP: id_property_value}], self.submission[ID])
-            if len(results) > 1:
+            lookup = self.validation_context.get("submission_nodes") if self.validation_context else None
+            if lookup is not None:
+                key = (node_type, str(id_property_value).strip())
+                results = lookup.get(key, [])
+            else:
+                results = self.mongo_dao.search_nodes_by_index(
+                    [{TYPE: node_type, KEY: id_property_key, VALUE_PROP: id_property_value}], self.submission[ID]
+                )
+            if results is not None and len(results) > 1:
                 duplicates = ""
                 for item in results:
                     if item[ID] == data_record[ID]:
@@ -637,7 +677,17 @@ class MetaDataValidator:
             parent_id_value = parent_node.get("parentIDValue")
             if parent_type and parent_id_value and parent_id_value is not None:
                 parent_nodes.append({"type": parent_type, "key": parent_id_property, "value": parent_id_value})
-        exist_parent_nodes = self.mongo_dao.search_nodes_by_index(parent_nodes, self.submission[ID])
+        lookup = self.validation_context.get("submission_nodes") if self.validation_context else None
+        if lookup is not None:
+            exist_parent_nodes = []
+            for spec in parent_nodes:
+                nt = spec.get(TYPE)
+                nv = spec.get(VALUE_PROP)
+                if nt is None or nv is None:
+                    continue
+                exist_parent_nodes.extend(lookup.get((nt, str(nv).strip()), []))
+        else:
+            exist_parent_nodes = self.mongo_dao.search_nodes_by_index(parent_nodes, self.submission[ID])
         parent_node_cache = []
         for node in exist_parent_nodes:
             if node.get(PROPERTIES):
@@ -723,7 +773,7 @@ class MetaDataValidator:
                         
             has_parent = (parent_type, parent_id_property, parent_id_value) in parent_nodes
             if not has_parent:
-                released_parent = self.mongo_dao.search_released_node(data_common, parent_type, parent_id_value)
+                released_parent = self._get_released_node_cached(data_common, parent_type, parent_id_value)
                 if not released_parent:
                     result[ERRORS].append(create_error("M014", [msg_prefix, parent_type, f'[“{parent_id_property}”: “{parent_id_value}"]'], node_type, node_id))
                 else:
@@ -756,7 +806,9 @@ class MetaDataValidator:
                         consent_code_group = self.mongo_dao.get_dataRecord_by_node(consent_code_group_tuple[2], consent_code_group_tuple[0], self.submission_id)
                         # if can not find conset_code_group, try to find in release collection
                         if not consent_code_group:
-                            consent_code_group = self.mongo_dao.search_release(self.datacommon, consent_code_group_tuple[0], consent_code_group_tuple[2])
+                            consent_code_group = self._get_released_node_cached(
+                                self.datacommon, consent_code_group_tuple[0], consent_code_group_tuple[2]
+                            )
                         if consent_code_group:
                             consent_code = consent_code_group["props"].get(CONSENT_GROUP_NUMBER)
                             if consent_code:

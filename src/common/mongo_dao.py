@@ -5,7 +5,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     PARENT_TYPE, PARENT_ID_VAL, PARENTS, FILE_VALIDATION_STATUS, METADATA_VALIDATION_STATUS, TYPE, \
     FILE_MD5_COLLECTION, FILE_NAME, CRDC_ID, RELEASE_COLLECTION, DATA_COMMON_NAME, KEY, \
     VALUE_PROP, VALIDATED_AT, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, FAILED, PARENT_ID_NAME, \
-    SUBMISSION_REL_STATUS, SUBMISSION_REL_STATUS_DELETED, STUDY_ABBREVIATION, SUBMISSION_STATUS, STUDY_ID, \
+    SUBMISSION_REL_STATUS, SUBMISSION_REL_STATUS_DELETED, SUBMISSION_REL_STATUS_RELEASED, STUDY_ABBREVIATION, SUBMISSION_STATUS, STUDY_ID, \
     CROSS_SUBMISSION_VALIDATION_STATUS, ADDITION_ERRORS, VALIDATION_COLLECTION, VALIDATION_ENDED, CONFIG_COLLECTION, \
     BATCH_BUCKET, CDE_COLLECTION, CDE_CODE, CDE_VERSION, ENTITY_TYPE, QC_COLLECTION, QC_RESULT_ID, CONFIG_TYPE, \
     SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, CDE_PERMISSIVE_VALUES, PROPERTY_PERMISSIBLE_VALUES, CREATED_AT, PROPERTIES, \
@@ -18,6 +18,14 @@ from common.utils import get_exception_msg, current_datetime, get_uuid_str
 from common.s3_utils import S3Service
 
 MAX_SIZE = 10000
+
+# Active release rows only (exclude soft-deleted "Deleted" status).
+ACTIVE_RELEASE_STATUSES = [SUBMISSION_REL_STATUS_RELEASED, None]
+
+SUBMISSION_NODE_LOOKUP_PROJECTION = {
+    ID: 1, NODE_TYPE: 1, NODE_ID: 1, PROPERTIES: 1, PARENTS: 1, ORIN_FILE_NAME: 1, "lineNumber": 1,
+}
+
 
 class MongoDao:
     def __init__(self, connectionStr, db_name):
@@ -150,6 +158,115 @@ class MongoDao:
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"{submission_id}: Failed to search nodes: {get_exception_msg()}")
+            return None
+
+    @staticmethod
+    def _submission_lookup_key(node_type, node_id):
+        if node_type is None or node_id is None:
+            return None
+        return (node_type, str(node_id).strip())
+
+    def build_submission_node_lookup(self, submission_id):
+        """All data records for submission (no status filter). Values are lists for duplicate detection."""
+        db = self.client[self.db_name]
+        data_collection = db[DATA_COLLECTION]
+        index = {}
+        try:
+            for doc in data_collection.find({SUBMISSION_ID: submission_id}, SUBMISSION_NODE_LOOKUP_PROJECTION):
+                key = MongoDao._submission_lookup_key(doc.get(NODE_TYPE), doc.get(NODE_ID))
+                if not key:
+                    continue
+                index.setdefault(key, []).append(doc)
+            return index
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"{submission_id}: Failed to build submission node lookup: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"{submission_id}: Failed to build submission node lookup: {get_exception_msg()}")
+            return None
+
+    def merge_submission_node_lookup(self, lookup, updated_records):
+        """Update lookup after validation writes: drop stale rows by id, append slices for new keys."""
+        if not lookup or not updated_records:
+            return
+        id_refresh = {r.get(ID) for r in updated_records if r.get(ID)}
+        keys_to_delete = []
+        for key, lst in lookup.items():
+            filtered = [d for d in lst if d.get(ID) not in id_refresh]
+            if filtered:
+                lookup[key] = filtered
+            else:
+                keys_to_delete.append(key)
+        for key in keys_to_delete:
+            del lookup[key]
+        for doc in updated_records:
+            key = MongoDao._submission_lookup_key(doc.get(NODE_TYPE), doc.get(NODE_ID))
+            if not key:
+                continue
+            slim = {k: doc.get(k) for k in SUBMISSION_NODE_LOOKUP_PROJECTION}
+            lookup.setdefault(key, []).append(slim)
+
+    def find_active_released_node_by_identity(self, data_commons, node_type, node_id):
+        """find_one on release: active rows only (Released or missing/null status)."""
+        db = self.client[self.db_name]
+        data_collection = db[RELEASE_COLLECTION]
+        try:
+            return data_collection.find_one({
+                DATA_COMMON_NAME: data_commons, NODE_TYPE: node_type, NODE_ID: node_id,
+                SUBMISSION_REL_STATUS: {"$in": ACTIVE_RELEASE_STATUSES},
+            })
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to find active release record for {data_commons}/{node_type}/{node_id}: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to find active release record for {data_commons}/{node_type}/{node_id}: {get_exception_msg()}")
+            return None
+
+    def get_released_node_cached(self, data_commons, node_type, node_id, released_cache):
+        """Lazy positive/negative cache; released_cache is dict with 'hits' and 'misses' (set)."""
+        if released_cache is None:
+            return self.find_active_released_node_by_identity(data_commons, node_type, node_id)
+        key = MongoDao._submission_lookup_key(node_type, node_id)
+        if not key:
+            return None
+        misses = released_cache.setdefault("misses", set())
+        hits = released_cache.setdefault("hits", {})
+        if key in misses:
+            return None
+        if key in hits:
+            return hits[key]
+        doc = self.find_active_released_node_by_identity(data_commons, node_type, node_id)
+        if doc:
+            hits[key] = doc
+        else:
+            misses.add(key)
+        return doc
+
+    def find_active_released_children_by_parent(self, node_type, data_commons, parent_node):
+        """Released child nodes by parent edge; active status only."""
+        db = self.client[self.db_name]
+        data_collection = db[RELEASE_COLLECTION]
+        try:
+            return list(data_collection.find({
+                DATA_COMMON_NAME: data_commons, NODE_TYPE: node_type,
+                SUBMISSION_REL_STATUS: {"$in": ACTIVE_RELEASE_STATUSES},
+                PARENTS: {"$elemMatch": {
+                    PARENT_TYPE: parent_node[PARENT_TYPE],
+                    PARENT_ID_NAME: parent_node[PARENT_ID_NAME],
+                    PARENT_ID_VAL: parent_node[PARENT_ID_VAL],
+                }},
+            }))
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to find active release children for {data_commons}/{parent_node.get(PARENT_TYPE)}/{parent_node.get(PARENT_ID_VAL)}: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to find active release children for {data_commons}/{parent_node.get(PARENT_TYPE)}/{parent_node.get(PARENT_ID_VAL)}: {get_exception_msg()}")
             return None
 
     """
@@ -818,14 +935,11 @@ class MongoDao:
             return False
 
     """
-    get release by dataCommon, nodeType and nodeId
+    get release by dataCommon, nodeType and nodeId (active rows only)
     """
     def search_release(self, dataCommon, node_type, node_id):
-        db = self.client[self.db_name]
-        data_collection = db[RELEASE_COLLECTION]
         try:
-            result = data_collection.find_one({DATA_COMMON_NAME: dataCommon, NODE_TYPE: node_type, NODE_ID: node_id})
-            return result
+            return self.find_active_released_node_by_identity(dataCommon, node_type, node_id)
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to find release record for {dataCommon}/{node_type}/{node_id}: {get_exception_msg()}")
@@ -925,33 +1039,18 @@ class MongoDao:
 
     def search_released_node(self, data_commons, node_type, node_id):
         """
-        Search release collection for given node
-        :param data_commons:
-        :param node_type:
-        :param node_id:
-        :return:
+        Search release collection for given active released node.
         """
-        db = self.client[self.db_name]
-        data_collection = db[RELEASE_COLLECTION]
-        try:
-            return data_collection.find_one({DATA_COMMON_NAME: data_commons, NODE_TYPE: node_type, NODE_ID: node_id})
-        except errors.PyMongoError as pe:
-            self.log.exception(pe)
-            self.log.exception(f"Failed to find release record for {data_commons}/{node_type}/{node_id}: {get_exception_msg()}")
-            return False
-        except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to find release record for {data_commons}/{node_type}/{node_id}: {get_exception_msg()}")
-            return False
+        result = self.find_active_released_node_by_identity(data_commons, node_type, node_id)
+        return result if result is not None else False
    
     def search_released_node_with_status(self, data_commons, node_type, node_id, status):
         """
-        Search release collection for given node with status
-        :param data_commons:
-        :param node_type:
-        :param node_id:
-        :return:
+        Search release collection with status filter. Uses find_active_released_node_by_identity when status matches active release.
         """
+        if status is not None and set(status) == set(ACTIVE_RELEASE_STATUSES):
+            result = self.find_active_released_node_by_identity(data_commons, node_type, node_id)
+            return result if result is not None else False
         db = self.client[self.db_name]
         data_collection = db[RELEASE_COLLECTION]
         try:
@@ -973,7 +1072,8 @@ class MongoDao:
         data_collection = db[RELEASE_COLLECTION]
         query = []
         node_type, node_id = parent.get(NODE_TYPE), parent.get(NODE_ID)
-        query.append({DATA_COMMON_NAME: datacommon, PARENTS: {"$elemMatch": {PARENT_TYPE: node_type, PARENT_ID_VAL: node_id}}, SUBMISSION_REL_STATUS : {"$in": status}})
+        eff_status = ACTIVE_RELEASE_STATUSES if status is not None and set(status) == set(ACTIVE_RELEASE_STATUSES) else status
+        query.append({DATA_COMMON_NAME: datacommon, PARENTS: {"$elemMatch": {PARENT_TYPE: node_type, PARENT_ID_VAL: node_id}}, SUBMISSION_REL_STATUS: {"$in": eff_status}})
         try:
             results = list(data_collection.find({"$or": query})) if len(query) > 0 else []
             return True, results
@@ -988,26 +1088,9 @@ class MongoDao:
     
     def find_released_nodes_by_parent(self, node_type, data_commons, parent_node):
         """
-        find released certain type children nodes by parent
-        :param node_type:
-        :param data_commons:
-        :param parent_node:
-        :return:
+        find released certain type children nodes by parent (active release rows only)
         """
-        db = self.client[self.db_name]
-        data_collection = db[RELEASE_COLLECTION]
-        try:
-            return list(data_collection.find({DATA_COMMON_NAME: data_commons, NODE_TYPE: node_type, PARENTS: {"$elemMatch": {PARENT_TYPE: parent_node[PARENT_TYPE], 
-                        PARENT_ID_NAME: parent_node[PARENT_ID_NAME], PARENT_ID_VAL: parent_node[PARENT_ID_VAL]}}}))
-
-        except errors.PyMongoError as pe:
-            self.log.exception(pe)
-            self.log.exception(f"Failed to find release record for {data_commons}/{parent_node[PARENT_TYPE]}/{parent_node[PARENT_ID_VAL]}: {get_exception_msg()}")
-            return None
-        except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to find release record for {data_commons}/{parent_node[PARENT_TYPE]}/{parent_node[PARENT_ID_VAL]}: {get_exception_msg()}")
-            return None
+        return self.find_active_released_children_by_parent(node_type, data_commons, parent_node)
 
     """
     count documents in a given collection and conditions 
@@ -1629,8 +1712,6 @@ class MongoDao:
         db = self.client[self.db_name]
         data_collection = db[DATA_COLLECTION]
         query = {SUBMISSION_ID: submissionID, NODE_TYPE: parentType, NODE_ID: parentIDValue}
-        data_collection_release = db[RELEASE]
-        query_release = {DATA_COMMON_NAME: dataCommon, NODE_TYPE: parentType, NODE_ID: parentIDValue}
         try:
             result = data_collection.find_one(query)
             if result is not None:
@@ -1638,7 +1719,7 @@ class MongoDao:
                     # convert parent to tuple (parentType, parentIDPropName, parentIDValue)
                     return [(parent.get(PARENT_TYPE), parent.get(PARENT_ID_NAME), parent.get(PARENT_ID_VAL)) for parent in result[PARENTS]]
             # if the parent can not be found in the same submission
-            result_release = data_collection_release.find_one(query_release)
+            result_release = self.find_active_released_node_by_identity(dataCommon, parentType, parentIDValue)
             if result_release is not None:
                 if result_release.get(PARENTS) and len(result_release[PARENTS]) > 0:
                     return [(parent_release.get(PARENT_TYPE), parent_release.get(PARENT_ID_NAME), parent_release.get(PARENT_ID_VAL)) for parent_release in result_release[PARENTS]]
