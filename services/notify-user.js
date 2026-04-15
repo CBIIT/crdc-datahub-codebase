@@ -207,7 +207,7 @@ class NotifyUser {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
             const topMessage = replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
-            const dataModelPendingCondition = sanitizeAllowlistedHtml(
+            const missingDbGapPendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.MISSING_DBGAP_PENDING_CHANGE, templateParams),
                 PRESET_SR_APPROVAL_PENDING_HTML
             );
@@ -215,7 +215,7 @@ class NotifyUser {
                 this.email_constants.NOTIFICATION_SENDER,
                 isTierAdded(this.tier) ? `${this.tier} ${subject}` : subject,
                 await createEmailTemplate("notification-template-SR-pending-conditions.html", {
-                    pendingConditions: [dataModelPendingCondition],
+                    pendingConditions: [missingDbGapPendingCondition],
                     topMessage,
                     ...templateParams}),
                 email,

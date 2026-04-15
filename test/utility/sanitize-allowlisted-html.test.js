@@ -36,6 +36,21 @@ describe('PRESET_SR_APPROVAL_PENDING_HTML via sanitizeAllowlistedHtml', () => {
         expect(out).toMatch(/<a\s[^>]*href="https:\/\/docs\.example\.com\/doc"/);
     });
 
+    it('omits href when anchor has no href to avoid href="undefined"', () => {
+        const out = sanitize('<a>plain text</a>');
+        expect(out).not.toMatch(/href="undefined"/);
+        expect(out).not.toMatch(/\bhref=/);
+        expect(out).toContain('plain text');
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
+
+    it('omits href when href is only whitespace', () => {
+        const out = sanitize('<a href="   ">label</a>');
+        expect(out).not.toMatch(/href="undefined"/);
+        expect(out).not.toMatch(/\bhref=/);
+        expect(out).toContain('label');
+    });
+
     it('preserves http anchor for legacy links', () => {
         const html = '<a href="http://example.com/x">link</a>';
         const out = sanitize(html);

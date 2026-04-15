@@ -33,13 +33,16 @@ const PRESET_SR_APPROVAL_PENDING_HTML = {
     },
     allowProtocolRelative: false,
     transformTags: {
-        a: (tagName, attribs) => ({
-            tagName,
-            attribs: {
-                href: attribs.href,
+        a: (tagName, attribs) => {
+            const nextAttribs = {
                 rel: attribs.rel || 'noopener noreferrer'
+            };
+            const href = attribs.href;
+            if (href != null && String(href).trim() !== '') {
+                nextAttribs.href = href;
             }
-        })
+            return { tagName, attribs: nextAttribs };
+        }
     }
 };
 
