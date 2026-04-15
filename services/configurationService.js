@@ -7,25 +7,12 @@ const MAINTENANCE_MODE = "MAINTENANCE_MODE";
 const CHATBOT = "CHATBOT";
 const getOMBConfiguration = require("../dao/omb");
 const ERROR = require("../constants/error-constants");
-const {
-    SUBMISSION_REQUEST_APPROVAL_EMAIL_TYPE,
-    mergeSubmissionRequestApprovalEmailConstants
-} = require("../utility/submission-request-approval-email-config");
 class ConfigurationService {
     constructor() {
         this.configurationDAO = new ConfigurationDAO();
     }
     async findByType(type) {
         return await this.configurationDAO.findByType(type) || null;
-    }
-
-    /**
-     * Merged copy for submission-request approval emails (DB keys override YAML defaults).
-     * @param {Record<string, unknown>|null|undefined} yamlEmailConstants - full object from notification_email_values.yaml
-     */
-    async getSubmissionRequestApprovalEmailConstants(yamlEmailConstants) {
-        const doc = await this.configurationDAO.findByType(SUBMISSION_REQUEST_APPROVAL_EMAIL_TYPE);
-        return mergeSubmissionRequestApprovalEmailConstants(yamlEmailConstants, doc);
     }
 
     async isMaintenanceMode() {

@@ -11,7 +11,6 @@
  * - init-metadata-validation-batch-size.js: Initialize METADATA_VALIDATION_BATCH_SIZE config entry
  * - add-sts-resource-config.js: Add STS_RESOURCE configuration (tier-based URL)
  * - add-chatbot-enabled-config.js: Add CHATBOT configuration (keys.enabled feature flag)
- * - init-submission-request-approval-email-config.js: Seed SUBMISSION_REQUEST_APPROVAL_EMAIL from YAML
  * - backfill-approved-study-status.js: Set status Active on approvedStudies where missing
  */
 
@@ -224,29 +223,6 @@ async function executeChatbotEnabledConfigMigration(db) {
     }
 }
 
-/**
- * Execute SUBMISSION_REQUEST_APPROVAL_EMAIL configuration migration
- */
-async function executeSubmissionRequestApprovalEmailConfigMigration(db) {
-    console.log('🔄 Executing SUBMISSION_REQUEST_APPROVAL_EMAIL initialization...');
-
-    try {
-        const migration = require('./init-submission-request-approval-email-config');
-        const result = await migration.initSubmissionRequestApprovalEmailConfig(db);
-
-        if (result.success) {
-            console.log('✅ SUBMISSION_REQUEST_APPROVAL_EMAIL initialization completed successfully');
-        } else {
-            console.log('❌ SUBMISSION_REQUEST_APPROVAL_EMAIL initialization failed');
-        }
-
-        return result;
-    } catch (error) {
-        console.error('❌ Error executing SUBMISSION_REQUEST_APPROVAL_EMAIL migration:', error.message);
-        return { success: false, error: error.message };
-    }
-}
-
 // ============================================================================
 // MIGRATION ORCHESTRATOR
 // ============================================================================
@@ -299,11 +275,6 @@ async function orchestrateMigration() {
                 name: "Add CHATBOT configuration",
                 file: "add-chatbot-enabled-config.js",
                 execute: () => executeChatbotEnabledConfigMigration(db)
-            },
-            {
-                name: "Initialize SUBMISSION_REQUEST_APPROVAL_EMAIL configuration",
-                file: "init-submission-request-approval-email-config.js",
-                execute: () => executeSubmissionRequestApprovalEmailConfigMigration(db)
             },
             {
                 name: "Backfill ApprovedStudy.status (Active where missing)",

@@ -80,7 +80,7 @@ app.use("/api/graphql", graphqlRouter);
         const config = await configuration.updateConfig(dbConnector);
         const emailService = new EmailService(config.email_transport, config.emails_enabled);
         const configurationService = new ConfigurationService();
-        const notificationsService = new NotifyUser(emailService, config.tier, configurationService);
+        const notificationsService = new NotifyUser(emailService, config.tier);
         const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
         const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
         const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
