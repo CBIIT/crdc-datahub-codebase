@@ -33,7 +33,9 @@ const mockNotificationsService = {
     remindApplicationsNotification: jest.fn(),
     multipleChangesApproveQuestionNotification: jest.fn(),
     dbGapMissingApproveQuestionNotification: jest.fn(),
-    dataModelChangeApproveQuestionNotification: jest.fn()
+    dataModelChangeApproveQuestionNotification: jest.fn(),
+    pendingGPANotification: jest.fn(),
+    pendingImageDeIdentificationApproveQuestionNotification: jest.fn()
 };
 const mockEmailParams = { inactiveDays: 180, inactiveApplicationNotifyDays: [7, 30, 60], conditionalSubmissionContact: 'contact@email', url: 'http://test', submissionGuideURL: 'http://guide' };
 const mockOrganizationService = {
@@ -887,6 +889,196 @@ describe('Application', () => {
                 undefined,
                 undefined,
                 mockNewProgram
+            );
+        });
+
+        it('sends approveQuestionNotification when there are no pending approval conditions and submitter opted into review emails', async () => {
+            const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                studyAbbreviation: 'S1',
+                applicantID: 'user-applicant-1',
+                applicant: {
+                    applicantID: 'user-applicant-1',
+                    applicantEmail: 'submitter@test.com',
+                    applicantName: 'Submitter Name'
+                },
+                programName: 'Program One',
+                programAbbreviation: 'PO',
+                programDescription: 'Program Description',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' }, accessTypes: [], study: {} };
+            const mockExistingProgram = { _id: 'program1', name: 'Program One' };
+
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
+            );
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Approved',
+                history: []
+            };
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.find.mockResolvedValueOnce([{
+                email: 'submitter@test.com',
+                notifications: [reviewNotification]
+            }]);
+
+            await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
+
+            expect(mockNotificationsService.approveQuestionNotification).toHaveBeenCalled();
+            expect(mockNotificationsService.multipleChangesApproveQuestionNotification).not.toHaveBeenCalled();
+            expect(mockNotificationsService.pendingImageDeIdentificationApproveQuestionNotification).not.toHaveBeenCalled();
+        });
+
+        it('sends pendingImageDeIdentificationApproveQuestionNotification when only pending image de-identification', async () => {
+            const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                studyAbbreviation: 'S1',
+                applicantID: 'user-applicant-1',
+                applicant: {
+                    applicantID: 'user-applicant-1',
+                    applicantEmail: 'submitter@test.com',
+                    applicantName: 'Submitter Name'
+                },
+                programName: 'Program One',
+                programAbbreviation: 'PO',
+                programDescription: 'Program Description',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' }, accessTypes: [], study: {} };
+            const mockExistingProgram = { _id: 'program1', name: 'Program One' };
+
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
+            );
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Looks good',
+                history: []
+            };
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.find.mockResolvedValueOnce([{
+                email: 'submitter@test.com',
+                notifications: [reviewNotification]
+            }]);
+
+            await app.approveApplication({
+                _id: 'app1',
+                comment: 'Looks good',
+                pendingImageDeIdentification: true
+            }, context);
+
+            expect(mockNotificationsService.approveQuestionNotification).not.toHaveBeenCalled();
+            expect(mockNotificationsService.pendingImageDeIdentificationApproveQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Submitter Name',
+                    reviewComments: 'Looks good',
+                    study: 'study1',
+                    contactEmail: mockEmailParams.conditionalSubmissionContact,
+                    submissionGuideURL: mockEmailParams.submissionGuideURL
+                })
+            );
+        });
+
+        it('sends multipleChangesApproveQuestionNotification when image de-identification and model change pendings', async () => {
+            const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                applicantID: 'user-applicant-1',
+                applicant: {
+                    applicantID: 'user-applicant-1',
+                    applicantEmail: 'submitter@test.com',
+                    applicantName: 'Submitter Name'
+                },
+                programName: 'Program One',
+                programAbbreviation: 'PO',
+                programDescription: 'Program Description',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' }, accessTypes: [], study: {} };
+            const mockExistingProgram = { _id: 'program1', name: 'Program One' };
+
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
+            );
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Approved with conditions',
+                history: []
+            };
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.find.mockResolvedValueOnce([{
+                email: 'submitter@test.com',
+                notifications: [reviewNotification]
+            }]);
+
+            await app.approveApplication({
+                _id: 'app1',
+                comment: 'Approved with conditions',
+                pendingModelChange: true,
+                pendingImageDeIdentification: true
+            }, context);
+
+            expect(mockNotificationsService.approveQuestionNotification).not.toHaveBeenCalled();
+            expect(mockNotificationsService.pendingImageDeIdentificationApproveQuestionNotification).not.toHaveBeenCalled();
+            expect(mockNotificationsService.multipleChangesApproveQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Submitter Name',
+                    reviewComments: 'Approved with conditions',
+                    study: 'study1'
+                }),
+                false,
+                true,
+                false,
+                true
             );
         });
 

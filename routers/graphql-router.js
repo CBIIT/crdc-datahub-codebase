@@ -74,10 +74,10 @@ dbConnector.connect().then(async () => {
     const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
     const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
     const emailService = new EmailService(config.email_transport, config.emails_enabled);
+    const configurationService = new ConfigurationService();
     const notificationsService = new NotifyUser(emailService, config.tier);
 
     const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
-    const configurationService = new ConfigurationService();
     const propertyPVCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, MODEL_NAME.PROPERTY_PVS);
     const propertyPVDAO = new PropertyPVDAO(propertyPVCollection);
     const propertyPVService = new PropertyPVService(configurationService, propertyPVDAO);

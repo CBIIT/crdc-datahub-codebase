@@ -846,10 +846,11 @@ class Application {
         }
         const isDbGapMissing = (questionnaire?.accessTypes?.includes("Controlled Access") && !questionnaire?.study?.dbGaPPPHSNumber);
         const isPendingGPA = (questionnaire?.accessTypes?.includes("Controlled Access") && Boolean(!updated?.GPAName?.trim()));
+        const isPendingImageDeIdentification = isTrue(document?.pendingImageDeIdentification);
         let promises = [];
 
         promises.push(this.institutionService.addNewInstitutions(application?.newInstitutions));
-        promises.push(this.sendEmailAfterApproveApplication(context, application, document?.comment, isDbGapMissing, isTrue(document?.pendingModelChange), isPendingGPA));
+        promises.push(this.sendEmailAfterApproveApplication(context, application, document?.comment, isDbGapMissing, isTrue(document?.pendingModelChange), isPendingGPA, isPendingImageDeIdentification));
         if (updated) {
             promises.unshift(this.getApplicationById(document._id));
             if(questionnaire) {
@@ -1130,7 +1131,7 @@ class Application {
             }}]);
     }
 
-    async sendEmailAfterApproveApplication(context, application, comment, isDbGapMissing = false, isPendingModelChange, isPendingGPA = false) {
+    async sendEmailAfterApproveApplication(context, application, comment, isDbGapMissing = false, isPendingModelChange, isPendingGPA = false, isPendingImageDeIdentification = false) {
         const res = await Promise.all([
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
@@ -1143,7 +1144,15 @@ class Application {
         const toBCCEmails = getUserEmails(toBCCUsers)
             ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
-            if (!isDbGapMissing && !isPendingModelChange && !isPendingGPA) {
+            const pendingTemplateParams = {
+                firstName: application?.applicant?.applicantName,
+                contactEmail: this.emailParams?.conditionalSubmissionContact,
+                reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
+                study: setDefaultIfNoName(application?.studyName),
+                submissionGuideURL: this.emailParams?.submissionGuideURL
+            };
+
+            if (!isDbGapMissing && !isPendingModelChange && !isPendingGPA && !isPendingImageDeIdentification) {
                 await this.notificationService.approveQuestionNotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
@@ -1154,26 +1163,21 @@ class Application {
                     {
                         study: application?.studyAbbreviation,
                         contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
-                });
+                    }
+                );
                 return;
             }
 
-            const pendingChange = [isDbGapMissing, isPendingModelChange, isPendingGPA];
-            const filteredPendingChange = pendingChange.filter(Boolean);
-            if (filteredPendingChange?.length > 1) {
+            const pendingCount = [isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification].filter(Boolean).length;
+            if (pendingCount > 1) {
                 await this.notificationService.multipleChangesApproveQuestionNotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        contactEmail: this.emailParams?.conditionalSubmissionContact,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                        study: setDefaultIfNoName(application?.studyName),
-                        submissionGuideURL: this.emailParams?.submissionGuideURL
-                    },
+                    pendingTemplateParams,
                     isDbGapMissing,
                     isPendingModelChange,
-                    isPendingGPA
+                    isPendingGPA,
+                    isPendingImageDeIdentification
                 );
                 return;
             }
@@ -1182,13 +1186,7 @@ class Application {
                 await this.notificationService.dbGapMissingApproveQuestionNotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        contactEmail: this.emailParams?.conditionalSubmissionContact,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                        study: setDefaultIfNoName(application?.studyName),
-                        submissionGuideURL: this.emailParams?.submissionGuideURL
-                    }
+                    pendingTemplateParams
                 );
                 return;
             }
@@ -1197,27 +1195,25 @@ class Application {
                 await this.notificationService.dataModelChangeApproveQuestionNotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        contactEmail: this.emailParams?.conditionalSubmissionContact,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                        study: setDefaultIfNoName(application?.studyName),
-                        submissionGuideURL: this.emailParams?.submissionGuideURL
-                    }
+                    pendingTemplateParams
                 );
+                return;
             }
 
             if (isPendingGPA) {
                 await this.notificationService.pendingGPANotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        contactEmail: this.emailParams?.conditionalSubmissionContact,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                        study: setDefaultIfNoName(application?.studyName),
-                        submissionGuideURL: this.emailParams?.submissionGuideURL
-                    }
+                    pendingTemplateParams
+                );
+                return;
+            }
+
+            if (isPendingImageDeIdentification) {
+                await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(application?.applicant?.applicantEmail,
+                    CCEmails,
+                    toBCCEmails,
+                    pendingTemplateParams
                 );
             }
         }
