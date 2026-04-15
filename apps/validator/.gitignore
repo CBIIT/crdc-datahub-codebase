@@ -146,5 +146,3 @@ backup/
 
 # model dict dumps
 **/models/*.json
-
-src/bento
