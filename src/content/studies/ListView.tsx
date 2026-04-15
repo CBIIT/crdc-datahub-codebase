@@ -209,6 +209,11 @@ const columns: Column<ApprovedStudy>[] = [
     fieldKey: "primaryContact.firstName",
   },
   {
+    label: "Status",
+    renderValue: ({ status }) => status || "",
+    fieldKey: "status",
+  },
+  {
     label: "Created Date",
     renderValue: (a) =>
       a.createdAt ? (
