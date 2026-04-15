@@ -142,7 +142,7 @@ jobs:
       - name: copy bento-common subfolders (for validator & pvpuller)
         if: ${{ matrix.name == 'essential-validation' || matrix.name == 'export-validation' || matrix.name == 'file-validation' || matrix.name == 'metadata-validation' || matrix.name == 'pv-puller' }}
         run: |
-          cp -rL lib/bento-common/. ${{ matrix.context }}/src/bento/
+          cp -rL lib/bento-common/. ${{ matrix.context }}/src/bento-common/
 
       - name: Build Docker Image
         run: |
@@ -159,7 +159,7 @@ jobs:
       - name: clean up bento-common subfolders (for validator & pvpuller)
         if: ${{ matrix.name == 'essential-validation' || matrix.name == 'export-validation' || matrix.name == 'file-validation' || matrix.name == 'metadata-validation' || matrix.name == 'pv-puller' }}
         run: |
-          rm -rf ${{ matrix.context }}/src/bento/
+          rm -rf ${{ matrix.context }}/src/bento-common/
 
       - name: Run Trivy Scan
         if: ${{ inputs.trivy_scan == true }}

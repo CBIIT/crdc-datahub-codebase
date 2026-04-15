@@ -1,7 +1,7 @@
 FROM python:3.14.2-alpine3.22 AS fnl_base_image
  
 WORKDIR /usr/validator
-COPY src/bento/ ./src/bento/
+COPY src/bento-common/ ./src/bento/
 COPY . .
 RUN pip3 install -r requirements.txt
  
