@@ -21,10 +21,12 @@ const StyledSelect = styled(Select, {
     borderRadius: "8px",
     border: "1px solid #6B7294",
     marginTop: "2px",
+    overflow: "auto",
     "& .MuiList-root": {
       padding: 0,
-      overflow: "auto",
       maxHeight: "40vh",
+      width: "fit-content",
+      minWidth: "100%",
     },
     "& .MuiMenuItem-root": {
       padding: "0 10px",
