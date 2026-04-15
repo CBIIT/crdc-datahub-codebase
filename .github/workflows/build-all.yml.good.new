@@ -134,22 +134,12 @@ jobs:
         run: |
           echo "IMAGE_NAME=${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ matrix.ecr_repo }}:${{ env.IMAGE_TAG }}" >> $GITHUB_ENV
 
-      - name: copy db-driver subfolders
-        if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
-        run: |
-          cp -rL lib/db-driver/. ${{ matrix.context }}/crdc-datahub-database-drivers/
-
       - name: Build Docker Image
         run: |
           docker build --no-cache \
             -t $IMAGE_NAME \
             -f ${{ matrix.dockerfile }} \
             ${{ matrix.context }}
-
-      - name: clean up db-driver
-        if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
-        run: |
-          rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers/
 
       - name: Run Trivy Scan
         if: ${{ inputs.trivy_scan == true }}
