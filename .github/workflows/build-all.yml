@@ -134,10 +134,15 @@ jobs:
         run: |
           echo "IMAGE_NAME=${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ matrix.ecr_repo }}:${{ env.IMAGE_TAG }}" >> $GITHUB_ENV
 
-      - name: copy db-driver subfolders
+      - name: copy db-driver subfolders (for authn and BE)
         if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
         run: |
           cp -rL lib/db-driver/. ${{ matrix.context }}/crdc-datahub-database-drivers/
+
+      - name: copy bento-common subfolders (for validator & pvpuller)
+        if: ${{ matrix.name == 'essential-validation' || matrix.name == 'export-validation' || matrix.name == 'file-validation' || matrix.name == 'metadata-validation' || matrix.name == 'pv-puller' }}
+        run: |
+          cp -rL lib/bento-common/. ${{ matrix.context }}/src/bento/
 
       - name: Build Docker Image
         run: |
@@ -150,6 +155,11 @@ jobs:
         if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
         run: |
           rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers/
+  
+      - name: clean up bento-common subfolders (for validator & pvpuller)
+        if: ${{ matrix.name == 'essential-validation' || matrix.name == 'export-validation' || matrix.name == 'file-validation' || matrix.name == 'metadata-validation' || matrix.name == 'pv-puller' }}
+        run: |
+          rm -rf ${{ matrix.context }}/src/bento/
 
       - name: Run Trivy Scan
         if: ${{ inputs.trivy_scan == true }}
