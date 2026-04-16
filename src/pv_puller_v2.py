@@ -192,6 +192,7 @@ def compose_property_record(property_item):
 def compose_synonym_record(property_item, synonym_set):
     """
     compose synonym record from property item
+    Synonym terms are normalized to lowercase before deduplication and DB insert.
     """
     pv_list = property_item.get(PROPERTY_PV_NAME)
     if pv_list:
@@ -200,7 +201,10 @@ def compose_synonym_record(property_item, synonym_set):
             if synonyms:
                 for synonym in synonyms:
                         if synonym:
-                            synonym_key = (synonym, pv_item.get(NCIT_VALUE))
+                            term = str(synonym).strip().lower()
+                            if not term:
+                                continue
+                            synonym_key = (term, pv_item.get(NCIT_VALUE))
                             if synonym_key in synonym_set:
                                 continue
                             synonym_set.add(synonym_key)

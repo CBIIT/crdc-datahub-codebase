@@ -1,5 +1,4 @@
 from pymongo import MongoClient, errors, ReplaceOne, UpdateOne, DeleteOne, DESCENDING, InsertOne, ReturnDocument
-import re
 from bento.common.utils import get_logger
 from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLECTION, ID, UPDATED_AT, \
     SUBMISSION_ID, NODE_ID, NODE_TYPE, S3_FILE_INFO, STATUS, FILE_ERRORS, STATUS_NEW, \
@@ -28,6 +27,7 @@ class MongoDao:
       self.s3_service = S3Service()
       self.props = {}
       self.concept_codes = {}
+      self._pvs_by_synonym_cache = {}
 
     """
     get batch by id
@@ -1414,15 +1414,23 @@ class MongoDao:
             return None
 
     """
-    find synonym records in synonyms collection by synonym term
+    find synonym records in synonyms collection by synonym term.
+    Stored synonym terms are lowercase; lookup normalizes the input the same way as ingest (strip + lower).
     :param synonym:
     """   
     def find_pvs_by_synonym(self, synonym):
+        term = str(synonym).strip().lower()
+        if not term:
+            return []
+        if term in self._pvs_by_synonym_cache:
+            return list(self._pvs_by_synonym_cache[term])
         db = self.client[self.db_name]
         data_collection = db[SYNONYM_COLLECTION]
-        query ={SYNONYM_TERM: {"$regex": f"^{re.escape(synonym)}$", "$options": "i"}} #case-insensitive , 
+        query = {SYNONYM_TERM: term}
         try:
-            return list(data_collection.find(query))
+            results = list(data_collection.find(query))
+            self._pvs_by_synonym_cache[term] = results
+            return list(results)
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to get synonyms for {synonym}: {get_exception_msg()}")
