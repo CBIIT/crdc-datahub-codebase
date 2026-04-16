@@ -6,6 +6,10 @@
 
 - Enhanced study filter to search by both study name and abbreviation
     for improved flexibility.
+- Requests can now be approved but flagged as pending on Risk
+    Mitigation document and Image De-identification protocol.
+- Submission Requests now avoid auto-saving completely blank forms to
+    reduce clutter in New requests.
 
 #### Data Submission
 
@@ -19,19 +23,36 @@
     current filter and sort criteria applied.
 - Validation now accepts standard Null CDE permissible values for
     consistent handling of missing data scenarios.
-- Submitters can now use alternate permissible values listed in CDEs
-    during validation.
-- Validation now supports \"Draft New\" status CDEs to prevent
+- Validation now supports "Draft New" status CDEs to prevent
     submission delays while CDEs are being finalized.
 - API tokens have been optimized to support all submitter profiles
     regardless of the number of assigned studies.
+- When deleting metadata in Data View, users can now choose whether to
+    also delete associated data files.
 - Metadata validation performance significantly improved through
     parallel processing and batch validation for large submissions.
+- \[Bug Fix\]: Fixed an issue where Data View could omit relationship
+    columns for uploaded data in some submissions.
+- \[Bug Fix\]: Fixed an issue where deleting a parent record could
+    incorrectly remove child records that were not orphaned.
+- \[Bug Fix\]: Fixed an issue where validation results could continue
+    showing stale errors after re-uploading corrected files.
+- \[Bug Fix\]: Fixed an issue where required-property validation did
+    not consistently report empty required column values.
+- \[Bug Fix\]: Fixed an issue where validation did not report
+    incompatible consent code combinations for file records.
+- \[Bug Fix\]: Fixed an issue where string-typed properties with
+    primary PV null CDE support incorrectly raised "Value not
+    Permitted" errors.
 
 #### Data Model Navigator
 
 - System now automatically detects and displays model version history
     when a version-history.md file exists in the data model repository.
+- \[Bug Fix\]: Fixed an issue where some acceptable values were
+    displayed multiple times for the same property.
+- \[Bug Fix\]: Fixed regular expression pattern display mismatches in Model
+    Navigator property definitions.
 
 #### Operations Dashboard
 
@@ -39,6 +60,8 @@
     all-time totals by default with optional date range filtering.
 - Enhanced tooltips for control labels and status legends for better
     user guidance.
+- Added Submission Request Metrics dashboard views and filters for
+    monitoring request trends.
 
 #### MDB/STS Integration
 
