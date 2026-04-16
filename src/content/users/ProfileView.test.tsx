@@ -317,7 +317,7 @@ describe("Implementation Requirements", () => {
     );
 
     await waitFor(() => {
-      expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ status: "Active" }));
+      expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["Active"] }));
     });
   });
 });

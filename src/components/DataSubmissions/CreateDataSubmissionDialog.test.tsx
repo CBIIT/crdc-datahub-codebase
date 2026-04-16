@@ -1449,7 +1449,7 @@ describe("Implementation Requirements", () => {
     userEvent.click(getByRole("button", { name: "Create a Data Submission" }));
 
     await waitFor(() => {
-      expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ status: "Active" }));
+      expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["Active"] }));
     });
   });
 });
