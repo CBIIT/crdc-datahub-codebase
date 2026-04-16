@@ -259,6 +259,7 @@ const ListView = () => {
     programID: "All",
     dbGaPID: "",
     accessType: "All",
+    status: "All",
   });
 
   const tableRef = useRef<TableMethods>(null);
@@ -291,6 +292,10 @@ const ListView = () => {
           controlledAccess: filtersRef.current.accessType,
           study: filtersRef.current.study,
           programID: filtersRef.current.programID,
+          statuses:
+            filtersRef.current.status && filtersRef.current.status !== "All"
+              ? [filtersRef.current.status]
+              : [],
         },
         context: { clientName: "backend" },
         fetchPolicy: "no-cache",
