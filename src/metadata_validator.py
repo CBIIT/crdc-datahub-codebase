@@ -289,15 +289,13 @@ class MetaDataValidator:
         self.not_found_property = False
         self.study_name = None
         self.program_names = None
-        # Read-through caches for one validation run (DB treated as stable during validation).
+        # Read-through caches for validate_relationship and its helpers only (DB stable during validation).
         self._cache_search_nodes_by_index = {}
         self._cache_released_node = {}
-        self._cache_released_node_with_status = {}
         self._cache_grandparent = {}
         self._cache_nodes_by_parent_prop = {}
         self._cache_released_nodes_by_parent = {}
         self._cache_data_record_by_node = {}
-        self._cache_qc_record = {}
 
     def _search_nodes_index_cache_key(self, nodes, submission_id):
         triples = []
@@ -321,15 +319,6 @@ class MetaDataValidator:
             return self._cache_released_node[key]
         result = self.mongo_dao.search_released_node(data_common, node_type, node_id)
         self._cache_released_node[key] = result
-        return result
-
-    def _cached_search_released_node_with_status(self, data_common, node_type, node_id, status):
-        status_key = tuple(status) if isinstance(status, list) else status
-        key = (data_common, node_type, node_id, status_key)
-        if key in self._cache_released_node_with_status:
-            return self._cache_released_node_with_status[key]
-        result = self.mongo_dao.search_released_node_with_status(data_common, node_type, node_id, status)
-        self._cache_released_node_with_status[key] = result
         return result
 
     def _cached_find_grandparent_by_parent(self, parent_type, parent_id_value, submission_id, data_common):
@@ -366,16 +355,6 @@ class MetaDataValidator:
         result = self.mongo_dao.get_dataRecord_by_node(node_id, node_type, submission_id)
         self._cache_data_record_by_node[key] = result
         return result
-
-    def _cached_get_qc_record(self, qc_id):
-        if qc_id in self._cache_qc_record:
-            return self._cache_qc_record[qc_id]
-        result = self.mongo_dao.get_qcRecord(qc_id)
-        self._cache_qc_record[qc_id] = result
-        return result
-
-    def _invalidate_qc_record_cache(self, qc_id):
-        self._cache_qc_record.pop(qc_id, None)
 
     def _initialize_for_validation(self, submission, submission_id, scope):
         """Shared initialization for both batch and non-batch validation paths.
@@ -450,18 +429,17 @@ class MetaDataValidator:
             for record in data_records:
                 qc_result = None
                 if record.get(QC_RESULT_ID):
-                    qc_result = self._cached_get_qc_record(record[QC_RESULT_ID])
+                    qc_result = self.mongo_dao.get_qcRecord(record[QC_RESULT_ID])
                 status, errors, warnings = self.validate_node(record)
                 if status == STATUS_PASSED:
                     if qc_result:
                         self.mongo_dao.delete_qcRecord(qc_result[ID])
-                        self._invalidate_qc_record_cache(qc_result[ID])
                         qc_result = None 
                     record[QC_RESULT_ID] = None
                 else:
                     if not qc_result:
                         record[QC_RESULT_ID] = None
-                        qc_result = get_qc_result(record, VALIDATION_TYPE_METADATA, self.mongo_dao, get_qc_record=self._cached_get_qc_record)
+                        qc_result = get_qc_result(record, VALIDATION_TYPE_METADATA, self.mongo_dao)
                     if errors and len(errors) > 0:
                         self.isError = True
                         qc_result[ERRORS] = errors
@@ -542,7 +520,7 @@ class MetaDataValidator:
             t0 = time.perf_counter()
             #check if existed nodes in release collection
             if sub_intention and sub_intention in [SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE]:
-                exist_release = self._cached_search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
+                exist_release = self.mongo_dao.search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
                 if exist_release:
                     #do not raise "missing required property(M003)" and "Relationship not specified(M013)" errors when updating data
                     errors = [e for e in errors if str(e.get("code", "")) != "M003" and str(e.get("code", "")) != "M013"]
@@ -630,7 +608,7 @@ class MetaDataValidator:
             result[ERRORS].append(create_error("M022", [msg_prefix, id_property_key], id_property_key, ""))
         else:
             # check if duplicate records
-            results = self._cached_search_nodes_by_index([{TYPE: node_type, KEY: id_property_key, VALUE_PROP: id_property_value}], self.submission[ID])
+            results = self.mongo_dao.search_nodes_by_index([{TYPE: node_type, KEY: id_property_key, VALUE_PROP: id_property_value}], self.submission[ID])
             if len(results) > 1:
                 duplicates = ""
                 for item in results:
@@ -1157,14 +1135,13 @@ def check_boundary(value, min, max, msg_prefix, prop_name):
 """
 get qc result for the node record by qc_id
 """
-def get_qc_result(node, validation_type, mongo_dao, get_qc_record=None):
+def get_qc_result(node, validation_type, mongo_dao):
     qc_id = node.get(QC_RESULT_ID) if validation_type == VALIDATION_TYPE_METADATA else node[S3_FILE_INFO].get(QC_RESULT_ID)
     qc_result = None
     if not qc_id:
         qc_result = create_new_qc_result(node, validation_type)
     else:
-        fetch = get_qc_record if get_qc_record is not None else mongo_dao.get_qcRecord
-        qc_result = fetch(qc_id)
+        qc_result = mongo_dao.get_qcRecord(qc_id)
         if not qc_result:
             qc_result = create_new_qc_result(node, validation_type)
     return qc_result
