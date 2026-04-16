@@ -25,10 +25,10 @@
   {{#if pendingConditions}}
   <p>
     <span>[Pending Condition]:</span>
-      <br>
-      {{#each pendingConditions}}
-      <br>&nbsp;&nbsp;&nbsp;<span>■ {{{ this }}}</span>
-      {{/each}}
+    <br>
+    {{#each pendingConditions}}
+    <br><span>* {{{ this }}}</span>
+    {{/each}}
   </p>
   {{/if}}
   {{#if omitSubmissionGuideInFooter}}
