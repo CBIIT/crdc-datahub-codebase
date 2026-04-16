@@ -289,6 +289,93 @@ class MetaDataValidator:
         self.not_found_property = False
         self.study_name = None
         self.program_names = None
+        # Read-through caches for one validation run (DB treated as stable during validation).
+        self._cache_search_nodes_by_index = {}
+        self._cache_released_node = {}
+        self._cache_released_node_with_status = {}
+        self._cache_grandparent = {}
+        self._cache_nodes_by_parent_prop = {}
+        self._cache_released_nodes_by_parent = {}
+        self._cache_data_record_by_node = {}
+        self._cache_qc_record = {}
+
+    def _search_nodes_index_cache_key(self, nodes, submission_id):
+        triples = []
+        for node in nodes or []:
+            node_type, node_key, node_value = node.get(TYPE), node.get(KEY), node.get(VALUE_PROP)
+            if node_type and node_key and node_value is not None:
+                triples.append((node_type, node_key, node_value))
+        return (submission_id, frozenset(triples))
+
+    def _cached_search_nodes_by_index(self, nodes, submission_id):
+        key = self._search_nodes_index_cache_key(nodes, submission_id)
+        if key in self._cache_search_nodes_by_index:
+            return self._cache_search_nodes_by_index[key]
+        result = self.mongo_dao.search_nodes_by_index(nodes, submission_id)
+        self._cache_search_nodes_by_index[key] = result
+        return result
+
+    def _cached_search_released_node(self, data_common, node_type, node_id):
+        key = (data_common, node_type, node_id)
+        if key in self._cache_released_node:
+            return self._cache_released_node[key]
+        result = self.mongo_dao.search_released_node(data_common, node_type, node_id)
+        self._cache_released_node[key] = result
+        return result
+
+    def _cached_search_released_node_with_status(self, data_common, node_type, node_id, status):
+        status_key = tuple(status) if isinstance(status, list) else status
+        key = (data_common, node_type, node_id, status_key)
+        if key in self._cache_released_node_with_status:
+            return self._cache_released_node_with_status[key]
+        result = self.mongo_dao.search_released_node_with_status(data_common, node_type, node_id, status)
+        self._cache_released_node_with_status[key] = result
+        return result
+
+    def _cached_find_grandparent_by_parent(self, parent_type, parent_id_value, submission_id, data_common):
+        key = (parent_type, parent_id_value, submission_id, data_common)
+        if key in self._cache_grandparent:
+            return self._cache_grandparent[key]
+        result = self.mongo_dao.find_grandparent_by_parent(parent_type, parent_id_value, submission_id, data_common)
+        self._cache_grandparent[key] = result
+        return result
+
+    def _parent_prop_cache_key(self, parent_node):
+        return (parent_node.get(PARENT_TYPE), parent_node.get(PARENT_ID_NAME), parent_node.get(PARENT_ID_VAL))
+
+    def _cached_get_nodes_by_parent_prop(self, node_type, parent_node, submission_id):
+        key = (submission_id, node_type, self._parent_prop_cache_key(parent_node))
+        if key in self._cache_nodes_by_parent_prop:
+            return self._cache_nodes_by_parent_prop[key]
+        result = self.mongo_dao.get_nodes_by_parent_prop(node_type, parent_node, submission_id)
+        self._cache_nodes_by_parent_prop[key] = result
+        return result
+
+    def _cached_find_released_nodes_by_parent(self, node_type, data_common, parent_node):
+        key = (data_common, node_type, self._parent_prop_cache_key(parent_node))
+        if key in self._cache_released_nodes_by_parent:
+            return self._cache_released_nodes_by_parent[key]
+        result = self.mongo_dao.find_released_nodes_by_parent(node_type, data_common, parent_node)
+        self._cache_released_nodes_by_parent[key] = result
+        return result
+
+    def _cached_get_dataRecord_by_node(self, node_id, node_type, submission_id):
+        key = (submission_id, node_type, node_id)
+        if key in self._cache_data_record_by_node:
+            return self._cache_data_record_by_node[key]
+        result = self.mongo_dao.get_dataRecord_by_node(node_id, node_type, submission_id)
+        self._cache_data_record_by_node[key] = result
+        return result
+
+    def _cached_get_qc_record(self, qc_id):
+        if qc_id in self._cache_qc_record:
+            return self._cache_qc_record[qc_id]
+        result = self.mongo_dao.get_qcRecord(qc_id)
+        self._cache_qc_record[qc_id] = result
+        return result
+
+    def _invalidate_qc_record_cache(self, qc_id):
+        self._cache_qc_record.pop(qc_id, None)
 
     def _initialize_for_validation(self, submission, submission_id, scope):
         """Shared initialization for both batch and non-batch validation paths.
@@ -363,17 +450,18 @@ class MetaDataValidator:
             for record in data_records:
                 qc_result = None
                 if record.get(QC_RESULT_ID):
-                    qc_result = self.mongo_dao.get_qcRecord(record[QC_RESULT_ID])
+                    qc_result = self._cached_get_qc_record(record[QC_RESULT_ID])
                 status, errors, warnings = self.validate_node(record)
                 if status == STATUS_PASSED:
                     if qc_result:
                         self.mongo_dao.delete_qcRecord(qc_result[ID])
+                        self._invalidate_qc_record_cache(qc_result[ID])
                         qc_result = None 
                     record[QC_RESULT_ID] = None
                 else:
                     if not qc_result:
                         record[QC_RESULT_ID] = None
-                        qc_result = get_qc_result(record, VALIDATION_TYPE_METADATA, self.mongo_dao)
+                        qc_result = get_qc_result(record, VALIDATION_TYPE_METADATA, self.mongo_dao, get_qc_record=self._cached_get_qc_record)
                     if errors and len(errors) > 0:
                         self.isError = True
                         qc_result[ERRORS] = errors
@@ -454,7 +542,7 @@ class MetaDataValidator:
             t0 = time.perf_counter()
             #check if existed nodes in release collection
             if sub_intention and sub_intention in [SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE]:
-                exist_release = self.mongo_dao.search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
+                exist_release = self._cached_search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
                 if exist_release:
                     #do not raise "missing required property(M003)" and "Relationship not specified(M013)" errors when updating data
                     errors = [e for e in errors if str(e.get("code", "")) != "M003" and str(e.get("code", "")) != "M013"]
@@ -542,7 +630,7 @@ class MetaDataValidator:
             result[ERRORS].append(create_error("M022", [msg_prefix, id_property_key], id_property_key, ""))
         else:
             # check if duplicate records
-            results = self.mongo_dao.search_nodes_by_index([{TYPE: node_type, KEY: id_property_key, VALUE_PROP: id_property_value}], self.submission[ID])
+            results = self._cached_search_nodes_by_index([{TYPE: node_type, KEY: id_property_key, VALUE_PROP: id_property_value}], self.submission[ID])
             if len(results) > 1:
                 duplicates = ""
                 for item in results:
@@ -637,7 +725,7 @@ class MetaDataValidator:
             parent_id_value = parent_node.get("parentIDValue")
             if parent_type and parent_id_value and parent_id_value is not None:
                 parent_nodes.append({"type": parent_type, "key": parent_id_property, "value": parent_id_value})
-        exist_parent_nodes = self.mongo_dao.search_nodes_by_index(parent_nodes, self.submission[ID])
+        exist_parent_nodes = self._cached_search_nodes_by_index(parent_nodes, self.submission[ID])
         parent_node_cache = []
         for node in exist_parent_nodes:
             if node.get(PROPERTIES):
@@ -723,7 +811,7 @@ class MetaDataValidator:
                         
             has_parent = (parent_type, parent_id_property, parent_id_value) in parent_nodes
             if not has_parent:
-                released_parent = self.mongo_dao.search_released_node(data_common, parent_type, parent_id_value)
+                released_parent = self._cached_search_released_node(data_common, parent_type, parent_id_value)
                 if not released_parent:
                     result[ERRORS].append(create_error("M014", [msg_prefix, parent_type, f'[“{parent_id_property}”: “{parent_id_value}"]'], node_type, node_id))
                 else:
@@ -753,10 +841,10 @@ class MetaDataValidator:
                     data_record[CONSENT_CODE] = []
                     for consent_code_group_tuple in list(consent_group_parents):
                         #consent_code_group_tuple = list(consent_group_parents)[0]
-                        consent_code_group = self.mongo_dao.get_dataRecord_by_node(consent_code_group_tuple[2], consent_code_group_tuple[0], self.submission_id)
+                        consent_code_group = self._cached_get_dataRecord_by_node(consent_code_group_tuple[2], consent_code_group_tuple[0], self.submission_id)
                         # if can not find conset_code_group, try to find in release collection
                         if not consent_code_group:
-                            consent_code_group = self.mongo_dao.search_release(self.datacommon, consent_code_group_tuple[0], consent_code_group_tuple[2])
+                            consent_code_group = self._cached_search_released_node(self.datacommon, consent_code_group_tuple[0], consent_code_group_tuple[2])
                         if consent_code_group:
                             consent_code = consent_code_group["props"].get(CONSENT_GROUP_NUMBER)
                             if consent_code:
@@ -787,7 +875,7 @@ class MetaDataValidator:
             self.log.warning(f'Circular parent reference detected at ({parent_type}, {parent_id_value}), skipping')
             return
         visited.add(node_key)
-        grandparent_nodes = self.mongo_dao.find_grandparent_by_parent(parent_type, parent_id_value, self.submission_id, self.datacommon)
+        grandparent_nodes = self._cached_find_grandparent_by_parent(parent_type, parent_id_value, self.submission_id, self.datacommon)
         if grandparent_nodes:
             consent_groups = [item for item in grandparent_nodes if item[0] == CONSENT_CODE_NODE_TYPE]
             if consent_groups:
@@ -799,14 +887,14 @@ class MetaDataValidator:
         return
 
     def get_unique_child_node_ids(self, data_common, node_type, parent_node, submission_id):
-        children = self.mongo_dao.get_nodes_by_parent_prop(node_type, parent_node, submission_id)
+        children = self._cached_get_nodes_by_parent_prop(node_type, parent_node, submission_id)
         if not children:
             return None
         child_id_list = list(set([item[NODE_ID] for item in children]))
         if len(child_id_list) > 1:
             return child_id_list
         else:
-            children = self.mongo_dao.find_released_nodes_by_parent(node_type, data_common, parent_node)
+            children = self._cached_find_released_nodes_by_parent(node_type, data_common, parent_node)
             if children and len(children) > 0:
                 child_id_list = list(set(child_id_list + [item[NODE_ID] for item in children]))
             return child_id_list
@@ -1069,13 +1157,14 @@ def check_boundary(value, min, max, msg_prefix, prop_name):
 """
 get qc result for the node record by qc_id
 """
-def get_qc_result(node, validation_type, mongo_dao):
+def get_qc_result(node, validation_type, mongo_dao, get_qc_record=None):
     qc_id = node.get(QC_RESULT_ID) if validation_type == VALIDATION_TYPE_METADATA else node[S3_FILE_INFO].get(QC_RESULT_ID)
     qc_result = None
     if not qc_id:
         qc_result = create_new_qc_result(node, validation_type)
-    else: 
-        qc_result = mongo_dao.get_qcRecord(qc_id)
+    else:
+        fetch = get_qc_record if get_qc_record is not None else mongo_dao.get_qcRecord
+        qc_result = fetch(qc_id)
         if not qc_result:
             qc_result = create_new_qc_result(node, validation_type)
     return qc_result
