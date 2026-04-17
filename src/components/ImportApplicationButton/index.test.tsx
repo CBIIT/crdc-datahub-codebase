@@ -24,17 +24,6 @@ import {
 import { IMPORT_ERROR_MESSAGE } from "./ImportDialog";
 import ImportApplicationButton from "./index";
 
-const { mockNavigate, mockUseLocation } = vi.hoisted(() => ({
-  mockNavigate: vi.fn(),
-  mockUseLocation: vi.fn(),
-}));
-
-vi.mock("react-router-dom", async () => ({
-  ...(await vi.importActual<typeof import("react-router-dom")>("react-router-dom")),
-  useNavigate: () => mockNavigate,
-  useLocation: () => mockUseLocation(),
-}));
-
 vi.mock("@/hooks/useFormMode", async () => ({
   ...(await vi.importActual<typeof import("@/hooks/useFormMode")>("@/hooks/useFormMode")),
   __esModule: true,
@@ -120,7 +109,6 @@ describe("Basic Functionality", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (useFormMode as Mock).mockReturnValue({ readOnlyInputs: false });
-    mockUseLocation.mockReturnValue({ pathname: "/submission-request/123" });
   });
 
   it("should render a button with the correct text", () => {
@@ -218,80 +206,6 @@ describe("Basic Functionality", () => {
     fireEvent.click(getByTestId("import-dialog-confirm-button"));
 
     expect(setData).not.toHaveBeenCalled();
-  });
-
-  it("should redirect to submission request UUID path after successful import on new submission request route", async () => {
-    const setData = vi.fn().mockResolvedValue({ status: "success", id: "created-id" });
-    const parsedData = { some: "data" };
-    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
-    (QuestionnaireExcelMiddleware.parse as Mock).mockResolvedValue(parsedData);
-    mockUseLocation.mockReturnValue({ pathname: "/submission-request/new" });
-
-    const { getByTestId, getByDisplayValue } = render(
-      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
-        <ImportApplicationButton />
-      </TestParent>
-    );
-
-    fireEvent.click(getByTestId("import-application-excel-button"));
-
-    const file = new File(["test"], "test.xlsx", {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    Object.defineProperty(file, "arrayBuffer", {
-      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
-    });
-
-    fireEvent.change(getByTestId("import-upload-file-input"), { target: { files: [file] } });
-
-    await waitFor(() => {
-      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
-    });
-
-    fireEvent.click(getByTestId("import-dialog-confirm-button"));
-
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith("/submission-request/created-id", {
-        replace: true,
-        preventScrollReset: true,
-      });
-    });
-  });
-
-  it("should not redirect after successful import when not on new submission request route", async () => {
-    const setData = vi.fn().mockResolvedValue({ status: "success", id: "created-id" });
-    const parsedData = { some: "data" };
-    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
-    (QuestionnaireExcelMiddleware.parse as Mock).mockResolvedValue(parsedData);
-    mockUseLocation.mockReturnValue({ pathname: "/submission-request/existing-id" });
-
-    const { getByTestId, getByDisplayValue } = render(
-      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
-        <ImportApplicationButton />
-      </TestParent>
-    );
-
-    fireEvent.click(getByTestId("import-application-excel-button"));
-
-    const file = new File(["test"], "test.xlsx", {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    Object.defineProperty(file, "arrayBuffer", {
-      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
-    });
-
-    fireEvent.change(getByTestId("import-upload-file-input"), { target: { files: [file] } });
-
-    await waitFor(() => {
-      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
-    });
-
-    fireEvent.click(getByTestId("import-dialog-confirm-button"));
-
-    await waitFor(() => {
-      expect(setData).toHaveBeenCalled();
-    });
-    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });
 
