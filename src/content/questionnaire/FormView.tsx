@@ -221,7 +221,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const formContentRef = useRef(null);
   const lastSectionRef = useRef(null);
   const hasReopenedFormRef = useRef(false);
-  const bypassBlockerRef = useRef<boolean>(false);
+  const requestCanceledRef = useRef<boolean>(false);
   const shouldShowToolTip = isSectionD && !allSectionsComplete;
 
   const refs: FormSectionProps["refs"] = {
@@ -452,8 +452,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
     }
 
     const saveResult = await setData(newData);
-
-    // If the form did not save, show a relevant information message.
     if (saveResult?.status === "failed" && !!saveResult?.errorMessage) {
       enqueueSnackbar(`An error occurred while saving the ${map[activeSection].title} section.`, {
         variant: "error",
@@ -467,14 +465,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
       );
     }
 
-    // If the form is new, and there is no ongoing navigation already, update the URL with the new UUID
-    if (saveResult?.status === "success" && data?._id === "new" && blocker?.state === "unblocked") {
-      Logger.info("Form created with new ID, navigating to new URL", { newId: saveResult.id });
-      navigate(`/submission-request/${saveResult.id}/${activeSection}`, {
-        replace: true,
-        preventScrollReset: true,
-      });
-    }
+    // TODO: If there is no active navigation (i.e. user is just clicking "Save" button),
+    // we need to replace the URL with the new ID instead of "new"
 
     if (saveResult?.status === "success") {
       return {
@@ -499,7 +491,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     ) {
       return false;
     }
-    if (readOnlyInputs || bypassBlockerRef.current || !isDirty()) {
+    if (!isDirty() || readOnlyInputs || requestCanceledRef.current) {
       return false;
     }
 
@@ -545,10 +537,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const saveAndNavigate = async (): Promise<void> => {
     // Wait for the save handler to complete
     const res = await saveForm();
-    const isNavigatingToReviewSection =
-      blocker?.location?.pathname === `/submission-request/${data._id}/REVIEW`;
-    const isNavigatingWithNewUUID =
-      blocker?.location?.pathname.indexOf(`/submission-request/new`) !== -1;
+    const reviewSectionUrl = `/submission-request/${data._id}/REVIEW`; // TODO: Update to dynamic url instead
+    const isNavigatingToReviewSection = blocker?.location?.pathname === reviewSectionUrl;
 
     setBlockedNavigate(false);
 
@@ -560,20 +550,12 @@ const FormView: FC<Props> = ({ section }: Props) => {
       return;
     }
 
-    // If the save succeeded for a new form, override the navigation with the new UUID
-    if (res?.status === "success" && isNavigatingWithNewUUID) {
-      Logger.info("Form created with new ID, replacing URL", { blocker });
-      bypassBlockerRef.current = true;
-      navigate(
-        blocker.location.pathname.replace(
-          "/submission-request/new",
-          `/submission-request/${res.id}`
-        ),
-        { replace: true }
-      );
-      bypassBlockerRef.current = false;
-    } else {
-      blocker.proceed?.();
+    blocker.proceed?.();
+    if (res?.status === "success" && res.id) {
+      // NOTE: This currently triggers a form data refetch, which is not ideal
+      navigate(blocker.location.pathname.replace("new", res.id), {
+        replace: true,
+      });
     }
   };
 
@@ -647,7 +629,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
   };
 
   const handleOnCancel = useCallback(() => {
-    bypassBlockerRef.current = true;
+    requestCanceledRef.current = true;
     enqueueSnackbar("Successfully canceled that Submission Request.", {
       variant: "success",
     });
@@ -657,7 +639,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
   // Intercept browser navigation actions (e.g. closing the tab) with unsaved changes
   useEffect(() => {
     const unloadHandler = (event: BeforeUnloadEvent) => {
-      if (!isDirty() || bypassBlockerRef.current) {
+      if (!isDirty() || requestCanceledRef.current) {
         return;
       }
 
