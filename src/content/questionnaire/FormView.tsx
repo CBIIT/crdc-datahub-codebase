@@ -11,7 +11,7 @@ import {
 import { isEqual, cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
 import { FC, useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useBlocker, Blocker, Navigate } from "react-router-dom";
+import { useNavigate, useBlocker, Blocker, Navigate, useLocation } from "react-router-dom";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
 import CheckboxCheckedIconSvg from "../../assets/icons/checkbox_checked.svg?url";
@@ -182,6 +182,8 @@ type Props = {
  */
 const FormView: FC<Props> = ({ section }: Props) => {
   const navigate = useNavigate();
+  const location = useLocation();
+
   const { enqueueSnackbar } = useSnackbar();
   const {
     status,
@@ -221,7 +223,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const formContentRef = useRef(null);
   const lastSectionRef = useRef(null);
   const hasReopenedFormRef = useRef(false);
-  const requestCanceledRef = useRef<boolean>(false);
+  const bypassBlockerRef = useRef<boolean>(false);
+  const previousIDRef = useRef<string | null>(null);
   const shouldShowToolTip = isSectionD && !allSectionsComplete;
 
   const refs: FormSectionProps["refs"] = {
@@ -240,12 +243,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
 
     return ref && (!data || !isEqual(data.questionnaireData, newData));
   };
-
-  useEffect(() => {
-    const newSection = validateSection(section) ? section : "A";
-    setActiveSection(newSection);
-    lastSectionRef.current = newSection;
-  }, [section]);
 
   const isAllSectionsComplete = (): boolean => {
     if (status === FormStatus.LOADING) {
@@ -465,9 +462,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
       );
     }
 
-    // TODO: If there is no active navigation (i.e. user is just clicking "Save" button),
-    // we need to replace the URL with the new ID instead of "new"
-
     if (saveResult?.status === "success") {
       return {
         status: "success",
@@ -491,7 +485,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     ) {
       return false;
     }
-    if (!isDirty() || readOnlyInputs || requestCanceledRef.current) {
+    if (!isDirty() || readOnlyInputs || bypassBlockerRef.current) {
       return false;
     }
 
@@ -551,12 +545,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
     }
 
     blocker.proceed?.();
-    if (res?.status === "success" && res.id) {
-      // NOTE: This currently triggers a form data refetch, which is not ideal
-      navigate(blocker.location.pathname.replace("new", res.id), {
-        replace: true,
-      });
-    }
   };
 
   /**
@@ -629,17 +617,23 @@ const FormView: FC<Props> = ({ section }: Props) => {
   };
 
   const handleOnCancel = useCallback(() => {
-    requestCanceledRef.current = true;
+    bypassBlockerRef.current = true;
     enqueueSnackbar("Successfully canceled that Submission Request.", {
       variant: "success",
     });
     navigate("/submission-requests");
   }, [enqueueSnackbar, navigate]);
 
+  useEffect(() => {
+    const newSection = validateSection(section) ? section : "A";
+    setActiveSection(newSection);
+    lastSectionRef.current = newSection;
+  }, [section]);
+
   // Intercept browser navigation actions (e.g. closing the tab) with unsaved changes
   useEffect(() => {
     const unloadHandler = (event: BeforeUnloadEvent) => {
-      if (!isDirty() || requestCanceledRef.current) {
+      if (!isDirty() || bypassBlockerRef.current) {
         return;
       }
 
@@ -675,6 +669,25 @@ const FormView: FC<Props> = ({ section }: Props) => {
       hasReopenedFormRef.current = true;
     }
   }, [status, authStatus, formMode, data?.status]);
+
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+
+    if (previousIDRef.current === "new" && data?._id !== "new") {
+      // TODO: Unsaved changes dialog is working but the navigation gets reverted
+      Logger.info("Form created with new ID. Redirecting to new form URL.", { uuid: data._id });
+      bypassBlockerRef.current = true;
+      navigate(
+        location.pathname.replace("/submission-request/new", `/submission-request/${data._id}`),
+        { replace: true, preventScrollReset: true }
+      );
+      bypassBlockerRef.current = false;
+    }
+
+    previousIDRef.current = data._id;
+  }, [data?._id, previousIDRef.current]);
 
   // Show loading spinner if the form is still loading
   if (status === FormStatus.LOADING || authStatus === AuthStatus.LOADING) {

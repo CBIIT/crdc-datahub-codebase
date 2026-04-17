@@ -190,7 +190,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     data: QuestionnaireData,
     opts?: { skipSave?: boolean; runMigrations?: boolean }
   ): Promise<SetDataReturnType> => {
-    let processedData = data;
+    let processedData: QuestionnaireData = data;
     if (opts?.runMigrations) {
       const migrator = new QuestionnaireDataMigrator(data, {
         getInstitutions,
@@ -288,13 +288,9 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       };
     }
 
-    // eslint-disable-next-line @typescript-eslint/dot-notation
-    if (d?.saveApplication?._id && processedData["_id"] === "new") {
-      newState.data = {
-        ...newState.data,
-        _id: d.saveApplication._id,
-        applicant: d?.saveApplication?.applicant,
-      };
+    // If the previous form ID was "new", inject the newly assigned UUID
+    if (d?.saveApplication?._id && newState.data._id === "new") {
+      newState.data._id = d.saveApplication._id;
     }
 
     newState.data = {
