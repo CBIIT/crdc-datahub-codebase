@@ -137,7 +137,9 @@ jobs:
       - name: copy db-driver subfolders (for authn and BE)
         if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
         run: |
-          cp -rL lib/db-driver/. ${{ matrix.context }}/crdc-datahub-database-drivers/
+          cp -rL lib/db-driver/. ${{ matrix.context }}/tmp-crdc-datahub-database-drivers/
+          rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers
+          mv ${{ matrix.context }}/tmp-crdc-datahub-database-drivers ${{ matrix.context }}/crdc-datahub-database-drivers
 
       - name: copy bento-common subfolders (for validator & pvpuller)
         if: ${{ matrix.name == 'essential-validation' || matrix.name == 'export-validation' || matrix.name == 'file-validation' || matrix.name == 'metadata-validation' || matrix.name == 'pv-puller' }}
