@@ -4,6 +4,7 @@ jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
 
 const { getCurrentTime } = require('../../crdc-datahub-database-drivers/utility/time-utility');
 const { HistoryEventBuilder } = require('../../domain/history-event');
+const { SUBMITTED } = require('../../constants/submission-constants');
 
 describe('HistoryEventBuilder', () => {
   beforeEach(() => {
@@ -51,6 +52,35 @@ describe('HistoryEventBuilder', () => {
       status: 'In Review',
       dateTime: providedDate,
     });
+  });
+
+  it('should set isAdminSubmit on Submitted events; true only when fifth argument is true, else false', () => {
+    const mockedNow = new Date('2026-04-07T12:00:10.000Z');
+    getCurrentTime.mockReturnValue(mockedNow);
+
+    expect(HistoryEventBuilder.createEvent('u1', SUBMITTED, null, undefined, true)).toMatchObject({
+      userID: 'u1',
+      status: SUBMITTED,
+      isAdminSubmit: true,
+      dateTime: mockedNow,
+    });
+    expect(HistoryEventBuilder.createEvent('u1', SUBMITTED, null, undefined, false)).toMatchObject({
+      isAdminSubmit: false,
+    });
+    expect(HistoryEventBuilder.createEvent('u1', SUBMITTED, null)).toMatchObject({
+      userID: 'u1',
+      status: SUBMITTED,
+      isAdminSubmit: false,
+      dateTime: mockedNow,
+    });
+  });
+
+  it('should not set isAdminSubmit when status is not Submitted', () => {
+    const mockedNow = new Date('2026-04-07T12:00:11.000Z');
+    getCurrentTime.mockReturnValue(mockedNow);
+
+    const event = HistoryEventBuilder.createEvent('u1', 'In Progress', null, undefined, true);
+    expect(event.isAdminSubmit).toBeUndefined();
   });
 
   // NOTE: This behavior is very likely undesirable. But I'm leaving it unchanged.

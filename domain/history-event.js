@@ -1,4 +1,5 @@
 const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-utility");
+const {SUBMITTED} = require("../constants/submission-constants");
 
 /**
  * Builds immutable history-event objects used for application/submission state timelines.
@@ -6,17 +7,19 @@ const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-
 class HistoryEventBuilder {
     /**
      * HistoryEventBuilder constructor.
-     * 
+     *
      * @param {string|null|undefined} userID User responsible for the state transition.
      * @param {string|null|undefined} status State value to record on the event.
      * @param {string|null|undefined} comment Optional review comment.
      * @param {Date|undefined} dateTime Optional explicit event timestamp.
+     * @param {boolean|undefined} isAdminSubmit When status is Submitted, admin submit flag; defaults to false if omitted.
      */
-    constructor(userID, status, comment, dateTime) {
+    constructor(userID, status, comment, dateTime, isAdminSubmit) {
         this._userID = userID;
         this._status = status;
         this._comment = comment;
         this._dateTime = dateTime;
+        this._isAdminSubmit = isAdminSubmit;
     }
 
     /**
@@ -26,17 +29,18 @@ class HistoryEventBuilder {
      * @param {string|null|undefined} status State value to record on the event.
      * @param {string|null|undefined} comment Optional review comment.
      * @param {Date|undefined} dateTime Optional explicit event timestamp.
-     * @returns {{status?: string, reviewComment?: string, userID?: string, dateTime: Date}}
+     * @param {boolean|undefined} isAdminSubmit For Submitted status only; true for admin submit, otherwise false (default).
+     * @returns {{status?: string, reviewComment?: string, userID?: string, dateTime: Date, isAdminSubmit?: boolean}}
      */
-    static createEvent(userID, status, comment, dateTime = undefined) {
-        return new HistoryEventBuilder(userID, status, comment, dateTime)
+    static createEvent(userID, status, comment, dateTime = undefined, isAdminSubmit = undefined) {
+        return new HistoryEventBuilder(userID, status, comment, dateTime, isAdminSubmit)
             .build();
     }
 
     /**
      * Creates the serialized history-event object.
      *
-     * @returns {{status?: string, reviewComment?: string, userID?: string, dateTime: Date}}
+     * @returns {{status?: string, reviewComment?: string, userID?: string, dateTime: Date, isAdminSubmit?: boolean}}
      */
     build() {
         let event = {};
@@ -47,6 +51,9 @@ class HistoryEventBuilder {
             event.dateTime = this._dateTime
         } else {
             event.dateTime = getCurrentTime();
+        }
+        if (this._status === SUBMITTED) {
+            event.isAdminSubmit = this._isAdminSubmit === true;
         }
         return event;
     }

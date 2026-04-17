@@ -31,6 +31,7 @@ module.exports = Object.freeze({
     //data submission actions
     ACTIONS: {
         SUBMIT: "Submit",
+        ADMIN_SUBMIT: "Admin Submit",
         RELEASE: "Release",
         COMPLETE: "Complete",
         ARCHIVE: "Archive",
@@ -40,6 +41,11 @@ module.exports = Object.freeze({
         RESUME: "Resume",
         REJECT_SUBMIT: "Reject_Submitted",
         REJECT_RELEASE: "Reject_Released"
+    },
+    /** Persisted on Submission when status becomes Submitted */
+    SUBMISSION_TYPE: {
+        ADMIN: "Admin",
+        REGULAR: "Regular"
     },
     VALIDATION_STATUS: {
         NEW: "New",

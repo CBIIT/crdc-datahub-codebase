@@ -12,7 +12,8 @@ const {INTENTION, DATA_TYPE, IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRA
     VALIDATION_STATUS,
     VALIDATION,
     COMPLETED,
-    CANCELED
+    CANCELED,
+    SUBMISSION_TYPE
 } = require("../../constants/submission-constants");
 const {getDataCommonsDisplayNamesForSubmission} = require("../../utility/data-commons-remapper");
 const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
@@ -2185,9 +2186,6 @@ describe('Submission.submissionAction', () => {
             jest.fn() // dataModelService
         );
 
-        // Mock methods
-        submissionService._findByID = jest.fn();
-
         // Mock context
         mockContext = {
             userInfo: {
@@ -2219,11 +2217,144 @@ describe('Submission.submissionAction', () => {
     });
 
     it('should throw error when submission not found', async () => {
-        submissionService._findByID.mockResolvedValue(null);
+        const findSpy = jest.spyOn(Submission.prototype, '_findByID').mockResolvedValue(null);
 
         await expect(submissionService.submissionAction(mockParams, mockContext))
             .rejects
             .toThrow(ERROR.SUBMISSION_NOT_EXIST);
+
+        findSpy.mockRestore();
+    });
+
+    it('should set submissionType Regular and isAdminSubmit false on Submit', async () => {
+        const { getDataCommonsDisplayNamesForSubmission } = require('../../utility/data-commons-remapper');
+        getDataCommonsDisplayNamesForSubmission.mockImplementation((s) => s);
+
+        const submissionUpdate = jest.fn().mockResolvedValue({ _id: 'sub1' });
+        submissionService.submissionDAO = { update: submissionUpdate };
+        submissionService._getUserScope = jest.fn().mockImplementation((user, perm) => {
+            if (perm === USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.ADMIN_SUBMIT) {
+                return Promise.resolve({ isNoneScope: () => true });
+            }
+            return Promise.resolve({ isNoneScope: () => false });
+        });
+        submissionService._getS3DirectorySize = jest.fn().mockResolvedValue({ size: 1, formatted: '1 B' });
+        submissionService.qcResultsService = { findBySubmissionErrorCodes: jest.fn().mockResolvedValue([]) };
+        submissionService.batchService = { findOneBatchByStatus: jest.fn().mockResolvedValue([]) };
+        submissionService._isValidReleaseAction = jest.fn().mockResolvedValue();
+        submissionService._createLogEntry = jest.fn().mockResolvedValue(null);
+        submissionService.userService = {
+            getUserByID: jest.fn().mockResolvedValue({
+                email: 'a@b.com',
+                notifications: [],
+                firstName: 'A',
+                lastName: 'B',
+                _id: 'user1'
+            }),
+            getUsersByNotifications: jest.fn().mockResolvedValue([]),
+            approvedStudiesCollection: { find: jest.fn() }
+        };
+        submissionService.notificationService = { submitDataSubmissionNotification: jest.fn() };
+
+        const validSub = {
+            ...mockSubmission,
+            dataCommons: 'test-dc',
+            intention: INTENTION.UPDATE,
+            dataType: DATA_TYPE.METADATA_ONLY,
+            metadataValidationStatus: VALIDATION_STATUS.PASSED,
+            fileValidationStatus: VALIDATION_STATUS.PASSED
+        };
+
+        const afterSubmit = {
+            ...validSub,
+            id: validSub._id,
+            status: SUBMITTED,
+            submissionType: SUBMISSION_TYPE.REGULAR,
+            history: []
+        };
+        let findByIdN = 0;
+        const findSpy = jest.spyOn(Submission.prototype, '_findByID').mockImplementation(async () => {
+            findByIdN += 1;
+            return findByIdN === 1 ? validSub : afterSubmit;
+        });
+
+        await submissionService.submissionAction(mockParams, mockContext);
+
+        findSpy.mockRestore();
+        expect(findByIdN).toBe(2);
+
+        expect(submissionUpdate).toHaveBeenCalled();
+        const updatePayload = submissionUpdate.mock.calls[0][1];
+        expect(updatePayload.submissionType).toBe(SUBMISSION_TYPE.REGULAR);
+        const lastEvent = updatePayload.history[updatePayload.history.length - 1];
+        expect(lastEvent.status).toBe(SUBMITTED);
+        expect(lastEvent.isAdminSubmit).toBe(false);
+    });
+
+    it('should set submissionType Admin and isAdminSubmit true on Admin Submit', async () => {
+        const { getDataCommonsDisplayNamesForSubmission } = require('../../utility/data-commons-remapper');
+        getDataCommonsDisplayNamesForSubmission.mockImplementation((s) => s);
+
+        const submissionUpdate = jest.fn().mockResolvedValue({ _id: 'sub1' });
+        submissionService.submissionDAO = { update: submissionUpdate };
+        submissionService._getUserScope = jest.fn().mockImplementation((user, perm) => {
+            if (perm === USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.ADMIN_SUBMIT) {
+                return Promise.resolve({ isNoneScope: () => false });
+            }
+            return Promise.resolve({ isNoneScope: () => true });
+        });
+        submissionService._getS3DirectorySize = jest.fn().mockResolvedValue({ size: 1, formatted: '1 B' });
+        submissionService.qcResultsService = { findBySubmissionErrorCodes: jest.fn().mockResolvedValue([]) };
+        submissionService.batchService = { findOneBatchByStatus: jest.fn().mockResolvedValue([]) };
+        submissionService._isValidReleaseAction = jest.fn().mockResolvedValue();
+        submissionService._createLogEntry = jest.fn().mockResolvedValue(null);
+        submissionService.userService = {
+            getUserByID: jest.fn().mockResolvedValue({
+                email: 'a@b.com',
+                notifications: [],
+                firstName: 'A',
+                lastName: 'B',
+                _id: 'user1'
+            }),
+            getUsersByNotifications: jest.fn().mockResolvedValue([]),
+            approvedStudiesCollection: { find: jest.fn() }
+        };
+        submissionService.notificationService = { submitDataSubmissionNotification: jest.fn() };
+
+        const validSub = {
+            ...mockSubmission,
+            dataCommons: 'test-dc',
+            intention: INTENTION.UPDATE,
+            dataType: DATA_TYPE.METADATA_ONLY,
+            metadataValidationStatus: VALIDATION_STATUS.PASSED,
+            fileValidationStatus: VALIDATION_STATUS.PASSED
+        };
+
+        const afterSubmit = {
+            ...validSub,
+            id: validSub._id,
+            status: SUBMITTED,
+            submissionType: SUBMISSION_TYPE.ADMIN,
+            history: []
+        };
+        let findByIdN = 0;
+        const findSpy = jest.spyOn(Submission.prototype, '_findByID').mockImplementation(async () => {
+            findByIdN += 1;
+            return findByIdN === 1 ? validSub : afterSubmit;
+        });
+
+        await submissionService.submissionAction(
+            { submissionID: 'sub1', action: ACTIONS.ADMIN_SUBMIT, comment: 'Test comment' },
+            mockContext
+        );
+
+        findSpy.mockRestore();
+        expect(findByIdN).toBe(2);
+
+        const updatePayload = submissionUpdate.mock.calls[0][1];
+        expect(updatePayload.submissionType).toBe(SUBMISSION_TYPE.ADMIN);
+        const lastEvent = updatePayload.history[updatePayload.history.length - 1];
+        expect(lastEvent.isAdminSubmit).toBe(true);
     });
 });
 

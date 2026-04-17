@@ -17,6 +17,7 @@ interface SubmissionInterface {
     bucketName: String
     rootPath: String
     status: String
+    submissionType: String # Admin | Regular; null if not yet submitted
     metadataValidationStatus: String
     fileValidationStatus: String
     crossSubmissionStatus: String
@@ -99,6 +100,7 @@ type Event {
     dateTime: Date # ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
     userID: ID!
     userName: String
+    isAdminSubmit: Boolean # present on submit history entries when status is Submitted
 }
 
 input AppInput {
@@ -194,6 +196,7 @@ type Submission implements SubmissionInterface {
     bucketName: String # populated from organization
     rootPath: String # "submissions/<submission ID>" to organization's rootPath
     status: String # [New, In Progress, Submitted, Released, Canceled, Transferred, Completed, Archived, Deleted]
+    submissionType: String # Admin | Regular; null if not yet submitted
     metadataValidationStatus: String # [New, Validating, Passed, Error, Warning], new successfully uploaded batch will set it to "New"
     fileValidationStatus: String # [New, Validating, Passed, Error, Warning], new successfully uploaded batch will set it to "New"
     crossSubmissionStatus: String # [New, Validating, Passed, Error, Warning]
@@ -248,6 +251,7 @@ type SubmissionList implements SubmissionInterface {
     bucketName: String # populated from organization
     rootPath: String # "submissions/<submission ID>" to organization's rootPath
     status: String # [New, In Progress, Submitted, Released, Canceled, Transferred, Completed, Archived, Deleted]
+    submissionType: String # Admin | Regular; null if not yet submitted
     metadataValidationStatus: String # [New, Validating, Passed, Error, Warning], new successfully uploaded batch will set it to "New"
     fileValidationStatus: String # [New, Validating, Passed, Error, Warning], new successfully uploaded batch will set it to "New"
     crossSubmissionStatus: String # [New, Validating, Passed, Error, Warning]
@@ -1100,7 +1104,7 @@ type Mutation {
     createSubmission (studyID: String!, dataCommons: String!, name: String!, intention: String!, dataType: String!): Submission
     submissionAction (
         submissionID: ID!,
-        # in [Submit, ReleaseService, Withdraw, Reject, Complete, Cancel, Archive]
+        # in [Submit, Admin Submit, Release, Withdraw, Reject, Complete, Cancel, Archive, Resume]
         action: String!
         comment: String
     ): Submission

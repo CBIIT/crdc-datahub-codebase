@@ -1,6 +1,6 @@
 const { NEW, IN_PROGRESS, SUBMITTED, RELEASED, COMPLETED, ARCHIVED, CANCELED,
     REJECTED, WITHDRAWN, ACTIONS, VALIDATION, VALIDATION_STATUS, INTENTION, DATA_TYPE, DELETED, DATA_FILE,
-    CONSTRAINTS, COLLABORATOR_PERMISSIONS, UPLOADING_HEARTBEAT_CONFIG_TYPE
+    CONSTRAINTS, COLLABORATOR_PERMISSIONS, UPLOADING_HEARTBEAT_CONFIG_TYPE, SUBMISSION_TYPE
 } = require("../constants/submission-constants");
 const fs = require('fs');
 const path = require('path');
@@ -660,7 +660,10 @@ class Submission {
         let events = submission.history || [];
         // admin permission and submit action only can leave a comment
         const isCommentRequired = ACTIONS.REJECT === action || (!verifier.isSubmitActionCommentRequired(submission, !userScope.isNoneScope(), params?.comment));
-        events.push(HistoryEventBuilder.createEvent(userInfo._id, newStatus, isCommentRequired ? params?.comment : null));
+        const submitAdminFlag = newStatus === SUBMITTED
+            ? action === ACTIONS.ADMIN_SUBMIT
+            : undefined;
+        events.push(HistoryEventBuilder.createEvent(userInfo._id, newStatus, isCommentRequired ? params?.comment : null, undefined, submitAdminFlag));
 
         // When the status changes to COMPLETED, store the total data size of the S3 directory in the submission document.
         if (newStatus === COMPLETED) {
@@ -671,7 +674,10 @@ class Submission {
         const updateData = this._prepareUpdateData({
             status: newStatus,
             history: events,
-            reviewComment: submission?.reviewComment || ""
+            reviewComment: submission?.reviewComment || "",
+            ...(newStatus === SUBMITTED ? {
+                submissionType: action === ACTIONS.ADMIN_SUBMIT ? SUBMISSION_TYPE.ADMIN : SUBMISSION_TYPE.REGULAR
+            } : {})
         });
         
         // Add dataFileSize if status is COMPLETED
@@ -702,7 +708,7 @@ class Submission {
         }
 
         //log event and send notification
-        const logEvent = SubmissionActionEvent.create(userInfo._id, userInfo.email, userInfo.IDP, submission._id, action, verifier.getPrevStatus(), newStatus);
+        const logEvent = SubmissionActionEvent.create(userInfo._id, userInfo.email, userInfo.IDP, submission._id, action, oldStatus, newStatus);
         
         // Create log entry using Prisma
         const logData = {
@@ -2954,6 +2960,7 @@ String.prototype.format = function(placeholders) {
 async function submissionActionNotification(userInfo, action, aSubmission, userService, organizationService, notificationService, emailParams, dataCommonsBucketMap) {
     switch(action) {
         case ACTIONS.SUBMIT:
+        case ACTIONS.ADMIN_SUBMIT:
             await sendEmails.submitSubmission(userInfo, aSubmission, userService, organizationService, notificationService);
             break;
         case ACTIONS.RELEASE:
