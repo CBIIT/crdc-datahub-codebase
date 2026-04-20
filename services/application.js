@@ -1494,14 +1494,16 @@ const sendEmails = {
             const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
             const toBCCEmails = getUserEmails(toBCCUsers)
                 ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
+            const studyName = (application?.studyName && String(application.studyName).trim()) || "NA";
+            const studyAbbreviation = (application?.studyAbbreviation && String(application.studyAbbreviation).trim()) || "NA";
             await notificationService.inquireQuestionNotification(application?.applicant?.applicantEmail,
                 CCEmails,
                 toBCCEmails,{
                 firstName: application?.applicant?.applicantName,
                 reviewComments,
-            }, {
-                contactInfo: emailParams.conditionalSubmissionContact,
-            });
+                studyName,
+                studyAbbreviation,
+            }, {});
         }
     },
     rejectApplication: async(notificationService, userService, emailParams, application, reviewComments) => {
