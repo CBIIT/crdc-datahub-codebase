@@ -12,7 +12,7 @@ class HistoryEventBuilder {
      * @param {string|null|undefined} status State value to record on the event.
      * @param {string|null|undefined} comment Optional review comment.
      * @param {Date|undefined} dateTime Optional explicit event timestamp.
-     * @param {boolean|undefined} isAdminSubmit When status is Submitted, admin submit flag; defaults to false if omitted.
+     * @param {boolean|undefined} isAdminSubmit When set, Submitted events include isAdminSubmit (true/false); omit to leave the property off the event.
      */
     constructor(userID, status, comment, dateTime, isAdminSubmit) {
         this._userID = userID;
@@ -29,7 +29,7 @@ class HistoryEventBuilder {
      * @param {string|null|undefined} status State value to record on the event.
      * @param {string|null|undefined} comment Optional review comment.
      * @param {Date|undefined} dateTime Optional explicit event timestamp.
-     * @param {boolean|undefined} isAdminSubmit For Submitted status only; true for admin submit, otherwise false (default).
+     * @param {boolean|undefined} isAdminSubmit For Submitted status only; pass true/false to set isAdminSubmit; omit for no isAdminSubmit field.
      * @returns {{status?: string, reviewComment?: string, userID?: string, dateTime: Date, isAdminSubmit?: boolean}}
      */
     static createEvent(userID, status, comment, dateTime = undefined, isAdminSubmit = undefined) {
@@ -52,7 +52,7 @@ class HistoryEventBuilder {
         } else {
             event.dateTime = getCurrentTime();
         }
-        if (this._status === SUBMITTED) {
+        if (this._status === SUBMITTED && this._isAdminSubmit !== undefined) {
             event.isAdminSubmit = this._isAdminSubmit === true;
         }
         return event;

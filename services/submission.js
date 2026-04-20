@@ -646,20 +646,20 @@ class Submission {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
         const newStatus = verifier.getNewStatus();
-        const [userScope, dataFileSize, orphanedErrorFiles, uploadingBatches] = await Promise.all([
-            this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.ADMIN_SUBMIT, submission),
+        const isAdminSubmitAction = action === ACTIONS.ADMIN_SUBMIT;
+        const [dataFileSize, orphanedErrorFiles, uploadingBatches] = await Promise.all([
             this._getS3DirectorySize(submission?.bucketName, `${submission?.rootPath}/${FILE}/`),
             this.qcResultsService.findBySubmissionErrorCodes(params.submissionID, ERRORS.CODES.F008_MISSING_DATA_NODE_FILE),
             this.batchService.findOneBatchByStatus(params.submissionID, BATCH.STATUSES.UPLOADING)
         ]);
 
-        const submissionAttributes = SubmissionAttributes.create(!userScope.isNoneScope(), submission, dataFileSize?.size, orphanedErrorFiles?.length > 0, uploadingBatches.length > 0);
-        verifier.isValidSubmitAction(!userScope.isNoneScope(), submission, params?.comment, submissionAttributes);
+        const submissionAttributes = SubmissionAttributes.create(isAdminSubmitAction, submission, dataFileSize?.size, orphanedErrorFiles?.length > 0, uploadingBatches.length > 0);
+        verifier.isValidSubmitAction(isAdminSubmitAction, submission, params?.comment, submissionAttributes);
         await this._isValidReleaseAction(action, submission?._id, submission?.studyID, submission?.dataCommons, submission?.crossSubmissionStatus);
         //update submission
         let events = submission.history || [];
         // admin permission and submit action only can leave a comment
-        const isCommentRequired = ACTIONS.REJECT === action || (!verifier.isSubmitActionCommentRequired(submission, !userScope.isNoneScope(), params?.comment));
+        const isCommentRequired = ACTIONS.REJECT === action || (!verifier.isSubmitActionCommentRequired(submission, isAdminSubmitAction, params?.comment));
         const submitAdminFlag = newStatus === SUBMITTED
             ? action === ACTIONS.ADMIN_SUBMIT
             : undefined;

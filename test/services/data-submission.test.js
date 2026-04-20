@@ -2216,14 +2216,16 @@ describe('Submission.submissionAction', () => {
         };
     });
 
+    afterEach(() => {
+        delete submissionService._findByID;
+    });
+
     it('should throw error when submission not found', async () => {
-        const findSpy = jest.spyOn(Submission.prototype, '_findByID').mockResolvedValue(null);
+        submissionService._findByID = jest.fn().mockResolvedValue(null);
 
         await expect(submissionService.submissionAction(mockParams, mockContext))
             .rejects
             .toThrow(ERROR.SUBMISSION_NOT_EXIST);
-
-        findSpy.mockRestore();
     });
 
     it('should set submissionType Regular and isAdminSubmit false on Submit', async () => {
@@ -2273,14 +2275,13 @@ describe('Submission.submissionAction', () => {
             history: []
         };
         let findByIdN = 0;
-        const findSpy = jest.spyOn(Submission.prototype, '_findByID').mockImplementation(async () => {
+        submissionService._findByID = jest.fn().mockImplementation(async () => {
             findByIdN += 1;
             return findByIdN === 1 ? validSub : afterSubmit;
         });
 
         await submissionService.submissionAction(mockParams, mockContext);
 
-        findSpy.mockRestore();
         expect(findByIdN).toBe(2);
 
         expect(submissionUpdate).toHaveBeenCalled();
@@ -2338,7 +2339,7 @@ describe('Submission.submissionAction', () => {
             history: []
         };
         let findByIdN = 0;
-        const findSpy = jest.spyOn(Submission.prototype, '_findByID').mockImplementation(async () => {
+        submissionService._findByID = jest.fn().mockImplementation(async () => {
             findByIdN += 1;
             return findByIdN === 1 ? validSub : afterSubmit;
         });
@@ -2348,7 +2349,6 @@ describe('Submission.submissionAction', () => {
             mockContext
         );
 
-        findSpy.mockRestore();
         expect(findByIdN).toBe(2);
 
         const updatePayload = submissionUpdate.mock.calls[0][1];

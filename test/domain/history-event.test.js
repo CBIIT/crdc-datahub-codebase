@@ -54,7 +54,7 @@ describe('HistoryEventBuilder', () => {
     });
   });
 
-  it('should set isAdminSubmit on Submitted events; true only when fifth argument is true, else false', () => {
+  it('should set isAdminSubmit on Submitted events only when fifth argument is passed; true/false when explicit', () => {
     const mockedNow = new Date('2026-04-07T12:00:10.000Z');
     getCurrentTime.mockReturnValue(mockedNow);
 
@@ -67,12 +67,13 @@ describe('HistoryEventBuilder', () => {
     expect(HistoryEventBuilder.createEvent('u1', SUBMITTED, null, undefined, false)).toMatchObject({
       isAdminSubmit: false,
     });
-    expect(HistoryEventBuilder.createEvent('u1', SUBMITTED, null)).toMatchObject({
+    const omitted = HistoryEventBuilder.createEvent('u1', SUBMITTED, null);
+    expect(omitted).toMatchObject({
       userID: 'u1',
       status: SUBMITTED,
-      isAdminSubmit: false,
       dateTime: mockedNow,
     });
+    expect(omitted.isAdminSubmit).toBeUndefined();
   });
 
   it('should not set isAdminSubmit when status is not Submitted', () => {
