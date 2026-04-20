@@ -35,7 +35,8 @@ const mockNotificationsService = {
     dbGapMissingApproveQuestionNotification: jest.fn(),
     dataModelChangeApproveQuestionNotification: jest.fn(),
     pendingGPANotification: jest.fn(),
-    pendingImageDeIdentificationApproveQuestionNotification: jest.fn()
+    pendingImageDeIdentificationApproveQuestionNotification: jest.fn(),
+    inquireQuestionNotification: jest.fn()
 };
 const mockEmailParams = { inactiveDays: 180, inactiveApplicationNotifyDays: [7, 30, 60], conditionalSubmissionContact: 'contact@email', url: 'http://test', submissionGuideURL: 'http://guide' };
 const mockOrganizationService = {
@@ -1417,6 +1418,96 @@ describe('Application', () => {
             expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
             const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
             expect(args[0]).toBeUndefined(); // applicationID should be undefined when no _id
+        });
+    });
+
+    describe('inquireApplication', () => {
+        const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+
+        function makeApplication(overrides = {}) {
+            return {
+                _id: 'app1',
+                status: IN_REVIEW,
+                version: '1.0',
+                studyName: 'Default Study',
+                studyAbbreviation: 'DS',
+                questionnaireData: '{}',
+                applicant: {
+                    applicantID: 'user-applicant-1',
+                    applicantEmail: 'submitter@test.com',
+                    applicantName: 'Submitter Name'
+                },
+                history: [],
+                ...overrides
+            };
+        }
+
+        beforeEach(() => {
+            app.verifyReviewerPermission = jest.fn().mockResolvedValue();
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('1.0');
+            app.applicationDAO.update = jest.fn().mockResolvedValue({ acknowledged: true });
+            mockUserService.getUsersByNotifications = jest.fn().mockResolvedValue([]);
+            mockUserService.userCollection.find = jest.fn().mockResolvedValue([{
+                _id: 'user-applicant-1',
+                email: 'submitter@test.com',
+                notifications: [reviewNotification]
+            }]);
+            mockNotificationsService.inquireQuestionNotification = jest.fn().mockResolvedValue();
+        });
+
+        it('passes studyName and studyAbbreviation as NA when whitespace-only, null, or empty', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(makeApplication({
+                studyName: '   ',
+                studyAbbreviation: null
+            }));
+            await app.inquireApplication({ _id: 'app1', comment: 'Please clarify' }, context);
+            expect(mockNotificationsService.inquireQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Submitter Name',
+                    reviewComments: 'Please clarify',
+                    studyName: 'NA',
+                    studyAbbreviation: 'NA'
+                }),
+                {}
+            );
+        });
+
+        it('trims non-empty studyName and studyAbbreviation for the inquire email', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(makeApplication({
+                studyName: '  My Full Study  ',
+                studyAbbreviation: '  ABBR  '
+            }));
+            await app.inquireApplication({ _id: 'app1', comment: 'Need details' }, context);
+            expect(mockNotificationsService.inquireQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Submitter Name',
+                    reviewComments: 'Need details',
+                    studyName: 'My Full Study',
+                    studyAbbreviation: 'ABBR'
+                }),
+                {}
+            );
+        });
+
+        it('uses NA for study fields when the application object omits them', async () => {
+            const withoutStudy = makeApplication();
+            delete withoutStudy.studyName;
+            delete withoutStudy.studyAbbreviation;
+            app.getApplicationById = jest.fn().mockResolvedValue(withoutStudy);
+            await app.inquireApplication({ _id: 'app1', comment: 'R' }, context);
+            expect(mockNotificationsService.inquireQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({ studyName: 'NA', studyAbbreviation: 'NA' }),
+                {}
+            );
         });
     });
 
