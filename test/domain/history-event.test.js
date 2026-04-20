@@ -4,6 +4,7 @@ jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
 
 const { getCurrentTime } = require('../../crdc-datahub-database-drivers/utility/time-utility');
 const { HistoryEventBuilder } = require('../../domain/history-event');
+const { SUBMITTED } = require('../../constants/submission-constants');
 
 describe('HistoryEventBuilder', () => {
   beforeEach(() => {
@@ -51,6 +52,36 @@ describe('HistoryEventBuilder', () => {
       status: 'In Review',
       dateTime: providedDate,
     });
+  });
+
+  it('should set isAdminSubmit on Submitted events only when fifth argument is passed; true/false when explicit', () => {
+    const mockedNow = new Date('2026-04-07T12:00:10.000Z');
+    getCurrentTime.mockReturnValue(mockedNow);
+
+    expect(HistoryEventBuilder.createEvent('u1', SUBMITTED, null, undefined, true)).toMatchObject({
+      userID: 'u1',
+      status: SUBMITTED,
+      isAdminSubmit: true,
+      dateTime: mockedNow,
+    });
+    expect(HistoryEventBuilder.createEvent('u1', SUBMITTED, null, undefined, false)).toMatchObject({
+      isAdminSubmit: false,
+    });
+    const omitted = HistoryEventBuilder.createEvent('u1', SUBMITTED, null);
+    expect(omitted).toMatchObject({
+      userID: 'u1',
+      status: SUBMITTED,
+      dateTime: mockedNow,
+    });
+    expect(omitted.isAdminSubmit).toBeUndefined();
+  });
+
+  it('should not set isAdminSubmit when status is not Submitted', () => {
+    const mockedNow = new Date('2026-04-07T12:00:11.000Z');
+    getCurrentTime.mockReturnValue(mockedNow);
+
+    const event = HistoryEventBuilder.createEvent('u1', 'In Progress', null, undefined, true);
+    expect(event.isAdminSubmit).toBeUndefined();
   });
 
   // NOTE: This behavior is very likely undesirable. But I'm leaving it unchanged.

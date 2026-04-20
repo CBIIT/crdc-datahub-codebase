@@ -13,6 +13,7 @@
  * - add-chatbot-enabled-config.js: Add CHATBOT configuration (keys.enabled feature flag)
  * - backfill-approved-study-status.js: Set status Active on approvedStudies where missing
  * - lowercase-synonym-terms.js: Lowercase string synonym_term in synonyms (skips missing/non-string)
+ * - backfill-submission-type-regular.js: Set submissionType Regular on legacy submissions where missing
  */
 
 const { MongoClient } = require('mongodb');
@@ -225,6 +226,29 @@ async function executeLowercaseSynonymTermsMigration(db) {
 }
 
 /**
+ * Execute Submission.submissionType backfill (Regular where missing or null)
+ */
+async function executeSubmissionTypeRegularBackfill(db) {
+    console.log("🔄 Executing Submission.submissionType backfill...");
+
+    try {
+        const migration = require("./backfill-submission-type-regular");
+        const result = await migration.backfillSubmissionTypeRegular(db);
+
+        if (result.success) {
+            console.log("✅ Submission.submissionType backfill completed successfully");
+        } else {
+            console.log("❌ Submission.submissionType backfill failed");
+        }
+
+        return result;
+    } catch (error) {
+        console.error("❌ Error executing Submission.submissionType backfill:", error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Execute CHATBOT configuration migration
  */
 async function executeChatbotEnabledConfigMigration(db) {
@@ -309,6 +333,11 @@ async function orchestrateMigration() {
                 name: "Lowercase synonym_term in synonyms collection",
                 file: "lowercase-synonym-terms.js",
                 execute: () => executeLowercaseSynonymTermsMigration(db)
+            },
+            {
+                name: "Backfill Submission.submissionType (Regular where missing)",
+                file: "backfill-submission-type-regular.js",
+                execute: () => executeSubmissionTypeRegularBackfill(db)
             }
         ];
         

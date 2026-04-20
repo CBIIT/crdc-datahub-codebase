@@ -126,11 +126,12 @@ type Parent {
 }
 
 type History {
-  dateTime      DateTime @db.Date
-  reviewComment String?
-  status        String
-  userID        String?
-  userName      String?
+  dateTime       DateTime @db.Date
+  reviewComment  String?
+  status         String
+  userID         String?
+  userName       String?
+  isAdminSubmit  Boolean?
 }
 
 type Error {
@@ -528,6 +529,8 @@ model Submission {
   reviewComment            String?
   rootPath                 String
   status                   String
+  /// Admin | Regular; null if not yet submitted
+  submissionType           String?
   studyAbbreviation        String?
   studyName                String?
   studyID                  String
