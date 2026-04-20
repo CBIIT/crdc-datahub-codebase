@@ -935,7 +935,7 @@ class Application {
             version: application.version,
             history: [...(application.history || []), history]
         });
-        await sendEmails.inquireApplication(this.notificationService, this.userService, this.emailParams, application, document?.comment);
+        await sendEmails.inquireApplication(this.notificationService, this.userService, application, document?.comment);
         if (updated) {
             const log = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, INQUIRED);
             const promises = [
@@ -1482,7 +1482,7 @@ const sendEmails = {
             });
         }
     },
-    inquireApplication: async(notificationService, userService, emailParams, application, reviewComments) => {
+    inquireApplication: async (notificationService, userService, application, reviewComments) => {
         const res = await Promise.all([
             userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
@@ -1494,14 +1494,16 @@ const sendEmails = {
             const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
             const toBCCEmails = getUserEmails(toBCCUsers)
                 ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
+            const studyName = setDefaultIfNoName(application?.studyName);
+            const studyAbbreviation = setDefaultIfNoName(application?.studyAbbreviation);
             await notificationService.inquireQuestionNotification(application?.applicant?.applicantEmail,
                 CCEmails,
                 toBCCEmails,{
                 firstName: application?.applicant?.applicantName,
                 reviewComments,
-            }, {
-                contactInfo: emailParams.conditionalSubmissionContact,
-            });
+                studyName,
+                studyAbbreviation,
+            }, {});
         }
     },
     rejectApplication: async(notificationService, userService, emailParams, application, reviewComments) => {
