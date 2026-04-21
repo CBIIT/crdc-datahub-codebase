@@ -61,7 +61,7 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
       programID: "All",
       dbGaPID: "",
       accessType: "All",
-      status: "All",
+      status: "Active",
     },
   });
   const [studyFilter, programIDFilter, dbGaPIDFilter, accessTypeFilter, statusFilter] = watch([
@@ -98,7 +98,7 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
     const study = searchParams.get("study") || "";
     const accessType = searchParams.get("accessType") || "All";
     const programID = searchParams.get("programID") || "All";
-    const status = searchParams.get("status") || "All";
+    const status = searchParams.get("status") || "Active";
 
     if (programID !== programIDFilter) {
       setValue("programID", programID);
@@ -151,7 +151,7 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
     } else if (accessTypeFilter === "All") {
       newSearchParams.delete("accessType");
     }
-    if (statusFilter && statusFilter !== "All") {
+    if (statusFilter && statusFilter !== "Active") {
       newSearchParams.set("status", statusFilter);
     } else {
       newSearchParams.delete("status");
