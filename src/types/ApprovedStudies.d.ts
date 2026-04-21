@@ -60,6 +60,10 @@ type ApprovedStudy = {
    */
   GPAName: string;
   /**
+   * Indicates whether the study is currently active or inactive.
+   */
+  status: "Active" | "Inactive";
+  /**
    * Indicates whether the study has a pending image de-identification requirement
    */
   pendingImageDeIdentification: boolean;

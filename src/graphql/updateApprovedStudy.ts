@@ -18,6 +18,7 @@ export const mutation: TypedDocumentNode<Response, Input> = gql`
     $pendingImageDeIdentification: Boolean
     $GPAName: String
     $isPendingGPA: Boolean
+    $status: String
   ) {
     updateApprovedStudy(
       studyID: $studyID
@@ -35,6 +36,7 @@ export const mutation: TypedDocumentNode<Response, Input> = gql`
       pendingImageDeIdentification: $pendingImageDeIdentification
       GPAName: $GPAName
       isPendingGPA: $isPendingGPA
+      status: $status
     ) {
       _id
     }
@@ -57,6 +59,7 @@ export type Input = {
   pendingImageDeIdentification: boolean;
   GPAName: string;
   isPendingGPA: boolean;
+  status: string;
 };
 
 export type Response = {
