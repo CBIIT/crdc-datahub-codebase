@@ -209,6 +209,11 @@ const columns: Column<ApprovedStudy>[] = [
     fieldKey: "primaryContact.firstName",
   },
   {
+    label: "Status",
+    renderValue: ({ status }) => status || "",
+    fieldKey: "status",
+  },
+  {
     label: "Created Date",
     renderValue: (a) =>
       a.createdAt ? (
@@ -254,6 +259,7 @@ const ListView = () => {
     programID: "All",
     dbGaPID: "",
     accessType: "All",
+    status: "Active",
   });
 
   const tableRef = useRef<TableMethods>(null);
@@ -286,6 +292,10 @@ const ListView = () => {
           controlledAccess: filtersRef.current.accessType,
           study: filtersRef.current.study,
           programID: filtersRef.current.programID,
+          statuses:
+            filtersRef.current.status && filtersRef.current.status !== "All"
+              ? [filtersRef.current.status]
+              : [],
         },
         context: { clientName: "backend" },
         fetchPolicy: "no-cache",

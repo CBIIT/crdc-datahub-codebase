@@ -227,6 +227,7 @@ type FormInput = Pick<
   | "pendingModelChange"
   | "pendingImageDeIdentification"
   | "GPAName"
+  | "status"
 > & { primaryContactID: string; program: Organization };
 
 type Props = {
@@ -264,6 +265,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       pendingModelChange: false,
       pendingImageDeIdentification: false,
       GPAName: "",
+      status: "Active",
     },
   });
   const [isControlled, dbGaPIDFilter, gpaNameFilter, programField] = watch([
@@ -315,6 +317,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
           pendingModelChange,
           pendingImageDeIdentification,
           GPAName,
+          status,
         } = data?.getApprovedStudy || {};
 
         setSameAsProgramPrimaryContact(useProgramPC);
@@ -336,6 +339,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
           pendingModelChange,
           pendingImageDeIdentification,
           GPAName,
+          status,
         });
       },
       onError: (error) =>
@@ -395,6 +399,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
     pendingModelChange,
     pendingImageDeIdentification,
     GPAName,
+    status,
   }: FormInput) => {
     reset({
       studyName: studyName || "",
@@ -409,6 +414,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       pendingModelChange: pendingModelChange || false,
       pendingImageDeIdentification: pendingImageDeIdentification || false,
       GPAName: GPAName || "",
+      status: status || "Active",
     });
   };
 
@@ -916,6 +922,31 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                     />
                   </StyledCheckboxFormGroup>
                 </Stack>
+              </StyledField>
+
+              <StyledField>
+                <StyledLabel id="statusLabel">
+                  Status
+                  <StyledAsterisk visible />
+                </StyledLabel>
+                <Controller
+                  name="status"
+                  control={control}
+                  rules={{ required: true }}
+                  render={({ field }) => (
+                    <StyledSelect
+                      {...field}
+                      value={field.value || ""}
+                      disabled={_id === "new"}
+                      MenuProps={{ disablePortal: true }}
+                      inputProps={{ "aria-labelledby": "statusLabel" }}
+                      error={!!errors.status}
+                    >
+                      <MenuItem value="Active">Active</MenuItem>
+                      <MenuItem value="Inactive">Inactive</MenuItem>
+                    </StyledSelect>
+                  )}
+                />
               </StyledField>
 
               <StyledButtonStack
