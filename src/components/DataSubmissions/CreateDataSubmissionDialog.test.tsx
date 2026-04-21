@@ -29,6 +29,7 @@ const partialStudyProperties = [
   "pendingModelChange",
   "isPendingGPA",
   "pendingImageDeIdentification",
+  "status",
 ] satisfies (keyof ApprovedStudy)[];
 
 const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
@@ -1455,7 +1456,7 @@ describe("Implementation Requirements", () => {
 
   it("should only display studies with an Active status from user's assigned studies", async () => {
     const mixedStatusStudies: GetMyUserResp["getMyUser"]["studies"] = [
-      approvedStudyFactory.pick([...partialStudyProperties, "status"]).build({
+      approvedStudyFactory.pick(partialStudyProperties).build({
         _id: "active-study",
         studyName: "Active Study",
         studyAbbreviation: "AS",
@@ -1464,7 +1465,7 @@ describe("Implementation Requirements", () => {
         pendingModelChange: false,
         status: "Active",
       }),
-      approvedStudyFactory.pick([...partialStudyProperties, "status"]).build({
+      approvedStudyFactory.pick(partialStudyProperties).build({
         _id: "inactive-study",
         studyName: "Inactive Study",
         studyAbbreviation: "IS",
