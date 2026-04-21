@@ -568,12 +568,13 @@ const FormView: FC<Props> = ({ section }: Props) => {
       return;
     }
 
-    blocker.proceed?.();
-    if (res?.status === "success" && res.id) {
+    if (res?.status === "success" && res?.id && res.id !== data._id && data._id === "new") {
       // NOTE: This currently triggers a form data refetch, which is not ideal
       navigate(blocker.location.pathname.replace("new", res.id), {
         replace: true,
       });
+    } else {
+      blocker.proceed?.();
     }
   };
 
