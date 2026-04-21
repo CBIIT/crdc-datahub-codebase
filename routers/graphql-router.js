@@ -143,14 +143,23 @@ dbConnector.connect().then(async () => {
         submitApplication: dataInterface.submitApplication.bind(dataInterface),
         approveApplication:  async (params, context)=> {
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
+            if (comment?.trim().length > CONSTRAINTS.APPROVE_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.APPROVE_COMMENT_MAX_LENGTH));
+            }
             return await dataInterface.approveApplication({...params, comment}, context);
         },
         rejectApplication: async (params, context)=> {
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
+            if (comment?.trim().length > CONSTRAINTS.REJECT_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.REJECT_COMMENT_MAX_LENGTH));
+            }
             return await dataInterface.rejectApplication({...params, comment}, context);
         },
         inquireApplication: async (params, context)=> {
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
+            if (comment?.trim().length > CONSTRAINTS.INQUIRE_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.INQUIRE_COMMENT_MAX_LENGTH));
+            }
             return await dataInterface.inquireApplication({...params, comment}, context);
         },
         reopenApplication: dataInterface.reopenApplication.bind(dataInterface),
