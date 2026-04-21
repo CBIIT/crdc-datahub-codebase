@@ -9,7 +9,7 @@
 - Requests can now be approved but flagged as pending on Risk
     Mitigation document and Image De-identification protocol.
 - Submission Requests now avoid auto-saving completely blank forms to
-    reduce clutter of "New" requests.
+    reduce clutter from "New" requests.
 
 #### Data Submission
 
