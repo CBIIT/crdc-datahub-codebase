@@ -4,12 +4,12 @@
 
 #### Submission Request
 
-- Enhanced study filter to search by both study name and abbreviation
+- Enhanced the study filter to search by both study name and abbreviation
     for improved flexibility.
 - Requests can now be approved but flagged as pending on Risk
     Mitigation document and Image De-identification protocol.
 - Submission Requests now avoid auto-saving completely blank forms to
-    reduce clutter in New requests.
+    reduce clutter of "New" requests.
 
 #### Data Submission
 
@@ -31,19 +31,6 @@
     also delete associated data files.
 - Metadata validation performance significantly improved through
     parallel processing and batch validation for large submissions.
-- \[Bug Fix\]: Fixed an issue where Data View could omit relationship
-    columns for uploaded data in some submissions.
-- \[Bug Fix\]: Fixed an issue where deleting a parent record could
-    incorrectly remove child records that were not orphaned.
-- \[Bug Fix\]: Fixed an issue where validation results could continue
-    showing stale errors after re-uploading corrected files.
-- \[Bug Fix\]: Fixed an issue where required-property validation did
-    not consistently report empty required column values.
-- \[Bug Fix\]: Fixed an issue where validation did not report
-    incompatible consent code combinations for file records.
-- \[Bug Fix\]: Fixed an issue where string-typed properties with
-    primary PV null CDE support incorrectly raised "Value not
-    Permitted" errors.
 
 #### Data Model Navigator
 
