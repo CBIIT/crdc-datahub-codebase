@@ -66,8 +66,8 @@ export type {
   Response as ListSubmissionsResp,
 } from "./listSubmissions";
 
-export { mutation as SUBMISSION_ACTION } from "./submissionAction";
-export type { Response as SubmissionActionResp } from "./submissionAction";
+export { SUBMISSION_ACTION } from "./submissionAction";
+export type { SubmissionActionResp, SubmissionActionInput } from "./submissionAction";
 
 export { mutation as CREATE_BATCH } from "./createBatch";
 export type { Input as CreateBatchInput, Response as CreateBatchResp } from "./createBatch";

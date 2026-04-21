@@ -20,7 +20,7 @@ import ValidationControls from "../../components/DataSubmissions/ValidationContr
 import ValidationStatistics from "../../components/DataSubmissions/ValidationStatistics";
 import DbGaPSheetExport from "../../components/DbGaPSheetExport";
 import { hasPermission } from "../../config/AuthPermissions";
-import { SUBMISSION_ACTION, SubmissionActionResp } from "../../graphql";
+import { SUBMISSION_ACTION, SubmissionActionInput, SubmissionActionResp } from "../../graphql";
 import usePageTitle from "../../hooks/usePageTitle";
 import { Logger } from "../../utils";
 
@@ -188,10 +188,13 @@ const DataSubmission: FC<Props> = ({ submissionId, tab = URLTabs.UPLOAD_ACTIVITY
     Object.values(URLTabs).includes(tab) &&
     (tab !== URLTabs.CROSS_VALIDATION_RESULTS || crossValidationVisible);
 
-  const [submissionAction] = useMutation<SubmissionActionResp>(SUBMISSION_ACTION, {
-    context: { clientName: "backend" },
-    fetchPolicy: "no-cache",
-  });
+  const [submissionAction] = useMutation<SubmissionActionResp, SubmissionActionInput>(
+    SUBMISSION_ACTION,
+    {
+      context: { clientName: "backend" },
+      fetchPolicy: "no-cache",
+    }
+  );
 
   const updateSubmissionAction = async (action: SubmissionAction, reviewComment?: string) => {
     if (!submissionId) {
