@@ -432,6 +432,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     if (programStatus !== ProgramStatus.LOADED) {
       return;
     }
+
     if (!id || !id.trim()) {
       setState({
         status: Status.ERROR,
@@ -511,7 +512,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         },
       });
     })();
-  }, [id, user, programStatus]);
+  }, [id, programStatus]);
 
   const value = useMemo(
     () => ({
