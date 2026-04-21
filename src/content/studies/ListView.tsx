@@ -259,7 +259,7 @@ const ListView = () => {
     programID: "All",
     dbGaPID: "",
     accessType: "All",
-    status: "All",
+    status: "Active",
   });
 
   const tableRef = useRef<TableMethods>(null);
