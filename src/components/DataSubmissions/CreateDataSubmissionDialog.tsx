@@ -275,7 +275,9 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
     }
 
     return (
-      user?.studies?.sort((a, b) => a?.studyAbbreviation?.localeCompare(b?.studyAbbreviation)) || []
+      user?.studies
+        ?.filter((s) => s?.status === "Active")
+        ?.sort((a, b) => a?.studyAbbreviation?.localeCompare(b?.studyAbbreviation)) || []
     );
   }, [shouldFetchAllStudies, allStudies, user?.studies]);
 

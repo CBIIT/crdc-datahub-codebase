@@ -1452,4 +1452,66 @@ describe("Implementation Requirements", () => {
       expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["Active"] }));
     });
   });
+
+  it("should only display studies with an Active status from user's assigned studies", async () => {
+    const mixedStatusStudies: GetMyUserResp["getMyUser"]["studies"] = [
+      approvedStudyFactory.pick([...partialStudyProperties, "status"]).build({
+        _id: "active-study",
+        studyName: "Active Study",
+        studyAbbreviation: "AS",
+        dbGaPID: "phsTEST",
+        controlledAccess: false,
+        pendingModelChange: false,
+        status: "Active",
+      }),
+      approvedStudyFactory.pick([...partialStudyProperties, "status"]).build({
+        _id: "inactive-study",
+        studyName: "Inactive Study",
+        studyAbbreviation: "IS",
+        dbGaPID: "phsTEST",
+        controlledAccess: false,
+        pendingModelChange: false,
+        status: "Inactive",
+      }),
+    ];
+
+    const { getByRole, getByTestId, queryByTestId } = render(
+      <CreateDataSubmissionDialog onCreate={vi.fn()} />,
+      {
+        wrapper: (p) => (
+          <TestParent
+            mocks={[]}
+            authCtxState={authCtxStateFactory.build({
+              user: userFactory.build({
+                role: "Submitter",
+                studies: mixedStatusStudies,
+                permissions: basePermissions,
+              }),
+            })}
+            {...p}
+          />
+        ),
+      }
+    );
+
+    const openDialogButton = getByRole("button", { name: "Create a Data Submission" });
+    await waitFor(() => expect(openDialogButton).toBeEnabled());
+    userEvent.click(openDialogButton);
+
+    await waitFor(() => {
+      expect(getByTestId("create-submission-dialog")).toBeInTheDocument();
+    });
+
+    const studySelectButton = within(
+      getByTestId("create-data-submission-dialog-study-id-input")
+    ).getByRole("button");
+    userEvent.click(studySelectButton);
+
+    await waitFor(() => {
+      expect(studySelectButton).toHaveAttribute("aria-expanded", "true");
+    });
+
+    expect(getByTestId("study-option-active-study")).toBeInTheDocument();
+    expect(queryByTestId("study-option-inactive-study")).not.toBeInTheDocument();
+  });
 });
