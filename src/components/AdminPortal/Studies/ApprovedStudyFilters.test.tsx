@@ -321,7 +321,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "",
       accessType: "All",
       programID: "All",
-      status: "All",
+      status: "Active",
     });
 
     const studyInput = getByTestId("study-input");
@@ -348,7 +348,7 @@ describe("ApprovedStudyFilters Component", () => {
         dbGaPID: "DB1",
         accessType: "All",
         programID: "All",
-        status: "All",
+        status: "Active",
       });
     });
 
@@ -381,7 +381,7 @@ describe("ApprovedStudyFilters Component", () => {
         dbGaPID: "",
         accessType: "All",
         programID: "All",
-        status: "All",
+        status: "Active",
       });
     });
   });
@@ -414,7 +414,7 @@ describe("ApprovedStudyFilters Component", () => {
         dbGaPID: "",
         accessType: "All",
         programID: "All",
-        status: "All",
+        status: "Active",
       });
     });
 
@@ -449,7 +449,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "DB123",
       accessType: "All",
       programID: "All",
-      status: "All",
+      status: "Active",
     });
   });
 
@@ -477,7 +477,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "",
       accessType: "Controlled",
       programID: "All",
-      status: "All",
+      status: "Active",
     });
   });
 
@@ -508,7 +508,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "",
       accessType: "All",
       programID: "All",
-      status: "All",
+      status: "Active",
     });
   });
 
@@ -533,7 +533,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "",
       accessType: "All",
       programID: "All",
-      status: "All",
+      status: "Active",
     });
   });
 });
