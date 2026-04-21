@@ -49,6 +49,7 @@ const {AuthorizationService} = require("../services/authorization-service");
 const {UserScope} = require("../domain/user-scope");
 const {replaceErrorString} = require("../utility/string-util");
 const {ADMIN} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
+const {CONSTRAINTS} = require("../constants/submission-constants");
 const {Release} = require("../services/release-service");
 const DataModelService = require("../services/data-model-service");
 const { MODEL_NAME } = require("../constants/db-constants");
@@ -155,16 +156,16 @@ dbConnector.connect().then(async () => {
         reopenApplication: dataInterface.reopenApplication.bind(dataInterface),
         cancelApplication: async (params, context)=> {
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
-            if (comment?.trim().length > 500) {
-                throw new Error(ERROR.COMMENT_LIMIT);
+            if (comment?.trim().length > CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH));
             }
 
             return await dataInterface.cancelApplication({...params, comment}, context);
         },
         restoreApplication: async (params, context)=> {
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
-            if (comment?.trim().length > 500) {
-                throw new Error(ERROR.COMMENT_LIMIT);
+            if (comment?.trim().length > CONSTRAINTS.RESTORE_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.RESTORE_COMMENT_MAX_LENGTH));
             }
             return await dataInterface.restoreApplication({...params, comment}, context);
         },
