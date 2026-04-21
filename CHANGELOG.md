@@ -36,7 +36,7 @@
 
 - System now automatically detects and displays model version history
     when a version-history.md file exists in the data model repository.
-- \[Bug Fix\]: Fixed an issue where some acceptable values were
+- \[Bug Fix\]: Fixed an issue where some permissible values were
     displayed multiple times for the same property.
 - \[Bug Fix\]: Fixed regular expression pattern display mismatches in Model
     Navigator property definitions.
