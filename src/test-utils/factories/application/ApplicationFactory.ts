@@ -5,7 +5,7 @@ import { Factory } from "../Factory";
  * @note Created to match InitialApplication
  */
 export const baseApplication: Application = {
-  _id: "new",
+  _id: "",
   applicant: null,
   status: "New",
   createdAt: "",

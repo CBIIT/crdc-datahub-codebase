@@ -5,6 +5,7 @@ import { axe } from "vitest-axe";
 
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
 import { formContextStateFactory } from "@/factories/application/FormContextStateFactory";
+import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
@@ -20,7 +21,6 @@ import {
   ListOrgsResp,
 } from "@/graphql";
 
-import { InitialApplication, InitialQuestionnaire } from "../../config/InitialValues";
 import config from "../../config/SectionConfig";
 import { render } from "../../test-utils";
 import { ContextState, Context as AuthCtx } from "../Contexts/AuthContext";
@@ -84,10 +84,10 @@ const listOrgsMock: MockedResponse<ListOrgsResp, ListOrgsInput> = {
   },
 };
 
-const BaseApplication: Application = {
-  ...InitialApplication,
-  questionnaireData: { ...InitialQuestionnaire },
-};
+const BaseApplication: Application = applicationFactory.build({
+  _id: "mock-application-id",
+  questionnaireData: questionnaireDataFactory.build(),
+});
 
 type Props = {
   section: string;
@@ -99,7 +99,7 @@ const BaseComponent: FC<Props> = ({ section, user = {}, data = {} }: Props) => {
   const formValue = useMemo<FormCtxState>(
     () =>
       formContextStateFactory.build({
-        data: applicationFactory.build({ ...data }),
+        data: { ...BaseApplication, ...data },
       }),
     [data]
   );
