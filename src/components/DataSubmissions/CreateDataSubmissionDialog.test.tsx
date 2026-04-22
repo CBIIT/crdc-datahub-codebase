@@ -29,6 +29,7 @@ const partialStudyProperties = [
   "pendingModelChange",
   "isPendingGPA",
   "pendingImageDeIdentification",
+  "status",
 ] satisfies (keyof ApprovedStudy)[];
 
 const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
@@ -1412,5 +1413,106 @@ describe("Implementation Requirements", () => {
         /Pending submission of the risk mitigation document and the image de-identification protocol./i
       )
     ).toBeInTheDocument();
+  });
+
+  it("should only fetch active approved studies", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const activeStudiesMock: MockedResponse<ListApprovedStudiesResp, ListApprovedStudiesInput> = {
+      request: {
+        query: LIST_APPROVED_STUDIES,
+      },
+      variableMatcher: mockMatcher,
+      result: {
+        data: {
+          listApprovedStudies: {
+            total: 0,
+            studies: [],
+          },
+        },
+      },
+    };
+
+    const { getByRole } = render(<CreateDataSubmissionDialog onCreate={vi.fn()} />, {
+      wrapper: (p) => (
+        <TestParent
+          mocks={[activeStudiesMock]}
+          authCtxState={authCtxStateFactory.build({
+            user: userFactory.build({
+              role: "Data Commons Personnel",
+              permissions: basePermissions,
+            }),
+          })}
+          {...p}
+        />
+      ),
+    });
+
+    userEvent.click(getByRole("button", { name: "Create a Data Submission" }));
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["Active"] }));
+    });
+  });
+
+  it("should only display studies with an Active status from user's assigned studies", async () => {
+    const mixedStatusStudies: GetMyUserResp["getMyUser"]["studies"] = [
+      approvedStudyFactory.pick(partialStudyProperties).build({
+        _id: "active-study",
+        studyName: "Active Study",
+        studyAbbreviation: "AS",
+        dbGaPID: "phsTEST",
+        controlledAccess: false,
+        pendingModelChange: false,
+        status: "Active",
+      }),
+      approvedStudyFactory.pick(partialStudyProperties).build({
+        _id: "inactive-study",
+        studyName: "Inactive Study",
+        studyAbbreviation: "IS",
+        dbGaPID: "phsTEST",
+        controlledAccess: false,
+        pendingModelChange: false,
+        status: "Inactive",
+      }),
+    ];
+
+    const { getByRole, getByTestId, queryByTestId } = render(
+      <CreateDataSubmissionDialog onCreate={vi.fn()} />,
+      {
+        wrapper: (p) => (
+          <TestParent
+            mocks={[]}
+            authCtxState={authCtxStateFactory.build({
+              user: userFactory.build({
+                role: "Submitter",
+                studies: mixedStatusStudies,
+                permissions: basePermissions,
+              }),
+            })}
+            {...p}
+          />
+        ),
+      }
+    );
+
+    const openDialogButton = getByRole("button", { name: "Create a Data Submission" });
+    await waitFor(() => expect(openDialogButton).toBeEnabled());
+    userEvent.click(openDialogButton);
+
+    await waitFor(() => {
+      expect(getByTestId("create-submission-dialog")).toBeInTheDocument();
+    });
+
+    const studySelectButton = within(
+      getByTestId("create-data-submission-dialog-study-id-input")
+    ).getByRole("button");
+    userEvent.click(studySelectButton);
+
+    await waitFor(() => {
+      expect(studySelectButton).toHaveAttribute("aria-expanded", "true");
+    });
+
+    expect(getByTestId("study-option-active-study")).toBeInTheDocument();
+    expect(queryByTestId("study-option-inactive-study")).not.toBeInTheDocument();
   });
 });

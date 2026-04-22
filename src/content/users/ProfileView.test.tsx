@@ -290,4 +290,34 @@ describe("Implementation Requirements", () => {
     const options = await findAllByRole("option");
     expect(options).toHaveLength(2);
   });
+
+  it("should only fetch active approved studies", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const activeStudiesMock: MockedResponse<ListApprovedStudiesResp, ListApprovedStudiesInput> = {
+      request: {
+        query: LIST_APPROVED_STUDIES,
+      },
+      variableMatcher: mockMatcher,
+      result: {
+        data: {
+          listApprovedStudies: {
+            total: 0,
+            studies: [],
+          },
+        },
+      },
+    };
+
+    render(
+      <TestParent
+        mocks={[getUserMock, activeStudiesMock, listInstitutionsMock, retrievePBACDefaults]}
+      >
+        <ProfileView _id="test-id" viewType="users" />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["Active"] }));
+    });
+  });
 });

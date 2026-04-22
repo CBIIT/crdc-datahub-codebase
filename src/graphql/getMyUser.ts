@@ -22,6 +22,7 @@ export const query: TypedDocumentNode<Response> = gql`
         pendingModelChange
         pendingImageDeIdentification
         isPendingGPA
+        status
       }
       institution {
         _id

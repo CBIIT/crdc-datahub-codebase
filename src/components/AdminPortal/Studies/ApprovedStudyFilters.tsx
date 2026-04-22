@@ -14,18 +14,20 @@ const StyledFilterContainer = styled(Box)({
   alignItems: "center",
   justifyContent: "space-between",
   paddingBottom: "10px",
+  flexWrap: "wrap",
 });
 
 const StyledInlineLabel = styled("label")({
   padding: "0",
   fontWeight: "700",
+  whiteSpace: "nowrap",
 });
 
 const StyledFormControl = styled(FormControl)({
   margin: "10px",
   marginRight: 0,
-  minWidth: "250px",
-  maxWidth: "250px",
+  flex: 1,
+  width: "190px",
 });
 
 const initialTouchedFields: TouchedState = {
@@ -33,6 +35,7 @@ const initialTouchedFields: TouchedState = {
   dbGaPID: false,
   accessType: false,
   programID: false,
+  status: false,
 };
 
 export type FilterForm = {
@@ -40,6 +43,7 @@ export type FilterForm = {
   dbGaPID: string;
   accessType: AccessType;
   programID: string;
+  status: "All" | "Active" | "Inactive";
 };
 
 type TouchedState = { [K in keyof FilterForm]: boolean };
@@ -57,13 +61,15 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
       programID: "All",
       dbGaPID: "",
       accessType: "All",
+      status: "Active",
     },
   });
-  const [studyFilter, programIDFilter, dbGaPIDFilter, accessTypeFilter] = watch([
+  const [studyFilter, programIDFilter, dbGaPIDFilter, accessTypeFilter, statusFilter] = watch([
     "study",
     "programID",
     "dbGaPID",
     "accessType",
+    "status",
   ]);
   const [selectMinWidth, setSelectMinWidth] = useState<number | null>(null);
   const [touchedFilters, setTouchedFilters] = useState<TouchedState>(initialTouchedFields);
@@ -73,6 +79,9 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
 
   const isAccessTypeFilterOption = (accessType: string): accessType is FilterForm["accessType"] =>
     ["All", "Controlled", "Open"].includes(accessType);
+
+  const isStatusFilterOption = (status: string): status is FilterForm["status"] =>
+    ["All", "Active", "Inactive"].includes(status);
 
   const handleAccessTypeChange = (accessType: string) => {
     if (accessType === accessTypeFilter) {
@@ -89,6 +98,7 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
     const study = searchParams.get("study") || "";
     const accessType = searchParams.get("accessType") || "All";
     const programID = searchParams.get("programID") || "All";
+    const status = searchParams.get("status") || "Active";
 
     if (programID !== programIDFilter) {
       setValue("programID", programID);
@@ -100,6 +110,9 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
       setValue("study", study);
     }
     handleAccessTypeChange(accessType);
+    if (isStatusFilterOption(status) && status !== statusFilter) {
+      setValue("status", status);
+    }
 
     if (Object.values(touchedFilters).every((filter) => !filter)) {
       onChange?.(getValues());
@@ -109,6 +122,7 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
     searchParams.get("study"),
     searchParams.get("accessType"),
     searchParams.get("programID"),
+    searchParams.get("status"),
   ]);
 
   useEffect(() => {
@@ -137,11 +151,16 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
     } else if (accessTypeFilter === "All") {
       newSearchParams.delete("accessType");
     }
+    if (statusFilter && statusFilter !== "Active") {
+      newSearchParams.set("status", statusFilter);
+    } else {
+      newSearchParams.delete("status");
+    }
 
     if (newSearchParams?.toString() !== searchParams?.toString()) {
       setSearchParams(newSearchParams);
     }
-  }, [dbGaPIDFilter, studyFilter, accessTypeFilter, programIDFilter, touchedFilters]);
+  }, [dbGaPIDFilter, studyFilter, accessTypeFilter, programIDFilter, statusFilter, touchedFilters]);
 
   useEffect(() => {
     const subscription = watch((formValue: FilterForm, { name }) => {
@@ -278,6 +297,39 @@ const ApprovedStudyFilters = ({ onChange }: Props) => {
                 </MenuItem>
                 <MenuItem value="Open" data-testid="accessType-option-Open">
                   Open
+                </MenuItem>
+              </StyledSelect>
+            )}
+          />
+        </StyledFormControl>
+      </Stack>
+
+      <Stack direction="row" alignItems="center">
+        <StyledInlineLabel htmlFor="status-filter">Status</StyledInlineLabel>
+        <StyledFormControl>
+          <Controller
+            name="status"
+            control={control}
+            render={({ field }) => (
+              <StyledSelect
+                {...field}
+                value={field.value}
+                MenuProps={{ disablePortal: true, sx: { zIndex: 700 } }}
+                inputProps={{ id: "status-filter" }}
+                data-testid="status-select"
+                onChange={(e) => {
+                  field.onChange(e);
+                  handleFilterChange("status");
+                }}
+              >
+                <MenuItem value="All" data-testid="status-option-All">
+                  All
+                </MenuItem>
+                <MenuItem value="Active" data-testid="status-option-Active">
+                  Active
+                </MenuItem>
+                <MenuItem value="Inactive" data-testid="status-option-Inactive">
+                  Inactive
                 </MenuItem>
               </StyledSelect>
             )}

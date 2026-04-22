@@ -257,7 +257,12 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
   const { data: allStudies } = useQuery<ListApprovedStudiesResp, ListApprovedStudiesInput>(
     LIST_APPROVED_STUDIES,
     {
-      variables: { first: -1, orderBy: "studyAbbreviation", sortDirection: "asc" },
+      variables: {
+        first: -1,
+        orderBy: "studyAbbreviation",
+        sortDirection: "asc",
+        statuses: ["Active"],
+      },
       context: { clientName: "backend" },
       fetchPolicy: "cache-and-network",
       skip: !shouldFetchAllStudies,
@@ -270,7 +275,9 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
     }
 
     return (
-      user?.studies?.sort((a, b) => a?.studyAbbreviation?.localeCompare(b?.studyAbbreviation)) || []
+      user?.studies
+        ?.filter((s) => s?.status === "Active")
+        ?.sort((a, b) => a?.studyAbbreviation?.localeCompare(b?.studyAbbreviation)) || []
     );
   }, [shouldFetchAllStudies, allStudies, user?.studies]);
 

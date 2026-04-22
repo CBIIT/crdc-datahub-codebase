@@ -106,6 +106,9 @@ type ActionKey =
   | "Complete"
   | "Cancel";
 
+const isSubmitAction = (action: SubmissionAction | null) =>
+  action === "Submit" || action === "Admin Submit";
+
 const actionConfig: Record<ActionKey, ActionConfig> = {
   Submit: {
     hasPermission: (user, submission) =>
@@ -228,15 +231,15 @@ const DataSubmissionActions = ({ onAction }: Props) => {
           placement="top"
           title={submitActionButton?.tooltip}
           open={undefined}
-          disableHoverListener={!submitActionButton?.tooltip || (action && action !== "Submit")}
+          disableHoverListener={!submitActionButton?.tooltip || (action && !isSubmitAction(action))}
         >
           <span>
             <StyledLoadingButton
               variant="contained"
               color="primary"
               onClick={() => onOpenDialog("Submit")}
-              loading={action === "Submit"}
-              disabled={!submitActionButton?.enabled || (action && action !== "Submit")}
+              loading={isSubmitAction(action)}
+              disabled={!submitActionButton?.enabled || (action && !isSubmitAction(action))}
             >
               {submitActionButton?.isAdminOverride ? "Admin Submit" : "Submit"}
             </StyledLoadingButton>
@@ -339,7 +342,7 @@ const DataSubmissionActions = ({ onAction }: Props) => {
               Cancel
             </Button>
             <LoadingButton
-              onClick={() => handleOnAction("Submit")}
+              onClick={() => handleOnAction("Admin Submit")}
               loading={!!action}
               disabled={reviewComment?.trim()?.length <= 0}
               autoFocus

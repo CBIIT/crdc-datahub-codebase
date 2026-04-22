@@ -417,6 +417,7 @@ describe("StudyView Component", () => {
           pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       result: {
@@ -548,6 +549,7 @@ describe("StudyView Component", () => {
           pendingImageDeIdentification: false,
           GPAName: "GPA Name",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       result: {
@@ -617,6 +619,7 @@ describe("StudyView Component", () => {
           pendingImageDeIdentification: false,
           GPAName: "",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       error: new Error("Unable to create approved study."),
@@ -734,6 +737,7 @@ describe("StudyView Component", () => {
           pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       error: new Error("Unable to save changes"),
@@ -801,6 +805,7 @@ describe("StudyView Component", () => {
           pendingImageDeIdentification: false,
           GPAName: "",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       result: {
@@ -991,6 +996,7 @@ describe("StudyView Component", () => {
           pendingImageDeIdentification: false,
           GPAName: "",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       error: new ApolloError({ errorMessage: null }),
@@ -1106,6 +1112,7 @@ describe("StudyView Component", () => {
           pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       error: new ApolloError({ errorMessage: null }),
@@ -1243,6 +1250,7 @@ describe("StudyView Component", () => {
           pendingImageDeIdentification: true,
           GPAName: "",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       result: {
@@ -1355,6 +1363,7 @@ describe("StudyView Component", () => {
           pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       result: {
