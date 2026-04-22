@@ -26,7 +26,7 @@
     {{#if reviewComments}}
     <p>
       <span>[Review Comments]:</span><br>
-      <span style="white-space: pre-wrap;">{{ reviewComments }}</span>
+      <span>{{nlToBr reviewComments}}</span>
     </p>
     {{/if}}
     <p>{{ thirdMessage }}</p>
