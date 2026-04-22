@@ -22,6 +22,8 @@ import {
   SAVE_APP,
   SaveAppInput,
   SaveAppResp,
+  LastAppResp,
+  GetApplicationFormVersionResp,
 } from "../../graphql";
 import { query as GET_APP, GetAppInput } from "../../graphql/getApplication";
 import { query as GET_LAST_APP } from "../../graphql/getMyLastApplication";
@@ -922,6 +924,72 @@ describe("saveApp Tests", () => {
     expect(result.current.data?.programName).toEqual("updated program name");
     expect(result.current.data?.studyAbbreviation).toEqual("updated study abbreviation");
     expect(result.current.data?.status).toEqual("New");
+  });
+
+  it("should replace the temporary id after saving a new form", async () => {
+    const createdId = "generated-form-id";
+
+    const mockGetLastApp: MockedResponse<LastAppResp> = {
+      request: {
+        query: GET_LAST_APP,
+      },
+      result: {
+        data: {
+          getMyLastApplication: null,
+        },
+      },
+    };
+
+    const mockGetFormVersion: MockedResponse<GetApplicationFormVersionResp> = {
+      request: {
+        query: GET_APPLICATION_FORM_VERSION,
+      },
+      result: {
+        data: {
+          getApplicationFormVersion: {
+            _id: "mock-form-version-id",
+            version: "1.0.0",
+          },
+        },
+      },
+    };
+
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          saveApplication: applicationFactory.build({
+            _id: createdId,
+            status: "In Progress",
+          }),
+        },
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[mockGetLastApp, mockGetFormVersion, mockSave]} appId="new">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(questionnaireDataFactory.build());
+      expect(saveResp).toEqual({
+        status: "success",
+        id: createdId,
+      });
+    });
+
+    expect(result.current.data?._id).toEqual(createdId);
   });
 
   it("should propagate API errors from the saveApplication response", async () => {

@@ -231,7 +231,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     getFormObjectRef: useRef<(() => FormObject) | null>(null),
   };
 
-  usePageTitle(`Submission Request ${data?._id && data?._id !== "new" ? `- ${data._id}` : ""}`);
+  usePageTitle(`Submission Request${data?._id && data?._id !== "new" ? ` - ${data._id}` : ""}`);
 
   /**
    * Determines if the form has unsaved changes.
