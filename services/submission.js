@@ -64,7 +64,6 @@ const FINAL_INACTIVE_REMINDER = "finalInactiveReminder";
 const SUBMISSION_ID = "Submission ID";
 const DATA_SUBMISSION_TYPE = "Data Submission Type";
 const DESTINATION_LOCATION = "Destination Location";
-const MAX_COMMENT_LENGTH = 500;
 const MAX_SUBMISSION_NAME_LENGTH = 25;
 // Set to array
 Set.prototype.toArray = function() {
@@ -2608,8 +2607,8 @@ class Submission {
             throw new Error(ERROR.EMPTY_NODE_REQUEST_PV);
         }
 
-        if (comment?.trim().length > MAX_COMMENT_LENGTH) {
-            throw new Error(ERROR.COMMENT_LIMIT);
+        if (comment?.trim().length > CONSTRAINTS.REQUEST_PV_COMMENT_MAX_LENGTH) {
+            throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.REQUEST_PV_COMMENT_MAX_LENGTH));
         }
 
         if (property?.trim()?.length === 0) {

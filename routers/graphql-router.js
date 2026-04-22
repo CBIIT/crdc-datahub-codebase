@@ -49,6 +49,7 @@ const {AuthorizationService} = require("../services/authorization-service");
 const {UserScope} = require("../domain/user-scope");
 const {replaceErrorString} = require("../utility/string-util");
 const {ADMIN} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
+const {CONSTRAINTS} = require("../constants/submission-constants");
 const {Release} = require("../services/release-service");
 const DataModelService = require("../services/data-model-service");
 const { MODEL_NAME } = require("../constants/db-constants");
@@ -141,30 +142,39 @@ dbConnector.connect().then(async () => {
         listApplications: dataInterface.listApplications.bind(dataInterface),
         submitApplication: dataInterface.submitApplication.bind(dataInterface),
         approveApplication:  async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
+            if (comment.length > CONSTRAINTS.APPROVE_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.APPROVE_COMMENT_MAX_LENGTH));
+            }
             return await dataInterface.approveApplication({...params, comment}, context);
         },
         rejectApplication: async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
+            if (comment.length > CONSTRAINTS.REJECT_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.REJECT_COMMENT_MAX_LENGTH));
+            }
             return await dataInterface.rejectApplication({...params, comment}, context);
         },
         inquireApplication: async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
+            if (comment.length > CONSTRAINTS.INQUIRE_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.INQUIRE_COMMENT_MAX_LENGTH));
+            }
             return await dataInterface.inquireApplication({...params, comment}, context);
         },
         reopenApplication: dataInterface.reopenApplication.bind(dataInterface),
         cancelApplication: async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
-            if (comment?.trim().length > 500) {
-                throw new Error(ERROR.COMMENT_LIMIT);
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
+            if (comment.length > CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH));
             }
 
             return await dataInterface.cancelApplication({...params, comment}, context);
         },
         restoreApplication: async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}});
-            if (comment?.trim().length > 500) {
-                throw new Error(ERROR.COMMENT_LIMIT);
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
+            if (comment.length > CONSTRAINTS.RESTORE_COMMENT_MAX_LENGTH) {
+                throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.RESTORE_COMMENT_MAX_LENGTH));
             }
             return await dataInterface.restoreApplication({...params, comment}, context);
         },
