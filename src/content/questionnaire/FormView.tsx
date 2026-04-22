@@ -689,7 +689,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     }
 
     previousIDRef.current = data._id;
-  }, [data?._id, previousIDRef.current, isNavigationBlocked]);
+  }, [data?._id, isNavigationBlocked]);
 
   // Show loading spinner if the form is still loading
   if (status === FormStatus.LOADING || authStatus === AuthStatus.LOADING) {
