@@ -10,7 +10,7 @@ import {
 } from "@mui/material";
 import { isEqual, cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
-import { FC, useCallback, useEffect, useRef, useState } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useBlocker, Blocker, Navigate, useLocation } from "react-router-dom";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
@@ -500,6 +500,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
     return true;
   });
 
+  const isNavigationBlocked = useMemo<boolean>(() => blocker?.state === "blocked", [blocker]);
+
   const areSectionsValid = (): boolean => {
     if (status === FormStatus.LOADING) {
       return false;
@@ -671,12 +673,12 @@ const FormView: FC<Props> = ({ section }: Props) => {
   }, [status, authStatus, formMode, data?.status]);
 
   useEffect(() => {
-    if (!data) {
+    // Skip URL overwrite if the form isn't loaded, or the blocker is active
+    if (!data || isNavigationBlocked) {
       return;
     }
 
     if (previousIDRef.current === "new" && data?._id !== "new") {
-      // TODO: Unsaved changes dialog is working but the navigation gets reverted
       Logger.info("Form created with new ID. Redirecting to new form URL.", { uuid: data._id });
       bypassBlockerRef.current = true;
       navigate(
@@ -687,7 +689,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     }
 
     previousIDRef.current = data._id;
-  }, [data?._id, previousIDRef.current]);
+  }, [data?._id, previousIDRef.current, isNavigationBlocked]);
 
   // Show loading spinner if the form is still loading
   if (status === FormStatus.LOADING || authStatus === AuthStatus.LOADING) {
