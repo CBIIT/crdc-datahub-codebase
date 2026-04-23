@@ -1,13 +1,11 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
-import { GraphQLError } from "graphql";
 import { FC, useMemo } from "react";
 import { axe } from "vitest-axe";
 
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 
-import { SAVE_APP, SaveAppResp, SaveAppInput } from "../../graphql";
 import { render, waitFor } from "../../test-utils";
 import { Context as AuthContext, Status as AuthStatus } from "../Contexts/AuthContext";
 
@@ -83,29 +81,13 @@ describe("Accessibility", () => {
 });
 
 describe("Basic Functionality", () => {
-  it("should call onCreate with the application ID on success", async () => {
+  it("should call onCreate with 'new' on confirm", async () => {
     const mockOnCreate = vi.fn();
-
-    const mockSaveApplication: MockedResponse<SaveAppResp, SaveAppInput> = {
-      request: {
-        query: SAVE_APP,
-      },
-      variableMatcher: () => true,
-      result: {
-        data: {
-          saveApplication: {
-            _id: "mock-application-12345",
-          } as SaveAppResp["saveApplication"],
-        },
-      },
-    };
 
     const { findByTestId, findByText } = render(
       <CreateApplicationButton onCreate={mockOnCreate} />,
       {
-        wrapper: ({ children }) => (
-          <MockParent mocks={[mockSaveApplication]}>{children}</MockParent>
-        ),
+        wrapper: MockParent,
       }
     );
 
@@ -115,30 +97,14 @@ describe("Basic Functionality", () => {
     const confirmButton = await findByText("I Read and Accept");
     userEvent.click(confirmButton);
 
-    await waitFor(() => expect(mockOnCreate).toHaveBeenCalledWith("mock-application-12345"));
+    await waitFor(() => expect(mockOnCreate).toHaveBeenCalledWith("new"));
   });
 
-  it("should call onCreate with null on error (API)", async () => {
-    const mockOnCreate = vi.fn();
-
-    const mockSaveApplication: MockedResponse<SaveAppResp, SaveAppInput> = {
-      request: {
-        query: SAVE_APP,
-      },
-      variableMatcher: () => true,
-      result: {
-        data: {
-          saveApplication: null, // API issue simulation
-        },
-      },
-    };
-
-    const { findByTestId, findByText } = render(
-      <CreateApplicationButton onCreate={mockOnCreate} />,
+  it("should close the dialog when confirmed", async () => {
+    const { findByTestId, findByText, queryByRole } = render(
+      <CreateApplicationButton onCreate={vi.fn()} />,
       {
-        wrapper: ({ children }) => (
-          <MockParent mocks={[mockSaveApplication]}>{children}</MockParent>
-        ),
+        wrapper: MockParent,
       }
     );
 
@@ -148,101 +114,7 @@ describe("Basic Functionality", () => {
     const confirmButton = await findByText("I Read and Accept");
     userEvent.click(confirmButton);
 
-    await waitFor(() => expect(mockOnCreate).toHaveBeenCalledWith(null));
-  });
-
-  it("should call onCreate with null on error (GraphQL)", async () => {
-    const mockOnCreate = vi.fn();
-
-    const mockSaveApplication: MockedResponse<SaveAppResp, SaveAppInput> = {
-      request: {
-        query: SAVE_APP,
-      },
-      variableMatcher: () => true,
-      result: {
-        errors: [new GraphQLError("some error")],
-      },
-    };
-
-    const { findByTestId, findByText } = render(
-      <CreateApplicationButton onCreate={mockOnCreate} />,
-      {
-        wrapper: ({ children }) => (
-          <MockParent mocks={[mockSaveApplication]}>{children}</MockParent>
-        ),
-      }
-    );
-
-    const button = await findByTestId("create-application-button");
-    userEvent.click(button);
-
-    const confirmButton = await findByText("I Read and Accept");
-    userEvent.click(confirmButton);
-
-    await waitFor(() => expect(mockOnCreate).toHaveBeenCalledWith(null));
-  });
-
-  it("should call onCreate with null on error (Network)", async () => {
-    const mockOnCreate = vi.fn();
-
-    const mockSaveApplication: MockedResponse<SaveAppResp, SaveAppInput> = {
-      request: {
-        query: SAVE_APP,
-      },
-      variableMatcher: () => true,
-      error: new Error("Network error"),
-    };
-
-    const { findByTestId, findByText } = render(
-      <CreateApplicationButton onCreate={mockOnCreate} />,
-      {
-        wrapper: ({ children }) => (
-          <MockParent mocks={[mockSaveApplication]}>{children}</MockParent>
-        ),
-      }
-    );
-
-    const button = await findByTestId("create-application-button");
-    userEvent.click(button);
-
-    const confirmButton = await findByText("I Read and Accept");
-    userEvent.click(confirmButton);
-
-    await waitFor(() => expect(mockOnCreate).toHaveBeenCalledWith(null));
-  });
-
-  it("should disable the confirmation button while creating", async () => {
-    vi.useFakeTimers();
-
-    const mockSaveApplication: MockedResponse<SaveAppResp, SaveAppInput> = {
-      request: {
-        query: SAVE_APP,
-      },
-      variableMatcher: () => true,
-      result: {
-        data: {
-          saveApplication: {
-            _id: "mock-application-12345",
-          } as SaveAppResp["saveApplication"],
-        },
-      },
-      delay: 5000,
-    };
-
-    const { findByTestId, findByText } = render(<CreateApplicationButton onCreate={vi.fn()} />, {
-      wrapper: ({ children }) => <MockParent mocks={[mockSaveApplication]}>{children}</MockParent>,
-    });
-
-    const button = await findByTestId("create-application-button");
-    userEvent.click(button);
-
-    const confirmButton = await findByText("I Read and Accept");
-    userEvent.click(confirmButton);
-
-    await waitFor(() => expect(confirmButton).toBeDisabled());
-
-    vi.clearAllTimers();
-    vi.useRealTimers();
+    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
   });
 });
 

@@ -1,24 +1,33 @@
 import userEvent from "@testing-library/user-event";
 import { FC } from "react";
+import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import {
   Context as AuthContext,
   ContextState as AuthContextState,
   Status as AuthStatus,
-} from "../../components/Contexts/AuthContext";
+} from "@/components/Contexts/AuthContext";
 import {
   Context as FormContext,
   ContextState as FormContextState,
   Status as FormStatus,
-} from "../../components/Contexts/FormContext";
-import { render, waitFor, within } from "../../test-utils";
-import { applicationFactory } from "../../test-utils/factories/application/ApplicationFactory";
-import { authCtxStateFactory } from "../../test-utils/factories/auth/AuthCtxStateFactory";
-import { userFactory } from "../../test-utils/factories/auth/UserFactory";
-import { TestRouter } from "../../test-utils/TestRouter";
+} from "@/components/Contexts/FormContext";
+import { render, waitFor, within } from "@/test-utils";
+import { applicationFactory } from "@/test-utils/factories/application/ApplicationFactory";
+import { authCtxStateFactory } from "@/test-utils/factories/auth/AuthCtxStateFactory";
+import { userFactory } from "@/test-utils/factories/auth/UserFactory";
+import { TestRouter } from "@/test-utils/TestRouter";
 
 import FormView from "./FormView";
+
+const mockNavigate = vi.hoisted(() => vi.fn());
+const mockUsePageTitle = vi.hoisted(() => vi.fn());
+
+vi.mock("react-router-dom", async () => ({
+  ...(await vi.importActual("react-router-dom")),
+  useNavigate: () => mockNavigate,
+}));
 
 const mockUseFormMode = vi.fn();
 vi.mock("../../hooks/useFormMode", () => ({
@@ -26,7 +35,7 @@ vi.mock("../../hooks/useFormMode", () => ({
 }));
 
 vi.mock("../../hooks/usePageTitle", () => ({
-  default: () => {},
+  default: (title: string) => mockUsePageTitle(title),
 }));
 
 let mockFormObject: FormObject | null = null;
@@ -101,14 +110,16 @@ type ParentProps = {
   formCtxState?: FormContextState;
   authCtxState?: AuthContextState;
   section?: string;
+  initialEntries?: MemoryRouterProps["initialEntries"];
 };
 
 const TestParent: FC<ParentProps> = ({
   formCtxState = baseFormCtxState,
   authCtxState = baseAuthCtxState,
   section = "REVIEW",
+  initialEntries = [`/submission-request/test-app-id/${section}`],
 }) => (
-  <TestRouter initialEntries={[`/submission-request/test-app-id/${section}`]}>
+  <TestRouter initialEntries={initialEntries}>
     <AuthContext.Provider value={authCtxState}>
       <FormContext.Provider value={formCtxState}>
         <FormView section={section} />
@@ -172,6 +183,74 @@ describe("Basic Functionality", () => {
     expect(getByRole("button", { name: "Request Additional Information" })).toBeInTheDocument();
     expect(queryByText("Save")).not.toBeInTheDocument();
     expect(queryByText("Next")).not.toBeInTheDocument();
+  });
+
+  it("should set the page title without the legacy new id", () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+
+    const newFormState: FormContextState = {
+      ...baseFormCtxState,
+      data: applicationFactory.build({
+        ...baseFormCtxState.data,
+        _id: "new",
+        questionnaireData: baseFormCtxState.data.questionnaireData,
+      }),
+    };
+
+    render(
+      <TestParent
+        section="A"
+        initialEntries={["/submission-request/new/A"]}
+        formCtxState={newFormState}
+      />
+    );
+
+    expect(mockUsePageTitle).toHaveBeenCalledWith("Submission Request");
+  });
+
+  it("should replace the temporary new route with the persisted id after save", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+
+    const newFormState: FormContextState = {
+      ...baseFormCtxState,
+      data: applicationFactory.build({
+        ...baseFormCtxState.data,
+        _id: "new",
+        questionnaireData: baseFormCtxState.data.questionnaireData,
+      }),
+    };
+
+    const savedFormState: FormContextState = {
+      ...baseFormCtxState,
+      data: applicationFactory.build({
+        ...baseFormCtxState.data,
+        _id: "persisted-form-id",
+        questionnaireData: baseFormCtxState.data.questionnaireData,
+      }),
+    };
+
+    const { rerender } = render(
+      <TestParent
+        section="A"
+        initialEntries={["/submission-request/new/A"]}
+        formCtxState={newFormState}
+      />
+    );
+
+    rerender(
+      <TestParent
+        section="A"
+        initialEntries={["/submission-request/new/A"]}
+        formCtxState={savedFormState}
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/submission-request/persisted-form-id/A", {
+        replace: true,
+        preventScrollReset: true,
+      });
+    });
   });
 });
 

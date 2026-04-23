@@ -102,6 +102,11 @@ const CancelApplicationButton = ({ disabled, onCancel, ...rest }: Props) => {
   }, [data, user]);
 
   const onButtonClick = async () => {
+    if (data?._id === "new") {
+      onCancel?.();
+      return;
+    }
+
     setConfirmOpen(true);
   };
 
@@ -128,7 +133,7 @@ const CancelApplicationButton = ({ disabled, onCancel, ...rest }: Props) => {
     } finally {
       setLoading(false);
     }
-  }, [comment, cancelApp, enqueueSnackbar, onCancel]);
+  }, [data?._id, comment, cancelApp, enqueueSnackbar, onCancel]);
 
   if (!canSeeButton) {
     return null;

@@ -136,6 +136,7 @@ type SubmissionStatus =
 
 type SubmissionAction =
   | "Submit"
+  | "Admin Submit"
   | "Release"
   | "Withdraw"
   | "Reject"

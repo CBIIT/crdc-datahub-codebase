@@ -10,8 +10,8 @@ import {
 } from "@mui/material";
 import { isEqual, cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
-import React, { FC, useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useBlocker, Blocker, Navigate } from "react-router-dom";
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useBlocker, Blocker, Navigate, useLocation } from "react-router-dom";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
 import CheckboxCheckedIconSvg from "../../assets/icons/checkbox_checked.svg?url";
@@ -182,6 +182,8 @@ type Props = {
  */
 const FormView: FC<Props> = ({ section }: Props) => {
   const navigate = useNavigate();
+  const location = useLocation();
+
   const { enqueueSnackbar } = useSnackbar();
   const {
     status,
@@ -221,14 +223,15 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const formContentRef = useRef(null);
   const lastSectionRef = useRef(null);
   const hasReopenedFormRef = useRef(false);
-  const requestCanceledRef = useRef<boolean>(false);
+  const bypassBlockerRef = useRef<boolean>(false);
+  const previousIDRef = useRef<string | null>(null);
   const shouldShowToolTip = isSectionD && !allSectionsComplete;
 
   const refs: FormSectionProps["refs"] = {
     getFormObjectRef: useRef<(() => FormObject) | null>(null),
   };
 
-  usePageTitle(`Submission Request ${data?._id || ""}`);
+  usePageTitle(`Submission Request${data?._id && data?._id !== "new" ? ` - ${data._id}` : ""}`);
 
   /**
    * Determines if the form has unsaved changes.
@@ -240,12 +243,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
 
     return ref && (!data || !isEqual(data.questionnaireData, newData));
   };
-
-  useEffect(() => {
-    const newSection = validateSection(section) ? section : "A";
-    setActiveSection(newSection);
-    lastSectionRef.current = newSection;
-  }, [section]);
 
   const isAllSectionsComplete = (): boolean => {
     if (status === FormStatus.LOADING) {
@@ -427,7 +424,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
     }
 
     const { ref, data: newData } = refs.getFormObjectRef.current?.() || {};
-
     if (!ref?.current || !newData) {
       return {
         status: "failed",
@@ -466,19 +462,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
       );
     }
 
-    if (
-      !blockedNavigate &&
-      saveResult?.status === "success" &&
-      data._id === "new" &&
-      saveResult.id !== data?._id
-    ) {
-      // NOTE: This currently triggers a form data refetch, which is not ideal
-      navigate(`/submission-request/${saveResult.id}/${activeSection}`, {
-        replace: true,
-        preventScrollReset: true,
-      });
-    }
-
     if (saveResult?.status === "success") {
       return {
         status: "success",
@@ -502,7 +485,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     ) {
       return false;
     }
-    if (!isDirty() || readOnlyInputs || requestCanceledRef.current) {
+    if (!isDirty() || readOnlyInputs || bypassBlockerRef.current) {
       return false;
     }
 
@@ -516,6 +499,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
     setBlockedNavigate(true);
     return true;
   });
+
+  const isNavigationBlocked = useMemo<boolean>(() => blocker?.state === "blocked", [blocker]);
 
   const areSectionsValid = (): boolean => {
     if (status === FormStatus.LOADING) {
@@ -545,14 +530,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     return sectionsClone?.every((section) => section.status === "Completed");
   };
 
-  /**
-   * Provides a save handler for the Unsaved Changes
-   * dialog. Will save the form and then navigate to the
-   * blocked section.
-   *
-   * @returns {void}
-   */
-  const saveAndNavigate = async () => {
+  const saveAndNavigate = async (): Promise<void> => {
     // Wait for the save handler to complete
     const res = await saveForm();
     const reviewSectionUrl = `/submission-request/${data._id}/REVIEW`; // TODO: Update to dynamic url instead
@@ -579,13 +557,10 @@ const FormView: FC<Props> = ({ section }: Props) => {
   };
 
   /**
-   * Provides a discard handler for the Unsaved Changes
-   * dialog. Will discard the form changes and then navigate to the
-   * blocked section.
-   *
-   * @returns {void}
+   * Provides a discard handler for the Unsaved Changes dialog.
+   * Will discard the form changes and then navigate to the blocked section.
    */
-  const discardAndNavigate = () => {
+  const discardAndNavigate = (): void => {
     setBlockedNavigate(false);
     blocker.proceed?.();
   };
@@ -651,17 +626,23 @@ const FormView: FC<Props> = ({ section }: Props) => {
   };
 
   const handleOnCancel = useCallback(() => {
-    requestCanceledRef.current = true;
+    bypassBlockerRef.current = true;
     enqueueSnackbar("Successfully canceled that Submission Request.", {
       variant: "success",
     });
     navigate("/submission-requests");
   }, [enqueueSnackbar, navigate]);
 
+  useEffect(() => {
+    const newSection = validateSection(section) ? section : "A";
+    setActiveSection(newSection);
+    lastSectionRef.current = newSection;
+  }, [section]);
+
   // Intercept browser navigation actions (e.g. closing the tab) with unsaved changes
   useEffect(() => {
     const unloadHandler = (event: BeforeUnloadEvent) => {
-      if (!isDirty() || requestCanceledRef.current) {
+      if (!isDirty() || bypassBlockerRef.current) {
         return;
       }
 
@@ -697,6 +678,25 @@ const FormView: FC<Props> = ({ section }: Props) => {
       hasReopenedFormRef.current = true;
     }
   }, [status, authStatus, formMode, data?.status]);
+
+  useEffect(() => {
+    // Skip URL overwrite if the form isn't loaded, or the blocker is active
+    if (!data || isNavigationBlocked) {
+      return;
+    }
+
+    if (previousIDRef.current === "new" && data?._id !== "new") {
+      Logger.info("Form created with new ID. Redirecting to new form URL.", { uuid: data._id });
+      bypassBlockerRef.current = true;
+      navigate(
+        location.pathname.replace("/submission-request/new", `/submission-request/${data._id}`),
+        { replace: true, preventScrollReset: true }
+      );
+      bypassBlockerRef.current = false;
+    }
+
+    previousIDRef.current = data._id;
+  }, [data?._id, isNavigationBlocked]);
 
   // Show loading spinner if the form is still loading
   if (status === FormStatus.LOADING || authStatus === AuthStatus.LOADING) {
@@ -766,7 +766,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
                   variant="contained"
                   color="success"
                   loading={status === FormStatus.SAVING}
-                  onClick={() => saveForm()}
+                  onClick={saveForm}
                 >
                   Save
                 </StyledLoadingButton>

@@ -19,6 +19,7 @@
 /.env.production.local
 .idea
 .vscode
+.playwright*
 .nvmrc
 features.html
 
