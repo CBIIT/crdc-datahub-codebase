@@ -245,6 +245,45 @@ describe("Implementation Requirements", () => {
     expect(otherOption.label).toBe("Other");
   });
 
+  it("should not require Other Data Type(s) field when 'Other' is not selected", () => {
+    const mockRepository = repositoryFactory.build({
+      dataTypesSubmitted: ["genomics"],
+    });
+
+    const { getByTestId } = render(
+      <Repository index={0} repository={mockRepository} onDelete={vi.fn()} />,
+      { wrapper: TestParent }
+    );
+
+    expect(getFormElements({ getByTestId }, 0).otherDataTypesInput()).not.toBeRequired();
+  });
+
+  it("should require Other Data Type(s) field when 'Other' is selected", () => {
+    const mockRepository = repositoryFactory.build({
+      dataTypesSubmitted: ["Other"],
+    });
+
+    const { getByTestId } = render(
+      <Repository index={0} repository={mockRepository} onDelete={vi.fn()} />,
+      { wrapper: TestParent }
+    );
+
+    expect(getFormElements({ getByTestId }, 0).otherDataTypesInput()).toBeRequired();
+  });
+
+  it("should require Other Data Type(s) field when 'Other' is among multiple selected types", () => {
+    const mockRepository = repositoryFactory.build({
+      dataTypesSubmitted: ["genomics", "Other", "imaging"],
+    });
+
+    const { getByTestId } = render(
+      <Repository index={0} repository={mockRepository} onDelete={vi.fn()} />,
+      { wrapper: TestParent }
+    );
+
+    expect(getFormElements({ getByTestId }, 0).otherDataTypesInput()).toBeRequired();
+  });
+
   it("should disable Other Data Type(s) field when 'Other' is not selected", () => {
     const mockRepository = repositoryFactory.build({
       dataTypesSubmitted: ["genomics"],

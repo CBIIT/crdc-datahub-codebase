@@ -117,6 +117,7 @@ const Repository: FC<Props> = ({ idPrefix = "", index, repository, readOnly, onD
           placeholder="Other, specify as free text"
           maxLength={100}
           gridWidth={6}
+          required={isOtherSelected}
           readOnly={!isOtherSelected || readOnly}
           onChange={(e) => setOtherDataTypes(e.target.value)}
           data-testid={idPrefix.concat(`repository-${index}-other-data-types-submitted`)}
