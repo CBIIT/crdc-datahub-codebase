@@ -142,40 +142,39 @@ dbConnector.connect().then(async () => {
         listApplications: dataInterface.listApplications.bind(dataInterface),
         submitApplication: dataInterface.submitApplication.bind(dataInterface),
         approveApplication:  async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            if (comment.length > CONSTRAINTS.APPROVE_COMMENT_MAX_LENGTH) {
+            if (params?.comment?.length > CONSTRAINTS.APPROVE_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.APPROVE_COMMENT_MAX_LENGTH));
             }
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
             return await dataInterface.approveApplication({...params, comment}, context);
         },
         rejectApplication: async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            if (comment.length > CONSTRAINTS.REJECT_COMMENT_MAX_LENGTH) {
+            if (params?.comment?.length > CONSTRAINTS.REJECT_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.REJECT_COMMENT_MAX_LENGTH));
             }
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
             return await dataInterface.rejectApplication({...params, comment}, context);
         },
         inquireApplication: async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            if (comment.length > CONSTRAINTS.INQUIRE_COMMENT_MAX_LENGTH) {
+            if (params?.comment?.length > CONSTRAINTS.INQUIRE_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.INQUIRE_COMMENT_MAX_LENGTH));
             }
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
             return await dataInterface.inquireApplication({...params, comment}, context);
         },
         reopenApplication: dataInterface.reopenApplication.bind(dataInterface),
         cancelApplication: async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            if (comment.length > CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH) {
+            if (params?.comment?.length > CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH));
             }
-
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
             return await dataInterface.cancelApplication({...params, comment}, context);
         },
         restoreApplication: async (params, context)=> {
-            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            if (comment.length > CONSTRAINTS.RESTORE_COMMENT_MAX_LENGTH) {
+            if (params?.comment?.length > CONSTRAINTS.RESTORE_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.RESTORE_COMMENT_MAX_LENGTH));
             }
+            const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
             return await dataInterface.restoreApplication({...params, comment}, context);
         },
         listApprovedStudies: approvedStudiesService.listApprovedStudiesAPI.bind(approvedStudiesService),
