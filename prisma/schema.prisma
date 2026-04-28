@@ -560,7 +560,6 @@ type FileError {
     dataRecordID String?
     validationType String?
     batchID String?
-    batchIDs String[]
     displayID Int?
     type String?
     submittedID String?
