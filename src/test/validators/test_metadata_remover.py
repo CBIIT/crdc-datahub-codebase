@@ -214,6 +214,35 @@ def test_process_children_skips_s3_when_delete_orphaned_false():
     mock_dao.delete_data_records.assert_called_once_with([child])
 
 
+def test_process_children_removes_only_matching_parent_when_same_parent_type_twice():
+    """Child may have multiple parents of the same type; deleting one removes only that edge."""
+    mock_dao = MagicMock()
+    deleted_parent = {constants.NODE_TYPE: "Study", constants.NODE_ID: "study_a"}
+    child = {
+        constants.NODE_TYPE: "Sample",
+        constants.NODE_ID: "s1",
+        constants.PARENTS: [
+            {constants.PARENT_TYPE: "Study", constants.PARENT_ID_VAL: "study_a"},
+            {constants.PARENT_TYPE: "Study", constants.PARENT_ID_VAL: "study_b"},
+        ],
+    }
+    mock_dao.get_nodes_by_parents.return_value = (True, [child])
+    mock_dao.delete_data_records.return_value = True
+    with patch("metadata_remover.S3Bucket"):
+        remover = MetadataRemover(mock_dao, MagicMock())
+        remover.submission_id = "sub-1"
+        remover.def_file_nodes = {}
+        assert remover.process_children([deleted_parent], delete_orphaned_data_files=False) is True
+
+    mock_dao.update_data_records.assert_called_once()
+    updated = mock_dao.update_data_records.call_args[0][0]
+    assert len(updated) == 1
+    assert updated[0][constants.PARENTS] == [
+        {constants.PARENT_TYPE: "Study", constants.PARENT_ID_VAL: "study_b"},
+    ]
+    mock_dao.delete_data_records.assert_not_called()
+
+
 def test_process_children_calls_s3_when_delete_orphaned_true():
     """Cascaded child file node: delete_files_in_s3 runs when flag is True."""
     mock_dao = MagicMock()
