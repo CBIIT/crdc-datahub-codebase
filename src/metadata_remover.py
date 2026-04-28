@@ -8,7 +8,7 @@ from bento.common.utils import get_logger
 from bento.common.s3 import S3Bucket
 from common.constants import (
     DATA_COMMON_NAME, NODE_ID, FILE_NAME, MODEL_VERSION, ROOT_PATH,
-    SUBMISSION_ID, NODE_TYPE, S3_FILE_INFO, BATCH_BUCKET, PARENT_TYPE, PARENTS, ID, TYPE,
+    SUBMISSION_ID, NODE_TYPE, S3_FILE_INFO, BATCH_BUCKET, PARENT_TYPE, PARENT_ID_VAL, PARENTS, ID, TYPE,
     DATA_FILE_TYPE, S3_LIST_ORPHANS_PAGE_SIZE,
     SUBMITTED_ID, QC_VALIDATION_TYPE, BATCH_ID, DISPLAY_ID, QC_SEVERITY,
     UPLOADED_DATE, QC_VALIDATE_DATE, ERRORS, STATUS_ERROR,
@@ -150,10 +150,13 @@ class MetadataRemover:
         deleted_child_nodes = []
         updated_child_nodes = []
         file_nodes = []
-        parent_types = [item[NODE_TYPE] for item in deleted_nodes]
+        deleted_parent_keys = {(item[NODE_TYPE], item[NODE_ID]) for item in deleted_nodes}
         file_def_types = self.def_file_nodes.keys()
         for node in child_nodes:
-            parents = list(filter(lambda x: (x[PARENT_TYPE] not in parent_types), node.get(PARENTS)))
+            parents = [
+                p for p in (node.get(PARENTS) or [])
+                if (p.get(PARENT_TYPE), p.get(PARENT_ID_VAL)) not in deleted_parent_keys
+            ]
             if len(parents) == 0:  #delete if no other parents
                 deleted_child_nodes.append(node)
                 if node.get(NODE_TYPE) in file_def_types and node.get(S3_FILE_INFO):
