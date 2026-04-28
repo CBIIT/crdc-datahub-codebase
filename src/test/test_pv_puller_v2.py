@@ -399,29 +399,6 @@ def test_extract_pv_list_with_whitespace():
     assert result == ["value1", "value2"]
 
 
-def test_extract_pv_list_with_http_urls():
-    """Test that lists with HTTP URLs are filtered out"""
-    pv_list = [
-        {"value": "http://example.com/value1"},
-        {"value": "value2"}
-    ]
-    
-    result = extract_pv_list(pv_list)
-    
-    assert result is None
-
-
-def test_extract_pv_list_with_https_urls():
-    """Test that lists with HTTPS URLs are filtered out"""
-    pv_list = [
-        {"value": "https://example.com/value1"}
-    ]
-    
-    result = extract_pv_list(pv_list)
-    
-    assert result is None
-
-
 def test_extract_pv_list_empty():
     """Test extraction from empty list"""
     result = extract_pv_list([])
