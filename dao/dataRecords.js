@@ -109,8 +109,9 @@ class DataRecordDAO extends GenericDAO {
     /**
      * Distinct Data View relationship column names (`parentType.parentIDPropName`) for all
      * dataRecords matching `query` (same $match as getSubmissionNodes, no pagination).
-     * Used so getSubmissionNodes `properties` includes parent types that only appear on other pages.
-     * Cost: one extra aggregate per list call; O(documents matching query). Prefer an index on
+     * listSubmissionNodes invokes this only when the current page can omit rows (see submission.js).
+     * Used so `properties` includes parent types that only appear on other pages.
+     * Cost (when used): one aggregate per list call that spans multiple pages; O(documents matching query). Prefer an index on
      * (submissionID, nodeType) and include status in the index if that filter is common.
      * @param {Object} query Mongo $match object (submissionID, nodeType, status, nodeID, …) — not an array
      * @returns {Promise<string[]>}
@@ -146,7 +147,8 @@ class DataRecordDAO extends GenericDAO {
 
     /**
      * Distinct top-level `props` field names for all dataRecords matching `query` (same
-     * $match as getSubmissionNodes, no pagination). Ensures `properties` lists column names
+     * $match as getSubmissionNodes, no pagination). listSubmissionNodes invokes this only when
+     * the current page can omit rows (see submission.js). Ensures `properties` lists column names
      * for `props` keys that appear only on other pages of a paginated Data View.
      * @param {Object} query Mongo $match (plain object, not an array)
      * @returns {Promise<string[]>}

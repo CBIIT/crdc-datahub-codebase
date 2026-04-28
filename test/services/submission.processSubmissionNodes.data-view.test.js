@@ -1,9 +1,10 @@
 /**
  * Data View (getSubmissionNodes) builds `properties` from _processSubmissionNodes.
- * Column names are the union of the current page, distinct parent relationship keys
- * (`getDistinctParentRelationshipKeys`), and distinct top-level `props` keys
- * (`getDistinctPropsTopLevelKeys`), all for rows matching the list filter. The final
- * `properties` array is sorted alphabetically.
+ * Column names are the union of the current page, and when the list is paginated across
+ * multiple pages—distinct parent relationship keys (`getDistinctParentRelationshipKeys`)
+ * and top-level `props` keys (`getDistinctPropsTopLevelKeys`). The latter are skipped
+ * when `first === -1` or the first page already includes every row (`offset === 0` and
+ * `total <= first`). The final `properties` array is sorted alphabetically.
  *
  * @see services/submission.js — _processSubmissionNodes, listSubmissionNodes
  */
@@ -304,10 +305,18 @@ describe('Submission listSubmissionNodes (Data View, paginated path)', () => {
     ]);
   });
 
-  it('rejects when getDistinctParentRelationshipKeys fails (Promise.all propagates)', async () => {
+  it('rejects when getDistinctParentRelationshipKeys fails and submission-wide keys are required', async () => {
     submissionService.dataRecordDAO.getSubmissionNodes = jest.fn().mockResolvedValue({
-      total: 0,
-      results: []
+      total: 200,
+      results: [
+        baseNode({
+          nodeID: 'sd-1',
+          parents: [
+            { parentType: 'sample', parentIDPropName: 'sample_id', parentIDValue: 'SAM1' }
+          ],
+          props: { study_diagnosis_id: 'SD1' }
+        })
+      ]
     });
     submissionService.dataRecordDAO.getDistinctParentRelationshipKeys = jest
       .fn()
@@ -328,5 +337,106 @@ describe('Submission listSubmissionNodes (Data View, paginated path)', () => {
         { userInfo: { _id: 'u1' } }
       )
     ).rejects.toThrow('aggregate failed');
+  });
+
+  it('does not call distinct key aggregations when first is -1 (entire result set in one page)', async () => {
+    const allRows = [
+      baseNode({ nodeID: 'sd-1' }),
+      baseNode({ nodeID: 'sd-2', props: { study_diagnosis_id: 'SD2', extra: 'X' } })
+    ];
+    submissionService.dataRecordDAO.getSubmissionNodes = jest.fn().mockResolvedValue({
+      total: 2,
+      results: allRows
+    });
+    const distinctRel = jest.fn().mockResolvedValue([REL_PARTICIPANT]);
+    const distinctProps = jest.fn().mockResolvedValue(['should_not_appear_unless_ran']);
+    submissionService.dataRecordDAO.getDistinctParentRelationshipKeys = distinctRel;
+    submissionService.dataRecordDAO.getDistinctPropsTopLevelKeys = distinctProps;
+
+    const out = await submissionService.listSubmissionNodes(
+      {
+        submissionID: 'sub-1',
+        nodeType: 'study_diagnosis',
+        status: 'All',
+        first: -1,
+        offset: 0,
+        orderBy: 'nodeID',
+        sortDirection: 'ASC'
+      },
+      { userInfo: { _id: 'u1' } }
+    );
+
+    expect(submissionService.dataRecordDAO.getSubmissionNodes).toHaveBeenCalledWith(
+      'sub-1',
+      'study_diagnosis',
+      -1,
+      0,
+      'nodeID',
+      'ASC',
+      expect.objectContaining({ submissionID: 'sub-1', nodeType: 'study_diagnosis' })
+    );
+    expect(distinctRel).not.toHaveBeenCalled();
+    expect(distinctProps).not.toHaveBeenCalled();
+    expect(out.properties).toEqual(['extra', 'study_diagnosis_id']);
+  });
+
+  it('does not call distinct key aggregations when the first page contains all rows (total <= first)', async () => {
+    const page = {
+      total: 3,
+      results: [
+        baseNode({ nodeID: 'sd-1' }),
+        baseNode({ nodeID: 'sd-2' }),
+        baseNode({ nodeID: 'sd-3' })
+      ]
+    };
+    submissionService.dataRecordDAO.getSubmissionNodes = jest.fn().mockResolvedValue(page);
+    const distinctRel = jest.fn().mockResolvedValue([REL_PARTICIPANT]);
+    const distinctProps = jest.fn().mockResolvedValue(['phantom_key']);
+    submissionService.dataRecordDAO.getDistinctParentRelationshipKeys = distinctRel;
+    submissionService.dataRecordDAO.getDistinctPropsTopLevelKeys = distinctProps;
+
+    const out = await submissionService.listSubmissionNodes(
+      {
+        submissionID: 'sub-1',
+        nodeType: 'study_diagnosis',
+        status: 'All',
+        first: 20,
+        offset: 0,
+        orderBy: 'nodeID',
+        sortDirection: 'ASC'
+      },
+      { userInfo: { _id: 'u1' } }
+    );
+
+    expect(distinctRel).not.toHaveBeenCalled();
+    expect(distinctProps).not.toHaveBeenCalled();
+    expect(out.properties).toEqual(['study_diagnosis_id']);
+  });
+
+  it('still runs distinct key aggregations when offset > 0 (another page of rows can exist)', async () => {
+    submissionService.dataRecordDAO.getSubmissionNodes = jest.fn().mockResolvedValue({
+      total: 3,
+      results: [baseNode({ nodeID: 'sd-2' })]
+    });
+    const distinctRel = jest.fn().mockResolvedValue([REL_PARTICIPANT]);
+    const distinctProps = jest.fn().mockResolvedValue([]);
+    submissionService.dataRecordDAO.getDistinctParentRelationshipKeys = distinctRel;
+    submissionService.dataRecordDAO.getDistinctPropsTopLevelKeys = distinctProps;
+
+    await submissionService.listSubmissionNodes(
+      {
+        submissionID: 'sub-1',
+        nodeType: 'study_diagnosis',
+        status: 'All',
+        first: 1,
+        offset: 1,
+        orderBy: 'nodeID',
+        sortDirection: 'ASC'
+      },
+      { userInfo: { _id: 'u1' } }
+    );
+
+    expect(distinctRel).toHaveBeenCalled();
+    expect(distinctProps).toHaveBeenCalled();
   });
 });

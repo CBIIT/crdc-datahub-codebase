@@ -1018,15 +1018,23 @@ class Submission {
                 ...(nodeID && { nodeID: new RegExp(nodeID, "i") })
             };
 
-            // Data View `properties`: union of (1) distinct parent relationship column names and
-            // (2) distinct top-level `props` keys, both across all rows matching `query` (not
-            // just the current page), merged with keys from the current page in _processSubmissionNodes.
-            const [result, relationshipKeys, propsTopLevelKeys] = await Promise.all([
-                this.dataRecordDAO.getSubmissionNodes(submissionID, nodeType,
-                    first, offset, orderBy, sortDirection, query),
-                this.dataRecordDAO.getDistinctParentRelationshipKeys(query),
-                this.dataRecordDAO.getDistinctPropsTopLevelKeys(query)
-            ]);
+            // Data View `properties`: page-local keys from _processSubmissionNodes, plus
+            // submission-wide keys from distinct aggregations when another page can exist
+            // (saves two aggregates when the current response already has every match).
+            const result = await this.dataRecordDAO.getSubmissionNodes(submissionID, nodeType,
+                first, offset, orderBy, sortDirection, query);
+
+            const needsSubmissionWidePropertyKeys = first !== -1
+                && (offset > 0 || result.total > first);
+
+            let relationshipKeys = [];
+            let propsTopLevelKeys = [];
+            if (needsSubmissionWidePropertyKeys) {
+                [relationshipKeys, propsTopLevelKeys] = await Promise.all([
+                    this.dataRecordDAO.getDistinctParentRelationshipKeys(query),
+                    this.dataRecordDAO.getDistinctPropsTopLevelKeys(query)
+                ]);
+            }
             const submissionWidePropertyKeys = [...new Set([...relationshipKeys, ...propsTopLevelKeys])];
             return this._processSubmissionNodes(result, null, submissionWidePropertyKeys);
         }
