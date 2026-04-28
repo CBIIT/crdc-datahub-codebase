@@ -1018,9 +1018,17 @@ class Submission {
                 ...(nodeID && { nodeID: new RegExp(nodeID, "i") })
             };
 
-            const result = await this.dataRecordDAO.getSubmissionNodes(submissionID, nodeType,
-                first, offset, orderBy, sortDirection, query);
-            return this._processSubmissionNodes(result);
+            // Data View `properties`: union of (1) distinct parent relationship column names and
+            // (2) distinct top-level `props` keys, both across all rows matching `query` (not
+            // just the current page), merged with keys from the current page in _processSubmissionNodes.
+            const [result, relationshipKeys, propsTopLevelKeys] = await Promise.all([
+                this.dataRecordDAO.getSubmissionNodes(submissionID, nodeType,
+                    first, offset, orderBy, sortDirection, query),
+                this.dataRecordDAO.getDistinctParentRelationshipKeys(query),
+                this.dataRecordDAO.getDistinctPropsTopLevelKeys(query)
+            ]);
+            const submissionWidePropertyKeys = [...new Set([...relationshipKeys, ...propsTopLevelKeys])];
+            return this._processSubmissionNodes(result, null, submissionWidePropertyKeys);
         }
         else {
              //1) cal s3 listObjectV2
@@ -1037,7 +1045,15 @@ class Submission {
         }
         
     }
-    _processSubmissionNodes(result, IDPropName=null) {
+    /**
+     * @param {*} result getSubmissionNodes result
+     * @param {string|null} IDPropName optional ID prop for getRelatedNodes
+     * @param {string[]} [submissionWidePropertyKeys] distinct column names from the full list
+     *   match: parent relationship keys (`parentType.parentIDPropName`) plus top-level `props` keys
+     *   (from getDistinct* DAO methods). Merged with keys from the current page. `returnVal.properties`
+     *   is sorted alphabetically (locale "en", base sensitivity) for stable column order.
+     */
+    _processSubmissionNodes(result, IDPropName=null, submissionWidePropertyKeys=[]) {
         let returnVal = {
             total: 0,
             IDPropName: IDPropName,
@@ -1046,9 +1062,13 @@ class Submission {
         };
 
         returnVal.total = result.total;
-        if (result.results && result.results.length > 0){
-            let propsSet = new Set();
-            
+        const propsSet = new Set(
+            Array.isArray(submissionWidePropertyKeys)
+                ? submissionWidePropertyKeys
+                : []
+        );
+
+        if (result.results && result.results.length > 0) {
             for (let node of result.results) {
                 if (!returnVal.IDPropName) returnVal.IDPropName = node.IDPropName;
                 if (node?.parents && node.parents.length > 0) {
@@ -1061,14 +1081,16 @@ class Submission {
                     });
                 }
                 if (node.props && Object.keys(node.props).length > 0){
-                    Object.keys(node.props).forEach(propsSet.add, propsSet);
+                    Object.keys(node.props).forEach((k) => propsSet.add(k));
                 }
                 node.props = JSON.stringify(node.props);
                 delete node.parents;
                 returnVal.nodes.push(node);
             }
-            returnVal.properties = Array.from(propsSet);
         }
+        returnVal.properties = Array.from(propsSet).sort((a, b) =>
+            a.localeCompare(b, 'en', { sensitivity: 'base' })
+        );
         return returnVal;
     }
 
