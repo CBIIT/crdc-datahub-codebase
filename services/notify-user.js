@@ -3,6 +3,7 @@ const fs = require('fs');
 const {createEmailTemplate} = require("../lib/create-email-template");
 const sanitizeHtml = require('sanitize-html');
 const {replaceMessageVariables} = require("../utility/string-util");
+const {defaultStudyAbbreviationToNA} = require("../utility/study-abbrev-helpers");
 const {
     sanitizeAllowlistedHtml,
     PRESET_SR_APPROVAL_PENDING_HTML
@@ -647,7 +648,7 @@ class NotifyUser {
             [SUBMITTER_NAME, templateParams?.submitterName],
             [SUBMITTER_EMAIL, templateParams?.submitterEmail],
             [STUDY_NAME, templateParams?.studyName],
-            [STUDY_ABBREVIATION, templateParams?.studyAbbreviation],
+            [STUDY_ABBREVIATION, defaultStudyAbbreviationToNA(templateParams?.studyAbbreviation)],
             [DATA_SUBMISSION_ID, templateParams?.submissionID],
             [NODE, templateParams?.nodeName],
             [PROPERTY, templateParams?.property],

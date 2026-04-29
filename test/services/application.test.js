@@ -553,6 +553,29 @@ describe('Application', () => {
             expect(findManyMock).toHaveBeenCalled();
         });
 
+        it('fills studyAbbreviation with studyName in the list response when abbrev is empty', async () => {
+            const row = {
+                id: 'a1',
+                studyName: 'My Full Study',
+                studyAbbreviation: '   ',
+                status: NEW,
+                applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' }
+            };
+            let n = 0;
+            const findManyMock = jest.fn().mockImplementation(() => {
+                n += 1;
+                if (n === 1) {
+                    return Promise.resolve([row]);
+                }
+                return Promise.resolve([]);
+            });
+            app.applicationDAO.findMany = findManyMock;
+            app.applicationDAO.count = jest.fn().mockResolvedValue(1);
+            const result = await app.listApplications({}, context);
+            expect(result.applications[0].studyAbbreviation).toBe('My Full Study');
+            expect(result.applications[0].studyName).toBe('My Full Study');
+        });
+
         it('returns empty list when scope is study (only all and own supported for filters)', async () => {
             mockAuthorizationService.getPermissionScope.mockResolvedValue([{ scope: 'study', scopeValues: ['study1'] }]);
             userScopeMock.isAllScope.mockReturnValue(false);
@@ -1418,6 +1441,52 @@ describe('Application', () => {
             expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
             const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
             expect(args[0]).toBeUndefined(); // applicationID should be undefined when no _id
+        });
+
+        it('should pass empty studyAbbreviation to storeApprovedStudies when missing, not questionnaire.study.name', async () => {
+            const aApplication = {
+                _id: 'app1',
+                studyName: 'Study One',
+                studyAbbreviation: '   ',
+                organization: { name: 'Org One' },
+                controlledAccess: true,
+                ORCID: '0000-0001',
+                PI: 'PI Name',
+                openAccess: false,
+                programName: 'Program One',
+            };
+            const questionnaire = {
+                study: { name: 'From Questionnaire Only', dbGaPPPHSNumber: 'phs001234' },
+            };
+            mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
+
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
+
+            const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
+            expect(args[2]).toBe('');
+        });
+
+        it('should preserve studyAbbreviation when it matches studyName (user input)', async () => {
+            const aApplication = {
+                _id: 'app1',
+                studyName: 'Short Name',
+                studyAbbreviation: 'Short Name',
+                organization: { name: 'Org One' },
+                controlledAccess: true,
+                ORCID: '0000-0001',
+                PI: 'PI Name',
+                openAccess: false,
+                programName: 'Program One',
+            };
+            const questionnaire = {
+                study: { name: 'Other questionnaire label', dbGaPPPHSNumber: 'phs001234' },
+            };
+            mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
+
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
+
+            const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
+            expect(args[2]).toBe('Short Name');
         });
     });
 
