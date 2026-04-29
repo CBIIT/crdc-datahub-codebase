@@ -1774,6 +1774,8 @@ class Submission {
             let existingFiles;
             let deletedResult;
             let nodeIDsForLogging;
+            /** null = every s3FileInfo-linked record in the submission; string[] = match those file names */
+            let metadataResetFileNames;
             
             if (deleteAll) {
                 // Delete QC results
@@ -1784,12 +1786,14 @@ class Submission {
                     // Delete entire directory
                     deletedResult = await this._deleteDataFiles(new Map(), aSubmission, deleteAll, exclusiveIDs);
                     nodeIDsForLogging = 'deleteAll';
+                    metadataResetFileNames = null;
                 } 
                 else {
                     // get all files and filter out exclusives
                     const allFiles = await this._getAllSubmissionDataFiles(aSubmission?.bucketName, aSubmission?.rootPath) || [];
                     const exclusiveSet = new Set(exclusiveIDs);
                     const filesToDelete = allFiles.filter(fileName => !exclusiveSet.has(fileName));
+                    metadataResetFileNames = filesToDelete;
                     
                     // if no files to delete, throw error
                     if (filesToDelete.length === 0) {
@@ -1824,6 +1828,7 @@ class Submission {
                 // delete data files by nodeIDs
                 deletedResult = await this._deleteDataFiles(existingFiles, aSubmission, false, []);
                 nodeIDsForLogging = deletedResult;
+                metadataResetFileNames = deletedResult;
             }
             
             // if deleted files, update submission data file info
@@ -1856,10 +1861,13 @@ class Submission {
                 
                 // log data record
                 promises.push(this._logDataRecord(context?.userInfo, aSubmission._id, VALIDATION.TYPES.DATA_FILE, nodeIDsForLogging));
+                promises.push(
+                    this.dataRecordService.resetS3FileLinkedMetadataStatusToNew(aSubmission._id, metadataResetFileNames)
+                );
                 
                 // Await all promises to ensure errors are properly caught and handled
-                // Note: qcDeletionResult and logResult are available but not used
-                const [submissionDataFiles, dataFileSize, qcDeletionResult, logResult] = await Promise.all(promises);
+                // Note: qcDeletionResult, logResult, and metadata reset result are available but not used
+                const [submissionDataFiles, dataFileSize, qcDeletionResult, logResult, _metadataReset] = await Promise.all(promises);
                 
                 // reset fileValidationStatus if the number of data files changed. No data files exists if null
                 const fileValidationStatus = submissionDataFiles?.length > 0 ? VALIDATION_STATUS.NEW : null;

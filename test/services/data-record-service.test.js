@@ -385,6 +385,51 @@ describe('DataRecordService', () => {
     });
   });
 
+  describe('resetS3FileLinkedMetadataStatusToNew', () => {
+    test('should update by file names and set New only on s3FileInfo', async () => {
+      mockDataRecordsCollection.updateMany.mockResolvedValue({ modifiedCount: 2 });
+
+      const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', ['a.txt', 'b.txt']);
+
+      expect(result).toEqual({ modifiedCount: 2 });
+        expect(mockDataRecordsCollection.updateMany).toHaveBeenCalledWith(
+        {
+          submissionID: 'sub-1',
+          s3FileInfo: { $exists: true, $ne: null },
+          's3FileInfo.fileName': { $in: ['a.txt', 'b.txt'] }
+        },
+        expect.arrayContaining([
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              s3FileInfo: { $mergeObjects: ['$s3FileInfo', { status: 'New' }] }
+            })
+          })
+        ])
+      );
+    });
+
+    test('should match all s3FileInfo records when fileNames is null', async () => {
+      mockDataRecordsCollection.updateMany.mockResolvedValue({ modifiedCount: 5 });
+
+      await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', null);
+
+      expect(mockDataRecordsCollection.updateMany).toHaveBeenCalledWith(
+        {
+          submissionID: 'sub-1',
+          s3FileInfo: { $exists: true, $ne: null }
+        },
+        expect.any(Array)
+      );
+    });
+
+    test('should no-op for empty fileNames array', async () => {
+      const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', []);
+
+      expect(result).toEqual({ acknowledged: true, modifiedCount: 0, matchedCount: 0 });
+      expect(mockDataRecordsCollection.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('_getSubmissionStatQuery', () => {
     test('should return correct aggregation pipeline', () => {
       const validNodeStatus = ['New', 'Passed', 'Warning', 'Error'];

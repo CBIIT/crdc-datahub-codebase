@@ -450,6 +450,34 @@ class DataRecordService {
         ]}}}]);
     }
 
+    /**
+     * After one or more data files are removed from S3, set s3FileInfo.status to New on matching data records
+     * (top-level data record status is not changed). Updates updatedAt.
+     * @param {string} submissionID
+     * @param {string[]|null} fileNames - Names of removed data files. Pass null to match every data record
+     *        in the submission that has s3FileInfo (e.g. delete all data files with no exclusives).
+     * @returns {Promise<import('mongodb').UpdateResult>}
+     */
+    async resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames) {
+        if (fileNames && fileNames.length === 0) {
+            return { acknowledged: true, modifiedCount: 0, matchedCount: 0 };
+        }
+        const filter = {
+            submissionID,
+            s3FileInfo: { $exists: true, $ne: null }
+        };
+        if (fileNames != null) {
+            filter["s3FileInfo.fileName"] = { $in: fileNames };
+        }
+        return await this.dataRecordsCollection.updateMany(
+            filter,
+            [{ $set: {
+                updatedAt: getCurrentTime(),
+                s3FileInfo: { $mergeObjects: ["$s3FileInfo", { status: VALIDATION_STATUS.NEW }] }
+            }}]
+        );
+    }
+
     _getSubmissionStatQuery(submissionID, validNodeStatus) {
         return [
             {$match:{

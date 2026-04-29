@@ -163,7 +163,8 @@ describe('Submission Service - getSubmission', () => {
         };
 
         mockDataRecordService = {
-            countNodesBySubmissionID: jest.fn()
+            countNodesBySubmissionID: jest.fn(),
+            resetS3FileLinkedMetadataStatusToNew: jest.fn().mockResolvedValue({ modifiedCount: 0, matchedCount: 0 })
         };
 
         mockBatchService = {
@@ -984,6 +985,7 @@ describe('Submission Service - getSubmission', () => {
                 );
                 expect(submissionService._deleteDataFiles).toHaveBeenCalled();
                 expect(result.message).toContain('1 nodes deleted');
+                expect(mockDataRecordService.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith('sub-123', deletedFiles);
             });
 
             it('should throw error when collaborator has study scope but no study access', async () => {
