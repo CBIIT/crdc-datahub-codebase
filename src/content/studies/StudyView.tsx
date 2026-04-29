@@ -470,7 +470,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       });
     } else {
       const { data: d, errors } = await updateApprovedStudy({
-        variables: { studyID: _id, status, ...variables },
+        variables: { studyID: _id, ...variables, status },
       }).catch((e) => ({ errors: e?.message, data: null }));
       setSaving(false);
 
