@@ -28,6 +28,7 @@ const {ApprovedStudiesService} = require("../services/approved-studies");
 const {BatchService, UploadingMonitor} = require("../services/batch-service");
 const {S3Service} = require("../services/s3-service");
 const {Organization} = require("../crdc-datahub-database-drivers/services/organization");
+const {applyStudyAbbreviationFallbackToListPrograms} = require("../utility/study-abbrev-helpers");
 const {DataRecordService} = require("../services/data-record-service");
 const {UtilityService} = require("../services/utility");
 const {InstitutionService} = require("../services/institution-service");
@@ -224,7 +225,10 @@ dbConnector.connect().then(async () => {
         editUser : userService.editUser.bind(userService),
         grantToken : userService.grantToken.bind(userService),
         listActiveDCPs: userService.listActiveDCPsAPI.bind(userService),
-        listPrograms : organizationService.listPrograms.bind(organizationService),
+        listPrograms: async (params, context) => {
+            const result = await organizationService.listPrograms(params, context);
+            return applyStudyAbbreviationFallbackToListPrograms(result);
+        },
         getOrganization : async (params, context) => {
             const userScope = await getOrgUserScope(authorizationService, context?.userInfo, ADMIN.MANAGE_PROGRAMS);
             if (userScope.isNoneScope()) {

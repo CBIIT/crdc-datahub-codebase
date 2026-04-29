@@ -11,6 +11,7 @@ const {CreateApplicationEvent, UpdateApplicationStateEvent} = require("../crdc-d
 const ROLES = USER_CONSTANTS.USER.ROLES;
 const {parseJsonString, isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const {isUndefined, replaceErrorString} = require("../utility/string-util");
+const {defaultStudyAbbreviationToStudyName, defaultStudyAbbreviationToNA} = require("../utility/study-abbrev-helpers");
 const {EMAIL_NOTIFICATIONS} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {UserScope} = require("../domain/user-scope");
@@ -601,7 +602,11 @@ class Application {
                 applicantEmail: app?.applicant ? app?.applicant?.email : "",
             };
             if (!this._isApprovedApplication(app)) {
-                mappedApplications.push({ ...app, applicant });
+                mappedApplications.push({
+                    ...app,
+                    applicant,
+                    studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
+                });
                 continue;
             }
             const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(app.studyName);
@@ -610,6 +615,7 @@ class Application {
                 applicant,
                 conditional,
                 pendingConditions,
+                studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
             });
         }
         applications = mappedApplications;
@@ -1161,7 +1167,7 @@ class Application {
                         reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A"
                     },
                     {
-                        study: application?.studyAbbreviation,
+                        study: studyLabelForEmailBody(application),
                         contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
                     }
                 );
@@ -1284,7 +1290,6 @@ class Application {
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const studyName = application?.studyAbbreviation?.trim();
             const applicant = await this.userDAO.findFirst({id: application?.applicantID});
             const CCEmails = getCCEmails(applicant?.email, application);
             const toBCCEmails = getUserEmails(filteredBCCUsers)
@@ -1293,7 +1298,7 @@ class Application {
                 CCEmails,
                 toBCCEmails, {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
-                    studyName: studyName?.length > 0 ? studyName : "N/A"
+                    studyName: studyLabelForEmailBody(application)
                 },{
                     inactiveDays: this.emailParams.inactiveDays,
                     url: this.emailParams.url
@@ -1315,7 +1320,6 @@ class Application {
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const studyName = application?.studyAbbreviation?.trim();
             const applicant = await this.userDAO.findFirst({id: application?.applicantID});
             const CCEmails = getCCEmails(applicant?.email, application);
             const filteredBCCUsers = BCCUsers.filter((u) => u?._id !== aSubmitter?._id);
@@ -1325,7 +1329,7 @@ class Application {
                 CCEmails,
                 toBCCEmails, {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
-                    studyName: studyName?.length > 0 ? studyName : "N/A"
+                    studyName: studyLabelForEmailBody(application)
                 },{
                     remainDays: this.emailParams.inactiveDays - interval,
                     inactiveDays: interval,
@@ -1344,8 +1348,8 @@ class Application {
     }
 
     async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
-        // use study name when study abbreviation is not available
-        const studyAbbreviation = !!aApplication?.studyAbbreviation?.trim() ? aApplication?.studyAbbreviation : questionnaire?.study?.name;
+        // Only the application field (user input); do not substitute study name or questionnaire when missing
+        const studyAbbreviation = (aApplication?.studyAbbreviation ?? "").trim();
         const controlledAccess = aApplication?.controlledAccess;
         if (isUndefined(controlledAccess)) {
             console.error(ERROR.APPLICATION_CONTROLLED_ACCESS_NOT_FOUND, ` id=${aApplication?._id}`);
@@ -1410,6 +1414,11 @@ const setDefaultIfNoName = (str) => {
     return (name.length > 0) ? (name) : "NA";
 }
 
+/** Abbreviation for $study-style email slots; falls back to application study name. (Inquire/PV abbrev lines use defaultStudyAbbreviationToNA separately.) */
+function studyLabelForEmailBody(application) {
+    return defaultStudyAbbreviationToStudyName(application?.studyAbbreviation, application?.studyName);
+}
+
 const getCCEmails = (submitterEmail, application) => {
     const questionnaire = getApplicationQuestionnaire(application);
     if (!questionnaire || !submitterEmail) {
@@ -1431,7 +1440,7 @@ const sendEmails = {
                 toBCCEmails, {
                 firstName: applicantName},{
                 pi: `${applicantName}`,
-                study: setDefaultIfNoName(application?.studyAbbreviation),
+                study: studyLabelForEmailBody(application),
                 officialEmail: `${emailParams.officialEmail}.`,
                 inactiveDays: emailParams.inactiveDays,
                 url: emailParams.url
@@ -1477,7 +1486,7 @@ const sendEmails = {
                 [],
                 toBCCEmails, {
                 pi: `${userInfo.firstName} ${userInfo.lastName}${programName === "NA" ? "." : `, and associated with the ${programName} program.`}`,
-                study: application?.studyAbbreviation || "NA",
+                study: studyLabelForEmailBody(application),
                 url: emailParams.url
             });
         }
@@ -1495,7 +1504,7 @@ const sendEmails = {
             const toBCCEmails = getUserEmails(toBCCUsers)
                 ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
             const studyName = setDefaultIfNoName(application?.studyName);
-            const studyAbbreviation = setDefaultIfNoName(application?.studyAbbreviation);
+            const studyAbbreviation = defaultStudyAbbreviationToNA(application?.studyAbbreviation);
             await notificationService.inquireQuestionNotification(application?.applicant?.applicantEmail,
                 CCEmails,
                 toBCCEmails,{
@@ -1520,7 +1529,7 @@ const sendEmails = {
                 firstName: application?.applicant?.applicantName,
                 reviewComments
             }, {
-                study: `${application?.studyAbbreviation},`
+                study: `${studyLabelForEmailBody(application)},`
             });
         }
     }
