@@ -951,8 +951,32 @@ class Application {
 
     async deleteInactiveApplications() {
         try {
-            const applications = await this.applicationDAO.getInactiveApplication(this.emailParams.inactiveDays);
-            
+            const utilityService = new UtilityService();
+            // default retention window and new short window for blank 'New' SRFs
+            const defaultDays = this.emailParams.inactiveDays;
+            const shortDays = this.emailParams.inactiveNewApplicationDays || 30;
+
+            // Fetch both sets and merge, preferring entries from the default set
+            const [defaultApps, shortApps] = await Promise.all([
+                this.applicationDAO.getInactiveApplication(defaultDays),
+                this.applicationDAO.getInactiveApplication(shortDays)
+            ]);
+
+            const appsMap = new Map();
+            (defaultApps || []).forEach(a => appsMap.set(a._id, a));
+
+            const shortIds = new Set((shortApps || []).map(a => a._id));
+            (shortApps || []).forEach(a => {
+                // Only consider truly blank SRFs in the 'New' status for the short window
+                if (a.status === NEW && utilityService.isEmptyApplication(a) && !appsMap.has(a._id)) {
+                    // mark that this record should use the short window when sending emails
+                    a._useShortWindow = true;
+                    appsMap.set(a._id, a);
+                }
+            });
+
+            const applications = Array.from(appsMap.values());
+
             // Handle undefined/null/empty applications gracefully
             if (!applications?.length) {
                 console.log("No inactive applications found to delete");
@@ -960,85 +984,89 @@ class Application {
             }
 
             console.log(`Found ${applications.length} inactive applications to process`);
-                
-                const [applicantUsers, BCCUsers] = await Promise.all([
-                    this._findUsersByApplicantIDs(applications),
-                    this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DELETE],
-                        [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-                ]);
 
-                const permittedUserIDs = new Set(
-                    applicantUsers
-                        ?.filter((u) => u?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DELETE))
-                        ?.map((u) => u?._id)
-                );
-                const history = HistoryEventBuilder.createEvent("", DELETED, this._DELETE_REVIEW_COMMENT);
-                
-                // Use Promise.allSettled to handle partial failures gracefully
-                const updateResults = await Promise.allSettled(applications.map(async (app) => {
-                    const utilityService = new UtilityService();
-                    if (utilityService.isEmptyApplication(app)) {
-                        return await this.applicationDAO.delete(app._id);
+            const [applicantUsers, BCCUsers] = await Promise.all([
+                this._findUsersByApplicantIDs(applications),
+                this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DELETE],
+                    [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
+            ]);
+
+            const permittedUserIDs = new Set(
+                applicantUsers
+                    ?.filter((u) => u?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DELETE))
+                    ?.map((u) => u?._id)
+            );
+            const history = HistoryEventBuilder.createEvent("", DELETED, this._DELETE_REVIEW_COMMENT);
+
+            // Use Promise.allSettled to handle partial failures gracefully
+            const updateResults = await Promise.allSettled(applications.map(async (app) => {
+                if (utilityService.isEmptyApplication(app) && app.status === NEW) {
+                    // permanently delete blank 'New' SRFs
+                    return await this.applicationDAO.delete(app._id);
+                }
+                return await this.applicationDAO.update({
+                    _id: app._id,
+                    status: DELETED,
+                    updatedAt: history.dateTime,
+                    inactiveReminder: true,
+                    history: [...(app.history || []), history]
+                });
+            }));
+
+            // Count successful updates
+            const successfulUpdates = updateResults.filter(result => result.status === 'fulfilled').length;
+            const failedUpdates = updateResults.filter(result => result.status === 'rejected').length;
+
+            if (failedUpdates > 0) {
+                console.error(`Failed to update ${failedUpdates} applications:`, 
+                    updateResults.filter(result => result.status === 'rejected').map(result => result.reason));
+            }
+
+            if (successfulUpdates > 0) {
+                console.log(`Successfully processed ${successfulUpdates} inactive applications`);
+
+                // Filter applications to only include those that were successfully updated
+                const successfullyUpdatedApplications = applications.filter((app, index) => {
+                    const updateResult = updateResults[index];
+                    return updateResult && updateResult.status === 'fulfilled';
+                });
+
+                // Use Promise.allSettled for email notifications - only for successfully updated applications
+                const emailResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
+                    if (permittedUserIDs.has(app?.applicantID)) {
+                        const localEmailParams = {
+                            ...this.emailParams,
+                            inactiveDays: app._useShortWindow ? (this.emailParams.inactiveNewApplicationDays || shortDays) : this.emailParams.inactiveDays
+                        };
+                        await sendEmails.inactiveApplications(this.notificationService, localEmailParams, app?.applicant?.applicantEmail, app?.applicant?.applicantName, app, getUserEmails(BCCUsers));
                     }
-                    return await this.applicationDAO.update({
-                        _id: app._id,
-                        status: DELETED,
-                        updatedAt: history.dateTime,
-                        inactiveReminder: true,
-                        history: [...(app.history || []), history]
-                    });
                 }));
 
-                // Count successful updates
-                const successfulUpdates = updateResults.filter(result => result.status === 'fulfilled').length;
-                const failedUpdates = updateResults.filter(result => result.status === 'rejected').length;
-                
-                if (failedUpdates > 0) {
-                    console.error(`Failed to update ${failedUpdates} applications:`, 
-                        updateResults.filter(result => result.status === 'rejected').map(result => result.reason));
+                const successfulEmails = emailResults.filter(result => result.status === 'fulfilled').length;
+                const failedEmails = emailResults.filter(result => result.status === 'rejected').length;
+
+                if (failedEmails > 0) {
+                    console.error(`Failed to send ${failedEmails} email notifications:`, 
+                        emailResults.filter(result => result.status === 'rejected').map(result => result.reason));
                 }
 
-                if (successfulUpdates > 0) {
-                    console.log(`Successfully processed ${successfulUpdates} inactive applications`);
-                    
-                    // Filter applications to only include those that were successfully updated
-                    const successfullyUpdatedApplications = applications.filter((app, index) => {
-                        const updateResult = updateResults[index];
-                        return updateResult && updateResult.status === 'fulfilled';
-                    });
-                    
-                    // Use Promise.allSettled for email notifications - only for successfully updated applications
-                    const emailResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
-                        if (permittedUserIDs.has(app?.applicantID)) {
-                            await sendEmails.inactiveApplications(this.notificationService,this.emailParams, app?.applicant?.applicantEmail, app?.applicant?.applicantName, app, getUserEmails(BCCUsers));
-                        }
-                    }));
-                    
-                    const successfulEmails = emailResults.filter(result => result.status === 'fulfilled').length;
-                    const failedEmails = emailResults.filter(result => result.status === 'rejected').length;
-                    
-                    if (failedEmails > 0) {
-                        console.error(`Failed to send ${failedEmails} email notifications:`, 
-                            emailResults.filter(result => result.status === 'rejected').map(result => result.reason));
-                    }
-                    
-                    console.log(`Sent ${successfulEmails} email notifications for inactive applications`);
-                    
-                    // Use Promise.allSettled for log insertions - only for successfully updated applications
-                    const logResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
-                        this.logCollection.insert(UpdateApplicationStateEvent.createByApp(app._id, app.status, DELETED));
-                    }));
-                    
-                    const successfulLogs = logResults.filter(result => result.status === 'fulfilled').length;
-                    const failedLogs = logResults.filter(result => result.status === 'rejected').length;
-                    
-                    if (failedLogs > 0) {
-                        console.error(`Failed to log ${failedLogs} application deletions:`, 
-                            logResults.filter(result => result.status === 'rejected').map(result => result.reason));
-                    }
-                    
-                    console.log(`Logged ${successfulLogs} application deletions`);
+                console.log(`Sent ${successfulEmails} email notifications for inactive applications`);
+
+                // Use Promise.allSettled for log insertions - only for successfully updated applications
+                const logResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
+                    this.logCollection.insert(UpdateApplicationStateEvent.createByApp(app._id, app.status, DELETED));
+                }));
+
+                const successfulLogs = logResults.filter(result => result.status === 'fulfilled').length;
+                const failedLogs = logResults.filter(result => result.status === 'rejected').length;
+
+                if (failedLogs > 0) {
+                    console.error(`Failed to log ${failedLogs} application deletions:`, 
+                        logResults.filter(result => result.status === 'rejected').map(result => result.reason));
                 }
+
+                console.log(`Logged ${successfulLogs} application deletions`);
+            }
         } catch (error) {
             console.error("Error in deleteInactiveApplications task:", error);
             throw error; // Re-throw to be caught by cron job handler
@@ -1046,69 +1074,88 @@ class Application {
     }
 
     async remindApplicationSubmission() {
-        // The system sends an email reminder a day before the data submission expires
-        const finalInactiveApplications = await this.applicationDAO.getInactiveApplication(this.emailParams.inactiveDays - 1, this._FINAL_INACTIVE_REMINDER)
-        if (finalInactiveApplications?.length > 0) {
-            await Promise.all(finalInactiveApplications.map(async (aApplication) => {
-                await this._sendEmailFinalInactiveApplication(aApplication);
+        // The system sends reminder emails for both the default window and the short-window for blank 'New' SRFs.
+        const defaultDays = this.emailParams.inactiveDays;
+        const shortDays = this.emailParams.inactiveNewApplicationDays || 30;
+
+        // Final (24 hour) reminders for default and short windows
+        const [finalDefault, finalShort] = await Promise.all([
+            this.applicationDAO.getInactiveApplication(defaultDays - 1, this._FINAL_INACTIVE_REMINDER),
+            this.applicationDAO.getInactiveApplication(shortDays - 1, this._FINAL_INACTIVE_REMINDER)
+        ]);
+
+        // Send final reminders for default window
+        if (finalDefault?.length > 0) {
+            await Promise.all(finalDefault.map(async (aApplication) => {
+                await this._sendEmailFinalInactiveApplication(aApplication, defaultDays);
             }));
-            const applicationIDs = finalInactiveApplications
-                .map(application => application._id);
+            const applicationIDs = finalDefault.map(application => application._id);
             const query = {_id: {$in: applicationIDs}};
-            // Disable all reminders to ensure no notifications are sent.
             const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
             const updatedReminder = await this.applicationDAO.updateMany(query, everyReminderDays);
             if (!updatedReminder?.matchedCount) {
                 console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
             }
         }
-        // Map over inactiveDays to create an array of tuples [day, promise]
-        const inactiveApplicationsPromises = [];
-        for (const day of this.emailParams.inactiveApplicationNotifyDays) {
-            const pastInactiveDays = this.emailParams.inactiveDays - day;
-            inactiveApplicationsPromises.push([pastInactiveDays, await this.applicationDAO.getInactiveApplication(pastInactiveDays, `${this._INACTIVE_REMINDER}_${day}`)]);
-        }
-        const inactiveApplicationsResult = await Promise.all(inactiveApplicationsPromises);
-        const inactiveApplicationMapByDays = inactiveApplicationsResult.reduce((acc, [key, value]) => {
-            acc[key] = value;
-            return acc;
-        }, {});
-        // For Sorting, the oldest submission about to expire submission will be sent at once.
-        const sortedKeys = Object.keys(inactiveApplicationMapByDays).sort((a, b) => b - a);
-        let uniqueSet = new Set();  // Set to track used _id values
-        sortedKeys.forEach((key) => {
-            // Filter out _id values that have already been used
-            inactiveApplicationMapByDays[key] = inactiveApplicationMapByDays[key].filter(obj => {
-                if (!uniqueSet.has(obj._id)) {
-                    uniqueSet.add(obj._id);
-                    return true;  // Keep this object
-                }
-                return false;  // Remove this object as it's already been used
-            });
-        });
 
-        if (uniqueSet.size > 0) {
-            const emailPromises = [];
-            let inactiveApplications = [];
-            for (const [pastDays, aApplicationArray] of Object.entries(inactiveApplicationMapByDays)) {
-                for (const aApplication of aApplicationArray) {
-                    const emailPromise = (async (pastDays) => {
-                        // by default, final reminder 180 days
-                        await this._sendEmailInactiveApplication(aApplication, pastDays);
-                    })(pastDays);
-                    emailPromises.push(emailPromise);
-                    inactiveApplications.push([aApplication?._id, pastDays]);
+        // Send final reminders for short window, but only for blank 'New' SRFs
+        if (finalShort?.length > 0) {
+            const utilityService = new UtilityService();
+            const shortFinalToSend = finalShort.filter(a => a.status === NEW && utilityService.isEmptyApplication(a));
+            await Promise.all(shortFinalToSend.map(async (aApplication) => {
+                await this._sendEmailFinalInactiveApplication(aApplication, shortDays);
+            }));
+            const applicationIDs = shortFinalToSend.map(application => application._id);
+            if (applicationIDs.length > 0) {
+                const query = {_id: {$in: applicationIDs}};
+                const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
+                const updatedReminder = await this.applicationDAO.updateMany(query, everyReminderDays);
+                if (!updatedReminder?.matchedCount) {
+                    console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
                 }
             }
-            await Promise.all(emailPromises);
-            const submissionReminderDays = this.emailParams.inactiveApplicationNotifyDays;
-            for (const inactiveApplication of inactiveApplications) {
-                const applicationID = inactiveApplication[0];
-                const pastDays = inactiveApplication[1];
-                const expiredDays = this.emailParams.inactiveDays - pastDays;
+        }
+
+        // Build list of reminders for notification intervals for default and short windows
+        const reminderEntries = [];
+        for (const day of this.emailParams.inactiveApplicationNotifyDays) {
+            const pastDefault = defaultDays - day;
+            const appsDefault = await this.applicationDAO.getInactiveApplication(pastDefault, `${this._INACTIVE_REMINDER}_${day}`);
+            reminderEntries.push(...(appsDefault || []).map(a => ({ application: a, pastDays: pastDefault, baseDays: defaultDays })));
+
+            const pastShort = shortDays - day;
+            const appsShort = await this.applicationDAO.getInactiveApplication(pastShort, `${this._INACTIVE_REMINDER}_${day}`);
+            if (appsShort && appsShort.length > 0) {
+                const utilityService = new UtilityService();
+                // only include blank New SRFs from short-window
+                reminderEntries.push(...appsShort.filter(a => a.status === NEW && utilityService.isEmptyApplication(a)).map(a => ({ application: a, pastDays: pastShort, baseDays: shortDays })));
+            }
+        }
+
+        if (reminderEntries.length > 0) {
+            // Sort by pastDays descending (older first) and dedupe by application id
+            reminderEntries.sort((a, b) => b.pastDays - a.pastDays);
+            const seen = new Set();
+            const toSend = [];
+            for (const entry of reminderEntries) {
+                if (!seen.has(entry.application._id)) {
+                    seen.add(entry.application._id);
+                    toSend.push(entry);
+                }
+            }
+
+            // Send emails
+            await Promise.all(toSend.map(async (entry) => {
+                await this._sendEmailInactiveApplication(entry.application, entry.pastDays, entry.baseDays);
+            }));
+
+            // Update reminder flags based on baseDays
+            for (const entry of toSend) {
+                const applicationID = entry.application._id;
+                const pastDays = entry.pastDays;
+                const expiredDays = entry.baseDays - pastDays;
+                const submissionReminderDays = this.emailParams.inactiveApplicationNotifyDays;
                 const reminderDays = submissionReminderDays.filter((d) => expiredDays < d || expiredDays === d);
-                // The applications with the closest expiration dates will be flagged as true; no sent any notification anymore
-                // A notification will be sent at each interval. ex) 7, 30, 60 days before expiration
                 const reminderFilter = reminderDays.reduce((acc, day) => {
                     acc[`${this._INACTIVE_REMINDER}_${day}`] = true;
                     return acc;
@@ -1270,7 +1317,7 @@ class Application {
 
     }
 
-    async _sendEmailFinalInactiveApplication(application) {
+    async _sendEmailFinalInactiveApplication(application, baseInactiveDays = this.emailParams.inactiveDays) {
         const [aSubmitter, BCCUsers] = await Promise.all([
             this.userService.getUserByID(application?.applicantID),
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING],
@@ -1295,14 +1342,14 @@ class Application {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
                     studyName: studyName?.length > 0 ? studyName : "N/A"
                 },{
-                    inactiveDays: this.emailParams.inactiveDays,
+                    inactiveDays: baseInactiveDays,
                     url: this.emailParams.url
                 });
-            logDaysDifference(this.emailParams.inactiveDays - 1, application?.updatedAt, application?._id);
+            logDaysDifference(baseInactiveDays - 1, application?.updatedAt, application?._id);
         }
     }
 
-    async _sendEmailInactiveApplication(application, interval) {
+    async _sendEmailInactiveApplication(application, interval, baseInactiveDays = this.emailParams.inactiveDays) {
         const [aSubmitter, BCCUsers] = await Promise.all([
             this.userService.getUserByID(application?.applicantID),
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING],
@@ -1327,7 +1374,7 @@ class Application {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
                     studyName: studyName?.length > 0 ? studyName : "N/A"
                 },{
-                    remainDays: this.emailParams.inactiveDays - interval,
+                    remainDays: baseInactiveDays - interval,
                     inactiveDays: interval,
                     url: this.emailParams.url
                 });

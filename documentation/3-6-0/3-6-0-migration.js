@@ -180,6 +180,26 @@ async function executeStsResourceConfigMigration(db) {
 }
 
 /**
+ * Execute adding INACTIVE_NEW_APPLICATION_DAYS configuration
+ */
+async function executeShortInactiveApplicationConfigMigration(db) {
+    console.log('🔄 Executing INACTIVE_NEW_APPLICATION_DAYS configuration migration...');
+    try {
+        const migration = require('./add-short-inactive-application-config');
+        const result = await migration.addShortInactiveApplicationConfig(db);
+        if (result.success) {
+            console.log('✅ INACTIVE_NEW_APPLICATION_DAYS migration completed successfully');
+        } else {
+            console.log('❌ INACTIVE_NEW_APPLICATION_DAYS migration failed');
+        }
+        return result;
+    } catch (error) {
+        console.error('❌ Error executing INACTIVE_NEW_APPLICATION_DAYS configuration migration:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Execute ApprovedStudy.status backfill (Active where missing)
  */
 async function executeApprovedStudyStatusBackfill(db) {
@@ -323,6 +343,11 @@ async function orchestrateMigration() {
                 name: "Add CHATBOT configuration",
                 file: "add-chatbot-enabled-config.js",
                 execute: () => executeChatbotEnabledConfigMigration(db)
+            },
+            {
+                name: "Add INACTIVE_NEW_APPLICATION_DAYS configuration",
+                file: "add-short-inactive-application-config.js",
+                execute: () => executeShortInactiveApplicationConfigMigration(db)
             },
             {
                 name: "Backfill ApprovedStudy.status (Active where missing)",
