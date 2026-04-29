@@ -1652,9 +1652,9 @@ describe("Implementation Requirements", () => {
       });
     });
 
-    expect(variableMatcher).toHaveBeenCalledWith(
-      expect.not.objectContaining({ status: expect.anything() })
-    );
+    expect(variableMatcher).toHaveBeenCalled();
+    const calledVariables = variableMatcher.mock.calls[0][0];
+    expect(calledVariables).not.toHaveProperty("status");
   });
 
   it("should pass status when updating an existing study", async () => {
