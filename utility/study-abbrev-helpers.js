@@ -33,31 +33,68 @@ function isStudyAbbreviationEmpty(abbrev) {
 }
 
 /**
- * listPrograms API response only: when each approved study's abbreviation is empty, show studyName in the abbrev field.
+ * Returns true if any approved study has an empty (null/undefined/whitespace-only) studyAbbreviation.
+ * @param {Array} programs
+ */
+function programsHaveAnyEmptyStudyAbbrev(programs) {
+    if (!programs?.length) {
+        return false;
+    }
+    for (const p of programs) {
+        if (!p?.studies?.length) {
+            continue;
+        }
+        for (const s of p.studies) {
+            if (isStudyAbbreviationEmpty(s?.studyAbbreviation)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * listPrograms API response only: when a study's abbreviation is empty, set studyAbbreviation to studyName (trimmed).
+ * Returns the same top-level reference when no program has a study with an empty abbrev; otherwise clones only
+ * programs/studies that need updates.
  * @param {{ total?: number, programs?: Array }} listProgramsResult result of Organization#listPrograms
- * @returns {typeof listProgramsResult} new object if any `studies` were mapped; same reference if no work needed
+ * @returns {typeof listProgramsResult}
  */
 function applyStudyAbbreviationFallbackToListPrograms(listProgramsResult) {
     if (!listProgramsResult?.programs?.length) {
         return listProgramsResult;
     }
-    if (!listProgramsResult.programs.some((p) => p?.studies?.length)) {
+    const programs = listProgramsResult.programs;
+    if (!programsHaveAnyEmptyStudyAbbrev(programs)) {
         return listProgramsResult;
     }
     return {
         ...listProgramsResult,
-        programs: listProgramsResult.programs.map((program) => {
-            if (!program?.studies?.length) {
-                return program;
-            }
-            return {
-                ...program,
-                studies: program.studies.map((s) => ({
-                    ...s,
-                    studyAbbreviation: defaultStudyAbbreviationToStudyName(s.studyAbbreviation, s.studyName)
-                }))
-            };
-        })
+        programs: programs.map((program) => mapProgramStudiesAbbrevFallback(program))
+    };
+}
+
+function mapProgramStudiesAbbrevFallback(program) {
+    if (!program?.studies?.length) {
+        return program;
+    }
+    let changed = false;
+    const studies = program.studies.map((s) => {
+        if (!isStudyAbbreviationEmpty(s?.studyAbbreviation)) {
+            return s;
+        }
+        changed = true;
+        return {
+            ...s,
+            studyAbbreviation: defaultStudyAbbreviationToStudyName(s.studyAbbreviation, s.studyName)
+        };
+    });
+    if (!changed) {
+        return program;
+    }
+    return {
+        ...program,
+        studies
     };
 }
 
