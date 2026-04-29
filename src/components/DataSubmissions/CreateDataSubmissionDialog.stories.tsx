@@ -25,6 +25,7 @@ const partialStudyProperties = [
   "pendingModelChange",
   "isPendingGPA",
   "pendingImageDeIdentification",
+  "status",
 ] satisfies (keyof ApprovedStudy)[];
 
 const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
@@ -35,6 +36,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     dbGaPID: "phsTEST",
     controlledAccess: null,
     pendingModelChange: false,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "study2",
@@ -43,6 +45,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     dbGaPID: "phsTEST",
     controlledAccess: true,
     pendingModelChange: false,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "no-dbGaP-ID",
@@ -51,6 +54,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     dbGaPID: null,
     controlledAccess: true,
     pendingModelChange: false,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "pending-model-changes",
@@ -59,6 +63,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     dbGaPID: "phsTEST",
     controlledAccess: null,
     pendingModelChange: true,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "pending-GPA-condition",
@@ -68,6 +73,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     controlledAccess: true,
     pendingModelChange: false,
     isPendingGPA: true,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "pending-conditions",
@@ -77,6 +83,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     controlledAccess: true,
     pendingModelChange: true,
     isPendingGPA: true,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "pending-image-de-identification",
@@ -86,6 +93,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     controlledAccess: null,
     pendingModelChange: false,
     pendingImageDeIdentification: true,
+    status: "Active",
   }),
 ];
 

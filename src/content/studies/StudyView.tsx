@@ -440,9 +440,9 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
   const onSubmit = async (data: FormInput) => {
     setSaving(true);
 
-    const { studyName, studyAbbreviation, program, ...rest } = data;
+    const { studyName, studyAbbreviation, program, status, ...rest } = data;
 
-    const variables: CreateApprovedStudyInput | UpdateApprovedStudyInput = {
+    const variables: Omit<CreateApprovedStudyInput, "status"> | UpdateApprovedStudyInput = {
       ...rest,
       name: studyName,
       acronym: studyAbbreviation,
@@ -470,7 +470,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       });
     } else {
       const { data: d, errors } = await updateApprovedStudy({
-        variables: { studyID: _id, ...variables },
+        variables: { studyID: _id, ...variables, status },
       }).catch((e) => ({ errors: e?.message, data: null }));
       setSaving(false);
 
