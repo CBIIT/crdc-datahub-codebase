@@ -87,7 +87,7 @@ export const ConfirmAndCreate: Story = {
     const button = await canvas.findByTestId("create-application-button");
     await userEvent.click(button);
 
-    const confirmButton = await screen.findByRole("button", { name: "I Read and Accept" });
+    const confirmButton = await screen.findByText("I Read and Accept");
     await userEvent.click(confirmButton);
 
     await expect(args.onCreate).toHaveBeenCalledWith("new");
