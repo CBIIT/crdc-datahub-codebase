@@ -964,8 +964,6 @@ class Application {
 
             const appsMap = new Map();
             (defaultApps || []).forEach(a => appsMap.set(a._id, a));
-
-            const shortIds = new Set((shortApps || []).map(a => a._id));
             (shortApps || []).forEach(a => {
                 // Only consider truly blank SRFs in the 'New' status for the short window
                 if (a.status === NEW && utilityService.isEmptyApplication(a) && !appsMap.has(a._id)) {
