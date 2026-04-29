@@ -252,5 +252,43 @@ describe('remindApplicationSubmission', () => {
         })
       );
     });
+
+    it('should skip short window queries when day >= shortDays to prevent bulk matches', async () => {
+      // Final reminders
+      mockApplicationDAO.getInactiveApplication
+        .mockResolvedValueOnce([]) // final default
+        .mockResolvedValueOnce([]); // final short
+
+      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+
+      // For interval reminders with [7, 15, 30] and shortDays=30:
+      // day=7: query both (7 < 30) ✓
+      // day=15: query both (15 < 30) ✓
+      // day=30: skip short (30 >= 30) ✗ prevents getInactiveApplication(0, ...)
+      mockApplicationDAO.getInactiveApplication
+        .mockResolvedValueOnce([]) // 7 days default
+        .mockResolvedValueOnce([]) // 7 days short (should be called)
+        .mockResolvedValueOnce([]) // 15 days default
+        .mockResolvedValueOnce([]) // 15 days short (should be called)
+        .mockResolvedValueOnce([]); // 30 days default
+      // 30 days short should NOT be called
+
+      mockApplicationDAO.update.mockResolvedValue({ matchedCount: 0 });
+
+      await applicationService.remindApplicationSubmission();
+
+      // Verify getInactiveApplication was called exactly 7 times:
+      // 2 final (default + short) + 5 interval (only 1 short query for 7 and 15, skipped for 30)
+      expect(mockApplicationDAO.getInactiveApplication).toHaveBeenCalledTimes(7);
+
+      // Verify it was called for 7 days short
+      expect(mockApplicationDAO.getInactiveApplication).toHaveBeenCalledWith(23, 'inactiveReminder_7');
+      // Verify it was called for 15 days short
+      expect(mockApplicationDAO.getInactiveApplication).toHaveBeenCalledWith(15, 'inactiveReminder_15');
+      // Verify it was NOT called with 0 (which would match too many apps)
+      const allCalls = mockApplicationDAO.getInactiveApplication.mock.calls;
+      const zeroOrNegativeCalls = allCalls.filter(([days]) => days <= 0);
+      expect(zeroOrNegativeCalls).toHaveLength(0);
+    });
   });
 });

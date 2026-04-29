@@ -1121,12 +1121,15 @@ class Application {
             const appsDefault = await this.applicationDAO.getInactiveApplication(pastDefault, `${this._INACTIVE_REMINDER}_${day}`);
             reminderEntries.push(...(appsDefault || []).map(a => ({ application: a, pastDays: pastDefault, baseDays: defaultDays })));
 
-            const pastShort = shortDays - day;
-            const appsShort = await this.applicationDAO.getInactiveApplication(pastShort, `${this._INACTIVE_REMINDER}_${day}`);
-            if (appsShort && appsShort.length > 0) {
-                const utilityService = new UtilityService();
-                // only include blank New SRFs from short-window
-                reminderEntries.push(...appsShort.filter(a => a.status === NEW && utilityService.isEmptyApplication(a)).map(a => ({ application: a, pastDays: pastShort, baseDays: shortDays })));
+            // Only query short window for intervals strictly less than shortDays to avoid zero/negative pastDays
+            if (day < shortDays) {
+                const pastShort = shortDays - day;
+                const appsShort = await this.applicationDAO.getInactiveApplication(pastShort, `${this._INACTIVE_REMINDER}_${day}`);
+                if (appsShort && appsShort.length > 0) {
+                    const utilityService = new UtilityService();
+                    // only include blank New SRFs from short-window
+                    reminderEntries.push(...appsShort.filter(a => a.status === NEW && utilityService.isEmptyApplication(a)).map(a => ({ application: a, pastDays: pastShort, baseDays: shortDays })));
+                }
             }
         }
 
