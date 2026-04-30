@@ -150,6 +150,13 @@ describe('ApprovedStudiesService', () => {
             expect(result).toEqual({_id: 'new-study-id'});
         });
 
+        it('passes trimmed study name as abbreviation when acronym is whitespace-only', async () => {
+            const result = await service.addApprovedStudyAPI({ ...mockParams, acronym: '   \t' }, mockContext);
+            expect(service.storeApprovedStudies).toHaveBeenCalledWith(
+                null, 'New Study', 'New Study', 'phs001234', null, true, '0000-0002-1825-0097', 'Dr. New', false, false, false, 'contact-id', mockGPA, 'org-id', undefined);
+            expect(result).toEqual({ _id: 'new-study-id' });
+        });
+
         it('should pass pendingImageDeIdentification to storeApprovedStudies when provided', async () => {
             const result = await service.addApprovedStudyAPI(
                 { ...mockParams, pendingImageDeIdentification: true },
@@ -1158,6 +1165,26 @@ describe('ApprovedStudiesService', () => {
             expect(service.approvedStudyDAO.create).toHaveBeenCalledWith(fakeStudy);
 
             expect(result).toBe(fakeStudy);
+        });
+
+        it('passes trimmed studyName as studyAbbreviation to createApprovedStudies when abbreviation is null, empty, or whitespace-only', async () => {
+            const validProgramID = 'valid-program-id-123';
+            const validProgram = { _id: validProgramID, name: 'Test Program' };
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(validProgram);
+            ApprovedStudies.createApprovedStudies.mockImplementation((appId, sn, sa, ...rest) => ({ ...fakeStudy, studyName: sn, studyAbbreviation: sa }));
+            service.approvedStudyDAO = {
+                create: jest.fn().mockImplementation((s) => s)
+            };
+
+            for (const emptyAbbrev of [null, '', '  \t  ']) {
+                ApprovedStudies.createApprovedStudies.mockClear();
+                service.approvedStudyDAO.create.mockClear();
+                await service.storeApprovedStudies(
+                    null, '  My Study  ', emptyAbbrev, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess,
+                    useProgramPC, pendingModelChange, primaryContactID, null, validProgramID, undefined
+                );
+                expect(ApprovedStudies.createApprovedStudies.mock.calls[0][2]).toBe('My Study');
+            }
         });
 
         it('should pass pendingImageDeIdentification as final argument to createApprovedStudies', async () => {

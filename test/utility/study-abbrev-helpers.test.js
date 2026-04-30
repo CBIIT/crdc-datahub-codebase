@@ -1,7 +1,7 @@
 const {
     defaultStudyAbbreviationToStudyName,
     defaultStudyAbbreviationToNA,
-    applyStudyAbbreviationFallbackToListPrograms
+    isStudyAbbreviationEmpty
 } = require('../../utility/study-abbrev-helpers');
 
 describe('study-abbrev-helpers', () => {
@@ -31,69 +31,16 @@ describe('study-abbrev-helpers', () => {
         });
     });
 
-    describe('applyStudyAbbreviationFallbackToListPrograms', () => {
-        it('sets studyAbbreviation to studyName per study when abbrev is empty', () => {
-            const input = {
-                total: 1,
-                programs: [
-                    {
-                        _id: 'org1',
-                        name: 'Program 1',
-                        studies: [{ studyName: 'Approved Name', studyAbbreviation: '   ' }]
-                    }
-                ]
-            };
-            const out = applyStudyAbbreviationFallbackToListPrograms(input);
-            expect(out.programs[0].studies[0].studyAbbreviation).toBe('Approved Name');
+    describe('isStudyAbbreviationEmpty', () => {
+        it('returns true for null, undefined, empty, or whitespace-only', () => {
+            expect(isStudyAbbreviationEmpty(null)).toBe(true);
+            expect(isStudyAbbreviationEmpty(undefined)).toBe(true);
+            expect(isStudyAbbreviationEmpty('')).toBe(true);
+            expect(isStudyAbbreviationEmpty('   \t')).toBe(true);
         });
-        it('returns the same object reference when there are no programs', () => {
-            const empty = { total: 0, programs: [] };
-            expect(applyStudyAbbreviationFallbackToListPrograms(empty)).toBe(empty);
-        });
-        it('returns the same object reference when programs have no studies arrays', () => {
-            const input = {
-                total: 1,
-                programs: [{ _id: 'org1', name: 'Program 1' }]
-            };
-            expect(applyStudyAbbreviationFallbackToListPrograms(input)).toBe(input);
-        });
-        it('returns the same object reference when every study has a non-empty abbreviation', () => {
-            const input = {
-                total: 1,
-                programs: [
-                    {
-                        _id: 'org1',
-                        name: 'Program 1',
-                        studies: [
-                            { studyName: 'A', studyAbbreviation: 'S1' },
-                            { studyName: 'B', studyAbbreviation: '  x  ' }
-                        ]
-                    }
-                ]
-            };
-            expect(applyStudyAbbreviationFallbackToListPrograms(input)).toBe(input);
-        });
-        it('reuses unchanged program objects when only another program has an empty abbrev', () => {
-            const unchanged = {
-                _id: 'org1',
-                name: 'OK',
-                studies: [{ studyName: 'A', studyAbbreviation: 'AB' }]
-            };
-            const input = {
-                total: 2,
-                programs: [
-                    unchanged,
-                    {
-                        _id: 'org2',
-                        name: 'Needs fix',
-                        studies: [{ studyName: 'B', studyAbbreviation: '   ' }]
-                    }
-                ]
-            };
-            const out = applyStudyAbbreviationFallbackToListPrograms(input);
-            expect(out).not.toBe(input);
-            expect(out.programs[0]).toBe(unchanged);
-            expect(out.programs[1].studies[0].studyAbbreviation).toBe('B');
+        it('returns false when abbrev has non-whitespace content', () => {
+            expect(isStudyAbbreviationEmpty('A')).toBe(false);
+            expect(isStudyAbbreviationEmpty('  x  ')).toBe(false);
         });
     });
 });
