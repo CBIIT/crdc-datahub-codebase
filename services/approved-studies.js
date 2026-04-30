@@ -32,6 +32,8 @@ const SubmissionDAO = require("../dao/submission");
 const ApplicationDAO = require("../dao/application");
 const {PendingGPA} = require("../domain/pending-gpa");
 const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } = require("../utility/study-utility");
+const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev-helpers");
+
 class ApprovedStudiesService {
     constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
         this.approvedStudiesCollection = approvedStudiesCollection;
@@ -52,7 +54,8 @@ class ApprovedStudiesService {
         const program = await this._validateProgramID(programID);
         const validatedProgramID = program?._id;
 
-        const approvedStudies = ApprovedStudies.createApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, validatedProgramID, pendingImageDeIdentification);
+        const resolvedStudyAbbreviation = defaultStudyAbbreviationToStudyName(studyAbbreviation, studyName);
+        const approvedStudies = ApprovedStudies.createApprovedStudies(applicationID, studyName, resolvedStudyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, validatedProgramID, pendingImageDeIdentification);
         const res = await this.approvedStudyDAO.create(approvedStudies);
 
         if (!res) {
@@ -223,9 +226,7 @@ class ApprovedStudiesService {
             }
         }
 
-        if (!acronym){
-            acronym = name;
-        }
+        acronym = defaultStudyAbbreviationToStudyName(acronym, name);
 
         this._validatePendingGPA(GPAName, controlledAccess, isPendingGPA);
         const pendingGPA = PendingGPA.create(GPAName, isPendingGPA);

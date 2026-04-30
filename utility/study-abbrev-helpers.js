@@ -32,74 +32,8 @@ function isStudyAbbreviationEmpty(abbrev) {
     return (abbrev ?? "").toString().trim().length === 0;
 }
 
-/**
- * Returns true if any approved study has an empty (null/undefined/whitespace-only) studyAbbreviation.
- * @param {Array} programs
- */
-function programsHaveAnyEmptyStudyAbbrev(programs) {
-    if (!programs?.length) {
-        return false;
-    }
-    for (const p of programs) {
-        if (!p?.studies?.length) {
-            continue;
-        }
-        for (const s of p.studies) {
-            if (isStudyAbbreviationEmpty(s?.studyAbbreviation)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-/**
- * listPrograms API response only: when a study's abbreviation is empty, set studyAbbreviation to studyName (trimmed).
- * Returns the same top-level reference when no program has a study with an empty abbrev; otherwise clones only
- * programs/studies that need updates.
- * @param {{ total?: number, programs?: Array }} listProgramsResult result of Organization#listPrograms
- * @returns {typeof listProgramsResult}
- */
-function applyStudyAbbreviationFallbackToListPrograms(listProgramsResult) {
-    if (!listProgramsResult?.programs?.length) {
-        return listProgramsResult;
-    }
-    const programs = listProgramsResult.programs;
-    if (!programsHaveAnyEmptyStudyAbbrev(programs)) {
-        return listProgramsResult;
-    }
-    return {
-        ...listProgramsResult,
-        programs: programs.map((program) => mapProgramStudiesAbbrevFallback(program))
-    };
-}
-
-function mapProgramStudiesAbbrevFallback(program) {
-    if (!program?.studies?.length) {
-        return program;
-    }
-    let changed = false;
-    const studies = program.studies.map((s) => {
-        if (!isStudyAbbreviationEmpty(s?.studyAbbreviation)) {
-            return s;
-        }
-        changed = true;
-        return {
-            ...s,
-            studyAbbreviation: defaultStudyAbbreviationToStudyName(s.studyAbbreviation, s.studyName)
-        };
-    });
-    if (!changed) {
-        return program;
-    }
-    return {
-        ...program,
-        studies
-    };
-}
-
 module.exports = {
     defaultStudyAbbreviationToStudyName,
     defaultStudyAbbreviationToNA,
-    applyStudyAbbreviationFallbackToListPrograms
+    isStudyAbbreviationEmpty
 };

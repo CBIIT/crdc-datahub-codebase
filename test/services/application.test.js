@@ -203,6 +203,38 @@ describe('Application', () => {
 
             expect(app._checkConditionalApproval).toHaveBeenCalledWith(expect.objectContaining({ _id: 'app1', status: 'approved' }));
         });
+
+        it('does not replace missing or whitespace-only studyAbbreviation with study name', async () => {
+            userScopeMock.isNoneScope.mockReturnValue(false);
+            userScopeMock.isAllScope.mockReturnValue(true);
+            UserScope.create.mockReturnValue(userScopeMock);
+
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('3.0');
+
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: NEW,
+                studyName: 'Full Study',
+                studyAbbreviation: null,
+                applicant: { applicantID: 'u1', applicantName: 'Submitter', applicantEmail: 's@test.com' }
+            });
+            await expect(app.getApplication({ _id: 'app1' }, context)).resolves.toMatchObject({
+                studyAbbreviation: null,
+                studyName: 'Full Study'
+            });
+
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: NEW,
+                studyName: 'Full Study',
+                studyAbbreviation: '   ',
+                applicant: { applicantID: 'u1', applicantName: 'Submitter', applicantEmail: 's@test.com' }
+            });
+            await expect(app.getApplication({ _id: 'app1' }, context)).resolves.toMatchObject({
+                studyAbbreviation: '   ',
+                studyName: 'Full Study'
+            });
+        });
     });
 
     describe('_getApplicationVersionByStatus', () => {
@@ -1443,7 +1475,8 @@ describe('Application', () => {
             expect(args[0]).toBeUndefined(); // applicationID should be undefined when no _id
         });
 
-        it('should pass empty studyAbbreviation to storeApprovedStudies when missing, not questionnaire.study.name', async () => {
+        // Application passes the trimmed form field only (no questionnaire fallback). ApprovedStudiesService.storeApprovedStudies persists studyName when abbrev is empty.
+        it('should pass empty trimmed studyAbbreviation from application to storeApprovedStudies, not questionnaire.study.name', async () => {
             const aApplication = {
                 _id: 'app1',
                 studyName: 'Study One',
