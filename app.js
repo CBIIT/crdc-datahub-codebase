@@ -84,12 +84,23 @@ app.use("/api/graphql", graphqlRouter);
         const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
         const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
         const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
-        const emailParams = {url: config.emails_url, officialEmail: config.official_email, inactiveDays: config.inactive_application_days, remindDay: config.remind_application_days,
-            submissionSystemPortal: config.submission_system_portal, submissionHelpdesk: config.submission_helpdesk, remindSubmissionDay: config.inactiveSubmissionNotifyDays,
-            techSupportEmail: config.techSupportEmail, conditionalSubmissionContact: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl,
-            completedSubmissionDays: config.completed_submission_days, inactiveSubmissionDays: config.inactive_submission_days, finalRemindSubmissionDay: config.inactive_submission_days,
-            inactiveApplicationNotifyDays: config.inactiveApplicationNotifyDays};
-
+        const emailParams = {
+            url: config.emails_url,
+            officialEmail: config.official_email,
+            inactiveDays: config.inactive_application_days,
+            inactiveNewApplicationDays: config.inactive_new_application_days,
+            remindDay: config.remind_application_days,
+            submissionSystemPortal: config.submission_system_portal,
+            submissionHelpdesk: config.submission_helpdesk,
+            remindSubmissionDay: config.inactiveSubmissionNotifyDays,
+            techSupportEmail: config.techSupportEmail,
+            conditionalSubmissionContact: config.conditionalSubmissionContact,
+            submissionGuideURL: config.submissionGuideUrl,
+            completedSubmissionDays: config.completed_submission_days,
+            inactiveSubmissionDays: config.inactive_submission_days,
+            finalRemindSubmissionDay: config.inactive_submission_days,
+            inactiveApplicationNotifyDays: config.inactiveApplicationNotifyDays,
+        };
         
         const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
         const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
