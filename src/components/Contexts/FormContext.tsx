@@ -254,7 +254,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         application: {
           _id: newState?.data?._id === "new" ? undefined : newState?.data?._id,
           studyName: processedData?.study?.name,
-          studyAbbreviation: processedData?.study?.abbreviation || processedData?.study?.name,
+          studyAbbreviation: processedData?.study?.abbreviation,
           questionnaireData: JSON.stringify(processedData),
           controlledAccess: processedData?.accessTypes?.includes("Controlled Access") || false,
           openAccess: processedData?.accessTypes?.includes("Open Access") || false,
