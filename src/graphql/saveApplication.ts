@@ -44,13 +44,13 @@ export type Input = {
      */
     _id: string;
     /**
-     * The Study Name of the Application
+     * The Study Name if provided in the form, otherwise null.
      */
-    studyName: string;
+    studyName: string | null;
     /**
-     * The Study Abbreviation or Study Name if the abbreviation is null
+     * The Study Abbreviation if provided in the form, otherwise null.
      */
-    studyAbbreviation: string;
+    studyAbbreviation: string | null;
     /**
      * Stringified JSON Application Questionnaire Data
      *
