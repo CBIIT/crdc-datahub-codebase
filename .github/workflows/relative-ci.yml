@@ -32,15 +32,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22.x"
-          cache: "npm"
 
-      - name: Cache node modules
-        uses: actions/cache@v3
+      - name: Setup Cache
+        uses: actions/cache@v4
         with:
-          path: node_modules
+          path: ./apps/frontend/node_modules
           key: ${{ runner.os }}-modules-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-modules-
+          restore-keys: ${{ runner.os }}-modules-
 
       - name: Install Dependencies
         run: npm install
