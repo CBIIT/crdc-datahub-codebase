@@ -370,6 +370,119 @@ describe("FormContext > FormProvider Tests", () => {
     expect(getByTestId("pi-first-name").textContent).toEqual("");
     expect(getByTestId("pi-last-name").textContent).toEqual("");
   });
+
+  it("should skip refetch when provider already has loaded data for the new id (import flow)", async () => {
+    const persistedId = "PERSISTED-UUID-123";
+
+    const mocks = [
+      // getMyLastApplication called during 'new' initialization
+      {
+        request: {
+          query: GET_LAST_APP,
+        },
+        result: {
+          data: {
+            getMyLastApplication: null,
+          },
+        },
+      },
+      // getApplicationFormVersion for 'new'
+      {
+        request: {
+          query: GET_APPLICATION_FORM_VERSION,
+        },
+        result: {
+          data: {
+            getApplicationFormVersion: {
+              _id: "mock-form-version-id",
+              version: "1.2.3",
+            },
+          },
+        },
+      },
+      // saveApp mutation that returns the newly persisted _id
+      {
+        request: {
+          query: SAVE_APP,
+        },
+        // variableMatcher to accept any variables for the save mutation
+        variableMatcher: () => true,
+        result: {
+          data: {
+            saveApplication: {
+              _id: persistedId,
+              status: "In Progress",
+              programName: "",
+              studyAbbreviation: "",
+              updatedAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+              submittedDate: null,
+              history: [],
+              newInstitutions: [],
+            },
+          },
+        },
+      },
+    ];
+
+    // Capture the context API so we can call setData
+    let api: ReturnType<typeof useFormContext> | null = null;
+    const Capturer: FC = () => {
+      api = useFormContext();
+      return null;
+    };
+
+    const { findByTestId, rerender } = render(
+      <MockedProvider mocks={mocks}>
+        <OrganizationListContext.Provider value={baseOrgCtxState}>
+          <AuthContext.Provider value={baseAuthCtxState}>
+            <FormProvider id="new">
+              <TestChild />
+              <Capturer />
+            </FormProvider>
+          </AuthContext.Provider>
+        </OrganizationListContext.Provider>
+      </MockedProvider>
+    );
+
+    // Wait for initial 'new' to load
+    await findByTestId("status");
+    // Ensure initial state is loaded and id is 'new'
+    expect(document.querySelector("[data-testid=app-id]")?.textContent).toEqual("new");
+
+    // Call setData which will trigger saveApp and update internal state._id
+    await act(async () => {
+      const parsedForm: QuestionnaireData = questionnaireDataFactory.build();
+      const res = await api.setData(parsedForm, { skipSave: false, runMigrations: false });
+      expect(res.status).toEqual("success");
+    });
+
+    // Confirm the provider state was updated with the persisted id
+    expect(api.data._id).toEqual(persistedId);
+
+    // Rerender the provider with the new id to simulate the route change after save
+    rerender(
+      <MockedProvider mocks={mocks}>
+        <OrganizationListContext.Provider value={baseOrgCtxState}>
+          <AuthContext.Provider value={baseAuthCtxState}>
+            <FormProvider id={persistedId}>
+              <TestChild />
+              <Capturer />
+            </FormProvider>
+          </AuthContext.Provider>
+        </OrganizationListContext.Provider>
+      </MockedProvider>
+    );
+
+    // If FormProvider attempted to refetch GET_APP for the persisted id we would
+    // have needed a GET_APP mock for persistedId; since we did not provide one,
+    // the context should remain LOADED and retain the persisted id instead of
+    // transitioning to an error state.
+    await waitFor(() => {
+      expect(api.status).toEqual(FormStatus.LOADED);
+      expect(api.data._id).toEqual(persistedId);
+    });
+  });
 });
 
 describe("approveForm Tests", () => {
