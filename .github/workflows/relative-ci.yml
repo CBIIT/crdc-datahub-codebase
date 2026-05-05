@@ -18,6 +18,9 @@ defaults:
   run:
     working-directory: ./apps/frontend
 
+env:
+  HUSKY: 0
+
 jobs:
   bundle_analysis:
     name: Bundle Analysis

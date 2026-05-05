@@ -15,6 +15,9 @@ defaults:
   run:
     working-directory: ./apps/frontend
 
+env:
+  HUSKY: 0
+
 jobs:
   chromatic:
     runs-on: ubuntu-latest
