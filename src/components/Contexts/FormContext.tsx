@@ -433,6 +433,11 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       return;
     }
 
+    if (state.status === Status.LOADED && state?.data?._id === id) {
+      Logger.info("FormContext: Skipping data fetch, already have loaded data for this ID");
+      return;
+    }
+
     if (!id || !id.trim()) {
       setState({
         status: Status.ERROR,
