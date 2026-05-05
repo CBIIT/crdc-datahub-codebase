@@ -1,12 +1,8 @@
-FROM node:24.13.0-alpine3.22 AS fnl_base_image
+FROM node:24.15.0-alpine3.22 AS fnl_base_image
 ENV PORT=8080
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
-RUN npm install -g \
-    glob@11.1.0 \
-    tar@7.5.11 \
-    minimatch@10.2.3 \
-    @isaacs/brace-expansion@5.0.1 
+RUN npm install -g npm@11.13.0
 COPY package*.json ./
 RUN npm ci
 COPY  --chown=node:node . .
