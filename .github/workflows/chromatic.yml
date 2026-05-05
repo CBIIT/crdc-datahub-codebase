@@ -7,11 +7,13 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - "*.*.*"
       - "main"
-      - "master"
-    paths:
-      - "**/*.{js,jsx,ts,tsx}"
+  schedule:
+    - cron: "0 9 * * 1"
+
+defaults:
+  run:
+    working-directory: ./apps/frontend
 
 jobs:
   chromatic:

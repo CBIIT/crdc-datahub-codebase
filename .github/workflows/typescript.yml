@@ -8,7 +8,12 @@ on:
       - "main"
       - "master"
   pull_request:
-    branches: "*"
+    branches:
+      - "*"
+
+defaults:
+  run:
+    working-directory: ./apps/frontend
 
 permissions:
   contents: read
