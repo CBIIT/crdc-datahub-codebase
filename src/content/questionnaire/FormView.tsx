@@ -454,12 +454,10 @@ const FormView: FC<Props> = ({ section }: Props) => {
         variant: "error",
       });
     } else {
-      enqueueSnackbar(
-        `Your changes for the ${map[activeSection].title} section have been successfully saved.`,
-        {
-          variant: "success",
-        }
-      );
+      const saveMessage = newData?.sections?.every((section) => section.status === "Not Started")
+        ? `The ${map[activeSection].title} section has been successfully saved.`
+        : `Your changes for the ${map[activeSection].title} section have been successfully saved.`;
+      enqueueSnackbar(saveMessage, { variant: "success" });
     }
 
     if (saveResult?.status === "success") {
