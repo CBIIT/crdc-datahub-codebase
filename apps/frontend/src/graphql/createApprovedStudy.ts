@@ -14,6 +14,7 @@ export const mutation: TypedDocumentNode<Response, Input> = gql`
     $primaryContactID: String
     $useProgramPC: Boolean!
     $pendingModelChange: Boolean
+    $pendingImageDeIdentification: Boolean
     $GPAName: String
     $isPendingGPA: Boolean
   ) {
@@ -29,6 +30,7 @@ export const mutation: TypedDocumentNode<Response, Input> = gql`
       primaryContactID: $primaryContactID
       useProgramPC: $useProgramPC
       pendingModelChange: $pendingModelChange
+      pendingImageDeIdentification: $pendingImageDeIdentification
       GPAName: $GPAName
       isPendingGPA: $isPendingGPA
     ) {
@@ -49,6 +51,7 @@ export type Input = {
   primaryContactID: string;
   useProgramPC: boolean;
   pendingModelChange: boolean;
+  pendingImageDeIdentification: boolean;
   GPAName: string;
   isPendingGPA: boolean;
 };

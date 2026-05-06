@@ -24,6 +24,8 @@ const partialStudyProperties = [
   "controlledAccess",
   "pendingModelChange",
   "isPendingGPA",
+  "pendingImageDeIdentification",
+  "status",
 ] satisfies (keyof ApprovedStudy)[];
 
 const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
@@ -34,6 +36,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     dbGaPID: "phsTEST",
     controlledAccess: null,
     pendingModelChange: false,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "study2",
@@ -42,6 +45,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     dbGaPID: "phsTEST",
     controlledAccess: true,
     pendingModelChange: false,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "no-dbGaP-ID",
@@ -50,6 +54,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     dbGaPID: null,
     controlledAccess: true,
     pendingModelChange: false,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "pending-model-changes",
@@ -58,6 +63,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     dbGaPID: "phsTEST",
     controlledAccess: null,
     pendingModelChange: true,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "pending-GPA-condition",
@@ -67,6 +73,7 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     controlledAccess: true,
     pendingModelChange: false,
     isPendingGPA: true,
+    status: "Active",
   }),
   approvedStudyFactory.pick(partialStudyProperties).build({
     _id: "pending-conditions",
@@ -76,6 +83,17 @@ const baseStudies: GetMyUserResp["getMyUser"]["studies"] = [
     controlledAccess: true,
     pendingModelChange: true,
     isPendingGPA: true,
+    status: "Active",
+  }),
+  approvedStudyFactory.pick(partialStudyProperties).build({
+    _id: "pending-image-de-identification",
+    studyName: "study with pending image de-identification",
+    studyAbbreviation: "PID",
+    dbGaPID: "phsTEST",
+    controlledAccess: null,
+    pendingModelChange: false,
+    pendingImageDeIdentification: true,
+    status: "Active",
   }),
 ];
 
@@ -240,5 +258,36 @@ export const DialogWithMultiplePendingConditions: Story = {
     );
     expect(tooltip1).toBeInTheDocument();
     expect(tooltip2).toBeInTheDocument();
+  },
+};
+
+export const DialogWithPendingImageDeIdentification: Story = {
+  ...Button,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // Open the dialog
+    await userEvent.click(canvas.getByRole("button", { name: "Create a Data Submission" }));
+    await screen.findAllByRole("presentation");
+
+    // Open the study select dropdown and select the pending option
+    const studySelect = await screen.findByTestId("create-data-submission-dialog-study-id-input");
+    await userEvent.click(within(studySelect).getByRole("button"));
+    const pendingOption: HTMLElement = await screen.findByTestId(
+      "study-option-pending-image-de-identification"
+    );
+    await userEvent.click(pendingOption);
+
+    // Check that the "Create" button is disabled
+    const createButton = await screen.findByTestId("create-data-submission-dialog-create-button");
+    expect(createButton).toBeDisabled();
+
+    // Hover over the button parent span to trigger the tooltip
+    const createButtonWrapper = createButton.parentElement as HTMLElement;
+    await userEvent.hover(createButtonWrapper);
+    const tooltip = await screen.findByText(
+      /Pending submission of the risk mitigation document and the image de-identification protocol./i
+    );
+    expect(tooltip).toBeInTheDocument();
   },
 };

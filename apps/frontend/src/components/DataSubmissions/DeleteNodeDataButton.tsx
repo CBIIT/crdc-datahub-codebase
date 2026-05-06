@@ -1,17 +1,24 @@
 import { useMutation } from "@apollo/client";
-import { IconButton, IconButtonProps, styled } from "@mui/material";
+import {
+  Checkbox,
+  FormControlLabel,
+  IconButton,
+  IconButtonProps,
+  Stack,
+  styled,
+} from "@mui/material";
 import { isEqual } from "lodash";
 import { useSnackbar } from "notistack";
 import { memo, useMemo, useState } from "react";
 
-import DeleteAllFilesIcon from "../../assets/icons/delete_all_files_icon.svg?react";
-import { hasPermission } from "../../config/AuthPermissions";
-import { DELETE_DATA_RECORDS, DeleteDataRecordsInput, DeleteDataRecordsResp } from "../../graphql";
-import { Logger, titleCase } from "../../utils";
-import { useAuthContext } from "../Contexts/AuthContext";
-import { useSubmissionContext } from "../Contexts/SubmissionContext";
-import DeleteDialog from "../DeleteDialog";
-import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
+import DeleteAllFilesIcon from "@/assets/icons/delete_all_files_icon.svg?react";
+import { useAuthContext } from "@/components/Contexts/AuthContext";
+import { useSubmissionContext } from "@/components/Contexts/SubmissionContext";
+import DeleteDialog from "@/components/DeleteDialog";
+import StyledFormTooltip from "@/components/StyledFormComponents/StyledTooltip";
+import { hasPermission } from "@/config/AuthPermissions";
+import { DELETE_DATA_RECORDS, DeleteDataRecordsInput, DeleteDataRecordsResp } from "@/graphql";
+import { Logger, titleCase } from "@/utils";
 
 const StyledIconButton = styled(IconButton)(({ disabled }) => ({
   opacity: disabled ? 0.26 : 1,
@@ -21,6 +28,10 @@ const StyledTooltip = styled(StyledFormTooltip)({
   "& .MuiTooltip-tooltip": {
     color: "#000000",
   },
+});
+
+const StyledCheckbox = styled(Checkbox)({
+  marginLeft: "-10px",
 });
 
 /**
@@ -129,6 +140,12 @@ const DeleteNodeDataButton = ({
 
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
+  const [deleteOrphanedDataFiles, setDeleteOrphanedDataFiles] = useState<boolean>(false);
+
+  const isDataFileNodeType = useMemo<boolean>(
+    () => nodeType.toLowerCase() === "data file",
+    [nodeType]
+  );
 
   const [deleteDataRecords] = useMutation<DeleteDataRecordsResp, DeleteDataRecordsInput>(
     DELETE_DATA_RECORDS,
@@ -161,6 +178,7 @@ const DeleteNodeDataButton = ({
 
   const onCloseDialog = async () => {
     setConfirmOpen(false);
+    setDeleteOrphanedDataFiles(false);
   };
 
   const onConfirmDialog = async () => {
@@ -171,7 +189,11 @@ const DeleteNodeDataButton = ({
 
       setLoading(true);
 
-      const variables: DeleteDataRecordsInput = { _id, nodeType };
+      const variables: DeleteDataRecordsInput = {
+        _id,
+        nodeType,
+        deleteOrphanedDataFiles: !isDataFileNodeType ? deleteOrphanedDataFiles : undefined,
+      };
       if (selectType === "exclusion") {
         variables.deleteAll = true;
         if (selectedItems.length > 0) {
@@ -188,6 +210,7 @@ const DeleteNodeDataButton = ({
       }
 
       setConfirmOpen(false);
+      setDeleteOrphanedDataFiles(false);
       onDelete?.(content.snackbarSuccess);
     } catch (err) {
       Logger.error("DeleteNodeDataButton: Error deleting node data.", err);
@@ -235,9 +258,28 @@ const DeleteNodeDataButton = ({
         </span>
       </StyledTooltip>
       <DeleteDialog
+        scroll="body"
         open={confirmOpen}
         header={content.dialogTitle}
-        description={content.dialogBody}
+        description={
+          <Stack spacing={2}>
+            <span>{content.dialogBody}</span>
+            {!isDataFileNodeType && (
+              <FormControlLabel
+                control={
+                  <StyledCheckbox
+                    checked={deleteOrphanedDataFiles}
+                    onChange={(event) => setDeleteOrphanedDataFiles(event.target.checked)}
+                    inputProps={{
+                      "aria-label": "Also delete associated data files",
+                    }}
+                  />
+                }
+                label="Also delete associated data files"
+              />
+            )}
+          </Stack>
+        }
         confirmText="Confirm"
         closeText="Cancel"
         onConfirm={onConfirmDialog}

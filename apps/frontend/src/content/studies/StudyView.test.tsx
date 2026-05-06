@@ -414,6 +414,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
         },
@@ -518,6 +519,7 @@ describe("StudyView Component", () => {
             useProgramPC: true,
             createdAt: "",
             pendingModelChange: false,
+            pendingImageDeIdentification: false,
             GPAName: "GPA Name",
           }),
         },
@@ -543,8 +545,10 @@ describe("StudyView Component", () => {
           primaryContactID: undefined,
           useProgramPC: true,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "GPA Name",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       result: {
@@ -611,6 +615,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "",
           isPendingGPA: false,
         },
@@ -701,6 +706,7 @@ describe("StudyView Component", () => {
             useProgramPC: true,
             createdAt: "",
             pendingModelChange: false,
+            pendingImageDeIdentification: false,
             GPAName: "Test GPA Name",
           }),
         },
@@ -726,8 +732,10 @@ describe("StudyView Component", () => {
           primaryContactID: undefined,
           useProgramPC: true,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       error: new Error("Unable to save changes"),
@@ -792,6 +800,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "",
           isPendingGPA: false,
         },
@@ -981,6 +990,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "",
           isPendingGPA: false,
         },
@@ -1069,6 +1079,7 @@ describe("StudyView Component", () => {
             useProgramPC: true,
             createdAt: "",
             pendingModelChange: false,
+            pendingImageDeIdentification: false,
             GPAName: "Test GPA Name",
           }),
         },
@@ -1094,8 +1105,10 @@ describe("StudyView Component", () => {
           primaryContactID: undefined,
           useProgramPC: true,
           pendingModelChange: false,
+          pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       error: new ApolloError({ errorMessage: null }),
@@ -1151,6 +1164,20 @@ describe("StudyView Component", () => {
     expect(getByTestId("pendingConditions-checkbox")).toBeInTheDocument();
   });
 
+  it("renders the pending image de-identification checkbox", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <TestParent>
+        <StudyView _id="new" />
+      </TestParent>
+    );
+
+    await waitFor(async () => {
+      expect(queryByTestId("study-view-suspense-loader")).not.toBeInTheDocument();
+    });
+
+    expect(getByTestId("pendingConditions-imageDeIdentification-checkbox")).toBeInTheDocument();
+  });
+
   it("allows toggling the pendingModelChange checkbox", async () => {
     const { getByTestId, queryByTestId } = render(
       <TestParent>
@@ -1163,6 +1190,30 @@ describe("StudyView Component", () => {
     });
 
     const checkbox = getByTestId("pendingConditions-checkbox") as HTMLInputElement;
+
+    expect(checkbox.checked).toBe(false);
+
+    userEvent.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+
+    userEvent.click(checkbox);
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it("allows toggling the pending image de-identification checkbox", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <TestParent>
+        <StudyView _id="new" />
+      </TestParent>
+    );
+
+    await waitFor(async () => {
+      expect(queryByTestId("study-view-suspense-loader")).not.toBeInTheDocument();
+    });
+
+    const checkbox = getByTestId(
+      "pendingConditions-imageDeIdentification-checkbox"
+    ) as HTMLInputElement;
 
     expect(checkbox.checked).toBe(false);
 
@@ -1192,6 +1243,7 @@ describe("StudyView Component", () => {
           primaryContactID: "dcp-1",
           useProgramPC: false,
           pendingModelChange: true,
+          pendingImageDeIdentification: true,
           GPAName: "",
           isPendingGPA: false,
         },
@@ -1233,6 +1285,7 @@ describe("StudyView Component", () => {
     userEvent.click(getByTestId("openAccess-checkbox"));
     userEvent.click(getByTestId("sameAsProgramPrimaryContact-checkbox"));
     userEvent.click(getByTestId("pendingConditions-checkbox"));
+    userEvent.click(getByTestId("pendingConditions-imageDeIdentification-checkbox"));
     userEvent.click(primaryContactIDSelect);
 
     let muiSelectOptions;
@@ -1276,6 +1329,7 @@ describe("StudyView Component", () => {
             useProgramPC: true,
             createdAt: "",
             pendingModelChange: false,
+            pendingImageDeIdentification: false,
             GPAName: "Test GPA Name",
           }),
         },
@@ -1301,8 +1355,10 @@ describe("StudyView Component", () => {
           primaryContactID: undefined,
           useProgramPC: true,
           pendingModelChange: true,
+          pendingImageDeIdentification: false,
           GPAName: "Test GPA Name",
           isPendingGPA: false,
+          status: "Active",
         },
       },
       result: {
@@ -1542,6 +1598,151 @@ describe("Implementation Requirements", () => {
 
     await waitFor(() => {
       expect(programAutocomplete.value).toBe("Not Applicable");
+    });
+  });
+
+  it("should not pass status when creating a new study", async () => {
+    const variableMatcher = vi.fn().mockReturnValue(true);
+
+    const createApprovedStudyMock: MockedResponse<
+      CreateApprovedStudyResp,
+      CreateApprovedStudyInput
+    > = {
+      request: {
+        query: CREATE_APPROVED_STUDY,
+      },
+      variableMatcher,
+      result: {
+        data: {
+          createApprovedStudy: {
+            _id: "new-study-id",
+          },
+        },
+      },
+    };
+
+    const { getByTestId, queryByTestId, getByText } = render(
+      <TestParent mocks={[listActiveDCPsMock, listProgramsMock, createApprovedStudyMock]}>
+        <StudyView _id="new" />
+      </TestParent>
+    );
+
+    await waitFor(async () => {
+      expect(queryByTestId("study-view-suspense-loader")).not.toBeInTheDocument();
+    });
+
+    const studyNameInput = getByTestId("studyName-input") as HTMLInputElement;
+    const openAccessCheckbox = getByTestId("openAccess-checkbox");
+    const programAutocomplete = getByTestId("program-input") as HTMLInputElement;
+    const saveButton = getByTestId("save-button");
+
+    userEvent.type(programAutocomplete, "Not Appl");
+    await waitFor(() => {
+      expect(getByText("Not Applicable")).toBeInTheDocument();
+    });
+    userEvent.click(getByText("Not Applicable"));
+
+    userEvent.type(studyNameInput, "Test Study Name");
+    userEvent.click(openAccessCheckbox);
+    userEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith("This study has been successfully added.", {
+        variant: "default",
+      });
+    });
+
+    expect(variableMatcher).toHaveBeenCalled();
+    const calledVariables = variableMatcher.mock.calls[0][0];
+    expect(calledVariables).not.toHaveProperty("status");
+  });
+
+  it("should pass status when updating an existing study", async () => {
+    const studyId = "existing-study-id";
+    const variableMatcher = vi.fn().mockReturnValue(true);
+
+    const getApprovedStudyMock: MockedResponse<GetApprovedStudyResp, GetApprovedStudyInput> = {
+      request: {
+        query: GET_APPROVED_STUDY,
+        variables: { _id: studyId, partial: false },
+      },
+      result: {
+        data: {
+          getApprovedStudy: approvedStudyFactory.build({
+            _id: studyId,
+            studyName: "Existing Study",
+            studyAbbreviation: "ES",
+            PI: "Jane Smith",
+            dbGaPID: "phs654321",
+            ORCID: "0000-0002-3456-7890",
+            openAccess: false,
+            controlledAccess: true,
+            program: organizationFactory.build({ _id: "NA" }),
+            primaryContact: null,
+            useProgramPC: true,
+            createdAt: "",
+            pendingModelChange: false,
+            pendingImageDeIdentification: false,
+            GPAName: "Test GPA Name",
+            status: "Active",
+          }),
+        },
+      },
+    };
+
+    const updateApprovedStudyMock: MockedResponse<
+      UpdateApprovedStudyResp,
+      UpdateApprovedStudyInput
+    > = {
+      request: {
+        query: UPDATE_APPROVED_STUDY,
+      },
+      variableMatcher,
+      result: {
+        data: {
+          updateApprovedStudy: {
+            _id: studyId,
+          },
+        },
+      },
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <TestParent
+        mocks={[
+          listActiveDCPsMock,
+          listProgramsMock,
+          getApprovedStudyMock,
+          updateApprovedStudyMock,
+        ]}
+      >
+        <StudyView _id={studyId} />
+      </TestParent>
+    );
+
+    await waitFor(async () => {
+      expect(queryByTestId("study-view-suspense-loader")).not.toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect((getByTestId("studyName-input") as HTMLInputElement).value).toBe("Existing Study");
+    });
+
+    const studyNameInput = getByTestId("studyName-input") as HTMLInputElement;
+    userEvent.clear(studyNameInput);
+    userEvent.type(studyNameInput, "Updated Study Name");
+
+    const saveButton = getByTestId("save-button");
+    userEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith("All changes have been saved.", {
+        variant: "default",
+      });
+    });
+
+    await waitFor(() => {
+      expect(variableMatcher).toHaveBeenCalledWith(expect.objectContaining({ status: "Active" }));
     });
   });
 });

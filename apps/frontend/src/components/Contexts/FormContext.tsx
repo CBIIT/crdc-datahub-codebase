@@ -4,8 +4,7 @@ import React, { FC, createContext, useContext, useEffect, useMemo, useState } fr
 import { v4 } from "uuid";
 
 import { QuestionnaireDataMigrator } from "@/classes/QuestionnaireDataMigrator";
-
-import { InitialApplication, InitialQuestionnaire } from "../../config/InitialValues";
+import { InitialApplication, InitialQuestionnaire } from "@/config/InitialValues";
 import {
   APPROVE_APP,
   GET_APP,
@@ -28,9 +27,19 @@ import {
   LIST_INSTITUTIONS,
   ListInstitutionsInput,
   ListInstitutionsResp,
-} from "../../graphql";
-import { Logger } from "../../utils";
-import { FormInput as ApproveFormInput } from "../Questionnaire/ApproveFormDialog";
+  GetApplicationFormVersionResp,
+  GET_APPLICATION_FORM_VERSION,
+} from "@/graphql";
+import { Logger } from "@/utils";
+
+import { useAuthContext } from "./AuthContext";
+import { useOrganizationListContext, Status as ProgramStatus } from "./OrganizationListContext";
+
+export type ApproveFormInput = {
+  pendingModelChange: boolean;
+  pendingImageDeIdentification: boolean;
+  reviewComment: string;
+};
 
 export type SetDataReturnType =
   | { status: "success"; id: string }
@@ -47,7 +56,7 @@ export type ContextState = {
   rejectForm?: (comment: string) => Promise<string | boolean>;
   setData?: (
     questionnaire: QuestionnaireData,
-    opts?: { skipSave?: boolean }
+    opts?: { skipSave?: boolean; runMigrations?: boolean }
   ) => Promise<SetDataReturnType>;
   error?: string;
 };
@@ -110,6 +119,8 @@ type ProviderProps = {
  */
 export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps) => {
   const [state, setState] = useState<ContextState>(initialState);
+  const { user } = useAuthContext();
+  const { activeOrganizations, status: programStatus } = useOrganizationListContext();
 
   const [getInstitutions] = useLazyQuery<ListInstitutionsResp, ListInstitutionsInput>(
     LIST_INSTITUTIONS,
@@ -118,6 +129,15 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       context: { clientName: "backend" },
       fetchPolicy: "cache-first",
       onError: (e) => Logger.error("FormContext listInstitutions API error:", e),
+    }
+  );
+
+  const [retrieveFormVersion] = useLazyQuery<GetApplicationFormVersionResp>(
+    GET_APPLICATION_FORM_VERSION,
+    {
+      context: { clientName: "backend" },
+      fetchPolicy: "cache-first",
+      onError: (e) => Logger.error("FormContext getFormVersion API error:", e),
     }
   );
 
@@ -168,20 +188,35 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
 
   const setData = async (
     data: QuestionnaireData,
-    opts?: { skipSave?: boolean }
+    opts?: { skipSave?: boolean; runMigrations?: boolean }
   ): Promise<SetDataReturnType> => {
+    let processedData: QuestionnaireData = data;
+    if (opts?.runMigrations) {
+      const migrator = new QuestionnaireDataMigrator(data, {
+        getInstitutions,
+        newInstitutions: state.data?.newInstitutions || [],
+        getLastApplication: lastApp,
+        activePrograms: activeOrganizations || [],
+      });
+      processedData = await migrator.run({ skipLastApp: true });
+    }
+
     const newState = {
       ...state,
       data: {
         ...state.data,
-        questionnaireData: data,
+        questionnaireData: processedData,
       },
     };
 
     setState((prevState) => ({ ...prevState, status: Status.SAVING }));
-    const fullPIName = `${data?.pi?.firstName || ""} ${data?.pi?.lastName || ""}`.trim();
+    const fullPIName = `${processedData?.pi?.firstName || ""} ${
+      processedData?.pi?.lastName || ""
+    }`.trim();
 
-    const newStatus: ApplicationStatus = data?.sections?.some((s) => s.status !== "Not Started")
+    const newStatus: ApplicationStatus = processedData?.sections?.some(
+      (s) => s.status !== "Not Started"
+    )
       ? "In Progress"
       : "New";
 
@@ -218,20 +253,20 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       variables: {
         application: {
           _id: newState?.data?._id === "new" ? undefined : newState?.data?._id,
-          studyName: data?.study?.name,
-          studyAbbreviation: data?.study?.abbreviation || data?.study?.name,
-          questionnaireData: JSON.stringify(data),
-          controlledAccess: data?.accessTypes?.includes("Controlled Access") || false,
-          openAccess: data?.accessTypes?.includes("Open Access") || false,
-          ORCID: data?.pi?.ORCID,
+          studyName: processedData?.study?.name,
+          studyAbbreviation: processedData?.study?.abbreviation,
+          questionnaireData: JSON.stringify(processedData),
+          controlledAccess: processedData?.accessTypes?.includes("Controlled Access") || false,
+          openAccess: processedData?.accessTypes?.includes("Open Access") || false,
+          ORCID: processedData?.pi?.ORCID,
           PI: fullPIName,
-          programName: data?.program?.name,
-          programAbbreviation: data?.program?.abbreviation,
-          programDescription: data?.program?.description,
+          programName: processedData?.program?.name,
+          programAbbreviation: processedData?.program?.abbreviation,
+          programDescription: processedData?.program?.description,
           newInstitutions: newInstitutions
             .filter((inst) => contacts.findIndex((c) => c.institutionID === inst.id) !== -1)
             .map(({ id, name }) => ({ id, name })),
-          GPAName: data?.study?.GPAName,
+          GPAName: processedData?.study?.GPAName,
         },
         status: newStatus,
       },
@@ -253,13 +288,9 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       };
     }
 
-    // eslint-disable-next-line @typescript-eslint/dot-notation
-    if (d?.saveApplication?._id && data["_id"] === "new") {
-      newState.data = {
-        ...newState.data,
-        _id: d.saveApplication._id,
-        applicant: d?.saveApplication?.applicant,
-      };
+    // If the previous form ID was "new", inject the newly assigned UUID
+    if (d?.saveApplication?._id && newState.data._id === "new") {
+      newState.data._id = d.saveApplication._id;
     }
 
     newState.data = {
@@ -312,6 +343,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         comment: data?.reviewComment,
         wholeProgram,
         pendingModelChange: data?.pendingModelChange,
+        pendingImageDeIdentification: data?.pendingImageDeIdentification,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 
@@ -397,6 +429,15 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   };
 
   useEffect(() => {
+    if (programStatus !== ProgramStatus.LOADED) {
+      return;
+    }
+
+    if (state.status === Status.LOADED && state?.data?._id === id) {
+      Logger.info("FormContext: Skipping data fetch, already have loaded data for this ID");
+      return;
+    }
+
     if (!id || !id.trim()) {
       setState({
         status: Status.ERROR,
@@ -408,6 +449,39 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     }
 
     (async () => {
+      if (id === "new") {
+        // Run the migrator to populate the last application data
+        const migrator = new QuestionnaireDataMigrator(
+          { ...InitialQuestionnaire },
+          {
+            getInstitutions,
+            newInstitutions: [],
+            getLastApplication: lastApp,
+            activePrograms: activeOrganizations || [],
+          }
+        );
+        const migratedData = await migrator.run();
+
+        const formVersion = await retrieveFormVersion();
+
+        setState({
+          status: Status.LOADED,
+          formRef: state.formRef,
+          data: {
+            ...InitialApplication,
+            applicant: {
+              applicantID: user?._id,
+              applicantName: `${user?.firstName || ""} ${user?.lastName || ""}`.trim(),
+              applicantEmail: user?.email,
+            },
+            version: formVersion?.data?.getApplicationFormVersion?.version || "",
+            questionnaireData: migratedData,
+          },
+          error: null,
+        });
+        return;
+      }
+
       const { data: d, error } = await getApp();
       if (error || !d?.getApplication?.questionnaireData) {
         setState({
@@ -428,6 +502,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         getInstitutions,
         newInstitutions: getApplication?.newInstitutions || [],
         getLastApplication: lastApp,
+        activePrograms: activeOrganizations || [],
       });
       const migratedData = await migrator.run();
 
@@ -442,7 +517,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
         },
       });
     })();
-  }, [id]);
+  }, [id, programStatus]);
 
   const value = useMemo(
     () => ({

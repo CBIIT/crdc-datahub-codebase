@@ -13,14 +13,7 @@ import {
   ContextState as AuthContextState,
 } from "../../components/Contexts/AuthContext";
 import { SearchParamsProvider } from "../../components/Contexts/SearchParamsContext";
-import {
-  LIST_APPLICATIONS,
-  SAVE_APP,
-  ListApplicationsResp,
-  ListApplicationsInput,
-  SaveAppResp,
-  SaveAppInput,
-} from "../../graphql";
+import { LIST_APPLICATIONS, ListApplicationsResp, ListApplicationsInput } from "../../graphql";
 import { TestRouter, act, render, waitFor } from "../../test-utils";
 
 import ListView from "./ListView";
@@ -158,23 +151,9 @@ describe("ListView Component", () => {
     expect(queryByText("Start a Submission Request")).not.toBeInTheDocument();
   });
 
-  it("creates a new submission request when 'Start a Submission Request' button is clicked", async () => {
-    const saveAppMock: MockedResponse<SaveAppResp, SaveAppInput> = {
-      request: {
-        query: SAVE_APP,
-      },
-      variableMatcher: () => true,
-      result: {
-        data: {
-          saveApplication: {
-            _id: "new-application-id",
-          } as SaveAppResp["saveApplication"],
-        },
-      },
-    };
-
+  it("navigates to new form route when 'Start a Submission Request' is confirmed", async () => {
     const { getByText, findByText } = render(
-      <TestParent role="Submitter" mocks={[...defaultMocks, saveAppMock]}>
+      <TestParent role="Submitter" mocks={defaultMocks}>
         <ListView />
       </TestParent>
     );
@@ -186,38 +165,8 @@ describe("ListView Component", () => {
     userEvent.click(confirmBtn);
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith("/submission-request/new-application-id", {
+      expect(mockNavigate).toHaveBeenCalledWith("/submission-request/new", {
         state: { from: "/submission-requests" },
-      });
-    });
-  });
-
-  it("shows an error when creating a new submission request fails", async () => {
-    const saveAppMock: MockedResponse<SaveAppResp, SaveAppInput> = {
-      request: {
-        query: SAVE_APP,
-      },
-      variableMatcher: () => true,
-      error: new Error("Error creating application"),
-    };
-
-    const { getByText, findByText } = render(
-      <TestParent role="Submitter" mocks={[...defaultMocks, saveAppMock]}>
-        <ListView />
-      </TestParent>
-    );
-
-    const button = getByText("Start a Submission Request");
-    userEvent.click(button);
-
-    const confirmBtn = await findByText("I Read and Accept");
-    userEvent.click(confirmBtn);
-
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith("", {
-        state: {
-          error: "Unable to create a submission request. Please try again later",
-        },
       });
     });
   });

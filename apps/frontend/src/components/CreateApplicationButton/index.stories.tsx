@@ -1,8 +1,6 @@
-import { MockedResponse } from "@apollo/client/testing";
 import type { Meta, StoryObj } from "@storybook/react";
-import { fn, userEvent, within, screen } from "@storybook/test";
+import { expect, fn, userEvent, within, screen } from "@storybook/test";
 
-import { SaveAppResp, SaveAppInput, SAVE_APP } from "../../graphql";
 import { Context as AuthContext, Status as AuthStatus } from "../Contexts/AuthContext";
 
 import CreateApplicationButton from "./index";
@@ -25,28 +23,11 @@ const mockUser: User = {
   permissions: ["submission_request:create"],
 };
 
-const mockSaveApplication: MockedResponse<SaveAppResp, SaveAppInput> = {
-  request: {
-    query: SAVE_APP,
-  },
-  variableMatcher: () => true,
-  result: {
-    data: {
-      saveApplication: {
-        _id: "mock-application-12345",
-      } as SaveAppResp["saveApplication"],
-    },
-  },
-};
-
 const meta = {
   title: "Submission Requests / Create Application Button",
   component: CreateApplicationButton,
   parameters: {
     layout: "centered",
-    apolloClient: {
-      mocks: [mockSaveApplication],
-    },
   },
   decorators: [
     (Story) => (
@@ -89,5 +70,26 @@ export const DialogOpen: Story = {
     await userEvent.click(button);
 
     await screen.findByRole("dialog");
+  },
+};
+
+/**
+ * A story that confirms the button callback is invoked with the legacy "new" route id.
+ */
+export const ConfirmAndCreate: Story = {
+  name: "Confirm and Create",
+  args: {
+    onCreate: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+
+    const button = await canvas.findByTestId("create-application-button");
+    await userEvent.click(button);
+
+    const confirmButton = await screen.findByText("I Read and Accept");
+    await userEvent.click(confirmButton);
+
+    await expect(args.onCreate).toHaveBeenCalledWith("new");
   },
 };

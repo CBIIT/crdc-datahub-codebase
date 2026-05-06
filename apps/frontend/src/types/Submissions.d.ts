@@ -23,8 +23,13 @@ type Submission = {
   /**
    * The study associated with the submission.
    */
-  study: Pick<ApprovedStudy, "studyName" | "studyAbbreviation">;
-  dbGaPID: string; // # aka. phs number
+  study: Pick<ApprovedStudy, "studyName" | "studyAbbreviation" | "dbGaPID">;
+  /**
+   * The dbGaP PHS Accession number associated with the submission's study.
+   *
+   * @deprecated Use `study.dbGaPID` instead.
+   */
+  dbGaPID: string;
   bucketName: string; // # populated from organization
   rootPath: string; // # a submission folder will be created under this path, default is / or "" meaning root folder
   status: SubmissionStatus;
@@ -131,6 +136,7 @@ type SubmissionStatus =
 
 type SubmissionAction =
   | "Submit"
+  | "Admin Submit"
   | "Release"
   | "Withdraw"
   | "Reject"

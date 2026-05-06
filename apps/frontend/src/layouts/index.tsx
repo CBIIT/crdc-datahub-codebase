@@ -2,6 +2,9 @@ import { styled } from "@mui/material";
 import { FC, ReactNode } from "react";
 import { Outlet, ScrollRestoration } from "react-router-dom";
 
+import ChatBot from "@/components/ChatBot";
+import ChatBotGate from "@/components/ChatBotGate";
+
 import { SearchParamsProvider } from "../components/Contexts/SearchParamsContext";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
@@ -28,6 +31,9 @@ const Layout: FC<LayoutProps> = ({ children }) => (
     </StyledWrapper>
     <Footer />
     <InactivityDialog />
+    <ChatBotGate>
+      <ChatBot />
+    </ChatBotGate>
   </SearchParamsProvider>
 );
 

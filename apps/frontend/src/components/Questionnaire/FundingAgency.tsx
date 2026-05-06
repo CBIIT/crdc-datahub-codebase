@@ -35,7 +35,7 @@ const FundingAgency: FC<Props> = ({ idPrefix = "", index, funding, readOnly, onD
   const { agency, grantNumbers, nciProgramOfficer } = funding || {};
 
   return (
-    <GridContainer container>
+    <GridContainer container data-testid={idPrefix.concat(`funding-agency-${index}`)}>
       <Grid container item xs={12} rowSpacing={0} columnSpacing={1.5}>
         <Autocomplete
           id={idPrefix.concat(`funding-agency-${index}-organization`)}

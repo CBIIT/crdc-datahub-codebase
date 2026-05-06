@@ -3,7 +3,7 @@ import gql from "graphql-tag";
 
 export const query: TypedDocumentNode<Response, Input> = gql`
   query listPrograms(
-    $status: String!
+    $status: String = "All"
     $first: Int
     $offset: Int
     $orderBy: String

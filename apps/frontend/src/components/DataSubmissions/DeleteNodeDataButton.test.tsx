@@ -4,15 +4,18 @@ import { GraphQLError } from "graphql";
 import { useMemo } from "react";
 import { axe } from "vitest-axe";
 
+import {
+  Context as AuthContext,
+  ContextState as AuthContextState,
+} from "@/components/Contexts/AuthContext";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 import { collaboratorFactory } from "@/factories/submission/CollaboratorFactory";
 import { submissionCtxStateFactory } from "@/factories/submission/SubmissionContextFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
+import { DELETE_DATA_RECORDS, DeleteDataRecordsInput, DeleteDataRecordsResp } from "@/graphql";
+import { render, waitFor, within } from "@/test-utils";
 
-import { DELETE_DATA_RECORDS, DeleteDataRecordsInput, DeleteDataRecordsResp } from "../../graphql";
-import { render, waitFor, within } from "../../test-utils";
-import { Context as AuthContext, ContextState as AuthContextState } from "../Contexts/AuthContext";
 import {
   SubmissionContext,
   SubmissionCtxState,
@@ -287,6 +290,27 @@ describe("Basic Functionality", () => {
       expect(onDelete).toHaveBeenCalled();
     });
   });
+
+  it("should show an error when no selection type is provided", async () => {
+    const { getByTestId, getByRole } = render(
+      <Button nodeType="test" selectedItems={["1 item ID"]} selectType={null} />,
+      { wrapper: TestParent }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const button = await within(getByRole("dialog")).findByRole("button", { name: /confirm/i });
+    userEvent.click(button);
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "An error occurred while deleting the selected rows.",
+        {
+          variant: "error",
+        }
+      );
+    });
+  });
 });
 
 describe("Implementation Requirements", () => {
@@ -379,6 +403,121 @@ describe("Implementation Requirements", () => {
     expect(getByRole("dialog")).toBeInTheDocument();
   });
 
+  it("should show the delete associated data files checkbox for metadata node types", async () => {
+    const { getByTestId, getByRole } = render(
+      <Button nodeType="diagnosis" selectedItems={["1 item ID"]} selectType="explicit" />,
+      {
+        wrapper: TestParent,
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const dialog = getByRole("dialog");
+    const checkbox = within(dialog).getByRole("checkbox", {
+      name: /also delete associated data files/i,
+    });
+
+    expect(checkbox).toBeInTheDocument();
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it.each<[string]>([["data file"]])(
+    "should hide the 'delete associated data files' checkbox for %s node type",
+    (nodeType) => {
+      const { getByTestId, getByRole } = render(
+        <Button nodeType={nodeType} selectedItems={["1 item ID"]} selectType="explicit" />,
+        {
+          wrapper: TestParent,
+        }
+      );
+
+      userEvent.click(getByTestId("delete-node-data-button"));
+
+      const dialog = getByRole("dialog");
+      expect(
+        within(dialog).queryByRole("checkbox", {
+          name: /also delete associated data files/i,
+        })
+      ).toBeNull();
+    }
+  );
+
+  it("should reset the 'delete associated data files' checkbox state when dialog is cancelled", async () => {
+    const { getByTestId, getByRole } = render(
+      <Button nodeType="diagnosis" selectedItems={["1 item ID"]} selectType="explicit" />,
+      {
+        wrapper: TestParent,
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const dialog = getByRole("dialog");
+    const checkbox = within(dialog).getByRole("checkbox", {
+      name: /also delete associated data files/i,
+    });
+    userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+
+    const cancelButton = within(dialog).getByRole("button", { name: /cancel/i });
+    userEvent.click(cancelButton);
+
+    await waitFor(() => {
+      expect(() => getByRole("dialog")).toThrow();
+    });
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const reopenedDialog = getByRole("dialog");
+    const reopenedCheckbox = within(reopenedDialog).getByRole("checkbox", {
+      name: /also delete associated data files/i,
+    });
+    expect(reopenedCheckbox).not.toBeChecked();
+  });
+
+  it("should send exact API variables for metadata deletion when checkbox is unchecked", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const mocks: MockedResponse<DeleteDataRecordsResp, DeleteDataRecordsInput>[] = [
+      {
+        request: {
+          query: DELETE_DATA_RECORDS,
+        },
+        variableMatcher: mockMatcher,
+        result: {
+          data: {
+            deleteDataRecords: {
+              success: true,
+              message: "",
+            },
+          },
+        },
+      },
+    ];
+
+    const { getByTestId, getByRole } = render(
+      <Button nodeType="diagnosis" selectedItems={["ID_1", "ID_2"]} selectType="explicit" />,
+      {
+        wrapper: (props) => (
+          <TestParent {...props} mocks={mocks} submission={{ _id: "mock-submission-id" }} />
+        ),
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const button = await within(getByRole("dialog")).findByRole("button", { name: /confirm/i });
+    userEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalledWith(
+        expect.objectContaining({
+          deleteOrphanedDataFiles: false,
+        })
+      );
+    });
+  });
+
   it("should delete the selected nodes only when the 'Delete' button is clicked in the dialog", async () => {
     const mockMatcher = vi.fn().mockImplementation(() => true);
     const mocks: MockedResponse<DeleteDataRecordsResp, DeleteDataRecordsInput>[] = [
@@ -427,6 +566,100 @@ describe("Implementation Requirements", () => {
         })
       );
     });
+  });
+
+  it("should send deleteOrphanedDataFiles when checkbox is checked for metadata", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const mocks: MockedResponse<DeleteDataRecordsResp, DeleteDataRecordsInput>[] = [
+      {
+        request: {
+          query: DELETE_DATA_RECORDS,
+        },
+        variableMatcher: mockMatcher,
+        result: {
+          data: {
+            deleteDataRecords: {
+              success: true,
+              message: "",
+            },
+          },
+        },
+      },
+    ];
+
+    const { getByTestId, getByRole } = render(
+      <Button nodeType="diagnosis" selectedItems={["ID_1"]} selectType="explicit" />,
+      {
+        wrapper: (props) => (
+          <TestParent {...props} mocks={mocks} submission={{ _id: "mock-submission-id" }} />
+        ),
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const dialog = getByRole("dialog");
+    userEvent.click(
+      within(dialog).getByRole("checkbox", {
+        name: /also delete associated data files/i,
+      })
+    );
+
+    const button = await within(dialog).findByRole("button", { name: /confirm/i });
+    userEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalledWith(
+        expect.objectContaining({
+          deleteOrphanedDataFiles: true,
+        })
+      );
+    });
+  });
+
+  it("should not send deleteOrphanedDataFiles for data file node type", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const mocks: MockedResponse<DeleteDataRecordsResp, DeleteDataRecordsInput>[] = [
+      {
+        request: {
+          query: DELETE_DATA_RECORDS,
+        },
+        variableMatcher: mockMatcher,
+        result: {
+          data: {
+            deleteDataRecords: {
+              success: true,
+              message: "",
+            },
+          },
+        },
+      },
+    ];
+
+    const { getByTestId, getByRole } = render(
+      <Button nodeType="data file" selectedItems={["ID_1"]} selectType="explicit" />,
+      {
+        wrapper: (props) => (
+          <TestParent {...props} mocks={mocks} submission={{ _id: "mock-submission-id" }} />
+        ),
+      }
+    );
+
+    userEvent.click(getByTestId("delete-node-data-button"));
+
+    const dialog = getByRole("dialog");
+    const button = await within(dialog).findByRole("button", { name: /confirm/i });
+    userEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalled();
+    });
+
+    expect(mockMatcher).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        deleteOrphanedDataFiles: expect.anything(),
+      })
+    );
   });
 
   it("should use deleteAll API when selectType is true with no exclusions", async () => {

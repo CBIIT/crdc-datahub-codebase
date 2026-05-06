@@ -7,6 +7,7 @@ export const mutation = gql`
     $nodeIds: [String!]
     $deleteAll: Boolean
     $exclusiveIDs: [String!]
+    $deleteOrphanedDataFiles: Boolean
   ) {
     deleteDataRecords(
       submissionID: $_id
@@ -14,6 +15,7 @@ export const mutation = gql`
       nodeIDs: $nodeIds
       deleteAll: $deleteAll
       exclusiveIDs: $exclusiveIDs
+      deleteOrphanedDataFiles: $deleteOrphanedDataFiles
     ) {
       success
       message
@@ -45,6 +47,10 @@ export type Input = {
    * Has a length limit of 2000.
    */
   exclusiveIDs?: string[];
+  /**
+   * Whether associated orphaned data files should also be deleted.
+   */
+  deleteOrphanedDataFiles?: boolean;
 };
 
 export type Response = {

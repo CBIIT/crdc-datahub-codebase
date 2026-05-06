@@ -225,7 +225,9 @@ type FormInput = Pick<
   | "controlledAccess"
   | "useProgramPC"
   | "pendingModelChange"
+  | "pendingImageDeIdentification"
   | "GPAName"
+  | "status"
 > & { primaryContactID: string; program: Organization };
 
 type Props = {
@@ -261,7 +263,9 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       openAccess: false,
       controlledAccess: false,
       pendingModelChange: false,
+      pendingImageDeIdentification: false,
       GPAName: "",
+      status: "Active",
     },
   });
   const [isControlled, dbGaPIDFilter, gpaNameFilter, programField] = watch([
@@ -311,7 +315,9 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
           controlledAccess,
           useProgramPC,
           pendingModelChange,
+          pendingImageDeIdentification,
           GPAName,
+          status,
         } = data?.getApprovedStudy || {};
 
         setSameAsProgramPrimaryContact(useProgramPC);
@@ -331,7 +337,9 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
           useProgramPC,
           primaryContactID: primaryContact?._id,
           pendingModelChange,
+          pendingImageDeIdentification,
           GPAName,
+          status,
         });
       },
       onError: (error) =>
@@ -389,7 +397,9 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
     program,
     primaryContactID,
     pendingModelChange,
+    pendingImageDeIdentification,
     GPAName,
+    status,
   }: FormInput) => {
     reset({
       studyName: studyName || "",
@@ -402,7 +412,9 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       program: program || null,
       primaryContactID: primaryContactID || "",
       pendingModelChange: pendingModelChange || false,
+      pendingImageDeIdentification: pendingImageDeIdentification || false,
       GPAName: GPAName || "",
+      status: status || "Active",
     });
   };
 
@@ -428,9 +440,9 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
   const onSubmit = async (data: FormInput) => {
     setSaving(true);
 
-    const { studyName, studyAbbreviation, program, ...rest } = data;
+    const { studyName, studyAbbreviation, program, status, ...rest } = data;
 
-    const variables: CreateApprovedStudyInput | UpdateApprovedStudyInput = {
+    const variables: Omit<CreateApprovedStudyInput, "status"> | UpdateApprovedStudyInput = {
       ...rest,
       name: studyName,
       acronym: studyAbbreviation,
@@ -458,7 +470,7 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
       });
     } else {
       const { data: d, errors } = await updateApprovedStudy({
-        variables: { studyID: _id, ...variables },
+        variables: { studyID: _id, ...variables, status },
       }).catch((e) => ({ errors: e?.message, data: null }));
       setSaving(false);
 
@@ -852,6 +864,31 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                       )}
                     />
 
+                    <Controller
+                      name="pendingImageDeIdentification"
+                      control={control}
+                      render={({ field }) => (
+                        <StyledFormControlLabel
+                          control={
+                            <StyledCheckbox
+                              {...field}
+                              checked={!!field.value}
+                              onChange={(_, checked) => field.onChange(checked)}
+                              checkedIcon={<CheckedIcon readOnly={saving || retrievingStudy} />}
+                              icon={<UncheckedIcon readOnly={saving || retrievingStudy} />}
+                              disabled={saving || retrievingStudy}
+                              inputProps={
+                                {
+                                  "data-testid": "pendingConditions-imageDeIdentification-checkbox",
+                                } as unknown
+                              }
+                            />
+                          }
+                          label="Pending on Risk Mitigation document & De-identification protocol"
+                        />
+                      )}
+                    />
+
                     {/* Added for visual purposes only. It does not contribute to the form */}
                     <StyledFormControlLabel
                       control={
@@ -885,6 +922,31 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                     />
                   </StyledCheckboxFormGroup>
                 </Stack>
+              </StyledField>
+
+              <StyledField>
+                <StyledLabel id="statusLabel">
+                  Status
+                  <StyledAsterisk visible />
+                </StyledLabel>
+                <Controller
+                  name="status"
+                  control={control}
+                  rules={{ required: true }}
+                  render={({ field }) => (
+                    <StyledSelect
+                      {...field}
+                      value={field.value || ""}
+                      disabled={_id === "new"}
+                      MenuProps={{ disablePortal: true }}
+                      inputProps={{ "aria-labelledby": "statusLabel" }}
+                      error={!!errors.status}
+                    >
+                      <MenuItem value="Active">Active</MenuItem>
+                      <MenuItem value="Inactive">Inactive</MenuItem>
+                    </StyledSelect>
+                  )}
+                />
               </StyledField>
 
               <StyledButtonStack

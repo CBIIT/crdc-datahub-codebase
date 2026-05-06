@@ -1,11 +1,20 @@
 import { LoadingButton } from "@mui/lab";
-import { Container, Divider, Stack, styled } from "@mui/material";
+import {
+  Checkbox,
+  CheckboxProps,
+  Container,
+  Divider,
+  FormControlLabel,
+  Stack,
+  styled,
+} from "@mui/material";
 import { isEqual, cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
-import React, { FC, useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useBlocker, Blocker, Navigate } from "react-router-dom";
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useBlocker, Blocker, Navigate, useLocation } from "react-router-dom";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
+import CheckboxCheckedIconSvg from "../../assets/icons/checkbox_checked.svg?url";
 import ChevronLeft from "../../assets/icons/chevron_left.svg?react";
 import ChevronRight from "../../assets/icons/chevron_right.svg?react";
 import CancelApplicationButton from "../../components/CancelApplicationButton";
@@ -13,11 +22,7 @@ import { Status as AuthStatus, useAuthContext } from "../../components/Contexts/
 import { Status as FormStatus, useFormContext } from "../../components/Contexts/FormContext";
 import PageBanner from "../../components/PageBanner";
 import ProgressBar from "../../components/ProgressBar/ProgressBar";
-import ApproveFormDialog, {
-  FormInput as ApproveFormInput,
-} from "../../components/Questionnaire/ApproveFormDialog";
-import InquireFormDialog from "../../components/Questionnaire/InquireFormDialog";
-import RejectFormDialog from "../../components/Questionnaire/RejectFormDialog";
+import ReviewFormDialog from "../../components/Questionnaire/ReviewFormDialog";
 import SubmitFormDialog from "../../components/Questionnaire/SubmitFormDialog";
 import UnsavedChangesDialog from "../../components/Questionnaire/UnsavedChangesDialog";
 import StatusBar from "../../components/StatusBar/StatusBar";
@@ -125,6 +130,39 @@ const StyledTooltip = styled(StyledFormTooltip)({
   },
 });
 
+const UncheckedIcon = styled("div")<{ readOnly?: boolean }>(({ readOnly }) => ({
+  outline: "2px solid #1D91AB",
+  outlineOffset: -2,
+  width: "24px",
+  height: "24px",
+  backgroundColor: readOnly ? "#E5EEF4" : "initial",
+  color: "#083A50",
+  cursor: readOnly ? "not-allowed" : "pointer",
+}));
+
+const CheckedIcon = styled("div")<{ readOnly?: boolean }>(({ readOnly }) => ({
+  backgroundImage: `url("${CheckboxCheckedIconSvg}")`,
+  backgroundSize: "auto",
+  backgroundRepeat: "no-repeat",
+  width: "24px",
+  height: "24px",
+  backgroundColor: readOnly ? "#E5EEF4" : "initial",
+  color: "#1D91AB",
+  cursor: readOnly ? "not-allowed" : "pointer",
+}));
+
+const StyledCheckbox = styled(Checkbox)({
+  "&.MuiCheckbox-root": {
+    padding: "10px",
+  },
+  "& .MuiSvgIcon-root": {
+    fontSize: "24px",
+  },
+  "&.Mui-disabled": {
+    cursor: "not-allowed",
+  },
+});
+
 const validateSection = (section: string): section is SectionKey =>
   typeof map[section] !== "undefined";
 
@@ -144,6 +182,8 @@ type Props = {
  */
 const FormView: FC<Props> = ({ section }: Props) => {
   const navigate = useNavigate();
+  const location = useLocation();
+
   const { enqueueSnackbar } = useSnackbar();
   const {
     status,
@@ -167,6 +207,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const [openApproveDialog, setOpenApproveDialog] = useState<boolean>(false);
   const [openInquireDialog, setOpenInquireDialog] = useState<boolean>(false);
   const [openRejectDialog, setOpenRejectDialog] = useState<boolean>(false);
+  const [pendingModelChange, setPendingModelChange] = useState<boolean>(false);
+  const [pendingImageDeIdentification, setPendingImageDeIdentification] = useState<boolean>(false);
   const [allSectionsComplete, setAllSectionsComplete] = useState<boolean>(false);
 
   const sectionKeys = Object.keys(map);
@@ -181,14 +223,15 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const formContentRef = useRef(null);
   const lastSectionRef = useRef(null);
   const hasReopenedFormRef = useRef(false);
-  const requestCanceledRef = useRef<boolean>(false);
+  const bypassBlockerRef = useRef<boolean>(false);
+  const previousIDRef = useRef<string | null>(null);
   const shouldShowToolTip = isSectionD && !allSectionsComplete;
 
   const refs: FormSectionProps["refs"] = {
     getFormObjectRef: useRef<(() => FormObject) | null>(null),
   };
 
-  usePageTitle(`Submission Request ${data?._id || ""}`);
+  usePageTitle(`Submission Request${data?._id && data?._id !== "new" ? ` - ${data._id}` : ""}`);
 
   /**
    * Determines if the form has unsaved changes.
@@ -200,12 +243,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
 
     return ref && (!data || !isEqual(data.questionnaireData, newData));
   };
-
-  useEffect(() => {
-    const newSection = validateSection(section) ? section : "A";
-    setActiveSection(newSection);
-    lastSectionRef.current = newSection;
-  }, [section]);
 
   const isAllSectionsComplete = (): boolean => {
     if (status === FormStatus.LOADING) {
@@ -255,7 +292,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
    *
    * @returns {Promise<boolean>} true if the approval submission was successful, false otherwise
    */
-  const submitApproveForm = async (data: ApproveFormInput): Promise<string | boolean> => {
+  const submitApproveForm = async (reviewComment: string): Promise<string | boolean> => {
     if (formMode !== "Review") {
       return false;
     }
@@ -265,8 +302,13 @@ const FormView: FC<Props> = ({ section }: Props) => {
       return false;
     }
 
-    const res = await approveForm(data, true);
+    const res = await approveForm(
+      { reviewComment, pendingModelChange, pendingImageDeIdentification },
+      true
+    );
     setOpenApproveDialog(false);
+    setPendingModelChange(false);
+    setPendingImageDeIdentification(false);
     if (res?.status === "success") {
       navigate("/submission-requests");
     } else {
@@ -382,7 +424,6 @@ const FormView: FC<Props> = ({ section }: Props) => {
     }
 
     const { ref, data: newData } = refs.getFormObjectRef.current?.() || {};
-
     if (!ref?.current || !newData) {
       return {
         status: "failed",
@@ -413,25 +454,10 @@ const FormView: FC<Props> = ({ section }: Props) => {
         variant: "error",
       });
     } else {
-      enqueueSnackbar(
-        `Your changes for the ${map[activeSection].title} section have been successfully saved.`,
-        {
-          variant: "success",
-        }
-      );
-    }
-
-    if (
-      !blockedNavigate &&
-      saveResult?.status === "success" &&
-      data._id === "new" &&
-      saveResult.id !== data?._id
-    ) {
-      // NOTE: This currently triggers a form data refetch, which is not ideal
-      navigate(`/submission-request/${saveResult.id}/${activeSection}`, {
-        replace: true,
-        preventScrollReset: true,
-      });
+      const saveMessage = newData?.sections?.every((section) => section.status === "Not Started")
+        ? `The ${map[activeSection].title} section has been successfully saved.`
+        : `Your changes for the ${map[activeSection].title} section have been successfully saved.`;
+      enqueueSnackbar(saveMessage, { variant: "success" });
     }
 
     if (saveResult?.status === "success") {
@@ -457,7 +483,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     ) {
       return false;
     }
-    if (!isDirty() || readOnlyInputs || requestCanceledRef.current) {
+    if (!isDirty() || readOnlyInputs || bypassBlockerRef.current) {
       return false;
     }
 
@@ -471,6 +497,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
     setBlockedNavigate(true);
     return true;
   });
+
+  const isNavigationBlocked = useMemo<boolean>(() => blocker?.state === "blocked", [blocker]);
 
   const areSectionsValid = (): boolean => {
     if (status === FormStatus.LOADING) {
@@ -500,14 +528,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     return sectionsClone?.every((section) => section.status === "Completed");
   };
 
-  /**
-   * Provides a save handler for the Unsaved Changes
-   * dialog. Will save the form and then navigate to the
-   * blocked section.
-   *
-   * @returns {void}
-   */
-  const saveAndNavigate = async () => {
+  const saveAndNavigate = async (): Promise<void> => {
     // Wait for the save handler to complete
     const res = await saveForm();
     const reviewSectionUrl = `/submission-request/${data._id}/REVIEW`; // TODO: Update to dynamic url instead
@@ -524,22 +545,13 @@ const FormView: FC<Props> = ({ section }: Props) => {
     }
 
     blocker.proceed?.();
-    if (res?.status === "success" && res.id) {
-      // NOTE: This currently triggers a form data refetch, which is not ideal
-      navigate(blocker.location.pathname.replace("new", res.id), {
-        replace: true,
-      });
-    }
   };
 
   /**
-   * Provides a discard handler for the Unsaved Changes
-   * dialog. Will discard the form changes and then navigate to the
-   * blocked section.
-   *
-   * @returns {void}
+   * Provides a discard handler for the Unsaved Changes dialog.
+   * Will discard the form changes and then navigate to the blocked section.
    */
-  const discardAndNavigate = () => {
+  const discardAndNavigate = (): void => {
     setBlockedNavigate(false);
     blocker.proceed?.();
   };
@@ -575,6 +587,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
 
   const handleCloseApproveFormDialog = () => {
     setOpenApproveDialog(false);
+    setPendingModelChange(false);
+    setPendingImageDeIdentification(false);
   };
 
   const handleCloseInquireFormDialog = () => {
@@ -603,17 +617,23 @@ const FormView: FC<Props> = ({ section }: Props) => {
   };
 
   const handleOnCancel = useCallback(() => {
-    requestCanceledRef.current = true;
+    bypassBlockerRef.current = true;
     enqueueSnackbar("Successfully canceled that Submission Request.", {
       variant: "success",
     });
     navigate("/submission-requests");
   }, [enqueueSnackbar, navigate]);
 
+  useEffect(() => {
+    const newSection = validateSection(section) ? section : "A";
+    setActiveSection(newSection);
+    lastSectionRef.current = newSection;
+  }, [section]);
+
   // Intercept browser navigation actions (e.g. closing the tab) with unsaved changes
   useEffect(() => {
     const unloadHandler = (event: BeforeUnloadEvent) => {
-      if (!isDirty() || requestCanceledRef.current) {
+      if (!isDirty() || bypassBlockerRef.current) {
         return;
       }
 
@@ -649,6 +669,25 @@ const FormView: FC<Props> = ({ section }: Props) => {
       hasReopenedFormRef.current = true;
     }
   }, [status, authStatus, formMode, data?.status]);
+
+  useEffect(() => {
+    // Skip URL overwrite if the form isn't loaded, or the blocker is active
+    if (!data || isNavigationBlocked) {
+      return;
+    }
+
+    if (previousIDRef.current === "new" && data?._id !== "new") {
+      Logger.info("Form created with new ID. Redirecting to new form URL.", { uuid: data._id });
+      bypassBlockerRef.current = true;
+      navigate(
+        location.pathname.replace("/submission-request/new", `/submission-request/${data._id}`),
+        { replace: true, preventScrollReset: true }
+      );
+      bypassBlockerRef.current = false;
+    }
+
+    previousIDRef.current = data._id;
+  }, [data?._id, isNavigationBlocked]);
 
   // Show loading spinner if the form is still loading
   if (status === FormStatus.LOADING || authStatus === AuthStatus.LOADING) {
@@ -718,7 +757,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
                   variant="contained"
                   color="success"
                   loading={status === FormStatus.SAVING}
-                  onClick={() => saveForm()}
+                  onClick={saveForm}
                 >
                   Save
                 </StyledLoadingButton>
@@ -803,19 +842,61 @@ const FormView: FC<Props> = ({ section }: Props) => {
         onSubmit={submitForm}
         disableActions={status === FormStatus.SUBMITTING}
       />
-      <ApproveFormDialog
+      <ReviewFormDialog
         open={openApproveDialog}
+        header="Approve Submission Request"
+        confirmText="Confirm to Approve"
+        confirmButtonProps={{ color: "success" }}
         onCancel={handleCloseApproveFormDialog}
-        onSubmit={(data) => submitApproveForm(data)}
+        onSubmit={(reviewComment) => submitApproveForm(reviewComment)}
         loading={status === FormStatus.SUBMITTING}
-      />
-      <InquireFormDialog
+      >
+        <Stack direction="column">
+          <FormControlLabel
+            control={
+              <StyledCheckbox
+                checked={pendingModelChange}
+                onChange={(e) => setPendingModelChange(e.target.checked)}
+                checkedIcon={<CheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+                icon={<UncheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+                disabled={status === FormStatus.SUBMITTING}
+                inputProps={
+                  { "data-testid": "pendingModelChange-checkbox" } as CheckboxProps["inputProps"]
+                }
+              />
+            }
+            label="Require Data Model changes"
+          />
+          <FormControlLabel
+            control={
+              <StyledCheckbox
+                checked={pendingImageDeIdentification}
+                onChange={(e) => setPendingImageDeIdentification(e.target.checked)}
+                checkedIcon={<CheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+                icon={<UncheckedIcon readOnly={status === FormStatus.SUBMITTING} />}
+                disabled={status === FormStatus.SUBMITTING}
+                inputProps={
+                  {
+                    "data-testid": "pendingImageDeIdentification-checkbox",
+                  } as CheckboxProps["inputProps"]
+                }
+              />
+            }
+            label="Require Risk Mitigation document & De-identification protocol"
+          />
+        </Stack>
+      </ReviewFormDialog>
+      <ReviewFormDialog
         open={openInquireDialog}
+        header="Request Additional Changes"
+        confirmText="Confirm to move to Inquired"
         onCancel={handleCloseInquireFormDialog}
         onSubmit={(reviewComment) => submitInquireForm(reviewComment)}
       />
-      <RejectFormDialog
+      <ReviewFormDialog
         open={openRejectDialog}
+        header="Reject Submission Request"
+        confirmText="Confirm to Reject"
         onCancel={handleCloseRejectFormDialog}
         onSubmit={(reviewComment) => submitRejectForm(reviewComment)}
       />

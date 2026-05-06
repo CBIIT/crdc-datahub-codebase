@@ -60,4 +60,15 @@ describe("Accessibility", () => {
 
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it("should not have any accessibility violations when viewing Submission Requests Metrics", async () => {
+    const { container } = render(
+      <DashboardView url={null} loading={false} currentType="SubmissionRequest" />,
+      {
+        wrapper: MockParent,
+      }
+    );
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
 });
