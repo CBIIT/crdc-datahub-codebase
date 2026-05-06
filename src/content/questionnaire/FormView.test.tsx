@@ -389,8 +389,13 @@ describe("Implementation Requirements", () => {
       { name: "D", status: "Not Started" },
     ];
 
+    const mockFormElement = document.createElement("form");
+    Object.defineProperty(mockFormElement, "checkValidity", {
+      value: vi.fn(() => false),
+    });
+
     mockFormObject = {
-      ref: { current: document.createElement("form") },
+      ref: { current: mockFormElement },
       data: { sections: mockSections } as QuestionnaireData,
     };
 
@@ -425,16 +430,13 @@ describe("Implementation Requirements", () => {
       { name: "D", status: "Not Started" },
     ];
 
-    // NOTE: This is somewhat hacky to prevent reportValidity from succeeding
-    const { container } = render(
-      <form>
-        <input type="text" required minLength={5} />
-      </form>
-    );
-    const renderedForm = container.querySelector("form") as HTMLFormElement;
+    const mockFormElement = document.createElement("form");
+    Object.defineProperty(mockFormElement, "checkValidity", {
+      value: vi.fn(() => false),
+    });
 
     mockFormObject = {
-      ref: { current: renderedForm },
+      ref: { current: mockFormElement },
       data: { sections: mockSections } as QuestionnaireData,
     };
 
