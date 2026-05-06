@@ -339,4 +339,129 @@ describe("Implementation Requirements", () => {
     });
     expect(getByText("Confirm to move to Inquired")).toBeInTheDocument();
   });
+
+  it("should indicate that changes were saved if any portion of the form has data", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+
+    const mockSections: Section[] = [
+      { name: "A", status: "Not Started" },
+      { name: "B", status: "Not Started" },
+      { name: "C", status: "In Progress" }, // Triggers the specific message
+      { name: "D", status: "Not Started" },
+    ];
+
+    mockFormObject = {
+      ref: { current: document.createElement("form") },
+      data: { sections: mockSections } as QuestionnaireData,
+    };
+
+    const setDataMock = vi
+      .fn()
+      .mockResolvedValue({ status: "success", id: baseFormCtxState.data._id });
+
+    const formCtxState: FormContextState = {
+      ...baseFormCtxState,
+      setData: setDataMock,
+    };
+
+    const { getByText } = render(<TestParent section="A" formCtxState={formCtxState} />);
+
+    userEvent.click(getByText("Save"));
+
+    await waitFor(() => {
+      expect(setDataMock).toHaveBeenCalled();
+    });
+
+    expect(global.mockEnqueue).toHaveBeenCalledWith(
+      "Your changes for the Principal Investigator and Contact section have been successfully saved.",
+      { variant: "success" }
+    );
+  });
+
+  // NOTE: This is a slight variant of the above scenario, but testing for "new" UUIDs
+  it("should indicate that changes were saved if any portion of the form has data (new UUID)", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+
+    const mockSections: Section[] = [
+      { name: "A", status: "Not Started" },
+      { name: "B", status: "In Progress" }, // Triggers the specific message
+      { name: "C", status: "Not Started" },
+      { name: "D", status: "Not Started" },
+    ];
+
+    const mockFormElement = document.createElement("form");
+    Object.defineProperty(mockFormElement, "checkValidity", {
+      value: vi.fn(() => false),
+    });
+
+    mockFormObject = {
+      ref: { current: mockFormElement },
+      data: { sections: mockSections } as QuestionnaireData,
+    };
+
+    const setDataMock = vi.fn().mockResolvedValue({ status: "success", id: "new" });
+
+    const formCtxState: FormContextState = {
+      ...baseFormCtxState,
+      setData: setDataMock,
+    };
+
+    const { getByText } = render(<TestParent section="A" formCtxState={formCtxState} />);
+
+    userEvent.click(getByText("Save"));
+
+    await waitFor(() => {
+      expect(setDataMock).toHaveBeenCalled();
+    });
+
+    expect(global.mockEnqueue).toHaveBeenCalledWith(
+      "Your changes for the Principal Investigator and Contact section have been successfully saved.",
+      { variant: "success" }
+    );
+  });
+
+  it("should show new success snackbar when saving a section for a form with no data", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+
+    const mockSections: Section[] = [
+      { name: "A", status: "Not Started" },
+      { name: "B", status: "Not Started" },
+      { name: "C", status: "Not Started" },
+      { name: "D", status: "Not Started" },
+    ];
+
+    const mockFormElement = document.createElement("form");
+    Object.defineProperty(mockFormElement, "checkValidity", {
+      value: vi.fn(() => false),
+    });
+
+    mockFormObject = {
+      ref: { current: mockFormElement },
+      data: { sections: mockSections } as QuestionnaireData,
+    };
+
+    const setDataMock = vi.fn().mockResolvedValue({ status: "success", id: "new" });
+
+    const newFormState: FormContextState = {
+      ...baseFormCtxState,
+      data: applicationFactory.build({
+        ...baseFormCtxState.data,
+        _id: "new",
+      }),
+      setData: setDataMock,
+    };
+
+    const { getByText } = render(<TestParent section="A" formCtxState={newFormState} />);
+
+    userEvent.click(getByText("Save"));
+
+    await waitFor(() => {
+      expect(setDataMock).toHaveBeenCalled();
+    });
+
+    expect(global.mockEnqueue).toHaveBeenCalledWith(
+      "The Principal Investigator and Contact section has been successfully saved.",
+      { variant: "success" }
+    );
+  });
 });
