@@ -11,6 +11,7 @@ const {CreateApplicationEvent, UpdateApplicationStateEvent} = require("../crdc-d
 const ROLES = USER_CONSTANTS.USER.ROLES;
 const {parseJsonString, isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const {isUndefined, replaceErrorString} = require("../utility/string-util");
+const {defaultStudyAbbreviationToStudyName, defaultStudyAbbreviationToNA} = require("../utility/study-abbrev-helpers");
 const {EMAIL_NOTIFICATIONS} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {UserScope} = require("../domain/user-scope");
@@ -58,6 +59,14 @@ class Application {
         this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
     }
 
+    _normalizeApplicationStatus(status) {
+        return String(status ?? "").trim().toLowerCase();
+    }
+
+    _isApprovedApplication(application) {
+        return this._normalizeApplicationStatus(application?.status) === this._normalizeApplicationStatus(APPROVED);
+    }
+
     async getApplication(params, context) {
         verifySession(context)
             .verifyInitialized()
@@ -68,7 +77,7 @@ class Application {
 
         let application = await this.getApplicationById(params._id);
         // add logics to check if conditional approval
-        if (application.status === APPROVED){
+        if (this._isApprovedApplication(application)) {
             await this._checkConditionalApproval(application);
         }
         // populate the version with auto upgrade based on configuration
@@ -85,24 +94,32 @@ class Application {
         return [NEW, IN_PROGRESS, INQUIRED].includes(status) ? newStatusVersion : (!version)? currentVersion : version;
     }
 
-    async _checkConditionalApproval(application) {
-        // 1) controlled study missing dbGaPID
-        const studyArr = await this.approvedStudiesService.findByStudyName(application.studyName);
+    /**
+     * Computes conditional / pendingConditions from the approved study for this application study name.
+     * @returns {Promise<{ conditional: boolean, pendingConditions: string[] }>}
+     */
+    async _computeConditionalApprovalFields(studyName) {
+        const studyArr = await this.approvedStudiesService.findByStudyName(studyName);
         if (!studyArr || studyArr.length < 1) {
-            return;
+            return { conditional: false, pendingConditions: [] };
         }
         const study = studyArr[0];
         const pendingConditions = [
             ...(study?.controlledAccess && !study?.dbGaPID ? [ERROR.CONTROLLED_STUDY_NO_DBGAPID] : []),
             ...(isTrue(study?.pendingModelChange) ? [ERROR.PENDING_APPROVED_STUDY] : []),
             ...((isTrue(study?.controlledAccess) && isTrue(study?.isPendingGPA)) ? [ERROR.PENDING_APPROVED_STUDY_NO_GPA_INFO] : []),
+            ...(isTrue(study?.pendingImageDeIdentification) ? [ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION] : []),
         ];
+        return {
+            conditional: pendingConditions.length > 0,
+            pendingConditions,
+        };
+    }
 
-        application.conditional = pendingConditions.length > 0;
-
-        if (pendingConditions.length > 0) {
-            application.pendingConditions = pendingConditions;
-        }
+    async _checkConditionalApproval(application) {
+        const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(application.studyName);
+        application.conditional = conditional;
+        application.pendingConditions = pendingConditions;
     }
 
     async getApplicationById(id) {
@@ -165,19 +182,27 @@ class Application {
         return application || null;
     }
 
-    async createApplication(application, userInfo) {
+    async createApplication(application, userInfo, status = NEW) {
         const timestamp = getCurrentTime();
+
+        const history = [HistoryEventBuilder.createEvent(userInfo._id, NEW, null, timestamp)];
+        if (status === IN_PROGRESS) {
+            // Add an additional 1s to the timestamp to ensure the events can be correctly sorted
+            const eventTime = new Date(timestamp.getTime() + 1000);
+            history.push(HistoryEventBuilder.createEvent(userInfo._id, IN_PROGRESS, null, eventTime));
+        }
+
         let newApplicationProperties = {
             _id: v4(undefined, undefined, undefined),
-            status: NEW,
+            status,
             controlledAccess: application?.controlledAccess,
             applicantID: userInfo._id,
-            history: [HistoryEventBuilder.createEvent(userInfo._id, NEW, null)],
+            history,
             createdAt: timestamp,
             updatedAt: timestamp,
             programAbbreviation: application?.programAbbreviation,
             programDescription: application?.programDescription,
-            version: (application?.version)? application.version : await this._getApplicationVersionByStatus(NEW),
+            version: (application?.version)? application.version : await this._getApplicationVersionByStatus(status),
             inactiveReminder: false, // If deleted, it will set true
             inactiveReminder_7: false,
             inactiveReminder_15: false,
@@ -219,7 +244,11 @@ class Application {
             if (userScope.isNoneScope()) {
                 throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
             }
-            return await this.createApplication(inputApplication, context.userInfo);
+            const requestedStatus = params?.status ?? NEW;
+            if (![NEW, IN_PROGRESS].includes(requestedStatus)) {
+                throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+            }
+            return await this.createApplication(inputApplication, context.userInfo, requestedStatus);
         }
 
         const storedApplication = await this.getApplicationById(id);
@@ -309,6 +338,9 @@ class Application {
         }
         // auto upgrade version
         const res = await this.getApplicationById(application._id);
+        if (this._isApprovedApplication(res)) {
+            await this._checkConditionalApproval(res);
+        }
         res.version = await this._getApplicationVersionByStatus(IN_PROGRESS);
         return res;
     }
@@ -430,17 +462,22 @@ class Application {
         const programNameCondition = (params.programName != null && params.programName !== this._ALL_FILTER) 
             ? { programName: params.programName } 
             : {};
-        // Study name filter, trim input and escape backslashes
-        const studyNameParam = params.studyName?.trim().length > 0
-            ? { contains: params.studyName.trim().replace(/\\/g, "\\\\"), mode: "insensitive" }
-            : params.studyName;
-        const studyNameCondition = (params.studyName != null && params.studyName !== this._ALL_FILTER) ? { studyName: studyNameParam } : {};
-        // Study abbreviation filter
-        const studyAbbreviationCondition = (params.studyAbbreviation != null && params.studyAbbreviation !== this._ALL_FILTER) 
-            ? { studyAbbreviation: params.studyAbbreviation } 
-            : {};
+        // Study filter: search both studyName and studyAbbreviation (OR), case-insensitive partial match
+        const studySearchTerm = params.studyName?.trim();
+        const hasStudyFilter = studySearchTerm?.length > 0 && params.studyName !== this._ALL_FILTER;
+        let studyCondition = {};
+        if (hasStudyFilter) {
+            const studySearchTermSanitized = studySearchTerm.replace(/\\/g, "\\\\");
+            const containsOption = { contains: studySearchTermSanitized, mode: "insensitive" };
+            studyCondition = {
+                OR: [
+                    { studyName: containsOption },
+                    { studyAbbreviation: containsOption }
+                ]
+            };
+        }
         // Assemble generic filter conditions, if scope is own, add applicantID filter
-        const baseConditions = { ...statusCondition, ...programNameCondition, ...studyNameCondition, ...studyAbbreviationCondition, ...submitterNameCondition };
+        const baseConditions = { ...statusCondition, ...programNameCondition, ...studyCondition, ...submitterNameCondition };
         const genericFilterConditions = userScope.isOwnScope()
             ? { ...baseConditions, applicantID: userInfo?._id }
             : baseConditions;
@@ -481,6 +518,19 @@ class Application {
             throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching application count.");
         }
 
+        // When study filter uses OR, fetch studyName + studyAbbreviation once and derive both distinct lists in memory
+        let studyFilterDistinctRows = null;
+        if (hasStudyFilter) {
+            try {
+                studyFilterDistinctRows = await this.applicationDAO.findMany(genericFilterConditions, {
+                    select: { studyName: true, studyAbbreviation: true }
+                });
+            } catch (err) {
+                console.error("List applications fetch error: gathering distinct study values", err);
+                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: gathering distinct study values.");
+            }
+        }
+
         // Query distinct filter options in parallel (programs, studies, studyAbbreviations, statuses, submitter names)
         const runQuery = async (queryName, fn) => {
             try {
@@ -500,14 +550,21 @@ class Application {
                     return (rows ?? []).map(item => item.programName).filter(Boolean);
                 }),
                 runQuery("studies", async () => {
+                    if (studyFilterDistinctRows !== null) {
+                        const names = (studyFilterDistinctRows ?? []).map(item => item.studyName).filter(Boolean);
+                        return Array.from(new Set(names));
+                    }
                     const filterConditions = { ...genericFilterConditions };
                     delete filterConditions.studyName;
                     const rows = await this.applicationDAO.findMany(filterConditions, { select: { studyName: true }, distinct: ['studyName'] });
                     return (rows ?? []).map(item => item.studyName).filter(Boolean);
                 }),
                 runQuery("study abbreviations", async () => {
+                    if (studyFilterDistinctRows !== null) {
+                        const abbreviations = (studyFilterDistinctRows ?? []).map(item => item.studyAbbreviation).filter(Boolean);
+                        return Array.from(new Set(abbreviations));
+                    }
                     const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.studyAbbreviation;
                     const rows = await this.applicationDAO.findMany(filterConditions, { select: { studyAbbreviation: true }, distinct: ['studyAbbreviation'] });
                     return (rows ?? []).map(item => item.studyAbbreviation).filter(Boolean);
                 }),
@@ -535,18 +592,33 @@ class Application {
             throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Please see logs for more information.");
         }
 
-        // Format application list (run _checkConditionalApproval sequentially to avoid DB/read spikes when first = -1 or large)
-        const approvedApps = applications.filter(a => a.status === APPROVED);
-        for (const app of approvedApps) {
-            await this._checkConditionalApproval(app);
-        }
-        applications.forEach((app) => {
-            app.applicant = {
+        // Hydrate conditional approval for Approved rows (sequential study lookups) and map to plain objects
+        // so GraphQL always receives conditional / pendingConditions (Prisma entities may drop ad-hoc properties).
+        const mappedApplications = [];
+        for (const app of applications) {
+            const applicant = {
                 applicantID: app?.applicant ? app?.applicant?.id : "",
                 applicantName: app?.applicant ? app?.applicant?.fullName : "",
                 applicantEmail: app?.applicant ? app?.applicant?.email : "",
             };
-        });
+            if (!this._isApprovedApplication(app)) {
+                mappedApplications.push({
+                    ...app,
+                    applicant,
+                    studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
+                });
+                continue;
+            }
+            const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(app.studyName);
+            mappedApplications.push({
+                ...app,
+                applicant,
+                conditional,
+                pendingConditions,
+                studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
+            });
+        }
+        applications = mappedApplications;
 
         // Sort statuses in display order
         const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, APPROVED, REJECTED, CANCELED, DELETED];
@@ -749,7 +821,7 @@ class Application {
         const questionnaire = getApplicationQuestionnaire(application);
         const [approvedStudies, existingProgram, duplicatePrograms] = await Promise.all([
             this.approvedStudiesService.findByStudyName(application?.studyName),
-            this.organizationService.getOrganizationByID(questionnaire?.program?._id),
+            this.organizationService.getOrganizationByID(questionnaire?.program?._id, false),
             this.organizationService.findOneByProgramName(application?.programName),
             (async () => {
                 application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
@@ -775,12 +847,16 @@ class Application {
             version: application.version,
             history: [...(application.history || []), history]
         });
+        if (!updated) {
+            throw new Error(ERROR.UPDATE_FAILED);
+        }
         const isDbGapMissing = (questionnaire?.accessTypes?.includes("Controlled Access") && !questionnaire?.study?.dbGaPPPHSNumber);
         const isPendingGPA = (questionnaire?.accessTypes?.includes("Controlled Access") && Boolean(!updated?.GPAName?.trim()));
+        const isPendingImageDeIdentification = isTrue(document?.pendingImageDeIdentification);
         let promises = [];
 
         promises.push(this.institutionService.addNewInstitutions(application?.newInstitutions));
-        promises.push(this.sendEmailAfterApproveApplication(context, application, document?.comment, isDbGapMissing, isTrue(document?.pendingModelChange), isPendingGPA));
+        promises.push(this.sendEmailAfterApproveApplication(context, application, document?.comment, isDbGapMissing, isTrue(document?.pendingModelChange), isPendingGPA, isPendingImageDeIdentification));
         if (updated) {
             promises.unshift(this.getApplicationById(document._id));
             if(questionnaire) {
@@ -790,7 +866,7 @@ class Application {
                     // Await program creation before creating approved study to avoid race condition
                     program = await this.organizationService.upsertByProgramName(name, abbreviation, description);
                 }
-                const newApprovedStudy = await this._saveApprovedStudies(updated, questionnaire, document?.pendingModelChange, isPendingGPA, program);
+                const newApprovedStudy = await this._saveApprovedStudies(updated, questionnaire, document?.pendingModelChange, document?.pendingImageDeIdentification, isPendingGPA, program);
                 // added approved studies into user collection
                 const applicants = await this._findUsersByApplicantIDs([application]);
                 if (applicants?.length > 0) {
@@ -807,9 +883,12 @@ class Application {
                 UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, APPROVED)
             ));
         }
-        return await Promise.all(promises).then(results => {
-            return results[0];
-        })
+        const results = await Promise.all(promises);
+        const applicationResult = results[0];
+        if (this._isApprovedApplication(applicationResult)) {
+            await this._checkConditionalApproval(applicationResult);
+        }
+        return applicationResult;
     }
 
     async rejectApplication(document, context) {
@@ -862,7 +941,7 @@ class Application {
             version: application.version,
             history: [...(application.history || []), history]
         });
-        await sendEmails.inquireApplication(this.notificationService, this.userService, this.emailParams, application, document?.comment);
+        await sendEmails.inquireApplication(this.notificationService, this.userService, application, document?.comment);
         if (updated) {
             const log = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, INQUIRED);
             const promises = [
@@ -878,8 +957,30 @@ class Application {
 
     async deleteInactiveApplications() {
         try {
-            const applications = await this.applicationDAO.getInactiveApplication(this.emailParams.inactiveDays);
-            
+            const utilityService = new UtilityService();
+            // default retention window and new short window for blank 'New' SRFs
+            const defaultDays = this.emailParams.inactiveDays;
+            const shortDays = this.emailParams.inactiveNewApplicationDays || 30;
+
+            // Fetch both sets and merge, preferring entries from the default set
+            const [defaultApps, shortApps] = await Promise.all([
+                this.applicationDAO.getInactiveApplication(defaultDays),
+                this.applicationDAO.getInactiveApplication(shortDays)
+            ]);
+
+            const appsMap = new Map();
+            (defaultApps || []).forEach(a => appsMap.set(a._id, a));
+            (shortApps || []).forEach(a => {
+                // Only consider truly blank SRFs in the 'New' status for the short window
+                if (a.status === NEW && utilityService.isEmptyApplication(a) && !appsMap.has(a._id)) {
+                    // mark that this record should use the short window when sending emails
+                    a._useShortWindow = true;
+                    appsMap.set(a._id, a);
+                }
+            });
+
+            const applications = Array.from(appsMap.values());
+
             // Handle undefined/null/empty applications gracefully
             if (!applications?.length) {
                 console.log("No inactive applications found to delete");
@@ -887,85 +988,89 @@ class Application {
             }
 
             console.log(`Found ${applications.length} inactive applications to process`);
-                
-                const [applicantUsers, BCCUsers] = await Promise.all([
-                    this._findUsersByApplicantIDs(applications),
-                    this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DELETE],
-                        [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-                ]);
 
-                const permittedUserIDs = new Set(
-                    applicantUsers
-                        ?.filter((u) => u?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DELETE))
-                        ?.map((u) => u?._id)
-                );
-                const history = HistoryEventBuilder.createEvent("", DELETED, this._DELETE_REVIEW_COMMENT);
-                
-                // Use Promise.allSettled to handle partial failures gracefully
-                const updateResults = await Promise.allSettled(applications.map(async (app) => {
-                    const utilityService = new UtilityService();
-                    if (utilityService.isEmptyApplication(app)) {
-                        return await this.applicationDAO.delete(app._id);
+            const [applicantUsers, BCCUsers] = await Promise.all([
+                this._findUsersByApplicantIDs(applications),
+                this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DELETE],
+                    [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
+            ]);
+
+            const permittedUserIDs = new Set(
+                applicantUsers
+                    ?.filter((u) => u?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DELETE))
+                    ?.map((u) => u?._id)
+            );
+            const history = HistoryEventBuilder.createEvent("", DELETED, this._DELETE_REVIEW_COMMENT);
+
+            // Use Promise.allSettled to handle partial failures gracefully
+            const updateResults = await Promise.allSettled(applications.map(async (app) => {
+                if (utilityService.isEmptyApplication(app) && app.status === NEW) {
+                    // permanently delete blank 'New' SRFs
+                    return await this.applicationDAO.delete(app._id);
+                }
+                return await this.applicationDAO.update({
+                    _id: app._id,
+                    status: DELETED,
+                    updatedAt: history.dateTime,
+                    inactiveReminder: true,
+                    history: [...(app.history || []), history]
+                });
+            }));
+
+            // Count successful updates
+            const successfulUpdates = updateResults.filter(result => result.status === 'fulfilled').length;
+            const failedUpdates = updateResults.filter(result => result.status === 'rejected').length;
+
+            if (failedUpdates > 0) {
+                console.error(`Failed to update ${failedUpdates} applications:`, 
+                    updateResults.filter(result => result.status === 'rejected').map(result => result.reason));
+            }
+
+            if (successfulUpdates > 0) {
+                console.log(`Successfully processed ${successfulUpdates} inactive applications`);
+
+                // Filter applications to only include those that were successfully updated
+                const successfullyUpdatedApplications = applications.filter((app, index) => {
+                    const updateResult = updateResults[index];
+                    return updateResult && updateResult.status === 'fulfilled';
+                });
+
+                // Use Promise.allSettled for email notifications - only for successfully updated applications
+                const emailResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
+                    if (permittedUserIDs.has(app?.applicantID)) {
+                        const localEmailParams = {
+                            ...this.emailParams,
+                            inactiveDays: app._useShortWindow ? (this.emailParams.inactiveNewApplicationDays || shortDays) : this.emailParams.inactiveDays
+                        };
+                        await sendEmails.inactiveApplications(this.notificationService, localEmailParams, app?.applicant?.applicantEmail, app?.applicant?.applicantName, app, getUserEmails(BCCUsers));
                     }
-                    return await this.applicationDAO.update({
-                        _id: app._id,
-                        status: DELETED,
-                        updatedAt: history.dateTime,
-                        inactiveReminder: true,
-                        history: [...(app.history || []), history]
-                    });
                 }));
 
-                // Count successful updates
-                const successfulUpdates = updateResults.filter(result => result.status === 'fulfilled').length;
-                const failedUpdates = updateResults.filter(result => result.status === 'rejected').length;
-                
-                if (failedUpdates > 0) {
-                    console.error(`Failed to update ${failedUpdates} applications:`, 
-                        updateResults.filter(result => result.status === 'rejected').map(result => result.reason));
+                const successfulEmails = emailResults.filter(result => result.status === 'fulfilled').length;
+                const failedEmails = emailResults.filter(result => result.status === 'rejected').length;
+
+                if (failedEmails > 0) {
+                    console.error(`Failed to send ${failedEmails} email notifications:`, 
+                        emailResults.filter(result => result.status === 'rejected').map(result => result.reason));
                 }
 
-                if (successfulUpdates > 0) {
-                    console.log(`Successfully processed ${successfulUpdates} inactive applications`);
-                    
-                    // Filter applications to only include those that were successfully updated
-                    const successfullyUpdatedApplications = applications.filter((app, index) => {
-                        const updateResult = updateResults[index];
-                        return updateResult && updateResult.status === 'fulfilled';
-                    });
-                    
-                    // Use Promise.allSettled for email notifications - only for successfully updated applications
-                    const emailResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
-                        if (permittedUserIDs.has(app?.applicantID)) {
-                            await sendEmails.inactiveApplications(this.notificationService,this.emailParams, app?.applicant?.applicantEmail, app?.applicant?.applicantName, app, getUserEmails(BCCUsers));
-                        }
-                    }));
-                    
-                    const successfulEmails = emailResults.filter(result => result.status === 'fulfilled').length;
-                    const failedEmails = emailResults.filter(result => result.status === 'rejected').length;
-                    
-                    if (failedEmails > 0) {
-                        console.error(`Failed to send ${failedEmails} email notifications:`, 
-                            emailResults.filter(result => result.status === 'rejected').map(result => result.reason));
-                    }
-                    
-                    console.log(`Sent ${successfulEmails} email notifications for inactive applications`);
-                    
-                    // Use Promise.allSettled for log insertions - only for successfully updated applications
-                    const logResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
-                        this.logCollection.insert(UpdateApplicationStateEvent.createByApp(app._id, app.status, DELETED));
-                    }));
-                    
-                    const successfulLogs = logResults.filter(result => result.status === 'fulfilled').length;
-                    const failedLogs = logResults.filter(result => result.status === 'rejected').length;
-                    
-                    if (failedLogs > 0) {
-                        console.error(`Failed to log ${failedLogs} application deletions:`, 
-                            logResults.filter(result => result.status === 'rejected').map(result => result.reason));
-                    }
-                    
-                    console.log(`Logged ${successfulLogs} application deletions`);
+                console.log(`Sent ${successfulEmails} email notifications for inactive applications`);
+
+                // Use Promise.allSettled for log insertions - only for successfully updated applications
+                const logResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
+                    this.logCollection.insert(UpdateApplicationStateEvent.createByApp(app._id, app.status, DELETED));
+                }));
+
+                const successfulLogs = logResults.filter(result => result.status === 'fulfilled').length;
+                const failedLogs = logResults.filter(result => result.status === 'rejected').length;
+
+                if (failedLogs > 0) {
+                    console.error(`Failed to log ${failedLogs} application deletions:`, 
+                        logResults.filter(result => result.status === 'rejected').map(result => result.reason));
                 }
+
+                console.log(`Logged ${successfulLogs} application deletions`);
+            }
         } catch (error) {
             console.error("Error in deleteInactiveApplications task:", error);
             throw error; // Re-throw to be caught by cron job handler
@@ -973,69 +1078,91 @@ class Application {
     }
 
     async remindApplicationSubmission() {
-        // The system sends an email reminder a day before the data submission expires
-        const finalInactiveApplications = await this.applicationDAO.getInactiveApplication(this.emailParams.inactiveDays - 1, this._FINAL_INACTIVE_REMINDER)
-        if (finalInactiveApplications?.length > 0) {
-            await Promise.all(finalInactiveApplications.map(async (aApplication) => {
-                await this._sendEmailFinalInactiveApplication(aApplication);
+        // The system sends reminder emails for both the default window and the short-window for blank 'New' SRFs.
+        const defaultDays = this.emailParams.inactiveDays;
+        const shortDays = this.emailParams.inactiveNewApplicationDays || 30;
+
+        // Final (24 hour) reminders for default and short windows
+        const [finalDefault, finalShort] = await Promise.all([
+            this.applicationDAO.getInactiveApplication(defaultDays - 1, this._FINAL_INACTIVE_REMINDER),
+            this.applicationDAO.getInactiveApplication(shortDays - 1, this._FINAL_INACTIVE_REMINDER)
+        ]);
+
+        // Send final reminders for default window
+        if (finalDefault?.length > 0) {
+            await Promise.all(finalDefault.map(async (aApplication) => {
+                await this._sendEmailFinalInactiveApplication(aApplication, defaultDays);
             }));
-            const applicationIDs = finalInactiveApplications
-                .map(application => application._id);
+            const applicationIDs = finalDefault.map(application => application._id);
             const query = {_id: {$in: applicationIDs}};
-            // Disable all reminders to ensure no notifications are sent.
             const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
             const updatedReminder = await this.applicationDAO.updateMany(query, everyReminderDays);
             if (!updatedReminder?.matchedCount) {
                 console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
             }
         }
-        // Map over inactiveDays to create an array of tuples [day, promise]
-        const inactiveApplicationsPromises = [];
-        for (const day of this.emailParams.inactiveApplicationNotifyDays) {
-            const pastInactiveDays = this.emailParams.inactiveDays - day;
-            inactiveApplicationsPromises.push([pastInactiveDays, await this.applicationDAO.getInactiveApplication(pastInactiveDays, `${this._INACTIVE_REMINDER}_${day}`)]);
-        }
-        const inactiveApplicationsResult = await Promise.all(inactiveApplicationsPromises);
-        const inactiveApplicationMapByDays = inactiveApplicationsResult.reduce((acc, [key, value]) => {
-            acc[key] = value;
-            return acc;
-        }, {});
-        // For Sorting, the oldest submission about to expire submission will be sent at once.
-        const sortedKeys = Object.keys(inactiveApplicationMapByDays).sort((a, b) => b - a);
-        let uniqueSet = new Set();  // Set to track used _id values
-        sortedKeys.forEach((key) => {
-            // Filter out _id values that have already been used
-            inactiveApplicationMapByDays[key] = inactiveApplicationMapByDays[key].filter(obj => {
-                if (!uniqueSet.has(obj._id)) {
-                    uniqueSet.add(obj._id);
-                    return true;  // Keep this object
-                }
-                return false;  // Remove this object as it's already been used
-            });
-        });
 
-        if (uniqueSet.size > 0) {
-            const emailPromises = [];
-            let inactiveApplications = [];
-            for (const [pastDays, aApplicationArray] of Object.entries(inactiveApplicationMapByDays)) {
-                for (const aApplication of aApplicationArray) {
-                    const emailPromise = (async (pastDays) => {
-                        // by default, final reminder 180 days
-                        await this._sendEmailInactiveApplication(aApplication, pastDays);
-                    })(pastDays);
-                    emailPromises.push(emailPromise);
-                    inactiveApplications.push([aApplication?._id, pastDays]);
+        // Send final reminders for short window, but only for blank 'New' SRFs
+        if (finalShort?.length > 0) {
+            const utilityService = new UtilityService();
+            const shortFinalToSend = finalShort.filter(a => a.status === NEW && utilityService.isEmptyApplication(a));
+            await Promise.all(shortFinalToSend.map(async (aApplication) => {
+                await this._sendEmailFinalInactiveApplication(aApplication, shortDays);
+            }));
+            const applicationIDs = shortFinalToSend.map(application => application._id);
+            if (applicationIDs.length > 0) {
+                const query = {_id: {$in: applicationIDs}};
+                const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
+                const updatedReminder = await this.applicationDAO.updateMany(query, everyReminderDays);
+                if (!updatedReminder?.matchedCount) {
+                    console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
                 }
             }
-            await Promise.all(emailPromises);
-            const submissionReminderDays = this.emailParams.inactiveApplicationNotifyDays;
-            for (const inactiveApplication of inactiveApplications) {
-                const applicationID = inactiveApplication[0];
-                const pastDays = inactiveApplication[1];
-                const expiredDays = this.emailParams.inactiveDays - pastDays;
+        }
+
+        // Build list of reminders for notification intervals for default and short windows
+        const reminderEntries = [];
+        for (const day of this.emailParams.inactiveApplicationNotifyDays) {
+            const pastDefault = defaultDays - day;
+            const appsDefault = await this.applicationDAO.getInactiveApplication(pastDefault, `${this._INACTIVE_REMINDER}_${day}`);
+            reminderEntries.push(...(appsDefault || []).map(a => ({ application: a, pastDays: pastDefault, baseDays: defaultDays })));
+
+            // Only query short window for intervals strictly less than shortDays to avoid zero/negative pastDays
+            if (day < shortDays) {
+                const pastShort = shortDays - day;
+                const appsShort = await this.applicationDAO.getInactiveApplication(pastShort, `${this._INACTIVE_REMINDER}_${day}`);
+                if (appsShort && appsShort.length > 0) {
+                    const utilityService = new UtilityService();
+                    // only include blank New SRFs from short-window
+                    reminderEntries.push(...appsShort.filter(a => a.status === NEW && utilityService.isEmptyApplication(a)).map(a => ({ application: a, pastDays: pastShort, baseDays: shortDays })));
+                }
+            }
+        }
+
+        if (reminderEntries.length > 0) {
+            // Sort by pastDays descending (older first) and dedupe by application id
+            reminderEntries.sort((a, b) => b.pastDays - a.pastDays);
+            const seen = new Set();
+            const toSend = [];
+            for (const entry of reminderEntries) {
+                if (!seen.has(entry.application._id)) {
+                    seen.add(entry.application._id);
+                    toSend.push(entry);
+                }
+            }
+
+            // Send emails
+            await Promise.all(toSend.map(async (entry) => {
+                await this._sendEmailInactiveApplication(entry.application, entry.pastDays, entry.baseDays);
+            }));
+
+            // Update reminder flags based on baseDays
+            for (const entry of toSend) {
+                const applicationID = entry.application._id;
+                const pastDays = entry.pastDays;
+                const expiredDays = entry.baseDays - pastDays;
+                const submissionReminderDays = this.emailParams.inactiveApplicationNotifyDays;
                 const reminderDays = submissionReminderDays.filter((d) => expiredDays < d || expiredDays === d);
-                // The applications with the closest expiration dates will be flagged as true; no sent any notification anymore
-                // A notification will be sent at each interval. ex) 7, 30, 60 days before expiration
                 const reminderFilter = reminderDays.reduce((acc, day) => {
                     acc[`${this._INACTIVE_REMINDER}_${day}`] = true;
                     return acc;
@@ -1058,7 +1185,7 @@ class Application {
             }}]);
     }
 
-    async sendEmailAfterApproveApplication(context, application, comment, isDbGapMissing = false, isPendingModelChange, isPendingGPA = false) {
+    async sendEmailAfterApproveApplication(context, application, comment, isDbGapMissing = false, isPendingModelChange, isPendingGPA = false, isPendingImageDeIdentification = false) {
         const res = await Promise.all([
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
@@ -1071,7 +1198,15 @@ class Application {
         const toBCCEmails = getUserEmails(toBCCUsers)
             ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
-            if (!isDbGapMissing && !isPendingModelChange && !isPendingGPA) {
+            const pendingTemplateParams = {
+                firstName: application?.applicant?.applicantName,
+                contactEmail: this.emailParams?.conditionalSubmissionContact,
+                reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
+                study: setDefaultIfNoName(application?.studyName),
+                submissionGuideURL: this.emailParams?.submissionGuideURL
+            };
+
+            if (!isDbGapMissing && !isPendingModelChange && !isPendingGPA && !isPendingImageDeIdentification) {
                 await this.notificationService.approveQuestionNotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
@@ -1080,28 +1215,23 @@ class Application {
                         reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A"
                     },
                     {
-                        study: application?.studyAbbreviation,
+                        study: studyLabelForEmailBody(application),
                         contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
-                });
+                    }
+                );
                 return;
             }
 
-            const pendingChange = [isDbGapMissing, isPendingModelChange, isPendingGPA];
-            const filteredPendingChange = pendingChange.filter(Boolean);
-            if (filteredPendingChange?.length > 1) {
+            const pendingCount = [isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification].filter(Boolean).length;
+            if (pendingCount > 1) {
                 await this.notificationService.multipleChangesApproveQuestionNotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        contactEmail: this.emailParams?.conditionalSubmissionContact,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                        study: setDefaultIfNoName(application?.studyName),
-                        submissionGuideURL: this.emailParams?.submissionGuideURL
-                    },
+                    pendingTemplateParams,
                     isDbGapMissing,
                     isPendingModelChange,
-                    isPendingGPA
+                    isPendingGPA,
+                    isPendingImageDeIdentification
                 );
                 return;
             }
@@ -1110,13 +1240,7 @@ class Application {
                 await this.notificationService.dbGapMissingApproveQuestionNotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        contactEmail: this.emailParams?.conditionalSubmissionContact,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                        study: setDefaultIfNoName(application?.studyName),
-                        submissionGuideURL: this.emailParams?.submissionGuideURL
-                    }
+                    pendingTemplateParams
                 );
                 return;
             }
@@ -1125,27 +1249,25 @@ class Application {
                 await this.notificationService.dataModelChangeApproveQuestionNotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        contactEmail: this.emailParams?.conditionalSubmissionContact,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                        study: setDefaultIfNoName(application?.studyName),
-                        submissionGuideURL: this.emailParams?.submissionGuideURL
-                    }
+                    pendingTemplateParams
                 );
+                return;
             }
 
             if (isPendingGPA) {
                 await this.notificationService.pendingGPANotification(application?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        contactEmail: this.emailParams?.conditionalSubmissionContact,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                        study: setDefaultIfNoName(application?.studyName),
-                        submissionGuideURL: this.emailParams?.submissionGuideURL
-                    }
+                    pendingTemplateParams
+                );
+                return;
+            }
+
+            if (isPendingImageDeIdentification) {
+                await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(application?.applicant?.applicantEmail,
+                    CCEmails,
+                    toBCCEmails,
+                    pendingTemplateParams
                 );
             }
         }
@@ -1202,7 +1324,7 @@ class Application {
 
     }
 
-    async _sendEmailFinalInactiveApplication(application) {
+    async _sendEmailFinalInactiveApplication(application, baseInactiveDays = this.emailParams.inactiveDays) {
         const [aSubmitter, BCCUsers] = await Promise.all([
             this.userService.getUserByID(application?.applicantID),
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING],
@@ -1216,7 +1338,6 @@ class Application {
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const studyName = application?.studyAbbreviation?.trim();
             const applicant = await this.userDAO.findFirst({id: application?.applicantID});
             const CCEmails = getCCEmails(applicant?.email, application);
             const toBCCEmails = getUserEmails(filteredBCCUsers)
@@ -1225,16 +1346,16 @@ class Application {
                 CCEmails,
                 toBCCEmails, {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
-                    studyName: studyName?.length > 0 ? studyName : "N/A"
+                    studyName: studyLabelForEmailBody(application)
                 },{
-                    inactiveDays: this.emailParams.inactiveDays,
+                    inactiveDays: baseInactiveDays,
                     url: this.emailParams.url
                 });
-            logDaysDifference(this.emailParams.inactiveDays - 1, application?.updatedAt, application?._id);
+            logDaysDifference(baseInactiveDays - 1, application?.updatedAt, application?._id);
         }
     }
 
-    async _sendEmailInactiveApplication(application, interval) {
+    async _sendEmailInactiveApplication(application, interval, baseInactiveDays = this.emailParams.inactiveDays) {
         const [aSubmitter, BCCUsers] = await Promise.all([
             this.userService.getUserByID(application?.applicantID),
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING],
@@ -1247,7 +1368,6 @@ class Application {
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const studyName = application?.studyAbbreviation?.trim();
             const applicant = await this.userDAO.findFirst({id: application?.applicantID});
             const CCEmails = getCCEmails(applicant?.email, application);
             const filteredBCCUsers = BCCUsers.filter((u) => u?._id !== aSubmitter?._id);
@@ -1257,9 +1377,9 @@ class Application {
                 CCEmails,
                 toBCCEmails, {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
-                    studyName: studyName?.length > 0 ? studyName : "N/A"
+                    studyName: studyLabelForEmailBody(application)
                 },{
-                    remainDays: this.emailParams.inactiveDays - interval,
+                    remainDays: baseInactiveDays - interval,
                     inactiveDays: interval,
                     url: this.emailParams.url
                 });
@@ -1275,9 +1395,9 @@ class Application {
         }, {[`${this._FINAL_INACTIVE_REMINDER}`]: status});
     }
 
-    async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, isPendingGPA, existingProgram) {
-        // use study name when study abbreviation is not available
-        const studyAbbreviation = !!aApplication?.studyAbbreviation?.trim() ? aApplication?.studyAbbreviation : questionnaire?.study?.name;
+    async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
+        // Only the application field (user input); do not substitute study name or questionnaire when missing
+        const studyAbbreviation = (aApplication?.studyAbbreviation ?? "").trim();
         const controlledAccess = aApplication?.controlledAccess;
         if (isUndefined(controlledAccess)) {
             console.error(ERROR.APPLICATION_CONTROLLED_ACCESS_NOT_FOUND, ` id=${aApplication?._id}`);
@@ -1298,7 +1418,7 @@ class Application {
         const primaryContactID = null;
         return await this.approvedStudiesService.storeApprovedStudies(
             aApplication?._id, aApplication?.studyName, studyAbbreviation, baseDbGaP, aApplication?.organization?.name, controlledAccess, aApplication?.ORCID,
-            aApplication?.PI, aApplication?.openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID
+            aApplication?.PI, aApplication?.openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification
         );
     }
 
@@ -1342,6 +1462,11 @@ const setDefaultIfNoName = (str) => {
     return (name.length > 0) ? (name) : "NA";
 }
 
+/** Abbreviation for $study-style email slots; falls back to application study name. (Inquire/PV abbrev lines use defaultStudyAbbreviationToNA separately.) */
+function studyLabelForEmailBody(application) {
+    return defaultStudyAbbreviationToStudyName(application?.studyAbbreviation, application?.studyName);
+}
+
 const getCCEmails = (submitterEmail, application) => {
     const questionnaire = getApplicationQuestionnaire(application);
     if (!questionnaire || !submitterEmail) {
@@ -1363,7 +1488,7 @@ const sendEmails = {
                 toBCCEmails, {
                 firstName: applicantName},{
                 pi: `${applicantName}`,
-                study: setDefaultIfNoName(application?.studyAbbreviation),
+                study: studyLabelForEmailBody(application),
                 officialEmail: `${emailParams.officialEmail}.`,
                 inactiveDays: emailParams.inactiveDays,
                 url: emailParams.url
@@ -1409,12 +1534,12 @@ const sendEmails = {
                 [],
                 toBCCEmails, {
                 pi: `${userInfo.firstName} ${userInfo.lastName}${programName === "NA" ? "." : `, and associated with the ${programName} program.`}`,
-                study: application?.studyAbbreviation || "NA",
+                study: studyLabelForEmailBody(application),
                 url: emailParams.url
             });
         }
     },
-    inquireApplication: async(notificationService, userService, emailParams, application, reviewComments) => {
+    inquireApplication: async (notificationService, userService, application, reviewComments) => {
         const res = await Promise.all([
             userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
@@ -1426,14 +1551,16 @@ const sendEmails = {
             const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
             const toBCCEmails = getUserEmails(toBCCUsers)
                 ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
+            const studyName = setDefaultIfNoName(application?.studyName);
+            const studyAbbreviation = defaultStudyAbbreviationToNA(application?.studyAbbreviation);
             await notificationService.inquireQuestionNotification(application?.applicant?.applicantEmail,
                 CCEmails,
                 toBCCEmails,{
                 firstName: application?.applicant?.applicantName,
                 reviewComments,
-            }, {
-                contactInfo: emailParams.conditionalSubmissionContact,
-            });
+                studyName,
+                studyAbbreviation,
+            }, {});
         }
     },
     rejectApplication: async(notificationService, userService, emailParams, application, reviewComments) => {
@@ -1450,7 +1577,7 @@ const sendEmails = {
                 firstName: application?.applicant?.applicantName,
                 reviewComments
             }, {
-                study: `${application?.studyAbbreviation},`
+                study: `${studyLabelForEmailBody(application)},`
             });
         }
     }

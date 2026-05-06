@@ -33,7 +33,10 @@ const mockNotificationsService = {
     remindApplicationsNotification: jest.fn(),
     multipleChangesApproveQuestionNotification: jest.fn(),
     dbGapMissingApproveQuestionNotification: jest.fn(),
-    dataModelChangeApproveQuestionNotification: jest.fn()
+    dataModelChangeApproveQuestionNotification: jest.fn(),
+    pendingGPANotification: jest.fn(),
+    pendingImageDeIdentificationApproveQuestionNotification: jest.fn(),
+    inquireQuestionNotification: jest.fn()
 };
 const mockEmailParams = { inactiveDays: 180, inactiveApplicationNotifyDays: [7, 30, 60], conditionalSubmissionContact: 'contact@email', url: 'http://test', submissionGuideURL: 'http://guide' };
 const mockOrganizationService = {
@@ -186,6 +189,52 @@ describe('Application', () => {
             expect(app._checkConditionalApproval).toHaveBeenCalledWith(expect.objectContaining({ _id: 'app1', status: APPROVED, version: '2.0' }));
             expect(app._getApplicationVersionByStatus).toHaveBeenCalledWith(APPROVED, '2.0');
         });
+
+        it('calls _checkConditionalApproval when status matches Approved case-insensitively', async () => {
+            userScopeMock.isNoneScope.mockReturnValue(false);
+            userScopeMock.isAllScope.mockReturnValue(true);
+            UserScope.create.mockReturnValue(userScopeMock);
+
+            app.getApplicationById = jest.fn().mockResolvedValue({ _id: 'app1', status: 'approved', version: '2.0' });
+            app._checkConditionalApproval = jest.fn().mockResolvedValue(undefined);
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('2.0');
+
+            await app.getApplication({ _id: 'app1' }, context);
+
+            expect(app._checkConditionalApproval).toHaveBeenCalledWith(expect.objectContaining({ _id: 'app1', status: 'approved' }));
+        });
+
+        it('does not replace missing or whitespace-only studyAbbreviation with study name', async () => {
+            userScopeMock.isNoneScope.mockReturnValue(false);
+            userScopeMock.isAllScope.mockReturnValue(true);
+            UserScope.create.mockReturnValue(userScopeMock);
+
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('3.0');
+
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: NEW,
+                studyName: 'Full Study',
+                studyAbbreviation: null,
+                applicant: { applicantID: 'u1', applicantName: 'Submitter', applicantEmail: 's@test.com' }
+            });
+            await expect(app.getApplication({ _id: 'app1' }, context)).resolves.toMatchObject({
+                studyAbbreviation: null,
+                studyName: 'Full Study'
+            });
+
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: NEW,
+                studyName: 'Full Study',
+                studyAbbreviation: '   ',
+                applicant: { applicantID: 'u1', applicantName: 'Submitter', applicantEmail: 's@test.com' }
+            });
+            await expect(app.getApplication({ _id: 'app1' }, context)).resolves.toMatchObject({
+                studyAbbreviation: '   ',
+                studyName: 'Full Study'
+            });
+        });
     });
 
     describe('_getApplicationVersionByStatus', () => {
@@ -218,11 +267,24 @@ describe('Application', () => {
             expect(application.pendingConditions).toContain(ERROR.PENDING_APPROVED_STUDY);
         });
 
-        it('does nothing if no studies found', async () => {
+        it('includes pending image de-identification in pendingConditions when applicable', async () => {
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([{
+                controlledAccess: false,
+                pendingModelChange: false,
+                pendingImageDeIdentification: true
+            }]);
+            const application = { studyName: 'study1' };
+            await app._checkConditionalApproval(application);
+            expect(application.conditional).toBe(true);
+            expect(application.pendingConditions).toContain(ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION);
+        });
+
+        it('sets conditional false and empty pendingConditions when no studies found', async () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             const application = { studyName: 'study1' };
             await app._checkConditionalApproval(application);
-            expect(application.conditional).toBeUndefined();
+            expect(application.conditional).toBe(false);
+            expect(application.pendingConditions).toEqual([]);
         });
     });
 
@@ -288,15 +350,63 @@ describe('Application', () => {
             expect(app.applicationDAO.insert).toHaveBeenCalled();
             expect(mockLogCollection.insert).toHaveBeenCalled();
         });
+
+        it('defaults to New when no status is requested for new applications', async () => {
+            app.applicationDAO = {
+                insert: jest.fn().mockResolvedValue({ acknowledged: true }),
+            };
+            mockLogCollection.insert.mockResolvedValue();
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+
+            const application = { controlledAccess: true };
+            const userInfo = context.userInfo;
+
+            const result = await app.createApplication(application, userInfo);
+
+            expect(result.status).toBe(NEW);
+            expect(result.history).toHaveLength(1);
+            expect(result.history[0]).toMatchObject({ userID: userInfo._id, status: NEW });
+            expect(app.applicationDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ status: NEW }));
+        });
+
+        it('adds a New event before In Progress when requested', async () => {
+            app.applicationDAO = {
+                insert: jest.fn().mockResolvedValue({ acknowledged: true }),
+            };
+            mockLogCollection.insert.mockResolvedValue();
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+
+            const application = { controlledAccess: true };
+            const userInfo = context.userInfo;
+
+            const result = await app.createApplication(application, userInfo, IN_PROGRESS);
+
+            expect(result.status).toBe(IN_PROGRESS);
+            expect(result.history).toHaveLength(2);
+            expect(result.history[0]).toMatchObject({ userID: userInfo._id, status: NEW });
+            expect(result.history[1]).toMatchObject({ userID: userInfo._id, status: IN_PROGRESS });
+            expect(new Date(result.history[0].dateTime).getTime()).toBeLessThan(new Date(result.history[1].dateTime).getTime());
+            expect(app.applicationDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ status: IN_PROGRESS }));
+        });
     });
 
     describe('saveApplication', () => {
-        it('creates new application if no id', async () => {
+        it('creates new application with New status if no status is provided', async () => {
             userScopeMock.isNoneScope.mockReturnValue(false);
             userScopeMock.isAllScope.mockReturnValue(true);
             const params = { application: {} };
             jest.spyOn(app, 'createApplication').mockResolvedValue({ _id: 'app2' });
             await expect(app.saveApplication(params, context)).resolves.toEqual({ _id: 'app2' });
+            expect(app.createApplication).toHaveBeenCalledWith({}, context.userInfo, NEW);
+        });
+
+        it('creates new application with In Progress status when requested', async () => {
+            userScopeMock.isNoneScope.mockReturnValue(false);
+            userScopeMock.isAllScope.mockReturnValue(true);
+            const params = { application: {}, status: IN_PROGRESS };
+            jest.spyOn(app, 'createApplication').mockResolvedValue({ _id: 'app2' });
+            await expect(app.saveApplication(params, context)).resolves.toEqual({ _id: 'app2' });
+            expect(app.createApplication).toHaveBeenCalledWith({}, context.userInfo, IN_PROGRESS);
         });
 
         it("should throw an error when the application does not exist", async () => {
@@ -356,6 +466,37 @@ describe('Application', () => {
 
             const result = await app.getMyLastApplication({}, context);
             expect(result).toMatchObject({ _id: 'app1', version: '3.0', institution: { id: 'inst1', _id: 'inst1' } });
+        });
+
+        it('hydrates conditional and pendingConditions when approved study has pending image de-identification', async () => {
+            userScopeMock.isNoneScope.mockReturnValue(false);
+            userScopeMock.isAllScope.mockReturnValue(true);
+            UserScope.create.mockReturnValue(userScopeMock);
+            app.applicationDAO = {
+                aggregate: jest.fn().mockResolvedValue([{ _id: 'app1', status: APPROVED }])
+            };
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([{
+                controlledAccess: false,
+                pendingModelChange: false,
+                pendingImageDeIdentification: true
+            }]);
+            jest.spyOn(app, 'getApplicationById').mockResolvedValue({
+                _id: 'app1',
+                status: APPROVED,
+                studyName: 'study1',
+                institution: { id: 'inst1', _id: 'inst1' }
+            });
+
+            const result = await app.getMyLastApplication({}, context);
+
+            expect(result).toMatchObject({
+                _id: 'app1',
+                version: '3.0',
+                conditional: true,
+                institution: { id: 'inst1', _id: 'inst1' }
+            });
+            expect(result.pendingConditions).toContain(ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION);
         });
 
         it('returns null when no previous approved application exists', async () => {
@@ -442,6 +583,29 @@ describe('Application', () => {
             expect(Array.isArray(result.applications)).toBe(true);
             expect(result.total).toBe(0);
             expect(findManyMock).toHaveBeenCalled();
+        });
+
+        it('fills studyAbbreviation with studyName in the list response when abbrev is empty', async () => {
+            const row = {
+                id: 'a1',
+                studyName: 'My Full Study',
+                studyAbbreviation: '   ',
+                status: NEW,
+                applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' }
+            };
+            let n = 0;
+            const findManyMock = jest.fn().mockImplementation(() => {
+                n += 1;
+                if (n === 1) {
+                    return Promise.resolve([row]);
+                }
+                return Promise.resolve([]);
+            });
+            app.applicationDAO.findMany = findManyMock;
+            app.applicationDAO.count = jest.fn().mockResolvedValue(1);
+            const result = await app.listApplications({}, context);
+            expect(result.applications[0].studyAbbreviation).toBe('My Full Study');
+            expect(result.applications[0].studyName).toBe('My Full Study');
         });
 
         it('returns empty list when scope is study (only all and own supported for filters)', async () => {
@@ -604,6 +768,99 @@ describe('Application', () => {
             app.applicationDAO.count = jest.fn().mockResolvedValue(0);
             await expect(app.listApplications({}, context)).rejects.toThrow(ERROR.LIST_APPLICATIONS_FETCH_FAILED);
         });
+
+        describe('studyName filter (searches both studyName and studyAbbreviation)', () => {
+            it('passes OR condition when studyName is provided', async () => {
+                const findManyMock = jest.fn().mockResolvedValue([]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                await app.listApplications({ studyName: 'UniqueName' }, context);
+                const filter = findManyMock.mock.calls[0][0];
+                expect(filter.OR).toBeDefined();
+                expect(Array.isArray(filter.OR)).toBe(true);
+                expect(filter.OR).toHaveLength(2);
+                expect(filter.OR[0]).toEqual({ studyName: { contains: 'UniqueName', mode: 'insensitive' } });
+                expect(filter.OR[1]).toEqual({ studyAbbreviation: { contains: 'UniqueName', mode: 'insensitive' } });
+            });
+
+            it('returns applications matching study name when studyName filter is used', async () => {
+                const matchingApp = { id: 'app1', studyName: 'Cancer Study', studyAbbreviation: 'CS', status: NEW, applicant: { fullName: 'Alice' } };
+                const findManyMock = jest.fn().mockResolvedValue([matchingApp]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(1);
+                const result = await app.listApplications({ studyName: 'Cancer' }, context);
+                expect(result.applications.length).toBe(1);
+                expect(result.applications[0].studyName).toBe('Cancer Study');
+                expect(result.total).toBe(1);
+            });
+
+            it('returns applications matching study abbreviation when studyName filter is used', async () => {
+                const matchingApp = { id: 'app2', studyName: 'Other Study', studyAbbreviation: 'BRF', status: NEW, applicant: { fullName: 'Bob' } };
+                const findManyMock = jest.fn().mockResolvedValue([matchingApp]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(1);
+                const result = await app.listApplications({ studyName: 'BRF' }, context);
+                expect(result.applications.length).toBe(1);
+                expect(result.applications[0].studyAbbreviation).toBe('BRF');
+                expect(result.total).toBe(1);
+            });
+
+            it('studyName filter is case-insensitive', async () => {
+                const findManyMock = jest.fn().mockResolvedValue([]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                await app.listApplications({ studyName: 'aBc' }, context);
+                const filter = findManyMock.mock.calls[0][0];
+                expect(filter.OR[0].studyName).toEqual({ contains: 'aBc', mode: 'insensitive' });
+                expect(filter.OR[1].studyAbbreviation).toEqual({ contains: 'aBc', mode: 'insensitive' });
+            });
+
+            it('does not add study filter when studyName is All', async () => {
+                const findManyMock = jest.fn().mockResolvedValue([]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                await app.listApplications({ studyName: 'All' }, context);
+                const filter = findManyMock.mock.calls[0][0];
+                expect(filter.OR).toBeUndefined();
+            });
+
+            it('does not add study filter when studyName is empty string', async () => {
+                const findManyMock = jest.fn().mockResolvedValue([]);
+                app.applicationDAO.findMany = findManyMock;
+                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                await app.listApplications({ studyName: '' }, context);
+                const filter = findManyMock.mock.calls[0][0];
+                expect(filter.OR).toBeUndefined();
+            });
+
+            it('returns distinct studies and studyAbbreviations when studyName filter is applied', async () => {
+                const apps = [
+                    { id: 'app1', studyName: 'Study One', studyAbbreviation: 'S1', status: NEW, applicant: { fullName: 'A' } },
+                    { id: 'app2', studyName: 'Study One', studyAbbreviation: 'S2', status: NEW, applicant: { fullName: 'B' } }
+                ];
+                const studyDistinctRows = [
+                    { studyName: 'Study One', studyAbbreviation: 'S1' },
+                    { studyName: 'Study One', studyAbbreviation: 'S2' }
+                ];
+                let callIndex = 0;
+                app.applicationDAO.findMany = jest.fn().mockImplementation((filter, options) => {
+                    callIndex++;
+                    if (callIndex === 1) return Promise.resolve(apps);
+                    if (callIndex === 2) {
+                        expect(filter.OR).toBeDefined();
+                        expect(options?.select?.studyName).toBe(true);
+                        expect(options?.select?.studyAbbreviation).toBe(true);
+                        return Promise.resolve(studyDistinctRows);
+                    }
+                    return Promise.resolve([]);
+                });
+                app.applicationDAO.count = jest.fn().mockResolvedValue(2);
+                const result = await app.listApplications({ studyName: 'Study' }, context);
+                expect(result.studies).toEqual(['Study One']);
+                expect(result.studyAbbreviations).toEqual(expect.arrayContaining(['S1', 'S2']));
+                expect(result.studyAbbreviations).toHaveLength(2);
+            });
+        });
     });
 
     describe('_getUserScope', () => {
@@ -625,6 +882,26 @@ describe('Application', () => {
                 .rejects.toThrow(/duplicate/i);
         });
 
+        it('throws UPDATE_FAILED when DAO update returns falsy and does not call addNewInstitutions', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('1.0');
+            app.applicationDAO.update = jest.fn().mockResolvedValue(null);
+
+            await expect(app.approveApplication({ _id: 'app1', comment: 'Approved' }, context))
+                .rejects.toThrow(ERROR.UPDATE_FAILED);
+
+            expect(mockInstitutionService.addNewInstitutions).not.toHaveBeenCalled();
+        });
+
         it('should create program before creating study when no existing program', async () => {
             const mockApplication = { 
                 _id: 'app1', 
@@ -637,13 +914,14 @@ describe('Application', () => {
             };
             const mockQuestionnaire = { program: { _id: null } };
             const mockNewProgram = { _id: 'new-program-1', name: 'Program One' };
-            
-            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
             mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
             mockOrganizationService.upsertByProgramName.mockResolvedValue(mockNewProgram);
-            app.applicationDAO.update = jest.fn().mockResolvedValue(true);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
@@ -656,8 +934,299 @@ describe('Application', () => {
                 'Program One', 'PO', 'Program Description'
             );
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, undefined, mockNewProgram
+                expect.objectContaining({
+                    _id: 'app1',
+                    studyName: 'study1',
+                    status: APPROVED,
+                    reviewComment: 'Approved',
+                }),
+                mockQuestionnaire,
+                undefined,
+                undefined,
+                undefined,
+                mockNewProgram
             );
+        });
+
+        it('sends approveQuestionNotification when there are no pending approval conditions and submitter opted into review emails', async () => {
+            const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                studyAbbreviation: 'S1',
+                applicantID: 'user-applicant-1',
+                applicant: {
+                    applicantID: 'user-applicant-1',
+                    applicantEmail: 'submitter@test.com',
+                    applicantName: 'Submitter Name'
+                },
+                programName: 'Program One',
+                programAbbreviation: 'PO',
+                programDescription: 'Program Description',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' }, accessTypes: [], study: {} };
+            const mockExistingProgram = { _id: 'program1', name: 'Program One' };
+
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
+            );
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Approved',
+                history: []
+            };
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.find.mockResolvedValueOnce([{
+                email: 'submitter@test.com',
+                notifications: [reviewNotification]
+            }]);
+
+            await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
+
+            expect(mockNotificationsService.approveQuestionNotification).toHaveBeenCalled();
+            expect(mockNotificationsService.multipleChangesApproveQuestionNotification).not.toHaveBeenCalled();
+            expect(mockNotificationsService.pendingImageDeIdentificationApproveQuestionNotification).not.toHaveBeenCalled();
+        });
+
+        it('sends pendingImageDeIdentificationApproveQuestionNotification when only pending image de-identification', async () => {
+            const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                studyAbbreviation: 'S1',
+                applicantID: 'user-applicant-1',
+                applicant: {
+                    applicantID: 'user-applicant-1',
+                    applicantEmail: 'submitter@test.com',
+                    applicantName: 'Submitter Name'
+                },
+                programName: 'Program One',
+                programAbbreviation: 'PO',
+                programDescription: 'Program Description',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' }, accessTypes: [], study: {} };
+            const mockExistingProgram = { _id: 'program1', name: 'Program One' };
+
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
+            );
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Looks good',
+                history: []
+            };
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.find.mockResolvedValueOnce([{
+                email: 'submitter@test.com',
+                notifications: [reviewNotification]
+            }]);
+
+            await app.approveApplication({
+                _id: 'app1',
+                comment: 'Looks good',
+                pendingImageDeIdentification: true
+            }, context);
+
+            expect(mockNotificationsService.approveQuestionNotification).not.toHaveBeenCalled();
+            expect(mockNotificationsService.pendingImageDeIdentificationApproveQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Submitter Name',
+                    reviewComments: 'Looks good',
+                    study: 'study1',
+                    contactEmail: mockEmailParams.conditionalSubmissionContact,
+                    submissionGuideURL: mockEmailParams.submissionGuideURL
+                })
+            );
+        });
+
+        it('sends multipleChangesApproveQuestionNotification when image de-identification and model change pendings', async () => {
+            const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                applicantID: 'user-applicant-1',
+                applicant: {
+                    applicantID: 'user-applicant-1',
+                    applicantEmail: 'submitter@test.com',
+                    applicantName: 'Submitter Name'
+                },
+                programName: 'Program One',
+                programAbbreviation: 'PO',
+                programDescription: 'Program Description',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' }, accessTypes: [], study: {} };
+            const mockExistingProgram = { _id: 'program1', name: 'Program One' };
+
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
+            );
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Approved with conditions',
+                history: []
+            };
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.find.mockResolvedValueOnce([{
+                email: 'submitter@test.com',
+                notifications: [reviewNotification]
+            }]);
+
+            await app.approveApplication({
+                _id: 'app1',
+                comment: 'Approved with conditions',
+                pendingModelChange: true,
+                pendingImageDeIdentification: true
+            }, context);
+
+            expect(mockNotificationsService.approveQuestionNotification).not.toHaveBeenCalled();
+            expect(mockNotificationsService.pendingImageDeIdentificationApproveQuestionNotification).not.toHaveBeenCalled();
+            expect(mockNotificationsService.multipleChangesApproveQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Submitter Name',
+                    reviewComments: 'Approved with conditions',
+                    study: 'study1'
+                }),
+                false,
+                true,
+                false,
+                true
+            );
+        });
+
+        it('should pass pendingImageDeIdentification to _saveApprovedStudies when provided', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                programName: 'Program One',
+                programAbbreviation: 'PO',
+                programDescription: 'Program Description',
+                questionnaireData: JSON.stringify({ program: { _id: null } })
+            };
+            const mockQuestionnaire = { program: { _id: null } };
+            const mockNewProgram = { _id: 'new-program-1', name: 'Program One' };
+
+            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockOrganizationService.upsertByProgramName.mockResolvedValue(mockNewProgram);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+
+            await app.approveApplication({
+                _id: 'app1',
+                comment: 'Approved',
+                pendingImageDeIdentification: true
+            }, context);
+
+            expect(app._saveApprovedStudies).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    _id: 'app1',
+                    studyName: 'study1',
+                    status: APPROVED,
+                    reviewComment: 'Approved',
+                }),
+                mockQuestionnaire,
+                undefined,
+                true,
+                undefined,
+                mockNewProgram
+            );
+        });
+
+        it('returns conditional and pendingConditions on the approved application when the study has pending image de-identification', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                programName: 'Existing Program',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' } };
+            const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Approved',
+                history: []
+            };
+
+            mockApprovedStudiesService.findByStudyName
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{
+                    controlledAccess: false,
+                    pendingModelChange: false,
+                    pendingImageDeIdentification: true
+                }]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+
+            const result = await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
+
+            expect(result.status).toBe(APPROVED);
+            expect(result.conditional).toBe(true);
+            expect(result.pendingConditions).toContain(ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION);
         });
 
         it('should use existing program when program exists', async () => {
@@ -670,12 +1239,13 @@ describe('Application', () => {
             };
             const mockQuestionnaire = { program: { _id: 'program1' } };
             const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
-            
-            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
             mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockResolvedValue(true);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
@@ -686,7 +1256,17 @@ describe('Application', () => {
 
             expect(mockOrganizationService.upsertByProgramName).not.toHaveBeenCalled();
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, undefined, mockExistingProgram
+                expect.objectContaining({
+                    _id: 'app1',
+                    studyName: 'study1',
+                    status: APPROVED,
+                    reviewComment: 'Approved',
+                }),
+                mockQuestionnaire,
+                undefined,
+                undefined,
+                undefined,
+                mockExistingProgram
             );
         });
 
@@ -722,12 +1302,13 @@ describe('Application', () => {
             const mockQuestionnaire = { program: { _id: 'program1' } };
             const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
             const mockDuplicateProgram = { _id: 'duplicate1', name: 'Existing Program' };
-            
-            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
             mockOrganizationService.findOneByProgramName.mockResolvedValue(mockDuplicateProgram);
-            app.applicationDAO.update = jest.fn().mockResolvedValue(true);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
@@ -737,7 +1318,17 @@ describe('Application', () => {
             await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
             expect(app._saveApprovedStudies).toHaveBeenCalledWith(
-                true, mockQuestionnaire, undefined, undefined, mockExistingProgram
+                expect.objectContaining({
+                    _id: 'app1',
+                    studyName: 'study1',
+                    status: APPROVED,
+                    reviewComment: 'Approved',
+                }),
+                mockQuestionnaire,
+                undefined,
+                undefined,
+                undefined,
+                mockExistingProgram
             );
         });
     });
@@ -768,7 +1359,7 @@ describe('Application', () => {
                 };
                 mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-                await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+                await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
                 expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
                 const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
@@ -805,7 +1396,7 @@ describe('Application', () => {
                 };
                 mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-                await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+                await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
                 expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
                 const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
@@ -830,7 +1421,7 @@ describe('Application', () => {
             };
             mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-            await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
             expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
             const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
@@ -854,7 +1445,7 @@ describe('Application', () => {
             };
             mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-            await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
             expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
             const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
@@ -877,11 +1468,148 @@ describe('Application', () => {
             };
             mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
 
-            await app._saveApprovedStudies(aApplication, questionnaire, false, false, null);
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
 
             expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
             const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
             expect(args[0]).toBeUndefined(); // applicationID should be undefined when no _id
+        });
+
+        // Application passes the trimmed form field only (no questionnaire fallback). ApprovedStudiesService.storeApprovedStudies persists studyName when abbrev is empty.
+        it('should pass empty trimmed studyAbbreviation from application to storeApprovedStudies, not questionnaire.study.name', async () => {
+            const aApplication = {
+                _id: 'app1',
+                studyName: 'Study One',
+                studyAbbreviation: '   ',
+                organization: { name: 'Org One' },
+                controlledAccess: true,
+                ORCID: '0000-0001',
+                PI: 'PI Name',
+                openAccess: false,
+                programName: 'Program One',
+            };
+            const questionnaire = {
+                study: { name: 'From Questionnaire Only', dbGaPPPHSNumber: 'phs001234' },
+            };
+            mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
+
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
+
+            const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
+            expect(args[2]).toBe('');
+        });
+
+        it('should preserve studyAbbreviation when it matches studyName (user input)', async () => {
+            const aApplication = {
+                _id: 'app1',
+                studyName: 'Short Name',
+                studyAbbreviation: 'Short Name',
+                organization: { name: 'Org One' },
+                controlledAccess: true,
+                ORCID: '0000-0001',
+                PI: 'PI Name',
+                openAccess: false,
+                programName: 'Program One',
+            };
+            const questionnaire = {
+                study: { name: 'Other questionnaire label', dbGaPPPHSNumber: 'phs001234' },
+            };
+            mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
+
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
+
+            const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
+            expect(args[2]).toBe('Short Name');
+        });
+    });
+
+    describe('inquireApplication', () => {
+        const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+
+        function makeApplication(overrides = {}) {
+            return {
+                _id: 'app1',
+                status: IN_REVIEW,
+                version: '1.0',
+                studyName: 'Default Study',
+                studyAbbreviation: 'DS',
+                questionnaireData: '{}',
+                applicant: {
+                    applicantID: 'user-applicant-1',
+                    applicantEmail: 'submitter@test.com',
+                    applicantName: 'Submitter Name'
+                },
+                history: [],
+                ...overrides
+            };
+        }
+
+        beforeEach(() => {
+            app.verifyReviewerPermission = jest.fn().mockResolvedValue();
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('1.0');
+            app.applicationDAO.update = jest.fn().mockResolvedValue({ acknowledged: true });
+            mockUserService.getUsersByNotifications = jest.fn().mockResolvedValue([]);
+            mockUserService.userCollection.find = jest.fn().mockResolvedValue([{
+                _id: 'user-applicant-1',
+                email: 'submitter@test.com',
+                notifications: [reviewNotification]
+            }]);
+            mockNotificationsService.inquireQuestionNotification = jest.fn().mockResolvedValue();
+        });
+
+        it('passes studyName and studyAbbreviation as NA when whitespace-only, null, or empty', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(makeApplication({
+                studyName: '   ',
+                studyAbbreviation: null
+            }));
+            await app.inquireApplication({ _id: 'app1', comment: 'Please clarify' }, context);
+            expect(mockNotificationsService.inquireQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Submitter Name',
+                    reviewComments: 'Please clarify',
+                    studyName: 'NA',
+                    studyAbbreviation: 'NA'
+                }),
+                {}
+            );
+        });
+
+        it('trims non-empty studyName and studyAbbreviation for the inquire email', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(makeApplication({
+                studyName: '  My Full Study  ',
+                studyAbbreviation: '  ABBR  '
+            }));
+            await app.inquireApplication({ _id: 'app1', comment: 'Need details' }, context);
+            expect(mockNotificationsService.inquireQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Submitter Name',
+                    reviewComments: 'Need details',
+                    studyName: 'My Full Study',
+                    studyAbbreviation: 'ABBR'
+                }),
+                {}
+            );
+        });
+
+        it('uses NA for study fields when the application object omits them', async () => {
+            const withoutStudy = makeApplication();
+            delete withoutStudy.studyName;
+            delete withoutStudy.studyAbbreviation;
+            app.getApplicationById = jest.fn().mockResolvedValue(withoutStudy);
+            await app.inquireApplication({ _id: 'app1', comment: 'R' }, context);
+            expect(mockNotificationsService.inquireQuestionNotification).toHaveBeenCalledWith(
+                'submitter@test.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({ studyName: 'NA', studyAbbreviation: 'NA' }),
+                {}
+            );
         });
     });
 

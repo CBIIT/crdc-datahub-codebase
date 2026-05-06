@@ -47,7 +47,7 @@ MONGO_DB_HOST=mongodb-cluster.com MONGO_DB_PORT=27017 node documentation/3-6-0/3
 
 ## Migration Details
 
-(Add migration descriptions here as they are created)
+- **backfill-approved-study-status.js** — Sets `status: "Active"` on every document in `approvedStudies` where `status` is missing or null (idempotent).
 
 ## Migration File Organization
 

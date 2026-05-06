@@ -163,7 +163,8 @@ describe('Submission Service - getSubmission', () => {
         };
 
         mockDataRecordService = {
-            countNodesBySubmissionID: jest.fn()
+            countNodesBySubmissionID: jest.fn(),
+            resetS3FileLinkedMetadataStatusToNew: jest.fn().mockResolvedValue({ modifiedCount: 0, matchedCount: 0 })
         };
 
         mockBatchService = {
@@ -327,6 +328,34 @@ describe('Submission Service - getSubmission', () => {
             // Execute and verify
             await expect(submissionService.getSubmission(mockParams, mockContext))
                 .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
+        });
+
+        it('should return dbGaPID from submission.study.dbGaPID', async () => {
+            // Use real _findByID so its precedence logic runs; DAO returns raw submission with conflicting values
+            const rawSubmission = {
+                ...mockSubmission,
+                dbGaPID: 'old',
+                study: {
+                    ...mockSubmission.study,
+                    dbGaPID: 'new'
+                }
+            };
+            mockSubmissionDAO.findFirst.mockResolvedValue(rawSubmission);
+            mockProgramDAO.findFirst.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
+            submissionService._findByID = Submission.prototype._findByID.bind(submissionService);
+            submissionService._getUserScope.mockResolvedValue(createMockUserScope(false, true));
+            submissionService._getS3DirectorySize.mockResolvedValue({ size: 1024, formatted: '1 KB' });
+            mockSubmissionDAO.update.mockResolvedValue(rawSubmission);
+            mockSubmissionDAO.findMany.mockResolvedValue([]);
+            mockDataRecordService.countNodesBySubmissionID.mockResolvedValue(5);
+            getDataCommonsDisplayNamesForSubmission.mockImplementation((s) => ({
+                ...s,
+                dataCommonsDisplayName: 'Test Commons Display Name'
+            }));
+
+            const result = await submissionService.getSubmission(mockParams, mockContext);
+
+            expect(result.dbGaPID).toBe('new');
         });
 
         it('should update data file size when it changes', async () => {
@@ -956,6 +985,7 @@ describe('Submission Service - getSubmission', () => {
                 );
                 expect(submissionService._deleteDataFiles).toHaveBeenCalled();
                 expect(result.message).toContain('1 nodes deleted');
+                expect(mockDataRecordService.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith('sub-123', deletedFiles);
             });
 
             it('should throw error when collaborator has study scope but no study access', async () => {
@@ -1465,7 +1495,8 @@ describe('Submission Service - getSubmission', () => {
                         nodeType: 'Subject',
                         deleteAll: false,
                         nodeIDs: ['node1', 'node2'],
-                        exclusiveIDs: []
+                        exclusiveIDs: [],
+                        deleteOrphanedDataFiles: false
                     }),
                     'test-queue',
                     'sub-123',
@@ -1507,7 +1538,8 @@ describe('Submission Service - getSubmission', () => {
                         nodeType: 'Subject',
                         deleteAll: true,
                         nodeIDs: [],
-                        exclusiveIDs: []
+                        exclusiveIDs: [],
+                        deleteOrphanedDataFiles: false
                     }),
                     'test-queue',
                     'sub-123',
@@ -1549,7 +1581,51 @@ describe('Submission Service - getSubmission', () => {
                         nodeType: 'Subject',
                         deleteAll: true,
                         nodeIDs: [],
-                        exclusiveIDs: ['node1']
+                        exclusiveIDs: ['node1'],
+                        deleteOrphanedDataFiles: false
+                    }),
+                    'test-queue',
+                    'sub-123',
+                    'sub-123'
+                );
+            });
+
+            it('should send SQS message with deleteOrphanedDataFiles true when provided', async () => {
+                const mockSubmission = {
+                    _id: 'sub-123',
+                    status: NEW,
+                    submitterID: 'user-123'
+                };
+
+                submissionService._findByID.mockResolvedValue(mockSubmission);
+                submissionService._getUserScope.mockResolvedValue({
+                    isOwnScope: () => true,
+                    isStudyScope: () => false,
+                    isDCScope: () => false,
+                    isAllScope: () => false
+                });
+                submissionService._requestDeleteDataRecords.mockResolvedValue({ success: true });
+                mockSubmissionDAO.update.mockResolvedValue(mockSubmission);
+
+                await submissionService.deleteDataRecords(
+                    {
+                        submissionID: 'sub-123',
+                        nodeType: 'Subject',
+                        nodeIDs: ['node1'],
+                        deleteOrphanedDataFiles: true
+                    },
+                    mockContext
+                );
+
+                expect(submissionService._requestDeleteDataRecords).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        type: expect.stringContaining('Delete Metadata'),
+                        submissionID: 'sub-123',
+                        nodeType: 'Subject',
+                        deleteAll: false,
+                        nodeIDs: ['node1'],
+                        exclusiveIDs: [],
+                        deleteOrphanedDataFiles: true
                     }),
                     'test-queue',
                     'sub-123',

@@ -17,7 +17,7 @@ const {
 } = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {getDataCommonsDisplayNamesForUser} = require("../utility/data-commons-remapper");
 const {UserScope} = require("../domain/user-scope");
-const { isAllStudy } = require("../utility/study-utility");
+const { isAllStudy, isApprovedStudyActive } = require("../utility/study-utility");
 const {COMPLETED, CANCELED, DELETED, COLLABORATOR_PERMISSIONS} = require("../constants/submission-constants");
 const SCOPES = require("../constants/permission-scope-constants");
 const UserDAO = require("../dao/user");
@@ -83,6 +83,9 @@ class UserService {
             : []
         if (approvedStudies.length === 0) {
             return new Error(ERROR.INVALID_APPROVED_STUDIES_ACCESS_REQUEST);
+        }
+        if (approvedStudies.some((s) => !isApprovedStudyActive(s))) {
+            return new Error(ERROR.INVALID_APPROVED_STUDIES_ACCESS_INACTIVE);
         }
 
         if (params?.institutionName?.trim()?.length > 100) {
@@ -472,6 +475,26 @@ class UserService {
         }
     }
 
+    /**
+     * Study IDs the user was previously assigned explicitly (excludes "All").
+     * Inactive studies may only remain on update if they appear here and in the new assignment.
+     * Users assigned "All" still reach every study including inactive via the All branch (no per-id check).
+     */
+    _previousExplicitApprovedStudyIds(prevUser) {
+        const studies = prevUser?.studies;
+        if (!studies?.length) {
+            return new Set();
+        }
+        const ids = [];
+        for (const entry of studies) {
+            const id = entry && typeof entry === "object" ? (entry._id || entry.id) : entry;
+            if (id && id !== "All") {
+                ids.push(id);
+            }
+        }
+        return new Set(ids);
+    }
+
     async updateUserInfo(prevUser, updatedUser, userID, status, role, approvedStudyIDs) {
         // add studies to user.
         const validStudies = await this._findApprovedStudies(approvedStudyIDs);
@@ -479,13 +502,25 @@ class UserService {
             if(validStudies.length !== approvedStudyIDs.length && !approvedStudyIDs?.includes("All")) {
                 throw new Error(SUBMODULE_ERROR.INVALID_NOT_APPROVED_STUDIES);
             }
-            else {
-                // ** Must store Approved studies ID only **
-                if (approvedStudyIDs?.includes("All")) {
-                    updatedUser.studies = [{_id: "All"}];
-                } else {
-                    updatedUser.studies = approvedStudyIDs.map(str => ({ _id: str }));
+            // Explicit study lists: cannot newly assign inactive studies; may keep inactive only if
+            // already explicitly assigned. Assignment "All" skips this (All still includes inactive studies).
+            if (!approvedStudyIDs?.includes("All")) {
+                const previousExplicitIds = this._previousExplicitApprovedStudyIds(prevUser);
+                for (const study of validStudies) {
+                    if (isApprovedStudyActive(study)) {
+                        continue;
+                    }
+                    const studyId = study._id || study.id;
+                    if (!previousExplicitIds.has(studyId)) {
+                        throw new Error(ERROR.INACTIVE_APPROVED_STUDY_CANNOT_ASSIGN);
+                    }
                 }
+            }
+            // ** Must store Approved studies ID only **
+            if (approvedStudyIDs?.includes("All")) {
+                updatedUser.studies = [{_id: "All"}];
+            } else {
+                updatedUser.studies = approvedStudyIDs.map(str => ({ _id: str }));
             }
         }
         else

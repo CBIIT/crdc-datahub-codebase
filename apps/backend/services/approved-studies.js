@@ -23,12 +23,17 @@ const {UserScope} = require("../domain/user-scope");
 const {replaceErrorString} = require("../utility/string-util");
 const NA_PROGRAM = "NA";
 const NA = "NA";
+const prisma = require("../prisma");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
+const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const ProgramDAO = require("../dao/program");
 const UserDAO = require("../dao/user");
 const SubmissionDAO = require("../dao/submission");
 const ApplicationDAO = require("../dao/application");
 const {PendingGPA} = require("../domain/pending-gpa");
+const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } = require("../utility/study-utility");
+const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev-helpers");
+
 class ApprovedStudiesService {
     constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
         this.approvedStudiesCollection = approvedStudiesCollection;
@@ -44,12 +49,13 @@ class ApprovedStudiesService {
         this.applicationDAO = new ApplicationDAO();
     }
 
-    async storeApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID) {
+    async storeApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification) {
         // Validate programID and fall back to NA program if needed
         const program = await this._validateProgramID(programID);
         const validatedProgramID = program?._id;
 
-        const approvedStudies = ApprovedStudies.createApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, validatedProgramID);
+        const resolvedStudyAbbreviation = defaultStudyAbbreviationToStudyName(studyAbbreviation, studyName);
+        const approvedStudies = ApprovedStudies.createApprovedStudies(applicationID, studyName, resolvedStudyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, validatedProgramID, pendingImageDeIdentification);
         const res = await this.approvedStudyDAO.create(approvedStudies);
 
         if (!res) {
@@ -60,18 +66,28 @@ class ApprovedStudiesService {
 
     /**
      * List Approved Studies by a studyName API.
+     * Case-insensitive match on studyName (Prisma Mongo `equals` + `mode: insensitive`).
      * @api
      * @param {string} studyName
-     * @returns {Promise<Object[]>} An array of ApprovedStudies
+     * @returns {Promise<Object[]>} At most one approved study (same shape as legacy aggregate: array with `_id`)
      */
-    // note: prisma does not work for insensitive search
     async findByStudyName(studyName) {
-        return await this.approvedStudiesCollection.aggregate([{"$match": {$expr: {
-            $eq: [
-                { $toLower: "$studyName" },
-                studyName?.trim()?.toLowerCase()
-            ]
-        }}}, {"$limit": 1}]);
+        const trimmed = studyName?.trim();
+        if (!trimmed) {
+            return [];
+        }
+        const row = await prisma.approvedStudy.findFirst({
+            where: {
+                studyName: {
+                    equals: trimmed,
+                    mode: "insensitive"
+                }
+            }
+        });
+        if (!row) {
+            return [];
+        }
+        return [{ ...row, _id: row.id }];
     }
 
     /**
@@ -111,7 +127,7 @@ class ApprovedStudiesService {
         }
         // find program/organization by programID reference
         if (approvedStudy?.programID) {
-            approvedStudy.program = await this.organizationService.getOrganizationByID(approvedStudy.programID);
+            approvedStudy.program = await this.organizationService.getOrganizationByID(approvedStudy.programID, true);
         }
         // find primaryContact
         if (approvedStudy?.primaryContactID)
@@ -152,10 +168,13 @@ class ApprovedStudiesService {
             offset,
             orderBy,
             sortDirection,
-            programID
+            programID,
+            statuses
         } = params;
 
-        let dataRecords = await this.approvedStudyDAO.listApprovedStudies(study, controlledAccess, dbGaPID, programID, first, offset, orderBy, sortDirection);
+        const statusesFilter = parseApprovedStudyStatusesFilterInput(statuses);
+
+        let dataRecords = await this.approvedStudyDAO.listApprovedStudies(study, controlledAccess, dbGaPID, programID, statusesFilter, first, offset, orderBy, sortDirection);
         dataRecords = dataRecords.length > 0 ? dataRecords[0] : {}
         let approvedStudyList = {total: dataRecords?.total || 0,
             studies: dataRecords?.results || []}
@@ -188,6 +207,7 @@ class ApprovedStudiesService {
             primaryContactID,
             useProgramPC,
             pendingModelChange,
+            pendingImageDeIdentification,
             isPendingGPA,
             GPAName,
             programID
@@ -206,9 +226,7 @@ class ApprovedStudiesService {
             }
         }
 
-        if (!acronym){
-            acronym = name;
-        }
+        acronym = defaultStudyAbbreviationToStudyName(acronym, name);
 
         this._validatePendingGPA(GPAName, controlledAccess, isPendingGPA);
         const pendingGPA = PendingGPA.create(GPAName, isPendingGPA);
@@ -218,7 +236,7 @@ class ApprovedStudiesService {
             dbGaPID = this._validateDbGaPID(dbGaPID);
         }
         // store the new study
-        let newStudy = await this.storeApprovedStudies(null, name, acronym, dbGaPID, null, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID);
+        let newStudy = await this.storeApprovedStudies(null, name, acronym, dbGaPID, null, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification);
         return {_id: newStudy?._id};
     }
     /**
@@ -248,9 +266,11 @@ class ApprovedStudiesService {
             primaryContactID,
             useProgramPC,
             pendingModelChange,
+            pendingImageDeIdentification,
             isPendingGPA,
             GPAName,
-            programID
+            programID,
+            status
         } = this._verifyAndFormatStudyParams(params);
         // Find the study to update
         let updateStudy = await this.approvedStudyDAO.findFirst({id: studyID});
@@ -286,6 +306,9 @@ class ApprovedStudiesService {
             }
         }
 
+        const origIsPendingGPA = updateStudy.isPendingGPA;
+        const origDbGaPID = updateStudy.dbGaPID;
+
         // update the study object
         updateStudy.studyName = name;
         updateStudy.controlledAccess = controlledAccess;
@@ -306,8 +329,12 @@ class ApprovedStudiesService {
             updateStudy.PI = PI;
         }
         const currPendingModelChange = updateStudy.pendingModelChange;
+        const currPendingImageDeIdentification = updateStudy.pendingImageDeIdentification;
         if (pendingModelChange !== undefined) {
             updateStudy.pendingModelChange = isTrue(pendingModelChange);
+        }
+        if (pendingImageDeIdentification !== undefined) {
+            updateStudy.pendingImageDeIdentification = isTrue(pendingImageDeIdentification);
         }
         updateStudy.programID = program?._id ?? null;
         if (isTrue(updateStudy.controlledAccess)) {
@@ -320,6 +347,9 @@ class ApprovedStudiesService {
         }
         if (GPAName !== undefined) {
             updateStudy.GPAName = GPAName?.trim() || "";
+        }
+        if (status !== undefined) {
+            updateStudy.status = status;
         }
         updateStudy.primaryContactID = useProgramPC ? null : primaryContactID;
         updateStudy.updatedAt = getCurrentTime();
@@ -369,20 +399,27 @@ class ApprovedStudiesService {
             }
         }
 
-        // extract the current pending GPA and dbGaPID to variables
-        const {isPendingGPA: currPendingGPA, dbGaPID: currDbGaPID} = updateStudy;
         // notify the submitter that the pending state has been cleared
         // if the notification fails, an error response will be thrown but the study will still be updated
         const pendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(updateStudy?.dbGaPID) : false;
         const pendingGPA = isTrue(updateStudy.controlledAccess) ? Boolean(updateStudy?.isPendingGPA) : false;
-        const allPendingsCleared = !isTrue(updateStudy?.pendingModelChange) && !pendingGPA && !pendingDbGaPID;
-        const wasPendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(currDbGaPID) : false;
-        const hadPendingsConditions = isTrue(currPendingModelChange) || isTrue(currPendingGPA) || wasPendingDbGaPID;
+        const allPendingsCleared = !isTrue(updateStudy?.pendingModelChange) && !pendingGPA && !pendingDbGaPID
+            && !isTrue(updateStudy?.pendingImageDeIdentification);
+        const wasPendingDbGaPID = isTrue(updateStudy.controlledAccess) ? !Boolean(origDbGaPID) : false;
+        const hadPendingsConditions = isTrue(currPendingModelChange) || isTrue(origIsPendingGPA) || wasPendingDbGaPID
+            || isTrue(currPendingImageDeIdentification);
         if (allPendingsCleared && hadPendingsConditions && updateStudy?.applicationID) {
             await this._notifyClearPendingState(updateStudy);
         }
 
-        let approvedStudy = {...updateStudy, program: program, primaryContact: primaryContact};
+        let programForGraphQL = program;
+        if (program?._id) {
+            const programWithStudiesList = await this.organizationService.getOrganizationByID(program._id, true);
+            if (programWithStudiesList) {
+                programForGraphQL = programWithStudiesList;
+            }
+        }
+        let approvedStudy = {...updateStudy, program: programForGraphQL, primaryContact: primaryContact};
         return getDataCommonsDisplayNamesForApprovedStudy(approvedStudy);
     }
     _validateDbGaPID(dbGaPID) {
@@ -505,6 +542,14 @@ class ApprovedStudiesService {
         if (!!params.ORCID && !this._validateIdentifier(params.ORCID)) {
             throw new Error(ERROR.INVALID_ORCID);
         }
+        if (params.pendingImageDeIdentification !== undefined && typeof params.pendingImageDeIdentification !== 'boolean') {
+            throw new Error(ERROR.INVALID_PENDING_IMAGE_DE_IDENTIFICATION);
+        }
+        if (params.status !== undefined && params.status !== null) {
+            params.status = parseApprovedStudyStatusInput(params.status);
+        } else {
+            params.status = undefined;
+        }
         return params;
     }
 
@@ -533,7 +578,7 @@ class ApprovedStudiesService {
         let program = null;
          // verify the provided programID is valid
         if (programID){
-            program = await this.organizationService.getOrganizationByID(programID);
+            program = await this.organizationService.getOrganizationByID(programID, false);
         }
         // if the provided programID is not valid was not provided then use the NA program as a fallback
         if (!program){
@@ -543,6 +588,9 @@ class ApprovedStudiesService {
         if (!program){
             console.error("Unable to find a program with the provided programID then unable to find the NA program as a fallback. Please verify that the NA program has been properly initialized.");
             throw new Error(ERROR.STUDY_CREATION_FAILED);
+        }
+        if (program?.status === ORGANIZATION.STATUSES.INACTIVE) {
+            throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
         }
         return program;
     }
