@@ -166,14 +166,11 @@ def extract_pv_list(property_pv_list):
     """
     extract pv list from property pv list
     """
-    pv_list = None
-    if property_pv_list and len(property_pv_list) > 0 and property_pv_list[0].get(NCIT_VALUE): 
-        pv_list = [item.get(NCIT_VALUE) for item in property_pv_list if item.get(NCIT_VALUE) is not None]
+    pv_list = []
+    if property_pv_list is None:
+        pv_list = None
     if property_pv_list and any(item.get(NCIT_VALUE) for item in property_pv_list):
         pv_list = [item[NCIT_VALUE] for item in property_pv_list if NCIT_VALUE in item and item[NCIT_VALUE] is not None]
-        contains_http = any(s for s in pv_list if isinstance(s, str) and s.startswith(("http:", "https:")))
-        if contains_http:
-            return None
         # strip white space if the value is a string
         if pv_list and isinstance(pv_list[0], str): 
             pv_list = [item.strip() for item in pv_list]
@@ -195,6 +192,7 @@ def compose_property_record(property_item):
 def compose_synonym_record(property_item, synonym_set):
     """
     compose synonym record from property item
+    Synonym terms are normalized to lowercase before deduplication and DB insert.
     """
     pv_list = property_item.get(PROPERTY_PV_NAME)
     if pv_list:
@@ -203,7 +201,10 @@ def compose_synonym_record(property_item, synonym_set):
             if synonyms:
                 for synonym in synonyms:
                         if synonym:
-                            synonym_key = (synonym, pv_item.get(NCIT_VALUE))
+                            term = str(synonym).strip().lower()
+                            if not term:
+                                continue
+                            synonym_key = (term, pv_item.get(NCIT_VALUE))
                             if synonym_key in synonym_set:
                                 continue
                             synonym_set.add(synonym_key)
