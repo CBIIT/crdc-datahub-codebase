@@ -16,7 +16,7 @@
     "lint:fix": "eslint --fix . --ignore-path .gitignore",
     "format:fix": "prettier --ignore-path .gitignore --write \"**/*.{js,jsx,ts,tsx}\"",
     "typecheck": "tsc --noEmit",
-    "prepare": "husky install",
+    "prepare": "husky install || true",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "chromatic": "chromatic --exit-zero-on-changes"

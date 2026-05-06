@@ -1,4 +1,4 @@
-name: Chromatic
+name: Relative CI
 
 permissions:
   contents: read
@@ -7,9 +7,12 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - "*.*.*"
       - "main"
-  schedule:
-    - cron: "0 9 * * 1"
+      - "master"
+  pull_request:
+    branches:
+      - "*"
 
 defaults:
   run:
@@ -19,7 +22,8 @@ env:
   HUSKY: 0
 
 jobs:
-  chromatic:
+  bundle_analysis:
+    name: Bundle Analysis
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -42,7 +46,12 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Run Chromatic
-        uses: chromaui/action@latest
+      - name: Build
+        run: npm run build
+
+      - name: Send to RelativeCI
+        uses: relative-ci/agent-action@v3
         with:
-          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          slug: "CBIIT/crdc-datahub-ui"
+          webpackStatsFile: ./apps/frontend/build/webpack-stats.json
+          key: ${{ secrets.RELATIVE_CI_KEY }}

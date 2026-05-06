@@ -1,4 +1,4 @@
-name: Jest
+name: Test
 
 on:
   workflow_dispatch:
@@ -8,7 +8,15 @@ on:
       - "main"
       - "master"
   pull_request:
-    branches: "*"
+    branches:
+      - "*"
+
+defaults:
+  run:
+    working-directory: ./apps/frontend
+
+env:
+  HUSKY: 0
 
 permissions:
   contents: read
@@ -25,21 +33,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22.x"
-          cache: "npm"
 
-      - name: Cache node modules
+      - name: Setup Cache
         uses: actions/cache@v4
         with:
-          path: node_modules
+          path: ./apps/frontend/node_modules
           key: ${{ runner.os }}-modules-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-modules-
+          restore-keys: ${{ runner.os }}-modules-
 
       - name: Install Dependencies
         run: npm install
 
-      - name: Run Jest
+      - name: Run Vitest
         run: npm run test:ci
 
       - name: Coveralls GitHub Action
         uses: coverallsapp/github-action@v2
+        continue-on-error: true
