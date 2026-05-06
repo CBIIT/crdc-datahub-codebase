@@ -105,6 +105,7 @@ describe("ApprovedStudyFilters Component", () => {
     expect(getByTestId("study-input")).toBeInTheDocument();
     expect(getByTestId("dbGaPID-input")).toBeInTheDocument();
     expect(getByTestId("accessType-select")).toBeInTheDocument();
+    expect(getByTestId("status-select")).toBeInTheDocument();
   });
 
   it("allows users to select an access type", async () => {
@@ -244,6 +245,44 @@ describe("ApprovedStudyFilters Component", () => {
     userEvent.type(studyInput, "Cancer Study");
 
     expect(studyInput).toHaveValue("Cancer Study");
+    userEvent.clear(studyInput);
+  });
+
+  it("allows users to select a status filter", async () => {
+    const mockOnChange = vi.fn();
+    const { getByTestId } = render(
+      <TestParent>
+        <ApprovedStudyFilters onChange={mockOnChange} />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("approved-study-filters")).toBeInTheDocument();
+      expect(within(getByTestId("status-select")).getByRole("button")).toBeInTheDocument();
+    });
+
+    const statusSelect = within(getByTestId("status-select")).getByRole("button");
+
+    userEvent.click(statusSelect);
+
+    await waitFor(() => {
+      const muiSelectList = within(getByTestId("status-select")).getByRole("listbox", {
+        hidden: true,
+      });
+      expect(within(muiSelectList).getByTestId("status-option-All")).toBeInTheDocument();
+      expect(within(muiSelectList).getByTestId("status-option-Active")).toBeInTheDocument();
+      expect(within(muiSelectList).getByTestId("status-option-Inactive")).toBeInTheDocument();
+    });
+
+    userEvent.click(getByTestId("status-option-Active"));
+
+    await waitFor(() => {
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "Active",
+        })
+      );
+    });
   });
 
   it("allows users to type into the dbGaPID input", async () => {
@@ -261,6 +300,7 @@ describe("ApprovedStudyFilters Component", () => {
     userEvent.type(dbGaPIDInput, "DB12345");
 
     expect(dbGaPIDInput).toHaveValue("DB12345");
+    userEvent.clear(dbGaPIDInput);
   });
 
   it("debounces input changes for study and dbGaPID fields", async () => {
@@ -281,6 +321,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "",
       accessType: "All",
       programID: "All",
+      status: "Active",
     });
 
     const studyInput = getByTestId("study-input");
@@ -307,9 +348,12 @@ describe("ApprovedStudyFilters Component", () => {
         dbGaPID: "DB1",
         accessType: "All",
         programID: "All",
+        status: "Active",
       });
     });
 
+    userEvent.clear(studyInput);
+    userEvent.clear(dbGaPIDInput);
     vi.useRealTimers();
   });
 
@@ -337,6 +381,7 @@ describe("ApprovedStudyFilters Component", () => {
         dbGaPID: "",
         accessType: "All",
         programID: "All",
+        status: "Active",
       });
     });
   });
@@ -369,6 +414,7 @@ describe("ApprovedStudyFilters Component", () => {
         dbGaPID: "",
         accessType: "All",
         programID: "All",
+        status: "Active",
       });
     });
 
@@ -376,6 +422,7 @@ describe("ApprovedStudyFilters Component", () => {
     vi.advanceTimersByTime(500);
     expect(mockOnChange).toHaveBeenCalledTimes(2);
 
+    userEvent.clear(studyInput);
     vi.useRealTimers();
   });
 
@@ -402,6 +449,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "DB123",
       accessType: "All",
       programID: "All",
+      status: "Active",
     });
   });
 
@@ -429,6 +477,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "",
       accessType: "Controlled",
       programID: "All",
+      status: "Active",
     });
   });
 
@@ -459,6 +508,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "",
       accessType: "All",
       programID: "All",
+      status: "Active",
     });
   });
 
@@ -483,6 +533,7 @@ describe("ApprovedStudyFilters Component", () => {
       dbGaPID: "",
       accessType: "All",
       programID: "All",
+      status: "Active",
     });
   });
 });

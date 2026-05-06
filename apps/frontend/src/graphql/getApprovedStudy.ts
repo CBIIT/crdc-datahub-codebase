@@ -30,8 +30,10 @@ const ExtendedApprovedStudyFragment = gql`
     }
     useProgramPC
     pendingModelChange
+    pendingImageDeIdentification
     GPAName
     isPendingGPA
+    status
   }
 `;
 
@@ -84,7 +86,9 @@ export type Response<PartialResponse = false> = {
         | "createdAt"
         | "useProgramPC"
         | "pendingModelChange"
+        | "pendingImageDeIdentification"
         | "GPAName"
+        | "status"
       > & {
         primaryContact: Pick<User, "_id" | "firstName" | "lastName">;
         program: Pick<Organization, "_id" | "name" | "conciergeID" | "conciergeName">;

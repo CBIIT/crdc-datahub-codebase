@@ -230,6 +230,10 @@ describe("Basic Functionality", () => {
 });
 
 describe("Implementation Requirements", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("should render a button with the correct text", () => {
     const { getByText } = render(<ExportTemplateButton />, {
       wrapper: ({ children }) => (
@@ -327,6 +331,27 @@ describe("Implementation Requirements", () => {
         expect.stringContaining("CRDC_Submission_Request_Template_v3.5_"),
         "application/vnd.ms-excel"
       );
+    });
+  });
+
+  it("should only fetch active programs", async () => {
+    const strictListOrgsMock: MockedResponse<ListOrgsResp, ListOrgsInput> = {
+      ...listOrgsMock,
+      variableMatcher: (variables) => variables.status === "Active",
+    };
+
+    const { getByTestId } = render(<ExportTemplateButton />, {
+      wrapper: ({ children }) => (
+        <MockParent mocks={[institutionsMock, formVersionMock, strictListOrgsMock]}>
+          {children}
+        </MockParent>
+      ),
+    });
+
+    userEvent.click(getByTestId("export-application-excel-template-button"));
+
+    await waitFor(() => {
+      expect(mockDownloadBlob).toHaveBeenCalledTimes(1);
     });
   });
 });

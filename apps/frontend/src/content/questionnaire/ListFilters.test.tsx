@@ -414,4 +414,20 @@ describe("ListFilters Component", () => {
 
     expect(parseInt(styles.zIndex, 10)).toBeGreaterThan(250);
   });
+
+  it("displays 'All' when no statuses are selected", async () => {
+    const { getByTestId } = render(
+      <TestParent>
+        <ListFilters applicationData={mockApplicationData} />
+      </TestParent>
+    );
+
+    const clearButton = getByTestId("status-clear-button");
+    userEvent.click(clearButton);
+
+    await waitFor(() => {
+      const statusSelect = within(getByTestId("application-status-filter")).getByRole("button");
+      expect(statusSelect).toHaveTextContent("All");
+    });
+  });
 });

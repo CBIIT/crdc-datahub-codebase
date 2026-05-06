@@ -4,6 +4,9 @@ import React, { FC } from "react";
 
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
+import { studyFactory } from "@/factories/application/StudyFactory";
+import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
+import { userFactory } from "@/factories/auth/UserFactory";
 
 import {
   APPROVE_APP,
@@ -16,15 +19,24 @@ import {
   REOPEN_APP,
   RejectAppResp,
   ReopenAppResp,
+  GET_APPLICATION_FORM_VERSION,
   SAVE_APP,
   SaveAppInput,
   SaveAppResp,
+  LastAppResp,
+  GetApplicationFormVersionResp,
 } from "../../graphql";
 import { query as GET_APP, GetAppInput } from "../../graphql/getApplication";
 import { query as GET_LAST_APP } from "../../graphql/getMyLastApplication";
 import { act, render, renderHook, waitFor } from "../../test-utils";
 
+import { Context as AuthContext, ContextState as AuthContextState } from "./AuthContext";
 import { Status as FormStatus, FormProvider, useFormContext } from "./FormContext";
+import {
+  Context as OrganizationListContext,
+  ContextState as OrganizationListContextState,
+  Status as OrgStatus,
+} from "./OrganizationListContext";
 
 const baseApplication: Omit<Application, "questionnaireData"> = applicationFactory.build({
   questionnaireData: undefined,
@@ -62,9 +74,28 @@ const TestChild: FC = () => {
   );
 };
 
+const baseOrgCtxState: OrganizationListContextState = {
+  status: OrgStatus.LOADED,
+  data: [],
+  activeOrganizations: [],
+};
+
+const baseAuthCtxState: AuthContextState = authCtxStateFactory.build({
+  user: userFactory.build({
+    _id: "test-user-id",
+    firstName: "Test",
+    lastName: "User",
+    email: "test.user@nih.gov",
+  }),
+});
+
 const TestParent: FC<Props> = ({ mocks, appId, children }: Props) => (
   <MockedProvider mocks={mocks}>
-    <FormProvider id={appId}>{children ?? <TestChild />}</FormProvider>
+    <OrganizationListContext.Provider value={baseOrgCtxState}>
+      <AuthContext.Provider value={baseAuthCtxState}>
+        <FormProvider id={appId}>{children ?? <TestChild />}</FormProvider>
+      </AuthContext.Provider>
+    </OrganizationListContext.Provider>
   </MockedProvider>
 );
 
@@ -171,6 +202,77 @@ describe("FormContext > FormProvider Tests", () => {
     expect(getByTestId("pi-last-name").textContent).toEqual("Fetched");
   });
 
+  it("should initialize local form data for the legacy 'new' route", async () => {
+    const mocks = [
+      {
+        request: {
+          query: GET_LAST_APP,
+        },
+        result: {
+          data: {
+            getMyLastApplication: null,
+          },
+        },
+      },
+      {
+        request: {
+          query: GET_APPLICATION_FORM_VERSION,
+        },
+        result: {
+          data: {
+            getApplicationFormVersion: {
+              _id: "mock-form-version-id",
+              version: "1.0.0",
+            },
+          },
+        },
+      },
+    ];
+
+    const { findByTestId, getByTestId } = render(<TestParent mocks={mocks} appId="new" />);
+
+    await findByTestId("status");
+
+    expect(getByTestId("status").textContent).toEqual(FormStatus.LOADED);
+    expect(getByTestId("app-id").textContent).toEqual("new");
+  });
+
+  it("should initialize local form data for 'new' when form version request fails", async () => {
+    const mocks = [
+      {
+        request: {
+          query: GET_LAST_APP,
+        },
+        result: {
+          data: {
+            getMyLastApplication: null,
+          },
+        },
+      },
+      {
+        request: {
+          query: GET_APPLICATION_FORM_VERSION,
+        },
+        error: new Error("Test form version network error"),
+      },
+    ];
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={mocks} appId="new">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    expect(result.current.data?._id).toEqual("new");
+    expect(result.current.data?.version).toEqual("");
+  });
+
   it("should autofill PI details if Section A is not started", async () => {
     const mocks = [
       {
@@ -268,6 +370,119 @@ describe("FormContext > FormProvider Tests", () => {
     expect(getByTestId("pi-first-name").textContent).toEqual("");
     expect(getByTestId("pi-last-name").textContent).toEqual("");
   });
+
+  it("should skip refetch when provider already has loaded data for the new id (import flow)", async () => {
+    const persistedId = "PERSISTED-UUID-123";
+
+    const mocks = [
+      // getMyLastApplication called during 'new' initialization
+      {
+        request: {
+          query: GET_LAST_APP,
+        },
+        result: {
+          data: {
+            getMyLastApplication: null,
+          },
+        },
+      },
+      // getApplicationFormVersion for 'new'
+      {
+        request: {
+          query: GET_APPLICATION_FORM_VERSION,
+        },
+        result: {
+          data: {
+            getApplicationFormVersion: {
+              _id: "mock-form-version-id",
+              version: "1.2.3",
+            },
+          },
+        },
+      },
+      // saveApp mutation that returns the newly persisted _id
+      {
+        request: {
+          query: SAVE_APP,
+        },
+        // variableMatcher to accept any variables for the save mutation
+        variableMatcher: () => true,
+        result: {
+          data: {
+            saveApplication: {
+              _id: persistedId,
+              status: "In Progress",
+              programName: "",
+              studyAbbreviation: "",
+              updatedAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+              submittedDate: null,
+              history: [],
+              newInstitutions: [],
+            },
+          },
+        },
+      },
+    ];
+
+    // Capture the context API so we can call setData
+    let api: ReturnType<typeof useFormContext> | null = null;
+    const Capturer: FC = () => {
+      api = useFormContext();
+      return null;
+    };
+
+    const { findByTestId, rerender } = render(
+      <MockedProvider mocks={mocks}>
+        <OrganizationListContext.Provider value={baseOrgCtxState}>
+          <AuthContext.Provider value={baseAuthCtxState}>
+            <FormProvider id="new">
+              <TestChild />
+              <Capturer />
+            </FormProvider>
+          </AuthContext.Provider>
+        </OrganizationListContext.Provider>
+      </MockedProvider>
+    );
+
+    // Wait for initial 'new' to load
+    await findByTestId("status");
+    // Ensure initial state is loaded and id is 'new'
+    expect(document.querySelector("[data-testid=app-id]")?.textContent).toEqual("new");
+
+    // Call setData which will trigger saveApp and update internal state._id
+    await act(async () => {
+      const parsedForm: QuestionnaireData = questionnaireDataFactory.build();
+      const res = await api.setData(parsedForm, { skipSave: false, runMigrations: false });
+      expect(res.status).toEqual("success");
+    });
+
+    // Confirm the provider state was updated with the persisted id
+    expect(api.data._id).toEqual(persistedId);
+
+    // Rerender the provider with the new id to simulate the route change after save
+    rerender(
+      <MockedProvider mocks={mocks}>
+        <OrganizationListContext.Provider value={baseOrgCtxState}>
+          <AuthContext.Provider value={baseAuthCtxState}>
+            <FormProvider id={persistedId}>
+              <TestChild />
+              <Capturer />
+            </FormProvider>
+          </AuthContext.Provider>
+        </OrganizationListContext.Provider>
+      </MockedProvider>
+    );
+
+    // If FormProvider attempted to refetch GET_APP for the persisted id we would
+    // have needed a GET_APP mock for persistedId; since we did not provide one,
+    // the context should remain LOADED and retain the persisted id instead of
+    // transitioning to an error state.
+    await waitFor(() => {
+      expect(api.status).toEqual(FormStatus.LOADED);
+      expect(api.data._id).toEqual(persistedId);
+    });
+  });
 });
 
 describe("approveForm Tests", () => {
@@ -322,7 +537,11 @@ describe("approveForm Tests", () => {
 
     await act(async () => {
       const approveResp = await result.current.approveForm(
-        { reviewComment: "mock approval comment", pendingModelChange: false },
+        {
+          reviewComment: "mock approval comment",
+          pendingModelChange: false,
+          pendingImageDeIdentification: false,
+        },
         true
       );
       expect(approveResp).toEqual({
@@ -364,7 +583,7 @@ describe("approveForm Tests", () => {
 
     await act(async () => {
       const approveResp = await result.current.approveForm(
-        { reviewComment: "", pendingModelChange: false },
+        { reviewComment: "", pendingModelChange: false, pendingImageDeIdentification: false },
         true
       );
       expect(approveResp).toEqual({
@@ -398,7 +617,7 @@ describe("approveForm Tests", () => {
 
     await act(async () => {
       const approveResp = await result.current.approveForm(
-        { reviewComment: "", pendingModelChange: false },
+        { reviewComment: "", pendingModelChange: false, pendingImageDeIdentification: false },
         true
       );
       expect(approveResp).toEqual({
@@ -821,6 +1040,72 @@ describe("saveApp Tests", () => {
     expect(result.current.data?.status).toEqual("New");
   });
 
+  it("should replace the temporary id after saving a new form", async () => {
+    const createdId = "generated-form-id";
+
+    const mockGetLastApp: MockedResponse<LastAppResp> = {
+      request: {
+        query: GET_LAST_APP,
+      },
+      result: {
+        data: {
+          getMyLastApplication: null,
+        },
+      },
+    };
+
+    const mockGetFormVersion: MockedResponse<GetApplicationFormVersionResp> = {
+      request: {
+        query: GET_APPLICATION_FORM_VERSION,
+      },
+      result: {
+        data: {
+          getApplicationFormVersion: {
+            _id: "mock-form-version-id",
+            version: "1.0.0",
+          },
+        },
+      },
+    };
+
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          saveApplication: applicationFactory.build({
+            _id: createdId,
+            status: "In Progress",
+          }),
+        },
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[mockGetLastApp, mockGetFormVersion, mockSave]} appId="new">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(questionnaireDataFactory.build());
+      expect(saveResp).toEqual({
+        status: "success",
+        id: createdId,
+      });
+    });
+
+    expect(result.current.data?._id).toEqual(createdId);
+  });
+
   it("should propagate API errors from the saveApplication response", async () => {
     const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
 
@@ -931,5 +1216,316 @@ describe("saveApp Tests", () => {
     });
 
     expect(mockMatcher).not.toHaveBeenCalled();
+  });
+
+  it("should send studyAbbreviation as provided without fallback to studyName", async () => {
+    const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
+    const mockVariableMatcher = vi.fn().mockImplementation(() => true);
+
+    const mockGetApp: MockedResponse<GetAppResp, GetAppInput> = {
+      request: {
+        query: GET_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getApplication: {
+            ...applicationFactory.build({
+              _id: appId,
+            }),
+            questionnaireData: JSON.stringify(
+              questionnaireDataFactory.build({
+                study: studyFactory.build({
+                  name: "My Study Name",
+                  abbreviation: "MSN",
+                }),
+                sections: [{ name: "A", status: "In Progress" }],
+              })
+            ),
+          },
+        },
+      },
+    };
+
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: mockVariableMatcher,
+      result: {
+        data: {
+          saveApplication: applicationFactory.build({
+            _id: appId,
+            studyAbbreviation: "MSN",
+          }),
+        },
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[mockGetApp, mockSave]} appId={appId}>
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(
+        questionnaireDataFactory.build({
+          study: studyFactory.build({
+            name: "My Study Name",
+            abbreviation: "MSN",
+          }),
+        })
+      );
+      expect(saveResp.status).toEqual("success");
+    });
+
+    expect(mockVariableMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        application: expect.objectContaining({
+          studyAbbreviation: "MSN",
+        }),
+      })
+    );
+  });
+
+  it("should send studyAbbreviation as undefined when not provided in the form", async () => {
+    const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
+    const mockVariableMatcher = vi.fn().mockImplementation(() => true);
+
+    const mockGetApp: MockedResponse<GetAppResp, GetAppInput> = {
+      request: {
+        query: GET_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getApplication: {
+            ...applicationFactory.build({
+              _id: appId,
+            }),
+            questionnaireData: JSON.stringify(
+              questionnaireDataFactory.build({
+                study: studyFactory.build({
+                  name: "My Study Name",
+                  abbreviation: undefined,
+                }),
+                sections: [{ name: "A", status: "In Progress" }],
+              })
+            ),
+          },
+        },
+      },
+    };
+
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: mockVariableMatcher,
+      result: {
+        data: {
+          saveApplication: applicationFactory.build({
+            _id: appId,
+            studyAbbreviation: null, // Backend receives null for undefined
+          }),
+        },
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[mockGetApp, mockSave]} appId={appId}>
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(
+        questionnaireDataFactory.build({
+          study: studyFactory.build({
+            name: "My Study Name",
+            abbreviation: undefined,
+          }),
+        })
+      );
+      expect(saveResp.status).toEqual("success");
+    });
+
+    // Verify that studyAbbreviation is sent as undefined (not fallback to studyName)
+    expect(mockVariableMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        application: expect.objectContaining({
+          studyAbbreviation: undefined,
+        }),
+      })
+    );
+  });
+
+  it("should send studyAbbreviation as empty string when explicitly set to empty", async () => {
+    const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
+    const mockVariableMatcher = vi.fn().mockImplementation(() => true);
+
+    const mockGetApp: MockedResponse<GetAppResp, GetAppInput> = {
+      request: {
+        query: GET_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getApplication: {
+            ...applicationFactory.build({
+              _id: appId,
+            }),
+            questionnaireData: JSON.stringify(
+              questionnaireDataFactory.build({
+                study: studyFactory.build({
+                  name: "My Study Name",
+                  abbreviation: "",
+                }),
+                sections: [{ name: "A", status: "In Progress" }],
+              })
+            ),
+          },
+        },
+      },
+    };
+
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: mockVariableMatcher,
+      result: {
+        data: {
+          saveApplication: applicationFactory.build({
+            _id: appId,
+            studyAbbreviation: "",
+          }),
+        },
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[mockGetApp, mockSave]} appId={appId}>
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(
+        questionnaireDataFactory.build({
+          study: studyFactory.build({
+            name: "My Study Name",
+            abbreviation: "",
+          }),
+        })
+      );
+      expect(saveResp.status).toEqual("success");
+    });
+
+    // Verify that studyAbbreviation is sent as empty string (not fallback to studyName)
+    expect(mockVariableMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        application: expect.objectContaining({
+          studyAbbreviation: "",
+        }),
+      })
+    );
+  });
+
+  it("should send studyAbbreviation as null when explicitly set to null", async () => {
+    const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
+    const mockVariableMatcher = vi.fn().mockImplementation(() => true);
+
+    const mockGetApp: MockedResponse<GetAppResp, GetAppInput> = {
+      request: {
+        query: GET_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getApplication: {
+            ...applicationFactory.build({
+              _id: appId,
+            }),
+            questionnaireData: JSON.stringify(
+              questionnaireDataFactory.build({
+                study: studyFactory.build({
+                  name: "My Study Name",
+                  abbreviation: null,
+                }),
+                sections: [{ name: "A", status: "In Progress" }],
+              })
+            ),
+          },
+        },
+      },
+    };
+
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: mockVariableMatcher,
+      result: {
+        data: {
+          saveApplication: applicationFactory.build({
+            _id: appId,
+            studyAbbreviation: null,
+          }),
+        },
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[mockGetApp, mockSave]} appId={appId}>
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(
+        questionnaireDataFactory.build({
+          study: studyFactory.build({
+            name: "My Study Name",
+            abbreviation: null,
+          }),
+        })
+      );
+      expect(saveResp.status).toEqual("success");
+    });
+
+    // Verify that studyAbbreviation is sent as null (not fallback to studyName)
+    expect(mockVariableMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        application: expect.objectContaining({
+          studyAbbreviation: null,
+        }),
+      })
+    );
   });
 });

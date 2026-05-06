@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { FC } from "react";
 import { axe } from "vitest-axe";
 
+import { approvedStudyFactory } from "@/factories/approved-study/ApprovedStudyFactory";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
@@ -45,8 +46,11 @@ const baseSubmissions = submissionFactory.build(10, (idx) => ({
     name: `Organization ${idx}`,
     abbreviation: `ORG-${idx}`,
   }),
-  studyAbbreviation: `STUDY-${idx}`,
-  dbGaPID: `phs00${idx}`,
+  study: approvedStudyFactory.pick(["studyName", "studyAbbreviation", "dbGaPID"]).build({
+    studyName: `Study ${idx}`,
+    studyAbbreviation: `STUDY-${idx}`,
+    dbGaPID: `phs00${idx}`,
+  }),
   status: "In Progress",
   conciergeName: `Concierge ${idx}`,
   nodeCount: 100 + idx,
@@ -145,9 +149,9 @@ const defaultColumns: Column<Submission>[] = [
   },
   {
     label: "dbGaP ID",
-    renderValue: (a) => a.dbGaPID,
-    field: "dbGaPID",
-    exportValue: (a) => ({ label: "dbGaP ID", value: a.dbGaPID }),
+    renderValue: (a) => a.study?.dbGaPID,
+    fieldKey: "study.dbGaPID",
+    exportValue: (a) => ({ label: "dbGaP ID", value: a.study?.dbGaPID }),
   },
   {
     label: "Status",

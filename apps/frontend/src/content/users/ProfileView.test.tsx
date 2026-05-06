@@ -246,4 +246,78 @@ describe("Implementation Requirements", () => {
       expect(await findByText("Beta Oncology Institute")).toBeInTheDocument();
     });
   });
+
+  it("should only display active institutions", async () => {
+    const activeInstitutionsMock: MockedResponse<ListInstitutionsResp, ListInstitutionsInput> = {
+      request: {
+        query: LIST_INSTITUTIONS,
+      },
+      variableMatcher: (variables) => variables.status === "Active",
+      result: {
+        data: {
+          listInstitutions: {
+            total: 2,
+            institutions: [
+              institutionFactory.build({ name: "Active Institute A", status: "Active" }),
+              institutionFactory.build({ name: "Active Institute B", status: "Active" }),
+            ],
+          },
+        },
+      },
+      maxUsageCount: Infinity,
+    };
+
+    const { findByLabelText, findAllByRole } = render(
+      <TestParent
+        mocks={[
+          getUserMock,
+          activeInstitutionsMock,
+          listApprovedStudiesMock,
+          retrievePBACDefaults,
+          getTooltipsMock,
+        ]}
+      >
+        <ProfileView _id="test-id" viewType="users" />
+      </TestParent>
+    );
+
+    const input = await findByLabelText(/Institution/i);
+    userEvent.click(input);
+    userEvent.clear(input);
+    userEvent.type(input, "a");
+    userEvent.clear(input);
+
+    const options = await findAllByRole("option");
+    expect(options).toHaveLength(2);
+  });
+
+  it("should only fetch active approved studies", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const activeStudiesMock: MockedResponse<ListApprovedStudiesResp, ListApprovedStudiesInput> = {
+      request: {
+        query: LIST_APPROVED_STUDIES,
+      },
+      variableMatcher: mockMatcher,
+      result: {
+        data: {
+          listApprovedStudies: {
+            total: 0,
+            studies: [],
+          },
+        },
+      },
+    };
+
+    render(
+      <TestParent
+        mocks={[getUserMock, activeStudiesMock, listInstitutionsMock, retrievePBACDefaults]}
+      >
+        <ProfileView _id="test-id" viewType="users" />
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["Active"] }));
+    });
+  });
 });

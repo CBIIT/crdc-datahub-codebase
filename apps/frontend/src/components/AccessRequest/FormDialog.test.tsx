@@ -689,4 +689,30 @@ describe("Implementation Requirements", () => {
       });
     });
   });
+
+  it("should only fetch active approved studies", async () => {
+    const mockMatcher = vi.fn().mockImplementation(() => true);
+    const activeStudiesMock: MockedResponse<ListApprovedStudiesResp, ListApprovedStudiesInput> = {
+      request: {
+        query: LIST_APPROVED_STUDIES,
+      },
+      variableMatcher: mockMatcher,
+      result: {
+        data: {
+          listApprovedStudies: {
+            total: 0,
+            studies: [],
+          },
+        },
+      },
+    };
+
+    render(<FormDialog open onClose={vi.fn()} />, {
+      wrapper: ({ children }) => <MockParent mocks={[activeStudiesMock]}>{children}</MockParent>,
+    });
+
+    await waitFor(() => {
+      expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["Active"] }));
+    });
+  });
 });

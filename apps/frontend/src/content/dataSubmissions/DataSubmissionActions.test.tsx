@@ -211,6 +211,49 @@ describe("Implementation Requirements - Submit", () => {
   );
 });
 
+describe("Implementation Requirements - Admin Submit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should call onAction with 'Admin Submit' when admin override is confirmed", async () => {
+    shouldEnableSubmitMock.mockReturnValue({
+      enabled: true,
+      isAdminOverride: true,
+      tooltip: "mock-tooltip-text",
+    });
+
+    const onAction = vi.fn(() => new Promise<void>(() => {}));
+
+    const { getByRole } = render(
+      <TestParent
+        user={{
+          _id: "admin-user",
+          role: "Admin",
+          permissions: ["data_submission:view", "data_submission:admin_submit"],
+        }}
+        submission={{
+          _id: "submission-id",
+          status: "In Progress",
+          submitterID: "submission-owner",
+        }}
+      >
+        <DataSubmissionActions onAction={onAction} />
+      </TestParent>
+    );
+
+    userEvent.click(getByRole("button", { name: "Admin Submit" }));
+    userEvent.type(
+      getByRole("textbox", { name: "Admin override justification" }),
+      "some reason for override"
+    );
+    userEvent.click(getByRole("button", { name: "Confirm to Submit" }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledWith("Admin Submit", "some reason for override");
+  });
+});
+
 describe("Implementation Requirements - Withdraw", () => {
   beforeEach(() => {
     vi.clearAllMocks();

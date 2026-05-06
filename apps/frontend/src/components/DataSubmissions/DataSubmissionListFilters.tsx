@@ -443,9 +443,17 @@ const DataSubmissionListFilters = ({
                       field.onChange(e);
                       handleFilterChange("status");
                     }}
-                    renderValue={(selected: string[]) =>
-                      selected?.length > 1 ? `${selected.length} statuses selected` : selected
-                    }
+                    displayEmpty
+                    renderValue={(selected: string[]) => {
+                      if (!selected?.length) {
+                        return "All";
+                      }
+                      if (selected.length > 1) {
+                        return `${selected.length} statuses selected`;
+                      }
+
+                      return selected;
+                    }}
                     multiple
                     endAdornment={
                       field.value?.length > 0 && (

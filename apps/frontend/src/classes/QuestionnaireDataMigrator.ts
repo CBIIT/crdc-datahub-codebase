@@ -13,6 +13,7 @@ type MigratorDependencies = {
   getInstitutions: LazyQueryExecFunction<ListInstitutionsResp, unknown>;
   newInstitutions: Array<{ id: string; name: string }>;
   getLastApplication: LazyQueryExecFunction<LastAppResp, unknown>;
+  activePrograms: Pick<Organization, "_id">[];
 };
 
 /**
@@ -44,14 +45,20 @@ export class QuestionnaireDataMigrator {
   /**
    * Executes all migration steps in a predefined order.
    *
+   * @param opts Optional configuration for the migration run.
+   * @param opts.skipLastApp If true, skips the _migrateLastApp step.
    * @returns The fully migrated questionnaireData object.
    */
-  public async run(): Promise<QuestionnaireData> {
-    await this._migrateLastApp();
+  public async run(opts?: { skipLastApp?: boolean }): Promise<QuestionnaireData> {
+    if (!opts?.skipLastApp) {
+      await this._migrateLastApp();
+    }
     await this._migrateExistingInstitutions();
     await this._migrateInstitutionsToID();
     await this._migrateInstitutionNames();
     await this._migrateGPA();
+    await this._migrateRepositoryOtherDataTypes();
+    await this._migrateInactiveProgram();
 
     return this.data;
   }
@@ -203,6 +210,59 @@ export class QuestionnaireDataMigrator {
         contact.institutionID = apiData._id;
       }
     });
+  }
+
+  /**
+   * Migrates repositories that have otherDataTypesSubmitted values
+   * but are missing "Other" in their dataTypesSubmitted array.
+   *
+   * This ensures the "Other" option is selected so the otherDataTypesSubmitted
+   * field remains visible and editable.
+   */
+  private async _migrateRepositoryOtherDataTypes(): Promise<void> {
+    const repositories = this.data?.study?.repositories;
+    if (!repositories?.length) {
+      return;
+    }
+
+    repositories.forEach((repo) => {
+      const hasOtherText =
+        typeof repo.otherDataTypesSubmitted === "string" &&
+        repo.otherDataTypesSubmitted?.trim()?.length > 0;
+      const hasOtherSelected = repo.dataTypesSubmitted?.includes("Other");
+
+      if (hasOtherText && !hasOtherSelected) {
+        Logger.info("_migrateRepositoryOtherDataTypes: Adding 'Other' to dataTypesSubmitted", {
+          ...repo,
+        });
+        repo.dataTypesSubmitted = [...(repo.dataTypesSubmitted || []), "Other"];
+      }
+    });
+  }
+
+  /**
+   * Migrates an inactive program to "Other", preserving the old program's data.
+   */
+  private async _migrateInactiveProgram(): Promise<void> {
+    const { program } = this.data;
+    const { activePrograms } = this.dependencies;
+
+    if (!program?._id || !validateUUID(program._id)) {
+      return;
+    }
+
+    const isActive = activePrograms.some((p) => p._id === program._id);
+    if (isActive) {
+      return;
+    }
+
+    Logger.info("_migrateInactiveProgram: Migrating inactive program to Other", { ...program });
+    this.data.program = {
+      _id: "Other",
+      name: program.name || "",
+      abbreviation: program.abbreviation || "",
+      description: program.description || "",
+    };
   }
 
   /**

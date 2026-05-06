@@ -127,6 +127,11 @@ const columns: Column<ApprovedStudy>[] = [
           tooltip: "Data submission is Pending on Data Model Update.",
         },
         {
+          check: a.pendingImageDeIdentification,
+          tooltip:
+            "Pending submission of the risk mitigation document and the image de-identification protocol.",
+        },
+        {
           check: a.isPendingGPA,
           tooltip: "Data submission is Pending on GPA info.",
         },
@@ -204,6 +209,11 @@ const columns: Column<ApprovedStudy>[] = [
     fieldKey: "primaryContact.firstName",
   },
   {
+    label: "Status",
+    renderValue: ({ status }) => status || "",
+    fieldKey: "status",
+  },
+  {
     label: "Created Date",
     renderValue: (a) =>
       a.createdAt ? (
@@ -249,6 +259,7 @@ const ListView = () => {
     programID: "All",
     dbGaPID: "",
     accessType: "All",
+    status: "Active",
   });
 
   const tableRef = useRef<TableMethods>(null);
@@ -281,6 +292,10 @@ const ListView = () => {
           controlledAccess: filtersRef.current.accessType,
           study: filtersRef.current.study,
           programID: filtersRef.current.programID,
+          statuses:
+            filtersRef.current.status && filtersRef.current.status !== "All"
+              ? [filtersRef.current.status]
+              : [],
         },
         context: { clientName: "backend" },
         fetchPolicy: "no-cache",

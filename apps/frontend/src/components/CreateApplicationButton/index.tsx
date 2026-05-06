@@ -1,11 +1,8 @@
-import { useMutation } from "@apollo/client";
 import { LoadingButton } from "@mui/lab";
 import { ButtonProps, styled } from "@mui/material";
 import { FC, memo, useCallback, useState } from "react";
 
 import { hasPermission } from "../../config/AuthPermissions";
-import { SaveAppResp, SaveAppInput, SAVE_APP } from "../../graphql";
-import { Logger } from "../../utils";
 import { useAuthContext } from "../Contexts/AuthContext";
 import BaseDialog from "../DeleteDialog";
 import BaseBodyText from "../StyledDialogComponents/StyledBodyText";
@@ -28,11 +25,12 @@ const StyledBodyText = styled(BaseBodyText)({
 
 export type CreateApplicationButtonProps = {
   /**
-   * An optional callback function that is called when the Submission Request is created.
+   * An optional callback function that is called when the user confirms they want
+   * to start a new Submission Request form.
    *
-   * If successful, the ID of the created Submission Request is passed as an argument.
+   * The temporary form ID ("new") is passed as an argument.
    */
-  onCreate?: (_id: string | null) => void;
+  onCreate?: (_id: string) => void;
 } & Omit<ButtonProps, "onClick" | "loading" | "type">;
 
 /**
@@ -47,50 +45,12 @@ const CreateApplicationButton: FC<CreateApplicationButtonProps> = ({
 }) => {
   const { user } = useAuthContext();
 
-  const [creating, setCreating] = useState<boolean>(false);
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
 
-  const [saveApp] = useMutation<SaveAppResp, SaveAppInput>(SAVE_APP, {
-    context: { clientName: "backend" },
-    fetchPolicy: "no-cache",
-  });
-
-  const handleCreate = useCallback(async () => {
-    try {
-      setCreating(true);
-      const { data, errors } = await saveApp({
-        variables: {
-          application: {
-            _id: undefined,
-            studyName: "",
-            studyAbbreviation: "",
-            questionnaireData: "{}",
-            controlledAccess: false,
-            openAccess: false,
-            ORCID: "",
-            PI: "",
-            programName: "",
-            programAbbreviation: "",
-            programDescription: "",
-            newInstitutions: [],
-            GPAName: "",
-          },
-          status: "New",
-        },
-      });
-
-      if (!data?.saveApplication?._id || errors) {
-        throw new Error(errors?.[0]?.message || "Failed to create submission request");
-      }
-
-      onCreate?.(data.saveApplication._id);
-    } catch (error) {
-      Logger.error("Error creating submission request", error);
-      onCreate?.(null);
-    } finally {
-      setCreating(false);
-    }
-  }, [onCreate, saveApp, setCreating]);
+  const handleCreate = useCallback(() => {
+    onCreate?.("new");
+    setDialogOpen(false);
+  }, [onCreate]);
 
   const handleClick = useCallback(() => {
     setDialogOpen(true);
@@ -106,7 +66,6 @@ const CreateApplicationButton: FC<CreateApplicationButtonProps> = ({
         type="button"
         data-testid="create-application-button"
         onClick={handleClick}
-        loading={creating}
         {...buttonProps}
       >
         Start a Submission Request
@@ -129,7 +88,6 @@ const CreateApplicationButton: FC<CreateApplicationButtonProps> = ({
         confirmText="I Read and Accept"
         onConfirm={handleCreate}
         confirmButtonProps={{
-          disabled: creating,
           color: "success",
           sx: {
             "&.MuiButton-root": {

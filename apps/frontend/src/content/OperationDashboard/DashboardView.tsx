@@ -165,6 +165,7 @@ const DashboardView: FC<DashboardViewProps> = ({
             inputProps={{ id: "dashboard-type" }}
           >
             <MenuItem value="Submission">Data Submissions Metrics</MenuItem>
+            <MenuItem value="SubmissionRequest">Submission Requests Metrics</MenuItem>
           </StyledSelect>
         </StyledFormControl>
       </StyledViewHeader>

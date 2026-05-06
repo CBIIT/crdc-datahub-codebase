@@ -9,7 +9,11 @@ import { useEffect } from "react";
 const usePageTitle = (title: string, restore = true): void => {
   // Update title on mount
   useEffect(() => {
-    document.title = title;
+    if (typeof title !== "string") {
+      return;
+    }
+
+    document.title = title?.trim();
   }, [title]);
 
   // Revert on unmount if requested

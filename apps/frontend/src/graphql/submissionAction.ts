@@ -1,14 +1,21 @@
+import { TypedDocumentNode } from "@apollo/client";
 import gql from "graphql-tag";
 
-// action in [Submit, Release, Withdraw, Reject, Complete, Cancel]
-export const mutation = gql`
-  mutation submissionAction($submissionID: ID!, $action: String!, $comment: String) {
-    submissionAction(submissionID: $submissionID, action: $action, comment: $comment) {
-      _id
+export const SUBMISSION_ACTION: TypedDocumentNode<SubmissionActionResp, SubmissionActionInput> =
+  gql`
+    mutation submissionAction($submissionID: ID!, $action: String!, $comment: String) {
+      submissionAction(submissionID: $submissionID, action: $action, comment: $comment) {
+        _id
+      }
     }
-  }
-`;
+  `;
 
-export type Response = {
+export type SubmissionActionResp = {
   submissionAction: Pick<Submission, "_id">;
+};
+
+export type SubmissionActionInput = {
+  submissionID: string;
+  action: SubmissionAction;
+  comment?: string;
 };

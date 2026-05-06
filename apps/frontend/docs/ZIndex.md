@@ -41,5 +41,6 @@ See [MUI z-index documentation](https://mui.com/material-ui/customization/z-inde
 | ----- | ----------------------------------- |
 | 1100  | Navbar                              |
 | 1200  | Mobile header menu                  |
+| 1250  | ChatBot                             |
 | 1400  | Alert notifications                 |
 | 2000  | Full-screen loader (SuspenseLoader) |

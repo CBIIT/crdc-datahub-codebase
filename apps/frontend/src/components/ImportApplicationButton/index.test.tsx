@@ -185,7 +185,7 @@ describe("Basic Functionality", () => {
 
     await waitFor(() => {
       expect(QuestionnaireExcelMiddleware.parse).toHaveBeenCalled();
-      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false });
+      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false, runMigrations: true });
     });
 
     await waitFor(() => {
@@ -380,7 +380,7 @@ describe("Implementation Requirements", () => {
 
     await waitFor(() => {
       expect(QuestionnaireExcelMiddleware.parse).toHaveBeenCalled();
-      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false });
+      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false, runMigrations: true });
     });
 
     await waitFor(() => {
@@ -434,7 +434,7 @@ describe("Implementation Requirements", () => {
 
     await waitFor(() => {
       expect(QuestionnaireExcelMiddleware.parse).toHaveBeenCalled();
-      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false });
+      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false, runMigrations: true });
     });
 
     await waitFor(() => {
@@ -491,7 +491,7 @@ describe("Implementation Requirements", () => {
 
     await waitFor(() => {
       expect(QuestionnaireExcelMiddleware.parse).toHaveBeenCalled();
-      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false });
+      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false, runMigrations: true });
     });
 
     await waitFor(() => {

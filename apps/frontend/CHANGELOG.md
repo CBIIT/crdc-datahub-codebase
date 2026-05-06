@@ -1,5 +1,66 @@
 # Release Notes
 
+## 3.6.0 (Released 05/21/2026)
+
+#### Submission Request
+
+- Enhanced the study filter to search by both study name and abbreviation
+    for improved flexibility.
+- Requests can now be approved but flagged as pending on Risk
+    Mitigation document and Image De-identification protocol.
+- Submission Requests now avoid auto-saving completely blank forms to
+    reduce clutter from "New" requests.
+
+#### Data Submission
+
+- Added study name and acronym search capability alongside dbGaP ID to
+    help users locate specific submissions more efficiently.
+- Users can now navigate directly to Submission Request Forms from the
+    Data Submissions list through clickable form icons.
+- Added \"Clear All\" functionality to Status multi-select filters for
+    faster filter management.
+- Users can now export Data Submissions lists to CSV format with
+    current filter and sort criteria applied.
+- Validation now accepts standard Null CDE permissible values for
+    consistent handling of missing data scenarios.
+- Validation now supports "Draft New" status CDEs to prevent
+    submission delays while CDEs are being finalized.
+- API tokens have been optimized to support all submitter profiles
+    regardless of the number of assigned studies.
+- When deleting metadata in Data View, users can now choose whether to
+    also delete associated data files.
+- Metadata validation performance significantly improved through
+    parallel processing and batch validation for large submissions.
+
+#### Data Model Navigator
+
+- System now automatically detects and displays model version history
+    when a version-history.md file exists in the data model repository.
+- \[Bug Fix\]: Fixed an issue where some permissible values were
+    displayed multiple times for the same property.
+- \[Bug Fix\]: Fixed regular expression pattern display mismatches in Model
+    Navigator property definitions.
+
+#### Operations Dashboard
+
+- Added accumulative mode to Data Submission Metrics, displaying
+    all-time totals by default with optional date range filtering.
+- Enhanced tooltips for control labels and status legends for better
+    user guidance.
+- Added Submission Request Metrics dashboard views and filters for
+    monitoring request trends.
+
+#### MDB/STS Integration
+
+- Updated all MDB/STS API calls to version 2 for improved
+    compatibility and performance.
+
+#### Research & Technical Improvements
+
+- Completed research assessment for migrating self-hosted MongoDB to
+    AWS DocumentDB, evaluating compatibility, performance, and
+    operational considerations.
+
 ## 3.5.1 (Released 01/26/2026)
 
 #### Submission Request
@@ -211,7 +272,6 @@ This production patch includes a critical fix to resolve a timeout and crash iss
 #### CDS Rebranding
 
 - The CDS Data Commons has been rebranded from **"CDS"** to **"General Commons"** across the user interface and supporting documentation.
-
 
 #### Bug Fixes
 
