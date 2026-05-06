@@ -1,6 +1,6 @@
 const { NEW, IN_PROGRESS, SUBMITTED, RELEASED, COMPLETED, ARCHIVED, CANCELED,
     REJECTED, WITHDRAWN, ACTIONS, VALIDATION, VALIDATION_STATUS, INTENTION, DATA_TYPE, DELETED, DATA_FILE,
-    CONSTRAINTS, COLLABORATOR_PERMISSIONS, UPLOADING_HEARTBEAT_CONFIG_TYPE
+    CONSTRAINTS, COLLABORATOR_PERMISSIONS, UPLOADING_HEARTBEAT_CONFIG_TYPE, SUBMISSION_TYPE
 } = require("../constants/submission-constants");
 const fs = require('fs');
 const path = require('path');
@@ -29,8 +29,9 @@ const {verifyToken} = require("../verifier/token-verifier");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {EMAIL_NOTIFICATIONS: EN} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
+const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
-const { isAllStudy } = require("../utility/study-utility");
+const { isApprovedStudyActive, isAllStudy } = require("../utility/study-utility");
 const {getDataCommonsDisplayNamesForSubmission, getDataCommonsDisplayNamesForListSubmissions,
     getDataCommonsDisplayNamesForUser, getDataCommonsDisplayNamesForReleasedNode
 } = require("../utility/data-commons-remapper");
@@ -63,7 +64,6 @@ const FINAL_INACTIVE_REMINDER = "finalInactiveReminder";
 const SUBMISSION_ID = "Submission ID";
 const DATA_SUBMISSION_TYPE = "Data Submission Type";
 const DESTINATION_LOCATION = "Destination Location";
-const MAX_COMMENT_LENGTH = 500;
 const MAX_SUBMISSION_NAME_LENGTH = 25;
 // Set to array
 Set.prototype.toArray = function() {
@@ -205,6 +205,9 @@ class Submission {
     async createSubmission(params, context) {
         verifySession(context)
             .verifyInitialized();
+        if (params?.dataCommons != null) {
+            params.dataCommons = String(params.dataCommons).trim();
+        }
         // Check user permission to create submission
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE);
         // User has ALL scope - can create submissions for any study
@@ -231,7 +234,7 @@ class Submission {
 
         const intention = [INTENTION.UPDATE, INTENTION.DELETE].find((i) => i.toLowerCase() === params?.intention.toLowerCase());
         const dataType = [DATA_TYPE.METADATA_AND_DATA_FILES, DATA_TYPE.METADATA_ONLY].find((i) => i.toLowerCase() === params?.dataType.toLowerCase());
-        validateCreateSubmissionParams(params, this.allowedDataCommons, this.hiddenDataCommons, intention, dataType, context?.userInfo);
+        validateCreateSubmissionParams(params, this.allowedDataCommons, this.hiddenDataCommons, intention, dataType);
         const [approvedStudies, modelVersion, program] = await Promise.all([
             this._findApprovedStudies([params.studyID]),
             (async () => {
@@ -259,7 +262,15 @@ class Submission {
             throw new Error(ERROR.CREATE_SUBMISSION_NO_ASSOCIATED_PROGRAM);
         }
 
+        if (program?.status === ORGANIZATION.STATUSES.INACTIVE) {
+            throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
+        }
+
         let approvedStudy = approvedStudies[0];
+        if (!isApprovedStudyActive(approvedStudy)) {
+            throw new Error(ERROR.CREATE_SUBMISSION_INACTIVE_APPROVED_STUDY);
+        }
+
         if (approvedStudy.controlledAccess && !approvedStudy?.dbGaPID) {
             throw new Error(ERROR.MISSING_CREATE_SUBMISSION_DBGAPID);
         }
@@ -270,6 +281,10 @@ class Submission {
 
         if (isTrue(approvedStudy?.pendingModelChange)) {
             throw new Error(ERROR.PENDING_APPROVED_STUDY);
+        }
+
+        if (isTrue(approvedStudy?.pendingImageDeIdentification)) {
+            throw new Error(ERROR.PENDING_IMAGE_DEIDENTIFICATION_SUBMISSION);
         }
 
         if (approvedStudy?.primaryContactID) {
@@ -630,21 +645,24 @@ class Submission {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
         const newStatus = verifier.getNewStatus();
-        const [userScope, dataFileSize, orphanedErrorFiles, uploadingBatches] = await Promise.all([
-            this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.ADMIN_SUBMIT, submission),
+        const isAdminSubmitAction = action === ACTIONS.ADMIN_SUBMIT;
+        const [dataFileSize, orphanedErrorFiles, uploadingBatches] = await Promise.all([
             this._getS3DirectorySize(submission?.bucketName, `${submission?.rootPath}/${FILE}/`),
             this.qcResultsService.findBySubmissionErrorCodes(params.submissionID, ERRORS.CODES.F008_MISSING_DATA_NODE_FILE),
             this.batchService.findOneBatchByStatus(params.submissionID, BATCH.STATUSES.UPLOADING)
         ]);
 
-        const submissionAttributes = SubmissionAttributes.create(!userScope.isNoneScope(), submission, dataFileSize?.size, orphanedErrorFiles?.length > 0, uploadingBatches.length > 0);
-        verifier.isValidSubmitAction(!userScope.isNoneScope(), submission, params?.comment, submissionAttributes);
+        const submissionAttributes = SubmissionAttributes.create(isAdminSubmitAction, submission, dataFileSize?.size, orphanedErrorFiles?.length > 0, uploadingBatches.length > 0);
+        verifier.isValidSubmitAction(isAdminSubmitAction, submission, params?.comment, submissionAttributes);
         await this._isValidReleaseAction(action, submission?._id, submission?.studyID, submission?.dataCommons, submission?.crossSubmissionStatus);
         //update submission
         let events = submission.history || [];
         // admin permission and submit action only can leave a comment
-        const isCommentRequired = ACTIONS.REJECT === action || (!verifier.isSubmitActionCommentRequired(submission, !userScope.isNoneScope(), params?.comment));
-        events.push(HistoryEventBuilder.createEvent(userInfo._id, newStatus, isCommentRequired ? params?.comment : null));
+        const isCommentRequired = ACTIONS.REJECT === action || (!verifier.isSubmitActionCommentRequired(submission, isAdminSubmitAction, params?.comment));
+        const submitAdminFlag = newStatus === SUBMITTED
+            ? action === ACTIONS.ADMIN_SUBMIT
+            : undefined;
+        events.push(HistoryEventBuilder.createEvent(userInfo._id, newStatus, isCommentRequired ? params?.comment : null, undefined, submitAdminFlag));
 
         // When the status changes to COMPLETED, store the total data size of the S3 directory in the submission document.
         if (newStatus === COMPLETED) {
@@ -655,7 +673,10 @@ class Submission {
         const updateData = this._prepareUpdateData({
             status: newStatus,
             history: events,
-            reviewComment: submission?.reviewComment || ""
+            reviewComment: submission?.reviewComment || "",
+            ...(newStatus === SUBMITTED ? {
+                submissionType: action === ACTIONS.ADMIN_SUBMIT ? SUBMISSION_TYPE.ADMIN : SUBMISSION_TYPE.REGULAR
+            } : {})
         });
         
         // Add dataFileSize if status is COMPLETED
@@ -686,7 +707,7 @@ class Submission {
         }
 
         //log event and send notification
-        const logEvent = SubmissionActionEvent.create(userInfo._id, userInfo.email, userInfo.IDP, submission._id, action, verifier.getPrevStatus(), newStatus);
+        const logEvent = SubmissionActionEvent.create(userInfo._id, userInfo.email, userInfo.IDP, submission._id, action, oldStatus, newStatus);
         
         // Create log entry using Prisma
         const logData = {
@@ -885,6 +906,14 @@ class Submission {
             throw new Error(ERROR.FAILED_INSERT_VALIDATION_OBJECT);
         }
         const result = await this.dataRecordService.validateMetadata(params._id, params?.types, params?.scope, validationRecord.id);
+        if (result.totalBatches != null) {
+            const validationUpdate = { totalBatches: result.totalBatches };
+            if (!result.success && result.failedCount > 0) {
+                validationUpdate.status = VALIDATION_STATUS.ERROR;
+                validationUpdate.statusDetail = [`Failed to enqueue ${result.failedCount} of ${result.totalBatches} batch messages`];
+            }
+            await this.validationDAO.update(validationRecord.id, validationUpdate);
+        }
         const updatedSubmission = await this._recordSubmissionValidation(params._id, validationRecord, params?.types, aSubmission);
         // roll back validation if service failed
         if (!result.success) {
@@ -989,9 +1018,25 @@ class Submission {
                 ...(nodeID && { nodeID: new RegExp(nodeID, "i") })
             };
 
+            // Data View `properties`: page-local keys from _processSubmissionNodes, plus
+            // submission-wide keys from distinct aggregations when another page can exist
+            // (saves two aggregates when the current response already has every match).
             const result = await this.dataRecordDAO.getSubmissionNodes(submissionID, nodeType,
                 first, offset, orderBy, sortDirection, query);
-            return this._processSubmissionNodes(result);
+
+            const needsSubmissionWidePropertyKeys = first !== -1
+                && (offset > 0 || result.total > first);
+
+            let relationshipKeys = [];
+            let propsTopLevelKeys = [];
+            if (needsSubmissionWidePropertyKeys) {
+                [relationshipKeys, propsTopLevelKeys] = await Promise.all([
+                    this.dataRecordDAO.getDistinctParentRelationshipKeys(query),
+                    this.dataRecordDAO.getDistinctPropsTopLevelKeys(query)
+                ]);
+            }
+            const submissionWidePropertyKeys = [...new Set([...relationshipKeys, ...propsTopLevelKeys])];
+            return this._processSubmissionNodes(result, null, submissionWidePropertyKeys);
         }
         else {
              //1) cal s3 listObjectV2
@@ -1008,7 +1053,15 @@ class Submission {
         }
         
     }
-    _processSubmissionNodes(result, IDPropName=null) {
+    /**
+     * @param {*} result getSubmissionNodes result
+     * @param {string|null} IDPropName optional ID prop for getRelatedNodes
+     * @param {string[]} [submissionWidePropertyKeys] distinct column names from the full list
+     *   match: parent relationship keys (`parentType.parentIDPropName`) plus top-level `props` keys
+     *   (from getDistinct* DAO methods). Merged with keys from the current page. `returnVal.properties`
+     *   is sorted alphabetically (locale "en", base sensitivity) for stable column order.
+     */
+    _processSubmissionNodes(result, IDPropName=null, submissionWidePropertyKeys=[]) {
         let returnVal = {
             total: 0,
             IDPropName: IDPropName,
@@ -1017,9 +1070,13 @@ class Submission {
         };
 
         returnVal.total = result.total;
-        if (result.results && result.results.length > 0){
-            let propsSet = new Set();
-            
+        const propsSet = new Set(
+            Array.isArray(submissionWidePropertyKeys)
+                ? submissionWidePropertyKeys
+                : []
+        );
+
+        if (result.results && result.results.length > 0) {
             for (let node of result.results) {
                 if (!returnVal.IDPropName) returnVal.IDPropName = node.IDPropName;
                 if (node?.parents && node.parents.length > 0) {
@@ -1032,14 +1089,16 @@ class Submission {
                     });
                 }
                 if (node.props && Object.keys(node.props).length > 0){
-                    Object.keys(node.props).forEach(propsSet.add, propsSet);
+                    Object.keys(node.props).forEach((k) => propsSet.add(k));
                 }
                 node.props = JSON.stringify(node.props);
                 delete node.parents;
                 returnVal.nodes.push(node);
             }
-            returnVal.properties = Array.from(propsSet);
         }
+        returnVal.properties = Array.from(propsSet).sort((a, b) =>
+            a.localeCompare(b, 'en', { sensitivity: 'base' })
+        );
         return returnVal;
     }
 
@@ -1703,6 +1762,7 @@ class Submission {
         const nodeIDs = params.nodeIDs || [];
         const exclusiveIDs = params.exclusiveIDs || [];
         const deleteAll = params.deleteAll || false;
+        const deleteOrphanedDataFiles = params.deleteOrphanedDataFiles === true;
 
         // validate arrays are within the limits
         if (nodeIDs.length > 2000 || exclusiveIDs.length > 2000) {
@@ -1714,6 +1774,8 @@ class Submission {
             let existingFiles;
             let deletedResult;
             let nodeIDsForLogging;
+            /** null = every s3FileInfo-linked record in the submission; string[] = match those file names */
+            let metadataResetFileNames;
             
             if (deleteAll) {
                 // Delete QC results
@@ -1724,12 +1786,14 @@ class Submission {
                     // Delete entire directory
                     deletedResult = await this._deleteDataFiles(new Map(), aSubmission, deleteAll, exclusiveIDs);
                     nodeIDsForLogging = 'deleteAll';
+                    metadataResetFileNames = null;
                 } 
                 else {
                     // get all files and filter out exclusives
                     const allFiles = await this._getAllSubmissionDataFiles(aSubmission?.bucketName, aSubmission?.rootPath) || [];
                     const exclusiveSet = new Set(exclusiveIDs);
                     const filesToDelete = allFiles.filter(fileName => !exclusiveSet.has(fileName));
+                    metadataResetFileNames = filesToDelete;
                     
                     // if no files to delete, throw error
                     if (filesToDelete.length === 0) {
@@ -1764,6 +1828,7 @@ class Submission {
                 // delete data files by nodeIDs
                 deletedResult = await this._deleteDataFiles(existingFiles, aSubmission, false, []);
                 nodeIDsForLogging = deletedResult;
+                metadataResetFileNames = deletedResult;
             }
             
             // if deleted files, update submission data file info
@@ -1796,10 +1861,13 @@ class Submission {
                 
                 // log data record
                 promises.push(this._logDataRecord(context?.userInfo, aSubmission._id, VALIDATION.TYPES.DATA_FILE, nodeIDsForLogging));
+                promises.push(
+                    this.dataRecordService.resetS3FileLinkedMetadataStatusToNew(aSubmission._id, metadataResetFileNames)
+                );
                 
                 // Await all promises to ensure errors are properly caught and handled
-                // Note: qcDeletionResult and logResult are available but not used
-                const [submissionDataFiles, dataFileSize, qcDeletionResult, logResult] = await Promise.all(promises);
+                // Note: qcDeletionResult, logResult, and metadata reset result are available but not used
+                const [submissionDataFiles, dataFileSize, qcDeletionResult, logResult, _metadataReset] = await Promise.all(promises);
                 
                 // reset fileValidationStatus if the number of data files changed. No data files exists if null
                 const fileValidationStatus = submissionDataFiles?.length > 0 ? VALIDATION_STATUS.NEW : null;
@@ -1834,7 +1902,8 @@ class Submission {
             nodeType: params.nodeType, 
             deleteAll: deleteAll,
             nodeIDs: deleteAll ? [] : nodeIDs,
-            exclusiveIDs: deleteAll ? exclusiveIDs : []
+            exclusiveIDs: deleteAll ? exclusiveIDs : [],
+            deleteOrphanedDataFiles: deleteOrphanedDataFiles
         };
         // request delete data records
         const success = await this._requestDeleteDataRecords(msg, this.sqsLoaderQueue, params.submissionID, params.submissionID);
@@ -2576,8 +2645,8 @@ class Submission {
             throw new Error(ERROR.EMPTY_NODE_REQUEST_PV);
         }
 
-        if (comment?.trim().length > MAX_COMMENT_LENGTH) {
-            throw new Error(ERROR.COMMENT_LIMIT);
+        if (comment?.trim().length > CONSTRAINTS.REQUEST_PV_COMMENT_MAX_LENGTH) {
+            throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.REQUEST_PV_COMMENT_MAX_LENGTH));
         }
 
         if (property?.trim()?.length === 0) {
@@ -2760,7 +2829,9 @@ class Submission {
                             select: {
                                 id: true,
                                 studyName: true,
-                                studyAbbreviation: true
+                                studyAbbreviation: true,
+                                applicationID: true,
+                                dbGaPID: true
                             }
                         },
                         submitter: {
@@ -2815,6 +2886,8 @@ class Submission {
                 aSubmission.studyName = aSubmission.study.studyName;
                 aSubmission.studyAbbreviation = aSubmission.study.studyAbbreviation;
             }
+            // DEPRECATED: submission.dbGaPID will be removed; value is from submission.study.dbGaPID. Prefer submission.study.dbGaPID and convert callers.
+            aSubmission.dbGaPID = aSubmission?.study?.dbGaPID ?? aSubmission?.dbGaPID;
 
             // Transform submitter data to match expected format
             if (aSubmission?.submitter?.id && aSubmission?.submitter?.firstName) {
@@ -2924,6 +2997,7 @@ String.prototype.format = function(placeholders) {
 async function submissionActionNotification(userInfo, action, aSubmission, userService, organizationService, notificationService, emailParams, dataCommonsBucketMap) {
     switch(action) {
         case ACTIONS.SUBMIT:
+        case ACTIONS.ADMIN_SUBMIT:
             await sendEmails.submitSubmission(userInfo, aSubmission, userService, organizationService, notificationService);
             break;
         case ACTIONS.RELEASE:
@@ -2981,11 +3055,10 @@ const sendEmails = {
     },
     completeSubmission: async (userInfo, aSubmission, userService, organizationService, notificationsService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
-        const [aSubmitter, BCCUsers, aOrganization, approvedStudy] = await Promise.all([
+        const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
             userService.getUsersByNotifications([EN.DATA_SUBMISSION.COMPLETE],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            organizationService.getOrganizationByID(aSubmission?.organization?._id),
             userService.approvedStudiesCollection.find(aSubmission?.studyID)
         ]);
 
@@ -3009,11 +3082,10 @@ const sendEmails = {
     },
     cancelSubmission: async (userInfo, aSubmission, userService, organizationService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
-        const [aSubmitter, BCCUsers, aOrganization, approvedStudy] = await Promise.all([
+        const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
             userService.getUsersByNotifications([EN.DATA_SUBMISSION.CANCEL],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            organizationService.getOrganizationByID(aSubmission?.organization?._id),
             userService.approvedStudiesCollection.find(aSubmission?.studyID)
         ]);
 
@@ -3105,11 +3177,10 @@ const sendEmails = {
     },
     rejectSubmission: async (userInfo, aSubmission, userService, organizationService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
-        const [aSubmitter, BCCUsers, aOrganization] = await Promise.all([
+        const [aSubmitter, BCCUsers] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
             userService.getUsersByNotifications([EN.DATA_SUBMISSION.REJECT],
-                [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            organizationService.getOrganizationByID(aSubmission?.organization?._id)
+                [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
         ]);
 
         if (!aSubmitter?.email) {
@@ -3258,14 +3329,29 @@ const getUserEmails = (users) => {
 }
 
 function validateCreateSubmissionParams (params, allowedDataCommons, hiddenDataCommons, intention, dataType) {
-    if (!params.name || params?.name?.trim().length === 0 || !params.studyID || !params.dataCommons) {
+    const dataCommons =
+        params.dataCommons === undefined || params.dataCommons === null
+            ? ''
+            : String(params.dataCommons).trim();
+
+    if (!params.name || params?.name?.trim().length === 0 || !params.studyID || !dataCommons) {
         throw new Error(ERROR.CREATE_SUBMISSION_INVALID_PARAMS);
     }
     if (params?.name?.length > CONSTRAINTS.NAME_MAX_LENGTH) {
         throw new Error(replaceErrorString(ERROR.CREATE_SUBMISSION_INVALID_NAME, `${CONSTRAINTS.NAME_MAX_LENGTH}`));
     }
-    if (hiddenDataCommons.has(params.dataCommons) || !allowedDataCommons.has(params.dataCommons)) {
-        throw new Error(replaceErrorString(ERROR.CREATE_SUBMISSION_INVALID_DATA_COMMONS, `'${params.dataCommons}'`));
+    if (hiddenDataCommons.has(dataCommons) || !allowedDataCommons.has(dataCommons)) {
+        const visibleAllowed = [...allowedDataCommons]
+            .filter((dc) => !hiddenDataCommons.has(dc))
+            .sort();
+        const acceptedDisplay = visibleAllowed.length ? visibleAllowed.join(", ") : "(none available)";
+        throw new Error(
+            replaceErrorString(
+                replaceErrorString(ERROR.INVALID_DATA_COMMONS_NOT_ALLOWED, `'${dataCommons}'`),
+                acceptedDisplay,
+                /\$accepted\$/g
+            )
+        );
     }
     if (!intention) {
         throw new Error(ERROR.CREATE_SUBMISSION_INVALID_INTENTION);
@@ -3276,6 +3362,7 @@ function validateCreateSubmissionParams (params, allowedDataCommons, hiddenDataC
     if (intention === INTENTION.DELETE && dataType !== DATA_TYPE.METADATA_ONLY) {
         throw new Error(ERROR.CREATE_SUBMISSION_INVALID_DELETE_INTENTION);
     }
+    params.dataCommons = dataCommons;
 }
 
 class ValidationRecord {
@@ -3482,7 +3569,8 @@ function logDaysDifference(inactiveDays, accessedAt, submissionID) {
 }
 
 module.exports = {
-    Submission
+    Submission,
+    SubmissionAttributes
 };
 
 // Potential future enhancement

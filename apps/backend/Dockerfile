@@ -1,7 +1,8 @@
-FROM node:24.13.0-alpine3.22 AS fnl_base_image
+FROM node:24.15.0-alpine3.22 AS fnl_base_image
 ENV PORT=8080
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
+RUN npm install -g npm@11.13.0
 RUN npm install -g glob@11.1.0
 #COPY lib/db-driver/ ./tmp-db-drivers/
 #RUN cp -rL ./tmp-db-drivers/. ./crdc-datahub-database-drivers/ && rm -rf ./tmp-db-drivers

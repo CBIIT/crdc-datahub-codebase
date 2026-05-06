@@ -75,7 +75,7 @@ class SubmissionDAO extends GenericDAO {
      * @param {string} [params.organization] - Organization ID to filter by
      * @param {Array<string>} [params.status] - Array of submission statuses to filter by
      * @param {string} [params.name] - Submission name to search for (case-insensitive)
-     * @param {string} [params.dbGaPID] - dbGaP ID to search for (case-insensitive)
+     * @param {string} [params.dbGaPID] - Free-text search over study name, study abbreviation, or dbGaPID
      * @param {string} [params.dataCommons] - Data commons identifier to filter by
      * @param {string} [params.submitterName] - Submitter name to filter by
      * @param {string} [params.orderBy] - Field to order results by
@@ -126,7 +126,8 @@ class SubmissionDAO extends GenericDAO {
                     id: true,
                     studyName: true,
                     studyAbbreviation: true,
-                    applicationID: true
+                    applicationID: true,
+                    dbGaPID: true
                 }
             },
             organization: {
@@ -183,19 +184,35 @@ class SubmissionDAO extends GenericDAO {
             const statuses = this._getDistinctStatuses();
 
             // Transform submissions to match expected format
-            const transformedSubmissions = submissions.map(submission => ({
-                ...submission,
-                _id: submission.id,
-                studyName: submission?.study?.studyName,
-                studyAbbreviation: submission?.study?.studyAbbreviation,
-                dataFileSize: this._transformDataFileSize(submission.status, submission.dataFileSize),
-                // Transform organization to match GraphQL schema (map id to _id)
-                organization: formatNestedOrganization(submission.organization),
-                submitterName: submission?.submitter?.fullName || "",
-                conciergeName: submission?.concierge?.fullName || "",
-                conciergeEmail: submission?.concierge?.email || "",
-                submissionRequestID: submission?.study?.applicationID || null,
-            }));
+            const transformedSubmissions = submissions.map(submission => {
+                const study = submission?.study
+                    ? {
+                        _id: submission.study.id,
+                        studyName: submission.study.studyName,
+                        studyAbbreviation: submission.study.studyAbbreviation,
+                        applicationID: submission.study.applicationID,
+                        dbGaPID: submission.study.dbGaPID
+                    }
+                    : null;
+                return {
+                    ...submission,
+                    _id: submission.id,
+                    // Nested study object; prefer submission.study for study properties.
+                    study,
+                    // Will be deprecated fields in the future: Prefer submission.study.studyName; these top-level study properties will be removed.
+                    studyName: submission?.study?.studyName,
+                    studyAbbreviation: submission?.study?.studyAbbreviation,
+                    // DEPRECATED: submission.dbGaPID will be removed; value is from submission.study.dbGaPID. Prefer submission.study.dbGaPID and convert callers.
+                    dbGaPID: submission?.study?.dbGaPID ?? submission?.dbGaPID,
+                    dataFileSize: this._transformDataFileSize(submission.status, submission.dataFileSize),
+                    // Transform organization to match GraphQL schema (map id to _id)
+                    organization: formatNestedOrganization(submission.organization),
+                    submitterName: submission?.submitter?.fullName || "",
+                    conciergeName: submission?.concierge?.fullName || "",
+                    conciergeEmail: submission?.concierge?.email || "",
+                    submissionRequestID: submission?.study?.applicationID || null,
+                };
+            });
 
             return {
                 submissions: transformedSubmissions,
@@ -284,8 +301,8 @@ class SubmissionDAO extends GenericDAO {
      * @param {Object} baseConditions - Base Prisma query conditions from user scope filtering
      * @param {string} organization - Organization ID to filter by (maps to programID field)
      * @param {Array<string>|null} status - Array of submission statuses to filter by, or null for no filter
-     * @param {string} submissionName - Submission name to search for (case-insensitive regex)
-     * @param {string} dbGaPID - dbGaP ID to search for (case-insensitive regex)
+     * @param {string} submissionName - Submission name to search for (case-insensitive)
+     * @param {string} dbGaPID - Free-text search over study name, study abbreviation, or dbGaPID
      * @param {string} dataCommonsFilter - Data commons identifier to filter by
      * @param {string} submitterName - Submitter name to filter by
      * @returns {Object} Combined Prisma query conditions including both user scope and search filters
@@ -322,13 +339,18 @@ class SubmissionDAO extends GenericDAO {
                 mode: 'insensitive'
             };
         }
-        // Add filter for dbGaPID if specified
-        // This filter is a regex search on the submission name (case-insensitive)
-        if (dbGaPID) {
-            baseConditions.dbGaPID = {
-                contains: dbGaPID.trim().replace(/\\/g, ''),
-                mode: 'insensitive'
+        // Add filter for dbGaPID if specified: free-text search over related study's name, abbreviation, or dbGaPID
+        const sanitizedStudySearchTerm = (dbGaPID || '').trim().replace(/\\/g, '');
+        if (sanitizedStudySearchTerm) {
+            const studySearchCondition = {
+                OR: [
+                    { study: { is: { studyName: { contains: sanitizedStudySearchTerm, mode: 'insensitive' } } } },
+                    { study: { is: { studyAbbreviation: { contains: sanitizedStudySearchTerm, mode: 'insensitive' } } } },
+                    { study: { is: { dbGaPID: { contains: sanitizedStudySearchTerm, mode: 'insensitive' } } } }
+                ]
             };
+            baseConditions.AND = baseConditions.AND || [];
+            baseConditions.AND.push(studySearchCondition);
         }
         // Add filter for dataCommons if specified
         if (dataCommonsFilter && dataCommonsFilter !== ALL_FILTER) {

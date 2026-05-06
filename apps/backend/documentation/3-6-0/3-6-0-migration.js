@@ -6,8 +6,14 @@
  *         (or directly: node documentation/3-6-0/3-6-0-migration.js)
  * 
  * Migration files:
+ * - create-property-pvs-collection.js: Create propertyPVs MongoDB collection if missing
  * - rename-application-id.js: Rename pendingApplicationID to applicationID in ApprovedStudies
+ * - init-metadata-validation-batch-size.js: Initialize METADATA_VALIDATION_BATCH_SIZE config entry
  * - add-sts-resource-config.js: Add STS_RESOURCE configuration (tier-based URL)
+ * - add-chatbot-enabled-config.js: Add CHATBOT configuration (keys.enabled feature flag)
+ * - backfill-approved-study-status.js: Set status Active on approvedStudies where missing
+ * - lowercase-synonym-terms.js: Lowercase string synonym_term in synonyms (skips missing/non-string)
+ * - backfill-submission-type-regular.js: Set submissionType Regular on legacy submissions where missing
  */
 
 const { MongoClient } = require('mongodb');
@@ -77,6 +83,52 @@ async function closeDatabaseConnection(client) {
 // ============================================================================
 
 /**
+ * Execute propertyPVs collection creation
+ */
+async function executePropertyPVsCollectionMigration(db) {
+    console.log('🔄 Executing propertyPVs collection creation...');
+
+    try {
+        const migration = require('./create-property-pvs-collection');
+        const result = await migration.createPropertyPVsCollection(db);
+
+        if (result.success) {
+            console.log('✅ propertyPVs collection migration completed successfully');
+        } else {
+            console.log('❌ propertyPVs collection migration failed');
+        }
+
+        return result;
+    } catch (error) {
+        console.error('❌ Error executing propertyPVs collection migration:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Execute METADATA_VALIDATION_BATCH_SIZE config initialization
+ */
+async function executeMetadataValidationBatchSizeMigration(db) {
+    console.log('🔄 Executing METADATA_VALIDATION_BATCH_SIZE initialization...');
+
+    try {
+        const migration = require('./init-metadata-validation-batch-size');
+        const result = await migration.initMetadataValidationBatchSize(db);
+
+        if (result.success) {
+            console.log('✅ METADATA_VALIDATION_BATCH_SIZE initialization completed successfully');
+        } else {
+            console.log('❌ METADATA_VALIDATION_BATCH_SIZE initialization failed');
+        }
+
+        return result;
+    } catch (error) {
+        console.error('❌ Error executing METADATA_VALIDATION_BATCH_SIZE initialization:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Execute applicationID migration
  */
 async function executeApplicationIDMigration(db) {
@@ -127,6 +179,118 @@ async function executeStsResourceConfigMigration(db) {
     }
 }
 
+/**
+ * Execute adding INACTIVE_NEW_APPLICATION_DAYS configuration
+ */
+async function executeShortInactiveApplicationConfigMigration(db) {
+    console.log('🔄 Executing INACTIVE_NEW_APPLICATION_DAYS configuration migration...');
+    try {
+        const migration = require('./add-short-inactive-application-config');
+        const result = await migration.addShortInactiveApplicationConfig(db);
+        if (result.success) {
+            console.log('✅ INACTIVE_NEW_APPLICATION_DAYS migration completed successfully');
+        } else {
+            console.log('❌ INACTIVE_NEW_APPLICATION_DAYS migration failed');
+        }
+        return result;
+    } catch (error) {
+        console.error('❌ Error executing INACTIVE_NEW_APPLICATION_DAYS configuration migration:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Execute ApprovedStudy.status backfill (Active where missing)
+ */
+async function executeApprovedStudyStatusBackfill(db) {
+    console.log("🔄 Executing ApprovedStudy.status backfill...");
+
+    try {
+        const migration = require("./backfill-approved-study-status");
+        const result = await migration.backfillApprovedStudyStatus(db);
+
+        if (result.success) {
+            console.log("✅ ApprovedStudy.status backfill completed successfully");
+        } else {
+            console.log("❌ ApprovedStudy.status backfill failed");
+        }
+
+        return result;
+    } catch (error) {
+        console.error("❌ Error executing ApprovedStudy.status backfill:", error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Execute synonym_term lowercase migration
+ */
+async function executeLowercaseSynonymTermsMigration(db) {
+    console.log("🔄 Executing synonym_term lowercase migration...");
+
+    try {
+        const migration = require("./lowercase-synonym-terms");
+        const result = await migration.lowercaseSynonymTerms(db);
+
+        if (result.success) {
+            console.log("✅ synonym_term lowercase migration completed successfully");
+        } else {
+            console.log("❌ synonym_term lowercase migration failed");
+        }
+
+        return result;
+    } catch (error) {
+        console.error("❌ Error executing synonym_term lowercase migration:", error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Execute Submission.submissionType backfill (Regular where missing or null)
+ */
+async function executeSubmissionTypeRegularBackfill(db) {
+    console.log("🔄 Executing Submission.submissionType backfill...");
+
+    try {
+        const migration = require("./backfill-submission-type-regular");
+        const result = await migration.backfillSubmissionTypeRegular(db);
+
+        if (result.success) {
+            console.log("✅ Submission.submissionType backfill completed successfully");
+        } else {
+            console.log("❌ Submission.submissionType backfill failed");
+        }
+
+        return result;
+    } catch (error) {
+        console.error("❌ Error executing Submission.submissionType backfill:", error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Execute CHATBOT configuration migration
+ */
+async function executeChatbotEnabledConfigMigration(db) {
+    console.log('🔄 Executing CHATBOT configuration migration...');
+
+    try {
+        const chatbotEnabledConfigMigration = require('./add-chatbot-enabled-config');
+        const result = await chatbotEnabledConfigMigration.addChatbotEnabledConfig(db);
+
+        if (result.success) {
+            console.log('✅ CHATBOT configuration migration completed successfully');
+        } else {
+            console.log('❌ CHATBOT configuration migration failed');
+        }
+
+        return result;
+    } catch (error) {
+        console.error('❌ Error executing CHATBOT configuration migration:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
 // ============================================================================
 // MIGRATION ORCHESTRATOR
 // ============================================================================
@@ -156,14 +320,49 @@ async function orchestrateMigration() {
         // }
         const availableMigrations = [
             {
+                name: "Create propertyPVs collection",
+                file: "create-property-pvs-collection.js",
+                execute: () => executePropertyPVsCollectionMigration(db)
+            },
+            {
                 name: "Rename pendingApplicationID to applicationID",
                 file: "rename-application-id.js",
                 execute: () => executeApplicationIDMigration(db)
             },
             {
+                name: "Initialize METADATA_VALIDATION_BATCH_SIZE configuration",
+                file: "init-metadata-validation-batch-size.js",
+                execute: () => executeMetadataValidationBatchSizeMigration(db)
+            },
+            {
                 name: "Add STS_RESOURCE configuration (tier-based URL)",
                 file: "add-sts-resource-config.js",
                 execute: () => executeStsResourceConfigMigration(db)
+            },
+            {
+                name: "Add CHATBOT configuration",
+                file: "add-chatbot-enabled-config.js",
+                execute: () => executeChatbotEnabledConfigMigration(db)
+            },
+            {
+                name: "Add INACTIVE_NEW_APPLICATION_DAYS configuration",
+                file: "add-short-inactive-application-config.js",
+                execute: () => executeShortInactiveApplicationConfigMigration(db)
+            },
+            {
+                name: "Backfill ApprovedStudy.status (Active where missing)",
+                file: "backfill-approved-study-status.js",
+                execute: () => executeApprovedStudyStatusBackfill(db)
+            },
+            {
+                name: "Lowercase synonym_term in synonyms collection",
+                file: "lowercase-synonym-terms.js",
+                execute: () => executeLowercaseSynonymTermsMigration(db)
+            },
+            {
+                name: "Backfill Submission.submissionType (Regular where missing)",
+                file: "backfill-submission-type-regular.js",
+                execute: () => executeSubmissionTypeRegularBackfill(db)
             }
         ];
         

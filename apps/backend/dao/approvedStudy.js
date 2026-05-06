@@ -35,7 +35,7 @@ class ApprovedStudyDAO extends GenericDAO  {
         return studies.map(study => ({...study, _id: study.id}))
     }
 
-    async listApprovedStudies(studyName, controlledAccess, dbGaPIDInput, programID, first, offset, orderBy, sortDirection) {
+    async listApprovedStudies(studyName, controlledAccess, dbGaPIDInput, programID, statuses, first, offset, orderBy, sortDirection) {
         // set matches
         let matches = {};
         const study = sanitizeMongoDBInput(studyName);
@@ -64,6 +64,10 @@ class ApprovedStudyDAO extends GenericDAO  {
 
         if (programID && programID !== this._ALL) {
             matches["programID"] = programID;
+        }
+
+        if (Array.isArray(statuses) && statuses.length > 0) {
+            matches.status = { $in: statuses };
         }
 
         let pipelines = [
