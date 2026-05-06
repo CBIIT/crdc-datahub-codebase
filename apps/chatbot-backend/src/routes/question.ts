@@ -99,10 +99,10 @@ export const createQuestionRouter = ({
       const retrieveResponse = await BEDROCK_AGENT.send(retrieveCommand);
 
       if (retrieveResponse?.retrievalResults?.length) {
-        Logger.info("Retrieved documents from Knowledge Base", {
+        Logger.info("Documents retrieved from Knowledge Base", {
           sessionId,
           query: question,
-          chunks: retrieveResponse.retrievalResults.length || 0,
+          chunks: retrieveResponse.retrievalResults || [],
         });
 
         searchResults = retrieveResponse.retrievalResults
@@ -159,6 +159,7 @@ export const createQuestionRouter = ({
           guardrailConfig: {
             guardrailIdentifier: GUARDRAIL_ID,
             guardrailVersion: GUARDRAIL_VERSION,
+            trace: "enabled_full",
           },
         }),
     };
@@ -170,30 +171,45 @@ export const createQuestionRouter = ({
 
       const converseCommand = new ConverseStreamCommand(converseParams);
       const converseResponse = await BEDROCK_RUNTIME.send(converseCommand);
+      let emitCitations = citations.length > 0;
+      let guardrailIntervened: boolean = false;
 
       // Stream the response
       if (converseResponse.stream) {
         Logger.info("Streaming response from Converse API", { sessionId });
 
-        if (citations.length > 0) {
-          Logger.info("Sending citations to client", { sessionId, citations });
-          res.write(JSON.stringify(generateCitationEvent(citations)) + "\n");
-        }
-
         for await (const event of converseResponse.stream) {
+          // Emit the generated text to the client as it arrives
           if (event.contentBlockDelta?.delta?.text) {
             res.write(JSON.stringify(generateResponseEvent(event.contentBlockDelta.delta.text)) + "\n");
           }
 
-          if (event.messageStop?.stopReason === "guardrail_intervened") {
-            Logger.info("Guardrail intervened in the response generation", { sessionId, event });
+          // Identify if response generation was stopped due to non-standard events
+          if (event.messageStop && event.messageStop?.stopReason !== "end_turn") {
+            Logger.info("Received non-standard message stop event from Converse API", {
+              sessionId,
+              reason: event.messageStop.stopReason,
+            });
+
+            // Do not emit citations for guardrail interventions
+            if (event.messageStop.stopReason === "guardrail_intervened") {
+              guardrailIntervened = true;
+              emitCitations = false;
+            }
           }
-          if (event.messageStop?.stopReason === "max_tokens") {
-            Logger.info("Response generation stopped due to max tokens limit", { sessionId, event });
+
+          // Log guardrail trace if present in the response metadata
+          if (guardrailIntervened && event.metadata?.trace?.guardrail) {
+            Logger.info("Received guardrail trace in Converse API response", {
+              sessionId,
+              guardrailTrace: JSON.stringify(event.metadata.trace.guardrail, null, 2),
+            });
           }
-          if (event.messageStop) {
-            break;
-          }
+        }
+
+        if (emitCitations) {
+          Logger.info("Sending citations to client", { sessionId, citations });
+          res.write(JSON.stringify(generateCitationEvent(citations)) + "\n");
         }
       }
 
