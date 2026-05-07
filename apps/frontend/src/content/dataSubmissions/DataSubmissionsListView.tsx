@@ -10,6 +10,7 @@ import SRFLink from "@/components/SRFLink";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
 import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/AuthContext";
+import CopyTextButton from "../../components/CopyTextButton";
 import CreateDataSubmissionDialog from "../../components/DataSubmissions/CreateDataSubmissionDialog";
 import DataSubmissionListFilters, {
   defaultValues,
@@ -90,19 +91,85 @@ const StyledDateTooltip = styled(StyledTooltip)(() => ({
   cursor: "pointer",
 }));
 
+const StyledTooltipLabel = styled("p")(() => ({
+  fontFamily: "'Inter', sans-serif",
+  fontStyle: "normal",
+  fontWeight: 700,
+  fontSize: "14px",
+  lineHeight: "20px",
+  color: "#346798",
+  margin: 0,
+}));
+
+const StyledTooltipValue = styled("p")(() => ({
+  fontFamily: "'Nunito', sans-serif",
+  fontStyle: "normal",
+  fontWeight: 400,
+  fontSize: "16px",
+  lineHeight: "20px",
+  color: "#595959",
+  margin: 0,
+}));
+
+const submissionNameTextStyle = {
+  fontWeight: 700,
+  color: "#005999",
+};
+
+const StyledSubmissionNameWrapper = styled(Stack)(() => ({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: "5px",
+}));
+
 const columns: Column<T>[] = [
   {
     label: "Submission Name",
-    renderValue: (a) =>
-      a.status === "Deleted" || a.archived === true ? (
-        <StyledDisabledText>
-          <TruncatedText text={a.name} />
-        </StyledDisabledText>
-      ) : (
-        <Link to={`/data-submission/${a._id}/upload-activity`}>
-          <TruncatedText text={a.name} underline={false} />
-        </Link>
-      ),
+    renderValue: (a) => {
+      const isDisabled = a.status === "Deleted" || a.archived === true;
+
+      return (
+        <StyledSubmissionNameWrapper data-testid={`submission-name-cell-${a._id}`}>
+          <StyledTooltip
+            title={
+              <Stack gap="6px">
+                <Stack gap="6px">
+                  <StyledTooltipLabel>Submission Name:</StyledTooltipLabel>
+                  <StyledTooltipValue>{a.name}</StyledTooltipValue>
+                </Stack>
+                <Stack gap="6px">
+                  <StyledTooltipLabel>Data Submission ID:</StyledTooltipLabel>
+                  <StyledTooltipValue>{a._id}</StyledTooltipValue>
+                </Stack>
+              </Stack>
+            }
+            placement="top"
+            dynamic
+          >
+            {isDisabled ? (
+              <StyledDisabledText>
+                <TruncatedText text={a.name} disableHoverListener />
+              </StyledDisabledText>
+            ) : (
+              <Link to={`/data-submission/${a._id}/upload-activity`}>
+                <TruncatedText
+                  text={a.name}
+                  underline={false}
+                  disableHoverListener
+                  labelSx={submissionNameTextStyle}
+                />
+              </Link>
+            )}
+          </StyledTooltip>
+          <CopyTextButton
+            copyText={a._id}
+            title="Copy Data Submission ID to the clipboard"
+            aria-label="Copy Data Submission ID to the clipboard"
+            sx={{ color: "#005999" }}
+          />
+        </StyledSubmissionNameWrapper>
+      );
+    },
     field: "name",
     hideable: false,
     exportValue: (a) => ({ label: "Submission Name", value: a.name }),
