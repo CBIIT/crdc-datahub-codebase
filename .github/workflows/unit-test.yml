@@ -1,0 +1,220 @@
+name: Unit Tests for CRDC DH
+permissions:
+  contents: write
+  id-token: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Choose the environment to build
+        type: environment
+      unit_test:
+        description: "Run Unit Test"
+        required: true
+        type: boolean
+        default: true
+  pull_request:
+    types:
+      - opened
+      - closed
+    branches:
+      - "*.*.*"
+
+run-name: "Unit Tests – ${{ github.event_name == 'pull_request' && format('PR #{0} ({1})', github.event.pull_request.number, github.event.action == 'closed' && 'merged' || 'opened') || github.ref_name }}"
+
+jobs:
+
+  # ──────────────────────────────────────────────
+  # Job 1: PR opened → run on source (head) branch
+  # ──────────────────────────────────────────────
+
+  pr-unit-test-npm:
+    name: PR Unit Test (npm) - ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.action != 'closed'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: authn
+            context: apps/authn
+            prisma: false
+
+          - name: backend
+            context: apps/backend
+            prisma: true
+
+          - name: frontend
+            context: apps/frontend
+            prisma: false
+
+          - name: chatbot-backend
+            context: apps/chatbot-backend
+            prisma: false
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          submodules: recursive
+          clean: true
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run unit tests
+        working-directory: ${{ matrix.context }}
+        run: |
+          echo "Running unit tests..."
+          npm ci
+          ${{ matrix.prisma && 'npx prisma generate' || '# no prisma' }}
+          npm test
+
+  pr-unit-test-python:
+    name: PR Unit Test (pytest) - ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.action != 'closed'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: validators
+            context: apps/validator
+
+          - name: cli-uploader
+            context: apps/cli-uploader
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          submodules: recursive
+          clean: true
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        working-directory: ${{ matrix.context }}
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run unit tests
+        working-directory: ${{ matrix.context }}
+        run: pytest
+
+  # ──────────────────────────────────────────────
+  # Job 2: PR merged / workflow_dispatch → run on target (base) branch
+  # ──────────────────────────────────────────────
+
+  merged-unit-test-npm:
+    name: Merged Unit Test (npm) - ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && inputs.unit_test == true) 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: authn
+            context: apps/authn
+            prisma: false
+
+          - name: backend
+            context: apps/backend
+            prisma: true
+
+          - name: frontend
+            context: apps/frontend
+            prisma: false
+
+          - name: chatbot-backend
+            context: apps/chatbot-backend
+            prisma: false
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.pull_request.base.ref }}
+          submodules: recursive
+          clean: true
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run unit tests
+        working-directory: ${{ matrix.context }}
+        run: |
+          echo "Running unit tests..."
+          npm ci
+          ${{ matrix.prisma && 'npx prisma generate' || '# no prisma' }}
+          npm test
+
+  merged-unit-test-python:
+    name: Merged Unit Test (pytest) - ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && inputs.unit_test == true)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: validators
+            context: apps/validator
+
+          - name: cli-uploader
+            context: apps/cli-uploader
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.pull_request.base.ref }}
+          submodules: recursive
+          clean: true
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        working-directory: ${{ matrix.context }}
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run unit tests
+        working-directory: ${{ matrix.context }}
+        run: pytest
+
+  # ──────────────────────────────────────────────
+  # Slack notification (always runs)
+  # ──────────────────────────────────────────────
+  notify:
+    name: Slack Notification
+    runs-on: ubuntu-latest
+    needs: [pr-unit-test-npm, pr-unit-test-python, merged-unit-test-npm, merged-unit-test-python]
+    if: always()
+    steps:
+      - name: Slack Notification
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        uses: act10ns/slack@87c73aef9f8838eb6feae81589a6b1487a4a9e08  # v1.6.0
+        with:
+          status: ${{ (contains(needs.*.result, 'failure')) && 'failure' || 'success' }}
