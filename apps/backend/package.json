@@ -10,7 +10,8 @@
     "test:coverage": "jest --coverage",
     "test:ci": "TZ=UTC CI=true jest --passWithNoTests --coverage --maxWorkers=2 --maxConcurrent=2",
     "migrate:3.5.0": "node documentation/3-5-0/3-5-0-migration.js",
-    "migrate:3.6.0": "node documentation/3-6-0/3-6-0-migration.js"
+    "migrate:3.6.0": "node documentation/3-6-0/3-6-0-migration.js",
+    "migrate:3.7.0": "node documentation/3-7-0/3-7-0-migration.js"
   },
   "dependencies": {
     "@graphql-tools/schema": "^10.0.23",
@@ -36,7 +37,7 @@
     "nodemailer": "^7.0.12",
     "sanitize-html": "^2.13.1",
     "semver": "^7.5.4",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.26.10",
