@@ -26,6 +26,8 @@ export const baseApplication: Application = {
   newInstitutions: [],
   version: "",
   GPAName: "",
+  sequenceNumber: 1,
+  nextRevisionID: null,
 };
 
 /**

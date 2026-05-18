@@ -48,6 +48,14 @@ type Application = {
    * The current form version
    */
   version: string;
+  /**
+   * The sequence number identifying the revision of this SRF
+   */
+  sequenceNumber: number;
+  /**
+   * The ID of the next revision of this SRF. Null if this is the latest version.
+   */
+  nextRevisionID: string | null;
 };
 
 type ApplicationStatus =
@@ -58,6 +66,7 @@ type ApplicationStatus =
   | "Approved"
   | "Rejected"
   | "Inquired"
+  | "Reopened"
   | "Canceled"
   | "Deleted";
 

@@ -3,7 +3,8 @@ type SubmissionRequestPermissions =
   | "submission_request:create"
   | "submission_request:review"
   | "submission_request:submit"
-  | "submission_request:cancel";
+  | "submission_request:cancel"
+  | "submission_request:reopen";
 
 type DataSubmissionPermissions =
   | "data_submission:view"
