@@ -160,7 +160,7 @@ const columns: Column<T>[] = [
     },
   },
   {
-    label: "Version",
+    label: "Form Version",
     renderValue: (a) => extractVersion(a.version) || "",
     field: "version",
   },
