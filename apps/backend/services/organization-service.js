@@ -1,14 +1,14 @@
-const {ERROR} = require("../constants/error-constants");
-const {USER} = require("../constants/user-constants");
-const {ORGANIZATION} = require("../constants/organization-constants");
-const {getCurrentTime} = require("../utility/time-utility");
-const {getDataCommonsDisplayNamesForUserOrganization} = require("../../../apps/backend/utility/data-commons-remapper");
-const {replaceErrorString} = require("../../../apps/backend/utility/string-util");
-const ProgramDAO = require("../../../apps/backend/dao/program");
-const SubmissionDAO = require("../../../apps/backend/dao/submission");
-const UserDAO = require("../../../apps/backend/dao/user");
-const ApplicationDAO = require("../../../apps/backend/dao/application");
-const ApprovedStudyDAO = require("../../../apps/backend/dao/approvedStudy");
+const {ERROR} = require("../crdc-datahub-database-drivers/constants/error-constants");
+const {USER} = require("../crdc-datahub-database-drivers/constants/user-constants");
+const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
+const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-utility");
+const {getDataCommonsDisplayNamesForUserOrganization} = require("../utility/data-commons-remapper");
+const {replaceErrorString} = require("../utility/string-util");
+const ProgramDAO = require("../dao/program");
+const SubmissionDAO = require("../dao/submission");
+const UserDAO = require("../dao/user");
+const ApplicationDAO = require("../dao/application");
+const ApprovedStudyDAO = require("../dao/approvedStudy");
 
 class Organization {
   _ALL = "All";
