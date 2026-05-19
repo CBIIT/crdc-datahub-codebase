@@ -62,8 +62,17 @@ global.USER_PERMISSION_CONSTANTS = {
     }
 };
 global.HistoryEventBuilder = { createEvent: jest.fn(() => ({ dateTime: Date.now() })) };
-global.UpdateApplicationStateEvent = { create: jest.fn(), createByApp: jest.fn() };
-global.CreateApplicationEvent = { create: jest.fn() };
+jest.mock('../../crdc-datahub-database-drivers/domain/log-events', () => ({
+    CreateApplicationEvent: { create: jest.fn(() => ({ eventType: 'CREATE_APPLICATION' })) },
+    UpdateApplicationStateEvent: {
+        create: jest.fn(() => ({ eventType: 'UPDATE_APPLICATION_STATE' })),
+        createByApp: jest.fn(() => ({ eventType: 'UPDATE_APPLICATION_STATE' })),
+    },
+}));
+const {
+    CreateApplicationEvent,
+    UpdateApplicationStateEvent,
+} = require('../../crdc-datahub-database-drivers/domain/log-events');
 global.verifySession = jest.fn(() => ({ verifyInitialized: jest.fn() }));
 global.verifyApplication = jest.fn(() => ({
     notEmpty: jest.fn().mockReturnThis(),
@@ -470,9 +479,8 @@ describe('Application', () => {
             userScopeMock.isNoneScope.mockReturnValue(false); // Ensure user has scope
             userScopeMock.isAllScope.mockReturnValue(true);   // Ensure user has all scope
             // Patch: use applicationDAO mock to avoid Prisma call
-            app.applicationDAO = {
-                aggregate: jest.fn().mockResolvedValue([{ _id: 'app1', status: APPROVED }])
-            };
+            const aggregate = jest.fn().mockResolvedValue([{ _id: 'app1', status: APPROVED }]);
+            app.applicationDAO = { aggregate };
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
 
             // Patch: getApplicationById now expects {id: ...} and returns institution, so mock accordingly
@@ -480,6 +488,11 @@ describe('Application', () => {
             jest.spyOn(app, 'getApplicationById').mockResolvedValue(applicationWithInstitution);
 
             const result = await app.getMyLastApplication({}, context);
+            expect(aggregate).toHaveBeenCalledWith([
+                { $match: { applicantID: 'user1', status: APPROVED, nextRevisionId: null } },
+                { $sort: { createdAt: -1 } },
+                { $limit: 1 },
+            ]);
             expect(result).toMatchObject({ _id: 'app1', version: '3.0', institution: { id: 'inst1', _id: 'inst1' } });
         });
 
@@ -915,6 +928,32 @@ describe('Application', () => {
                 .rejects.toThrow(ERROR.UPDATE_FAILED);
 
             expect(mockInstitutionService.addNewInstitutions).not.toHaveBeenCalled();
+        });
+
+        it('logs UpdateApplicationStateEvent with pre-approve status on success', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+            };
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
+            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue({ program: { _id: 'program1' } });
+            await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
+
+            expect(UpdateApplicationStateEvent.create).toHaveBeenCalledWith(
+                'user1', 'john@doe.com', undefined, 'app1', IN_REVIEW, APPROVED
+            );
+            expect(mockLogCollection.insert).toHaveBeenCalled();
         });
 
         it('should create program before creating study when no existing program', async () => {
@@ -1699,25 +1738,36 @@ describe('Application', () => {
             };
         });
 
-        it('clones approved SRF and links source nextRevisionId', async () => {
+        it('clones approved SRF via reopenApprovedRevision and logs audit events', async () => {
             app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
-            app.applicationDAO = {
-                insert: jest.fn().mockResolvedValue({ acknowledged: true }),
-                update: jest.fn().mockResolvedValue(true)
-            };
-            mockLogCollection.insert.mockResolvedValue();
-
-            const result = await app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context);
-
-            expect(app.applicationDAO.insert).toHaveBeenCalledWith(expect.objectContaining({
+            const reopenedDoc = {
+                _id: 'new-revision-id',
                 status: REOPENED,
                 sequenceNumber: 2,
-                submittedDate: null
-            }));
-            expect(app.applicationDAO.update).toHaveBeenCalledWith(expect.objectContaining({
-                _id: 'approved-1',
-                nextRevisionId: expect.any(String)
-            }));
+                submittedDate: null,
+                version: '3.0',
+            };
+            app.applicationDAO = {
+                reopenApprovedRevision: jest.fn().mockResolvedValue(reopenedDoc),
+            };
+            mockLogCollection.insert.mockResolvedValue();
+            const result = await app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context);
+
+            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+                'approved-1',
+                expect.objectContaining({
+                    status: REOPENED,
+                    sequenceNumber: 2,
+                    submittedDate: null,
+                })
+            );
+            expect(CreateApplicationEvent.create).toHaveBeenCalledWith(
+                'user1', 'john@doe.com', undefined, expect.any(String)
+            );
+            expect(UpdateApplicationStateEvent.create).toHaveBeenCalledWith(
+                'user1', 'john@doe.com', undefined, expect.any(String), APPROVED, REOPENED
+            );
+            expect(mockLogCollection.insert).toHaveBeenCalledTimes(2);
             expect(result.status).toBe(REOPENED);
             expect(result.applicant).toEqual({
                 applicantID: 'user1',
@@ -1725,6 +1775,50 @@ describe('Application', () => {
                 applicantEmail: '',
             });
             expect(app.getApplicationById).toHaveBeenCalledTimes(1);
+        });
+
+        it('reassigns owner when ownerId is provided', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.userDAO.findByIdAndStatus.mockResolvedValue({
+                _id: 'new-owner',
+                id: 'new-owner',
+                fullName: 'New Owner',
+                email: 'owner@example.com',
+                role: USER_CONSTANTS.USER.ROLES.USER,
+            });
+            app.applicationDAO = {
+                reopenApprovedRevision: jest.fn().mockImplementation((_sourceId, doc) =>
+                    Promise.resolve({ ...doc, version: '3.0' })
+                ),
+            };
+            mockLogCollection.insert.mockResolvedValue();
+
+            const result = await app.reopenApprovedSubmissionRequest(
+                { _id: 'approved-1', ownerId: 'new-owner' },
+                context
+            );
+
+            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+                'approved-1',
+                expect.objectContaining({ applicantID: 'new-owner' })
+            );
+            expect(result.applicant).toEqual({
+                applicantID: 'new-owner',
+                applicantName: 'New Owner',
+                applicantEmail: 'owner@example.com',
+            });
+        });
+
+        it('throws when reopenApprovedRevision reports invalid state', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.applicationDAO = {
+                reopenApprovedRevision: jest.fn().mockRejectedValue(
+                    new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION)
+                ),
+            };
+
+            await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         });
 
         it('rejects when nextRevisionId already set', async () => {

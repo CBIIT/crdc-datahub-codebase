@@ -122,6 +122,30 @@ class Application {
         application.pendingConditions = pendingConditions;
     }
 
+    _hydrateApplicationRecord(record, ownerUser) {
+        if (!record) {
+            return record;
+        }
+        const hydrated = { ...record };
+        if (ownerUser) {
+            hydrated.applicant = {
+                applicantID: ownerUser.id ?? ownerUser._id ?? "",
+                applicantName: ownerUser.fullName || "",
+                applicantEmail: ownerUser.email || "",
+            };
+        } else if (hydrated.applicant && typeof hydrated.applicant === 'object') {
+            hydrated.applicant = {
+                applicantID: hydrated.applicant?.id || hydrated.applicant?.applicantID || "",
+                applicantName: hydrated.applicant?.fullName || hydrated.applicant?.applicantName || "",
+                applicantEmail: hydrated.applicant?.email || hydrated.applicant?.applicantEmail || "",
+            };
+        }
+        if (hydrated.id && !hydrated._id) {
+            hydrated._id = hydrated.id;
+        }
+        return hydrated;
+    }
+
     async getApplicationById(id) {
         let result = await this.applicationDAO.findFirst({id: id,
         }, {
@@ -141,16 +165,7 @@ class Application {
             throw new Error(ERROR.APPLICATION_NOT_FOUND+id);
         }
 
-        result.applicant = {
-            applicantID: result?.applicant?.id || "",
-            applicantName: result?.applicant?.fullName || "",
-            applicantEmail: result?.applicant.email || "",
-
-        };
-        if (result.id && !result._id) {
-            result._id = result.id;
-        }
-        return result;
+        return this._hydrateApplicationRecord(result);
     }
     
     async reviewApplication(params, context) {
@@ -329,7 +344,7 @@ class Application {
 
         const userID = context.userInfo._id;
         // To remove this MongoDB query, we need to refactor the schema to move applicantID to the root level.
-        const matchApplicantIDToUser = {"$match": {"applicantID": userID, status: APPROVED}};
+        const matchApplicantIDToUser = {"$match": {"applicantID": userID, status: APPROVED, nextRevisionId: null}};
         const sortCreatedAtDescending = {"$sort": {createdAt: -1}};
         const limitReturnToOneApplication = {"$limit": 1};
         const pipeline = [
@@ -739,35 +754,20 @@ class Application {
             throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         }
 
-        // Create the new SRF
         const ownerUser = await this._resolveReopenOwner(source, params?.ownerId);
         const newApp = await this._cloneApplicationForReopen(source, ownerUser, context.userInfo._id);
-        const timestamp = getCurrentTime();
+        const insertedApp = await this.applicationDAO.reopenApprovedRevision(source._id, newApp);
 
-        const insertResult = await this.applicationDAO.insert(newApp);
-        if (!insertResult?.acknowledged) {
-            throw new Error(ERROR.UPDATE_FAILED);
-        }
+        const { _id: actorId, email, IDP } = context.userInfo;
+        await Promise.all([
+            this.logCollection.insert(CreateApplicationEvent.create(actorId, email, IDP, insertedApp._id)),
+            this.logCollection.insert(UpdateApplicationStateEvent.create(
+                actorId, email, IDP, insertedApp._id, APPROVED, REOPENED
+            ))
+        ]);
 
-        // Update the source application to set the next revision ID
-        await this.applicationDAO.update({
-            _id: source._id,
-            nextRevisionId: newApp._id,
-            updatedAt: timestamp
-        });
-
-        // Log the creation of the new SRF
-        await this.logCollection.insert(CreateApplicationEvent.create(
-            context.userInfo._id, context.userInfo.email, context.userInfo.IDP, newApp._id
-        ));
-
-        newApp.applicant = {
-            applicantID: ownerUser.id ?? ownerUser._id,
-            applicantName: ownerUser.fullName || "",
-            applicantEmail: ownerUser.email || "",
-        };
-        newApp.version = await this._getApplicationVersionByStatus(newApp.status, newApp.version);
-        return newApp;
+        insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
+        return this._hydrateApplicationRecord(insertedApp, ownerUser);
     }
 
     async _resolveReopenOwner(source, ownerId) {

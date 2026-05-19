@@ -4,7 +4,8 @@ const GenericDAO = require("./generic");
 const {convertIdFields, convertMongoFilterToPrismaFilter,handleDotNotation} = require('./utils/orm-converter');
 
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
-const {NEW, IN_PROGRESS, INQUIRED, REOPENED} = require("../constants/application-constants");
+const {NEW, IN_PROGRESS, INQUIRED, REOPENED, APPROVED} = require("../constants/application-constants");
+const ERROR = require("../constants/error-constants");
 
 class ApplicationDAO extends GenericDAO {
     constructor(applicationCollection) {
@@ -50,6 +51,52 @@ class ApplicationDAO extends GenericDAO {
             data: updateDoc
         });
         return { matchedCount: result.count, modifiedCount: result.count };
+    }
+
+    /**
+     * Insert a new reopened application and update the approved predecessor, rollback if the insert fails.
+     * @param {string} sourceId Approved application _id
+     * @param {object} newApp Full successor document (must include _id)
+     * @returns {Promise<object>} The inserted application document
+     */
+    async reopenApprovedRevision(sourceId, newApp) {
+        const timestamp = newApp.updatedAt ?? getCurrentTime();
+        const sourceFilter = {
+            _id: sourceId,
+            status: APPROVED,
+            $or: [
+                { nextRevisionId: null },
+                { nextRevisionId: { $exists: false } }
+            ]
+        };
+
+        const linkResult = await this.applicationCollection.updateOne(
+            sourceFilter,
+            { nextRevisionId: newApp._id, updatedAt: timestamp }
+        );
+
+        if (linkResult?.modifiedCount !== 1) {
+            throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+        }
+
+        try {
+            const insertResult = await this.applicationCollection.insert(newApp);
+            if (!insertResult?.acknowledged) {
+                throw new Error(ERROR.UPDATE_FAILED);
+            }
+            return { ...newApp };
+        } catch (error) {
+            try {
+                await this.applicationCollection.updateOne(
+                    { _id: sourceId },
+                    {},
+                    { $unset: { nextRevisionId: "" } }
+                );
+            } catch (compensateError) {
+                console.error('Failed to compensate nextRevisionId after reopen insert failure:', compensateError);
+            }
+            throw error;
+        }
     }
 
     async getInactiveApplication(inactiveDays, inactiveFlagField) {
