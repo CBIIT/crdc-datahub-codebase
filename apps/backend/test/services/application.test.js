@@ -1849,17 +1849,6 @@ describe('Application', () => {
             await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
                 .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
         });
-
-        it('rejects invalid owner role', async () => {
-            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
-            app.userDAO.findByIdAndStatus.mockResolvedValue({
-                _id: 'admin-1',
-                role: USER_CONSTANTS.USER.ROLES.ADMIN
-            });
-
-            await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1', ownerId: 'admin-1' }, context))
-                .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
-        });
     });
 
     describe('saveApplication from Reopened', () => {

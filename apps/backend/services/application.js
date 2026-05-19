@@ -54,7 +54,7 @@ class Application {
         this.configurationService = configurationService;
         this.authorizationService = authorizationService;
         this.institionDAO = new InstitutionDAO()
-        this.applicationDAO = new ApplicationDAO();
+        this.applicationDAO = new ApplicationDAO(applicationCollection);
         this.userDAO = new UserDAO();
         this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, REOPENED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
     }
@@ -779,11 +779,6 @@ class Application {
 
         const ownerUser = await this.userDAO.findByIdAndStatus(resolvedOwnerId, USER_CONSTANTS.USER.STATUSES.ACTIVE);
         if (!ownerUser) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        const assignableRoles = [ROLES.USER, ROLES.SUBMITTER];
-        if (!assignableRoles.includes(ownerUser.role)) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
