@@ -70,13 +70,13 @@ const writeHeader = (doc: JsPDF, request: Application): number => {
   doc.line(BASE_MARGIN, (y += 10), RIGHT_EDGE, y);
   y += 24;
 
-  // Study name and abbreviation
+  // Study Name
   doc.setFont("Nunito", "normal", 600);
   doc.setTextColor(...COLOR_BASE);
   doc.setFontSize(10);
   doc.text("STUDY NAME", CONTENT_MARGIN, y);
 
-  const formattedName = formatFullStudyName(study?.name, study?.abbreviation);
+  const formattedName = formatFullStudyName(study?.name, "");
   const maxNameWidth = RIGHT_EDGE - CONTENT_MARGIN - 85;
   doc.setFont("Nunito", "normal", 400);
   doc.setFontSize(12);

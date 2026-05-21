@@ -264,10 +264,15 @@ export const plannedPublicationSchema = z
      */
     title: z.string().max(500).nonempty(),
     /**
-     * Target date for publication release.
-     * Stored as MM/DD/YYYY.
+     * Target date for publication release. Stored as MM/DD/YYYY.
+     * Must be a future date.
      */
-    expectedDate: z.string().refine((val) => dayjs(val, "MM/DD/YYYY", true)?.isValid()),
+    expectedDate: z.string().refine((val) => {
+      const date = dayjs(val, "MM/DD/YYYY", true)?.startOf("day");
+      const dateIsTodayOrAfter =
+        date?.isSame(dayjs().startOf("day")) || date?.isAfter(dayjs().startOf("day"));
+      return date?.isValid() && dateIsTodayOrAfter;
+    }),
   })
   .strict();
 

@@ -887,6 +887,105 @@ describe("sectionHasData", () => {
         )
       ).toBe(false);
     });
+
+    it("should return false for empty object input", () => {
+      expect(utils.sectionHasData("A", {}, {})).toBe(false);
+    });
+
+    it("should treat the presence of only autofilled PI information as empty", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const data = questionnaireDataFactory.build({
+        pi: lastAppPi,
+        primaryContact: null,
+        additionalContacts: [],
+      });
+
+      expect(utils.sectionHasData("A", data, { pi: lastAppPi })).toBe(false);
+    });
+
+    it("should return true when PI is autofilled but other Section A data exists (additionalContacts)", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const dataWithOther = questionnaireDataFactory.build({
+        pi: lastAppPi,
+        additionalContacts: [contactFactory.build({ firstName: "jane" })],
+      });
+
+      expect(utils.sectionHasData("A", dataWithOther, { pi: lastAppPi })).toBe(true);
+    });
+
+    it("should return true when PI is autofilled but other Section A data exists (primaryContactSameAsPI)", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const dataWithOther = questionnaireDataFactory.build({
+        pi: lastAppPi,
+        piAsPrimaryContact: true,
+      });
+
+      expect(utils.sectionHasData("A", dataWithOther, { pi: lastAppPi })).toBe(true);
+    });
+
+    it("should return true when PI is autofilled but modified", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const dataWithOther = questionnaireDataFactory.build({
+        pi: {
+          ...lastAppPi,
+          firstName: "Brad",
+        },
+      });
+
+      expect(utils.sectionHasData("A", dataWithOther, { pi: lastAppPi })).toBe(true);
+    });
+
+    it("should return false when contextual PI exists but user cleared PI field", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const data = questionnaireDataFactory.build({
+        pi: {
+          ...contactFactory.build(),
+          address: "",
+        },
+      });
+
+      expect(utils.sectionHasData("A", data, { pi: lastAppPi })).toBe(false);
+    });
   });
 
   describe("Section B", () => {
