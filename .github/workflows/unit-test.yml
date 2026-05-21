@@ -65,7 +65,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
+
+      - name: Copy db-driver subfolders
+        if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
+        run: |
+          cp -rL lib/db-driver/. ${{ matrix.context }}/tmp-crdc-datahub-database-drivers/
+          rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers
+          mv ${{ matrix.context }}/tmp-crdc-datahub-database-drivers ${{ matrix.context }}/crdc-datahub-database-drivers
 
       - name: Run unit tests
         working-directory: ${{ matrix.context }}
@@ -74,6 +81,10 @@ jobs:
           npm ci
           ${{ matrix.prisma && 'npx prisma generate' || '# no prisma' }}
           npm test
+
+      - name: Clean up db-driver folders
+        if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
+        run: rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers/
 
   pr-unit-test-python:
     name: PR Unit Test (pytest) - ${{ matrix.name }}
@@ -110,9 +121,21 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Copy bento-common subfolders
+        if: ${{ matrix.name == 'validators' || matrix.name == 'cli-uploader' }}
+        run: |
+          cp -rL lib/bento-common/. ${{ matrix.context }}/src/tmp-bento/
+          rm -rf ${{ matrix.context }}/src/bento
+          mv ${{ matrix.context }}/src/tmp-bento ${{ matrix.context }}/src/bento
+
       - name: Run unit tests
         working-directory: ${{ matrix.context }}
         run: pytest
+
+      - name: Clean up bento-common
+        if: ${{ matrix.name == 'validators' || matrix.name == 'cli-uploader' }}
+        run: |
+          rm -rf ${{ matrix.context }}/src/bento/
 
   # ──────────────────────────────────────────────
   # Job 2: PR merged / workflow_dispatch → run on target (base) branch
@@ -154,7 +177,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
+
+      - name: Copy db-driver subfolders
+        if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
+        run: |
+          cp -rL lib/db-driver/. ${{ matrix.context }}/tmp-crdc-datahub-database-drivers/
+          rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers
+          mv ${{ matrix.context }}/tmp-crdc-datahub-database-drivers ${{ matrix.context }}/crdc-datahub-database-drivers
 
       - name: Run unit tests
         working-directory: ${{ matrix.context }}
@@ -163,6 +193,10 @@ jobs:
           npm ci
           ${{ matrix.prisma && 'npx prisma generate' || '# no prisma' }}
           npm test
+
+      - name: Clean up db-driver folders
+        if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
+        run: rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers/
 
   merged-unit-test-python:
     name: Merged Unit Test (pytest) - ${{ matrix.name }}
@@ -199,9 +233,21 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Copy bento-common subfolders
+        if: ${{ matrix.name == 'validators' || matrix.name == 'cli-uploader' }}
+        run: |
+          cp -rL lib/bento-common/. ${{ matrix.context }}/src/tmp-bento/
+          rm -rf ${{ matrix.context }}/src/bento
+          mv ${{ matrix.context }}/src/tmp-bento ${{ matrix.context }}/src/bento
+
       - name: Run unit tests
         working-directory: ${{ matrix.context }}
         run: pytest
+
+      - name: Clean up bento-common
+        if: ${{ matrix.name == 'validators' || matrix.name == 'cli-uploader' }}
+        run: |
+          rm -rf ${{ matrix.context }}/src/bento/
 
   # ──────────────────────────────────────────────
   # Slack notification (always runs)
