@@ -10,6 +10,10 @@ const StyledCopyIDButton = styled(IconButton)(({ theme }) => ({
   padding: 0,
   height: "fit-content",
   margin: 0,
+  color: "#125868",
+  "& svg": {
+    fill: "currentColor",
+  },
   "&.MuiIconButton-root.Mui-disabled": {
     opacity: theme.palette.action.disabledOpacity,
     cursor: "not-allowed",
