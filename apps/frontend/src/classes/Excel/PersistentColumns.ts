@@ -26,6 +26,10 @@ export const PERSISTENT_COLUMNS: PersistenceRule[] = [
     key: "targetedReleaseDate",
     shouldPersist: (value: string) => dayjs(value, "MM/DD/YYYY", true)?.isValid(),
   },
+  {
+    key: "study.plannedPublications.expectedDate",
+    shouldPersist: (value: string) => dayjs(value, "MM/DD/YYYY", true)?.isValid(),
+  },
 ];
 
 /**

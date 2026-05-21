@@ -143,7 +143,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
 
   const [lastApp] = useLazyQuery<LastAppResp>(LAST_APP, {
     context: { clientName: "backend" },
-    fetchPolicy: "no-cache",
+    fetchPolicy: "cache-first",
   });
 
   const [getApp] = useLazyQuery<GetAppResp>(GET_APP, {
