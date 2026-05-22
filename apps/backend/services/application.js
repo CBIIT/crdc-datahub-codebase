@@ -1,4 +1,4 @@
-const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED} = require("../constants/application-constants");
+const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED, REOPENED} = require("../constants/application-constants");
 const {APPLICATION_COLLECTION: APPLICATION} = require("../crdc-datahub-database-drivers/database-constants");
 const {v4} = require('uuid')
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
@@ -54,9 +54,9 @@ class Application {
         this.configurationService = configurationService;
         this.authorizationService = authorizationService;
         this.institionDAO = new InstitutionDAO()
-        this.applicationDAO = new ApplicationDAO();
+        this.applicationDAO = new ApplicationDAO(applicationCollection);
         this.userDAO = new UserDAO();
-        this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
+        this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, REOPENED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
     }
 
     _normalizeApplicationStatus(status) {
@@ -91,7 +91,7 @@ class Application {
         const newStatusVersion = config?.new || "3.0";
         // auto upgrade version based on configuration if status is NEW, IN_PROGRESS, INQUIRED
         // for status other than NEW, IN_PROGRESS, INQUIRED, keep original version if exists, else set current version.
-        return [NEW, IN_PROGRESS, INQUIRED].includes(status) ? newStatusVersion : (!version)? currentVersion : version;
+        return [NEW, IN_PROGRESS, INQUIRED, REOPENED].includes(status) ? newStatusVersion : (!version)? currentVersion : version;
     }
 
     /**
@@ -122,6 +122,30 @@ class Application {
         application.pendingConditions = pendingConditions;
     }
 
+    _hydrateApplicationRecord(record, ownerUser) {
+        if (!record) {
+            return record;
+        }
+        const hydrated = { ...record };
+        if (ownerUser) {
+            hydrated.applicant = {
+                applicantID: ownerUser.id ?? ownerUser._id ?? "",
+                applicantName: ownerUser.fullName || "",
+                applicantEmail: ownerUser.email || "",
+            };
+        } else if (hydrated.applicant && typeof hydrated.applicant === 'object') {
+            hydrated.applicant = {
+                applicantID: hydrated.applicant?.id || hydrated.applicant?.applicantID || "",
+                applicantName: hydrated.applicant?.fullName || hydrated.applicant?.applicantName || "",
+                applicantEmail: hydrated.applicant?.email || hydrated.applicant?.applicantEmail || "",
+            };
+        }
+        if (hydrated.id && !hydrated._id) {
+            hydrated._id = hydrated.id;
+        }
+        return hydrated;
+    }
+
     async getApplicationById(id) {
         let result = await this.applicationDAO.findFirst({id: id,
         }, {
@@ -141,13 +165,7 @@ class Application {
             throw new Error(ERROR.APPLICATION_NOT_FOUND+id);
         }
 
-        result.applicant = {
-            applicantID: result?.applicant?.id || "",
-            applicantName: result?.applicant?.fullName || "",
-            applicantEmail: result?.applicant.email || "",
-
-        }
-        return result;
+        return this._hydrateApplicationRecord(result);
     }
     
     async reviewApplication(params, context) {
@@ -208,6 +226,7 @@ class Application {
             inactiveReminder_15: false,
             inactiveReminder_30: false,
             finalInactiveReminder: false,
+            sequenceNumber: 1,
         };
 
         if (userInfo?.organization?.orgID) {
@@ -256,12 +275,15 @@ class Application {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        if (!params?.status || ![NEW, IN_PROGRESS].includes(params.status)) {
+        const prevStatus = storedApplication?.status;
+        let targetStatus = params?.status;
+        if (prevStatus === REOPENED) {
+            targetStatus = IN_PROGRESS;
+        } else if (!targetStatus || ![NEW, IN_PROGRESS].includes(targetStatus)) {
             throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         }
 
-        const prevStatus = storedApplication?.status;
-        let application = {...storedApplication, ...inputApplication, status: params.status };
+        let application = {...storedApplication, ...inputApplication, status: targetStatus };
         // auto upgrade version based on configuration
         application.version = await this._getApplicationVersionByStatus(application.status);
 
@@ -322,7 +344,7 @@ class Application {
 
         const userID = context.userInfo._id;
         // To remove this MongoDB query, we need to refactor the schema to move applicantID to the root level.
-        const matchApplicantIDToUser = {"$match": {"applicantID": userID, status: APPROVED}};
+        const matchApplicantIDToUser = {"$match": {"applicantID": userID, status: APPROVED, nextRevisionId: null}};
         const sortCreatedAtDescending = {"$sort": {createdAt: -1}};
         const limitReturnToOneApplication = {"$limit": 1};
         const pipeline = [
@@ -621,7 +643,7 @@ class Application {
         applications = mappedApplications;
 
         // Sort statuses in display order
-        const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, APPROVED, REJECTED, CANCELED, DELETED];
+        const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, REOPENED, APPROVED, REJECTED, CANCELED, DELETED];
         const statuses = (statusesList || []).sort((a, b) => statusOrder.indexOf(a) - statusOrder.indexOf(b));
         // Return the results
         return {
@@ -677,10 +699,11 @@ class Application {
         return isValidComment ? history?.at(-1)?.reviewComment : null;
     }
 
-    async reopenApplication(document, context) {
+    async resumeInquiredApplication(params, context) {
         verifySession(context)
             .verifyInitialized();
-        const application = await this.getApplicationById(document._id);
+        const applicationId = params?._id ?? params?.id;
+        const application = await this.getApplicationById(applicationId);
         if (context?.userInfo?._id !== application?.applicant?.applicantID) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
@@ -698,7 +721,7 @@ class Application {
             });
             if (updated) {
                 const promises = [
-                    await this.getApplicationById(document._id),
+                    await this.getApplicationById(applicationId),
                     await this.logCollection.insert(UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, IN_PROGRESS))
                 ];
                 return await Promise.all(promises).then(function(results) {
@@ -707,6 +730,101 @@ class Application {
             }
         }
         return application;
+    }
+
+    async reopenApplication(params, context) {
+        return this.resumeInquiredApplication(params, context);
+    }
+
+    async reopenApprovedSubmissionRequest(params, context) {
+        verifySession(context)
+            .verifyInitialized();
+
+        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN);
+        if (!userScope.isAllScope()) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+
+        const source = await this.getApplicationById(params._id);
+        verifyApplication(source)
+            .notEmpty()
+            .state([APPROVED]);
+
+        if (source.nextRevisionId) {
+            throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+        }
+
+        const ownerUser = await this._resolveReopenOwner(source, params?.ownerId);
+        const newApp = await this._cloneApplicationForReopen(source, ownerUser, context.userInfo._id);
+        const insertedApp = await this.applicationDAO.reopenApprovedRevision(source._id, newApp);
+
+        const { _id: actorId, email, IDP } = context.userInfo;
+        await Promise.all([
+            this.logCollection.insert(CreateApplicationEvent.create(actorId, email, IDP, insertedApp._id)),
+            this.logCollection.insert(UpdateApplicationStateEvent.create(
+                actorId, email, IDP, insertedApp._id, APPROVED, REOPENED
+            ))
+        ]);
+
+        insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
+        return this._hydrateApplicationRecord(insertedApp, ownerUser);
+    }
+
+    async _resolveReopenOwner(source, ownerId) {
+        const defaultOwnerId = source?.applicant?.applicantID ?? source?.applicantID;
+        const resolvedOwnerId = ownerId || defaultOwnerId;
+        if (!resolvedOwnerId) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+
+        const ownerUser = await this.userDAO.findByIdAndStatus(resolvedOwnerId, USER_CONSTANTS.USER.STATUSES.ACTIVE);
+        if (!ownerUser) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+
+        return ownerUser;
+    }
+
+    async _cloneApplicationForReopen(source, ownerUser, actorId) {
+        const timestamp = getCurrentTime();
+        const historyEvent = HistoryEventBuilder.createEvent(actorId, REOPENED, null, timestamp);
+        const version = await this._getApplicationVersionByStatus(REOPENED);
+        const sourceSequence = source.sequenceNumber ?? 1;
+
+        const clone = {
+            // initialization fields 
+            _id: v4(undefined, undefined, undefined),
+            status: REOPENED,
+            sequenceNumber: sourceSequence + 1,
+            submittedDate: null,
+            version,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            applicantID: ownerUser._id ?? ownerUser.id,
+            history: [historyEvent],
+            inactiveReminder: false,
+            inactiveReminder_7: false,
+            inactiveReminder_15: false,
+            inactiveReminder_30: false,
+            finalInactiveReminder: false,
+            // copied fields from source SRF
+            questionnaireData: source.questionnaireData,
+            programName: source.programName,
+            programAbbreviation: source.programAbbreviation,
+            programDescription: source.programDescription,
+            studyName: source.studyName,
+            studyAbbreviation: source.studyAbbreviation,
+            controlledAccess: source.controlledAccess,
+            openAccess: source.openAccess,
+            wholeProgram: source.wholeProgram,
+            ORCID: source.ORCID,
+            PI: source.PI,
+            GPAName: source.GPAName,
+            organization: source.organization,
+            newInstitutions: source.newInstitutions
+        };
+
+        return clone;
     }
 
     async _getUserScope(userInfo, permission) {

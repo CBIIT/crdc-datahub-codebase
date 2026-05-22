@@ -6,6 +6,7 @@ module.exports = Object.freeze({
     SUBMITTED: 'Submitted',
     IN_REVIEW: 'In Review',
     APPROVED: 'Approved',
+    REOPENED: 'Reopened',
     REJECTED: 'Rejected',
     CANCELED: 'Canceled',
     DELETED: 'Deleted',

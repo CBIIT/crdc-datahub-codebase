@@ -4,6 +4,7 @@
   "submission_request:review": "Review submission requests; approve, reject, or request more information.",
   "submission_request:submit": "Submit a submission request for review.",
   "submission_request:cancel": "Cancel or restore submission requests.",
+  "submission_request:reopen": "Reopen an approved submission request to allow edits.",
   "data_submission:view": "View data submissions and details.",
   "data_submission:create": "Create a data submission; upload files; validate; submit your own submission.",
   "data_submission:cancel": "Cancel an active data submission.",
