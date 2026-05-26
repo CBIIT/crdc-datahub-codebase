@@ -43,11 +43,27 @@ const StyledActionButton = styled(Button)({
 });
 
 const StyledFormBox = styled(Box)({
-  marginTop: "18.5px",
+  padding: "40px 72px 0",
 });
 
 const StyledFieldLabel = styled(Typography)({
+  fontFamily: "'Nunito', sans-serif",
+  fontStyle: "normal",
+  fontWeight: 700,
+  fontSize: "16px",
+  lineHeight: "20px",
+  color: "#083A50",
   marginBottom: "4px",
+});
+
+const StyledDescriptionText = styled(Typography)({
+  fontFamily: "'Nunito', sans-serif",
+  fontStyle: "normal",
+  fontWeight: 400,
+  fontSize: "16px",
+  lineHeight: "22px",
+  color: "#453E3E",
+  marginTop: "5px",
 });
 
 type UserOption = Pick<User, "_id"> & { label: string };
@@ -73,7 +89,11 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
 
   const { control, setValue, watch, reset } = useForm<FormValues>({
     defaultValues: {
-      study: application?.studyAbbreviation || "NA",
+      study: application?.studyName
+        ? `${application.studyName}${
+            application.studyAbbreviation ? ` (${application.studyAbbreviation})` : ""
+          }`
+        : "NA",
       program: application?.programName
         ? `${application.programName}${
             application.programAbbreviation ? ` (${application.programAbbreviation})` : ""
@@ -187,6 +207,19 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
     enqueueSnackbar,
   ]);
 
+  const formatOwnerLabel = useCallback(
+    (option: UserOption | null | undefined) => {
+      if (!option) {
+        return "";
+      }
+
+      return option._id === application.applicant?.applicantID
+        ? `${option.label} (Current Owner)`
+        : option.label;
+    },
+    [application.applicant?.applicantID]
+  );
+
   if (!canReopen || !isLatestApproved) {
     return null;
   }
@@ -217,6 +250,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
       <DeleteDialog
         open={confirmOpen}
         header="Reopen Submission Request"
+        headerProps={{ sx: { color: "#1873BD" } }}
         PaperProps={{
           "aria-labelledby": "",
           "aria-label": "Reopen Submission Request",
@@ -225,11 +259,13 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
         onClose={onCloseDialog}
         confirmText="Confirm"
         onConfirm={onConfirmDialog}
-        confirmButtonProps={{ disabled: loading || !selectedOwner }}
+        confirmButtonProps={{ disabled: loading || !selectedOwner, color: "success" }}
         scroll="body"
         description={
           <div>
-            Reopen the submission request will send it back to the users to make changes.
+            <StyledDescriptionText>
+              Reopen the submission request will send it back to the users to make changes.
+            </StyledDescriptionText>
             <StyledFormBox>
               <Stack gap="12px">
                 <Stack direction="column" alignItems="flex-start">
@@ -238,7 +274,12 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
                     name="study"
                     control={control}
                     render={({ field }) => (
-                      <StyledOutlinedInput {...field} data-testid="reopen-dialog-study" fullWidth />
+                      <StyledOutlinedInput
+                        {...field}
+                        data-testid="reopen-dialog-study"
+                        fullWidth
+                        readOnly
+                      />
                     )}
                   />
                 </Stack>
@@ -253,6 +294,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
                         {...field}
                         data-testid="reopen-dialog-program"
                         fullWidth
+                        readOnly
                       />
                     )}
                   />
@@ -270,10 +312,13 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
                         options={userOptions}
                         value={field.value}
                         onChange={(_event, newValue: UserOption) => field.onChange(newValue)}
-                        getOptionLabel={(option: UserOption) => option.label}
+                        getOptionLabel={(option: UserOption) => formatOwnerLabel(option)}
                         isOptionEqualToValue={(option: UserOption, value: UserOption) =>
                           option?._id === value?._id
                         }
+                        renderOption={(props, option: UserOption) => (
+                          <li {...props}>{formatOwnerLabel(option)}</li>
+                        )}
                         renderInput={(params) => (
                           <TextField {...params} placeholder="Search for a user..." size="small" />
                         )}
