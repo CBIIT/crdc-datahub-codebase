@@ -27,6 +27,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         _id
         programName
         programAbbreviation
+        studyName
         studyAbbreviation
         status
         createdAt

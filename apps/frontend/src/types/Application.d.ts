@@ -12,6 +12,7 @@ type Application = {
   PI: string; // Principal Investigator's full name "<first name> <last name>"
   controlledAccess: boolean;
   openAccess: boolean;
+  studyName: Study["name"];
   // Sort Fields
   studyAbbreviation: Study["abbreviation"];
   // FE Questionnaire Data
