@@ -27,6 +27,16 @@ class pvpullerService:
     else:
         entry_point = None
 
+    taskDefinition = ecs.FargateTaskDefinition(self,
+        "{}-{}-taskDef".format(self.namingPrefix, service),
+        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-pvpuller",
+        cpu=config.getint(service, 'cpu'),
+        memory_limit_mib=config.getint(service, 'memory')
+    )
+
+    exec_role = taskDefinition.obtain_execution_role()
+    role_arn = exec_role.role_arn
+
     environment={
             "DATE":date.today().isoformat(),
             "PROJECT":"crdc-hub",
@@ -36,13 +46,14 @@ class pvpullerService:
             "NEW_RELIC_APP_NAME":"{}-{}".format(self.namingPrefix, service),
             "NEW_RELIC_DISTRIBUTED_TRACING_ENABLED":"true",
             "NEW_RELIC_HOST":"gov-collector.newrelic.com",
-            "NEW_RELIC_LABELS":"Project:{};Environment:{}".format('crdc-hub', config['main']['tier']),
+            "NEW_RELIC_LABELS":"Project:{};Environment:{}".format('crdc-hub', config['main']['env']),
             "NEW_RELIC_LOG_FILE_NAME":"STDOUT",
             "NRIA_IS_FORWARD_ONLY":"true",
             "NRIA_PASSTHROUGH_ENVIRONMENT":"ECS_CONTAINER_METADATA_URI,ECS_CONTAINER_METADATA_URI_V4,FARGATE",
             "NRIA_CUSTOM_ATTRIBUTES":"{\"nrDeployMethod\":\"downloadPage\"}",
             "NRIA_OVERRIDE_HOST_ROOT":"",
             "JAVA_OPTS": "-javaagent:/usr/local/tomcat/newrelic/newrelic.jar",
+            "ROLE_ARN": exec_role.role_arn,
         }
 
     secrets={
@@ -60,15 +71,16 @@ class pvpullerService:
 #        fifo=False
 #    )
  
-    taskDefinition = ecs.FargateTaskDefinition(self,
-        "{}-{}-taskDef".format(self.namingPrefix, service),
-        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-pvpuller",
-        cpu=config.getint(service, 'cpu'),
-        memory_limit_mib=config.getint(service, 'memory')
-    )
+    #taskDefinition = ecs.FargateTaskDefinition(self,
+        #"{}-{}-taskDef".format(self.namingPrefix, service),
+        #family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-pvpuller",
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory')
+    #)
     
     ecr_repo = ecr.Repository.from_repository_arn(self, "{}_repo".format(service), repository_arn=config[service]['repo'])
     
+    # no sumolog
     taskDefinition.add_container(
         service,
         #image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
@@ -84,10 +96,66 @@ class pvpullerService:
         )
     )
 
+    # use sumo log
+    #taskDefinition.add_container(
+        #service,
+        ##image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
+        #image=ecs.ContainerImage.from_ecr_repository(repository=ecr_repo, tag=config[service]['image']),
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory'),
+        #port_mappings=[ecs.PortMapping(app_protocol=ecs.AppProtocol.http, container_port=config.getint(service, 'port'), name=service)],
+        #entry_point=entry_point,
+        #environment=environment,
+        #secrets=secrets,
+        #logging=ecs.LogDrivers.firelens(
+            #options={
+                #"Name": "http",
+                #"Host": config['secrets']['sumo_collector_endpoint'],
+                #"URI": "/receiver/v1/http/{}".format(config['secrets']['sumo_collector_token_backend']),
+                #"Port": "443",
+                #"tls": "on",
+                #"tls.verify": "off",
+                #"Retry_Limit": "2",
+                #"Format": "json_lines"
+            #}
+        #)
+    #)
 
+    # Sumo Logic FireLens Log Router Container
+    #sumo_logic_container = taskDefinition.add_firelens_log_router(
+        #"sumologic-firelens",
+        #image=ecs.ContainerImage.from_registry("public.ecr.aws/aws-observability/aws-for-fluent-bit:stable"),
+        #firelens_config=ecs.FirelensConfig(
+            #type=ecs.FirelensLogRouterType.FLUENTBIT,
+            #options=ecs.FirelensOptions(
+                #enable_ecs_log_metadata=True
+            #)
+        #),
+    #essential=True
+    #)
+
+    # roles attached to ecs
     # attach amazon full SQS access to the task role
     taskDefinition.task_role.add_managed_policy(
         iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSQSFullAccess")
+    )
+
+    taskDefinition.task_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceEventsRole")
+    )
+
+    taskDefinition.task_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("CloudWatchLogsFullAccess")
+    )
+
+    taskDefinition.execution_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSQSFullAccess")
+    )
+    taskDefinition.execution_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceEventsRole")
+    )
+    taskDefinition.execution_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("CloudWatchLogsFullAccess")
     )
 
     # Grant SQS permissions to the task role
@@ -119,7 +187,7 @@ class pvpullerService:
         security_group_id
     )
 
-    # Add ECS task as target
+    # Add ECS task as target - this block works but wont allow to add extra policy to the event role created by cdk
     scheduled_rule.add_target(
         targets.EcsTask(
         cluster=self.ECSCluster,
@@ -138,6 +206,36 @@ class pvpullerService:
         )
     )
 
+    # this block will allow to add policy
+
+    #ecs_task_target = targets.EcsTask(
+        #cluster=self.ECSCluster,
+        #task_definition=taskDefinition,
+        #task_count=config.getint(service, 'task_count'),
+        #subnet_selection=subnets_pv,
+        #security_groups=[security_group],
+        #assign_public_ip=False,
+        #platform_version=ecs.FargatePlatformVersion.LATEST,
+    #)
+
+    #ecs_task_target.role.add_managed_policy(
+        #iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSQSFullAccess")
+    #)
+
+    #ecs_task_target.role.add_managed_policy(
+        #iam.ManagedPolicy.from_aws_managed_policy_name("CloudWatchFullAccess")
+    #)
+
+    #ecs_task_target.role.add_managed_policy(
+        #iam.ManagedPolicy.from_managed_policy_arn(
+            #self,
+            #"ECSEventRolePolicy",
+            #"arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceEventsRole"
+        #)
+    #)
+
+    # add the target to the rule
+    #scheduled_rule.add_target(ecs_task_target)
     #ecsService = ecs.FargateService(self,
     #    "{}-{}-service".format(self.namingPrefix, service),
     #    service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-essentialvalidation",

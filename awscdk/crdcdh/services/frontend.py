@@ -30,13 +30,23 @@ class frontendService:
     else:
         self.app_url = "https://{}".format(config['main']['domain'])
     
+    taskDefinition = ecs.FargateTaskDefinition(self,
+        "{}-{}-taskDef".format(self.namingPrefix, service),
+        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-frontend",
+        cpu=config.getint(service, 'cpu'),
+        memory_limit_mib=config.getint(service, 'memory')
+    )
+
+    exec_role = taskDefinition.obtain_execution_role()
+    role_arn = exec_role.role_arn
+
     environment={
             "FARGATE":"true",
             "NRIA_IS_FORWARD_ONLY":"true",
             "NEW_RELIC_DISTRIBUTED_TRACING_ENABLED":"true",
             "NRIA_PASSTHROUGH_ENVIRONMENT":"ECS_CONTAINER_METADATA_URI,ECS_CONTAINER_METADATA_URI_V4,FARGATE",
             "NEW_RELIC_HOST":"gov-collector.newrelic.com",
-            "NEW_RELIC_LABELS":"Project:{};Environment:{}".format('crdc-hub', config['main']['tier']),
+            "NEW_RELIC_LABELS":"Project:{};Environment:{}".format('crdc-hub', config['main']['env']),
             "NEW_RELIC_LOG_FILE_NAME":"STDOUT",
             "NEW_RELIC_NO_CONFIG_FILE":"true",
             "NRIA_CUSTOM_ATTRIBUTES":"{\"nrDeployMethod\":\"downloadPage\"}",
@@ -46,7 +56,7 @@ class frontendService:
             "DATE":date.today().isoformat(),
             "VERSION":config[service]['image'],
             "SESSION_SECRET":"abcd256asghaaamnkloofghj",
-            "TIER":config['main']['tier'],
+            "TIER":config['main']['env'],
             "JAVA_OPTS": "-javaagent:/usr/local/tomcat/newrelic/newrelic.jar",
             #"REACT_APP_BACKEND_API":"{}/api/graphql".format(self.app_url),
             "REACT_APP_BACKEND_API":f"{self.app_url}/api/graphql",
@@ -58,8 +68,10 @@ class frontendService:
             "REACT_APP_UPLOADER_CLI_MAC_ARM":"https://github.com/CBIIT/crdc-datahub-cli-uploader/releases/download/{}/crdc-datahub-cli-uploader-mac-arm.zip".format(config['main']['upload_cli_version']),
             "REACT_APP_UPLOADER_CLI_VERSION":config['main']['upload_cli_version'],
             "HIDDEN_MODELS":config['main']['hidden_models'],
-            "DEV_TIER":config['main']['tier'],
-            "REACT_APP_GA_TRACKING_ID":config['main']['react_app_ga_tracking_id']
+            "DEV_TIER":config['main']['env'],
+            "REACT_APP_GA_TRACKING_ID":config['main']['react_app_ga_tracking_id'],
+            "VITE_CHATBOT_API_BASE_URL":f"{self.app_url}/api/chat",
+            "ROLE_ARN": exec_role.role_arn,
 
 #            "REACT_APP_ABOUT_CONTENT_URL":config[service]['about_content_url'],
 #            "REACT_APP_AUTH_API":self.app_url,
@@ -84,15 +96,16 @@ class frontendService:
         }
 
     
-    taskDefinition = ecs.FargateTaskDefinition(self,
-        "{}-{}-taskDef".format(self.namingPrefix, service),
-        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-frontend",
-        cpu=config.getint(service, 'cpu'),
-        memory_limit_mib=config.getint(service, 'memory')
-    )
+    #taskDefinition = ecs.FargateTaskDefinition(self,
+        #"{}-{}-taskDef".format(self.namingPrefix, service),
+        #family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-frontend",
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory')
+    #)
     
     ecr_repo = ecr.Repository.from_repository_arn(self, "{}_repo".format(service), repository_arn=config[service]['repo'])
     
+    # no sumolog
     taskDefinition.add_container(
         service,
         #image=ecs.ContainerImage.from_registry("{}:{}".format(fe_repo.repository_uri, config[service]['image'])),
@@ -108,8 +121,51 @@ class frontendService:
         )
     )
 
+    # use sumolog
+    #taskDefinition.add_container(
+        #service,
+        ##image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
+        #image=ecs.ContainerImage.from_ecr_repository(repository=ecr_repo, tag=config[service]['image']),
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory'),
+        #port_mappings=[ecs.PortMapping(app_protocol=ecs.AppProtocol.http, container_port=config.getint(service, 'port'), name=service)],
+        #entry_point=entry_point,
+        #environment=environment,
+        #secrets=secrets,
+        #logging=ecs.LogDrivers.firelens(
+            #options={
+                #"Name": "http",
+                #"Host": config['secrets']['sumo_collector_endpoint'],
+                #"URI": "/receiver/v1/http/{}".format(config['secrets']['sumo_collector_token_backend']),
+                #"Port": "443",
+                #"tls": "on",
+                #"tls.verify": "off",
+                #"Retry_Limit": "2",
+                #"Format": "json_lines"
+            #}
+        #)
+    #)
+
+    # Sumo Logic FireLens Log Router Container
+    #sumo_logic_container = taskDefinition.add_firelens_log_router(
+        #"sumologic-firelens",
+        #image=ecs.ContainerImage.from_registry("public.ecr.aws/aws-observability/aws-for-fluent-bit:stable"),
+        #firelens_config=ecs.FirelensConfig(
+            #type=ecs.FirelensLogRouterType.FLUENTBIT,
+            #options=ecs.FirelensOptions(
+                #enable_ecs_log_metadata=True
+            #)
+        #),
+    #essential=True
+    #)
+
     #roles attached to ecs
-    bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-fe-ref", f"{self.namingPrefix}-submission")
+    if(config['main']['create_bucket'] == "true"):
+        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-fe-ref", f"{self.namingPrefix}-submission")
+    else:
+        existing_bucket_name = config["secrets"].get("submission_bucket")
+        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-fe-existing", existing_bucket_name)
+
     # add s3 bucket policy to allow task def role to access submission bucket
     bucket_submission_policy = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
@@ -171,6 +227,13 @@ class frontendService:
     )
 
     # allowed access the other buckets
+
+    bucket_names = [name.strip() for name in config['main']['datasync_buckets'].split(',')]
+    bucket_arns_fe = []
+    for bucket_name in bucket_names:
+        bucket_arns_fe.append(f"arn:aws:s3:::{bucket_name}")
+        bucket_arns_fe.append(f"arn:aws:s3:::{bucket_name}/*")
+
     data_sync_other_buckets = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
         actions=[
@@ -185,16 +248,7 @@ class frontendService:
             "s3:DeleteObject",
             "s3:AbortMultipartUpload"
         ],
-        resources=[
-            "arn:aws:s3:::nci-crdc-data-bucket-dev",
-            "arn:aws:s3:::icdc-cbiit-test-metadata",
-            "arn:aws:s3:::ctdc-cbiit-test-metadata",
-            "arn:aws:s3:::cds-cbiit-test-metadata",
-            "arn:aws:s3:::nci-crdc-data-bucket-dev/*",
-            "arn:aws:s3:::icdc-cbiit-test-metadata/*",
-            "arn:aws:s3:::ctdc-cbiit-test-metadata/*",
-            "arn:aws:s3:::cds-cbiit-test-metadata/*"
-        ]
+        resources=bucket_arns_fe
     )
 
     # attach sqs iam access
@@ -259,14 +313,14 @@ class frontendService:
     )
 
     # get subnet for the ecs service
-    subnet_fe1 = config.get(service, 'subnet_fe1')
-    subnet_fe2 = config.get(service, 'subnet_fe2')
-    subnets_fe = ec2.SubnetSelection(
-        subnets=[
-          ec2.Subnet.from_subnet_id(self, "Subnet_fe1", subnet_fe1),
-          ec2.Subnet.from_subnet_id(self, "Subnet_fe2", subnet_fe2)
-        ]
-    )
+    #subnet_fe1 = config.get(service, 'subnet_fe1')
+    #subnet_fe2 = config.get(service, 'subnet_fe2')
+    #subnets_fe = ec2.SubnetSelection(
+        #subnets=[
+          #ec2.Subnet.from_subnet_id(self, "Subnet_fe1", subnet_fe1),
+          #ec2.Subnet.from_subnet_id(self, "Subnet_fe2", subnet_fe2)
+        #]
+    #)
     ecsService = ecs.FargateService(self,
         "{}-{}-service".format(self.namingPrefix, service),
         service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-frontend",
@@ -279,7 +333,7 @@ class frontendService:
             enable=True,
             rollback=True
         ),
-        vpc_subnets=subnets_fe
+        vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)
     )
 
     # added ecs run by schedule
@@ -289,8 +343,8 @@ class frontendService:
     )
 
     # scale on schedule
-    tier = config['main']['tier']
-    if tier.lower() != 'prod':
+    env = config['main']['env']
+    if env.lower() != 'prod':
         scalable_target.scale_on_schedule(
             f"{config['main']['resource_prefix']}-{config['main']['tier']}-frontend-start",
             schedule=appscaling.Schedule.cron(
@@ -325,7 +379,7 @@ class frontendService:
 
     elbv2.ApplicationListenerRule(self, id="alb-{}-rule".format(service),
         conditions=[
-            elbv2.ListenerCondition.host_headers(config[service]['host'].split(',')),
+            #elbv2.ListenerCondition.host_headers(config[service]['host'].split(',')),
             elbv2.ListenerCondition.path_patterns(config[service]['path'].split(','))
         ],
         priority=int(config[service]['priority_rule_number']),

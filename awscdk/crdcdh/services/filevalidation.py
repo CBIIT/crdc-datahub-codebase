@@ -26,6 +26,16 @@ class filevalidationService:
     else:
         entry_point = None
 
+    taskDefinition = ecs.FargateTaskDefinition(self,
+        "{}-{}-taskDef".format(self.namingPrefix, service),
+        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-filevalidation",
+        cpu=config.getint(service, 'cpu'),
+        memory_limit_mib=config.getint(service, 'memory')
+    )
+
+    exec_role = taskDefinition.obtain_execution_role()
+    role_arn = exec_role.role_arn
+
     environment={
             "DATE":date.today().isoformat(),
             "PROJECT":"crdc-hub",
@@ -35,13 +45,14 @@ class filevalidationService:
             "NEW_RELIC_APP_NAME":"{}-{}".format(self.namingPrefix, service),
             "NEW_RELIC_DISTRIBUTED_TRACING_ENABLED":"true",
             "NEW_RELIC_HOST":"gov-collector.newrelic.com",
-            "NEW_RELIC_LABELS":"Project:{};Environment:{}".format('crdc-hub', config['main']['tier']),
+            "NEW_RELIC_LABELS":"Project:{};Environment:{}".format('crdc-hub', config['main']['env']),
             "NEW_RELIC_LOG_FILE_NAME":"STDOUT",
             "NRIA_IS_FORWARD_ONLY":"true",
             "NRIA_PASSTHROUGH_ENVIRONMENT":"ECS_CONTAINER_METADATA_URI,ECS_CONTAINER_METADATA_URI_V4,FARGATE",
             "NRIA_CUSTOM_ATTRIBUTES":"{\"nrDeployMethod\":\"downloadPage\"}",
             "NRIA_OVERRIDE_HOST_ROOT":"",
             "JAVA_OPTS": "-javaagent:/usr/local/tomcat/newrelic/newrelic.jar",
+            "ROLE_ARN": exec_role.role_arn,
         }
 
     secrets={
@@ -54,20 +65,29 @@ class filevalidationService:
         }   
     
     # create sqs
-    queue = sqs.Queue(self, f"{self.namingPrefix}-{service}-queue",
-        queue_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-{config[service]['queue_name']}-queue.fifo",
-        fifo=True
-    )
+    if(config[service]['create_sqs'] == "true"):
+        queue = sqs.Queue(self, f"{self.namingPrefix}-{service}-queue",
+            queue_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-{config[service]['queue_name']}-queue.fifo",
+            fifo=True
+        )
+    else:
+        queue_arn = config[service].get("queue_arn")
+        queue = sqs.Queue.from_queue_arn(
+            self,
+            f"{config['main']['resource_prefix']}-{config['main']['tier']}-{config[service]['queue_name']}-queue",
+            queue_arn
+        )
  
-    taskDefinition = ecs.FargateTaskDefinition(self,
-        "{}-{}-taskDef".format(self.namingPrefix, service),
-        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-filevalidation",
-        cpu=config.getint(service, 'cpu'),
-        memory_limit_mib=config.getint(service, 'memory')
-    )
+    #taskDefinition = ecs.FargateTaskDefinition(self,
+        #"{}-{}-taskDef".format(self.namingPrefix, service),
+        #family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-filevalidation",
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory')
+    #)
     
     ecr_repo = ecr.Repository.from_repository_arn(self, "{}_repo".format(service), repository_arn=config[service]['repo'])
     
+    # no sumo log
     taskDefinition.add_container(
         service,
         #image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
@@ -83,8 +103,53 @@ class filevalidationService:
         )
     )
 
+    # use sumo log
+    #taskDefinition.add_container(
+        #service,
+        ##image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
+        #image=ecs.ContainerImage.from_ecr_repository(repository=ecr_repo, tag=config[service]['image']),
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory'),
+        #port_mappings=[ecs.PortMapping(app_protocol=ecs.AppProtocol.http, container_port=config.getint(service, 'port'), name=service)],
+        #entry_point=entry_point,
+        #environment=environment,
+        #secrets=secrets,
+        #logging=ecs.LogDrivers.firelens(
+            #options={
+                #"Name": "http",
+                #"Host": config['secrets']['sumo_collector_endpoint'],
+                #"URI": "/receiver/v1/http/{}".format(config['secrets']['sumo_collector_token_backend']),
+                #"Port": "443",
+                #"tls": "on",
+                #"tls.verify": "off",
+                #"Retry_Limit": "2",
+                #"Format": "json_lines"
+            #}
+        #)
+    #)
 
-    bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-file-ref", f"{self.namingPrefix}-submission")
+
+    # Sumo Logic FireLens Log Router Container
+    #sumo_logic_container = taskDefinition.add_firelens_log_router(
+        #"sumologic-firelens",
+        #image=ecs.ContainerImage.from_registry("public.ecr.aws/aws-observability/aws-for-fluent-bit:stable"),
+        #firelens_config=ecs.FirelensConfig(
+            #type=ecs.FirelensLogRouterType.FLUENTBIT,
+            #options=ecs.FirelensOptions(
+                #enable_ecs_log_metadata=True
+            #)
+        #),
+    #essential=True
+    #)
+
+
+    # roles attached to ecs
+    if(config['main']['create_bucket'] == "true"):
+        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-file-ref", f"{self.namingPrefix}-submission")
+    else:
+        existing_bucket_name = config["secrets"].get("submission_bucket")
+        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-file-existing", existing_bucket_name)
+
     # add s3 bucket policy to allow task def role to access submission bucket
     bucket_submission_policy = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
@@ -146,6 +211,13 @@ class filevalidationService:
     )
 
     # allowed access the other buckets 
+
+    bucket_names = [name.strip() for name in config['main']['datasync_buckets'].split(',')]
+    bucket_arns_file = []
+    for bucket_name in bucket_names:
+        bucket_arns_file.append(f"arn:aws:s3:::{bucket_name}")
+        bucket_arns_file.append(f"arn:aws:s3:::{bucket_name}/*")
+
     data_sync_other_buckets = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
         actions=[
@@ -160,16 +232,7 @@ class filevalidationService:
             "s3:DeleteObject",
             "s3:AbortMultipartUpload"
         ],
-        resources=[
-            "arn:aws:s3:::nci-crdc-data-bucket-dev",
-            "arn:aws:s3:::icdc-cbiit-test-metadata",
-            "arn:aws:s3:::ctdc-cbiit-test-metadata",
-            "arn:aws:s3:::cds-cbiit-test-metadata",
-            "arn:aws:s3:::nci-crdc-data-bucket-dev/*",
-            "arn:aws:s3:::icdc-cbiit-test-metadata/*",
-            "arn:aws:s3:::ctdc-cbiit-test-metadata/*",
-            "arn:aws:s3:::cds-cbiit-test-metadata/*"
-        ]
+        resources=bucket_arns_file
     )
 
     # attach sqs iam access
@@ -271,14 +334,14 @@ class filevalidationService:
     queue.grant_consume_messages(taskDefinition.task_role)
 
     # get subnet for the ecs service
-    subnet_fi1 = config.get(service, 'subnet_fi1')
-    subnet_fi2 = config.get(service, 'subnet_fi2')
-    subnets_fi = ec2.SubnetSelection(
-        subnets=[
-          ec2.Subnet.from_subnet_id(self, "Subnet_fi1", subnet_fi1),
-          ec2.Subnet.from_subnet_id(self, "Subnet_fi2", subnet_fi2)
-        ]
-    )
+    #subnet_fi1 = config.get(service, 'subnet_fi1')
+    #subnet_fi2 = config.get(service, 'subnet_fi2')
+    #subnets_fi = ec2.SubnetSelection(
+        #subnets=[
+          #ec2.Subnet.from_subnet_id(self, "Subnet_fi1", subnet_fi1),
+          #ec2.Subnet.from_subnet_id(self, "Subnet_fi2", subnet_fi2)
+        #]
+    #)
     ecsService = ecs.FargateService(self,
         "{}-{}-service".format(self.namingPrefix, service),
         service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-filevalidation",
@@ -292,10 +355,12 @@ class filevalidationService:
             enable=True,
             rollback=True
         ),
-        vpc_subnets=subnets_fi
+        vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)
     )
 
     #Attach scalable target
+    ecs_resource_id=f"service/{self.ECSCluster.cluster_name}/{ecsService.service_name}"
+
     scalable_target = appscaling.ScalableTarget(self,
         "{}-{}-scalableTarget".format(self.namingPrefix, service),
         #service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-filevalidation",
@@ -318,55 +383,138 @@ class filevalidationService:
         period=Duration.seconds(10)
     )
 
-    # Cloudwatch Scale-out Alarm
-    scale_out_alarm = cloudwatch.Alarm(self,
-        "{}-{}-scaleoutAlarm".format(self.namingPrefix, service),
-        alarm_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scaleout-alarm",
-        metric=sqs_metric,
-        threshold=1,
-        evaluation_periods=2,
-        datapoints_to_alarm=2,
-        comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD
-    )
+    #env_type = config['main']['env']
+    #is_prod = env_type.lower() == 'prod'
+    #is_prod = env_type in ('prod', 'stage')
+
+    #if is_prod:
+    # Production step scaling policy (5 steps)
+        #scale_out_steps = [
+            #appscaling.ScalingInterval(lower=1,   upper=21,  change=5),
+            #appscaling.ScalingInterval(lower=21,  upper=51,  change=20),
+            #appscaling.ScalingInterval(lower=51,  upper=101, change=50),
+            #appscaling.ScalingInterval(lower=101, upper=201, change=100),
+            #appscaling.ScalingInterval(lower=201,             change=200),
+        #]
+    #else:
+    # Non-prod simple 2-step scaling
+        #scale_out_steps = [
+            #appscaling.ScalingInterval(lower=1,  upper=21, change=5),
+            #appscaling.ScalingInterval(lower=21,            change=20),
+        #]
 
     # Define step-out policy
-    scale_out_action = scalable_target.scale_on_metric(
-        f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-out",
-        metric=sqs_metric,
-        scaling_steps=[
-            appscaling.ScalingInterval(lower=1, upper=21, change=5),   # when 1 ≤ messages < 21 → add 5 tasks
-            appscaling.ScalingInterval(lower=21, change=20),           # when ≥ 21 → add 20 tasks
-        ],
-        adjustment_type=appscaling.AdjustmentType.CHANGE_IN_CAPACITY,
-        cooldown=Duration.seconds(300)
+    #scale_out_action = scalable_target.scale_on_metric(
+        #f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-out",
+        #metric=sqs_metric,
+        #scaling_steps=scale_out_steps,
+        #scaling_steps=[
+            #appscaling.ScalingInterval(lower=1, upper=21, change=5),   # when 1 ≤ messages < 21 → add 5 tasks
+            #appscaling.ScalingInterval(lower=21, change=20),           # when ≥ 21 → add 20 tasks
+        #],
+        #adjustment_type=appscaling.AdjustmentType.EXACT_CAPACITY,
+        #cooldown=Duration.seconds(300)
+    #)
+
+    # Define CfnScalingPolicy for scale-OUT
+    scale_out_policy = appscaling.CfnScalingPolicy(self,
+        f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-out-policy",
+        policy_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-out-policy",
+        policy_type="StepScaling",
+        resource_id=ecs_resource_id,
+        scalable_dimension="ecs:service:DesiredCount",
+        service_namespace="ecs",
+        step_scaling_policy_configuration=appscaling.CfnScalingPolicy.StepScalingPolicyConfigurationProperty(
+            adjustment_type="ExactCapacity",
+            cooldown=300,
+            metric_aggregation_type="Minimum",
+            step_adjustments=[
+                appscaling.CfnScalingPolicy.StepAdjustmentProperty(
+                    scaling_adjustment=5,
+                    metric_interval_lower_bound=0, # 1+0  = 1   (>= 1)
+                    metric_interval_upper_bound=20, # 1+20 = 21  (< 21)
+                ),
+                appscaling.CfnScalingPolicy.StepAdjustmentProperty(
+                    scaling_adjustment=20,
+                    metric_interval_lower_bound=20, # 1+20  = 21   (>= 21)
+                    metric_interval_upper_bound=50, # 1+50 = 51  (< 51)
+                ),
+                appscaling.CfnScalingPolicy.StepAdjustmentProperty(
+                    scaling_adjustment=50,
+                    metric_interval_lower_bound=50, # 1+50  = 51   (>= 51)
+                    metric_interval_upper_bound=100, # 1+100 = 101  (< 101)
+                ),
+                appscaling.CfnScalingPolicy.StepAdjustmentProperty(
+                    scaling_adjustment=100,
+                    metric_interval_lower_bound=100, # 1+100  = 101   (>= 101)
+                    metric_interval_upper_bound=200, # 1+200 = 201  (< 201)
+                ),
+                appscaling.CfnScalingPolicy.StepAdjustmentProperty(
+                    scaling_adjustment=200,
+                    metric_interval_lower_bound=200,  # 1+200 = 201 (>= 201) # no upper_bound = +Infinity
+                ),
+            ]
+        )
     )
 
-    # Cloudwatch Scale-in alarm
-    scale_in_alarm = cloudwatch.Alarm(self,
-        "{}-{}-scaleinAlarm".format(self.namingPrefix, service),
-        alarm_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scalein-alarm",
-        metric=sqs_metric,
-        threshold=0,
+    #Manual CloudWatch Alarm — Scale OUT
+    scale_out_alarm = cloudwatch.CfnAlarm(self,
+        f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-out-alarm",
+        alarm_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-out-alarm",
+        namespace="AWS/SQS",
+        metric_name="ApproximateNumberOfMessagesVisible",
+        dimensions=[cloudwatch.CfnAlarm.DimensionProperty(name="QueueName", value=queue.queue_name)],
+        statistic="Minimum",
+        period=60,
+        evaluation_periods=2,
+        datapoints_to_alarm=2,
+        threshold=1,
+        comparison_operator="GreaterThanOrEqualToThreshold",
+        treat_missing_data="notBreaching",
+        alarm_actions=[scale_out_policy.ref]
+    )
+
+    # Define CfnScalingPolicy for scale-IN
+    scale_in_policy = appscaling.CfnScalingPolicy(self,
+        f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-in-policy",
+        policy_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-in-policy",
+        policy_type="StepScaling",
+        resource_id=ecs_resource_id,
+        scalable_dimension="ecs:service:DesiredCount",
+        service_namespace="ecs",
+        step_scaling_policy_configuration=appscaling.CfnScalingPolicy.StepScalingPolicyConfigurationProperty(
+            adjustment_type="ChangeInCapacity",
+            cooldown=10,
+            metric_aggregation_type="Minimum",
+            step_adjustments=[
+                appscaling.CfnScalingPolicy.StepAdjustmentProperty(
+                    scaling_adjustment=-1,
+                    metric_interval_upper_bound=0,
+                ),
+            ]
+        )
+    )
+
+    # Manual CloudWatch Alarm — Scale IN
+    scale_in_alarm = cloudwatch.CfnAlarm(self,
+        f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-in-alarm",
+        alarm_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-in-alarm",
+        namespace="AWS/SQS",
+        metric_name="ApproximateNumberOfMessagesVisible",
+        dimensions=[cloudwatch.CfnAlarm.DimensionProperty(name="QueueName", value=queue.queue_name)],
+        statistic="Minimum",
+        period=60,
         evaluation_periods=3,
         datapoints_to_alarm=3,
-        comparison_operator=cloudwatch.ComparisonOperator.LESS_THAN_OR_EQUAL_TO_THRESHOLD
-    )
-
-    # Define step-in policy
-    scale_in_action = scalable_target.scale_on_metric(
-        f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-scale-in",
-        metric=sqs_metric,
-        scaling_steps=[
-            appscaling.ScalingInterval(upper=0, change=-1),   # remove 1 task if < or = 0
-            appscaling.ScalingInterval(lower=0, change=0),
-        ],
-        adjustment_type=appscaling.AdjustmentType.CHANGE_IN_CAPACITY,
-        cooldown=Duration.seconds(10)    
+        threshold=0,
+        comparison_operator="LessThanOrEqualToThreshold",
+        treat_missing_data="notBreaching",
+        alarm_actions=[scale_in_policy.ref]
     )
 
     # set service run by schedule
-    tier = config['main']['tier']
-    if tier.lower() != 'prod':
+    env = config['main']['env']
+    if env.lower() != 'prod':
         scalable_target.scale_on_schedule(
             f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-start",
             schedule=appscaling.Schedule.cron(
@@ -375,7 +523,7 @@ class filevalidationService:
                 week_day="MON-FRI"
             ),
             min_capacity=1,
-            max_capacity=1,
+            max_capacity=200,
             #schedule_time_zone="America/New_York"
         )
         scalable_target.scale_on_schedule(

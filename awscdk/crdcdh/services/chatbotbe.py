@@ -14,11 +14,11 @@ from aws_cdk import aws_sqs as sqs
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_s3 as s3
 
-class backendService:
+class chatbotbeService:
   def createService(self, config):
 
-    ### Backend Service ###############################################################################################################
-    service = "backend"
+    ### Chatbot Backend Service ###############################################################################################################
+    service = "chatbotbe"
 
     # Set container configs
     if config.has_option(service, 'entrypoint'):
@@ -28,7 +28,7 @@ class backendService:
 
     taskDefinition = ecs.FargateTaskDefinition(self,
         "{}-{}-taskDef".format(self.namingPrefix, service),
-        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
+        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-chatbotbe",
         cpu=config.getint(service, 'cpu'),
         memory_limit_mib=config.getint(service, 'memory')
     )
@@ -52,13 +52,12 @@ class backendService:
 
     environment={
             "DATE":date.today().isoformat(),
-            "PROJECT":"crdc-hub",
-            "VERSION":config[service]['image'],
-            "FARGATE":"true",
-            "SESSION_SECRET":"abcd256asghaaamnkloofghj",
-            "EMAILS_ENABLED":"true",
-            "EMAIL_SMTP_HOST":"email-smtp.us-east-1.amazonaws.com",
-            "EMAIL_SMTP_PORT":"587",
+            "DEV_TIER":config['main']['env'],
+            "SERVICE_VERSION":config[service]['image'],
+            "AWS_REGION": config['main']['region'],
+            "MODEL_ARN": f"arn:aws:bedrock:{config['main']['region']}:{config['main']['account_id']}:inference-profile/us.anthropic.claude-opus-4-6-v1",
+            "RERANK_MODEL_ARN": f"arn:aws:bedrock:{config['main']['region']}::foundation-model/cohere.rerank-v3-5:0",
+            "GUARDRAIL_VERSION": "1",
             "NEW_RELIC_APP_NAME":"{}-{}".format(self.namingPrefix, service),
             "NEW_RELIC_DISTRIBUTED_TRACING_ENABLED":"true",
             "NEW_RELIC_HOST":"gov-collector.newrelic.com",
@@ -69,31 +68,13 @@ class backendService:
             "NRIA_CUSTOM_ATTRIBUTES":"{\"nrDeployMethod\":\"downloadPage\"}",
             "NRIA_OVERRIDE_HOST_ROOT":"",
             "JAVA_OPTS": "-javaagent:/usr/local/tomcat/newrelic/newrelic.jar",
-            "AUTH_ENABLED":"true",
-            "ROLE_ARN": role_arn,
-#            "ROLE_ARN": exec_role.role_arn,
-#            "AUTH_ENDPOINT":"/api/auth/",
-#            "BENTO_API_VERSION":config[service]['image'],
-#            "MYSQL_SESSION_ENABLED":"true",
-#            "NEO4J_URL":"bolt://{}:7687".format(config['db']['neo4j_ip']),
-#            "REDIS_ENABLE":"false",
-#            "REDIS_FILTER_ENABLE":"false",
-#            "REDIS_HOST":"localhost",
-#            "REDIS_PORT":"6379",
-#            "REDIS_USE_CLUSTER":"true",
         }
 
     secrets={
-            "NEW_RELIC_LICENSE_KEY":ecs.Secret.from_secrets_manager(secretsmanager.Secret.from_secret_name_v2(self, "be_newrelic", secret_name='monitoring/newrelic'), 'api_key'),
-            "MONGO_DB_HOST":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_host'),
-            "MONGO_DB_PORT":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_port'),
-            "MONGO_DB_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_password'),
-            "MONGO_DB_USER":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_user'),
-            "DATABASE_NAME":ecs.Secret.from_secrets_manager(self.secret, 'database_name'),
-            "EMAIL_USER":ecs.Secret.from_secrets_manager(self.secret, 'email_user'),
-            "EMAIL_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'email_password'),
-            "EMAIL_URL":ecs.Secret.from_secrets_manager(self.secret, 'email_url'),
-            "SUBMISSION_BUCKET":ecs.Secret.from_secrets_manager(self.secret, 'submission_bucket'),
+            "NEW_RELIC_LICENSE_KEY":ecs.Secret.from_secrets_manager(secretsmanager.Secret.from_secret_name_v2(self, "chatbotbe_newrelic", secret_name='monitoring/newrelic'), 'api_key'),
+            "KNOWLEDGE_BASE_ID":ecs.Secret.from_secrets_manager(self.secret, 'knowledge_base_id'),
+            "GUARDRAIL_ID":ecs.Secret.from_secrets_manager(self.secret, 'guardrail_id'),
+            "KNOWLEDGE_BASE_SOURCE_BUCKET_ARN":ecs.Secret.from_secrets_manager(self.secret, 'datasource_bucket_arn')
         }   
     
     #taskDefinition = ecs.FargateTaskDefinition(self,
@@ -162,158 +143,68 @@ class backendService:
 
 
     #roles attached to ecs
-    if(config['main']['create_bucket'] == "true"):
-        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-be-ref", f"{self.namingPrefix}-submission")
-    else:
-        existing_bucket_name = config["secrets"].get("submission_bucket")
-        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-be-existing", existing_bucket_name)
 
-    # add s3 bucket policy to allow task def role to access submission bucket
-    bucket_submission_policy = iam.PolicyStatement(
+    aws_market_place_policy = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
         actions=[
-            "s3:GetObject",
-            "s3:PutObject",
-            "s3:ListBucket",
-            "s3:DeleteObject"
-        ],
-        resources=[
-            bucket.bucket_arn,
-            f"{bucket.bucket_arn}/*"
-        ]
-    )
-
-    data_sync_policy = iam.PolicyStatement(
-        effect=iam.Effect.ALLOW,
-        actions=[
-            "s3:PutObjectTagging",
-            "s3:ListObjectsV2",
-            "s3:ListBucket",
-            "s3:ListAllMyBuckets",
-            "s3:GetObjectVersionTagging",
-            "s3:GetObjectVersion",
-            "s3:GetObjectTagging",
-            "s3:GetObject",
-            "s3:GetBucketLocation",
-            "iam:ListRoles",
-            "iam:CreateRole",
-            "iam:CreatePolicy",
-            "iam:AttachRolePolicy",
-            "datasync:TagResource",
-            "datasync:StartTaskExecution",
-            "datasync:ListTasks",
-            "datasync:ListTaskExecutions",
-            "datasync:ListLocations",
-            "datasync:DescribeTaskExecution",
-            "datasync:DescribeTask",
-            "datasync:DescribeLocation*",
-            "datasync:DeleteTask",
-            "datasync:DeleteLocation",
-            "datasync:CreateTask",
-            "datasync:CreateLocationS3",
-            "datasync:CancelTaskExecution"
+            "aws-marketplace:ViewSubscriptions",
+            #"aws-marketplace:Subscribe"
         ],
         resources=["*"]
     )
 
-    # pass role in datasync
-    data_sync_pass_role = iam.PolicyStatement(
-        effect=iam.Effect.ALLOW,
-        actions=["iam:PassRole"],
-        resources=["*"],
-        conditions={
-            "StringEquals": {
-                "iam:PassedToService": "datasync.amazonaws.com"
-            }
-        }
-    )
-
-    # allowed access the other buckets
-
-    bucket_names = [name.strip() for name in config['main']['datasync_buckets'].split(',')]
-    bucket_arns_be = []
-    for bucket_name in bucket_names:
-        bucket_arns_be.append(f"arn:aws:s3:::{bucket_name}")
-        bucket_arns_be.append(f"arn:aws:s3:::{bucket_name}/*")
-
-    data_sync_other_buckets = iam.PolicyStatement(
+    # AllowRetrieveAndGenerateOnKB
+    bedrock_kb_policy1 = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
         actions=[
-            "s3:ListObjectsV2",
-            "s3:ListBucketMultipartUploads",
-            "s3:ListBucket",
-            "s3:GetBucketLocation",
-            "s3:PutObjectTagging",
-            "s3:PutObject",
-            "s3:GetObjectTagging",
-            "s3:GetObject",
-            "s3:DeleteObject",
-            "s3:AbortMultipartUpload"
+            "bedrock:Retrieve",
+            "bedrock:RetrieveAndGenerate",
+            "bedrock:InvokeModel",
+            "bedrock:InvokeModelWithResponseStream"
         ],
-        resources=bucket_arns_be
-    )
-
-    # attach sqs iam access
-    sqs_iam_access = iam.PolicyStatement(
-        effect=iam.Effect.ALLOW,
-        actions=["sqs:*"],
         resources=[
-            f"arn:aws:sqs:{config['main']['region']}:{config['main']['account_id']}:*"
+            f"arn:aws:bedrock:{config['main']['region']}:{config['main']['account_id']}:knowledge-base/*",
+            f"arn:aws:bedrock:{config['main']['region']}::foundation-model/*",
+            "arn:aws:bedrock:us-east-2::foundation-model/*",
+            "arn:aws:bedrock:us-west-1::foundation-model/*",
+            "arn:aws:bedrock:us-west-2::foundation-model/*",
+            "arn:aws:bedrock:*:*:inference-profile/*",
+            "arn:aws:bedrock:*:*:application-inference-profile/*"
         ]
     )
 
-    # attach quicksight embedded policy
-    quicksight_embed_policy = iam.PolicyStatement(
+    bedrock_kb_policy2 = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
         actions=[
-            "quicksight:GetDashboardEmbedUrl",
-            "quicksight:GetAnonymousUserEmbedUrl",
-            "quicksight:GenerateEmbedUrlForRegisteredUser",
-            "quicksight:GenerateEmbedUrlForAnonymousUser"
+            "bedrock:GetInferenceProfile"
         ],
-        resources=[
-            f"arn:aws:quicksight:{config['main']['region']}:{config['main']['account_id']}:dashboard/*"
-        ]
+        resources=["*"]
+    )
+
+    bedrock_kb_policy3 = iam.PolicyStatement(
+        effect=iam.Effect.ALLOW,
+        actions=[
+            "bedrock:ApplyGuardrail"
+        ],
+        resources=[f"arn:aws:bedrock:{config['main']['region']}:{config['main']['account_id']}:guardrail/*"]
     )
 
     # attach policy to the task role
-    taskDefinition.task_role.add_to_policy(bucket_submission_policy)
-    taskDefinition.task_role.add_to_policy(data_sync_policy)
-    taskDefinition.task_role.add_to_policy(data_sync_pass_role)
-    taskDefinition.task_role.add_to_policy(data_sync_other_buckets)
-    taskDefinition.task_role.add_to_policy(sqs_iam_access)
-    taskDefinition.task_role.add_to_policy(quicksight_embed_policy)
+    #taskDefinition.task_role.add_to_policy(aws_market_place_policy)
+    taskDefinition.task_role.add_to_policy(bedrock_kb_policy1)
+    taskDefinition.task_role.add_to_policy(bedrock_kb_policy2)
+    taskDefinition.task_role.add_to_policy(bedrock_kb_policy3)
 
-    #for stmt in stack.datasync_policy_role.policy.document.statements:
-        #taskDefinition.task_role.add_to_policy(stmt)
-        #taskDefinition.execution_role.add_to_policy(stmt)
+    taskDefinition.execution_role.add_to_policy(aws_market_place_policy)
+    taskDefinition.execution_role.add_to_policy(bedrock_kb_policy1)
+    taskDefinition.execution_role.add_to_policy(bedrock_kb_policy2)
+    taskDefinition.execution_role.add_to_policy(bedrock_kb_policy3)
 
-    taskDefinition.execution_role.add_to_policy(bucket_submission_policy)
-    taskDefinition.execution_role.add_to_policy(data_sync_policy)
-    taskDefinition.execution_role.add_to_policy(data_sync_pass_role)
-    taskDefinition.execution_role.add_to_policy(data_sync_other_buckets)
-    taskDefinition.execution_role.add_to_policy(sqs_iam_access)
-    taskDefinition.execution_role.add_to_policy(quicksight_embed_policy)
-
-    # attach amazon managed policy to the task role
-    taskDefinition.task_role.add_managed_policy(
-        iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSQSFullAccess")
-    )
-
-    taskDefinition.task_role.add_managed_policy(
-        iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceEventsRole")
-    )
 
     taskDefinition.task_role.add_managed_policy(
         iam.ManagedPolicy.from_aws_managed_policy_name("CloudWatchLogsFullAccess")
     )
 
-    taskDefinition.execution_role.add_managed_policy(
-        iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSQSFullAccess")
-    )
-    taskDefinition.execution_role.add_managed_policy(
-        iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceEventsRole")
-    )
     taskDefinition.execution_role.add_managed_policy(
         iam.ManagedPolicy.from_aws_managed_policy_name("CloudWatchLogsFullAccess")
     )
@@ -330,7 +221,7 @@ class backendService:
     #)
     ecsService = ecs.FargateService(self,
         "{}-{}-service".format(self.namingPrefix, service),
-        service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
+        service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-chatbotbe",
         cluster=self.ECSCluster,
         task_definition=taskDefinition,
         enable_execute_command=True,
@@ -359,7 +250,7 @@ class backendService:
     env = config['main']['env']
     if env.lower() != 'prod':
         scalable_target.scale_on_schedule(
-            f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend-start",
+            f"{config['main']['resource_prefix']}-{config['main']['tier']}-chatbotbe-start",
             schedule=appscaling.Schedule.cron(
                 minute="5",
                 hour="11",
@@ -371,7 +262,7 @@ class backendService:
         )
 
         scalable_target.scale_on_schedule(
-            f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend-stop",
+            f"{config['main']['resource_prefix']}-{config['main']['tier']}-chatbotbe-stop",
             schedule=appscaling.Schedule.cron(
                 minute="0",
                 hour="23",
@@ -384,18 +275,57 @@ class backendService:
     ecsTarget = self.listener.add_targets("ECS-{}-Target".format(service),
         port=int(config[service]['port']),
         protocol=elbv2.ApplicationProtocol.HTTP,
-        target_group_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
+        target_group_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-chatbotbe",
         health_check = elbv2.HealthCheck(
             path=config[service]['health_check_path'],
             timeout=Duration.seconds(config.getint(service, 'health_check_timeout')),
             interval=Duration.seconds(config.getint(service, 'health_check_interval')),),
         targets=[ecsService],)
 
-    elbv2.ApplicationListenerRule(self, id="alb-{}-rule".format(service),
-        conditions=[
+    #elbv2.ApplicationListenerRule(self, id="alb-{}-rule".format(service),
+        #conditions=[
             #elbv2.ListenerCondition.host_headers(config[service]['host'].split(',')),
-            elbv2.ListenerCondition.path_patterns(config[service]['path'].split(','))
-        ],
+            #elbv2.ListenerCondition.path_patterns(config[service]['path'].split(','))
+        #],
+        #priority=int(config[service]['priority_rule_number']),
+        #listener=self.listener,
+        #target_groups=[ecsTarget])
+
+    target_group_arn = ecsTarget.target_group_arn
+    cfn_rule = elbv2.CfnListenerRule(
+        self,
+        id=f"alb-{service}-rule",
+        listener_arn=self.listener.listener_arn,
         priority=int(config[service]['priority_rule_number']),
-        listener=self.listener,
-        target_groups=[ecsTarget])
+        conditions=[
+            {
+                "field": "path-pattern",
+                "pathPatternConfig": {
+                    "values": config[service]['path'].split(",")
+                }
+            }    
+        ],    
+        actions=[
+            {
+                "type": "forward",
+                "forwardConfig": {
+                    "targetGroups": [
+                        {"targetGroupArn": target_group_arn}
+                    ]
+                }
+            }
+        ],
+        transforms=[
+            {
+                "type": "url-rewrite",
+                "urlRewriteConfig": {
+                    "rewrites": [
+                        {
+                            "regex": "^/api/chat/*",
+                            "replace": "/"
+                        }
+                    ]
+                }
+            }    
+        ]
+    )
