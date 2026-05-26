@@ -180,7 +180,13 @@ describe('UserService.listUsers', () => {
         verifySession.mockImplementation(() => ({
             verifyInitialized: jest.fn(),
         }));
-        userService._findApprovedStudies = jest.fn().mockResolvedValue([]);
+        userService.approvedStudyDAO.findMany = jest.fn().mockImplementation(({ id }) => {
+            const ids = id?.in || [];
+            return Promise.resolve(ids.map((studyId) => ({
+                _id: studyId,
+                studyName: `Study ${studyId}`,
+            })));
+        });
         userService.listUsers = UserService.prototype.listUsers.bind(userService);
 
         // Test context and params
@@ -218,7 +224,8 @@ describe('UserService.listUsers', () => {
             expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
                 "$match": {}
             }]);
-            expect(userService._findApprovedStudies).toHaveBeenCalledTimes(9);
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(userService.approvedStudyDAO.findMany.mock.calls[0][0].id.in).toHaveLength(9);
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(9);
             expect(result).toHaveLength(9);
         });
@@ -610,7 +617,7 @@ describe('UserService.listUsers', () => {
             const result = await userService.listUsers(params, context);
 
             expect(result).toEqual([]);
-            expect(userService._findApprovedStudies).not.toHaveBeenCalled();
+            expect(userService.approvedStudyDAO.findMany).not.toHaveBeenCalled();
             expect(getDataCommonsDisplayNamesForUser).not.toHaveBeenCalled();
         });
 
@@ -626,7 +633,7 @@ describe('UserService.listUsers', () => {
             const result = await userService.listUsers(params, context);
 
             expect(result).toEqual([]);
-            expect(userService._findApprovedStudies).not.toHaveBeenCalled();
+            expect(userService.approvedStudyDAO.findMany).not.toHaveBeenCalled();
             expect(getDataCommonsDisplayNamesForUser).not.toHaveBeenCalled();
         });
     });
@@ -638,19 +645,20 @@ describe('UserService.listUsers', () => {
                 isAllScope: () => true,
                 getRoleScope: () => null,
             };
-            const originalStudies = [{ _id: 'study-user' }];
             const userFromDb = {
                 ...mockUsers[1],
-                studies: [...originalStudies],
+                studies: [{ _id: 'study-user' }],
             };
-            const enrichedStudies = [{ _id: 'study-enriched' }];
+            const enrichedStudies = [{ _id: 'study-user', studyName: 'Enriched Study' }];
             userService._getUserScope = jest.fn().mockResolvedValue(allScope);
-            userService._findApprovedStudies = jest.fn().mockResolvedValue(enrichedStudies);
+            userService.approvedStudyDAO.findMany.mockResolvedValue(enrichedStudies);
             mockUserCollection.aggregate.mockResolvedValue([userFromDb]);
 
             const result = await userService.listUsers(params, context);
 
-            expect(userService._findApprovedStudies).toHaveBeenCalledWith(originalStudies);
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
+                id: { in: ['study-user'] },
+            });
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -659,6 +667,94 @@ describe('UserService.listUsers', () => {
                 })
             );
             expect(result).toHaveLength(1);
+        });
+
+        it('should batch study lookups and dedupe shared study IDs', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            const sharedStudy = { _id: 'study-shared' };
+            const userOne = {
+                ...mockUsers[1],
+                studies: [sharedStudy],
+            };
+            const userTwo = {
+                ...mockUsers[2],
+                studies: [{ _id: 'study-shared' }],
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([userOne, userTwo]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
+                id: { in: ['study-shared'] },
+            });
+            expect(result[0].studies).toEqual([{
+                _id: 'study-shared',
+                studyName: 'Study study-shared',
+            }]);
+            expect(result[1].studies).toEqual([{
+                _id: 'study-shared',
+                studyName: 'Study study-shared',
+            }]);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(2);
+        });
+
+        it('should use All shortcut without a study lookup', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            const userWithAll = {
+                ...mockUsers[1],
+                studies: ['All'],
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([userWithAll]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService.approvedStudyDAO.findMany).not.toHaveBeenCalled();
+            expect(result[0].studies).toEqual([{ _id: 'All', studyName: 'All' }]);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
+        });
+
+        it('should batch lookups for non-All users when list includes All and concrete studies', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            const userWithAll = {
+                ...mockUsers[1],
+                _id: 'user-all',
+                studies: ['All'],
+            };
+            const userWithStudy = {
+                ...mockUsers[2],
+                _id: 'user-study',
+                studies: [{ _id: 'study-concrete' }],
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([userWithAll, userWithStudy]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
+                id: { in: ['study-concrete'] },
+            });
+            expect(result[0].studies).toEqual([{ _id: 'All', studyName: 'All' }]);
+            expect(result[1].studies).toEqual([{
+                _id: 'study-concrete',
+                studyName: 'Study study-concrete',
+            }]);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(2);
         });
     });
 
@@ -707,7 +803,7 @@ describe('UserService.listUsers', () => {
             expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
                 $match: userService._buildReopenListUsersMatch(),
             }]);
-            expect(userService._findApprovedStudies).toHaveBeenCalledTimes(1);
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
             expect(result).toHaveLength(1);
         });

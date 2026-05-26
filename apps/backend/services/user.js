@@ -227,20 +227,71 @@ class UserService {
             .map((study) => study.studyName);
     }
 
-    async _findApprovedStudies(studies) {
-        if (!studies || studies.length === 0) return [];
-        const studiesIDs = studies.map((study) => {
+    _extractStudyIds(studies) {
+        if (!studies || studies.length === 0) {
+            return [];
+        }
+        return studies.map((study) => {
             if (study && study instanceof Object && (study?._id || study?.id)) {
                 return study._id || study.id;
             }
             return study;
-        }).filter(studyID => studyID !== null && studyID !== undefined); // Filter out null/undefined values
-        if(studiesIDs.includes("All"))
-            return [{_id: "All", studyName: "All" }];
+        }).filter(studyID => studyID !== null && studyID !== undefined);
+    }
+
+    _getAllStudiesPlaceholder() {
+        return [{ _id: ALL_STUDY_FILTER, studyName: ALL_STUDY_FILTER }];
+    }
+
+    async _findApprovedStudies(studies) {
+        const studiesIDs = this._extractStudyIds(studies);
+        if (studiesIDs.length === 0) {
+            return [];
+        }
+        if (studiesIDs.includes(ALL_STUDY_FILTER)) {
+            return this._getAllStudiesPlaceholder();
+        }
 
         return await this.approvedStudyDAO.findMany({
             id: { in: studiesIDs }
         });
+    }
+
+    async _enrichUsersWithApprovedStudies(users) {
+        if (!users?.length) {
+            return users || [];
+        }
+
+        const allStudiesPlaceholder = this._getAllStudiesPlaceholder();
+        const pendingLookups = [];
+        const uniqueIds = new Set();
+
+        for (const user of users) {
+            const studyIds = this._extractStudyIds(user?.studies);
+            if (studyIds.includes(ALL_STUDY_FILTER)) {
+                user.studies = allStudiesPlaceholder;
+                getDataCommonsDisplayNamesForUser(user);
+            } else if (studyIds.length === 0) {
+                user.studies = [];
+                getDataCommonsDisplayNamesForUser(user);
+            } else {
+                pendingLookups.push({ user, studyIds });
+                studyIds.forEach((id) => uniqueIds.add(id));
+            }
+        }
+
+        if (uniqueIds.size > 0) {
+            const approvedStudies = await this.approvedStudyDAO.findMany({
+                id: { in: [...uniqueIds] },
+            });
+            const studyById = new Map(approvedStudies.map((study) => [study._id, study]));
+            for (const { user, studyIds } of pendingLookups) {
+                user.studies = studyIds.map((id) => studyById.get(id)).filter(Boolean);
+                getDataCommonsDisplayNamesForUser(user);
+            }
+        }
+
+        return users;
     }
 
     async getUser(params, context) {
@@ -313,10 +364,7 @@ class UserService {
         if (!result?.length) {
             return [];
         }
-        for (const user of result) {
-            user.studies = await this._findApprovedStudies(user?.studies);
-            getDataCommonsDisplayNamesForUser(user);
-        }
+        await this._enrichUsersWithApprovedStudies(result);
         return result;
     }
 
