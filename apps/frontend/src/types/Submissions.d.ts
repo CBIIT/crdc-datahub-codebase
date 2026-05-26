@@ -70,6 +70,10 @@ type Submission = {
    */
   fileErrors: QCResult[];
   history: SubmissionHistoryEvent[];
+  /**
+   * Optional admin submit comment captured when a submission is admin-submitted.
+   */
+  adminSubmitComment?: string;
   conciergeName: string; // Concierge name
   conciergeEmail: string; // Concierge email
   intention: SubmissionIntention;

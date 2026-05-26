@@ -7,6 +7,7 @@ import { Link, useLocation } from "react-router-dom";
 
 import DataSubmissionListExport from "@/components/ExportSubmissionsButton";
 import SRFLink from "@/components/SRFLink";
+import { InternalRoles } from "@/config/AuthRoles";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
 import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/AuthContext";
@@ -122,7 +123,7 @@ const StyledSubmissionNameWrapper = styled(Stack)(() => ({
   gap: "5px",
 }));
 
-const columns: Column<T>[] = [
+const BASE_COLUMNS: Column<T>[] = [
   {
     label: "Submission Name",
     renderValue: (a) => {
@@ -343,22 +344,53 @@ const columns: Column<T>[] = [
   },
 ];
 
+const ADMIN_COLUMNS: Column<T>[] = [
+  {
+    label: "Admin Submit",
+    renderValue: ({ adminSubmitComment }) => {
+      if (!adminSubmitComment) {
+        return "";
+      }
+
+      return <TruncatedText text={adminSubmitComment} maxCharacters={10} />;
+    },
+    field: "adminSubmitComment",
+    hideable: true,
+    defaultHidden: true,
+    exportValue: ({ adminSubmitComment }) => ({
+      label: "Admin Submit",
+      value: adminSubmitComment || "",
+    }),
+  },
+];
+
 /**
- * View for List of Data Submissions
- *
- * @returns {JSX.Element}
+ * The Data Submissions list view component.
  */
-const ListingView: FC = () => {
+const ListingView: FC = (): JSX.Element => {
   usePageTitle("Data Submissions");
 
   const { state } = useLocation();
-  const { status: authStatus } = useAuthContext();
+  const { status: authStatus, user } = useAuthContext();
   const { enqueueSnackbar } = useSnackbar();
+
+  const isInternalUser = useMemo<boolean>(
+    () => authStatus === AuthStatus.LOADED && InternalRoles.includes(user?.role),
+    [authStatus, user?.role]
+  );
+
+  const tableColumns = useMemo<Array<Column<T>>>(() => {
+    if (isInternalUser) {
+      return [...BASE_COLUMNS, ...ADMIN_COLUMNS];
+    }
+
+    return BASE_COLUMNS;
+  }, [isInternalUser, user?.role]);
 
   const { columnVisibilityModel, setColumnVisibilityModel, visibleColumns } = useColumnVisibility<
     Column<T>
   >({
-    columns,
+    columns: tableColumns,
     getColumnKey: (c) => c.fieldKey ?? c.field,
     localStorageKey: "dataSubmissionListColumns",
   });
@@ -412,6 +444,7 @@ const ListingView: FC = () => {
           offset,
           sortDirection,
           orderBy,
+          isInternalUser,
         },
         context: { clientName: "backend" },
         fetchPolicy: "no-cache",
@@ -520,7 +553,7 @@ const ListingView: FC = () => {
         )}
         <StyledFilterTableWrapper>
           <DataSubmissionListFilters
-            columns={columns}
+            columns={tableColumns}
             organizations={organizations}
             submitterNames={submitterNames}
             dataCommons={dataCommons}
