@@ -44,7 +44,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
       studies
     }
   }
-`;
+`; // TODO: Add nextRevisionID to application
 
 export type Input = {
   programName: string;
