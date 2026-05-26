@@ -664,7 +664,11 @@ const FormView: FC<Props> = ({ section }: Props) => {
     if (status !== FormStatus.LOADED && authStatus !== AuthStatus.LOADED) {
       return;
     }
-    if (!hasReopenedFormRef.current && data?.status === "Inquired" && formMode === "Edit") {
+    if (
+      !hasReopenedFormRef.current &&
+      (data?.status === "Inquired" || data?.status === "Reopened") &&
+      formMode === "Edit"
+    ) {
       handleReopenForm();
       hasReopenedFormRef.current = true;
     }

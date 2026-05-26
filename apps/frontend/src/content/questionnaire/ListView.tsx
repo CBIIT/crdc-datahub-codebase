@@ -15,6 +15,7 @@ import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/
 import CreateApplicationButton from "../../components/CreateApplicationButton";
 import GenericTable, { Column } from "../../components/GenericTable";
 import PageBanner from "../../components/PageBanner";
+import ReopenApplicationButton from "../../components/ReopenApplicationButton";
 import StyledTooltip from "../../components/StyledFormComponents/StyledTooltip";
 import TooltipList from "../../components/SummaryList/TooltipList";
 import ToggleApplicationButton from "../../components/ToggleApplicationButton";
@@ -199,11 +200,11 @@ const columns: Column<T>[] = [
     label: "Action",
     renderValue: (a) => (
       <QuestionnaireContext.Consumer>
-        {({ user, handleOnReviewClick }) => {
+        {({ user, handleOnReviewClick, tableRef }) => {
           if (
             hasPermission(user, "submission_request", "create") &&
             a.applicant?.applicantID === user._id &&
-            ["New", "In Progress", "Inquired"].includes(a.status)
+            ["New", "In Progress", "Inquired", "Reopened"].includes(a.status)
           ) {
             return (
               <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
@@ -230,11 +231,21 @@ const columns: Column<T>[] = [
           }
 
           return (
-            <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
-              <StyledActionButton bg="#89DDE6" text="#156071" border="#84B4BE">
-                View
-              </StyledActionButton>
-            </Link>
+            <Stack direction="row" alignItems="center" justifyContent="center" gap="6px">
+              {hasPermission(user, "submission_request", "reopen", a) &&
+                a.status === "Approved" &&
+                !a.nextRevisionID && (
+                  <ReopenApplicationButton
+                    application={a}
+                    onComplete={() => tableRef.current?.refresh?.()}
+                  />
+                )}
+              <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
+                <StyledActionButton bg="#89DDE6" text="#156071" border="#84B4BE">
+                  View
+                </StyledActionButton>
+              </Link>
+            </Stack>
           );
         }}
       </QuestionnaireContext.Consumer>
