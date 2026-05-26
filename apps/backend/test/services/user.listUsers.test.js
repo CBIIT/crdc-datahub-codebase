@@ -3,11 +3,16 @@ const { USER } = require('../../crdc-datahub-database-drivers/constants/user-con
 const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
 const ERROR = require('../../constants/error-constants');
 const { verifySession } = require('../../verifier/user-info-verifier');
+const { getDataCommonsDisplayNamesForUser } = require('../../utility/data-commons-remapper');
 
 jest.mock('../../verifier/user-info-verifier', () => ({
     verifySession: jest.fn(() => ({
         verifyInitialized: jest.fn(),
     })),
+}));
+
+jest.mock('../../utility/data-commons-remapper', () => ({
+    getDataCommonsDisplayNamesForUser: jest.fn((user) => user),
 }));
 
 describe('UserService.listUsers', () => {
@@ -214,6 +219,7 @@ describe('UserService.listUsers', () => {
                 "$match": {}
             }]);
             expect(userService._findApprovedStudies).toHaveBeenCalledTimes(9);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(9);
             expect(result).toHaveLength(9);
         });
 
@@ -591,6 +597,69 @@ describe('UserService.listUsers', () => {
             // Verify
             expect(result).toHaveLength(9);
         });
+
+        it('should return empty array when aggregate returns no users', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(result).toEqual([]);
+            expect(userService._findApprovedStudies).not.toHaveBeenCalled();
+            expect(getDataCommonsDisplayNamesForUser).not.toHaveBeenCalled();
+        });
+
+        it('should return empty array when aggregate returns null', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue(null);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(result).toEqual([]);
+            expect(userService._findApprovedStudies).not.toHaveBeenCalled();
+            expect(getDataCommonsDisplayNamesForUser).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('User enrichment', () => {
+        it('should enrich each user with approved studies and display names', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            const originalStudies = [{ _id: 'study-user' }];
+            const userFromDb = {
+                ...mockUsers[1],
+                studies: [...originalStudies],
+            };
+            const enrichedStudies = [{ _id: 'study-enriched' }];
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            userService._findApprovedStudies = jest.fn().mockResolvedValue(enrichedStudies);
+            mockUserCollection.aggregate.mockResolvedValue([userFromDb]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService._findApprovedStudies).toHaveBeenCalledWith(originalStudies);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    _id: userFromDb._id,
+                    studies: enrichedStudies,
+                })
+            );
+            expect(result).toHaveLength(1);
+        });
     });
 
     describe('Reopen permission branch', () => {
@@ -639,6 +708,7 @@ describe('UserService.listUsers', () => {
                 $match: userService._buildReopenListUsersMatch(),
             }]);
             expect(userService._findApprovedStudies).toHaveBeenCalledTimes(1);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
             expect(result).toHaveLength(1);
         });
 
