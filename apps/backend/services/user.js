@@ -227,6 +227,8 @@ class UserService {
             .map((study) => study.studyName);
     }
 
+
+    // Extracts the study IDs from the studies array
     _extractStudyIds(studies) {
         if (!studies || studies.length === 0) {
             return [];
@@ -239,10 +241,12 @@ class UserService {
         }).filter(studyID => studyID !== null && studyID !== undefined);
     }
 
+    // Returns the study array content for when the user has access to all studies
     _getAllStudiesPlaceholder() {
         return [{ _id: ALL_STUDY_FILTER, studyName: ALL_STUDY_FILTER }];
     }
 
+    // Uses a single query to fetch the study data for all studies in the provided array
     async _findApprovedStudies(studies) {
         const studiesIDs = this._extractStudyIds(studies);
         if (studiesIDs.length === 0) {
@@ -257,19 +261,21 @@ class UserService {
         });
     }
 
+    // Adds full study data to the user objects
     async _enrichUsersWithApprovedStudies(users) {
         if (!users?.length) {
             return users || [];
         }
 
-        const allStudiesPlaceholder = this._getAllStudiesPlaceholder();
         const pendingLookups = [];
         const uniqueIds = new Set();
 
+        // Populates the study data in the all or no studies cases
+        // Creates a list of users that require study lookups and maintains a set of unique study IDs that need to be fetched
         for (const user of users) {
             const studyIds = this._extractStudyIds(user?.studies);
             if (studyIds.includes(ALL_STUDY_FILTER)) {
-                user.studies = allStudiesPlaceholder;
+                user.studies = this._getAllStudiesPlaceholder();
                 getDataCommonsDisplayNamesForUser(user);
             } else if (studyIds.length === 0) {
                 user.studies = [];
@@ -281,10 +287,12 @@ class UserService {
         }
 
         if (uniqueIds.size > 0) {
+            // Uses a single query to fetch the necessary study data
             const approvedStudies = await this.approvedStudyDAO.findMany({
                 id: { in: [...uniqueIds] },
             });
             const studyById = new Map(approvedStudies.map((study) => [study._id, study]));
+            // Populates the study data for the remaining users using the results from the single study query
             for (const { user, studyIds } of pendingLookups) {
                 user.studies = studyIds.map((id) => studyById.get(id)).filter(Boolean);
                 getDataCommonsDisplayNamesForUser(user);
