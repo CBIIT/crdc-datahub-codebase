@@ -328,7 +328,7 @@ describe('UserService.listUsers', () => {
     });
 
     describe('Permission scenarios', () => {
-        it('should return empty array when user has neither manage nor reopen permission', async () => {
+        it('should throw when user has neither manage nor reopen permission', async () => {
             const noneScope = {
                 isNoneScope: () => true,
                 isAllScope: () => false,
@@ -338,7 +338,8 @@ describe('UserService.listUsers', () => {
                 .mockResolvedValueOnce(noneScope)
                 .mockResolvedValueOnce(noneScope);
 
-            const result = await userService.listUsers(params, context);
+            await expect(userService.listUsers(params, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
 
             expect(userService._getUserScope).toHaveBeenNthCalledWith(
                 1,
@@ -351,7 +352,6 @@ describe('UserService.listUsers', () => {
                 USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
             );
             expect(mockUserCollection.aggregate).not.toHaveBeenCalled();
-            expect(result).toEqual([]);
         });
 
         it('should filter out invalid roles from scope values', async () => {
@@ -827,15 +827,15 @@ describe('UserService.listUsers', () => {
             expect(result).toHaveLength(1);
         });
 
-        it('should return empty array when reopen scope is not all', async () => {
+        it('should throw when reopen scope is not all', async () => {
             userService._getUserScope = jest.fn()
                 .mockResolvedValueOnce(noneScope)
                 .mockResolvedValueOnce(nonAllReopenScope);
 
-            const result = await userService.listUsers(params, context);
+            await expect(userService.listUsers(params, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
 
             expect(mockUserCollection.aggregate).not.toHaveBeenCalled();
-            expect(result).toEqual([]);
         });
     });
 });

@@ -363,7 +363,7 @@ class UserService {
                 USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
             );
             if (!reopenScope.isAllScope()) {
-                return [];
+                throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
             }
             match = this._buildReopenListUsersMatch();
         }
