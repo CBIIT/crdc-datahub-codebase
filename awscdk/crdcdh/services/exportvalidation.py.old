@@ -14,11 +14,11 @@ from aws_cdk import aws_sqs as sqs
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_s3 as s3
 
-class backendService:
+class exportvalidationService:
   def createService(self, config):
 
-    ### Backend Service ###############################################################################################################
-    service = "backend"
+    ### ExportValidation Service ############################################################################################################
+    service = "exportvalidation"
 
     # Set container configs
     if config.has_option(service, 'entrypoint'):
@@ -28,27 +28,13 @@ class backendService:
 
     taskDefinition = ecs.FargateTaskDefinition(self,
         "{}-{}-taskDef".format(self.namingPrefix, service),
-        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
+        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-exportvalidation",
         cpu=config.getint(service, 'cpu'),
         memory_limit_mib=config.getint(service, 'memory')
     )
 
     exec_role = taskDefinition.obtain_execution_role()
     role_arn = exec_role.role_arn
-    #task_role = taskDefinition.task_role
-
-    # Add task role ARN to the execution role trust relationship needed buy the dev team to get temporary credential, the code needs to assume the role first.
-
-    #exec_role.assume_role_policy.add_statements(
-        #iam.PolicyStatement(
-            #effect=iam.Effect.ALLOW,
-            #principals=[iam.ServicePrincipal('ecs-tasks.amazonaws.com'), iam.ArnPrincipal(task_role.role_arn)],
-            #actions=["sts:AssumeRole"]
-        #)
-    #)
-    #not working - role_arn = taskDefinition.execution_role.role_arn
-    #debug
-    #print(f"Fargate Task Definition Execution Role ARN: {role_arn}")
 
     environment={
             "DATE":date.today().isoformat(),
@@ -56,9 +42,6 @@ class backendService:
             "VERSION":config[service]['image'],
             "FARGATE":"true",
             "SESSION_SECRET":"abcd256asghaaamnkloofghj",
-            "EMAILS_ENABLED":"true",
-            "EMAIL_SMTP_HOST":"email-smtp.us-east-1.amazonaws.com",
-            "EMAIL_SMTP_PORT":"587",
             "NEW_RELIC_APP_NAME":"{}-{}".format(self.namingPrefix, service),
             "NEW_RELIC_DISTRIBUTED_TRACING_ENABLED":"true",
             "NEW_RELIC_HOST":"gov-collector.newrelic.com",
@@ -69,51 +52,49 @@ class backendService:
             "NRIA_CUSTOM_ATTRIBUTES":"{\"nrDeployMethod\":\"downloadPage\"}",
             "NRIA_OVERRIDE_HOST_ROOT":"",
             "JAVA_OPTS": "-javaagent:/usr/local/tomcat/newrelic/newrelic.jar",
-            "AUTH_ENABLED":"true",
-            "ROLE_ARN": role_arn,
-#            "ROLE_ARN": exec_role.role_arn,
-#            "AUTH_ENDPOINT":"/api/auth/",
-#            "BENTO_API_VERSION":config[service]['image'],
-#            "MYSQL_SESSION_ENABLED":"true",
-#            "NEO4J_URL":"bolt://{}:7687".format(config['db']['neo4j_ip']),
-#            "REDIS_ENABLE":"false",
-#            "REDIS_FILTER_ENABLE":"false",
-#            "REDIS_HOST":"localhost",
-#            "REDIS_PORT":"6379",
-#            "REDIS_USE_CLUSTER":"true",
+            "ROLE_ARN": exec_role.role_arn,
         }
 
     secrets={
-            "NEW_RELIC_LICENSE_KEY":ecs.Secret.from_secrets_manager(secretsmanager.Secret.from_secret_name_v2(self, "be_newrelic", secret_name='monitoring/newrelic'), 'api_key'),
+            "NEW_RELIC_LICENSE_KEY":ecs.Secret.from_secrets_manager(secretsmanager.Secret.from_secret_name_v2(self, "export_newrelic", secret_name='monitoring/newrelic'), 'api_key'),
             "MONGO_DB_HOST":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_host'),
             "MONGO_DB_PORT":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_port'),
             "MONGO_DB_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_password'),
             "MONGO_DB_USER":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_user'),
             "DATABASE_NAME":ecs.Secret.from_secrets_manager(self.secret, 'database_name'),
-            "EMAIL_USER":ecs.Secret.from_secrets_manager(self.secret, 'email_user'),
-            "EMAIL_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'email_password'),
-            "EMAIL_URL":ecs.Secret.from_secrets_manager(self.secret, 'email_url'),
-            "SUBMISSION_BUCKET":ecs.Secret.from_secrets_manager(self.secret, 'submission_bucket'),
         }   
     
+    # create sqs
+    if(config[service]['create_sqs'] == "true"):
+        queue = sqs.Queue(self, f"{self.namingPrefix}-{service}-queue",
+            queue_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-{config[service]['queue_name']}-queue.fifo",
+            fifo=True
+        )
+    else:
+        queue_arn = config[service].get("queue_arn")
+        queue = sqs.Queue.from_queue_arn(
+            self,
+            f"{config['main']['resource_prefix']}-{config['main']['tier']}-{config[service]['queue_name']}-queue",
+            queue_arn
+        )
+ 
     #taskDefinition = ecs.FargateTaskDefinition(self,
         #"{}-{}-taskDef".format(self.namingPrefix, service),
-        #family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
+        #family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-exportvalidation",
         #cpu=config.getint(service, 'cpu'),
         #memory_limit_mib=config.getint(service, 'memory')
     #)
-
     
     ecr_repo = ecr.Repository.from_repository_arn(self, "{}_repo".format(service), repository_arn=config[service]['repo'])
     
-    #no sumolog
+    # no sumolog
     taskDefinition.add_container(
         service,
         #image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
         image=ecs.ContainerImage.from_ecr_repository(repository=ecr_repo, tag=config[service]['image']),
         cpu=config.getint(service, 'cpu'),
         memory_limit_mib=config.getint(service, 'memory'),
-        port_mappings=[ecs.PortMapping(app_protocol=ecs.AppProtocol.http, container_port=config.getint(service, 'port'), name=service)],
+        #port_mappings=[ecs.PortMapping(app_protocol=ecs.AppProtocol.http, container_port=config.getint(service, 'port'), name=service)],
         entry_point=entry_point,
         environment=environment,
         secrets=secrets,
@@ -160,13 +141,12 @@ class backendService:
     #essential=True
     #)
 
-
-    #roles attached to ecs
+    # roles attached to ecs
     if(config['main']['create_bucket'] == "true"):
-        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-be-ref", f"{self.namingPrefix}-submission")
+        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-export-ref", f"{self.namingPrefix}-submission")
     else:
         existing_bucket_name = config["secrets"].get("submission_bucket")
-        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-be-existing", existing_bucket_name)
+        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-export-existing", existing_bucket_name)
 
     # add s3 bucket policy to allow task def role to access submission bucket
     bucket_submission_policy = iam.PolicyStatement(
@@ -231,10 +211,10 @@ class backendService:
     # allowed access the other buckets
 
     bucket_names = [name.strip() for name in config['main']['datasync_buckets'].split(',')]
-    bucket_arns_be = []
+    bucket_arns_export = []
     for bucket_name in bucket_names:
-        bucket_arns_be.append(f"arn:aws:s3:::{bucket_name}")
-        bucket_arns_be.append(f"arn:aws:s3:::{bucket_name}/*")
+        bucket_arns_export.append(f"arn:aws:s3:::{bucket_name}")
+        bucket_arns_export.append(f"arn:aws:s3:::{bucket_name}/*")
 
     data_sync_other_buckets = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
@@ -250,7 +230,7 @@ class backendService:
             "s3:DeleteObject",
             "s3:AbortMultipartUpload"
         ],
-        resources=bucket_arns_be
+        resources=bucket_arns_export
     )
 
     # attach sqs iam access
@@ -284,10 +264,6 @@ class backendService:
     taskDefinition.task_role.add_to_policy(sqs_iam_access)
     taskDefinition.task_role.add_to_policy(quicksight_embed_policy)
 
-    #for stmt in stack.datasync_policy_role.policy.document.statements:
-        #taskDefinition.task_role.add_to_policy(stmt)
-        #taskDefinition.execution_role.add_to_policy(stmt)
-
     taskDefinition.execution_role.add_to_policy(bucket_submission_policy)
     taskDefinition.execution_role.add_to_policy(data_sync_policy)
     taskDefinition.execution_role.add_to_policy(data_sync_pass_role)
@@ -295,11 +271,12 @@ class backendService:
     taskDefinition.execution_role.add_to_policy(sqs_iam_access)
     taskDefinition.execution_role.add_to_policy(quicksight_embed_policy)
 
+    
     # attach amazon managed policy to the task role
     taskDefinition.task_role.add_managed_policy(
         iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSQSFullAccess")
     )
-
+ 
     taskDefinition.task_role.add_managed_policy(
         iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceEventsRole")
     )
@@ -318,22 +295,27 @@ class backendService:
         iam.ManagedPolicy.from_aws_managed_policy_name("CloudWatchLogsFullAccess")
     )
 
-    
+
+    # Grant SQS permissions to the task role
+    queue.grant_send_messages(taskDefinition.task_role)
+    queue.grant_consume_messages(taskDefinition.task_role)
+
     # get subnet for the ecs service
-    #subnet_be1 = config.get(service, 'subnet_be1')
-    #subnet_be2 = config.get(service, 'subnet_be2')
-    #subnets_be = ec2.SubnetSelection(
+    #subnet_exp1 = config.get(service, 'subnet_exp1')
+    #subnet_exp2 = config.get(service, 'subnet_exp2')
+    #subnets_exp = ec2.SubnetSelection(
         #subnets=[
-          #ec2.Subnet.from_subnet_id(self, "Subnet_be1", subnet_be1),
-          #ec2.Subnet.from_subnet_id(self, "Subnet_be2", subnet_be2)
+          #ec2.Subnet.from_subnet_id(self, "Subnet_exp1", subnet_exp1),
+          #ec2.Subnet.from_subnet_id(self, "Subnet_exp2", subnet_exp2)
         #]
     #)
     ecsService = ecs.FargateService(self,
         "{}-{}-service".format(self.namingPrefix, service),
-        service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
+        service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-exportvalidation",
         cluster=self.ECSCluster,
         task_definition=taskDefinition,
         enable_execute_command=True,
+        desired_count=1,
         min_healthy_percent=50,
         max_healthy_percent=200,
         circuit_breaker=ecs.DeploymentCircuitBreaker(
@@ -343,35 +325,93 @@ class backendService:
         vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)
     )
 
-    scalable_target = ecsService.auto_scale_task_count(
-        min_capacity=1,  # adjust as needed
-        max_capacity=1  # adjust as needed
+    #Attach scalable target
+    scalable_target = appscaling.ScalableTarget(self,
+        "{}-{}-scalableTarget".format(self.namingPrefix, service),
+        #service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-exportvalidation",
+        service_namespace=appscaling.ServiceNamespace.ECS,
+        #min_capacity=1,  # adjust as needed
+        #max_capacity=20  # adjust as needed
+        min_capacity=config.getint(service, 'autoscaling_min_capacity'),
+        max_capacity=config.getint(service, 'autoscaling_max_capacity'),
+        resource_id=f"service/{self.ECSCluster.cluster_name}/{ecsService.service_name}",
+        scalable_dimension="ecs:service:DesiredCount"
     )
 
-    scalable_target.scale_on_cpu_utilization(
-        "CpuScalingPolicy",
-        target_utilization_percent=80,  # target average CPU utilization
-        scale_in_cooldown=Duration.seconds(60),   # wait 60s before scaling in
-        scale_out_cooldown=Duration.seconds(60)   # wait 60s before scaling out
+    # Define CloudWatch metric for SQS ApproximateNumberOfMessagesVisible
+
+    sqs_metric = cloudwatch.Metric(
+        namespace="AWS/SQS",
+        metric_name="ApproximateNumberOfMessagesVisible",
+        dimensions_map={"QueueName": queue.queue_name},
+        statistic="Minimum",
+        period=Duration.seconds(10)
     )
 
-    # scale on schedule
+    # Cloudwatch Scale-out Alarm
+    scale_out_alarm = cloudwatch.Alarm(self,
+        "{}-{}-scaleoutAlarm".format(self.namingPrefix, service),
+        alarm_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-export-scaleout-alarm",
+        metric=sqs_metric,
+        threshold=1,
+        evaluation_periods=2,
+        datapoints_to_alarm=2,
+        comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+    )
+
+    # Define step-out policy
+    scale_out_action = scalable_target.scale_on_metric(
+        f"{config['main']['resource_prefix']}-{config['main']['tier']}-export-scale-out",
+        metric=sqs_metric,
+        scaling_steps=[
+            appscaling.ScalingInterval(lower=1, upper=21, change=5),   # when 1 ≤ messages < 21 → add 5 tasks
+            appscaling.ScalingInterval(lower=21, change=20),           # when ≥ 21 → add 20 tasks
+        ],
+        #adjustment_type=appscaling.AdjustmentType.CHANGE_IN_CAPACITY,
+        adjustment_type=appscaling.AdjustmentType.EXACT_CAPACITY,
+        #cooldown=Duration.seconds(300)
+        cooldown=Duration.seconds(300)
+    )
+
+    # Cloudwatch Scale-in alarm
+    scale_in_alarm = cloudwatch.Alarm(self,
+        "{}-{}-scaleinAlarm".format(self.namingPrefix, service),
+        alarm_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-export-scalein-alarm",
+        metric=sqs_metric,
+        threshold=0,
+        evaluation_periods=3,
+        datapoints_to_alarm=3,
+        comparison_operator=cloudwatch.ComparisonOperator.LESS_THAN_OR_EQUAL_TO_THRESHOLD
+    )
+
+    # Define step-in policy
+    scale_in_action = scalable_target.scale_on_metric(
+        f"{config['main']['resource_prefix']}-{config['main']['tier']}-export-scale-in",
+        metric=sqs_metric,
+        scaling_steps=[
+            appscaling.ScalingInterval(upper=0, change=-1),   # remove 1 task if < or = 0
+            appscaling.ScalingInterval(lower=0, change=0),
+        ],
+        adjustment_type=appscaling.AdjustmentType.CHANGE_IN_CAPACITY,
+        cooldown=Duration.seconds(10)    
+    )
+
+    # set service run by schedule
     env = config['main']['env']
     if env.lower() != 'prod':
         scalable_target.scale_on_schedule(
-            f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend-start",
+            f"{config['main']['resource_prefix']}-{config['main']['tier']}-export-start",
             schedule=appscaling.Schedule.cron(
                 minute="5",
                 hour="11",
-                week_day="MON-FRI" 
+                week_day="MON-FRI"
             ),
             min_capacity=1,
             max_capacity=1,
             #schedule_time_zone="America/New_York"
         )
-
         scalable_target.scale_on_schedule(
-            f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend-stop",
+            f"{config['main']['resource_prefix']}-{config['main']['tier']}-export-stop",
             schedule=appscaling.Schedule.cron(
                 minute="0",
                 hour="23",
@@ -379,23 +419,9 @@ class backendService:
             ),
             min_capacity=0,
             max_capacity=0
-            #schedule_time_zone="America/New_York"
+        #    schedule_time_zone="America/New_York"
         )
-    ecsTarget = self.listener.add_targets("ECS-{}-Target".format(service),
-        port=int(config[service]['port']),
-        protocol=elbv2.ApplicationProtocol.HTTP,
-        target_group_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
-        health_check = elbv2.HealthCheck(
-            path=config[service]['health_check_path'],
-            timeout=Duration.seconds(config.getint(service, 'health_check_timeout')),
-            interval=Duration.seconds(config.getint(service, 'health_check_interval')),),
-        targets=[ecsService],)
-
-    elbv2.ApplicationListenerRule(self, id="alb-{}-rule".format(service),
-        conditions=[
-            #elbv2.ListenerCondition.host_headers(config[service]['host'].split(',')),
-            elbv2.ListenerCondition.path_patterns(config[service]['path'].split(','))
-        ],
-        priority=int(config[service]['priority_rule_number']),
-        listener=self.listener,
-        target_groups=[ecsTarget])
+    # Connect alarm to scale out policy
+    #scale_out_alarm.add_alarm_action(
+    #    cw_actions.ApplicationScalingAction(scale_out_action)
+    #)
