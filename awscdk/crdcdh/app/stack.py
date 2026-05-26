@@ -209,14 +209,14 @@ class Stack(Stack):
 
 
         if(config['main']['create_kb'] == "true"):
-            datasource_bucket_arn = datasource_bucket.bucket_arn
-            knowledge_base_id = self.knowledge_base.attr_knowledge_base_id
+            datasource_bucket_arn = self.knowledgebase.datasource_bucket.bucket_arn
+            knowledge_base_id = self.knowledgebase.knowledge_base.attr_knowledge_base_id
         else:
             datasource_bucket_arn = config["secrets"].get("datasource_bucket_arn")
             knowledge_base_id = config["secrets"].get("knowledge_base_id")
             
         if(config['main']['create_guardrail'] == "true"):
-            guardrail_id = self.guardrail.attr_guardrail_id
+            guardrail_id = self.guardrail.guardrail.attr_guardrail_id
         else:
             guardrail_id = config["secrets"].get("guardrail_id")
 
