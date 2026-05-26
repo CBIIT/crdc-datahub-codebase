@@ -1,5 +1,14 @@
 const { UserService } = require('../../services/user');
 const { USER } = require('../../crdc-datahub-database-drivers/constants/user-constants');
+const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
+const ERROR = require('../../constants/error-constants');
+const { verifySession } = require('../../verifier/user-info-verifier');
+
+jest.mock('../../verifier/user-info-verifier', () => ({
+    verifySession: jest.fn(() => ({
+        verifyInitialized: jest.fn(),
+    })),
+}));
 
 describe('UserService.listUsers', () => {
     let userService;
@@ -163,43 +172,11 @@ describe('UserService.listUsers', () => {
             mockAuthorizationService
         );
 
-        // Mock utility functions
-        global.verifySession = jest.fn(() => ({
-            verifyInitialized: jest.fn()
+        verifySession.mockImplementation(() => ({
+            verifyInitialized: jest.fn(),
         }));
-
-        // Mock the actual verifySession function to use our mock
-        userService.verifySession = global.verifySession;
-
-        // Mock _findApprovedStudies method to avoid the async bug in the original implementation
         userService._findApprovedStudies = jest.fn().mockResolvedValue([]);
-
-        // Mock the listUsers method to avoid the bugs in the original implementation
-        userService.listUsers = jest.fn(async (params, context) => {
-            // Mock the session verification
-            global.verifySession(context).verifyInitialized();
-            
-            // Mock the user scope check
-            const userScope = await userService._getUserScope(context?.userInfo, 'user:manage');
-            if (userScope.isNoneScope()) {
-                return [];
-            }
-
-            // Mock the database query
-            const result = await mockUserCollection.aggregate([{
-                "$match": {
-                    ...(!userScope.isAllScope() ?
-                        { role: {$in: userScope.getRoleScope()?.scopeValues?.filter(role => 
-                            Object.values(USER.ROLES).includes(role)) || []} } : {})
-                }
-            }]);
-            
-            // Handle null/undefined result
-            if (!result) {
-                return [];
-            }
-            return result;
-        });
+        userService.listUsers = UserService.prototype.listUsers.bind(userService);
 
         // Test context and params
         context = {
@@ -228,14 +205,15 @@ describe('UserService.listUsers', () => {
             const result = await userService.listUsers(params, context);
 
             // Verify
-            expect(global.verifySession).toHaveBeenCalledWith(context);
+            expect(verifySession).toHaveBeenCalledWith(context);
             expect(userService._getUserScope).toHaveBeenCalledWith(
                 mockUserInfo,
-                'user:manage'
+                USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
             );
             expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
                 "$match": {}
             }]);
+            expect(userService._findApprovedStudies).toHaveBeenCalledTimes(9);
             expect(result).toHaveLength(9);
         });
 
@@ -337,22 +315,27 @@ describe('UserService.listUsers', () => {
     });
 
     describe('Permission scenarios', () => {
-        it('should return empty array when user has none scope', async () => {
-            // Setup
+        it('should return empty array when user has neither manage nor reopen permission', async () => {
             const noneScope = {
                 isNoneScope: () => true,
                 isAllScope: () => false,
-                getRoleScope: () => null
+                getRoleScope: () => null,
             };
-            userService._getUserScope = jest.fn().mockResolvedValue(noneScope);
+            userService._getUserScope = jest.fn()
+                .mockResolvedValueOnce(noneScope)
+                .mockResolvedValueOnce(noneScope);
 
-            // Execute
             const result = await userService.listUsers(params, context);
 
-            // Verify
-            expect(userService._getUserScope).toHaveBeenCalledWith(
+            expect(userService._getUserScope).toHaveBeenNthCalledWith(
+                1,
                 mockUserInfo,
-                'user:manage'
+                USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+            );
+            expect(userService._getUserScope).toHaveBeenNthCalledWith(
+                2,
+                mockUserInfo,
+                USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
             );
             expect(mockUserCollection.aggregate).not.toHaveBeenCalled();
             expect(result).toEqual([]);
@@ -528,34 +511,31 @@ describe('UserService.listUsers', () => {
     });
 
     describe('Edge cases', () => {
-        it('should handle empty context', async () => {
-            // Setup
-            const emptyContext = {};
+        it('should reject unauthenticated requests with empty context', async () => {
+            verifySession.mockImplementationOnce(() => {
+                throw new Error(ERROR.NOT_LOGGED_IN);
+            });
 
-            // Execute & Verify
-            // The actual implementation throws an error for empty context
-            await expect(userService.listUsers(params, emptyContext))
-                .rejects.toThrow('Invalid user scope permission is requested');
+            await expect(userService.listUsers(params, {}))
+                .rejects.toThrow(ERROR.NOT_LOGGED_IN);
         });
 
-        it('should handle context with null userInfo', async () => {
-            // Setup
-            const contextWithNullUserInfo = { userInfo: null };
+        it('should reject unauthenticated requests when userInfo is null', async () => {
+            verifySession.mockImplementationOnce(() => {
+                throw new Error(ERROR.NOT_LOGGED_IN);
+            });
 
-            // Execute & Verify
-            // The actual implementation throws an error for null userInfo
-            await expect(userService.listUsers(params, contextWithNullUserInfo))
-                .rejects.toThrow('Invalid user scope permission is requested');
+            await expect(userService.listUsers(params, { userInfo: null }))
+                .rejects.toThrow(ERROR.NOT_LOGGED_IN);
         });
 
-        it('should handle context with undefined userInfo', async () => {
-            // Setup
-            const contextWithUndefinedUserInfo = { userInfo: undefined };
+        it('should reject unauthenticated requests when userInfo is undefined', async () => {
+            verifySession.mockImplementationOnce(() => {
+                throw new Error(ERROR.NOT_LOGGED_IN);
+            });
 
-            // Execute & Verify
-            // The actual implementation throws an error for undefined userInfo
-            await expect(userService.listUsers(params, contextWithUndefinedUserInfo))
-                .rejects.toThrow('Invalid user scope permission is requested');
+            await expect(userService.listUsers(params, { userInfo: undefined }))
+                .rejects.toThrow(ERROR.NOT_LOGGED_IN);
         });
 
         it('should handle empty params', async () => {
@@ -612,4 +592,84 @@ describe('UserService.listUsers', () => {
             expect(result).toHaveLength(9);
         });
     });
-}); 
+
+    describe('Reopen permission branch', () => {
+        const noneScope = {
+            isNoneScope: () => true,
+            isAllScope: () => false,
+            getRoleScope: () => null,
+        };
+        const allScope = {
+            isNoneScope: () => false,
+            isAllScope: () => true,
+            getRoleScope: () => null,
+        };
+        const roleScopedManage = {
+            isNoneScope: () => false,
+            isAllScope: () => false,
+            getRoleScope: () => ({
+                scopeValues: [USER.ROLES.FEDERAL_LEAD],
+            }),
+        };
+        const nonAllReopenScope = {
+            isNoneScope: () => false,
+            isAllScope: () => false,
+            getRoleScope: () => null,
+        };
+
+        it('should return reopen-filtered users when user has reopen but not manage', async () => {
+            userService._getUserScope = jest.fn()
+                .mockResolvedValueOnce(noneScope)
+                .mockResolvedValueOnce(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([mockUsers[1]]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService._getUserScope).toHaveBeenNthCalledWith(
+                1,
+                context.userInfo,
+                USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+            );
+            expect(userService._getUserScope).toHaveBeenNthCalledWith(
+                2,
+                context.userInfo,
+                USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
+            );
+            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
+                $match: userService._buildReopenListUsersMatch(),
+            }]);
+            expect(userService._findApprovedStudies).toHaveBeenCalledTimes(1);
+            expect(result).toHaveLength(1);
+        });
+
+        it('should use manage scope when user has both manage and reopen permissions', async () => {
+            userService._getUserScope = jest.fn().mockResolvedValue(roleScopedManage);
+            mockUserCollection.aggregate.mockResolvedValue(mockUsers.slice(0, 1));
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService._getUserScope).toHaveBeenCalledTimes(1);
+            expect(userService._getUserScope).toHaveBeenCalledWith(
+                context.userInfo,
+                USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+            );
+            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
+                $match: {
+                    role: { $in: [USER.ROLES.FEDERAL_LEAD] },
+                },
+            }]);
+            expect(result).toHaveLength(1);
+        });
+
+        it('should return empty array when reopen scope is not all', async () => {
+            userService._getUserScope = jest.fn()
+                .mockResolvedValueOnce(noneScope)
+                .mockResolvedValueOnce(nonAllReopenScope);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(mockUserCollection.aggregate).not.toHaveBeenCalled();
+            expect(result).toEqual([]);
+        });
+    });
+});

@@ -287,25 +287,51 @@ class UserService {
     async listUsers(params, context) {
         verifySession(context)
             .verifyInitialized();
-        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER);
-        if (userScope.isNoneScope()) {
-            return [];
+        const manageUserScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER);
+
+        let match;
+        if (!manageUserScope.isNoneScope()) {
+            const roleScope = manageUserScope.getRoleScope();
+            const roleSet = new Set(Object.values(ROLES));
+            const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
+            match = {
+                ...(!manageUserScope.isAllScope() ?
+                    { role: { $in: filteredRoles || [] } } : {})
+            };
+        } else {
+            const reopenScope = await this._getUserScope(
+                context?.userInfo,
+                USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
+            );
+            if (!reopenScope.isAllScope()) {
+                return [];
+            }
+            match = this._buildReopenListUsersMatch();
         }
 
-        const roleScope = userScope.getRoleScope();
-        const roleSet = new Set(Object.values(ROLES));
-        const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
-        const result = await this.userCollection.aggregate([{
-            "$match": {
-                ...(!userScope.isAllScope() ?
-                    { role: {$in: filteredRoles || []} } : {})
-            }
-        }]);
-        result.map(async (user) => {
+        const result = await this.userCollection.aggregate([{ "$match": match }]);
+        if (!result?.length) {
+            return [];
+        }
+        for (const user of result) {
             user.studies = await this._findApprovedStudies(user?.studies);
-            return getDataCommonsDisplayNamesForUser(user);
-        });
-        return result || [];
+            getDataCommonsDisplayNamesForUser(user);
+        }
+        return result;
+    }
+
+    _buildReopenListUsersMatch() {
+        const createPermission = USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE;
+        return {
+            role: { $in: [ROLES.USER, ROLES.SUBMITTER] },
+            permissions: {
+                $in: [
+                    createPermission,
+                    `${createPermission}:${SCOPES.ALL}`,
+                    `${createPermission}:${SCOPES.OWN}`,
+                ],
+            },
+        };
     }
 
     /**

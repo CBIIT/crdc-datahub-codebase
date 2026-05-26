@@ -964,7 +964,7 @@ type Query {
     "Limit to current user only"
     getMyUser : User
 
-    "Admin and Org Owner only operations, Org Owner only see users within same organization"
+    "Users with user:manage see users per their scope. Users with submission_request:reopen (without user:manage) see Submitter/User accounts with submission_request:create only."
     listUsers: [User]
     listActiveCurators: [UserInfo]
     getUser(userID: ID!): User
