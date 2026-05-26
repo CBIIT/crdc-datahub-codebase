@@ -172,6 +172,14 @@ class Stack(Stack):
 #        })
 
 
+        ### create bedrock knowledgebase
+        if config['main']['create_kb'] == "true":
+            self.knowledgebase = KnowledgeBase(self, f"{self.namingPrefix}-kb")
+
+        ### create guardrail
+        if config['main']['create_guardrail'] == "true":
+            self.guardrail = Guardrail(self, f"{self.namingPrefix}-guardrail")
+
         ### RDS - referred to rds.py
         if config.getboolean('db', 'create_rds', fallback=False):
             self.rds = RdsInstance(
