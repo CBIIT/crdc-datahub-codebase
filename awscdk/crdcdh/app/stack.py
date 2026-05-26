@@ -27,7 +27,7 @@ from aws_cdk import aws_bedrock as bedrock
 from aws_cdk import aws_s3vectors as s3vectors
 from rds import RdsInstance
 from documentdb import DocumentDbCluster
-from kb import KnowledgeBase
+from knowledgebase import KnowledgeBase
 from guardrail import Guardrail
 from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, chatbotbe
 #from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
@@ -269,7 +269,6 @@ class Stack(Stack):
                 "docdb_port": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_port),
                 "docdb_username": SecretValue.unsafe_plain_text(config.get('db', 'docdb_user')),
                 "docdb_password":  SecretValue.unsafe_plain_text(config.get('db', 'docdb_password'))
-
 #                "newrelic_license_key": SecretValue.unsafe_plain_text(config['secrets']['newrelic_license_key'])
 
             }
