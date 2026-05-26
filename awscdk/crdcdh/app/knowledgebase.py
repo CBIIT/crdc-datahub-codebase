@@ -162,7 +162,7 @@ class KnowledgeBase(Construct):
                 type="S3_VECTORS",
                 s3_vectors_configuration=bedrock.CfnKnowledgeBase.S3VectorsConfigurationProperty(
                     #vector_bucket_arn=f"arn:aws:s3:{config['main']['region']}:{config['main']['account_id']}:bucket/{vector_bucket.bucket_name}",
-                    vector_bucket_arn=vector_bucket.attr_vector_bucket_arn,
+                    vector_bucket_arn=self.vector_bucket.attr_vector_bucket_arn,
                     #index_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-index",
                     index_arn=self.vector_index.attr_index_arn,
                 ),
@@ -182,7 +182,7 @@ class KnowledgeBase(Construct):
             data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
                 type="S3",
                 s3_configuration=bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
-                    bucket_arn=datasource_bucket.bucket_arn,
+                    bucket_arn=self.datasource_bucket.bucket_arn,
                     inclusion_prefixes=["unstructured-pdfs/"]  # Only process this folder
                 ),
             ),
@@ -212,7 +212,7 @@ class KnowledgeBase(Construct):
             data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
                 type="S3",
                 s3_configuration=bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
-                    bucket_arn=datasource_bucket.bucket_arn,
+                    bucket_arn=self.datasource_bucket.bucket_arn,
                     inclusion_prefixes=["unstructured-markdown/"]  # Only process this folder
                 ),
             ),
