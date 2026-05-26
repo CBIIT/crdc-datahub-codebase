@@ -518,7 +518,7 @@ class Stack(Stack):
         pvpuller.pvpullerService.createService(self, config)
 
         # Chatbotbe Service
-        #chatbotbe.chatbotbeService.createService(self, config)
+        chatbotbe.chatbotbeService.createService(self, config)
 
         # Files Service
         # files.filesService.createService(self, config)
