@@ -113,7 +113,7 @@ export const DEFAULT_STATUSES_SELECTED: ApplicationStatus[] = [
   "Submitted",
   "In Review",
   "Inquired",
-  "Reopened",
+  // "Reopened",
 ];
 
 export const defaultValues: FilterForm = {
