@@ -7,6 +7,8 @@ services:
     version: 3.7.0.2
   authn:
     version: 3.7.0.2
+  chatbotbe:
+    version: 3.7.0.2
   essentialvalidation:
     version: 3.7.0.2
   metadatavalidation:
