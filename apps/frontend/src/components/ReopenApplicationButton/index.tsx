@@ -205,19 +205,6 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
     enqueueSnackbar,
   ]);
 
-  const formatOwnerLabel = useCallback(
-    (option: UserOption | null | undefined) => {
-      if (!option) {
-        return "";
-      }
-
-      return option._id === application.applicant?.applicantID
-        ? `${option.label} (Current Owner)`
-        : option.label;
-    },
-    [application.applicant?.applicantID]
-  );
-
   if (!canReopen) {
     return null;
   }
@@ -310,13 +297,9 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
                         options={userOptions}
                         value={field.value}
                         onChange={(_event, newValue: UserOption) => field.onChange(newValue)}
-                        getOptionLabel={(option: UserOption) => formatOwnerLabel(option)}
                         isOptionEqualToValue={(option: UserOption, value: UserOption) =>
                           option?._id === value?._id
                         }
-                        renderOption={(props, option: UserOption) => (
-                          <li {...props}>{formatOwnerLabel(option)}</li>
-                        )}
                         renderInput={(params) => (
                           <TextField {...params} placeholder="Search for a user..." size="small" />
                         )}
