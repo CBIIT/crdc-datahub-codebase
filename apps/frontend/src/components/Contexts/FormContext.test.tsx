@@ -889,10 +889,10 @@ describe("reopenForm Tests", () => {
       variableMatcher: mockVariableMatcher,
       result: {
         data: {
-          resumeApplication: {
+          resumeInquiredApplication: {
             _id: "mock-reopen-id",
             status: "In Progress",
-          } as ResumeAppResp["resumeApplication"],
+          } as ResumeAppResp["resumeInquiredApplication"],
         },
       },
     };

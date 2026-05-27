@@ -413,7 +413,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 
-    if (errors || !res?.resumeApplication?._id) {
+    if (errors || !res?.resumeInquiredApplication?._id) {
       setState((prevState) => ({ ...prevState, status: Status.ERROR }));
       return false;
     }
@@ -422,11 +422,11 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       ...prevState,
       data: {
         ...prevState?.data,
-        ...res?.resumeApplication,
+        ...res?.resumeInquiredApplication,
       },
       status: Status.LOADED,
     }));
-    return res?.resumeApplication?._id;
+    return res?.resumeInquiredApplication?._id;
   };
 
   useEffect(() => {
