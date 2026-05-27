@@ -51,6 +51,15 @@
             "disabled": false
           },
           {
+            "_id": "submission_request:reopen:all",
+            "group": "Submission Request Permissions",
+            "name": "Reopen",
+            "inherited": ["submission_request:view:all"],
+            "order": 6,
+            "checked": true,
+            "disabled": false
+          },
+          {
             "_id": "access:request:none",
             "group": "Miscellaneous",
             "name": "Request Access",
@@ -376,6 +385,15 @@
             "inherited": ["submission_request:view:all"],
             "order": 5,
             "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:reopen:all",
+            "group": "Submission Request Permissions",
+            "name": "Reopen",
+            "inherited": ["submission_request:view:all"],
+            "order": 6,
+            "checked": true,
             "disabled": false
           },
           {
@@ -705,6 +723,15 @@
             "inherited": ["submission_request:view:all"],
             "order": 5,
             "checked": false,
+            "disabled": false
+          },
+          {
+            "_id": "submission_request:reopen:all",
+            "group": "Submission Request Permissions",
+            "name": "Reopen",
+            "inherited": ["submission_request:view:all"],
+            "order": 6,
+            "checked": true,
             "disabled": false
           },
           {

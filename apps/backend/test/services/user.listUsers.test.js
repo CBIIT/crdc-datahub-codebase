@@ -1,5 +1,19 @@
 const { UserService } = require('../../services/user');
 const { USER } = require('../../crdc-datahub-database-drivers/constants/user-constants');
+const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
+const ERROR = require('../../constants/error-constants');
+const { verifySession } = require('../../verifier/user-info-verifier');
+const { getDataCommonsDisplayNamesForUser } = require('../../utility/data-commons-remapper');
+
+jest.mock('../../verifier/user-info-verifier', () => ({
+    verifySession: jest.fn(() => ({
+        verifyInitialized: jest.fn(),
+    })),
+}));
+
+jest.mock('../../utility/data-commons-remapper', () => ({
+    getDataCommonsDisplayNamesForUser: jest.fn((user) => user),
+}));
 
 describe('UserService.listUsers', () => {
     let userService;
@@ -163,43 +177,17 @@ describe('UserService.listUsers', () => {
             mockAuthorizationService
         );
 
-        // Mock utility functions
-        global.verifySession = jest.fn(() => ({
-            verifyInitialized: jest.fn()
+        verifySession.mockImplementation(() => ({
+            verifyInitialized: jest.fn(),
         }));
-
-        // Mock the actual verifySession function to use our mock
-        userService.verifySession = global.verifySession;
-
-        // Mock _findApprovedStudies method to avoid the async bug in the original implementation
-        userService._findApprovedStudies = jest.fn().mockResolvedValue([]);
-
-        // Mock the listUsers method to avoid the bugs in the original implementation
-        userService.listUsers = jest.fn(async (params, context) => {
-            // Mock the session verification
-            global.verifySession(context).verifyInitialized();
-            
-            // Mock the user scope check
-            const userScope = await userService._getUserScope(context?.userInfo, 'user:manage');
-            if (userScope.isNoneScope()) {
-                return [];
-            }
-
-            // Mock the database query
-            const result = await mockUserCollection.aggregate([{
-                "$match": {
-                    ...(!userScope.isAllScope() ?
-                        { role: {$in: userScope.getRoleScope()?.scopeValues?.filter(role => 
-                            Object.values(USER.ROLES).includes(role)) || []} } : {})
-                }
-            }]);
-            
-            // Handle null/undefined result
-            if (!result) {
-                return [];
-            }
-            return result;
+        userService.approvedStudyDAO.findMany = jest.fn().mockImplementation(({ id }) => {
+            const ids = id?.in || [];
+            return Promise.resolve(ids.map((studyId) => ({
+                _id: studyId,
+                studyName: `Study ${studyId}`,
+            })));
         });
+        userService.listUsers = UserService.prototype.listUsers.bind(userService);
 
         // Test context and params
         context = {
@@ -228,14 +216,17 @@ describe('UserService.listUsers', () => {
             const result = await userService.listUsers(params, context);
 
             // Verify
-            expect(global.verifySession).toHaveBeenCalledWith(context);
+            expect(verifySession).toHaveBeenCalledWith(context);
             expect(userService._getUserScope).toHaveBeenCalledWith(
                 mockUserInfo,
-                'user:manage'
+                USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
             );
             expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
                 "$match": {}
             }]);
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(userService.approvedStudyDAO.findMany.mock.calls[0][0].id.in).toHaveLength(9);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(9);
             expect(result).toHaveLength(9);
         });
 
@@ -337,25 +328,30 @@ describe('UserService.listUsers', () => {
     });
 
     describe('Permission scenarios', () => {
-        it('should return empty array when user has none scope', async () => {
-            // Setup
+        it('should throw when user has neither manage nor reopen permission', async () => {
             const noneScope = {
                 isNoneScope: () => true,
                 isAllScope: () => false,
-                getRoleScope: () => null
+                getRoleScope: () => null,
             };
-            userService._getUserScope = jest.fn().mockResolvedValue(noneScope);
+            userService._getUserScope = jest.fn()
+                .mockResolvedValueOnce(noneScope)
+                .mockResolvedValueOnce(noneScope);
 
-            // Execute
-            const result = await userService.listUsers(params, context);
+            await expect(userService.listUsers(params, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
 
-            // Verify
-            expect(userService._getUserScope).toHaveBeenCalledWith(
+            expect(userService._getUserScope).toHaveBeenNthCalledWith(
+                1,
                 mockUserInfo,
-                'user:manage'
+                USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+            );
+            expect(userService._getUserScope).toHaveBeenNthCalledWith(
+                2,
+                mockUserInfo,
+                USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
             );
             expect(mockUserCollection.aggregate).not.toHaveBeenCalled();
-            expect(result).toEqual([]);
         });
 
         it('should filter out invalid roles from scope values', async () => {
@@ -528,34 +524,31 @@ describe('UserService.listUsers', () => {
     });
 
     describe('Edge cases', () => {
-        it('should handle empty context', async () => {
-            // Setup
-            const emptyContext = {};
+        it('should reject unauthenticated requests with empty context', async () => {
+            verifySession.mockImplementationOnce(() => {
+                throw new Error(ERROR.NOT_LOGGED_IN);
+            });
 
-            // Execute & Verify
-            // The actual implementation throws an error for empty context
-            await expect(userService.listUsers(params, emptyContext))
-                .rejects.toThrow('Invalid user scope permission is requested');
+            await expect(userService.listUsers(params, {}))
+                .rejects.toThrow(ERROR.NOT_LOGGED_IN);
         });
 
-        it('should handle context with null userInfo', async () => {
-            // Setup
-            const contextWithNullUserInfo = { userInfo: null };
+        it('should reject unauthenticated requests when userInfo is null', async () => {
+            verifySession.mockImplementationOnce(() => {
+                throw new Error(ERROR.NOT_LOGGED_IN);
+            });
 
-            // Execute & Verify
-            // The actual implementation throws an error for null userInfo
-            await expect(userService.listUsers(params, contextWithNullUserInfo))
-                .rejects.toThrow('Invalid user scope permission is requested');
+            await expect(userService.listUsers(params, { userInfo: null }))
+                .rejects.toThrow(ERROR.NOT_LOGGED_IN);
         });
 
-        it('should handle context with undefined userInfo', async () => {
-            // Setup
-            const contextWithUndefinedUserInfo = { userInfo: undefined };
+        it('should reject unauthenticated requests when userInfo is undefined', async () => {
+            verifySession.mockImplementationOnce(() => {
+                throw new Error(ERROR.NOT_LOGGED_IN);
+            });
 
-            // Execute & Verify
-            // The actual implementation throws an error for undefined userInfo
-            await expect(userService.listUsers(params, contextWithUndefinedUserInfo))
-                .rejects.toThrow('Invalid user scope permission is requested');
+            await expect(userService.listUsers(params, { userInfo: undefined }))
+                .rejects.toThrow(ERROR.NOT_LOGGED_IN);
         });
 
         it('should handle empty params', async () => {
@@ -611,5 +604,238 @@ describe('UserService.listUsers', () => {
             // Verify
             expect(result).toHaveLength(9);
         });
+
+        it('should return empty array when aggregate returns no users', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(result).toEqual([]);
+            expect(userService.approvedStudyDAO.findMany).not.toHaveBeenCalled();
+            expect(getDataCommonsDisplayNamesForUser).not.toHaveBeenCalled();
+        });
+
+        it('should return empty array when aggregate returns null', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue(null);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(result).toEqual([]);
+            expect(userService.approvedStudyDAO.findMany).not.toHaveBeenCalled();
+            expect(getDataCommonsDisplayNamesForUser).not.toHaveBeenCalled();
+        });
     });
-}); 
+
+    describe('User enrichment', () => {
+        it('should enrich each user with approved studies and display names', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            const userFromDb = {
+                ...mockUsers[1],
+                studies: [{ _id: 'study-user' }],
+            };
+            const enrichedStudies = [{ _id: 'study-user', studyName: 'Enriched Study' }];
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            userService.approvedStudyDAO.findMany.mockResolvedValue(enrichedStudies);
+            mockUserCollection.aggregate.mockResolvedValue([userFromDb]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
+                id: { in: ['study-user'] },
+            });
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    _id: userFromDb._id,
+                    studies: enrichedStudies,
+                })
+            );
+            expect(result).toHaveLength(1);
+        });
+
+        it('should batch study lookups and dedupe shared study IDs', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            const sharedStudy = { _id: 'study-shared' };
+            const userOne = {
+                ...mockUsers[1],
+                studies: [sharedStudy],
+            };
+            const userTwo = {
+                ...mockUsers[2],
+                studies: [{ _id: 'study-shared' }],
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([userOne, userTwo]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
+                id: { in: ['study-shared'] },
+            });
+            expect(result[0].studies).toEqual([{
+                _id: 'study-shared',
+                studyName: 'Study study-shared',
+            }]);
+            expect(result[1].studies).toEqual([{
+                _id: 'study-shared',
+                studyName: 'Study study-shared',
+            }]);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(2);
+        });
+
+        it('should use All shortcut without a study lookup', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            const userWithAll = {
+                ...mockUsers[1],
+                studies: ['All'],
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([userWithAll]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService.approvedStudyDAO.findMany).not.toHaveBeenCalled();
+            expect(result[0].studies).toEqual([{ _id: 'All', studyName: 'All' }]);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
+        });
+
+        it('should batch lookups for non-All users when list includes All and concrete studies', async () => {
+            const allScope = {
+                isNoneScope: () => false,
+                isAllScope: () => true,
+                getRoleScope: () => null,
+            };
+            const userWithAll = {
+                ...mockUsers[1],
+                _id: 'user-all',
+                studies: ['All'],
+            };
+            const userWithStudy = {
+                ...mockUsers[2],
+                _id: 'user-study',
+                studies: [{ _id: 'study-concrete' }],
+            };
+            userService._getUserScope = jest.fn().mockResolvedValue(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([userWithAll, userWithStudy]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
+                id: { in: ['study-concrete'] },
+            });
+            expect(result[0].studies).toEqual([{ _id: 'All', studyName: 'All' }]);
+            expect(result[1].studies).toEqual([{
+                _id: 'study-concrete',
+                studyName: 'Study study-concrete',
+            }]);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe('Reopen permission branch', () => {
+        const noneScope = {
+            isNoneScope: () => true,
+            isAllScope: () => false,
+            getRoleScope: () => null,
+        };
+        const allScope = {
+            isNoneScope: () => false,
+            isAllScope: () => true,
+            getRoleScope: () => null,
+        };
+        const roleScopedManage = {
+            isNoneScope: () => false,
+            isAllScope: () => false,
+            getRoleScope: () => ({
+                scopeValues: [USER.ROLES.FEDERAL_LEAD],
+            }),
+        };
+        const nonAllReopenScope = {
+            isNoneScope: () => false,
+            isAllScope: () => false,
+            getRoleScope: () => null,
+        };
+
+        it('should return reopen-filtered users when user has reopen but not manage', async () => {
+            userService._getUserScope = jest.fn()
+                .mockResolvedValueOnce(noneScope)
+                .mockResolvedValueOnce(allScope);
+            mockUserCollection.aggregate.mockResolvedValue([mockUsers[1]]);
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService._getUserScope).toHaveBeenNthCalledWith(
+                1,
+                context.userInfo,
+                USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+            );
+            expect(userService._getUserScope).toHaveBeenNthCalledWith(
+                2,
+                context.userInfo,
+                USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
+            );
+            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
+                $match: userService._buildReopenListUsersMatch(),
+            }]);
+            expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
+            expect(result).toHaveLength(1);
+        });
+
+        it('should use manage scope when user has both manage and reopen permissions', async () => {
+            userService._getUserScope = jest.fn().mockResolvedValue(roleScopedManage);
+            mockUserCollection.aggregate.mockResolvedValue(mockUsers.slice(0, 1));
+
+            const result = await userService.listUsers(params, context);
+
+            expect(userService._getUserScope).toHaveBeenCalledTimes(1);
+            expect(userService._getUserScope).toHaveBeenCalledWith(
+                context.userInfo,
+                USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+            );
+            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
+                $match: {
+                    role: { $in: [USER.ROLES.FEDERAL_LEAD] },
+                },
+            }]);
+            expect(result).toHaveLength(1);
+        });
+
+        it('should throw when reopen scope is not all', async () => {
+            userService._getUserScope = jest.fn()
+                .mockResolvedValueOnce(noneScope)
+                .mockResolvedValueOnce(nonAllReopenScope);
+
+            await expect(userService.listUsers(params, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
+
+            expect(mockUserCollection.aggregate).not.toHaveBeenCalled();
+        });
+    });
+});

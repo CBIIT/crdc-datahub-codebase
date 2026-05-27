@@ -27,7 +27,7 @@ const {NotifyUser} = require("../services/notify-user");
 const {ApprovedStudiesService} = require("../services/approved-studies");
 const {BatchService, UploadingMonitor} = require("../services/batch-service");
 const {S3Service} = require("../services/s3-service");
-const {Organization} = require("../crdc-datahub-database-drivers/services/organization");
+const {Organization} = require("../services/organization-service");
 const {DataRecordService} = require("../services/data-record-service");
 const {UtilityService} = require("../services/utility");
 const {InstitutionService} = require("../services/institution-service");
@@ -162,7 +162,9 @@ dbConnector.connect().then(async () => {
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
             return await dataInterface.inquireApplication({...params, comment}, context);
         },
-        reopenApplication: dataInterface.reopenApplication.bind(dataInterface),
+        resumeInquiredApplication: dataInterface.resumeInquiredApplication.bind(dataInterface),
+        reopenApprovedSubmissionRequest: dataInterface.reopenApprovedSubmissionRequest.bind(dataInterface),
+        reopenApplication: dataInterface.resumeInquiredApplication.bind(dataInterface),
         cancelApplication: async (params, context)=> {
             if (params?.comment?.length > CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH));
