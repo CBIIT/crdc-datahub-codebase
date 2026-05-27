@@ -21,6 +21,9 @@ jobs:
   lint-frontend:
     name: Lint (Frontend)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/frontend
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -46,6 +49,9 @@ jobs:
   lint-chatbot-backend:
     name: Lint (Chatbot Backend)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/chatbot-backend
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
