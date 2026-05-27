@@ -105,7 +105,7 @@ export const PERMISSION_MAP = {
         return false;
       }
 
-      if (application?.status !== "Approved") {
+      if (application?.status !== "Approved" || !!application?.nextRevisionID) {
         return false;
       }
 

@@ -232,14 +232,10 @@ const columns: Column<T>[] = [
 
           return (
             <Stack direction="row" alignItems="center" justifyContent="center" gap="6px">
-              {hasPermission(user, "submission_request", "reopen", a) &&
-                a.status === "Approved" &&
-                !a.nextRevisionID && (
-                  <ReopenApplicationButton
-                    application={a}
-                    onComplete={() => tableRef.current?.refresh?.()}
-                  />
-                )}
+              <ReopenApplicationButton
+                application={a}
+                onComplete={() => tableRef.current?.refresh?.()}
+              />
               <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
                 <StyledActionButton bg="#89DDE6" text="#156071" border="#84B4BE">
                   View

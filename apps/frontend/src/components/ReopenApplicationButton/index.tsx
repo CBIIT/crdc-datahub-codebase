@@ -123,11 +123,6 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
     [user, application]
   );
 
-  const isLatestApproved = useMemo<boolean>(
-    () => application?.status === "Approved" && !application?.nextRevisionID,
-    [application?.status, application?.nextRevisionID]
-  );
-
   const currentOwnerOption = useMemo<UserOption | null>(() => {
     if (!application?.applicant) {
       return null;
@@ -223,7 +218,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
     [application.applicant?.applicantID]
   );
 
-  if (!canReopen || !isLatestApproved) {
+  if (!canReopen) {
     return null;
   }
 
