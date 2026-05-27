@@ -5,11 +5,16 @@ permissions:
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "*.*.*"
+      - main
+      - master
   pull_request:
     branches:
       - "*"
 
-run-name: "Unit Tests – ${{ github.event_name == 'pull_request' && format('PR #{0} ({1})', github.event.pull_request.number, github.event.action == 'closed' && 'merged' || 'opened') || github.ref_name }}"
+run-name: "Tests – ${{ github.event_name == 'pull_request' && format('PR #{0})', github.event.pull_request.number) || github.ref_name }}"
 
 jobs:
   # ──────────────────────────────────────────────
