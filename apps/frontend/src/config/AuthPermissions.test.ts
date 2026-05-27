@@ -384,6 +384,128 @@ describe("submission_request:cancel Permission", () => {
   });
 });
 
+describe("submission_request:reopen Permission", () => {
+  it.each<UserRole>(["Admin", "Federal Lead", "Data Commons Personnel", "Submitter", "User"])(
+    "should allow '%s' to reopen an approved application with no next revision when they are the owner",
+    (role) => {
+      const user = userFactory.build({
+        _id: "user-1",
+        role,
+        permissions: ["submission_request:reopen"],
+      });
+      const application: Application = applicationFactory.build({
+        applicant: applicantFactory.build({ applicantID: user._id }),
+        status: "Approved",
+        nextRevisionID: null,
+      });
+
+      expect(hasPermission(user, "submission_request", "reopen", application)).toBe(true);
+    }
+  );
+
+  it.each<UserRole>(["Admin", "Federal Lead"])(
+    "should allow '%s' when they are not the owner",
+    (role) => {
+      const user = userFactory.build({
+        _id: "user-1",
+        role,
+        permissions: ["submission_request:reopen"],
+      });
+      const application: Application = applicationFactory.build({
+        applicant: applicantFactory.build({ applicantID: "some-other-user" }),
+        status: "Approved",
+        nextRevisionID: null,
+      });
+
+      expect(hasPermission(user, "submission_request", "reopen", application)).toBe(true);
+    }
+  );
+
+  it.each<UserRole>(["User", "Submitter", "Data Commons Personnel"])(
+    "should deny '%s' when they are not the owner",
+    (role) => {
+      const user = userFactory.build({
+        _id: "user-1",
+        role,
+        permissions: ["submission_request:reopen"],
+      });
+      const application: Application = applicationFactory.build({
+        applicant: applicantFactory.build({ applicantID: "some-other-user" }),
+        status: "Approved",
+        nextRevisionID: null,
+      });
+
+      expect(hasPermission(user, "submission_request", "reopen", application)).toBe(false);
+    }
+  );
+
+  it.each<ApplicationStatus>([
+    "New",
+    "In Progress",
+    "Inquired",
+    "Submitted",
+    "In Review",
+    "Reopened",
+    "Canceled",
+    "Deleted",
+    "Rejected",
+  ])("should deny reopen when status is '%s'", (status) => {
+    const user = userFactory.build({
+      _id: "user-1",
+      role: "Admin",
+      permissions: ["submission_request:reopen"],
+    });
+    const application: Application = applicationFactory.build({
+      applicant: applicantFactory.build({ applicantID: user._id }),
+      status,
+      nextRevisionID: null,
+    });
+
+    expect(hasPermission(user, "submission_request", "reopen", application)).toBe(false);
+  });
+
+  it("should deny reopen when not the latest revision", () => {
+    const user = userFactory.build({
+      _id: "user-1",
+      role: "Admin",
+      permissions: ["submission_request:reopen"],
+    });
+    const application: Application = applicationFactory.build({
+      applicant: applicantFactory.build({ applicantID: user._id }),
+      status: "Approved",
+      nextRevisionID: "next-revision-id",
+    });
+
+    expect(hasPermission(user, "submission_request", "reopen", application)).toBe(false);
+  });
+
+  it("should deny reopen without the permission key", () => {
+    const user = userFactory.build({
+      _id: "user-1",
+      role: "Admin",
+      permissions: [],
+    });
+    const application: Application = applicationFactory.build({
+      applicant: applicantFactory.build({ applicantID: user._id }),
+      status: "Approved",
+      nextRevisionID: null,
+    });
+
+    expect(hasPermission(user, "submission_request", "reopen", application)).toBe(false);
+  });
+
+  it("should return false if application is missing", () => {
+    const user = userFactory.build({
+      _id: "user-1",
+      role: "Admin",
+      permissions: ["submission_request:reopen"],
+    });
+
+    expect(hasPermission(user, "submission_request", "reopen", undefined)).toBe(false);
+    expect(hasPermission(user, "submission_request", "reopen", null)).toBe(false);
+  });
+});
+
 describe("data_submission:create Permission", () => {
   const createSubmission = submissionFactory.build({
     _id: "submission-1",
