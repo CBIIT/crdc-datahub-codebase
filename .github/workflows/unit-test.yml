@@ -32,21 +32,25 @@ jobs:
             context: apps/authn
             command: npm run test
             prisma: false
+            node-version: "24"
 
           - name: backend
             context: apps/backend
             command: npm run test:ci
             prisma: true
+            node-version: "24"
 
           - name: frontend
             context: apps/frontend
             command: npm run test:ci
             prisma: false
+            node-version: "22"
 
           - name: chatbot-backend
             context: apps/chatbot-backend
             command: npm run test
             prisma: false
+            node-version: "24"
 
     steps:
       - name: Checkout Code Repository
@@ -60,11 +64,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: ${{ matrix.node-version }}
 
-        #
-        # TODO: Cache dependencies!!
-        #
+      - name: Setup Cache
+        uses: actions/cache@v4
+        with:
+          path: ./${{ matrix.context }}/node_modules
+          key: ${{ runner.os }}-frontend-modules-${{ hashFiles(format('{0}/package-lock.json', matrix.context)) }}
+          restore-keys: ${{ runner.os }}-frontend-modules-
 
       - name: Copy db-driver subfolders
         if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
@@ -81,11 +88,8 @@ jobs:
           ${{ matrix.command }}
 
       #
-      # TODO: Is this needed?
+      # TODO: Chromatic
       #
-      - name: Clean up db-driver folders
-        if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
-        run: rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers/
 
   pr-unit-test-python:
     name: PR Unit Test (pytest) - ${{ matrix.name }}
