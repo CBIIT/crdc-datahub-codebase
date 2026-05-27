@@ -8,8 +8,11 @@ export type {
   Input as ResumeAppInput,
 } from "./resumeInquiredApplication";
 
-export { mutation as REOPEN_APP } from "./reopenApplication";
-export type { Response as ReopenAppResp, Input as ReopenAppInput } from "./reopenApplication";
+export { mutation as REOPEN_APPROVED_SR } from "./reopenApprovedSubmissionRequest";
+export type {
+  Response as ReopenApprovedSRResp,
+  Input as ReopenApprovedSRInput,
+} from "./reopenApprovedSubmissionRequest";
 
 export { mutation as APPROVE_APP } from "./approveApplication";
 export type { Input as ApproveAppInput, Response as ApproveAppResp } from "./approveApplication";

@@ -1,8 +1,8 @@
 import gql from "graphql-tag";
 
 export const mutation = gql`
-  mutation reopenApplication($id: ID!, $assignee: String) {
-    reopenApplication(_id: $id, assignee: $assignee) {
+  mutation reopenApprovedSubmissionRequest($id: ID!, $assignee: String) {
+    reopenApprovedSubmissionRequest(_id: $id, assignee: $assignee) {
       _id
       status
       createdAt
@@ -27,7 +27,7 @@ export type Input = {
 };
 
 export type Response = {
-  reopenApplication: Pick<
+  reopenApprovedSubmissionRequest: Pick<
     Application,
     "_id" | "status" | "createdAt" | "updatedAt" | "history" | "applicant"
   >;

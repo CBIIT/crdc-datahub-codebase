@@ -9,9 +9,9 @@ import { hasPermission } from "../../config/AuthPermissions";
 import {
   LIST_USERS,
   ListUsersResp,
-  REOPEN_APP,
-  ReopenAppInput,
-  ReopenAppResp,
+  REOPEN_APPROVED_SR,
+  ReopenApprovedSRInput,
+  ReopenApprovedSRResp,
 } from "../../graphql";
 import { Logger } from "../../utils";
 import { useAuthContext } from "../Contexts/AuthContext";
@@ -110,10 +110,13 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
     fetchPolicy: "cache-first",
   });
 
-  const [reopenApp] = useMutation<ReopenAppResp, ReopenAppInput>(REOPEN_APP, {
-    context: { clientName: "backend" },
-    fetchPolicy: "no-cache",
-  });
+  const [reopenApprovedSR] = useMutation<ReopenApprovedSRResp, ReopenApprovedSRInput>(
+    REOPEN_APPROVED_SR,
+    {
+      context: { clientName: "backend" },
+      fetchPolicy: "no-cache",
+    }
+  );
 
   const canReopen = useMemo<boolean>(
     () => hasPermission(user, "submission_request", "reopen", application),
@@ -176,11 +179,11 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
       const assignee =
         selectedOwner?._id !== application.applicant?.applicantID ? selectedOwner?._id : undefined;
 
-      const { data: d, errors } = await reopenApp({
+      const { data: d, errors } = await reopenApprovedSR({
         variables: { id: application._id, assignee },
       });
 
-      if (errors || !d?.reopenApplication?._id) {
+      if (errors || !d?.reopenApprovedSubmissionRequest?._id) {
         throw new Error();
       }
 
@@ -202,7 +205,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
     selectedOwner,
     application._id,
     application.applicant?.applicantID,
-    reopenApp,
+    reopenApprovedSR,
     onComplete,
     enqueueSnackbar,
   ]);

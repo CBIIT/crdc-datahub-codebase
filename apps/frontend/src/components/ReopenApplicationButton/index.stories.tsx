@@ -10,9 +10,9 @@ import { userFactory } from "@/factories/auth/UserFactory";
 import {
   LIST_USERS,
   ListUsersResp,
-  REOPEN_APP,
-  ReopenAppInput,
-  ReopenAppResp,
+  REOPEN_APPROVED_SR,
+  ReopenApprovedSRInput,
+  ReopenApprovedSRResp,
 } from "../../graphql";
 import { Context as AuthContext } from "../Contexts/AuthContext";
 
@@ -52,14 +52,14 @@ const mockListUsers: MockedResponse<ListUsersResp> = {
   },
 };
 
-const mockReopenApp: MockedResponse<ReopenAppResp, ReopenAppInput> = {
+const mockReopenApp: MockedResponse<ReopenApprovedSRResp, ReopenApprovedSRInput> = {
   request: {
-    query: REOPEN_APP,
+    query: REOPEN_APPROVED_SR,
   },
   variableMatcher: () => true,
   result: {
     data: {
-      reopenApplication: {
+      reopenApprovedSubmissionRequest: {
         _id: "new-revision-id",
         status: "Reopened",
         createdAt: "2026-05-18T00:00:00Z",
@@ -69,7 +69,7 @@ const mockReopenApp: MockedResponse<ReopenAppResp, ReopenAppInput> = {
           applicantID: "owner-1",
           applicantName: "Current Owner",
         },
-      } as ReopenAppResp["reopenApplication"],
+      } as ReopenApprovedSRResp["reopenApprovedSubmissionRequest"],
     },
   },
 };
