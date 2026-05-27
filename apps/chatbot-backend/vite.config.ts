@@ -1,11 +1,6 @@
 import { defineConfig, configDefaults } from "vitest/config";
 
-const testExcludes: string[] = [
-  "conf/**",
-  "public/**",
-  "src/setupTests.ts",
-  "src/**/*.d.ts",
-];
+const testExcludes: string[] = ["conf/**", "public/**", "src/setupTests.ts", "src/**/*.d.ts"];
 
 export default defineConfig({
   plugins: [],
