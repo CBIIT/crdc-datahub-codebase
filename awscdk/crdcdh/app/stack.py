@@ -267,16 +267,28 @@ class Stack(Stack):
                 "datasource_bucket_arn": SecretValue.unsafe_plain_text(datasource_bucket_arn),
                 "knowledge_base_id": SecretValue.unsafe_plain_text(knowledge_base_id),
                 "guardrail_id": SecretValue.unsafe_plain_text(guardrail_id),
-                "rds_endpoint": SecretValue.unsafe_plain_text(self.rds.rds.db_instance_endpoint_address),
-                "rds_port":     SecretValue.unsafe_plain_text(self.rds.rds.db_instance_endpoint_port),
-                "rds_db_name":  SecretValue.unsafe_plain_text(config.get('db', 'rds_db_name')),
-                "rds_username": SecretValue.unsafe_plain_text(config.get('db', 'rds_username')),
-                "rds_password": self.rds.rds.secret.secret_value_from_json("password"),
-                "docdb_db_name": SecretValue.unsafe_plain_text(config.get('db', 'docdb_db_name')),
-                "docdb_endpoint": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_endpoint),
-                "docdb_port": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_port),
-                "docdb_username": SecretValue.unsafe_plain_text(config.get('db', 'docdb_user')),
-                "docdb_password":  SecretValue.unsafe_plain_text(config.get('db', 'docdb_password'))
+                **(
+                    {
+                        "rds_endpoint": SecretValue.unsafe_plain_text(self.rds.rds.db_instance_endpoint_address),
+                        "rds_port":     SecretValue.unsafe_plain_text(self.rds.rds.db_instance_endpoint_port),
+                        "rds_db_name":  SecretValue.unsafe_plain_text(config.get('db', 'rds_db_name')),
+                        "rds_username": SecretValue.unsafe_plain_text(config.get('db', 'rds_username')),
+                        "rds_password": self.rds.rds.secret.secret_value_from_json("password"),
+                    }
+                    if config.getboolean('db', 'create_rds', fallback=False)
+                    else {}
+                ),
+                **(
+                    {
+                        "docdb_db_name": SecretValue.unsafe_plain_text(config.get('db', 'docdb_db_name')),
+                        "docdb_endpoint": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_endpoint),
+                        "docdb_port": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_port),
+                        "docdb_username": SecretValue.unsafe_plain_text(config.get('db', 'docdb_user')),
+                        "docdb_password":  SecretValue.unsafe_plain_text(config.get('db', 'docdb_password')),
+                    }
+                    if config.getboolean('db', 'create_docdb', fallback=False)
+                    else {}
+                )
 #                "newrelic_license_key": SecretValue.unsafe_plain_text(config['secrets']['newrelic_license_key'])
 
             }
