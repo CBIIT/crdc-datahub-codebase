@@ -18,7 +18,7 @@ jobs:
   # ──────────────────────────────────────────────
 
   pr-unit-test-npm:
-    name: PR Unit Test (npm) - ${{ matrix.name }}
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.event.pull_request.action != 'closed'
     strategy:
@@ -89,7 +89,7 @@ jobs:
       #
 
   pr-unit-test-python:
-    name: PR Unit Test (pytest) - ${{ matrix.name }}
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.event.pull_request.action != 'closed'
     strategy:
