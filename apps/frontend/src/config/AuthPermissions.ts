@@ -111,7 +111,7 @@ export const PERMISSION_MAP = {
       }
 
       const isFormOwner = application?.applicant?.applicantID === user?._id;
-      if (!isFormOwner || !CanReopenSubmissionRequests.includes(user?.role)) {
+      if (!isFormOwner && !CanReopenSubmissionRequests.includes(user?.role)) {
         return false;
       }
 
