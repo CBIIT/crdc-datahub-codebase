@@ -70,8 +70,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ./${{ matrix.context }}/node_modules
-          key: ${{ runner.os }}-frontend-modules-${{ hashFiles(format('{0}/package-lock.json', matrix.context)) }}
-          restore-keys: ${{ runner.os }}-frontend-modules-
+          key: ${{ runner.os }}-${{ matrix.name }}-modules-${{ hashFiles(format('{0}/package-lock.json', matrix.context)) }}
+          restore-keys: ${{ runner.os }}-${{ matrix.name }}-modules-
 
       - name: Copy db-driver subfolders
         if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
@@ -82,7 +82,7 @@ jobs:
 
       - name: Install Dependencies
         working-directory: ${{ matrix.context }}
-        run: npm install
+        run: npm ci
 
       - name: Setup Prisma
         if: ${{ matrix.prisma }}
