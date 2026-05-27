@@ -134,33 +134,43 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
     };
   }, [application?.applicant]);
 
-  const onClickIcon = useCallback(async () => {
-    const { data } = await listUsers();
-    const eligibleUsers: UserOption[] = [];
+  const onOpenModal = useCallback(async () => {
+    try {
+      const { data, error } = await listUsers();
+      if (error || !data?.listUsers) {
+        throw new Error("Unable to retrieve users.");
+      }
 
-    if (data?.listUsers) {
-      data.listUsers
-        .filter((u) => u.userStatus === "Active" && (u.role === "User" || u.role === "Submitter"))
-        .forEach((u) => {
-          eligibleUsers.push({
-            _id: u._id,
-            label: `${u.firstName} ${u.lastName ?? ""}`.trim(),
-          });
-        });
+      let eligibleUsers: UserOption[] = data.listUsers
+        .filter((u) => u.userStatus === "Active")
+        .map((u) => ({
+          _id: u._id,
+          label: [u.firstName, u.lastName].join(" ").trim(),
+        }));
+
+      // Make sure the current owner is always in the options list
+      if (currentOwnerOption && !eligibleUsers.some((u) => u._id === currentOwnerOption._id)) {
+        eligibleUsers.unshift(currentOwnerOption);
+      }
+
+      eligibleUsers =
+        eligibleUsers.sort(
+          (a, b) => a?.label.toLowerCase().localeCompare(b?.label.toLowerCase())
+        ) || [];
+
+      setUserOptions(eligibleUsers);
+
+      const matchingOption =
+        eligibleUsers.find((u) => u._id === currentOwnerOption?._id) || currentOwnerOption;
+      setValue("owner", matchingOption);
+
+      setConfirmOpen(true);
+    } catch (err) {
+      Logger.error("ReopenApplicationButton: failed to list users", err);
+      enqueueSnackbar("There was an issue loading owners.", {
+        variant: "error",
+      });
     }
-
-    // Make sure the current owner is always in the options list
-    if (currentOwnerOption && !eligibleUsers.some((u) => u._id === currentOwnerOption._id)) {
-      eligibleUsers.unshift(currentOwnerOption);
-    }
-
-    setUserOptions(eligibleUsers);
-
-    const matchingOption =
-      eligibleUsers.find((u) => u._id === currentOwnerOption?._id) || currentOwnerOption;
-    setValue("owner", matchingOption);
-
-    setConfirmOpen(true);
   }, [currentOwnerOption, listUsers, setValue]);
 
   const onCloseDialog = useCallback(() => {
@@ -221,7 +231,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
       >
         <span>
           <StyledActionButton
-            onClick={onClickIcon}
+            onClick={onOpenModal}
             disabled={loading || disabled}
             aria-label="Reopen submission request"
             data-testid="reopen-application-button"
@@ -297,9 +307,15 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
                         options={userOptions}
                         value={field.value}
                         onChange={(_event, newValue: UserOption) => field.onChange(newValue)}
+                        getOptionLabel={(option: UserOption) => option?.label || ""}
                         isOptionEqualToValue={(option: UserOption, value: UserOption) =>
                           option?._id === value?._id
                         }
+                        renderOption={(props, option: UserOption) => (
+                          <li {...props} key={option._id}>
+                            {option.label}
+                          </li>
+                        )}
                         renderInput={(params) => (
                           <TextField {...params} placeholder="Search for a user..." size="small" />
                         )}
