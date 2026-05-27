@@ -1,8 +1,9 @@
+import { TypedDocumentNode } from "@apollo/client";
 import gql from "graphql-tag";
 
-export const mutation = gql`
-  mutation reopenApprovedSubmissionRequest($id: ID!, $assignee: String) {
-    reopenApprovedSubmissionRequest(_id: $id, assignee: $assignee) {
+export const mutation: TypedDocumentNode<Response, Input> = gql`
+  mutation reopenApprovedSubmissionRequest($id: ID!, $ownerId: ID) {
+    reopenApprovedSubmissionRequest(_id: $id, ownerId: $ownerId) {
       _id
       status
       createdAt
@@ -23,7 +24,7 @@ export const mutation = gql`
 
 export type Input = {
   id: string;
-  assignee?: string;
+  ownerId?: string;
 };
 
 export type Response = {

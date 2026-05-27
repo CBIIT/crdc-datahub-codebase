@@ -171,11 +171,11 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
   const onConfirmDialog = useCallback(async () => {
     setLoading(true);
     try {
-      const assignee =
+      const ownerId =
         selectedOwner?._id !== application.applicant?.applicantID ? selectedOwner?._id : undefined;
 
       const { data: d, errors } = await reopenApprovedSR({
-        variables: { id: application._id, assignee },
+        variables: { id: application._id, ownerId },
       });
 
       if (errors || !d?.reopenApprovedSubmissionRequest?._id) {
