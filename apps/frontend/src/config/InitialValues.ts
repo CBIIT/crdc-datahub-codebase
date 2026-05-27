@@ -10,6 +10,7 @@ export const InitialApplication: Omit<Application, "questionnaireData"> = {
   openAccess: false,
   ORCID: "",
   programName: "",
+  studyName: "",
   studyAbbreviation: "",
   PI: "",
   conditional: false,

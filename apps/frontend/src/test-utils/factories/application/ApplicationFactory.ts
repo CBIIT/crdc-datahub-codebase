@@ -16,6 +16,7 @@ export const baseApplication: Application = {
   openAccess: false,
   ORCID: "",
   programName: "",
+  studyName: "",
   studyAbbreviation: "",
   PI: "",
   questionnaireData: undefined,
