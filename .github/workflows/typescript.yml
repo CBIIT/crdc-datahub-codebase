@@ -18,32 +18,8 @@ permissions:
   contents: read
 
 jobs:
-  detect-changes:
-    name: Detect Changed Apps
-    runs-on: ubuntu-latest
-    outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
-      chatbot_backend: ${{ steps.filter.outputs.chatbot_backend }}
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect changed app paths
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            frontend:
-              - 'apps/frontend/**'
-            chatbot_backend:
-              - 'apps/chatbot-backend/**'
-
   typecheck-frontend:
-    name: Typecheck Frontend
-    needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true'
+    name: Typecheck (Frontend)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -71,9 +47,7 @@ jobs:
         run: npm run typecheck
 
   typecheck-chatbot-backend:
-    name: Typecheck Chatbot Backend
-    needs: detect-changes
-    if: needs.detect-changes.outputs.chatbot_backend == 'true'
+    name: Typecheck (Chatbot Backend)
     runs-on: ubuntu-latest
     defaults:
       run:

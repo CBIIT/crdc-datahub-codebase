@@ -5,15 +5,11 @@ on:
   push:
     branches:
       - "*.*.*"
-      - "main"
-      - "master"
+      - main
+      - master
   pull_request:
     branches:
       - "*"
-
-defaults:
-  run:
-    working-directory: ./apps/frontend
 
 env:
   HUSKY: 0
@@ -22,8 +18,8 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint Changes
+  lint-frontend:
+    name: Lint (Frontend)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -38,8 +34,33 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ./apps/frontend/node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-modules-
+          key: ${{ runner.os }}-frontend-modules-${{ hashFiles('apps/frontend/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-frontend-modules-
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run ESLint
+        run: npm run lint:ci
+
+  lint-chatbot-backend:
+    name: Lint (Chatbot Backend)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+
+      - name: Setup Cache
+        uses: actions/cache@v4
+        with:
+          path: ./apps/chatbot-backend/node_modules
+          key: ${{ runner.os }}-chatbot-backend-modules-${{ hashFiles('apps/chatbot-backend/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-chatbot-backend-modules-
 
       - name: Install Dependencies
         run: npm install
