@@ -1,19 +1,11 @@
-name: Unit Tests for CRDC DH
+name: Test
+
 permissions:
   contents: write
   id-token: write
 
 on:
   workflow_dispatch:
-    inputs:
-      environment:
-        description: Choose the environment to build
-        type: environment
-      unit_test:
-        description: "Run Unit Test"
-        required: true
-        type: boolean
-        default: true
   pull_request:
     types:
       - opened
@@ -24,7 +16,6 @@ on:
 run-name: "Unit Tests – ${{ github.event_name == 'pull_request' && format('PR #{0} ({1})', github.event.pull_request.number, github.event.action == 'closed' && 'merged' || 'opened') || github.ref_name }}"
 
 jobs:
-
   # ──────────────────────────────────────────────
   # Job 1: PR opened → run on source (head) branch
   # ──────────────────────────────────────────────
@@ -39,18 +30,22 @@ jobs:
         include:
           - name: authn
             context: apps/authn
+            command: npm run test
             prisma: false
 
           - name: backend
             context: apps/backend
+            command: npm run test:ci
             prisma: true
 
           - name: frontend
             context: apps/frontend
+            command: npm run test:ci
             prisma: false
 
           - name: chatbot-backend
             context: apps/chatbot-backend
+            command: npm run test
             prisma: false
 
     steps:
@@ -65,7 +60,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: "24"
+
+        #
+        # TODO: Cache dependencies!!
+        #
 
       - name: Copy db-driver subfolders
         if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
@@ -74,14 +73,16 @@ jobs:
           rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers
           mv ${{ matrix.context }}/tmp-crdc-datahub-database-drivers ${{ matrix.context }}/crdc-datahub-database-drivers
 
-      - name: Run unit tests
+      - name: Run tests
         working-directory: ${{ matrix.context }}
         run: |
-          echo "Running unit tests..."
-          npm ci
+          npm i
           ${{ matrix.prisma && 'npx prisma generate' || '# no prisma' }}
-          npm test
+          ${{ matrix.command }}
 
+      #
+      # TODO: Is this needed?
+      #
       - name: Clean up db-driver folders
         if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
         run: rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers/
@@ -112,8 +113,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Install Python dependencies
         working-directory: ${{ matrix.context }}
@@ -144,7 +145,7 @@ jobs:
   merged-unit-test-npm:
     name: Merged Unit Test (npm) - ${{ matrix.name }}
     runs-on: ubuntu-latest
-    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && inputs.unit_test == true) 
+    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && inputs.unit_test == true)
     strategy:
       fail-fast: false
       matrix:
@@ -177,7 +178,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: "24"
 
       - name: Copy db-driver subfolders
         if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
@@ -224,8 +225,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Install Python dependencies
         working-directory: ${{ matrix.context }}
@@ -255,12 +256,18 @@ jobs:
   notify:
     name: Slack Notification
     runs-on: ubuntu-latest
-    needs: [pr-unit-test-npm, pr-unit-test-python, merged-unit-test-npm, merged-unit-test-python]
+    needs:
+      [
+        pr-unit-test-npm,
+        pr-unit-test-python,
+        merged-unit-test-npm,
+        merged-unit-test-python,
+      ]
     if: always()
     steps:
       - name: Slack Notification
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        uses: act10ns/slack@87c73aef9f8838eb6feae81589a6b1487a4a9e08  # v1.6.0
+        uses: act10ns/slack@87c73aef9f8838eb6feae81589a6b1487a4a9e08 # v1.6.0
         with:
           status: ${{ (contains(needs.*.result, 'failure')) && 'failure' || 'success' }}
