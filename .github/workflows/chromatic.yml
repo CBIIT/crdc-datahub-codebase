@@ -37,8 +37,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ./apps/frontend/node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-modules-
+          key: ${{ runner.os }}-frontend-modules-${{ hashFiles('apps/frontend/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-frontend-modules-
 
       - name: Install Dependencies
         run: npm install
