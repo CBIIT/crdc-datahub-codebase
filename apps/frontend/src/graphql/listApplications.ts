@@ -40,12 +40,13 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         conditional
         pendingConditions
         version
+        nextRevisionId
       }
       programs
       studies
     }
   }
-`; // TODO: Add nextRevisionID to application
+`;
 
 export type Input = {
   programName: string;

@@ -61,7 +61,7 @@ describe("Accessibility", () => {
       <Button
         application={applicationFactory.build({
           status: "Approved",
-          nextRevisionID: null,
+          nextRevisionId: null,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
       />,
@@ -88,7 +88,7 @@ describe("Basic Functionality", () => {
       <Button
         application={applicationFactory.build({
           status: "Approved",
-          nextRevisionID: null,
+          nextRevisionId: null,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
       />,

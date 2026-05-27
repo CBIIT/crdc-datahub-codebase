@@ -28,7 +28,7 @@ export const baseApplication: Application = {
   version: "",
   GPAName: "",
   sequenceNumber: 1,
-  nextRevisionID: null,
+  nextRevisionId: null,
 };
 
 /**

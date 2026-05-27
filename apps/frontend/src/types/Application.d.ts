@@ -56,7 +56,7 @@ type Application = {
   /**
    * The ID of the next revision of this SRF. Null if this is the latest version.
    */
-  nextRevisionID: string | null;
+  nextRevisionId: string | null;
 };
 
 type ApplicationStatus =

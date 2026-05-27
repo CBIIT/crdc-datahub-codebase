@@ -83,7 +83,7 @@ const meta: Meta<typeof Button> = {
     application: applicationFactory.build({
       _id: "mock-id",
       status: "Approved",
-      nextRevisionID: null,
+      nextRevisionId: null,
       studyAbbreviation: "TEST-STUDY",
       programName: "Test Program",
       programAbbreviation: "TP",

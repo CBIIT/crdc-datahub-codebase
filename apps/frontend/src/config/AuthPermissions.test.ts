@@ -396,7 +396,7 @@ describe("submission_request:reopen Permission", () => {
       const application: Application = applicationFactory.build({
         applicant: applicantFactory.build({ applicantID: user._id }),
         status: "Approved",
-        nextRevisionID: null,
+        nextRevisionId: null,
       });
 
       expect(hasPermission(user, "submission_request", "reopen", application)).toBe(true);
@@ -414,7 +414,7 @@ describe("submission_request:reopen Permission", () => {
       const application: Application = applicationFactory.build({
         applicant: applicantFactory.build({ applicantID: "some-other-user" }),
         status: "Approved",
-        nextRevisionID: null,
+        nextRevisionId: null,
       });
 
       expect(hasPermission(user, "submission_request", "reopen", application)).toBe(true);
@@ -432,7 +432,7 @@ describe("submission_request:reopen Permission", () => {
       const application: Application = applicationFactory.build({
         applicant: applicantFactory.build({ applicantID: "some-other-user" }),
         status: "Approved",
-        nextRevisionID: null,
+        nextRevisionId: null,
       });
 
       expect(hasPermission(user, "submission_request", "reopen", application)).toBe(false);
@@ -458,7 +458,7 @@ describe("submission_request:reopen Permission", () => {
     const application: Application = applicationFactory.build({
       applicant: applicantFactory.build({ applicantID: user._id }),
       status,
-      nextRevisionID: null,
+      nextRevisionId: null,
     });
 
     expect(hasPermission(user, "submission_request", "reopen", application)).toBe(false);
@@ -473,7 +473,7 @@ describe("submission_request:reopen Permission", () => {
     const application: Application = applicationFactory.build({
       applicant: applicantFactory.build({ applicantID: user._id }),
       status: "Approved",
-      nextRevisionID: "next-revision-id",
+      nextRevisionId: "next-revision-id",
     });
 
     expect(hasPermission(user, "submission_request", "reopen", application)).toBe(false);
@@ -488,7 +488,7 @@ describe("submission_request:reopen Permission", () => {
     const application: Application = applicationFactory.build({
       applicant: applicantFactory.build({ applicantID: user._id }),
       status: "Approved",
-      nextRevisionID: null,
+      nextRevisionId: null,
     });
 
     expect(hasPermission(user, "submission_request", "reopen", application)).toBe(false);

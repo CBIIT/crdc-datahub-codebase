@@ -21,7 +21,7 @@ export const InitialApplication: Omit<Application, "questionnaireData"> = {
   version: "",
   GPAName: "",
   sequenceNumber: 1,
-  nextRevisionID: null,
+  nextRevisionId: null,
 };
 
 export const InitialQuestionnaire: QuestionnaireData = {
