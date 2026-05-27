@@ -10,6 +10,8 @@ on:
       - "*.*.*"
       - "main"
       - "master"
+    paths:
+      - "apps/frontend/**"
   pull_request:
     branches:
       - "*"
