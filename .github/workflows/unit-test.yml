@@ -1,8 +1,7 @@
 name: Test
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 on:
   workflow_dispatch:
@@ -29,24 +28,28 @@ jobs:
             test-command: npm run test
             prisma: false
             node-version: "24"
+            coveralls_token: COVERALLS_AUTHN
 
           - name: backend
             context: apps/backend
             test-command: npm run test:ci
             prisma: true
             node-version: "24"
+            coveralls_token: COVERALLS_BACKEND
 
           - name: frontend
             context: apps/frontend
             test-command: npm run test:ci
             prisma: false
             node-version: "22"
+            coveralls_token: COVERALLS_FRONTEND
 
           - name: chatbot-backend
             context: apps/chatbot-backend
             test-command: npm run test
             prisma: false
             node-version: "24"
+            coveralls_token: COVERALLS_CHATBOT_BACKEND
 
     steps:
       - name: Checkout Code Repository
@@ -89,9 +92,11 @@ jobs:
         working-directory: ${{ matrix.context }}
         run: ${{ matrix.test-command }}
 
-      #
-      # TODO: Chromatic
-      #
+      - name: Coveralls GitHub Action
+        uses: coverallsapp/github-action@v2
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets[matrix.coveralls_token] }}
+        continue-on-error: true
 
   pr-unit-test-python:
     name: ${{ matrix.name }}
