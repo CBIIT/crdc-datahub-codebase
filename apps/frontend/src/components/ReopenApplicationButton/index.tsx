@@ -31,7 +31,7 @@ const StyledActionButton = styled(Button)({
   borderRadius: "8px",
   border: "2px solid #84A2C9",
   color: "#1F4371 !important",
-  width: "100px",
+  width: "82px",
   height: "30px",
   textTransform: "none",
   fontWeight: 700,
@@ -265,7 +265,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
               Reopen the submission request will send it back to the users to make changes.
             </StyledDescriptionText>
             <StyledFormBox>
-              <Stack gap="12px">
+              <Stack gap="20px">
                 <Stack direction="column" alignItems="flex-start">
                   <StyledFieldLabel>Study</StyledFieldLabel>
                   <Controller

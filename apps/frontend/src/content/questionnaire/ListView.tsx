@@ -90,7 +90,7 @@ const StyledActionButton = styled(Button)(
     borderRadius: "8px",
     border: `2px solid ${border}`,
     color: `${text} !important`,
-    width: "100px",
+    width: "82px",
     height: "30px",
     textTransform: "none",
     fontWeight: 700,
@@ -207,11 +207,13 @@ const columns: Column<T>[] = [
             ["New", "In Progress", "Inquired", "Reopened"].includes(a.status)
           ) {
             return (
-              <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
-                <StyledActionButton bg="#99E3BB" text="#156071" border="#63BA90">
-                  Resume
-                </StyledActionButton>
-              </Link>
+              <Stack direction="row" alignItems="center" justifyContent="center">
+                <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
+                  <StyledActionButton bg="#99E3BB" text="#156071" border="#63BA90">
+                    Resume
+                  </StyledActionButton>
+                </Link>
+              </Stack>
             );
           }
           if (
@@ -219,14 +221,16 @@ const columns: Column<T>[] = [
             ["Submitted", "In Review"].includes(a.status)
           ) {
             return (
-              <StyledActionButton
-                onClick={() => handleOnReviewClick(a)}
-                bg="#F1C6B3"
-                text="#5F564D"
-                border="#DB9C62"
-              >
-                Review
-              </StyledActionButton>
+              <Stack direction="row" alignItems="center" justifyContent="center">
+                <StyledActionButton
+                  onClick={() => handleOnReviewClick(a)}
+                  bg="#F1C6B3"
+                  text="#5F564D"
+                  border="#DB9C62"
+                >
+                  Review
+                </StyledActionButton>
+              </Stack>
             );
           }
 
