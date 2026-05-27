@@ -1,6 +1,11 @@
 import { getUserPermissionExtensions, getUserPermissionKey } from "../utils/profileUtils";
 
-import { Roles as ALL_ROLES, CanDeleteOtherSubmissionRequests, ExternalRoles } from "./AuthRoles";
+import {
+  Roles as ALL_ROLES,
+  CanDeleteOtherSubmissionRequests,
+  CanReopenSubmissionRequests,
+  ExternalRoles,
+} from "./AuthRoles";
 
 /**
  * A flag indicating that no conditions, other than the user having the permission key, need to be met.
@@ -102,6 +107,11 @@ export const PERMISSION_MAP = {
     reopen: (user, application) => {
       const hasPermissionKey = Boolean(getUserPermissionKey(user, "submission_request:reopen"));
       if (!hasPermissionKey) {
+        return false;
+      }
+
+      const isFormOwner = application?.applicant?.applicantID === user?._id;
+      if (!isFormOwner || !CanReopenSubmissionRequests.includes(user?.role)) {
         return false;
       }
 
