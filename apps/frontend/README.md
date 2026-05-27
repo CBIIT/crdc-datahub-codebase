@@ -3,7 +3,6 @@
 The CRDC Submission Portal is a React application that facilitates the data submission process for participating CRDC Data Commons projects. This project utilizes React.js, TypeScript, MUI, and Apollo Client, among other dependencies.
 
 [![Coverage Status](https://coveralls.io/repos/github/CBIIT/crdc-datahub-codebase/badge.svg?branch=master)](https://coveralls.io/github/CBIIT/crdc-datahub-codebase?branch=master)
-[![Test](https://github.com/CBIIT/crdc-datahub-codebase/actions/workflows/test.yml/badge.svg)](https://github.com/CBIIT/crdc-datahub-codebase/actions/workflows/test.yml)
 [![TypeScript](https://github.com/CBIIT/crdc-datahub-codebase/actions/workflows/typescript.yml/badge.svg)](https://github.com/CBIIT/crdc-datahub-codebase/actions/workflows/typescript.yml)
 [![ESLint](https://github.com/CBIIT/crdc-datahub-codebase/actions/workflows/lint.yml/badge.svg)](https://github.com/CBIIT/crdc-datahub-codebase/actions/workflows/lint.yml)
 [![RelativeCI](https://badges.relative-ci.com/badges/CivyupUfCpfv73Jawheu?branch=master&style=flat)](https://app.relative-ci.com/projects/CivyupUfCpfv73Jawheu)
