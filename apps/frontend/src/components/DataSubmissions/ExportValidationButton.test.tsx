@@ -76,9 +76,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     const tooltip = await findByRole("tooltip");
     expect(tooltip).toBeInTheDocument();
-    expect(tooltip).toHaveTextContent(
-      "Export all validation issues for this data submission to a CSV file"
-    );
+    expect(tooltip).toHaveTextContent("Export filtered validation issues to Excel");
   });
 
   it("should execute the SUBMISSION_QC_RESULTS query onClick", async () => {
@@ -94,7 +92,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 1000,
             offset: 0,
             severities: "All",
           },
@@ -132,6 +130,75 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     });
   });
 
+  it("should pass expanded filters into recursive export query variables", async () => {
+    const submissionID = "expanded-filtered-export-sub-id";
+    let called = false;
+
+    const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+      {
+        request: {
+          query: SUBMISSION_QC_RESULTS,
+          variables: {
+            partial: false,
+            id: submissionID,
+            sortDirection: "asc",
+            orderBy: "displayID",
+            issueCode: "M018",
+            nodeTypes: ["participant"],
+            batchIDs: [101],
+            severities: "Warning",
+            first: 1000,
+            offset: 0,
+          },
+        },
+        result: () => {
+          called = true;
+          return {
+            data: {
+              submissionQCResults: {
+                total: 1,
+                results: [
+                  qcResultFactory.build({
+                    submissionID,
+                    type: "participant",
+                    errors: [],
+                    warnings: [],
+                  }),
+                ],
+              },
+            },
+          };
+        },
+      },
+    ];
+
+    const { getByTestId } = render(
+      <TestParent mocks={mocks}>
+        <ExportValidationButton
+          submission={submissionFactory.build({ _id: submissionID })}
+          fields={{}}
+          getExpandedFilters={() => ({
+            issueType: "M018",
+            nodeType: "participant",
+            batchID: 101,
+            severity: "Warning",
+          })}
+        />
+      </TestParent>
+    );
+
+    userEvent.click(getByTestId("export-validation-button"));
+
+    await waitFor(() => {
+      expect(called).toBe(true);
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining(".xlsx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+    });
+  });
+
   it.each<{ original: string; expected: string }>([
     { original: "A B C 1 2 3", expected: "A-B-C-1-2-3" },
     { original: "long name".repeat(100), expected: "long-name".repeat(100) },
@@ -155,7 +222,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
               id: "example-dynamic-filename-id",
               sortDirection: "asc",
               orderBy: "displayID",
-              first: -1,
+              first: 1000,
               offset: 0,
               severities: "All",
             },
@@ -201,11 +268,11 @@ describe("ExportValidationButton (Expanded View) tests", () => {
       fireEvent.click(getByTestId("export-validation-button"));
 
       await waitFor(() => {
-        const filename = `${expected}-2021-01-19T145401.csv`;
+        const filename = `${expected}-2021-01-19T145401.xlsx`;
         expect(mockDownloadBlob).toHaveBeenCalledWith(
-          expect.any(String),
+          expect.anything(),
           filename,
-          expect.any(String)
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         );
       });
 
@@ -226,7 +293,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 1000,
             offset: 0,
             severities: "All",
           },
@@ -263,7 +330,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     });
   });
 
-  it("should call the field value callback function for each field", async () => {
+  it("should create an xlsx download for expanded results", async () => {
     const submissionID = "formatter-callback-sub-id";
 
     const qcErrors = errorMessageFactory.build(2, (index) => ({
@@ -286,7 +353,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 1000,
             offset: 0,
             severities: "All",
           },
@@ -307,18 +374,11 @@ describe("ExportValidationButton (Expanded View) tests", () => {
       },
     ];
 
-    const fields = {
-      DisplayID: vi.fn().mockImplementation((result: QCResult) => result.displayID),
-      ValidationType: vi.fn().mockImplementation((result: QCResult) => result.validationType),
-      // Testing the fallback of falsy values
-      NullValueField: vi.fn().mockImplementation(() => null),
-    };
-
     const { getByTestId } = render(
       <TestParent mocks={mocks}>
         <ExportValidationButton
           submission={submissionFactory.build({ _id: submissionID })}
-          fields={fields}
+          fields={{}}
         />
       </TestParent>
     );
@@ -326,9 +386,11 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     fireEvent.click(getByTestId("export-validation-button"));
 
     await waitFor(() => {
-      // NOTE: The results are unpacked, 3 QCResults with 2 errors and 2 warnings each = 12 calls
-      expect(fields.DisplayID).toHaveBeenCalledTimes(12);
-      expect(fields.ValidationType).toHaveBeenCalledTimes(12);
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining(".xlsx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
     });
   });
 
@@ -344,7 +406,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 1000,
             offset: 0,
             severities: "All",
           },
@@ -386,7 +448,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 1000,
             offset: 0,
             severities: "All",
           },
@@ -430,7 +492,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 1000,
             offset: 0,
             severities: "All",
           },

@@ -4,16 +4,20 @@ import { IconButtonProps, IconButton, styled } from "@mui/material";
 import dayjs from "dayjs";
 import { useSnackbar } from "notistack";
 import { unparse } from "papaparse";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { ValidationResultsExcelBuilder } from "@/classes/ValidationResultsExcelBuilder";
+import type { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
 import {
   AGGREGATED_SUBMISSION_QC_RESULTS,
   AggregatedSubmissionQCResultsInput,
   AggregatedSubmissionQCResultsResp,
   SUBMISSION_QC_RESULTS,
+  SubmissionQCResultsInput,
   SubmissionQCResultsResp,
-} from "../../graphql";
-import { downloadBlob, filterAlphaNumeric, Logger, unpackValidationSeverities } from "../../utils";
+} from "@/graphql";
+import { downloadBlob, fetchAllData, filterAlphaNumeric, Logger } from "@/utils";
+
 import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
 
 export type Props = {
@@ -34,6 +38,7 @@ export type Props = {
    * @default false
    */
   isAggregated?: boolean;
+  filters: QualityControlFilterForm;
 } & IconButtonProps;
 
 const StyledIconButton = styled(IconButton)({
@@ -55,16 +60,33 @@ export const ExportValidationButton: React.FC<Props> = ({
   submission,
   fields,
   isAggregated = false,
+  filters,
   disabled,
   ...buttonProps
 }: Props) => {
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState<boolean>(false);
 
-  const [getSubmissionQCResults] = useLazyQuery<SubmissionQCResultsResp>(SUBMISSION_QC_RESULTS, {
-    context: { clientName: "backend" },
-    fetchPolicy: "no-cache",
-  });
+  const tooltip = useMemo<JSX.Element>(() => {
+    if (isAggregated) {
+      return (
+        <span>
+          Export all validation issues for this data <br />
+          submission to a CSV file
+        </span>
+      );
+    }
+
+    return <span>Export filtered validation issues to Excel</span>;
+  }, [isAggregated]);
+
+  const [getSubmissionQCResults] = useLazyQuery<SubmissionQCResultsResp, SubmissionQCResultsInput>(
+    SUBMISSION_QC_RESULTS,
+    {
+      context: { clientName: "backend" },
+      fetchPolicy: "no-cache",
+    }
+  );
 
   const [getAggregatedSubmissionQCResults] = useLazyQuery<
     AggregatedSubmissionQCResultsResp,
@@ -83,20 +105,10 @@ export const ExportValidationButton: React.FC<Props> = ({
    *
    * @returns {void}
    */
-  const createCSVAndDownload = (
-    rows: (QCResult | AggregatedQCResult)[],
-    filename: string,
-    isAggregated: boolean
-  ): void => {
+  const createCSVAndDownload = (rows: AggregatedQCResult[], filename: string): void => {
     try {
-      let finalRows = rows;
-
-      if (!isAggregated) {
-        finalRows = unpackValidationSeverities<QCResult>(rows as QCResult[]);
-      }
-
       const fieldEntries = Object.entries(fields);
-      const csvArray = finalRows.map((row) => {
+      const csvArray = rows.map((row) => {
         const csvRow: Record<string, string | number> = {};
         fieldEntries.forEach(([header, fn]) => {
           csvRow[header] = fn(row) ?? "";
@@ -116,15 +128,14 @@ export const ExportValidationButton: React.FC<Props> = ({
    *
    * @returns {string} A formatted file name for the exported file
    */
-  const createFileName = (): string => {
+  const createFileName = (extension: "csv" | "xlsx" = "csv"): string => {
     const filteredName = filterAlphaNumeric(submission.name?.trim()?.replaceAll(" ", "-"), "-");
-    return `${filteredName}-${dayjs().format("YYYY-MM-DDTHHmmss")}.csv`;
+    return `${filteredName}-${dayjs().format("YYYY-MM-DDTHHmmss")}.${extension}`;
   };
 
   /**
-   *  Will retrieve all of the aggregated submission QC results to
+   * Will retrieve all of the aggregated submission QC results to
    * construct and download a CSV file
-   *
    *
    * @returns {Promise<void>}
    */
@@ -156,7 +167,7 @@ export const ExportValidationButton: React.FC<Props> = ({
         return;
       }
 
-      createCSVAndDownload(data.aggregatedSubmissionQCResults.results, createFileName(), true);
+      createCSVAndDownload(data.aggregatedSubmissionQCResults.results, createFileName());
     } catch (err) {
       enqueueSnackbar(`Unable to export aggregated validation results. Error: ${err}`, {
         variant: "error",
@@ -170,40 +181,58 @@ export const ExportValidationButton: React.FC<Props> = ({
   };
 
   /**
-   *  Will retrieve all of the expanded submission QC results to
-   * construct and download a CSV file
-   *
-   *
-   * @returns {Promise<void>}
+   * Will retrieve all of the expanded submission QC results to
+   * construct and download a Excel file
    */
-  const handleExpandedExportSetup = async () => {
+  const handleExpandedExportSetup = async (): Promise<void> => {
     setLoading(true);
 
     try {
-      const { data, error } = await getSubmissionQCResults({
-        variables: {
+      const exportRows = await fetchAllData<
+        SubmissionQCResultsResp,
+        SubmissionQCResultsInput,
+        QCResult
+      >(
+        getSubmissionQCResults,
+        {
           id: submission?._id,
-          sortDirection: "asc",
+          sortDirection: "asc", // TODO: Allow user to specify this?
           orderBy: "displayID",
-          first: -1,
-          offset: 0,
-          severities: "All",
+          issueCode:
+            !filters?.issueType || filters.issueType === "All" ? undefined : filters.issueType,
+          nodeTypes:
+            !filters?.nodeType || filters.nodeType === "All" ? undefined : [filters.nodeType],
+          batchIDs: !filters?.batchID || filters.batchID === "All" ? undefined : [filters.batchID],
+          severities: filters?.severity || "All",
         },
-      });
+        (resp) => resp?.submissionQCResults?.results ?? [],
+        (resp) => resp?.submissionQCResults?.total ?? 0,
+        { pageSize: 4_000 }
+      );
 
-      if (error || !data?.submissionQCResults?.results) {
-        enqueueSnackbar("Unable to retrieve submission quality control results.", {
-          variant: "error",
-        });
-        return;
-      }
-
-      if (!data.submissionQCResults.results.length) {
+      if (!exportRows.length) {
         enqueueSnackbar("There are no validation results to export.", { variant: "error" });
         return;
       }
 
-      createCSVAndDownload(data.submissionQCResults.results, createFileName(), false);
+      // TODO: Retrieve this from the backend
+      const updatedTabData = [
+        {
+          submittedID: "mock-id-abc1",
+          nodeType: "mock-node-1",
+          existing: { program_name: "mock-node-1", program_desc: "original desc" },
+          incoming: { program_name: "mock-node-1", program_desc: "some new value" },
+        },
+      ];
+
+      const builder = new ValidationResultsExcelBuilder(exportRows, updatedTabData);
+      const workbook = await builder.serialize();
+
+      downloadBlob(
+        workbook,
+        createFileName("xlsx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
     } catch (err) {
       enqueueSnackbar(`Unable to export expanded validation results. Error: ${err}`, {
         variant: "error",
@@ -220,7 +249,7 @@ export const ExportValidationButton: React.FC<Props> = ({
    * Click handler that triggers the setup
    * for aggregated or expanded CSV file exporting
    */
-  const handleClick = async () => {
+  const handleClick = () => {
     if (isAggregated) {
       handleAggregatedExportSetup();
       return;
@@ -230,16 +259,7 @@ export const ExportValidationButton: React.FC<Props> = ({
   };
 
   return (
-    <StyledTooltip
-      title={
-        <span>
-          Export all validation issues for this data <br />
-          submission to a CSV file
-        </span>
-      }
-      placement="top"
-      data-testid="export-validation-tooltip"
-    >
+    <StyledTooltip title={tooltip} placement="top" data-testid="export-validation-tooltip">
       <span>
         <StyledIconButton
           onClick={handleClick}

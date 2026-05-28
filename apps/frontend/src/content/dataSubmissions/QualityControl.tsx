@@ -40,7 +40,7 @@ import { FormatDate, Logger, titleCase } from "../../utils";
 
 import QCResultsContext from "./Contexts/QCResultsContext";
 
-type FilterForm = {
+export type QualityControlFilterForm = {
   issueType: string;
   /**
    * The node type to filter by.
@@ -368,7 +368,7 @@ const QualityControl: FC = () => {
   const [selectedRow, setSelectedRow] = useState<RowData | null>(null);
   const [isAggregated, setIsAggregated] = useState<boolean>(true);
   const [issueType, setIssueType] = useState<string | null>("All");
-  const filtersRef: MutableRefObject<FilterForm> = useRef({
+  const filtersRef: MutableRefObject<QualityControlFilterForm> = useRef({
     issueType: "All",
     batchID: "All",
     nodeType: "All",
@@ -513,14 +513,15 @@ const QualityControl: FC = () => {
           submission={submissionData?.getSubmission}
           fields={isAggregated ? aggregatedCSVColumns : csvColumns}
           isAggregated={isAggregated}
+          filters={filtersRef.current}
           disabled={totalData <= 0}
         />
       </Stack>
     ),
-    [submissionData?.getSubmission, totalData, isAggregated]
+    [submissionData?.getSubmission, totalData, isAggregated, filtersRef.current]
   );
 
-  const handleOnFiltersChange = (data: FilterForm) => {
+  const handleOnFiltersChange = (data: QualityControlFilterForm) => {
     filtersRef.current = data;
     tableRef.current?.setPage(0, true);
   };
