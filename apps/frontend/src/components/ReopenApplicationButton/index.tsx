@@ -123,6 +123,11 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
     [user, application]
   );
 
+  const isInternalUser = useMemo<boolean>(
+    () => (["Admin", "Federal Lead", "Data Commons Personnel"] as UserRole[]).includes(user?.role),
+    [user?.role]
+  );
+
   const currentOwnerOption = useMemo<UserOption | null>(() => {
     if (!application?.applicant) {
       return null;
@@ -135,6 +140,12 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
   }, [application?.applicant]);
 
   const onOpenModal = useCallback(async () => {
+    if (!isInternalUser) {
+      setValue("owner", currentOwnerOption);
+      setConfirmOpen(true);
+      return;
+    }
+
     try {
       const { data, error } = await listUsers();
       if (error || !data?.listUsers) {
@@ -171,7 +182,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
         variant: "error",
       });
     }
-  }, [currentOwnerOption, listUsers, setValue]);
+  }, [currentOwnerOption, enqueueSnackbar, isInternalUser, listUsers, setValue]);
 
   const onCloseDialog = useCallback(() => {
     setConfirmOpen(false);
@@ -254,7 +265,10 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
         onClose={onCloseDialog}
         confirmText="Confirm"
         onConfirm={onConfirmDialog}
-        confirmButtonProps={{ disabled: loading || !selectedOwner, color: "success" }}
+        confirmButtonProps={{
+          disabled: loading || (isInternalUser && !selectedOwner),
+          color: "success",
+        }}
         scroll="body"
         description={
           <div>
@@ -295,36 +309,42 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
                   />
                 </Stack>
 
-                <Stack direction="column" alignItems="flex-start">
-                  <StyledFieldLabel>Owner</StyledFieldLabel>
-                  <Controller
-                    name="owner"
-                    control={control}
-                    render={({ field }) => (
-                      <StyledAutocomplete
-                        data-testid="reopen-dialog-owner-autocomplete"
-                        disablePortal={false}
-                        options={userOptions}
-                        value={field.value}
-                        onChange={(_event, newValue: UserOption) => field.onChange(newValue)}
-                        getOptionLabel={(option: UserOption) => option?.label || ""}
-                        isOptionEqualToValue={(option: UserOption, value: UserOption) =>
-                          option?._id === value?._id
-                        }
-                        renderOption={(props, option: UserOption) => (
-                          <li {...props} key={option._id}>
-                            {option.label}
-                          </li>
-                        )}
-                        renderInput={(params) => (
-                          <TextField {...params} placeholder="Search for a user..." size="small" />
-                        )}
-                        fullWidth
-                        disableClearable
-                      />
-                    )}
-                  />
-                </Stack>
+                {isInternalUser && (
+                  <Stack direction="column" alignItems="flex-start">
+                    <StyledFieldLabel>Owner</StyledFieldLabel>
+                    <Controller
+                      name="owner"
+                      control={control}
+                      render={({ field }) => (
+                        <StyledAutocomplete
+                          data-testid="reopen-dialog-owner-autocomplete"
+                          disablePortal={false}
+                          options={userOptions}
+                          value={field.value}
+                          onChange={(_event, newValue: UserOption) => field.onChange(newValue)}
+                          getOptionLabel={(option: UserOption) => option?.label || ""}
+                          isOptionEqualToValue={(option: UserOption, value: UserOption) =>
+                            option?._id === value?._id
+                          }
+                          renderOption={(props, option: UserOption) => (
+                            <li {...props} key={option._id}>
+                              {option.label}
+                            </li>
+                          )}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              placeholder="Search for a user..."
+                              size="small"
+                            />
+                          )}
+                          fullWidth
+                          disableClearable
+                        />
+                      )}
+                    />
+                  </Stack>
+                )}
               </Stack>
             </StyledFormBox>
           </div>
