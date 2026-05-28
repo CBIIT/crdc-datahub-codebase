@@ -49,6 +49,97 @@ class ApprovedStudiesService {
         this.applicationDAO = new ApplicationDAO();
     }
 
+    async _buildApprovedStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
+        const program = await this._validateProgramID(existingProgram?._id || null);
+        const pendingGPA = PendingGPA.create(application?.GPAName, isPendingGPA);
+        const trimmedDbGaP = String(questionnaire?.study?.dbGaPPPHSNumber ?? "").trim();
+        const baseDbGaP = trimmedDbGaP.match(/^phs\d{6}/i)?.[0]?.toLowerCase() ?? null;
+        const studyAbbreviation = defaultStudyAbbreviationToStudyName((application?.studyAbbreviation ?? "").trim(), application?.studyName);
+        const controlledAccess = isTrue(application?.controlledAccess);
+
+        const fields = {
+            applicationID: application?._id ?? application?.id,
+            studyName: application?.studyName ?? null,
+            studyAbbreviation,
+            originalOrg: application?.organization?.name ?? null,
+            controlledAccess,
+            ORCID: application?.ORCID ?? null,
+            PI: application?.PI ?? null,
+            openAccess: isTrue(application?.openAccess),
+            useProgramPC: true,
+            pendingModelChange: isTrue(pendingModelChange ?? true),
+            pendingImageDeIdentification: isTrue(pendingImageDeIdentification),
+            programID: program?._id ?? null,
+            primaryContactID: null,
+            // Always set explicitly (null when absent) so the update path clears stale values instead of preserving them.
+            dbGaPID: baseDbGaP,
+        };
+
+        if (isTrue(controlledAccess)) {
+            fields.isPendingGPA = isTrue(pendingGPA?.isPendingGPA);
+            fields.GPAName = pendingGPA?.GPAName ?? null;
+        } else {
+            fields.isPendingGPA = false;
+            fields.GPAName = null;
+        }
+
+        return { fields, pendingGPA };
+    }
+
+    async saveApprovedStudyFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram, existingStudy = null) {
+        const { fields, pendingGPA } = await this._buildApprovedStudyFieldsFromApplication(
+            application,
+            questionnaire,
+            pendingModelChange,
+            pendingImageDeIdentification,
+            isPendingGPA,
+            existingProgram
+        );
+
+        if (existingStudy) {
+            const studyID = existingStudy?._id ?? existingStudy?.id;
+            if (!studyID) {
+                throw new Error(ERROR.APPROVED_STUDY_NOT_FOUND);
+            }
+
+            const updateStudy = {
+                ...existingStudy,
+                ...fields,
+                updatedAt: getCurrentTime(),
+            };
+
+            const result = await this.approvedStudyDAO.update(studyID, updateStudy);
+            if (!result) {
+                throw new Error(ERROR.FAILED_APPROVED_STUDY_UPDATE);
+            }
+            return { ...result, _id: result._id ?? result.id };
+        }
+
+        const approvedStudies = ApprovedStudies.createApprovedStudies(
+            fields.applicationID,
+            fields.studyName,
+            fields.studyAbbreviation,
+            fields.dbGaPID,
+            fields.originalOrg,
+            fields.controlledAccess,
+            fields.ORCID,
+            fields.PI,
+            fields.openAccess,
+            fields.useProgramPC,
+            fields.pendingModelChange,
+            fields.primaryContactID,
+            pendingGPA,
+            fields.programID,
+            fields.pendingImageDeIdentification
+        );
+        const res = await this.approvedStudyDAO.create(approvedStudies);
+
+        if (!res) {
+            console.error(ERROR.APPROVED_STUDIES_INSERTION + ` studyName: ${fields.studyName}`);
+        }
+        return res;
+    }
+
     async storeApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification) {
         // Validate programID and fall back to NA program if needed
         const program = await this._validateProgramID(programID);
@@ -88,6 +179,24 @@ class ApprovedStudiesService {
             return [];
         }
         return [{ ...row, _id: row.id }];
+    }
+
+    /**
+     * Find an approved study linked to a submission request application ID.
+     * @param {string} applicationID
+     * @returns {Promise<Object|null>}
+     */
+    async findByApplicationID(applicationID) {
+        if (!applicationID) {
+            return null;
+        }
+        const row = await prisma.approvedStudy.findFirst({
+            where: { applicationID }
+        });
+        if (!row) {
+            return null;
+        }
+        return { ...row, _id: row.id };
     }
 
     /**

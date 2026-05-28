@@ -53,6 +53,19 @@ class ApplicationDAO extends GenericDAO {
         return { matchedCount: result.count, modifiedCount: result.count };
     }
 
+
+    /**
+     * Find the previous submission request by ID
+     * @param {string} id The ID of the submission request
+     * @returns {Promise<object>} The previous submission request
+     */
+    async findPreviousSubmissionRequestByID(id) {
+        if (!id) {
+            return null;
+        }
+        return this.findFirst({ nextRevisionId: id });
+    }
+
     /**
      * Insert a new reopened application and update the approved predecessor, rollback if the insert fails.
      * @param {string} sourceId Approved application _id
