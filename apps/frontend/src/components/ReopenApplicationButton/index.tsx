@@ -142,7 +142,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
       }
 
       let eligibleUsers: UserOption[] = data.listUsers
-        .filter((u) => u.userStatus === "Active")
+        .filter((u) => u.userStatus === "Active" && (u.role === "User" || u.role === "Submitter"))
         .map((u) => ({
           _id: u._id,
           label: [u.firstName, u.lastName].join(" ").trim(),

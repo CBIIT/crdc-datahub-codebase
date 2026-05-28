@@ -33,7 +33,11 @@ export const CanDeleteOtherSubmissionRequests: UserRole[] = [
 /**
  * A set of roles that are allowed to reopen approved submission requests.
  */
-export const CanReopenSubmissionRequests: UserRole[] = ["Admin", "Federal Lead"];
+export const CanReopenSubmissionRequests: UserRole[] = [
+  "Admin",
+  "Federal Lead",
+  "Data Commons Personnel",
+];
 
 /**
  * A set of roles that are considered external users

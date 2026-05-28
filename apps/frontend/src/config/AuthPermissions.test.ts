@@ -403,7 +403,7 @@ describe("submission_request:reopen Permission", () => {
     }
   );
 
-  it.each<UserRole>(["Admin", "Federal Lead"])(
+  it.each<UserRole>(["Admin", "Federal Lead", "Data Commons Personnel"])(
     "should allow '%s' when they are not the owner",
     (role) => {
       const user = userFactory.build({
@@ -421,7 +421,7 @@ describe("submission_request:reopen Permission", () => {
     }
   );
 
-  it.each<UserRole>(["User", "Submitter", "Data Commons Personnel"])(
+  it.each<UserRole>(["User", "Submitter"])(
     "should deny '%s' when they are not the owner",
     (role) => {
       const user = userFactory.build({
