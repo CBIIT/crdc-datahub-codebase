@@ -6,7 +6,6 @@ import { useSnackbar } from "notistack";
 import { unparse } from "papaparse";
 import { useMemo, useState } from "react";
 
-import { ValidationResultsExcelBuilder } from "@/classes/ValidationResultsExcelBuilder";
 import type { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
 import {
   AGGREGATED_SUBMISSION_QC_RESULTS,
@@ -188,6 +187,10 @@ export const ExportValidationButton: React.FC<Props> = ({
     setLoading(true);
 
     try {
+      const { ValidationResultsExcelBuilder } = await import(
+        "@/classes/ValidationResultsExcelBuilder"
+      );
+
       const exportRows = await fetchAllData<
         SubmissionQCResultsResp,
         SubmissionQCResultsInput,
