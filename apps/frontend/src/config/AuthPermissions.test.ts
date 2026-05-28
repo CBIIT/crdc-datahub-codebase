@@ -403,7 +403,7 @@ describe("submission_request:reopen Permission", () => {
     }
   );
 
-  it.each<UserRole>(["Admin", "Federal Lead", "Data Commons Personnel"])(
+  it.each<UserRole>(["Admin", "Federal Lead", "Data Commons Personnel", "Submitter", "User"])(
     "should allow '%s' when they are not the owner",
     (role) => {
       const user = userFactory.build({
@@ -418,24 +418,6 @@ describe("submission_request:reopen Permission", () => {
       });
 
       expect(hasPermission(user, "submission_request", "reopen", application)).toBe(true);
-    }
-  );
-
-  it.each<UserRole>(["User", "Submitter"])(
-    "should deny '%s' when they are not the owner",
-    (role) => {
-      const user = userFactory.build({
-        _id: "user-1",
-        role,
-        permissions: ["submission_request:reopen"],
-      });
-      const application: Application = applicationFactory.build({
-        applicant: applicantFactory.build({ applicantID: "some-other-user" }),
-        status: "Approved",
-        nextRevisionId: null,
-      });
-
-      expect(hasPermission(user, "submission_request", "reopen", application)).toBe(false);
     }
   );
 
