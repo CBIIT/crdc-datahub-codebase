@@ -1021,9 +1021,12 @@ class Application {
                     const { _id, ...updateUser } = applicant;
                     const currStudyIDs = applicant?.studies?.map((study)=> study?._id) || [];
                     const approvedStudyId = newApprovedStudy?._id;
-                    const newStudiesIDs = approvedStudyId && currStudyIDs.includes(approvedStudyId)
+                    if (!approvedStudyId) {
+                        throw new Error(ERROR.FAILED_APPROVED_STUDY_INSERTION);
+                    }
+                    const newStudiesIDs = currStudyIDs.includes(approvedStudyId)
                         ? currStudyIDs
-                        : [approvedStudyId].concat(currStudyIDs);
+                        : [approvedStudyId, ...currStudyIDs];
                     promises.push(this.userService.updateUserInfo(
                         applicant, updateUser, _id, applicant?.userStatus, applicant?.role, newStudiesIDs));
                 }

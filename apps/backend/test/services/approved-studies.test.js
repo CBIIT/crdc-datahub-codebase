@@ -1286,6 +1286,62 @@ describe('ApprovedStudiesService', () => {
                 })
             );
         });
+
+        it.each([
+            ['phs001234.v5', 'phs001234'],
+            ['phs001234.p2', 'phs001234'],
+            ['phs001234.v5.p2', 'phs001234'],
+            ['  phs001234.v5  ', 'phs001234'],
+            ['PHS001234.V5', 'phs001234'],
+            [null, null],
+            ['', null],
+            ['invalid', null],
+            ['phs12345', null],
+        ])('should normalize dbGaPPPHSNumber %p to dbGaPID %p', async (input, expectedDbGaPID) => {
+            ApprovedStudies.createApprovedStudies.mockClear();
+
+            await service.saveApprovedStudyFromApplication(
+                application,
+                { study: { dbGaPPPHSNumber: input } },
+                false,
+                undefined,
+                false,
+                program,
+                null
+            );
+
+            expect(ApprovedStudies.createApprovedStudies).toHaveBeenCalledWith(
+                'app-123',
+                'Study One',
+                'STUDY1',
+                expectedDbGaPID,
+                'Org One',
+                true,
+                '0000-0001',
+                'PI Name',
+                false,
+                true,
+                false,
+                null,
+                expect.objectContaining({ GPAName: 'GPA Name' }),
+                'program-1',
+                false
+            );
+        });
+
+        it('should throw when approved study creation fails', async () => {
+            service.approvedStudyDAO.create = jest.fn().mockResolvedValue(null);
+
+            await expect(service.saveApprovedStudyFromApplication(
+                application,
+                questionnaire,
+                false,
+                undefined,
+                false,
+                program,
+                null
+            )).rejects.toThrow(ERROR.FAILED_APPROVED_STUDY_INSERTION);
+        });
     });
 
     describe('storeApprovedStudies', () => {

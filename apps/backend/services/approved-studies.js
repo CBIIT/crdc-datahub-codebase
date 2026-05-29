@@ -135,7 +135,7 @@ class ApprovedStudiesService {
         const res = await this.approvedStudyDAO.create(approvedStudies);
 
         if (!res) {
-            console.error(ERROR.APPROVED_STUDIES_INSERTION + ` studyName: ${fields.studyName}`);
+            throw new Error(ERROR.FAILED_APPROVED_STUDY_INSERTION);
         }
         return res;
     }

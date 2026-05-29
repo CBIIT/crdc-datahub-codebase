@@ -1491,6 +1491,88 @@ describe('Application', () => {
                 null
             );
         });
+
+        it('should throw and not update user studies when approved study creation returns no id', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' } };
+
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
+            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+            mockApprovedStudiesService.saveApprovedStudyFromApplication.mockResolvedValue(null);
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([{
+                _id: 'user1',
+                userStatus: 'active',
+                role: 'user',
+                studies: [{ _id: 'existing-study' }],
+            }]);
+            mockLogCollection.insert.mockResolvedValue();
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+
+            await expect(app.approveApplication({ _id: 'app1', comment: 'Approved' }, context))
+                .rejects.toThrow(ERROR.FAILED_APPROVED_STUDY_INSERTION);
+
+            expect(mockUserService.updateUserInfo).not.toHaveBeenCalled();
+        });
+
+        it('should prepend approved study id to applicant studies on approval', async () => {
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+            };
+            const mockQuestionnaire = { program: { _id: 'program1' } };
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Approved',
+                history: [],
+            };
+
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            mockApprovedStudiesService.saveApprovedStudyFromApplication.mockResolvedValue({ _id: 'new-study-id' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([{
+                _id: 'user1',
+                userStatus: 'active',
+                role: 'user',
+                studies: [{ _id: 'existing-study' }],
+            }]);
+            mockUserService.updateUserInfo.mockResolvedValue();
+            mockLogCollection.insert.mockResolvedValue();
+            mockInstitutionService.addNewInstitutions.mockResolvedValue();
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.find.mockResolvedValue([]);
+            global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
+
+            await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
+
+            expect(mockUserService.updateUserInfo).toHaveBeenCalledWith(
+                expect.objectContaining({ _id: 'user1' }),
+                expect.anything(),
+                'user1',
+                'active',
+                'user',
+                ['new-study-id', 'existing-study']
+            );
+        });
     });
 
     describe('inquireApplication', () => {

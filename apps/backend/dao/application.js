@@ -57,7 +57,7 @@ class ApplicationDAO extends GenericDAO {
     /**
      * Find the previous submission request by ID
      * @param {string} id The ID of the submission request
-     * @returns {Promise<object>} The previous submission request
+     * @returns {Promise<object|null>} The previous submission request, or null when id is falsy or no predecessor exists
      */
     async findPreviousSubmissionRequestByID(id) {
         if (!id) {
