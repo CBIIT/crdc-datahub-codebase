@@ -2001,9 +2001,84 @@ describe('Application', () => {
                 .toBe('Full Name');
         });
 
-        it('falls back to firstName and lastName', () => {
+        it('trims whitespace from fullName', () => {
+            expect(app._getUserDisplayName({ fullName: '  Full Name  ', firstName: 'A', lastName: 'B' }))
+                .toBe('Full Name');
+        });
+
+        it('falls back to firstName and lastName when fullName is absent', () => {
             expect(app._getUserDisplayName({ firstName: 'Jane', lastName: 'Smith' }))
                 .toBe('Jane Smith');
+        });
+
+        it('falls back to firstName and lastName when fullName is whitespace-only', () => {
+            expect(app._getUserDisplayName({ fullName: '   ', firstName: 'Jane', lastName: 'Smith' }))
+                .toBe('Jane Smith');
+        });
+
+        it('falls back to applicantName when fullName and formatted name are empty', () => {
+            expect(app._getUserDisplayName({ applicantName: 'Legacy Applicant' }))
+                .toBe('Legacy Applicant');
+        });
+
+        it('prefers fullName over applicantName', () => {
+            expect(app._getUserDisplayName({
+                fullName: 'Full Name',
+                applicantName: 'Legacy Applicant',
+            })).toBe('Full Name');
+        });
+
+        it('prefers formatted name over applicantName when fullName is absent', () => {
+            expect(app._getUserDisplayName({
+                firstName: 'Jane',
+                lastName: 'Smith',
+                applicantName: 'Legacy Applicant',
+            })).toBe('Jane Smith');
+        });
+
+        it('returns empty string when user is null or undefined', () => {
+            expect(app._getUserDisplayName(null)).toBe('');
+            expect(app._getUserDisplayName(undefined)).toBe('');
+        });
+
+        it('returns empty string when no display name fields are present', () => {
+            expect(app._getUserDisplayName({})).toBe('');
+            expect(app._getUserDisplayName({ email: 'user@example.com' })).toBe('');
+        });
+    });
+
+    describe('_hydrateApplicationRecord', () => {
+        it('uses applicantName from nested applicant when fullName and name parts are missing', () => {
+            const result = app._hydrateApplicationRecord({
+                id: 'app-1',
+                applicant: {
+                    id: 'user-1',
+                    applicantName: 'Stored Applicant',
+                    email: 'user@example.com',
+                },
+            });
+
+            expect(result.applicant).toEqual({
+                applicantID: 'user-1',
+                applicantName: 'Stored Applicant',
+                applicantEmail: 'user@example.com',
+            });
+        });
+
+        it('prefers ownerUser fullName over nested applicant applicantName', () => {
+            const result = app._hydrateApplicationRecord(
+                {
+                    id: 'app-1',
+                    applicant: { id: 'user-1', applicantName: 'Stored Applicant' },
+                },
+                { _id: 'user-2', fullName: 'New Owner', email: 'owner@example.com' }
+            );
+
+            expect(result.applicant).toEqual({
+                applicantID: 'user-2',
+                applicantName: 'New Owner',
+                applicantEmail: 'owner@example.com',
+            });
         });
     });
 });

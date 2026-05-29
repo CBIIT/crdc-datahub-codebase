@@ -72,7 +72,7 @@ class Application {
      * @returns {string} The applicant display name
      */
     _getUserDisplayName(user) {
-        return user?.fullName?.trim() || formatName(user);
+        return user?.fullName?.trim() || formatName(user) || user?.applicantName || "";
     }
 
     async getApplication(params, context) {
