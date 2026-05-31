@@ -147,6 +147,15 @@ export const formatFullStudyName = (studyName: string, studyAbbreviation: string
 };
 
 /**
+ * Formats a character limit value into the shared UI placeholder pattern.
+ *
+  @param max The maximum character limit
+* @returns A formatted string indicating the character limit, e.g. "1,000 characters allowed"
+ */
+export const formatCharacterLimitPlaceholder = (max: number): string =>
+  `${Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(max || 0)} characters allowed`;
+
+/**
  * Attempts to map a study name + abbreviation combination to an approved study ID.
  *
  * - Will return the first match found
