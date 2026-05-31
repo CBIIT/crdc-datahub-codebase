@@ -382,7 +382,7 @@ describe("Implementation Requirements", () => {
       expect(mutationMatcher).toHaveBeenCalled();
       expect(onComplete).toHaveBeenCalledTimes(1);
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Submission Request has been successfully reopened.",
+        "Reopening the submission request will send it back to the users to make changes",
         {
           variant: "success",
         }
@@ -441,7 +441,7 @@ describe("Implementation Requirements", () => {
       expect(mutationMatcher).toHaveBeenCalled();
       expect(onComplete).toHaveBeenCalledTimes(1);
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Submission Request has been successfully reopened.",
+        "Reopening the submission request will send it back to the users to make changes",
         {
           variant: "success",
         }
