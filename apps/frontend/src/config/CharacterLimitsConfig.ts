@@ -1,20 +1,18 @@
-import type { QuestionnaireData } from "@/schemas/Application";
-
 type CharacterLimit = {
   min?: number;
   max?: number;
 } & ({ min: number } | { max: number });
 
-type CharacterLimitsConfig<T> = T extends Array<infer U>
-  ? CharacterLimitsConfig<U>
-  : T extends object
-    ? { [K in keyof T]?: CharacterLimitsConfig<T[K]> }
-    : CharacterLimit;
+type CharacterLimitTree = {
+  [key: string]: CharacterLimit | CharacterLimitTree;
+};
+
+type CharacterLimitsConfig = CharacterLimitTree;
 
 /**
- * Standardizes the character limits for QuestionnaireData fields.
+ * Standardizes character limits across the application.
  */
-export const SR_CHARACTER_LIMITS = {
+export const CHARACTER_LIMITS = {
   study: {
     name: {
       max: 1_000,
@@ -23,4 +21,4 @@ export const SR_CHARACTER_LIMITS = {
       max: 1_000,
     },
   },
-} satisfies CharacterLimitsConfig<QuestionnaireData>;
+} satisfies CharacterLimitsConfig;
