@@ -2,7 +2,7 @@ import type ExcelJS from "exceljs";
 import { Row } from "exceljs";
 import { toString } from "lodash";
 
-import { SR_CHARACTER_LIMITS } from "@/config/CharacterLimitsConfig";
+import { CHARACTER_LIMITS } from "@/config/CharacterLimitsConfig";
 import DataTypes from "@/config/DataTypesConfig";
 import {
   IF,
@@ -25,8 +25,8 @@ const DEFAULT_CHARACTER_LIMITS: CharacterLimitsMap<BKeys> = {
   "program.name": 100,
   "program.abbreviation": 100,
   "program.description": 500,
-  "study.name": SR_CHARACTER_LIMITS.study.name.max,
-  "study.abbreviation": SR_CHARACTER_LIMITS.study.abbreviation.max,
+  "study.name": CHARACTER_LIMITS.study.name.max,
+  "study.abbreviation": CHARACTER_LIMITS.study.abbreviation.max,
   "study.description": 2_500,
   // "study.funding.agency": 0,
   "study.funding.grantNumbers": 250,

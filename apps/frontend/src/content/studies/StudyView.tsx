@@ -35,7 +35,7 @@ import BaseSelect from "../../components/StyledFormComponents/StyledSelect";
 import SuspenseLoader from "../../components/SuspenseLoader";
 import Tooltip from "../../components/Tooltip";
 import options from "../../config/AccessTypesConfig";
-import { SR_CHARACTER_LIMITS } from "../../config/CharacterLimitsConfig";
+import { CHARACTER_LIMITS } from "../../config/CharacterLimitsConfig";
 import {
   CREATE_APPROVED_STUDY,
   CreateApprovedStudyInput,
@@ -549,14 +549,14 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                     setValueAs: (val) => val?.trim(),
                     validate: { utf8: validateUTF8 },
                   })}
-                  placeholder={formatCharacterLimitPlaceholder(SR_CHARACTER_LIMITS.study.name.max)}
+                  placeholder={formatCharacterLimitPlaceholder(CHARACTER_LIMITS.study.name.max)}
                   size="small"
                   required
                   disabled={retrievingStudy}
                   readOnly={saving}
                   error={!!errors.studyName}
                   inputProps={{
-                    maxLength: SR_CHARACTER_LIMITS.study.name.max,
+                    maxLength: CHARACTER_LIMITS.study.name.max,
                     "aria-labelledby": "studyNameLabel",
                     "data-testid": "studyName-input",
                   }}
@@ -567,14 +567,14 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                 <StyledTextField
                   {...register("studyAbbreviation", { setValueAs: (val) => val?.trim() })}
                   placeholder={formatCharacterLimitPlaceholder(
-                    SR_CHARACTER_LIMITS.study.abbreviation.max
+                    CHARACTER_LIMITS.study.abbreviation.max
                   )}
                   size="small"
                   disabled={retrievingStudy}
                   readOnly={saving}
                   error={!!errors.studyAbbreviation}
                   inputProps={{
-                    maxLength: SR_CHARACTER_LIMITS.study.abbreviation.max,
+                    maxLength: CHARACTER_LIMITS.study.abbreviation.max,
                     "aria-labelledby": "studyAbbreviationLabel",
                     "data-testid": "studyAbbreviation-input",
                   }}
