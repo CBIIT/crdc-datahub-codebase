@@ -10,7 +10,7 @@ const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-
 const {CreateApplicationEvent, UpdateApplicationStateEvent} = require("../crdc-datahub-database-drivers/domain/log-events");
 const ROLES = USER_CONSTANTS.USER.ROLES;
 const {parseJsonString, isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
-const {isUndefined, replaceErrorString} = require("../utility/string-util");
+const {replaceErrorString} = require("../utility/string-util");
 const {defaultStudyAbbreviationToStudyName, defaultStudyAbbreviationToNA} = require("../utility/study-abbrev-helpers");
 const {EMAIL_NOTIFICATIONS} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
@@ -18,10 +18,9 @@ const {UserScope} = require("../domain/user-scope");
 const {UtilityService} = require("../services/utility");
 const InstitutionDAO = require("../dao/institution");
 const ApplicationDAO = require("../dao/application");
-const {SORT: SORT_ORDER} = require("../constants/db-constants");
-const {PendingGPA} = require("../domain/pending-gpa");
 const {PrismaPagination} = require("../crdc-datahub-database-drivers/domain/prisma-pagination");
 const UserDAO = require("../dao/user");
+const {formatName} = require("../utility/format-name");
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_INSTITUTION_NAME_LENGTH = 100;
 // Valid orderBy values for listApplications (Prisma field names). "applicant.applicantName" is accepted and mapped to "applicant.fullName".
@@ -65,6 +64,15 @@ class Application {
 
     _isApprovedApplication(application) {
         return this._normalizeApplicationStatus(application?.status) === this._normalizeApplicationStatus(APPROVED);
+    }
+
+    /**
+     * Get the applicant display name
+     * @param {object} user The user object
+     * @returns {string} The applicant display name
+     */
+    _getUserDisplayName(user) {
+        return user?.fullName?.trim() || formatName(user) || user?.applicantName || "";
     }
 
     async getApplication(params, context) {
@@ -130,13 +138,13 @@ class Application {
         if (ownerUser) {
             hydrated.applicant = {
                 applicantID: ownerUser.id ?? ownerUser._id ?? "",
-                applicantName: ownerUser.fullName || "",
+                applicantName: this._getUserDisplayName(ownerUser) || "",
                 applicantEmail: ownerUser.email || "",
             };
         } else if (hydrated.applicant && typeof hydrated.applicant === 'object') {
             hydrated.applicant = {
                 applicantID: hydrated.applicant?.id || hydrated.applicant?.applicantID || "",
-                applicantName: hydrated.applicant?.fullName || hydrated.applicant?.applicantName || "",
+                applicantName: this._getUserDisplayName(hydrated.applicant) || "",
                 applicantEmail: hydrated.applicant?.email || hydrated.applicant?.applicantEmail || "",
             };
         }
@@ -619,9 +627,9 @@ class Application {
         const mappedApplications = [];
         for (const app of applications) {
             const applicant = {
-                applicantID: app?.applicant ? app?.applicant?.id : "",
-                applicantName: app?.applicant ? app?.applicant?.fullName : "",
-                applicantEmail: app?.applicant ? app?.applicant?.email : "",
+                applicantID: app?.applicant?.id || "",
+                applicantName: this._getUserDisplayName(app.applicant) || "",
+                applicantEmail: app?.applicant?.email || "",
             };
             if (!this._isApprovedApplication(app)) {
                 mappedApplications.push({
@@ -848,13 +856,13 @@ class Application {
         }
         const aApplication = await this.getApplicationById(document._id);
         const isApplicationOwned = userScope.isOwnScope() && userInfo?._id === aApplication?.applicant?.applicantID;
-        const validApplicationStatus = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED];
+        const validApplicationStatus = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, REOPENED];
         if (!validApplicationStatus.includes(aApplication.status)) {
             throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         }
         aApplication.version = await this._getApplicationVersionByStatus(aApplication.status, aApplication?.version);
-        const powerUserCond = [NEW, IN_PROGRESS, INQUIRED, SUBMITTED, IN_REVIEW].includes(aApplication?.status);
-        const isValidCond = [NEW, IN_PROGRESS, INQUIRED].includes(aApplication?.status) && userInfo?._id === aApplication?.applicant?.applicantID;
+        const powerUserCond = [NEW, IN_PROGRESS, INQUIRED, SUBMITTED, IN_REVIEW, REOPENED].includes(aApplication?.status);
+        const isValidCond = [NEW, IN_PROGRESS, INQUIRED, REOPENED].includes(aApplication?.status) && userInfo?._id === aApplication?.applicant?.applicantID;
         if ((userScope.isAllScope() && !powerUserCond) || (isApplicationOwned && !isValidCond)) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
@@ -897,7 +905,7 @@ class Application {
             .notEmpty()
             .state([CANCELED, DELETED]);
 
-        if (!aApplication?.history?.length > 2 || ![CANCELED, DELETED].includes(aApplication?.history?.at(-1)?.status)) {
+        if ((aApplication?.history?.length ?? 0) < 2 || ![CANCELED, DELETED].includes(aApplication?.history?.at(-1)?.status)) {
             throw new Error(ERROR.INVALID_APPLICATION_RESTORE_STATE);
         }
         const userInfo = context?.userInfo;
@@ -937,8 +945,9 @@ class Application {
             .state([IN_REVIEW, SUBMITTED]);
 
         const questionnaire = getApplicationQuestionnaire(application);
-        const [approvedStudies, existingProgram, duplicatePrograms] = await Promise.all([
-            this.approvedStudiesService.findByStudyName(application?.studyName),
+        const sequenceNumber = application?.sequenceNumber ?? 1;
+        const [predecessor, existingProgram, duplicatePrograms] = await Promise.all([
+            this.applicationDAO.findPreviousSubmissionRequestByID(application._id),
             this.organizationService.getOrganizationByID(questionnaire?.program?._id, false),
             this.organizationService.findOneByProgramName(application?.programName),
             (async () => {
@@ -946,7 +955,19 @@ class Application {
             })()
         ]);
 
-        if (approvedStudies.length > 0) {
+        let existingStudy = null;
+        if (predecessor && sequenceNumber > 1) {
+            existingStudy = await this.approvedStudiesService.findByApplicationID(
+                predecessor._id ?? predecessor.id
+            );
+        }
+
+        // Always enforce duplicate study-name protection; allow the match only when it
+        // is the same approved study being re-approved on a revision.
+        const duplicates = await this.approvedStudiesService.findByStudyName(application?.studyName);
+        const existingStudyID = existingStudy?._id ?? existingStudy?.id;
+        const conflict = duplicates.find((dup) => (dup?._id ?? dup?.id) !== existingStudyID);
+        if (conflict) {
             throw new Error(replaceErrorString(ERROR.DUPLICATE_APPROVED_STUDY_NAME, `'${application?.studyName}'`));
         }
 
@@ -984,14 +1005,28 @@ class Application {
                     // Await program creation before creating approved study to avoid race condition
                     program = await this.organizationService.upsertByProgramName(name, abbreviation, description);
                 }
-                const newApprovedStudy = await this._saveApprovedStudies(updated, questionnaire, document?.pendingModelChange, document?.pendingImageDeIdentification, isPendingGPA, program);
+                const newApprovedStudy = await this.approvedStudiesService.saveApprovedStudyFromApplication(
+                    updated,
+                    questionnaire,
+                    document?.pendingModelChange,
+                    document?.pendingImageDeIdentification,
+                    isPendingGPA,
+                    program,
+                    existingStudy
+                );
                 // added approved studies into user collection
                 const applicants = await this._findUsersByApplicantIDs([application]);
                 if (applicants?.length > 0) {
                     const applicant = applicants[0];
                     const { _id, ...updateUser } = applicant;
                     const currStudyIDs = applicant?.studies?.map((study)=> study?._id) || [];
-                    const newStudiesIDs = [newApprovedStudy?._id].concat(currStudyIDs);
+                    const approvedStudyId = newApprovedStudy?._id;
+                    if (!approvedStudyId) {
+                        throw new Error(ERROR.FAILED_APPROVED_STUDY_INSERTION);
+                    }
+                    const newStudiesIDs = currStudyIDs.includes(approvedStudyId)
+                        ? currStudyIDs
+                        : [approvedStudyId, ...currStudyIDs];
                     promises.push(this.userService.updateUserInfo(
                         applicant, updateUser, _id, applicant?.userStatus, applicant?.role, newStudiesIDs));
                 }
@@ -1511,33 +1546,6 @@ class Application {
             acc[`${this._INACTIVE_REMINDER}_${day}`] = status;
             return acc;
         }, {[`${this._FINAL_INACTIVE_REMINDER}`]: status});
-    }
-
-    async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
-        // Only the application field (user input); do not substitute study name or questionnaire when missing
-        const studyAbbreviation = (aApplication?.studyAbbreviation ?? "").trim();
-        const controlledAccess = aApplication?.controlledAccess;
-        if (isUndefined(controlledAccess)) {
-            console.error(ERROR.APPLICATION_CONTROLLED_ACCESS_NOT_FOUND, ` id=${aApplication?._id}`);
-        }
-        const programName = aApplication?.programName ?? "NA";
-        const pendingGPA = PendingGPA.create(aApplication?.GPAName, isPendingGPA);
-        
-        // Use the existing program ID from the questionnaire lookup
-        const programID = existingProgram?._id || null;
-      
-        // Clean dbGaPPPHSNumber to only store the base "phs######"
-        const trimmedDbGaP = String(questionnaire?.study?.dbGaPPPHSNumber ?? "").trim();
-        const baseDbGaP = trimmedDbGaP.match(/^phs\d{6}/i)?.[0]?.toLowerCase() ?? null;
-
-        // Upon approval of the submission request, the data concierge is retrieved from the associated program.
-        // These two parameters for storeApprovedStudies will be constant here, saved to variables for clarity.
-        const useProgramPC = true;
-        const primaryContactID = null;
-        return await this.approvedStudiesService.storeApprovedStudies(
-            aApplication?._id, aApplication?.studyName, studyAbbreviation, baseDbGaP, aApplication?.organization?.name, controlledAccess, aApplication?.ORCID,
-            aApplication?.PI, aApplication?.openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification
-        );
     }
 
     async verifyReviewerPermission(context) {
