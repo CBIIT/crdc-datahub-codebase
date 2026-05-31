@@ -204,10 +204,12 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
       }
 
       setConfirmOpen(false);
-      // TODO: Confirm message text
-      enqueueSnackbar("Submission Request has been successfully reopened.", {
-        variant: "success",
-      });
+      enqueueSnackbar(
+        "Reopening the submission request will send it back to the users to make changes",
+        {
+          variant: "success",
+        }
+      );
       onComplete?.();
     } catch (err) {
       Logger.error("ReopenApplicationButton: API error received", err);
@@ -233,7 +235,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
   return (
     <>
       <StyledTooltip
-        title="Reopen this submission request"
+        title="Reopen submission request for editing"
         placement="top"
         aria-label="Reopen action tooltip"
         data-testid="reopen-application-tooltip"
@@ -273,7 +275,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
         description={
           <div>
             <StyledDescriptionText>
-              Reopen the submission request will send it back to the users to make changes.
+              Reopen an Approved Submission Request for Editing
             </StyledDescriptionText>
             <StyledFormBox>
               <Stack gap="20px">
