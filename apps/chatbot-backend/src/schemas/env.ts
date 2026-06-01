@@ -59,7 +59,41 @@ export const envSchema = z
       .string()
       .regex(/^(\d{1,4}\.\d{1,4}\.\d{1,4}).*/, "SERVICE_VERSION is not formatted semantically")
       .default(""),
+    /**
+     * The Arize Phoenix collector endpoint URL for telemetry data collection.
+     *
+     * @example "http://localhost:6006"
+     */
+    PHOENIX_COLLECTOR_ENDPOINT: z.url().default(""),
+    /**
+     * The Arize Phoenix API key for authentication.
+     *
+     * @note Required if `PHOENIX_COLLECTOR_ENDPOINT` is provided.
+     */
+    PHOENIX_API_KEY: z.string().default(""),
+    /**
+     * The Arize Phoenix project name to associate telemetry data with.
+     *
+     * @note Required if `PHOENIX_COLLECTOR_ENDPOINT` is provided.
+     */
+    PHOENIX_PROJECT_NAME: z.string().default(""),
   })
-  .loose();
+  .loose()
+  .superRefine((env, ctx) => {
+    if (env.PHOENIX_COLLECTOR_ENDPOINT && !env.PHOENIX_API_KEY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["PHOENIX_API_KEY"],
+        message: "PHOENIX_API_KEY is required when PHOENIX_COLLECTOR_ENDPOINT is provided",
+      });
+    }
+    if (env.PHOENIX_COLLECTOR_ENDPOINT && !env.PHOENIX_PROJECT_NAME) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["PHOENIX_PROJECT_NAME"],
+        message: "PHOENIX_PROJECT_NAME is required when PHOENIX_COLLECTOR_ENDPOINT is provided",
+      });
+    }
+  });
 
 export type AppEnv = z.infer<typeof envSchema>;

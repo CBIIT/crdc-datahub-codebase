@@ -1,3 +1,4 @@
+import "./instrumentation.ts";
 import { createServer, startServer } from "./server.ts";
 import { createQuestionRouter } from "./routes/question.ts";
 import { createStatusRouter } from "./routes/status.ts";
