@@ -64,7 +64,7 @@ export const envSchema = z
      *
      * @example "http://localhost:6006"
      */
-    PHOENIX_COLLECTOR_ENDPOINT: z.url().default(""),
+    PHOENIX_COLLECTOR_ENDPOINT: z.union([z.url(), z.literal(""), z.literal(undefined)]).default(""),
     /**
      * The Arize Phoenix API key for authentication.
      *
