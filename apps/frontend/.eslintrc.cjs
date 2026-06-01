@@ -25,7 +25,8 @@ const config = {
       jsx: true,
     },
     ecmaVersion: 2015,
-    project: "./tsconfig.json",
+    tsconfigRootDir: __dirname,
+    project: `${__dirname}/tsconfig.json`,
     sourceType: "module",
   },
   plugins: ["react", "@typescript-eslint", "jsx-a11y", "prettier", "compat", "@vitest"],
@@ -41,7 +42,7 @@ const config = {
       },
       typescript: {
         alwaysTryTypes: true,
-        project: "./tsconfig.json",
+        project: `${__dirname}/tsconfig.json`,
       },
     },
   },
