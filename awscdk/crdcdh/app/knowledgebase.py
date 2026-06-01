@@ -177,7 +177,7 @@ class KnowledgeBase(Construct):
         self.data_source_pdfs = bedrock.CfnDataSource(
             self,
             f"{self.namingPrefix}-datasource-pdfs",
-            name=f"{self.namingPrefix}-datasource-unstructured-pdfs",
+            name="unstructured-pdfs",
             knowledge_base_id=self.knowledge_base.attr_knowledge_base_id,
             data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
                 type="S3",
@@ -206,8 +206,8 @@ class KnowledgeBase(Construct):
         # Data Source 2 - Unstructured Markdown with NO chunking
         self.data_source_markdown = bedrock.CfnDataSource(
             self,
-            f"{self.namingPrefix}-s3datasource-markdown",
-            name=f"{self.namingPrefix}-datasource-unstructured-markdown",
+            f"{self.namingPrefix}-datasource-markdown",
+            name="unstructured-markdown",
             knowledge_base_id=self.knowledge_base.attr_knowledge_base_id,
             data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
                 type="S3",
@@ -226,4 +226,27 @@ class KnowledgeBase(Construct):
         self.data_source_markdown.add_dependency(self.knowledge_base)
 
 
+        # Data Source 3 - structured yaml
+        self.data_source_yaml = bedrock.CfnDataSource(
+            self,
+            f"{self.namingPrefix}-datasource-structured-yaml",
+            name="structured-yaml",
+            knowledge_base_id=self.knowledge_base.attr_knowledge_base_id,
+            data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
+                type="S3",
+                s3_configuration=bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
+                    bucket_arn=self.datasource_bucket.bucket_arn,
+                    inclusion_prefixes=["structured-yaml/"]
+                ),
+            ),
+            vector_ingestion_configuration=bedrock.CfnDataSource.VectorIngestionConfigurationProperty(
+                chunking_configuration=bedrock.CfnDataSource.ChunkingConfigurationProperty(
+                    chunking_strategy="FIXED_SIZE",
+                    fixed_size_chunking_configuration=bedrock.CfnDataSource.FixedSizeChunkingConfigurationProperty(
+                        max_tokens=4096,
+                        overlap_percentage=0,
+                    ),
+                ),
+            ),
+        )
 
