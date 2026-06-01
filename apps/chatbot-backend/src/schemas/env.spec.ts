@@ -36,13 +36,13 @@ describe("envSchema", () => {
     expect(result.SERVICE_VERSION).toBe("3.7.0.123");
   });
 
-  it("rejects a service version that is not semantically formatted", () => {
-    const result = envSchema.safeParse({
+  it("falls back to the default when a service version is not semantically formatted", () => {
+    const result = envSchema.parse({
       ...baseEnv,
       SERVICE_VERSION: "version-3",
     });
 
-    expect(result.success).toBe(false);
+    expect(result.SERVICE_VERSION).toBe("");
   });
 
   it("requires Phoenix API key and project name when the collector endpoint is provided", () => {

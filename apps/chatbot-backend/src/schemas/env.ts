@@ -55,10 +55,10 @@ export const envSchema = z
     /**
      * The current version of the service, following semantic versioning (e.g., "3.6.0.233").
      */
-    SERVICE_VERSION: z
-      .string()
-      .regex(/^(\d{1,4}\.\d{1,4}\.\d{1,4}).*/, "SERVICE_VERSION is not formatted semantically")
-      .default(""),
+    SERVICE_VERSION: z.preprocess(
+      (value) => (typeof value === "string" && /^(\d{1,4}\.\d{1,4}\.\d{1,4}).*/.test(value) ? value : undefined),
+      z.string().default("")
+    ),
     /**
      * The Arize Phoenix collector endpoint URL for telemetry data collection.
      *
