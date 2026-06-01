@@ -13,7 +13,7 @@ export const removeMarkdownSyntax = (content: string): string =>
     .trim();
 
 /**
- * Gets user-visible text from either markdown content or legacy HTML content.
+ * Gets user-visible text from stored markdown rich-text content.
  */
 export const getPlainText = (content: string): string => {
   if (!content.trim()) {
