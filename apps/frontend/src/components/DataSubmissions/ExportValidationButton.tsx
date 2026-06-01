@@ -187,6 +187,10 @@ export const ExportValidationButton: React.FC<Props> = ({
     setLoading(true);
 
     try {
+      enqueueSnackbar("Generating the validation results file. This may take a moment...", {
+        variant: "default",
+      });
+
       const { ValidationResultsExcelBuilder } = await import(
         "@/classes/ValidationResultsExcelBuilder"
       );
@@ -210,7 +214,7 @@ export const ExportValidationButton: React.FC<Props> = ({
         },
         (resp) => resp?.submissionQCResults?.results ?? [],
         (resp) => resp?.submissionQCResults?.total ?? 0,
-        { pageSize: 4_000 }
+        { pageSize: 5_000 }
       );
 
       if (!exportRows.length) {
