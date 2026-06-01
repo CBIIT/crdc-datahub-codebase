@@ -1,5 +1,5 @@
 import type { FormattedText, TextMarks } from "../../types";
-import { ensureTextChildren } from "../documentUtils";
+import { normalizeTextChildren } from "../documentUtils";
 
 type MarkdownTokenResult = {
   nodes: FormattedText[];
@@ -144,5 +144,5 @@ export const parseMarkdownInline = (text: string, marks: TextMarks = {}): Format
     remainingText = remainingText.slice(nextToken.consumedText.length);
   }
 
-  return ensureTextChildren(result);
+  return normalizeTextChildren(result);
 };
