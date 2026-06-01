@@ -93,6 +93,10 @@ export class ValidationResultsExcelBuilder {
     });
 
     ValidationResultsExcelBuilder.setSheetRows(ws, rows);
+
+    ws.getColumn("Validated Date").width = 20;
+    ws.getColumn("Issue Type").width = 20;
+    ws.getColumn("Full Issue Description").width = 85;
   }
 
   private addUpdatedSheets(): void {
@@ -164,7 +168,7 @@ export class ValidationResultsExcelBuilder {
     ws: ExcelJS.Worksheet,
     rows: T[]
   ): void {
-    const first = rows[0] ?? ({} as T);
+    const first = rows[0];
     const keys = Object.keys(first);
 
     ws.columns = keys.map((key) => ({
@@ -186,7 +190,7 @@ export class ValidationResultsExcelBuilder {
   }
 
   private static normalizeIssueDescription(value?: string): string {
-    if (!value) {
+    if (!value || typeof value !== "string") {
       return "";
     }
 
