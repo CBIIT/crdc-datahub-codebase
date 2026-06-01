@@ -1,35 +1,14 @@
 import { LoadingButton } from "@mui/lab";
 import { Box, Button, ButtonProps, DialogProps, Typography, styled } from "@mui/material";
 import { isEqual } from "lodash";
-import { FC, ReactNode, memo, useMemo } from "react";
+import { FC, ReactNode, memo, useCallback, useMemo, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
 import Dialog from "../GenericDialog";
+import RichTextEditor from "../RichTextEditor";
+import type { RichTextEditorHandle } from "../RichTextEditor";
+import { getPlainTextLength } from "../RichTextEditor/utils/plainTextUtils";
 import StyledHelperText from "../StyledFormComponents/StyledHelperText";
-import BaseOutlinedInput from "../StyledFormComponents/StyledOutlinedInput";
-
-const StyledOutlinedInput = styled(BaseOutlinedInput)({
-  marginTop: "24px",
-  width: "fit-content",
-  maxWidth: "100%",
-  "&.MuiInputBase-multiline": {
-    padding: "12px",
-    alignItems: "flex-start",
-  },
-  "& textarea.MuiInputBase-inputMultiline": {
-    resize: "both",
-    overflow: "auto !important",
-    padding: 0,
-    lineHeight: "25px",
-    width: "min(600px, calc(100vw - 150px))",
-    minWidth: "min(750px, calc(100vw - 150px))",
-    maxWidth: "min(1440px, 80vw)",
-    height: "min(375px, calc(100vh - 340px))",
-    minHeight: "clamp(100px, calc(100vh - 340px), 375px)",
-    maxHeight: "min(500px, calc(100vh - 340px))",
-    boxSizing: "border-box",
-  },
-});
 
 const StyledCharacterCount = styled(Box)({
   display: "flex",
@@ -96,7 +75,6 @@ const ReviewFormDialog: FC<Props> = ({
 }) => {
   const {
     handleSubmit,
-    watch,
     control,
     reset,
     formState: { errors },
@@ -108,11 +86,13 @@ const ReviewFormDialog: FC<Props> = ({
     },
   });
 
-  const reviewComment = watch("reviewComment");
+  const [plainTextLength, setPlainTextLength] = useState(0);
+
+  const editorRef = useRef<RichTextEditorHandle>(null);
+
   const reviewCommentLengthLabel = useMemo(
-    () =>
-      Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(reviewComment?.length || 0),
-    [reviewComment]
+    () => Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(plainTextLength),
+    [plainTextLength]
   );
   const reviewCommentLimitLabel = Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
@@ -126,11 +106,17 @@ const ReviewFormDialog: FC<Props> = ({
     onCancel?.();
   };
 
+  const handleExited = useCallback(() => {
+    reset();
+    setPlainTextLength(0);
+    editorRef.current?.reset();
+  }, [reset]);
+
   return (
     <StyledDialog
       open={open}
       onClose={handleOnCancel}
-      TransitionProps={{ onExited: () => reset() }}
+      TransitionProps={{ onExited: handleExited }}
       title={header}
       scroll="body"
       actions={
@@ -145,7 +131,7 @@ const ReviewFormDialog: FC<Props> = ({
           <LoadingButton
             data-testid="review-form-dialog-confirm-button"
             onClick={handleSubmit(handleOnSubmit)}
-            disabled={!reviewComment?.trim()?.length || loading}
+            disabled={!plainTextLength || loading}
             loading={loading}
             {...confirmButtonProps}
           >
@@ -160,25 +146,22 @@ const ReviewFormDialog: FC<Props> = ({
         control={control}
         rules={{
           validate: {
-            required: (v: string) => v.trim() !== "" || "This field is required",
+            required: (v: string) => getPlainTextLength(v) > 0 || "This field is required",
             maxLength: (v: string) =>
-              v.trim().length <= MAX_REVIEW_COMMENT_LIMIT ||
+              getPlainTextLength(v) <= MAX_REVIEW_COMMENT_LIMIT ||
               `Maximum of ${reviewCommentLimitLabel} characters allowed`,
           },
         }}
         render={({ field }) => (
-          <StyledOutlinedInput
-            {...field}
-            inputProps={{
-              maxLength: MAX_REVIEW_COMMENT_LIMIT,
-              "aria-label": "Review comment input",
-            }}
-            name="reviewComment"
+          <RichTextEditor
+            ref={editorRef}
+            value={field.value}
+            onChange={field.onChange}
+            onTextLengthChange={setPlainTextLength}
             placeholder={`${reviewCommentLimitLabel} characters allowed`}
+            disabled={loading}
+            aria-label="Review comment input"
             data-testid="review-comment"
-            sx={{ paddingY: "16px" }}
-            required
-            multiline
           />
         )}
       />
