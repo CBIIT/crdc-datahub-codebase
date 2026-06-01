@@ -1,8 +1,8 @@
 import type { Descendant } from "slate";
 
+import type { ListFormat, ListItemElement } from "../../types";
 import { createEmptyDocument } from "../documentUtils";
 import { createListItem } from "../elementFactory";
-import type { ListFormat, ListItemElement } from "../types";
 
 import { parseMarkdownInline } from "./markdownInlineParser";
 
