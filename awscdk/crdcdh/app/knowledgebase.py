@@ -244,7 +244,7 @@ class KnowledgeBase(Construct):
                     chunking_strategy="FIXED_SIZE",
                     fixed_size_chunking_configuration=bedrock.CfnDataSource.FixedSizeChunkingConfigurationProperty(
                         max_tokens=4096,
-                        overlap_percentage=0,
+                        overlap_percentage=10,
                     ),
                 ),
             ),
