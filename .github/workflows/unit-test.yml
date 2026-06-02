@@ -82,7 +82,7 @@ jobs:
 
       - name: Install Dependencies
         working-directory: ${{ matrix.context }}
-        run: npm ci
+        run: npm install
 
       - name: Setup Prisma
         if: ${{ matrix.prisma }}
