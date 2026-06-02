@@ -15,10 +15,10 @@ import React, {
 import { TOOLTIP_TEXT } from "@/config/DashboardTooltips";
 
 import { useSubmissionContext } from "../../components/Contexts/SubmissionContext";
-import { ExportValidationButton } from "../../components/DataSubmissions/ExportValidationButton";
 import QualityControlFilters from "../../components/DataSubmissions/QualityControlFilters";
 import DoubleLabelSwitch from "../../components/DoubleLabelSwitch";
 import ErrorDetailsDialog, { ErrorDetailsIssue } from "../../components/ErrorDetailsDialog/v2";
+import ExportValidationButton from "../../components/ExportValidationButton";
 import GenericTable, { Column } from "../../components/GenericTable";
 import NodeComparison from "../../components/NodeComparison";
 import PVRequestButton from "../../components/PVRequestButton";
@@ -510,7 +510,6 @@ const QualityControl: FC = () => {
     () => (
       <Stack direction="row" alignItems="center" gap="8px" marginRight="37px">
         <ExportValidationButton
-          submission={submissionData?.getSubmission}
           fields={isAggregated ? aggregatedCSVColumns : csvColumns}
           isAggregated={isAggregated}
           filters={filtersRef.current}
@@ -518,7 +517,7 @@ const QualityControl: FC = () => {
         />
       </Stack>
     ),
-    [submissionData?.getSubmission, totalData, isAggregated, filtersRef.current]
+    [totalData, isAggregated, filtersRef.current]
   );
 
   const handleOnFiltersChange = (data: QualityControlFilterForm) => {

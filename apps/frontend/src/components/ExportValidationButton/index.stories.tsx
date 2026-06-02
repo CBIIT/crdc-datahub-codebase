@@ -1,11 +1,12 @@
 import { MockedResponse } from "@apollo/client/testing";
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { expect, screen, userEvent, within } from "@storybook/test";
 
 import { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
 import { aggregatedQCResultFactory } from "@/factories/submission/AggregatedQCResultFactory";
 import { errorMessageFactory } from "@/factories/submission/ErrorMessageFactory";
 import { qcResultFactory } from "@/factories/submission/QCResultFactory";
+import { submissionCtxStateFactory } from "@/factories/submission/SubmissionContextFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
 import {
   AGGREGATED_SUBMISSION_QC_RESULTS,
@@ -16,7 +17,9 @@ import {
   SubmissionQCResultsResp,
 } from "@/graphql";
 
-import { ExportValidationButton } from "./ExportValidationButton";
+import { SubmissionContext, SubmissionCtxStatus } from "../Contexts/SubmissionContext";
+
+import ExportValidationButton from "./index";
 
 type CustomStoryProps = React.ComponentProps<typeof ExportValidationButton>;
 
@@ -88,15 +91,31 @@ const aggregatedFields: CustomStoryProps["fields"] = {
   Count: (row: AggregatedQCResult) => row?.count ?? 0,
 };
 
+const withSubmissionContext: Decorator<CustomStoryProps> = (Story) => (
+  <SubmissionContext.Provider
+    value={submissionCtxStateFactory.build({
+      status: SubmissionCtxStatus.LOADED,
+      data: {
+        getSubmission: submissionFactory.build({
+          _id: "storybook-export-validation-submission",
+          name: "Validation Export Story Submission",
+        }),
+        getSubmissionAttributes: null,
+        submissionStats: { stats: [] },
+      },
+      error: null,
+    })}
+  >
+    <Story />
+  </SubmissionContext.Provider>
+);
+
 const meta: Meta<CustomStoryProps> = {
   title: "Data Submissions / Export Validation Button",
   component: ExportValidationButton,
   tags: ["autodocs"],
+  decorators: [withSubmissionContext],
   args: {
-    submission: submissionFactory.build({
-      _id: "storybook-export-validation-submission",
-      name: "Validation Export Story Submission",
-    }),
     fields: {},
     filters: defaultFilters,
   },

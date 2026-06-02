@@ -2,10 +2,12 @@ import { useLazyQuery } from "@apollo/client";
 import { CloudDownload } from "@mui/icons-material";
 import { IconButtonProps, IconButton, styled } from "@mui/material";
 import dayjs from "dayjs";
+import { isEqual } from "lodash";
 import { useSnackbar } from "notistack";
 import { unparse } from "papaparse";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
+import { useSubmissionContext } from "@/components/Contexts/SubmissionContext";
 import type { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
 import {
   AGGREGATED_SUBMISSION_QC_RESULTS,
@@ -20,10 +22,6 @@ import { downloadBlob, fetchAllData, filterAlphaNumeric, Logger } from "@/utils"
 import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
 
 export type Props = {
-  /**
-   * The full Data Submission object to export validation results for
-   */
-  submission: Submission;
   /**
    * The K:V pair of the fields that should be exported where
    * `key` is the column header and `value` is a function
@@ -55,14 +53,15 @@ const StyledTooltip = styled(StyledFormTooltip)({
  *
  * @returns {React.FC} The export validation button.
  */
-export const ExportValidationButton: React.FC<Props> = ({
-  submission,
+const ExportValidationButton: React.FC<Props> = ({
   fields,
   isAggregated = false,
   filters,
   disabled,
   ...buttonProps
 }: Props) => {
+  const { data: submissionData } = useSubmissionContext();
+  const submission = submissionData?.getSubmission;
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -281,3 +280,5 @@ export const ExportValidationButton: React.FC<Props> = ({
     </StyledTooltip>
   );
 };
+
+export default memo<Props>(ExportValidationButton, isEqual);
