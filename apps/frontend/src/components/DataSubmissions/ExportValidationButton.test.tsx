@@ -4,25 +4,26 @@ import { GraphQLError } from "graphql";
 import React, { FC } from "react";
 import { axe } from "vitest-axe";
 
+import type { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
 import { aggregatedQCResultFactory } from "@/factories/submission/AggregatedQCResultFactory";
 import { errorMessageFactory } from "@/factories/submission/ErrorMessageFactory";
 import { qcResultFactory } from "@/factories/submission/QCResultFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
-
 import {
   SUBMISSION_QC_RESULTS,
   SubmissionQCResultsResp,
   AGGREGATED_SUBMISSION_QC_RESULTS,
   AggregatedSubmissionQCResultsResp,
-} from "../../graphql";
-import { render, fireEvent, waitFor } from "../../test-utils";
+} from "@/graphql";
+import { render, fireEvent, waitFor } from "@/test-utils";
+import * as utils from "@/utils";
 
 import { ExportValidationButton } from "./ExportValidationButton";
 
 const mockDownloadBlob = vi.fn();
 
-vi.mock("../../utils", async () => ({
-  ...(await vi.importActual("../../utils")),
+vi.mock("@/utils", async () => ({
+  ...(await vi.importActual("@/utils")),
   downloadBlob: (...args: unknown[]) => mockDownloadBlob(...args),
 }));
 
@@ -44,6 +45,13 @@ const baseAggregatedQCResult: AggregatedQCResult = aggregatedQCResultFactory.bui
   count: 25,
 });
 
+const defaultFilters: QualityControlFilterForm = {
+  issueType: "All",
+  batchID: "All",
+  nodeType: "All",
+  severity: "All",
+};
+
 describe("ExportValidationButton (Expanded View) tests", () => {
   afterEach(() => {
     vi.resetAllMocks();
@@ -55,6 +63,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         <ExportValidationButton
           submission={submissionFactory.build({ _id: "example-sub-id" })}
           fields={{}}
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -68,6 +77,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         <ExportValidationButton
           submission={submissionFactory.build({ _id: "test-tooltip-id" })}
           fields={{}}
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -92,7 +102,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: 1000,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -117,6 +127,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         <ExportValidationButton
           submission={submissionFactory.build({ _id: submissionID })}
           fields={{}}
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -147,7 +158,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             nodeTypes: ["participant"],
             batchIDs: [101],
             severities: "Warning",
-            first: 1000,
+            first: 5000,
             offset: 0,
           },
         },
@@ -177,12 +188,12 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         <ExportValidationButton
           submission={submissionFactory.build({ _id: submissionID })}
           fields={{}}
-          getExpandedFilters={() => ({
+          filters={{
             issueType: "M018",
             nodeType: "participant",
             batchID: 101,
             severity: "Warning",
-          })}
+          }}
         />
       </TestParent>
     );
@@ -222,7 +233,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
               id: "example-dynamic-filename-id",
               sortDirection: "asc",
               orderBy: "displayID",
-              first: 1000,
+              first: 5000,
               offset: 0,
               severities: "All",
             },
@@ -261,6 +272,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
               name: original,
             })}
             fields={fields}
+            filters={defaultFilters}
           />
         </TestParent>
       );
@@ -293,7 +305,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: 1000,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -314,6 +326,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         <ExportValidationButton
           submission={submissionFactory.build({ _id: submissionID })}
           fields={{}}
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -353,7 +366,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: 1000,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -379,6 +392,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         <ExportValidationButton
           submission={submissionFactory.build({ _id: submissionID })}
           fields={{}}
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -406,7 +420,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: 1000,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -420,6 +434,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         <ExportValidationButton
           submission={submissionFactory.build({ _id: submissionID })}
           fields={{}}
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -428,7 +443,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve submission quality control results.",
+        expect.stringContaining("Unable to export expanded validation results. Error:"),
         {
           variant: "error",
         }
@@ -448,7 +463,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: 1000,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -464,6 +479,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         <ExportValidationButton
           submission={submissionFactory.build({ _id: submissionID })}
           fields={{}}
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -472,7 +488,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve submission quality control results.",
+        expect.stringContaining("Unable to export expanded validation results. Error:"),
         {
           variant: "error",
         }
@@ -492,7 +508,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: 1000,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -517,6 +533,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         <ExportValidationButton
           submission={submissionFactory.build({ _id: submissionID })}
           fields={{}}
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -525,7 +542,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        expect.stringContaining("Unable to export validation results. Error:"),
+        expect.stringContaining("Unable to export expanded validation results. Error:"),
         {
           variant: "error",
         }
@@ -578,6 +595,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           submission={submissionFactory.build({ _id: aggregatorID })}
           fields={{}}
           isAggregated
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -621,6 +639,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           submission={submissionFactory.build({ _id: aggregatorID })}
           fields={{}}
           isAggregated
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -677,6 +696,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           submission={submissionFactory.build({ _id: aggregatorID, name: "my aggregator" })}
           fields={fields}
           isAggregated
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -718,6 +738,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           submission={submissionFactory.build({ _id: aggregatorID })}
           fields={{}}
           isAggregated
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -759,6 +780,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           submission={submissionFactory.build({ _id: aggregatorID })}
           fields={{}}
           isAggregated
+          filters={defaultFilters}
         />
       </TestParent>
     );
@@ -768,6 +790,110 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
         "Unable to retrieve submission aggregated quality control results.",
+        { variant: "error" }
+      );
+    });
+  });
+
+  it("should show a friendly snackbar when CSV row formatting fails", async () => {
+    const aggregatorID = "aggregated-formatter-throws";
+
+    const aggregatorMocks: MockedResponse<AggregatedSubmissionQCResultsResp>[] = [
+      {
+        request: {
+          query: AGGREGATED_SUBMISSION_QC_RESULTS,
+          variables: {
+            submissionID: aggregatorID,
+            partial: false,
+            first: -1,
+            orderBy: "title",
+            sortDirection: "asc",
+          },
+        },
+        result: {
+          data: {
+            aggregatedSubmissionQCResults: {
+              total: 1,
+              results: [{ ...baseAggregatedQCResult }],
+            },
+          },
+        },
+      },
+    ];
+
+    const fields = {
+      "Issue Type": () => {
+        throw new Error("formatter failed"); // Mock a failure
+      },
+    };
+
+    const { getByTestId } = render(
+      <TestParent mocks={aggregatorMocks}>
+        <ExportValidationButton
+          submission={submissionFactory.build({ _id: aggregatorID })}
+          fields={fields}
+          isAggregated
+          filters={defaultFilters}
+        />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("export-validation-button"));
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        expect.stringContaining("Unable to export validation results. Error:"),
+        { variant: "error" }
+      );
+    });
+  });
+
+  it("should show a friendly snackbar when aggregated export setup fails", async () => {
+    const aggregatorID = "aggregated-setup-throws";
+
+    const aggregatorMocks: MockedResponse<AggregatedSubmissionQCResultsResp>[] = [
+      {
+        request: {
+          query: AGGREGATED_SUBMISSION_QC_RESULTS,
+          variables: {
+            submissionID: aggregatorID,
+            partial: false,
+            first: -1,
+            orderBy: "title",
+            sortDirection: "asc",
+          },
+        },
+        result: {
+          data: {
+            aggregatedSubmissionQCResults: {
+              total: 1,
+              results: [{ ...baseAggregatedQCResult }],
+            },
+          },
+        },
+      },
+    ];
+
+    vi.spyOn(utils, "filterAlphaNumeric").mockImplementation(() => {
+      throw new Error("filename normalization failed"); // Mock a failure in filename generation
+    });
+
+    const { getByTestId } = render(
+      <TestParent mocks={aggregatorMocks}>
+        <ExportValidationButton
+          submission={submissionFactory.build({ _id: aggregatorID })}
+          fields={{}}
+          isAggregated
+          filters={defaultFilters}
+        />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("export-validation-button"));
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        expect.stringContaining("Unable to export aggregated validation results. Error:"),
         { variant: "error" }
       );
     });

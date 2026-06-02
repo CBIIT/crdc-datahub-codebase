@@ -94,6 +94,10 @@ export class ValidationResultsExcelBuilder {
 
     ValidationResultsExcelBuilder.setSheetRows(ws, rows);
 
+    if (!rows.length) {
+      return;
+    }
+
     ws.getColumn("Validated Date").width = 20;
     ws.getColumn("Issue Type").width = 20;
     ws.getColumn("Full Issue Description").width = 85;
@@ -168,6 +172,11 @@ export class ValidationResultsExcelBuilder {
     ws: ExcelJS.Worksheet,
     rows: T[]
   ): void {
+    if (!rows.length) {
+      ws.views = [{ state: "frozen", ySplit: 1 }];
+      return;
+    }
+
     const first = rows[0];
     const keys = Object.keys(first);
 
