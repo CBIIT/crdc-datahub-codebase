@@ -512,12 +512,12 @@ const QualityControl: FC = () => {
         <ExportValidationButton
           fields={isAggregated ? aggregatedCSVColumns : csvColumns}
           isAggregated={isAggregated}
-          filters={filtersRef.current}
+          filtersRef={filtersRef}
           disabled={totalData <= 0}
         />
       </Stack>
     ),
-    [totalData, isAggregated, filtersRef.current]
+    [totalData, isAggregated]
   );
 
   const handleOnFiltersChange = (data: QualityControlFilterForm) => {

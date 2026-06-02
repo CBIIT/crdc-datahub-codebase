@@ -5,7 +5,7 @@ import dayjs from "dayjs";
 import { isEqual } from "lodash";
 import { useSnackbar } from "notistack";
 import { unparse } from "papaparse";
-import { memo, useMemo, useState } from "react";
+import { memo, MutableRefObject, useMemo, useState } from "react";
 
 import { useSubmissionContext } from "@/components/Contexts/SubmissionContext";
 import type { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
@@ -35,7 +35,7 @@ export type Props = {
    * @default false
    */
   isAggregated?: boolean;
-  filters: QualityControlFilterForm;
+  filtersRef: MutableRefObject<QualityControlFilterForm>;
 } & IconButtonProps;
 
 const StyledIconButton = styled(IconButton)({
@@ -56,14 +56,15 @@ const StyledTooltip = styled(StyledFormTooltip)({
 const ExportValidationButton: React.FC<Props> = ({
   fields,
   isAggregated = false,
-  filters,
+  filtersRef,
   disabled,
   ...buttonProps
 }: Props) => {
-  const { data: submissionData } = useSubmissionContext();
-  const submission = submissionData?.getSubmission;
+  const { data } = useSubmissionContext();
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState<boolean>(false);
+
+  const { _id, name } = data?.getSubmission ?? {};
 
   const tooltip = useMemo<JSX.Element>(() => {
     if (isAggregated) {
@@ -127,7 +128,7 @@ const ExportValidationButton: React.FC<Props> = ({
    * @returns {string} A formatted file name for the exported file
    */
   const createFileName = (extension: "csv" | "xlsx" = "csv"): string => {
-    const filteredName = filterAlphaNumeric(submission.name?.trim()?.replaceAll(" ", "-"), "-");
+    const filteredName = filterAlphaNumeric(name?.trim()?.replaceAll(" ", "-"), "-");
     return `${filteredName}-${dayjs().format("YYYY-MM-DDTHHmmss")}.${extension}`;
   };
 
@@ -143,7 +144,7 @@ const ExportValidationButton: React.FC<Props> = ({
     try {
       const { data, error } = await getAggregatedSubmissionQCResults({
         variables: {
-          submissionID: submission?._id,
+          submissionID: _id,
           partial: false,
           first: -1,
           orderBy: "title",
@@ -201,15 +202,22 @@ const ExportValidationButton: React.FC<Props> = ({
       >(
         getSubmissionQCResults,
         {
-          id: submission?._id,
-          sortDirection: "asc", // TODO: Allow user to specify this?
+          id: _id,
+          sortDirection: "asc",
           orderBy: "displayID",
           issueCode:
-            !filters?.issueType || filters.issueType === "All" ? undefined : filters.issueType,
+            !filtersRef.current.issueType || filtersRef.current.issueType === "All"
+              ? undefined
+              : filtersRef.current.issueType,
           nodeTypes:
-            !filters?.nodeType || filters.nodeType === "All" ? undefined : [filters.nodeType],
-          batchIDs: !filters?.batchID || filters.batchID === "All" ? undefined : [filters.batchID],
-          severities: filters?.severity || "All",
+            !filtersRef.current.nodeType || filtersRef.current.nodeType === "All"
+              ? undefined
+              : [filtersRef.current.nodeType],
+          batchIDs:
+            !filtersRef.current.batchID || filtersRef.current.batchID === "All"
+              ? undefined
+              : [filtersRef.current.batchID],
+          severities: filtersRef.current.severity || "All",
         },
         (resp) => resp?.submissionQCResults?.results ?? [],
         (resp) => resp?.submissionQCResults?.total ?? 0,

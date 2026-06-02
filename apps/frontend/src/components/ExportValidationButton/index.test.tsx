@@ -1,7 +1,7 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
-import React, { FC, useMemo } from "react";
+import React, { FC, MutableRefObject, useMemo } from "react";
 import { axe } from "vitest-axe";
 
 import type { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
@@ -76,6 +76,10 @@ const defaultFilters: QualityControlFilterForm = {
   severity: "All",
 };
 
+const defaultFiltersRef: MutableRefObject<QualityControlFilterForm> = {
+  current: defaultFilters,
+};
+
 describe("ExportValidationButton (Expanded View) tests", () => {
   afterEach(() => {
     vi.resetAllMocks();
@@ -84,7 +88,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
   it("should not have accessibility violations", async () => {
     const { container } = render(
       <TestParent mocks={[]} submission={{ _id: "example-sub-id" }}>
-        <ExportValidationButton fields={{}} filters={defaultFilters} />
+        <ExportValidationButton fields={{}} filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -94,7 +98,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
   it("should have a tooltip present on the button", async () => {
     const { getByTestId, findByRole } = render(
       <TestParent mocks={[]} submission={{ _id: "test-tooltip-id" }}>
-        <ExportValidationButton fields={{}} filters={defaultFilters} />
+        <ExportValidationButton fields={{}} filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -140,7 +144,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={mocks} submission={{ _id: submissionID }}>
-        <ExportValidationButton fields={{}} filters={defaultFilters} />
+        <ExportValidationButton fields={{}} filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -199,11 +203,13 @@ describe("ExportValidationButton (Expanded View) tests", () => {
       <TestParent mocks={mocks} submission={{ _id: submissionID }}>
         <ExportValidationButton
           fields={{}}
-          filters={{
-            issueType: "M018",
-            nodeType: "participant",
-            batchID: 101,
-            severity: "Warning",
+          filtersRef={{
+            current: {
+              issueType: "M018",
+              nodeType: "participant",
+              batchID: 101,
+              severity: "Warning",
+            },
           }}
         />
       </TestParent>
@@ -280,7 +286,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
           mocks={mocks}
           submission={{ _id: "example-dynamic-filename-id", name: original }}
         >
-          <ExportValidationButton fields={fields} filters={defaultFilters} />
+          <ExportValidationButton fields={fields} filtersRef={defaultFiltersRef} />
         </TestParent>
       );
 
@@ -330,7 +336,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={mocks} submission={{ _id: submissionID }}>
-        <ExportValidationButton fields={{}} filters={defaultFilters} />
+        <ExportValidationButton fields={{}} filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -392,7 +398,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={mocks} submission={{ _id: submissionID }}>
-        <ExportValidationButton fields={{}} filters={defaultFilters} />
+        <ExportValidationButton fields={{}} filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -430,7 +436,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={mocks} submission={{ _id: submissionID }}>
-        <ExportValidationButton fields={{}} filters={defaultFilters} />
+        <ExportValidationButton fields={{}} filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -471,7 +477,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={mocks} submission={{ _id: submissionID }}>
-        <ExportValidationButton fields={{}} filters={defaultFilters} />
+        <ExportValidationButton fields={{}} filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -521,7 +527,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={mocks} submission={{ _id: submissionID }}>
-        <ExportValidationButton fields={{}} filters={defaultFilters} />
+        <ExportValidationButton fields={{}} filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -578,7 +584,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
-        <ExportValidationButton fields={{}} isAggregated filters={defaultFilters} />
+        <ExportValidationButton fields={{}} isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -617,7 +623,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
-        <ExportValidationButton fields={{}} isAggregated filters={defaultFilters} />
+        <ExportValidationButton fields={{}} isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -669,7 +675,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID, name: "my aggregator" }}>
-        <ExportValidationButton fields={fields} isAggregated filters={defaultFilters} />
+        <ExportValidationButton fields={fields} isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -706,7 +712,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
-        <ExportValidationButton fields={{}} isAggregated filters={defaultFilters} />
+        <ExportValidationButton fields={{}} isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -743,7 +749,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
-        <ExportValidationButton fields={{}} isAggregated filters={defaultFilters} />
+        <ExportValidationButton fields={{}} isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -791,7 +797,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
-        <ExportValidationButton fields={fields} isAggregated filters={defaultFilters} />
+        <ExportValidationButton fields={fields} isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -837,7 +843,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     const { getByTestId } = render(
       <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
-        <ExportValidationButton fields={{}} isAggregated filters={defaultFilters} />
+        <ExportValidationButton fields={{}} isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
