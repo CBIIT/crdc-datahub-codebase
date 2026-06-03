@@ -1,14 +1,18 @@
 # Folders
+.vscode
 .git
 .github
 .storybook
 coverage
 node_modules
 docs
+build
+storybook-static
 
 # Files
+.DS_Store
 .env
-.env.example
+.env.*
 .prettier*
 .eslint*
 webpack-stats.json
