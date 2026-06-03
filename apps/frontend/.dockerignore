@@ -1,0 +1,16 @@
+# Folders
+.git
+.github
+.storybook
+coverage
+node_modules
+docs
+
+# Files
+.env
+.env.example
+.prettier*
+.eslint*
+webpack-stats.json
+CHANGELOG.md
+README.md
