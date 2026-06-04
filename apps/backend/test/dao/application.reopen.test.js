@@ -4,7 +4,6 @@ const ERROR = require('../../constants/error-constants');
 
 describe('ApplicationDAO.reopenApprovedRevision', () => {
     let dao;
-    let mockCollection;
 
     const sourceId = 'approved-source-id';
     const newApp = {
@@ -16,20 +15,18 @@ describe('ApplicationDAO.reopenApprovedRevision', () => {
     };
 
     beforeEach(() => {
-        mockCollection = {
-            updateOne: jest.fn(),
-            insert: jest.fn(),
-        };
-        dao = new ApplicationDAO(mockCollection);
+        dao = new ApplicationDAO({});
+        dao.updateMany = jest.fn();
+        dao.insert = jest.fn();
     });
 
     it('links source then inserts successor when update matches one document', async () => {
-        mockCollection.updateOne.mockResolvedValue({ modifiedCount: 1 });
-        mockCollection.insert.mockResolvedValue({ acknowledged: true });
+        dao.updateMany.mockResolvedValue({ modifiedCount: 1 });
+        dao.insert.mockResolvedValue({ acknowledged: true });
 
         const result = await dao.reopenApprovedRevision(sourceId, newApp);
 
-        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+        expect(dao.updateMany).toHaveBeenCalledWith(
             {
                 _id: sourceId,
                 status: APPROVED,
@@ -43,38 +40,37 @@ describe('ApplicationDAO.reopenApprovedRevision', () => {
                 updatedAt: newApp.updatedAt,
             })
         );
-        expect(mockCollection.insert).toHaveBeenCalledWith(newApp);
+        expect(dao.insert).toHaveBeenCalledWith(newApp);
         expect(result).toEqual(expect.objectContaining({ _id: newApp._id, status: 'Reopened' }));
     });
 
     it('throws INVALID_STATE when source update matches zero documents', async () => {
-        mockCollection.updateOne.mockResolvedValue({ modifiedCount: 0 });
+        dao.updateMany.mockResolvedValue({ modifiedCount: 0 });
 
         await expect(dao.reopenApprovedRevision(sourceId, newApp))
             .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
 
-        expect(mockCollection.insert).not.toHaveBeenCalled();
+        expect(dao.insert).not.toHaveBeenCalled();
     });
 
     it('compensates source link when insert fails', async () => {
-        mockCollection.updateOne
+        dao.updateMany
             .mockResolvedValueOnce({ modifiedCount: 1 })
             .mockResolvedValueOnce({ modifiedCount: 1 });
-        mockCollection.insert.mockRejectedValue(new Error('insert failed'));
+        dao.insert.mockRejectedValue(new Error('insert failed'));
 
         await expect(dao.reopenApprovedRevision(sourceId, newApp)).rejects.toThrow('insert failed');
 
-        expect(mockCollection.updateOne).toHaveBeenCalledTimes(2);
-        expect(mockCollection.updateOne).toHaveBeenLastCalledWith(
+        expect(dao.updateMany).toHaveBeenCalledTimes(2);
+        expect(dao.updateMany).toHaveBeenLastCalledWith(
             { _id: sourceId },
-            {},
-            { $unset: { nextRevisionId: '' } }
+            expect.objectContaining({ nextRevisionId: null })
         );
     });
 
     it('throws UPDATE_FAILED when insert is not acknowledged', async () => {
-        mockCollection.updateOne.mockResolvedValue({ modifiedCount: 1 });
-        mockCollection.insert.mockResolvedValue({ acknowledged: false });
+        dao.updateMany.mockResolvedValue({ modifiedCount: 1 });
+        dao.insert.mockResolvedValue({ acknowledged: false });
 
         await expect(dao.reopenApprovedRevision(sourceId, newApp))
             .rejects.toThrow(ERROR.UPDATE_FAILED);

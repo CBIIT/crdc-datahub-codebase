@@ -14,12 +14,16 @@ Startup (`bin/www.js`) runs this orchestrator unless `SKIP_STARTUP_MIGRATIONS=tr
 |------|---------|
 | `3-7-0-migration.js` | Orchestrator (runs all steps below) |
 | `sync-pbac-defaults-migration.js` | Sync PBAC from JSON via `recurring-steps/sync-pbac-defaults.js` |
+| `backfill-reopen-user-permissions.js` | One-time: add `submission_request:reopen:*` to existing active users by role |
 | `backfill-application-sequence-number.js` | Set `sequenceNumber: 1` where missing (CRDCDH-3970) |
 
 ## Execution order
 
-1. `sync-pbac-defaults-migration.js` (recurring)
-2. `backfill-application-sequence-number.js` (one-time)
+1. `sync-pbac-defaults-migration.js` (recurring) — merges PBAC defaults into `configuration`
+2. `backfill-reopen-user-permissions.js` (one-time backfill, idempotent via `$addToSet`)
+3. `backfill-application-sequence-number.js` (one-time)
+
+PBAC config sync runs at every startup. The reopen user backfill is a one-time data migration step; re-runs only affect users still missing the permission.
 
 ## Prerequisites
 

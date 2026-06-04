@@ -1,7 +1,7 @@
 const prisma = require("../prisma");
 const { MODEL_NAME, SORT} = require('../constants/db-constants');
 const GenericDAO = require("./generic");
-const {convertIdFields, convertMongoFilterToPrismaFilter,handleDotNotation} = require('./utils/orm-converter');
+const {convertIdFields, convertMongoFilterToPrismaFilter, nullOrMissingMongoCondition, handleDotNotation, toPrismaApplicationUpdateData} = require('./utils/orm-converter');
 
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {NEW, IN_PROGRESS, INQUIRED, REOPENED, APPROVED} = require("../constants/application-constants");
@@ -31,12 +31,8 @@ class ApplicationDAO extends GenericDAO {
         if (!application._id && !application.id) {
             throw new Error('Application must have an _id or id');
         }
-        // remove institution object if it exists
-        if (application.institution) {
-            delete application.institution;
-        }
-        // use super.update to call the update method from GenericDAO
-        return await super.update(application._id, application);
+        const prismaData = toPrismaApplicationUpdateData(application);
+        return await super.update(application._id ?? application.id, prismaData);
     }
 
     async updateMany(filter, data) {
@@ -57,13 +53,29 @@ class ApplicationDAO extends GenericDAO {
     /**
      * Find the previous submission request by ID
      * @param {string} id The ID of the submission request
-     * @returns {Promise<object|null>} The previous submission request, or null when id is falsy or no predecessor exists
+     * @returns {Promise<object|null>} The previous submission request, or null when id is falsy or no predecessor exists.
+     * Does not filter by predecessor status (used on revision re-approval).
      */
     async findPreviousSubmissionRequestByID(id) {
         if (!id) {
             return null;
         }
         return this.findFirst({ nextRevisionId: id });
+    }
+
+    /**
+     * Clear nextRevisionId on any application pointing at the given successor (revision chain prune).
+     * @param {string} applicationId Terminal or removed successor application _id
+     * @returns {Promise<{ matchedCount: number, modifiedCount: number }>}
+     */
+    async clearNextRevisionIdPointingTo(applicationId) {
+        if (!applicationId) {
+            return { matchedCount: 0, modifiedCount: 0 };
+        }
+        return this.updateMany(
+            { nextRevisionId: applicationId },
+            { nextRevisionId: null, updatedAt: getCurrentTime() }
+        );
     }
 
     /**
@@ -74,17 +86,9 @@ class ApplicationDAO extends GenericDAO {
      */
     async reopenApprovedRevision(sourceId, newApp) {
         const timestamp = newApp.updatedAt ?? getCurrentTime();
-        const sourceFilter = {
-            _id: sourceId,
-            status: APPROVED,
-            $or: [
-                { nextRevisionId: null },
-                { nextRevisionId: { $exists: false } }
-            ]
-        };
 
-        const linkResult = await this.applicationCollection.updateOne(
-            sourceFilter,
+        const linkResult = await this.updateMany(
+            { _id: sourceId, status: APPROVED, ...nullOrMissingMongoCondition('nextRevisionId') },
             { nextRevisionId: newApp._id, updatedAt: timestamp }
         );
 
@@ -93,17 +97,16 @@ class ApplicationDAO extends GenericDAO {
         }
 
         try {
-            const insertResult = await this.applicationCollection.insert(newApp);
+            const insertResult = await this.insert(newApp);
             if (!insertResult?.acknowledged) {
                 throw new Error(ERROR.UPDATE_FAILED);
             }
             return { ...newApp };
         } catch (error) {
             try {
-                await this.applicationCollection.updateOne(
+                await this.updateMany(
                     { _id: sourceId },
-                    {},
-                    { $unset: { nextRevisionId: "" } }
+                    { nextRevisionId: null, updatedAt: getCurrentTime() }
                 );
             } catch (compensateError) {
                 console.error('Failed to compensate nextRevisionId after reopen insert failure:', compensateError);

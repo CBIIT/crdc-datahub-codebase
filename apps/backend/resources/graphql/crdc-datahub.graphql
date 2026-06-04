@@ -85,6 +85,7 @@ type Application {
     # Revision chain for approved-SRF reopen (CRDCDH-3970). sequenceNumber increments per reopen; nextRevisionId links an approved revision to its successor.
     sequenceNumber: Int! # 1-based revision index; 1 for a new SRF or first approved revision
     nextRevisionId: ID # When set on an Approved SRF, points to the reopened successor; null means this is the latest approved revision eligible for Reopen
+    canBeReopened: Boolean! # true when Approved and no nextRevisionId (latest approved revision eligible for reopen)
 }
 
 type NewInstitution {
@@ -1089,7 +1090,7 @@ type Mutation {
     submitApplication(_id: ID!): Application
     "Applicant resumes work on an Inquired submission request (Inquired → In Progress). Preferred over reopenApplication."
     resumeInquiredApplication(_id: ID!): Application
-    "Admin/Fed Lead/DC Personnel with reopen permission clones an Approved SRF into a new Reopened revision; optional ownerId reassigns the applicant. Source row remains Approved and receives nextRevisionId."
+    "Admin/Fed Lead/DC Personnel with reopen:all permission clones an Approved SRF into a new Reopened revision; optional ownerId reassigns the applicant to an eligible User/Submitter. Submitter/User owners with reopen:own may reopen only their own Approved SRF; ownerId is ignored. Source row remains Approved and receives nextRevisionId."
     reopenApprovedSubmissionRequest(_id: ID!, ownerId: ID): Application
     "Deprecated because the name is misleading, use resumeInquiredApplication as a replacement. Owner-only; resumes an Inquired SRF on the same record."
     reopenApplication(_id: ID!): Application @deprecated

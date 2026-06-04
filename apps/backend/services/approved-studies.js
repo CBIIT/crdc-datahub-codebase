@@ -105,6 +105,8 @@ class ApprovedStudiesService {
             const updateStudy = {
                 ...existingStudy,
                 ...fields,
+                studyName: existingStudy.studyName,
+                studyAbbreviation: existingStudy.studyAbbreviation,
                 updatedAt: getCurrentTime(),
             };
 

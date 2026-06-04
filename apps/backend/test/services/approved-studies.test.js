@@ -1175,13 +1175,14 @@ describe('ApprovedStudiesService', () => {
             expect(result).toEqual(expect.objectContaining({ _id: 'new-study-id' }));
         });
 
-        it('should update an existing study and preserve id and createdAt', async () => {
+        it('should update an existing study and preserve id, createdAt, studyName, and studyAbbreviation', async () => {
             const existingStudy = {
                 _id: 'existing-study-id',
                 id: 'existing-study-id',
                 createdAt: '2020-01-01',
                 applicationID: 'source-app',
                 studyName: 'Old Name',
+                studyAbbreviation: 'OLD',
             };
 
             const result = await service.saveApprovedStudyFromApplication(
@@ -1201,9 +1202,10 @@ describe('ApprovedStudiesService', () => {
                     _id: 'existing-study-id',
                     createdAt: '2020-01-01',
                     applicationID: 'app-123',
-                    studyName: 'Study One',
-                    studyAbbreviation: 'STUDY1',
+                    studyName: 'Old Name',
+                    studyAbbreviation: 'OLD',
                     dbGaPID: 'phs001234',
+                    ORCID: '0000-0001',
                     pendingModelChange: true,
                     pendingImageDeIdentification: true,
                     primaryContactID: null,
@@ -1211,6 +1213,43 @@ describe('ApprovedStudiesService', () => {
                 })
             );
             expect(result).toEqual(expect.objectContaining({ _id: 'existing-study-id' }));
+        });
+
+        it('should preserve study identity but sync other fields when application name differs', async () => {
+            const existingStudy = {
+                _id: 'existing-study-id',
+                id: 'existing-study-id',
+                createdAt: '2020-01-01',
+                applicationID: 'source-app',
+                studyName: 'Canonical Study',
+                studyAbbreviation: 'CANON',
+                ORCID: '0000-0000-0000-0000',
+            };
+
+            await service.saveApprovedStudyFromApplication(
+                {
+                    ...application,
+                    studyName: 'Changed Study',
+                    studyAbbreviation: 'CHG',
+                    ORCID: '0000-0001',
+                },
+                questionnaire,
+                false,
+                undefined,
+                false,
+                program,
+                existingStudy
+            );
+
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'existing-study-id',
+                expect.objectContaining({
+                    studyName: 'Canonical Study',
+                    studyAbbreviation: 'CANON',
+                    ORCID: '0000-0001',
+                    dbGaPID: 'phs001234',
+                })
+            );
         });
 
         it('should fall back to study name when studyAbbreviation is empty', async () => {
