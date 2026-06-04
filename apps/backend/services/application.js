@@ -735,7 +735,7 @@ class Application {
             await this.logCollection.insert(logEvent),
             await sendEmails.submitApplication(this.notificationService, this.userService, this.emailParams, context.userInfo, application)
         ]);
-        return this._enrichApplicationResponse(application);
+        return await this.getApplicationById(application._id);
     }
 
 

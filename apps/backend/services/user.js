@@ -401,6 +401,7 @@ class UserService {
     _buildReopenListUsersMatch() {
         return {
             role: { $in: [ROLES.USER, ROLES.SUBMITTER] },
+            userStatus: USER.STATUSES.ACTIVE,
             permissions: {
                 $in: this._getReopenOwnerCreatePermissionIds(),
             },

@@ -1751,6 +1751,38 @@ describe('Application', () => {
         });
     });
 
+    describe('submitApplication', () => {
+        it('returns reloaded application after update', async () => {
+            const inProgressApp = {
+                _id: 'app1',
+                status: IN_PROGRESS,
+                history: [],
+                applicant: { applicantID: 'user1' },
+            };
+            const submittedApp = {
+                _id: 'app1',
+                status: SUBMITTED,
+                history: [{ status: SUBMITTED, userID: 'user1' }],
+                submittedDate: 1234567890,
+                canBeReopened: false,
+                applicant: { applicantID: 'user1', applicantName: 'John Doe', applicantEmail: 'john@doe.com' },
+            };
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(inProgressApp)
+                .mockResolvedValueOnce(submittedApp);
+            app.applicationDAO = { update: jest.fn().mockResolvedValue(true) };
+            mockLogCollection.insert.mockResolvedValue();
+
+            const result = await app.submitApplication({ _id: 'app1' }, context);
+
+            expect(app.getApplicationById).toHaveBeenCalledTimes(2);
+            expect(app.getApplicationById).toHaveBeenLastCalledWith('app1');
+            expect(result).toBe(submittedApp);
+            expect(result.status).toBe(SUBMITTED);
+            expect(result.canBeReopened).toBe(false);
+        });
+    });
+
     describe('resumeInquiredApplication', () => {
         it('transitions owner application to In Progress', async () => {
             const application = {

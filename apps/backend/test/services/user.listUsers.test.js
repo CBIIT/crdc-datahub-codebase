@@ -801,7 +801,17 @@ describe('UserService.listUsers', () => {
                 USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
             );
             expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                $match: userService._buildReopenListUsersMatch(),
+                $match: {
+                    role: { $in: [USER.ROLES.USER, USER.ROLES.SUBMITTER] },
+                    userStatus: USER.STATUSES.ACTIVE,
+                    permissions: {
+                        $in: [
+                            USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE,
+                            'submission_request:create:all',
+                            'submission_request:create:own',
+                        ],
+                    },
+                },
             }]);
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
