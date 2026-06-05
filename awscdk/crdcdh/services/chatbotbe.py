@@ -68,6 +68,9 @@ class chatbotbeService:
             "NRIA_CUSTOM_ATTRIBUTES":"{\"nrDeployMethod\":\"downloadPage\"}",
             "NRIA_OVERRIDE_HOST_ROOT":"",
             "JAVA_OPTS": "-javaagent:/usr/local/tomcat/newrelic/newrelic.jar",
+            "PHOENIX_COLLECTOR_ENDPOINT": "https://ctos-phoenix.nci.nih.gov",
+            "PHOENIX_API_KEY":config[service]['phoenix_api_key'],
+            "PHOENIX_PROJECT_NAME":config[service]['phoenix_project_name'],
         }
 
     secrets={
