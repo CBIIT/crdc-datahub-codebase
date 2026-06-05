@@ -323,33 +323,6 @@ const expandedColumns: Column<QCResult>[] = [
   },
 ];
 
-// CSV columns used for exporting table data
-export const csvColumns = {
-  "Batch ID": (d: QCResult) => d.displayID,
-  "Node Type": (d: QCResult) => d.type,
-  "Submitted Identifier": (d: QCResult) => d.submittedID,
-  Severity: (d: QCResult) => d.severity,
-  "Validated Date": (d: QCResult) => FormatDate(d?.validatedDate, "MM-DD-YYYY [at] hh:mm A", ""),
-  "Issue Count": (d: QCResult) =>
-    Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(d.issueCount || 0),
-  "Issue(s)": (d: QCResult) => {
-    const value = d.errors[0]?.description ?? d.warnings[0]?.description;
-
-    // NOTE: The ErrorMessage descriptions contain non-standard double quotes
-    // that don't render correctly in Excel. This replaces them with standard double quotes.
-    return value.replaceAll(/[“”‟〞＂]/g, `"`);
-  },
-};
-
-export const aggregatedCSVColumns = {
-  "Issue Type": (d: AggregatedQCResult) => d.title,
-  Property: (d: AggregatedQCResult) => d.property,
-  Value: (d: AggregatedQCResult) => d.value,
-  Severity: (d: AggregatedQCResult) => d.severity,
-  "Record Count": (d: AggregatedQCResult) =>
-    Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(d.count || 0),
-};
-
 const QualityControl: FC = () => {
   const { enqueueSnackbar } = useSnackbar();
   const { data: submissionData } = useSubmissionContext();
@@ -510,7 +483,6 @@ const QualityControl: FC = () => {
     () => (
       <Stack direction="row" alignItems="center" gap="8px" marginRight="37px">
         <ExportValidationButton
-          fields={isAggregated ? aggregatedCSVColumns : csvColumns}
           isAggregated={isAggregated}
           filtersRef={filtersRef}
           disabled={totalData <= 0}

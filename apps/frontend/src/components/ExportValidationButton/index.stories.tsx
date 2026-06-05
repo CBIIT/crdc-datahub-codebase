@@ -90,12 +90,6 @@ const aggregatedResultsMock: MockedResponse<
   maxUsageCount: Infinity,
 };
 
-const aggregatedFields: CustomStoryProps["fields"] = {
-  "Issue Type": (row: AggregatedQCResult) => row?.title ?? "",
-  Severity: (row: AggregatedQCResult) => row?.severity ?? "",
-  Count: (row: AggregatedQCResult) => row?.count ?? 0,
-};
-
 const withSubmissionContext: Decorator<CustomStoryProps> = (Story) => (
   <SubmissionContext.Provider
     value={submissionCtxStateFactory.build({
@@ -121,7 +115,6 @@ const meta: Meta<CustomStoryProps> = {
   tags: ["autodocs"],
   decorators: [withSubmissionContext],
   args: {
-    fields: {},
     filtersRef: defaultFiltersRef,
   },
   argTypes: {},
@@ -150,7 +143,6 @@ export const AggregatedResults: Story = {
   args: {
     ...meta.args,
     isAggregated: true,
-    fields: aggregatedFields,
   },
   parameters: {
     apolloClient: {

@@ -23,18 +23,13 @@ import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
 
 export type Props = {
   /**
-   * The K:V pair of the fields that should be exported where
-   * `key` is the column header and `value` is a function
-   * that generates the exportable value
-   *
-   * @example { "Batch ID": (d) => d.displayID }
-   */
-  fields: Record<string, (row: QCResult | AggregatedQCResult) => string | number>;
-  /**
    * Tells the component whether to export the "aggregated" or the "expanded" data.
    * @default false
    */
   isAggregated?: boolean;
+  /**
+   * A Ref object that holds the current filter values applied to the quality control results table.
+   */
   filtersRef: MutableRefObject<QualityControlFilterForm>;
 } & IconButtonProps;
 
@@ -51,10 +46,9 @@ const StyledTooltip = styled(StyledFormTooltip)({
 /**
  * Provides the button and supporting functionality to export the validation results of a submission.
  *
- * @returns {React.FC} The export validation button.
+ * @returns The export validation button.
  */
 const ExportValidationButton: React.FC<Props> = ({
-  fields,
   isAggregated = false,
   filtersRef,
   disabled,
@@ -106,6 +100,16 @@ const ExportValidationButton: React.FC<Props> = ({
    */
   const createCSVAndDownload = (rows: AggregatedQCResult[], filename: string): void => {
     try {
+      // TODO: Define this in the excel builder class.
+      const fields = {
+        "Issue Type": (d: AggregatedQCResult) => d.title,
+        Property: (d: AggregatedQCResult) => d.property,
+        Value: (d: AggregatedQCResult) => d.value,
+        Severity: (d: AggregatedQCResult) => d.severity,
+        "Record Count": (d: AggregatedQCResult) =>
+          Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(d.count || 0),
+      };
+
       const fieldEntries = Object.entries(fields);
       const csvArray = rows.map((row) => {
         const csvRow: Record<string, string | number> = {};
