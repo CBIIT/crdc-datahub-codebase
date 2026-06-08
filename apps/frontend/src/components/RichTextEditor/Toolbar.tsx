@@ -1,9 +1,15 @@
+import RedoIcon from "@mui/icons-material/Redo";
+import UndoIcon from "@mui/icons-material/Undo";
 import { Box, styled } from "@mui/material";
-import type { ReactElement } from "react";
+import type { MouseEvent, ReactElement } from "react";
+import { HistoryEditor } from "slate-history";
+import { useSlate } from "slate-react";
 
 import { BLOCK_BUTTONS, MARK_BUTTONS } from "../../config/toolbarConfig";
 
-import { BlockButton, MarkButton, RedoButton, UndoButton } from "./ToolbarButton";
+import ToolbarButton from "./ToolbarButton";
+import type { BlockFormat, MarkFormat } from "./types";
+import { isBlockActive, isMarkActive, toggleBlock, toggleMark } from "./utils/editorTransforms";
 
 const StyledToolbar = styled(Box)({
   display: "flex",
@@ -22,18 +28,70 @@ const ToolbarDivider = styled(Box)({
   margin: "0 4px",
 });
 
-const Toolbar = (): ReactElement => (
-  <StyledToolbar data-testid="rich-text-editor-toolbar">
-    {MARK_BUTTONS.map((button) => (
-      <MarkButton key={button.format} {...button} />
-    ))}
-    {BLOCK_BUTTONS.map((button) => (
-      <BlockButton key={button.format} {...button} />
-    ))}
-    <ToolbarDivider />
-    <UndoButton />
-    <RedoButton />
-  </StyledToolbar>
-);
+const Toolbar = (): ReactElement => {
+  const editor = useSlate();
+
+  const handleMarkMouseDown = (format: MarkFormat) => (e: MouseEvent) => {
+    e.preventDefault();
+    toggleMark(editor, format);
+  };
+
+  const handleBlockMouseDown = (format: BlockFormat) => (e: MouseEvent) => {
+    e.preventDefault();
+    toggleBlock(editor, format);
+  };
+
+  const handleUndo = (e: MouseEvent) => {
+    e.preventDefault();
+    HistoryEditor.undo(editor);
+  };
+
+  const handleRedo = (e: MouseEvent) => {
+    e.preventDefault();
+    HistoryEditor.redo(editor);
+  };
+
+  return (
+    <StyledToolbar data-testid="rich-text-editor-toolbar">
+      {MARK_BUTTONS.map(({ format, tooltip, icon }) => (
+        <ToolbarButton
+          key={format}
+          label={tooltip}
+          tooltip={tooltip}
+          icon={icon}
+          active={isMarkActive(editor, format)}
+          pressed={isMarkActive(editor, format)}
+          onMouseDown={handleMarkMouseDown(format)}
+        />
+      ))}
+      {BLOCK_BUTTONS.map(({ format, tooltip, icon }) => (
+        <ToolbarButton
+          key={format}
+          label={tooltip}
+          tooltip={tooltip}
+          icon={icon}
+          active={isBlockActive(editor, format)}
+          pressed={isBlockActive(editor, format)}
+          onMouseDown={handleBlockMouseDown(format)}
+        />
+      ))}
+      <ToolbarDivider />
+      <ToolbarButton
+        label="Undo"
+        tooltip="Undo (Ctrl+Z)"
+        icon={UndoIcon}
+        disabled={editor.history.undos.length === 0}
+        onMouseDown={handleUndo}
+      />
+      <ToolbarButton
+        label="Redo"
+        tooltip="Redo (Ctrl+Y)"
+        icon={RedoIcon}
+        disabled={editor.history.redos.length === 0}
+        onMouseDown={handleRedo}
+      />
+    </StyledToolbar>
+  );
+};
 
 export default Toolbar;
