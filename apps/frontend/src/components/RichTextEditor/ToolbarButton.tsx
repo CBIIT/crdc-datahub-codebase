@@ -1,7 +1,7 @@
 import { IconButton, Tooltip, styled } from "@mui/material";
 import type { MouseEvent, ReactElement } from "react";
 
-import { ToolbarIcon } from "@/config/toolbarConfig";
+import type { ToolbarIcon } from "./types";
 
 const StyledIconButton = styled(IconButton, {
   shouldForwardProp: (prop) => prop !== "active",

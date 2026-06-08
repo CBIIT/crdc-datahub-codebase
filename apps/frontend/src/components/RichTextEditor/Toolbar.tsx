@@ -5,7 +5,7 @@ import type { MouseEvent, ReactElement } from "react";
 import { HistoryEditor } from "slate-history";
 import { useSlate } from "slate-react";
 
-import { BLOCK_BUTTONS, MARK_BUTTONS } from "../../config/toolbarConfig";
+import { BLOCK_DEFINITIONS, MARK_DEFINITIONS } from "../../config/EditorConfig";
 
 import ToolbarButton from "./ToolbarButton";
 import type { BlockFormat, MarkFormat } from "./types";
@@ -53,7 +53,7 @@ const Toolbar = (): ReactElement => {
 
   return (
     <StyledToolbar data-testid="rich-text-editor-toolbar">
-      {MARK_BUTTONS.map(({ format, tooltip, icon }) => (
+      {MARK_DEFINITIONS.map(({ format, tooltip, icon }) => (
         <ToolbarButton
           key={format}
           label={tooltip}
@@ -64,7 +64,7 @@ const Toolbar = (): ReactElement => {
           onMouseDown={handleMarkMouseDown(format)}
         />
       ))}
-      {BLOCK_BUTTONS.map(({ format, tooltip, icon }) => (
+      {BLOCK_DEFINITIONS.map(({ format, tooltip, icon }) => (
         <ToolbarButton
           key={format}
           label={tooltip}

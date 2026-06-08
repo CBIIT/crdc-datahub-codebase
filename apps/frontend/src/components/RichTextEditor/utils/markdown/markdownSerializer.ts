@@ -1,5 +1,7 @@
 import { Descendant, Element, Text } from "slate";
 
+import { MARK_DEFINITIONS } from "@/config/EditorConfig";
+
 import type { FormattedText, ListItemElement, TextMarks } from "../../types";
 
 const SURROUNDING_WHITESPACE_PATTERN = /^([ \t]*)(.*?)([ \t]*)$/s;
@@ -58,23 +60,14 @@ const splitSurroundingWhitespace = (
   return { leadingWhitespace, markableText, trailingWhitespace };
 };
 
-const applyMarkdownMarksToText = (text: string, marks: TextMarks): string => {
-  let markedText = escapeMarkdownText(text);
+const applyMarkdownMarksToText = (text: string, marks: TextMarks): string =>
+  MARK_DEFINITIONS.reduce((markedText, { format, markdownSyntax: [prefix, suffix] }) => {
+    if (marks[format]) {
+      return `${prefix}${markedText}${suffix}`;
+    }
 
-  if (marks.underline) {
-    markedText = `<u>${markedText}</u>`;
-  }
-
-  if (marks.bold) {
-    markedText = `**${markedText}**`;
-  }
-
-  if (marks.italic) {
-    markedText = `_${markedText}_`;
-  }
-
-  return markedText;
-};
+    return markedText;
+  }, escapeMarkdownText(text));
 
 /**
  * Applies markdown-compatible formatting marks to a plain text value.
