@@ -6,6 +6,8 @@ const EMPTY_TEXT_NODE: FormattedText = { text: "" };
 
 /**
  * Creates the default Slate value used when no saved rich-text content exists.
+ *
+ * @returns {ParagraphElement[]} A single paragraph with an empty text node.
  */
 export const createEmptyDocument = (): ParagraphElement[] => [
   { type: "paragraph", children: [{ ...EMPTY_TEXT_NODE }] },
@@ -13,6 +15,13 @@ export const createEmptyDocument = (): ParagraphElement[] => [
 
 /**
  * Ensures Slate element children always contain at least one text node.
+ *
+ * @param {FormattedText[]} children - The array of text nodes to normalize.
+ * @returns {FormattedText[]} The original array if non-empty, or a single empty text node.
+ *
+ * @example
+ * normalizeTextChildren([]); // [{ text: "" }]
+ * normalizeTextChildren([{ text: "hi" }]); // [{ text: "hi" }]
  */
 export const normalizeTextChildren = (children: FormattedText[]): FormattedText[] => {
   if (children.length > 0) {
@@ -23,7 +32,11 @@ export const normalizeTextChildren = (children: FormattedText[]): FormattedText[
 };
 
 /**
- * Returns true when a Slate document contains no non-whitespace text.
+ * Checks whether a Slate document contains no non-whitespace text.
+ * Recursively traverses nested elements.
+ *
+ * @param {Descendant[]} nodes - The top-level Slate document nodes.
+ * @returns {boolean} `true` if the document has no visible text content.
  */
 export const isEditorEmpty = (nodes: Descendant[]): boolean => {
   const nodeHasText = (node: Descendant): boolean => {
