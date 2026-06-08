@@ -22,19 +22,21 @@ export const normalizeTextChildren = (children: FormattedText[]): FormattedText[
   return [{ ...EMPTY_TEXT_NODE }];
 };
 
-const nodeHasText = (node: Descendant): boolean => {
-  if (Text.isText(node)) {
-    return Boolean(node.text.trim());
-  }
-
-  if (!Element.isElement(node)) {
-    return false;
-  }
-
-  return node.children.some((childNode: Descendant) => nodeHasText(childNode));
-};
-
 /**
  * Returns true when a Slate document contains no non-whitespace text.
  */
-export const isEditorEmpty = (nodes: Descendant[]): boolean => !nodes.some(nodeHasText);
+export const isEditorEmpty = (nodes: Descendant[]): boolean => {
+  const nodeHasText = (node: Descendant): boolean => {
+    if (Text.isText(node)) {
+      return Boolean(node.text.trim());
+    }
+
+    if (!Element.isElement(node)) {
+      return false;
+    }
+
+    return node.children.some((childNode: Descendant) => nodeHasText(childNode));
+  };
+
+  return !nodes?.some(nodeHasText);
+};
