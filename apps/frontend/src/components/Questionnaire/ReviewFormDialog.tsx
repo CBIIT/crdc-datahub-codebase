@@ -7,7 +7,7 @@ import { Controller, useForm } from "react-hook-form";
 import Dialog from "../GenericDialog";
 import RichTextEditor from "../RichTextEditor";
 import type { RichTextEditorHandle } from "../RichTextEditor";
-import { getPlainTextLength } from "../RichTextEditor/utils/plainTextUtils";
+import { getPlainTextLength } from "../RichTextEditor/utils/markdown/markdownSerializer";
 import StyledHelperText from "../StyledFormComponents/StyledHelperText";
 
 const StyledCharacterCount = styled(Box)({
