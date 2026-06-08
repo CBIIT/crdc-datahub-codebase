@@ -8,18 +8,20 @@ export type ToolbarIcon = ElementType<SvgIconProps>;
 
 export type MarkFormat = "bold" | "italic" | "underline";
 
-export type MarkDefinition = {
-  format: MarkFormat;
-  htmlTag: keyof React.ReactHTML;
-  markdownSyntax: [prefix: string, suffix: string];
+type EditorFormatDefinition = {
   tooltip: string;
   icon: ToolbarIcon;
+  pattern?: RegExp;
+  htmlTag?: keyof React.ReactHTML;
+  markdownSyntax?: [prefix: string, suffix: string];
 };
 
-export type BlockDefinition = {
+export type MarkDefinition = EditorFormatDefinition & {
+  format: MarkFormat;
+};
+
+export type BlockDefinition = EditorFormatDefinition & {
   format: ListFormat;
-  tooltip: string;
-  icon: ToolbarIcon;
 };
 
 export type TextMarks = Partial<Record<MarkFormat, true>>;

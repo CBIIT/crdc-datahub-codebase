@@ -1,20 +1,13 @@
 import { Descendant, Element, Text } from "slate";
 
-import { MARK_DEFINITIONS } from "@/config/EditorConfig";
+import { BLOCK_DEFINITIONS, MARK_DEFINITIONS } from "@/config/EditorConfig";
 
 import type { FormattedText, TextMarks } from "../../types";
 
 const SURROUNDING_WHITESPACE_PATTERN = /^([ \t]*)(.*?)([ \t]*)$/s;
 
-const MARKDOWN_REMOVAL_RULES: Record<string, [RegExp, string]> = {
-  bold: [/\*\*(.+?)\*\*/gs, "$1"],
-  italicAsterisk: [/\*(.+?)\*/gs, "$1"],
-  italicUnderscore: [/_(.+?)_/gs, "$1"],
-  underline: [/<u>(.+?)<\/u>/gs, "$1"],
-  bulletedListPrefix: [/^[-*] /gm, ""],
-  numberedListPrefix: [/^\d+\. /gm, ""],
-  escapedCharacters: [/\\([*_\\])/g, "$1"],
-};
+const ITALIC_ASTERISK_REMOVAL_PATTERN = /\*(.+?)\*/gs;
+const ESCAPED_CHARACTER_REMOVAL_PATTERN = /\\([*_\\])/g;
 
 const HTML_TEXT_ESCAPE_REPLACEMENTS: Record<string, string> = {
   "&": "&amp;",
@@ -198,7 +191,19 @@ export const getPlainTextLength = (content: string): number => {
     return 0;
   }
 
-  return Object.values(MARKDOWN_REMOVAL_RULES)
-    .reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), content)
-    .trim().length;
+  let text = content;
+
+  MARK_DEFINITIONS.forEach(({ pattern }) => {
+    text = text.replace(pattern, "$1");
+  });
+
+  text = text.replace(ITALIC_ASTERISK_REMOVAL_PATTERN, "$1");
+
+  BLOCK_DEFINITIONS.forEach(({ pattern }) => {
+    text = text.replace(new RegExp(pattern.source, "gm"), "$1");
+  });
+
+  text = text.replace(ESCAPED_CHARACTER_REMOVAL_PATTERN, "$1");
+
+  return text.trim().length;
 };

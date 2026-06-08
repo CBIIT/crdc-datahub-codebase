@@ -12,24 +12,27 @@ import { BlockDefinition, MarkDefinition } from "@/components/RichTextEditor/typ
 export const MARK_DEFINITIONS: MarkDefinition[] = [
   {
     format: "bold",
-    htmlTag: "strong",
-    markdownSyntax: ["**", "**"],
     tooltip: "Bold (Ctrl+B)",
     icon: FormatBoldIcon,
+    htmlTag: "strong",
+    markdownSyntax: ["**", "**"],
+    pattern: /\*\*(.+?)\*\*/gs,
   },
   {
     format: "italic",
-    htmlTag: "em",
-    markdownSyntax: ["_", "_"],
     tooltip: "Italic (Ctrl+I)",
     icon: FormatItalicIcon,
+    htmlTag: "em",
+    markdownSyntax: ["_", "_"],
+    pattern: /_(.+?)_/gs,
   },
   {
     format: "underline",
-    htmlTag: "u",
-    markdownSyntax: ["<u>", "</u>"],
     tooltip: "Underline (Ctrl+U)",
     icon: FormatUnderlinedIcon,
+    htmlTag: "u",
+    markdownSyntax: ["<u>", "</u>"],
+    pattern: /<u>(.+?)<\/u>/gs,
   },
 ];
 
@@ -41,10 +44,12 @@ export const BLOCK_DEFINITIONS: BlockDefinition[] = [
     format: "bulleted-list",
     tooltip: "Bullet List",
     icon: FormatListBulletedIcon,
+    pattern: /^[-*]\s+(.+)$/,
   },
   {
     format: "numbered-list",
     tooltip: "Numbered List",
     icon: FormatListNumberedIcon,
+    pattern: /^\d+\.\s+(.+)$/,
   },
 ];

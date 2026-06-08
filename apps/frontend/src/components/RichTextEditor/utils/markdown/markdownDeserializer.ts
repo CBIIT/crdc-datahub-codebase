@@ -1,6 +1,8 @@
 import type { Descendant } from "slate";
 
-import type { ListFormat, ListItemElement } from "../../types";
+import { BLOCK_DEFINITIONS } from "@/config/EditorConfig";
+
+import type { BlockDefinition, ListItemElement } from "../../types";
 import { createEmptyDocument, createListItem } from "../documentUtils";
 
 import { parseMarkdownInline } from "./markdownInlineParser";
@@ -8,21 +10,6 @@ import { parseMarkdownInline } from "./markdownInlineParser";
 type MarkdownBlockResult = {
   nodes: Descendant[];
   nextLineIndex: number;
-};
-
-type MarkdownListDefinition = {
-  format: ListFormat;
-  pattern: RegExp;
-};
-
-const BULLETED_LIST_DEFINITION: MarkdownListDefinition = {
-  format: "bulleted-list",
-  pattern: /^[-*]\s+(.+)$/,
-};
-
-const NUMBERED_LIST_DEFINITION: MarkdownListDefinition = {
-  format: "numbered-list",
-  pattern: /^\d+\.\s+(.+)$/,
 };
 
 const getListItemContent = (line: string, pattern: RegExp): string | null => {
@@ -35,22 +22,13 @@ const getListItemContent = (line: string, pattern: RegExp): string | null => {
   return match[1];
 };
 
-const findListDefinition = (line: string): MarkdownListDefinition | null => {
-  if (BULLETED_LIST_DEFINITION.pattern.test(line)) {
-    return BULLETED_LIST_DEFINITION;
-  }
-
-  if (NUMBERED_LIST_DEFINITION.pattern.test(line)) {
-    return NUMBERED_LIST_DEFINITION;
-  }
-
-  return null;
-};
+const findListDefinition = (line: string): BlockDefinition | null =>
+  BLOCK_DEFINITIONS.find(({ pattern }) => pattern.test(line)) ?? null;
 
 const readMarkdownListBlock = (
   lines: string[],
   startLineIndex: number,
-  listDefinition: MarkdownListDefinition
+  listDefinition: BlockDefinition
 ): MarkdownBlockResult => {
   const items: ListItemElement[] = [];
   let lineIndex = startLineIndex;
