@@ -3,11 +3,24 @@ import FormatItalicIcon from "@mui/icons-material/FormatItalic";
 import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
 import FormatListNumberedIcon from "@mui/icons-material/FormatListNumbered";
 import FormatUnderlinedIcon from "@mui/icons-material/FormatUnderlined";
+import { SvgIconProps } from "@mui/material/SvgIcon/SvgIcon";
+import { ElementType } from "react";
 
-import type {
-  BlockButtonConfig,
-  MarkButtonConfig,
-} from "../components/RichTextEditor/ToolbarButton";
+import { BlockFormat, MarkFormat } from "@/components/RichTextEditor/types";
+
+export type ToolbarIcon = ElementType<SvgIconProps>;
+
+export type MarkButtonConfig = {
+  format: MarkFormat;
+  tooltip: string;
+  icon: ToolbarIcon;
+};
+
+export type BlockButtonConfig = {
+  format: BlockFormat;
+  tooltip: string;
+  icon: ToolbarIcon;
+};
 
 /**
  * Inline mark buttons rendered in the editor toolbar.

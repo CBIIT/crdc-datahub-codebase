@@ -14,6 +14,21 @@ const ITALIC_UNDERSCORE_MARKDOWN_PATTERN = /^_(.+?)_/;
 const UNDERLINE_MARKDOWN_PATTERN = /^<u>(.+?)<\/u>/;
 const PLAIN_TEXT_MARKDOWN_PATTERN = /^[^*_<\\]+/;
 
+const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
+  "&nbsp;": " ",
+  "&#160;": " ",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+};
+
+const decodeSerializedText = (text: string): string => {
+  const pattern = new RegExp(Object.keys(HTML_ENTITY_REPLACEMENTS).join("|"), "g");
+  return text
+    .replace(pattern, (entity) => HTML_ENTITY_REPLACEMENTS[entity])
+    .replace(/\\([*_\\])/g, "$1");
+};
+
 /**
  * Returns true when two text mark objects represent the same formatting state.
  */
@@ -84,7 +99,7 @@ const parsePlainMarkdownToken: MarkdownTokenParser = (text, marks) => {
 
   if (plainTextMatch) {
     return {
-      nodes: [{ text: plainTextMatch[0].replace(/\\([*_\\])/g, "$1"), ...marks }],
+      nodes: [{ text: decodeSerializedText(plainTextMatch[0]), ...marks }],
       consumedText: plainTextMatch[0],
     };
   }
@@ -96,7 +111,7 @@ const parsePlainMarkdownToken: MarkdownTokenParser = (text, marks) => {
   }
 
   return {
-    nodes: [{ text: fallbackMatch[0].replace(/\\([*_\\])/g, "$1"), ...marks }],
+    nodes: [{ text: decodeSerializedText(fallbackMatch[0]), ...marks }],
     consumedText: fallbackMatch[0],
   };
 };
@@ -122,7 +137,7 @@ const parseNextMarkdownToken = (text: string, marks: TextMarks): MarkdownTokenRe
   }
 
   return {
-    nodes: [{ text: text[0] ?? "", ...marks }],
+    nodes: [{ text: decodeSerializedText(text[0] ?? ""), ...marks }],
     consumedText: text[0] ?? "",
   };
 };
