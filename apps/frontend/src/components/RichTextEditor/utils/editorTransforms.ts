@@ -4,8 +4,8 @@ import { withReact } from "slate-react";
 
 import type { BlockFormat, CustomEditor, CustomElement, ListFormat, MarkFormat } from "../types";
 
+import { createListElement } from "./documentUtils";
 import { isListElement, isListFormat } from "./editorGuards";
-import { createListElement } from "./elementFactory";
 
 /**
  * Adds React and history behavior to a base Slate editor.

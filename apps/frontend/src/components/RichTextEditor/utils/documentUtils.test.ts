@@ -30,6 +30,43 @@ describe("normalizeTextChildren", () => {
   });
 });
 
+describe("createListElement", () => {
+  it("should create a bulleted-list element with empty children", () => {
+    const result = utils.createListElement("bulleted-list");
+
+    expect(result).toEqual({ type: "bulleted-list", children: [] });
+  });
+
+  it("should create a numbered-list element with empty children", () => {
+    const result = utils.createListElement("numbered-list");
+
+    expect(result).toEqual({ type: "numbered-list", children: [] });
+  });
+});
+
+describe("createListItem", () => {
+  it("should create a list-item with an empty text node by default", () => {
+    const result = utils.createListItem();
+
+    expect(result).toEqual({ type: "list-item", children: [{ text: "" }] });
+  });
+
+  it("should create a list-item with the provided children", () => {
+    const children = [{ text: "hello", bold: true }];
+
+    const result = utils.createListItem(children);
+
+    expect(result).toEqual({ type: "list-item", children: [{ text: "hello", bold: true }] });
+  });
+
+  it("should not share a reference with the default text node", () => {
+    const a = utils.createListItem();
+    const b = utils.createListItem();
+
+    expect(a.children[0]).not.toBe(b.children[0]);
+  });
+});
+
 describe("isEditorEmpty", () => {
   it("should return true for an empty document", () => {
     const nodes: Descendant[] = [{ type: "paragraph", children: [{ text: "" }] }];

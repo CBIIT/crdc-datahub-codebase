@@ -1,7 +1,6 @@
 export * from "./documentUtils";
 export * from "./editorGuards";
 export * from "./editorTransforms";
-export * from "./elementFactory";
 export * from "./plainTextUtils";
 
 export * from "./keyboard/richTextKeyboardHandlers";
