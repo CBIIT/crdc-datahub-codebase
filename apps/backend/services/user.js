@@ -376,16 +376,34 @@ class UserService {
         return result;
     }
 
-    _buildReopenListUsersMatch() {
+    _getReopenOwnerCreatePermissionIds() {
         const createPermission = USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE;
+        return [
+            createPermission,
+            `${createPermission}:${SCOPES.ALL}`,
+            `${createPermission}:${SCOPES.OWN}`,
+        ];
+    }
+
+    isEligibleReopenOwner(user) {
+        if (!user || user.userStatus !== USER.STATUSES.ACTIVE) {
+            return false;
+        }
+        if (![ROLES.USER, ROLES.SUBMITTER].includes(user.role)) {
+            return false;
+        }
+        const createPermissionIds = this._getReopenOwnerCreatePermissionIds();
+        return (user.permissions ?? []).some((permission) =>
+            createPermissionIds.includes(permission?._id ?? permission)
+        );
+    }
+
+    _buildReopenListUsersMatch() {
         return {
             role: { $in: [ROLES.USER, ROLES.SUBMITTER] },
+            userStatus: USER.STATUSES.ACTIVE,
             permissions: {
-                $in: [
-                    createPermission,
-                    `${createPermission}:${SCOPES.ALL}`,
-                    `${createPermission}:${SCOPES.OWN}`,
-                ],
+                $in: this._getReopenOwnerCreatePermissionIds(),
             },
         };
     }

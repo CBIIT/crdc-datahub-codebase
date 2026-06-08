@@ -57,6 +57,14 @@ describe('sync-pbac-defaults', () => {
             const admin = config.Defaults.find((d) => d.role === 'Admin');
             expect(admin.permissions.some((p) => p._id === 'submission_request:reopen:all')).toBe(true);
         });
+
+        it('loads PBAC config with reopen:own for Submitter and User roles', () => {
+            const config = loadPbacDefaultsFromJson();
+            const submitter = config.Defaults.find((d) => d.role === 'Submitter');
+            const user = config.Defaults.find((d) => d.role === 'User');
+            expect(submitter.permissions.some((p) => p._id === 'submission_request:reopen:own')).toBe(true);
+            expect(user.permissions.some((p) => p._id === 'submission_request:reopen:own')).toBe(true);
+        });
     });
 
     describe('syncPbacDefaults', () => {
