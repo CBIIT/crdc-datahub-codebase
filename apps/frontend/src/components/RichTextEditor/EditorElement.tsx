@@ -16,17 +16,14 @@ const ELEMENT_RENDERERS: Record<BlockFormat, ElementRenderer> = {
   "list-item": ({ attributes, children }) => <li {...attributes}>{children}</li>,
 };
 
-const getElementRenderer = (type: BlockFormat): ElementRenderer => {
-  const renderer = ELEMENT_RENDERERS[type];
+/**
+ * Renders a Slate block element as its corresponding HTML element.
+ *
+ */
+const EditorElement = (props: RenderElementProps): ReactElement => {
+  const renderer = ELEMENT_RENDERERS[props.element.type] ?? renderParagraph;
 
-  if (!renderer) {
-    return renderParagraph;
-  }
-
-  return renderer;
+  return renderer(props);
 };
-
-const EditorElement = (props: RenderElementProps): ReactElement =>
-  getElementRenderer(props.element.type)(props);
 
 export default EditorElement;
