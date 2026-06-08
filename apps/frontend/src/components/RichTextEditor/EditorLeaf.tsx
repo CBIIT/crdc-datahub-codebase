@@ -25,17 +25,21 @@ const LEAF_MARK_RENDERERS: LeafMarkRenderer[] = [
   },
 ];
 
-const renderMarkedContent = ({ children, leaf }: RenderLeafProps): ReactNode =>
-  LEAF_MARK_RENDERERS.reduce<ReactNode>((content, markRenderer) => {
-    if (!leaf[markRenderer.format]) {
+/**
+ * Renders a Slate text leaf with the appropriate inline formatting elements.
+ *
+ * @returns {JSX.Element}
+ */
+const EditorLeaf = ({ attributes, children, leaf }: RenderLeafProps): ReactElement => {
+  const markedContent = LEAF_MARK_RENDERERS.reduce<ReactNode>((content, { format, render }) => {
+    if (!leaf[format]) {
       return content;
     }
 
-    return markRenderer.render(content);
+    return render(content);
   }, children);
 
-const EditorLeaf = ({ attributes, children, leaf, text }: RenderLeafProps): ReactElement => (
-  <span {...attributes}>{renderMarkedContent({ attributes, children, leaf, text })}</span>
-);
+  return <span {...attributes}>{markedContent}</span>;
+};
 
 export default EditorLeaf;
