@@ -22,6 +22,7 @@ export const InitialApplication: Omit<Application, "questionnaireData"> = {
   GPAName: "",
   sequenceNumber: 1,
   nextRevisionId: null,
+  canBeReopened: false,
 };
 
 export const InitialQuestionnaire: QuestionnaireData = {

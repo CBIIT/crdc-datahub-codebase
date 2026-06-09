@@ -119,7 +119,9 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
   );
 
   const canReopen = useMemo<boolean>(
-    () => hasPermission(user, "submission_request", "reopen", application),
+    () =>
+      hasPermission(user, "submission_request", "reopen", application) &&
+      application?.canBeReopened === true,
     [user, application]
   );
 

@@ -57,6 +57,10 @@ type Application = {
    * The ID of the next revision of this SRF. Null if this is the latest version.
    */
   nextRevisionId: string | null;
+  /**
+   * Indicates whether the application is eligible for reopening.
+   */
+  canBeReopened: boolean;
 };
 
 type ApplicationStatus =

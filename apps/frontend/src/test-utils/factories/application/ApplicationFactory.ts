@@ -29,6 +29,7 @@ export const baseApplication: Application = {
   GPAName: "",
   sequenceNumber: 1,
   nextRevisionId: null,
+  canBeReopened: false,
 };
 
 /**
