@@ -24,12 +24,6 @@ from aws_cdk import aws_sns_subscriptions as subs
 from aws_cdk import Duration
 from aws_cdk import RemovalPolicy
 from aws_cdk import aws_bedrock as bedrock
-from aws_cdk import aws_s3vectors as s3vectors
-from rds import RdsInstance
-from documentdb import DocumentDbCluster
-from knowledgebase import KnowledgeBase
-from guardrail import Guardrail
-#from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, chatbotbe
 from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
 
 class Stack(Stack):
@@ -170,57 +164,14 @@ class Stack(Stack):
 #        secret_value = json.dumps({
 #            "submission_bucket": bucket.bucket_name
 #        })
-
-
-        ### create bedrock knowledgebase
-        if config['main']['create_kb'] == "true":
-            self.knowledgebase = KnowledgeBase(self, f"{self.namingPrefix}-kb")
-
-        ### create guardrail
-        if config['main']['create_guardrail'] == "true":
-            self.guardrail = Guardrail(self, f"{self.namingPrefix}-guardrail")
-
-        ### RDS - referred to rds.py
-        if config.getboolean('db', 'create_rds', fallback=False):
-            self.rds = RdsInstance(
-              self,
-              f"{self.namingPrefix}-rds",
-              vpc=self.VPC
-            )
-            rds_endpoint = self.rds.rds.db_instance_endpoint_address
-            rds_port     = self.rds.rds.db_instance_endpoint_port
-
-        ## Document DB - referred to documentdb.py
-        if config.getboolean('db', 'create_docdb', fallback=False):
-            self.docdb = DocumentDbCluster(
-              self,
-              f"{self.namingPrefix}-docdb",
-              vpc=self.VPC
-            )
-            docdb_endpoint = self.docdb.cluster.attr_endpoint
-            docdb_port     = self.docdb.cluster.attr_port
-
         ### Secrets
+        
         
         if(config['main']['create_bucket'] == "true"):
             submission_bucket = bucket.bucket_name
         else:
             submission_bucket = config["secrets"].get("submission_bucket")
-
-
-        if(config['main']['create_kb'] == "true"):
-            datasource_bucket_arn = self.knowledgebase.datasource_bucket.bucket_arn
-            knowledge_base_id = self.knowledgebase.knowledge_base.attr_knowledge_base_id
-        else:
-            datasource_bucket_arn = config["secrets"].get("datasource_bucket_arn")
-            knowledge_base_id = config["secrets"].get("knowledge_base_id")
             
-        if(config['main']['create_guardrail'] == "true"):
-            guardrail_id = self.guardrail.guardrail.attr_guardrail_id
-        else:
-            guardrail_id = config["secrets"].get("guardrail_id")
-
-
         self.secret = secretsmanager.Secret(self, "Secret",
 #            secret_name="{}/{}/{}".format(config['main']['secret_prefix'], config['main']['tier'], "crdc-dh"),
             secret_name="{}/{}".format(config['main']['resource_prefix'], config['main']['tier']),
@@ -263,32 +214,7 @@ class Stack(Stack):
                 "nih_userinfo_url": SecretValue.unsafe_plain_text(config['secrets']['nih_userinfo_url']),
                 "nih_authorize_url": SecretValue.unsafe_plain_text(config['secrets']['nih_authorize_url']),
                 "nih_token_url": SecretValue.unsafe_plain_text(config['secrets']['nih_token_url']),
-                "nih_logout_url": SecretValue.unsafe_plain_text(config['secrets']['nih_logout_url']),
-                "datasource_bucket_arn": SecretValue.unsafe_plain_text(datasource_bucket_arn),
-                "knowledge_base_id": SecretValue.unsafe_plain_text(knowledge_base_id),
-                "guardrail_id": SecretValue.unsafe_plain_text(guardrail_id),
-                **(
-                    {
-                        "rds_endpoint": SecretValue.unsafe_plain_text(self.rds.rds.db_instance_endpoint_address),
-                        "rds_port":     SecretValue.unsafe_plain_text(self.rds.rds.db_instance_endpoint_port),
-                        "rds_db_name":  SecretValue.unsafe_plain_text(config.get('db', 'rds_db_name')),
-                        "rds_username": SecretValue.unsafe_plain_text(config.get('db', 'rds_username')),
-                        "rds_password": self.rds.rds.secret.secret_value_from_json("password"),
-                    }
-                    if config.getboolean('db', 'create_rds', fallback=False)
-                    else {}
-                ),
-                **(
-                    {
-                        "docdb_db_name": SecretValue.unsafe_plain_text(config.get('db', 'docdb_db_name')),
-                        "docdb_endpoint": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_endpoint),
-                        "docdb_port": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_port),
-                        "docdb_username": SecretValue.unsafe_plain_text(config.get('db', 'docdb_user')),
-                        "docdb_password":  SecretValue.unsafe_plain_text(config.get('db', 'docdb_password')),
-                    }
-                    if config.getboolean('db', 'create_docdb', fallback=False)
-                    else {}
-                )
+                "nih_logout_url": SecretValue.unsafe_plain_text(config['secrets']['nih_logout_url'])
 #                "newrelic_license_key": SecretValue.unsafe_plain_text(config['secrets']['newrelic_license_key'])
 
             }
@@ -335,9 +261,7 @@ class Stack(Stack):
             certificates=[
                 alb_cert
             ],
-            port=443,
-            ssl_policy=elbv2.SslPolicy.RECOMMENDED_TLS                                               
-        )
+            port=443)
 
         ### ALB Access log
         log_bucket = s3.Bucket.from_bucket_name(self, "AlbAccessLogsBucket", config['main']['alb_log_bucket_name'])
@@ -392,13 +316,13 @@ class Stack(Stack):
 
         if(config['main']['create_datasync_role'] == "true"):
             tier = config['main']['tier']
-            #role_kwargs = {}
-            #if tier not in ["stage", "prod"]:
-                #role_kwargs["permissions_boundary"] = iam.ManagedPolicy.from_managed_policy_arn(
-                    #self,
-                    #f"{self.namingPrefix}-datasync-boundary",
-                    #config.get('iam', 'permission_boundary')
-                #)
+            role_kwargs = {}
+            if tier not in ["stage", "prod"]:
+                role_kwargs["permissions_boundary"] = iam.ManagedPolicy.from_managed_policy_arn(
+                    self,
+                    f"{self.namingPrefix}-datasync-boundary",
+                    config.get('iam', 'permission_boundary')
+                )
                 #permissions_boundary_arn = None
             #else:
                 #permissions_boundary=iam.ManagedPolicy.from_managed_policy_arn(self, f"{self.namingPrefix}-datasync-boundary", permission_boundary_arn)
@@ -419,7 +343,7 @@ class Stack(Stack):
                     #permission_boundary_arn
                 #),
                 #permissions_boundary=permissions_boundary,           
-                #**role_kwargs,
+                **role_kwargs,
                 inline_policies={
                     "DataSyncPolicy": iam.PolicyDocument(statements=[
                         iam.PolicyStatement(
@@ -510,6 +434,156 @@ class Stack(Stack):
        #     fifo=True
        # )
 
+        #create AWS Bedrrock Knowledgebase
+        if config['main']['create_kb'] == "true":
+            # create S3 bucket for knowledge base data source
+            datasource_bucket = s3.Bucket(
+                self,
+                f"{config['main']['resource_prefix']}-{config['main']['tier']}-KnowledgeBaseDataSourceBucket",
+                bucket_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-chatbot-kb-datasource",
+                removal_policy=RemovalPolicy.DESTROY,
+                auto_delete_objects=True,
+            )
+
+            # create S3 bucket for vector store 
+            vector_bucket = s3.Bucket(
+                self,
+                f"{config['main']['resource_prefix']}-{config['main']['tier']}-KnowledgeBaseVectorBucket",
+                bucket_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-chatbot-kb-vector",
+                removal_policy=RemovalPolicy.DESTROY,
+                auto_delete_objects=True,
+            )
+
+            # create S3 kb bucket
+            kb_bucket = s3.Bucket(
+                self,
+                f"{config['main']['resource_prefix']}-{config['main']['tier']}-KnowledgeBaseBucket",
+                bucket_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-knowledgebase",
+                removal_policy=RemovalPolicy.DESTROY,
+                auto_delete_objects=True,
+            )
+
+            # Create IAM role for bedrock knowledge base
+
+            account = config.get('main', 'account_id')
+            bedrock_principal = iam.ServicePrincipal(
+                "bedrock.amazonaws.com",
+                conditions={
+                    "StringEquals": {
+                        "aws:SourceAccount": account
+                    },
+                    "ArnLike": {
+                        "aws:SourceArn": f"arn:aws:bedrock:{config['main']['region']}:{config['main']['account_id']}:knowledge-base/*"
+                    }
+                }
+            )
+            self.kb_role = iam.Role(
+                self,
+                f"{self.namingPrefix}-kb-role",
+                role_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-kb-role",
+                assumed_by=bedrock_principal,
+                inline_policies={
+                    "BedrockModelInvoke": iam.PolicyDocument(
+                        statements=[
+                            iam.PolicyStatement(
+                                effect=iam.Effect.ALLOW,
+                                actions=["bedrock:InvokeModel"],
+                                resources=[
+                                    f"arn:aws:bedrock:{config['main']['region']}::foundation-model/amazon.titan-embed-text-v2:0"
+                                ],
+                            )
+                        ]
+                    ),
+                    "BedrockDataAutomationInvokeStatement": iam.PolicyDocument(
+                        statements=[
+                            iam.PolicyStatement(
+                                effect=iam.Effect.ALLOW,
+                                actions=[
+                                    "bedrock:InvokeDataAutomationAsync",
+                                    "bedrock:InvokeDataAutomation",
+                                    "bedrock:GetDataAutomationStatus",
+                                    "bedrock:GetDataAutomationProject"
+                                ],
+                                resources=[
+                                    f"arn:aws:bedrock:*:{config['main']['account_id']}:data-automation-profile/*",
+                                    f"arn:aws:bedrock:*:{config['main']['account_id']}:data-automation-invocation/*",
+                                    f"arn:aws:bedrock:{config['main']['region']}:data-automation-project/public-rag-default"
+                                ],
+                            )
+                        ]
+                    ),
+                    "S3VectorStatement": iam.PolicyDocument(
+                        statements=[
+                            iam.PolicyStatement(
+                                effect=iam.Effect.ALLOW,
+                                actions=[
+                                    "s3vectors:PutVectors",
+                                    "s3vectors:GetVectors",
+                                    "s3vectors:DeleteVectors",
+                                    "s3vectors:QueryVectors",
+                                    "s3vectors:GetIndex"
+                                ],
+                                resources=[
+                                    f"arn:aws:s3vectors:{config['main']['region']}:{config['main']['account_id']}:bucket/*"
+                                ],
+                            )
+                        ]
+                    )
+                }
+            )        
+
+            # Grant permissions to read from data source bucket
+            datasource_bucket.grant_read_write(self.kb_role)
+            # Grant permissions to read from vector bucket
+            vector_bucket.grant_read_write(self.kb_role)
+            # Grant permissions to read from knowledgebase bucket
+            kb_bucket.grant_read_write(self.kb_role)
+
+            # Create Bedrock Knowledgebase with S3 vector store
+            self.knowledge_base = bedrock.CfnKnowledgeBase(
+                self,
+                f"{self.namingPrefix}-kb",
+                name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-chatbot-kb",
+                description=f"Knowledge base for document retrieval with S3 vector store",
+                role_arn=self.kb_role.role_arn,
+                knowledge_base_configuration=bedrock.CfnKnowledgeBase.KnowledgeBaseConfigurationProperty(
+                    type="VECTOR",
+                    vector_knowledge_base_configuration=bedrock.CfnKnowledgeBase.VectorKnowledgeBaseConfigurationProperty(
+                        embedding_model_arn=f"arn:aws:bedrock:{config['main']['region']}::foundation-model/amazon.titan-embed-text-v2:0",
+                    ),
+                ),
+                storage_configuration=bedrock.CfnKnowledgeBase.StorageConfigurationProperty(
+                    type="S3_VECTORS",
+                    s3_vectors_configuration=bedrock.CfnKnowledgeBase.S3VectorsConfigurationProperty(
+                        vector_bucket_arn=vector_bucket.bucket_arn,
+                        index_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-index",
+                    ),
+                ),
+
+            )
+
+            # create S3 data source for the knowledgebase
+            self.data_source = bedrock.CfnDataSource(
+                self,
+                f"{self.namingPrefix}-s3datasource",
+                name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-chatbot-datasource",
+                knowledge_base_id=self.knowledge_base.attr_knowledge_base_id,
+                data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
+                    type="S3",
+                    s3_configuration=bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
+                        bucket_arn=datasource_bucket.bucket_arn
+                    ),
+                ),
+                vector_ingestion_configuration=bedrock.CfnDataSource.VectorIngestionConfigurationProperty(
+                    chunking_configuration=bedrock.CfnDataSource.ChunkingConfigurationProperty(
+                        chunking_strategy="FIXED_SIZE",
+                        fixed_size_chunking_configuration=bedrock.CfnDataSource.FixedSizeChunkingConfigurationProperty(
+                            max_tokens=300,
+                            overlap_percentage=20,
+                        ),
+                    )
+                ),
+            )
 
         ### Fargate
         # Frontend Service
@@ -536,8 +610,8 @@ class Stack(Stack):
         # Pvpuller Service
         pvpuller.pvpullerService.createService(self, config)
 
-        # Chatbotbe Service
-        #chatbotbe.chatbotbeService.createService(self, config)
+        # AuthZ Service
+        #authz.authzService.createService(self, config)
 
         # Files Service
         # files.filesService.createService(self, config)
