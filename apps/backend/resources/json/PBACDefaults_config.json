@@ -1063,6 +1063,15 @@
             "disabled": true
           },
           {
+            "_id": "submission_request:reopen:own",
+            "group": "Submission Request Permissions",
+            "name": "Reopen",
+            "inherited": ["submission_request:view:own"],
+            "order": 6,
+            "checked": true,
+            "disabled": true
+          },
+          {
             "_id": "access:request:own",
             "group": "Miscellaneous",
             "name": "Request Access",
@@ -1387,6 +1396,15 @@
             "name": "Cancel/Restore",
             "inherited": ["submission_request:view:own"],
             "order": 5,
+            "checked": true,
+            "disabled": true
+          },
+          {
+            "_id": "submission_request:reopen:own",
+            "group": "Submission Request Permissions",
+            "name": "Reopen",
+            "inherited": ["submission_request:view:own"],
+            "order": 6,
             "checked": true,
             "disabled": true
           },
