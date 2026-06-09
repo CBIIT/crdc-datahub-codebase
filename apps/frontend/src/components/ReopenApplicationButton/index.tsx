@@ -5,7 +5,7 @@ import { useSnackbar } from "notistack";
 import { memo, useCallback, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
-import { hasPermission } from "../../config/AuthPermissions";
+import { hasPermission } from "@/config/AuthPermissions";
 import {
   LIST_USERS,
   ListUsersResp,
@@ -47,7 +47,6 @@ const StyledFormBox = styled(Box)({
 });
 
 const StyledFieldLabel = styled(Typography)({
-  fontFamily: "'Nunito', sans-serif",
   fontStyle: "normal",
   fontWeight: 700,
   fontSize: "16px",
@@ -57,7 +56,6 @@ const StyledFieldLabel = styled(Typography)({
 });
 
 const StyledDescriptionText = styled(Typography)({
-  fontFamily: "'Nunito', sans-serif",
   fontStyle: "normal",
   fontWeight: 400,
   fontSize: "16px",
@@ -207,7 +205,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
 
       setConfirmOpen(false);
       enqueueSnackbar(
-        "Reopening the submission request will send it back to the users to make changes",
+        "The Submission Request has been reopened and sent back to the user for editing.",
         {
           variant: "success",
         }
