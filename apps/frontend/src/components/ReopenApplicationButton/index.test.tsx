@@ -52,6 +52,7 @@ const createApplication = (overrides: Partial<Application> = {}) =>
     _id: "app-1",
     status: "Approved",
     nextRevisionId: null,
+    canBeReopened: true,
     studyName: "Study One",
     studyAbbreviation: "S1",
     programName: "Program One",
@@ -382,7 +383,7 @@ describe("Implementation Requirements", () => {
       expect(mutationMatcher).toHaveBeenCalled();
       expect(onComplete).toHaveBeenCalledTimes(1);
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Reopening the submission request will send it back to the users to make changes",
+        "The Submission Request has been reopened and sent back to the user for editing.",
         {
           variant: "success",
         }
@@ -441,7 +442,7 @@ describe("Implementation Requirements", () => {
       expect(mutationMatcher).toHaveBeenCalled();
       expect(onComplete).toHaveBeenCalledTimes(1);
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Reopening the submission request will send it back to the users to make changes",
+        "The Submission Request has been reopened and sent back to the user for editing.",
         {
           variant: "success",
         }
