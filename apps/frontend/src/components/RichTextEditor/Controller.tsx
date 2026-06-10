@@ -8,7 +8,7 @@ import Toolbar from "./Toolbar";
 
 const StyledEditorWrapper = styled(Box)({
   marginTop: "24px",
-  border: "1px solid rgba(0, 0, 0, 0.23)",
+  border: "1px solid #6B7294",
   borderRadius: "4px",
   display: "flex",
   flexDirection: "column",
@@ -16,11 +16,13 @@ const StyledEditorWrapper = styled(Box)({
   maxWidth: "100%",
   boxSizing: "border-box",
   "&:hover": {
-    borderColor: "rgba(0, 0, 0, 0.87)",
+    borderColor: "#6B7294",
   },
   "&:focus-within": {
-    borderColor: "#1976d2",
-    borderWidth: "2px",
+    borderColor: "#209D7D",
+    borderWidth: "1px",
+    boxShadow:
+      "2px 2px 4px 0px rgba(38, 184, 147, 0.10), -1px -1px 6px 0px rgba(38, 184, 147, 0.20)",
   },
 });
 
