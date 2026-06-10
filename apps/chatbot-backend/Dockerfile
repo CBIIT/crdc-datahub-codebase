@@ -1,4 +1,4 @@
-FROM node:22.22.0-alpine3.23 AS fnl_base_image
+FROM node:24-alpine3.23 AS fnl_base_image
 
 WORKDIR /usr/src/app
 

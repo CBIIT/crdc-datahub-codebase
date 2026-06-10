@@ -166,7 +166,7 @@ describe("buildReleaseNotesUrl cases", () => {
     const { buildReleaseNotesUrl } = await import("./envUtils");
 
     expect(buildReleaseNotesUrl()).toBe(
-      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-ui/refs/tags/3.1.0.472/CHANGELOG.md"
+      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/tags/3.1.0.472/apps/frontend/CHANGELOG.md"
     );
   });
 
@@ -184,7 +184,7 @@ describe("buildReleaseNotesUrl cases", () => {
     const { buildReleaseNotesUrl } = await import("./envUtils");
 
     expect(buildReleaseNotesUrl()).toBe(
-      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-ui/refs/heads/main/CHANGELOG.md"
+      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/heads/master/apps/frontend/CHANGELOG.md"
     );
   });
 
@@ -202,7 +202,7 @@ describe("buildReleaseNotesUrl cases", () => {
     const { buildReleaseNotesUrl } = await import("./envUtils");
 
     expect(buildReleaseNotesUrl()).toBe(
-      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-ui/refs/heads/main/CHANGELOG.md"
+      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/heads/master/apps/frontend/CHANGELOG.md"
     );
   });
 
@@ -220,7 +220,7 @@ describe("buildReleaseNotesUrl cases", () => {
     const { buildReleaseNotesUrl } = await import("./envUtils");
 
     expect(buildReleaseNotesUrl()).toBe(
-      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-ui/refs/heads/main/CHANGELOG.md"
+      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/heads/master/apps/frontend/CHANGELOG.md"
     );
   });
 });
