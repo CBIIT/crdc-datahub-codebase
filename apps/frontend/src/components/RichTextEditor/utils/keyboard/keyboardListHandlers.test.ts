@@ -213,6 +213,43 @@ describe("handleBackspaceKey", () => {
     expect(editor.children).toHaveLength(1);
     expect(Element.isElement(editor.children[0]) && editor.children[0].type).toBe("bulleted-list");
   });
+
+  it("should reset to an empty paragraph when deleting an expanded list selection", () => {
+    const editor = createListEditor("bulleted-list", "item");
+    Transforms.select(editor, {
+      anchor: { path: [0, 0, 0], offset: 0 },
+      focus: { path: [0, 0, 0], offset: 4 },
+    });
+    const event = createKeyboardEvent({ key: "Backspace" });
+
+    expect(utils.handleBackspaceKey(event, editor)).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(editor.children).toEqual([{ type: "paragraph", children: [{ text: "" }] }]);
+  });
+
+  it("should reset to an empty paragraph when deleting an expanded selection spanning list and paragraph", () => {
+    const editor = createTestEditor([
+      {
+        type: "bulleted-list",
+        children: [
+          { type: "list-item", children: [{ text: "item 1" }] },
+          { type: "list-item", children: [{ text: "item 2" }] },
+        ],
+      },
+      { type: "paragraph", children: [{ text: "Hello World!" }] },
+    ]);
+
+    Transforms.select(editor, {
+      anchor: { path: [0, 0, 0], offset: 0 },
+      focus: { path: [1, 0], offset: "Hello World!".length },
+    });
+
+    const event = createKeyboardEvent({ key: "Backspace" });
+
+    expect(utils.handleBackspaceKey(event, editor)).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(editor.children).toEqual([{ type: "paragraph", children: [{ text: "" }] }]);
+  });
 });
 
 describe("handleMarkdownListShortcut", () => {

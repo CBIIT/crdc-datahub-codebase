@@ -2,6 +2,7 @@ import type { KeyboardEvent } from "react";
 import { Editor, Element, Node, Point, Range, Transforms } from "slate";
 
 import type { CustomEditor, KeyboardHandler, ListFormat } from "../../types";
+import { createEmptyDocument } from "../documentUtils";
 import { isListElement } from "../editorGuards";
 import { toggleBlock } from "../editorTransforms";
 
@@ -234,6 +235,33 @@ const convertListItemToParagraph = (
 };
 
 /**
+ * Ensures an empty editor is represented as a single empty paragraph.
+ * This prevents clearing the editor from leaving it in an invalid empty state with no nodes.
+ *
+ * @param {CustomEditor} editor - The Slate editor instance.
+ * @returns {void}
+ */
+const normalizeEmptyEditorToParagraph = (editor: CustomEditor): void => {
+  const firstNode = editor.children[0];
+  const isSingleEmptyParagraph =
+    editor.children.length === 1 &&
+    Element.isElement(firstNode) &&
+    firstNode.type === "paragraph" &&
+    Node.string(firstNode) === "";
+
+  if (isSingleEmptyParagraph || Node.string(editor) !== "") {
+    return;
+  }
+
+  while (editor.children.length > 0) {
+    Transforms.removeNodes(editor, { at: [0] });
+  }
+
+  Transforms.insertNodes(editor, createEmptyDocument(), { at: [0] });
+  Transforms.select(editor, Editor.start(editor, [0]));
+};
+
+/**
  * Handles Backspace at list boundaries.
  *
  * Moves the cursor into a preceding list or converts a list item to a paragraph
@@ -246,6 +274,17 @@ const convertListItemToParagraph = (
 export const handleBackspaceKey = (event: KeyboardEvent, editor: CustomEditor): boolean => {
   if (event.key !== "Backspace") {
     return false;
+  }
+
+  if (!editor.selection) {
+    return false;
+  }
+
+  if (Range.isExpanded(editor.selection)) {
+    event.preventDefault();
+    Transforms.delete(editor, { at: editor.selection });
+    normalizeEmptyEditorToParagraph(editor);
+    return true;
   }
 
   const selection = getCollapsedSelection(editor);
