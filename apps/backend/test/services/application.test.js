@@ -29,7 +29,6 @@ const mockUserService = {
     getUsersByNotifications: jest.fn(),
     getUserByID: jest.fn(),
     updateUserInfo: jest.fn(),
-    isEligibleReopenOwner: jest.fn(),
 };
 const mockDbService = { updateOne: jest.fn(), updateMany: jest.fn() };
 const mockNotificationsService = {
@@ -1849,9 +1848,8 @@ describe('Application', () => {
             userScopeMock.isNoneScope.mockReturnValue(false);
             userScopeMock.isAllScope.mockReturnValue(true);
             userScopeMock.isOwnScope.mockReturnValue(false);
-            mockUserService.isEligibleReopenOwner.mockReturnValue(true);
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
-            jest.spyOn(console, 'error').mockImplementation(() => {});
+            jest.spyOn(console, 'warn').mockImplementation(() => {});
             app.userDAO = {
                 findByIdAndStatus: jest.fn().mockResolvedValue({
                     _id: 'user1',
@@ -1870,7 +1868,7 @@ describe('Application', () => {
         });
 
         afterEach(() => {
-            console.error.mockRestore();
+            console.warn.mockRestore();
         });
 
         it('clones approved SRF via reopenApprovedRevision and logs audit events', async () => {
@@ -2017,11 +2015,11 @@ describe('Application', () => {
             await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
                 .rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
 
-            expect(console.error).toHaveBeenCalledWith(
-                'Reopen owner resolution failed - original owner does not have create permission. ownerID: ',
-                'user1'
+            expect(console.warn).toHaveBeenCalledWith(
+                'Reopen owner resolution failed:',
+                { ownerID: 'user1' },
+                ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE
             );
-            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
         });
 
         it('rejects explicitly assigning original owner without submission_request:create', async () => {
@@ -2038,11 +2036,11 @@ describe('Application', () => {
                 context
             )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
 
-            expect(console.error).toHaveBeenCalledWith(
-                'Reopen owner resolution failed - original owner does not have create permission. ownerID: ',
-                'user1'
+            expect(console.warn).toHaveBeenCalledWith(
+                'Reopen owner resolution failed:',
+                { ownerID: 'user1' },
+                ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE
             );
-            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
         });
 
         it('rejects non-original Admin with create permission', async () => {
@@ -2059,13 +2057,11 @@ describe('Application', () => {
                 context
             )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE);
 
-            expect(console.error).toHaveBeenCalledWith(
-                'Reopen owner resolution failed - owner role is not eligible. ownerID: ',
-                'admin-2',
-                ' role: ',
-                USER_CONSTANTS.USER.ROLES.ADMIN
+            expect(console.warn).toHaveBeenCalledWith(
+                'Reopen owner resolution failed:',
+                { ownerID: 'admin-2', role: USER_CONSTANTS.USER.ROLES.ADMIN },
+                ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE
             );
-            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE);
         });
 
         it('rejects non-original User without create permission', async () => {
@@ -2082,11 +2078,11 @@ describe('Application', () => {
                 context
             )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
 
-            expect(console.error).toHaveBeenCalledWith(
-                'Reopen owner resolution failed - specified owner does not have create permission. ownerID: ',
-                'new-owner'
+            expect(console.warn).toHaveBeenCalledWith(
+                'Reopen owner resolution failed:',
+                { ownerID: 'new-owner' },
+                ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE
             );
-            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
         });
 
         it('rejects when source has no original owner and ownerId is not provided', async () => {
@@ -2099,11 +2095,11 @@ describe('Application', () => {
             await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
                 .rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED);
 
-            expect(console.error).toHaveBeenCalledWith(
-                'Reopen owner resolution failed - no original owner found in SRF. applicationID: ',
-                'approved-1'
+            expect(console.warn).toHaveBeenCalledWith(
+                'Reopen owner resolution failed:',
+                { applicationID: 'approved-1' },
+                ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED
             );
-            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED);
         });
 
         it('rejects when original owner is inactive and ownerId is not provided', async () => {
@@ -2113,11 +2109,11 @@ describe('Application', () => {
             await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
                 .rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED);
 
-            expect(console.error).toHaveBeenCalledWith(
-                'Reopen owner resolution failed - original owner account is inactive or missing. ownerID: ',
-                'user1'
+            expect(console.warn).toHaveBeenCalledWith(
+                'Reopen owner resolution failed:',
+                { ownerID: 'user1' },
+                ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED
             );
-            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED);
         });
 
         it('rejects when specified ownerId is not found or inactive', async () => {
@@ -2129,11 +2125,11 @@ describe('Application', () => {
                 context
             )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE);
 
-            expect(console.error).toHaveBeenCalledWith(
-                'Reopen owner resolution failed - specified owner account is inactive or missing. ownerID: ',
-                'missing-owner'
+            expect(console.warn).toHaveBeenCalledWith(
+                'Reopen owner resolution failed:',
+                { ownerID: 'missing-owner' },
+                ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE
             );
-            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE);
         });
 
         it('throws when reopenApprovedRevision reports invalid state', async () => {

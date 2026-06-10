@@ -880,6 +880,10 @@ class Application {
         return this._hydrateApplicationRecord(insertedApp, ownerUser);
     }
 
+    _logReopenOwnerValidationFailure(details, errorCode) {
+        console.warn("Reopen owner resolution failed:", details, errorCode);
+    }
+
     async _getReopenSRFOwnerAndVerify(source, inputOwnerID) {
         const originalOwnerID = source?.applicant?.applicantID ?? source?.applicantID;
         const maintainOriginalOwner = !inputOwnerID || inputOwnerID === originalOwnerID;
@@ -889,24 +893,21 @@ class Application {
         if (!inputOwnerID) {
             if (!originalOwnerID) {
                 const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
-                console.error("Reopen owner resolution failed - no original owner found in SRF. applicationID: ", source._id);
-                console.error(error);
+                this._logReopenOwnerValidationFailure({ applicationID: source._id }, error);
                 throw new Error(error);
             }
 
             ownerUser = await this.userDAO.findByIdAndStatus(originalOwnerID, activeStatus);
             if (!ownerUser) {
                 const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
-                console.error("Reopen owner resolution failed - original owner account is inactive or missing. ownerID: ", originalOwnerID);
-                console.error(error);
+                this._logReopenOwnerValidationFailure({ ownerID: originalOwnerID }, error);
                 throw new Error(error);
             }
         } else {
             ownerUser = await this.userDAO.findByIdAndStatus(inputOwnerID, activeStatus);
             if (!ownerUser) {
                 const error = ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE;
-                console.error("Reopen owner resolution failed - specified owner account is inactive or missing. ownerID: ", inputOwnerID);
-                console.error(error);
+                this._logReopenOwnerValidationFailure({ ownerID: inputOwnerID }, error);
                 throw new Error(error);
             }
         }
@@ -916,24 +917,22 @@ class Application {
         if (!passPermissionCheck) {
             // original owner case error response
             if (maintainOriginalOwner) {
-                console.error("Reopen owner resolution failed - original owner does not have create permission. ownerID: ", originalOwnerID);
-                console.error(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
-                throw new Error(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
-            } 
-            // new owner case error response
-            else {
-                console.error("Reopen owner resolution failed - specified owner does not have create permission. ownerID: ", inputOwnerID);
-                console.error(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
-                throw new Error(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
+                const error = ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE;
+                this._logReopenOwnerValidationFailure({ ownerID: originalOwnerID }, error);
+                throw new Error(error);
             }
+            // new owner case error response
+            const error = ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE;
+            this._logReopenOwnerValidationFailure({ ownerID: inputOwnerID }, error);
+            throw new Error(error);
         }
 
         // Verify the reopened SRF owner is the original owner or has an assignable role
         const passRoleCheck = maintainOriginalOwner || REOPEN_ASSIGNABLE_ROLES.includes(ownerUser?.role);
         if (!passRoleCheck) {
-            console.error("Reopen owner resolution failed - owner role is not eligible. ownerID: ", inputOwnerID, " role: ", ownerUser?.role);
-            console.error(ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE);
-            throw new Error(ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE);
+            const error = ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE;
+            this._logReopenOwnerValidationFailure({ ownerID: inputOwnerID, role: ownerUser?.role }, error);
+            throw new Error(error);
         }
 
         return ownerUser;

@@ -1,6 +1,7 @@
 const USER_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/user-constants');
 const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
 const {
+    REOPEN_ASSIGNABLE_ROLES,
     getSubmissionRequestCreatePermissionVariants,
     hasSubmissionRequestCreatePermission,
     isEligibleReopenOwner,
@@ -16,6 +17,22 @@ describe('reopen-owner-utility', () => {
                 `${CREATE_PERMISSION}:all`,
                 `${CREATE_PERMISSION}:own`,
             ]);
+        });
+
+        it('returns a defensive copy that does not affect internal state', () => {
+            const variants = getSubmissionRequestCreatePermissionVariants();
+            variants.push('mutated');
+            expect(getSubmissionRequestCreatePermissionVariants()).toEqual([
+                CREATE_PERMISSION,
+                `${CREATE_PERMISSION}:all`,
+                `${CREATE_PERMISSION}:own`,
+            ]);
+        });
+    });
+
+    describe('REOPEN_ASSIGNABLE_ROLES', () => {
+        it('is immutable', () => {
+            expect(() => REOPEN_ASSIGNABLE_ROLES.push(USER_CONSTANTS.USER.ROLES.ADMIN)).toThrow();
         });
     });
 

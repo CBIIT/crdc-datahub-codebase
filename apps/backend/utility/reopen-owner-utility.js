@@ -3,19 +3,19 @@ const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/cons
 const SCOPES = require("../constants/permission-scope-constants");
 
 const ROLES = USER_CONSTANTS.USER.ROLES;
-const REOPEN_ASSIGNABLE_ROLES = [ROLES.USER, ROLES.SUBMITTER];
+const REOPEN_ASSIGNABLE_ROLES = Object.freeze([ROLES.USER, ROLES.SUBMITTER]);
 
-const SUBMISSION_REQUEST_CREATE_PERMISSION_VARIANTS = (() => {
+const SUBMISSION_REQUEST_CREATE_PERMISSION_VARIANTS = Object.freeze((() => {
     const createPermission = USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE;
     return [
         createPermission,
         `${createPermission}:${SCOPES.ALL}`,
         `${createPermission}:${SCOPES.OWN}`,
     ];
-})();
+})());
 
 function getSubmissionRequestCreatePermissionVariants() {
-    return SUBMISSION_REQUEST_CREATE_PERMISSION_VARIANTS;
+    return [...SUBMISSION_REQUEST_CREATE_PERMISSION_VARIANTS];
 }
 
 function normalizePermissionId(permission) {
