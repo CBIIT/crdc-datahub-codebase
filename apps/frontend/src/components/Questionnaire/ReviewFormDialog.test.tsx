@@ -5,35 +5,41 @@ import { render, waitFor, within } from "../../test-utils";
 
 import ReviewFormDialog from "./ReviewFormDialog";
 
-vi.mock("../RichTextEditor", () => ({
-  default: ({
-    value,
-    onChange,
-    onTextLengthChange,
-    "data-testid": dataTestId,
-    placeholder,
-    disabled,
-  }: {
-    value: string;
-    onChange: (v: string) => void;
-    onTextLengthChange?: (n: number) => void;
-    "data-testid"?: string;
-    placeholder?: string;
-    disabled?: boolean;
-  }) => (
-    <div data-testid={dataTestId}>
-      <textarea
-        placeholder={placeholder}
-        disabled={disabled}
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-          onTextLengthChange?.(e.target.value.length);
-        }}
-      />
-    </div>
-  ),
-}));
+vi.mock("../RichTextEditor", () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  const { forwardRef } = require("react");
+  return {
+    default: forwardRef(
+      ({
+        value,
+        onChange,
+        onTextLengthChange,
+        "data-testid": dataTestId,
+        placeholder,
+        disabled,
+      }: {
+        value: string;
+        onChange: (v: string) => void;
+        onTextLengthChange?: (n: number) => void;
+        "data-testid"?: string;
+        placeholder?: string;
+        disabled?: boolean;
+      }) => (
+        <div data-testid={dataTestId}>
+          <textarea
+            placeholder={placeholder}
+            disabled={disabled}
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value);
+              onTextLengthChange?.(e.target.value.length);
+            }}
+          />
+        </div>
+      )
+    ),
+  };
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
