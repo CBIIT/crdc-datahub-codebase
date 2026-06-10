@@ -193,6 +193,26 @@ describe("handleBackspaceKey", () => {
     expect(utils.handleBackspaceKey(event, editor)).toBe(true);
     expect(event.preventDefault).toHaveBeenCalled();
   });
+
+  it("should remove empty paragraph and move cursor to end of previous list", () => {
+    const editor = createTestEditor([
+      {
+        type: "bulleted-list",
+        children: [{ type: "list-item", children: [{ text: "item" }] }],
+      },
+      { type: "paragraph", children: [{ text: "" }] },
+    ]);
+    Transforms.select(editor, {
+      anchor: { path: [1, 0], offset: 0 },
+      focus: { path: [1, 0], offset: 0 },
+    });
+    const event = createKeyboardEvent({ key: "Backspace" });
+
+    expect(utils.handleBackspaceKey(event, editor)).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(editor.children).toHaveLength(1);
+    expect(Element.isElement(editor.children[0]) && editor.children[0].type).toBe("bulleted-list");
+  });
 });
 
 describe("handleMarkdownListShortcut", () => {

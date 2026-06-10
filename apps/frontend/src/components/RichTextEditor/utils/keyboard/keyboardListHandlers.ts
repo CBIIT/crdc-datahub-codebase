@@ -190,6 +190,13 @@ const moveCursorToEndOfPreviousList = (
   }
 
   event.preventDefault();
+
+  const paragraphIsEmpty = Node.string(paragraphEntry[0]) === "";
+
+  if (paragraphIsEmpty) {
+    Transforms.removeNodes(editor, { at: paragraphPath });
+  }
+
   const lastListItemPath = [...previousPath, previousNode.children.length - 1];
   Transforms.select(editor, Editor.end(editor, lastListItemPath));
   return true;
