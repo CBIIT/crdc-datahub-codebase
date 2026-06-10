@@ -1,4 +1,4 @@
-FROM node:22.17.0-alpine3.21 AS build
+FROM node:22-alpine3.23 AS build
 
 WORKDIR /usr/src/app
 
@@ -8,10 +8,7 @@ RUN NODE_OPTIONS="--max-old-space-size=4096" npm ci
 
 RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
-FROM nginx:1.29.8-alpine3.23-slim AS fnl_base_image
-
-# zlib: CVE-2026-22184, openssl: CVE-2026-2673, CVE-2026-31790
-RUN apk update && apk add --no-cache --upgrade zlib=1.3.2-r0 openssl
+FROM nginx:1.30.2-alpine3.23-slim AS fnl_base_image
 
 COPY --from=build /usr/src/app/build /usr/share/nginx/html
 COPY --from=build /usr/src/app/conf/inject.template.js /usr/share/nginx/html/inject.template.js

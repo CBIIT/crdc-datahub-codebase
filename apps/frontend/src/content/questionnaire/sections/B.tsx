@@ -16,6 +16,7 @@ import SectionGroup from "../../../components/Questionnaire/SectionGroup";
 import SelectInput from "../../../components/Questionnaire/SelectInput";
 import TextInput from "../../../components/Questionnaire/TextInput";
 import TransitionGroupWrapper from "../../../components/Questionnaire/TransitionGroupWrapper";
+import { CHARACTER_LIMITS } from "../../../config/CharacterLimitsConfig";
 import { InitialQuestionnaire } from "../../../config/InitialValues";
 import { NotApplicableProgram, OtherProgram } from "../../../config/ProgramConfig";
 import SectionMetadata from "../../../config/SectionMetadata";
@@ -23,6 +24,7 @@ import useFormMode from "../../../hooks/useFormMode";
 import {
   combineQuestionnaireData,
   filterAlphaNumeric,
+  formatCharacterLimitPlaceholder,
   findProgram,
   Logger,
   mapObjectWithKey,
@@ -439,8 +441,8 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           label="Study Title"
           name="study[name]"
           value={study.name}
-          maxLength={1000}
-          placeholder="1,000 characters allowed"
+          maxLength={CHARACTER_LIMITS.study.name.max}
+          placeholder={formatCharacterLimitPlaceholder(CHARACTER_LIMITS.study.name.max)}
           validate={(input: string) => !validateUTF8(input)}
           readOnly={readOnlyInputs}
           hideValidation={readOnlyInputs}
@@ -457,8 +459,8 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           onChange={(e) => {
             e.target.value = e.target.value.toUpperCase();
           }}
-          maxLength={20}
-          placeholder="20 characters allowed"
+          maxLength={CHARACTER_LIMITS.study.abbreviation.max}
+          placeholder={formatCharacterLimitPlaceholder(CHARACTER_LIMITS.study.abbreviation.max)}
           readOnly={readOnlyInputs}
           hideValidation={readOnlyInputs}
           tooltipText="Provide a short abbreviation or acronym (e.g., NCI-MATCH) for the study."
