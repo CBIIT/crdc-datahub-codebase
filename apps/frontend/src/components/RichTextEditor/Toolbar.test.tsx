@@ -5,6 +5,7 @@ import { withHistory } from "slate-history";
 import { Slate, withReact } from "slate-react";
 import { axe } from "vitest-axe";
 
+import * as EditorConfig from "../../config/EditorConfig";
 import { render } from "../../test-utils";
 
 import Toolbar from "./Toolbar";
@@ -16,6 +17,15 @@ vi.mock("./utils/editorTransforms", () => ({
   toggleMark: vi.fn(),
   toggleBlock: vi.fn(),
 }));
+
+vi.mock("../../config/EditorConfig", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../config/EditorConfig")>();
+  return {
+    ...actual,
+    MARK_DEFINITIONS: actual.MARK_DEFINITIONS.map((d) => ({ ...d, enabled: true })),
+    BLOCK_DEFINITIONS: actual.BLOCK_DEFINITIONS.map((d) => ({ ...d, enabled: true })),
+  };
+});
 
 const initialValue: Descendant[] = [{ type: "paragraph", children: [{ text: "" }] }];
 
@@ -160,5 +170,44 @@ describe("Implementation Requirements", () => {
     render(<Toolbar />, { wrapper: TestParent });
 
     expect(isBlockActive).toHaveBeenCalledWith(expect.anything(), "numbered-list");
+  });
+
+  it("should hide mark buttons when enabled is false", () => {
+    const [first, ...rest] = EditorConfig.MARK_DEFINITIONS;
+    const spy = vi
+      .spyOn(EditorConfig, "MARK_DEFINITIONS", "get")
+      .mockReturnValue([{ ...first, enabled: false }, ...rest]);
+
+    const { queryByRole, getByRole } = render(<Toolbar />, { wrapper: TestParent });
+
+    expect(queryByRole("button", { name: "Bold (Ctrl+B)" })).not.toBeInTheDocument();
+    expect(getByRole("button", { name: "Italic (Ctrl+I)" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Underline (Ctrl+U)" })).toBeInTheDocument();
+
+    spy.mockRestore();
+  });
+
+  it("should hide block buttons when enabled is false", () => {
+    const [first, ...rest] = EditorConfig.BLOCK_DEFINITIONS;
+    const spy = vi
+      .spyOn(EditorConfig, "BLOCK_DEFINITIONS", "get")
+      .mockReturnValue([{ ...first, enabled: false }, ...rest]);
+
+    const { queryByRole, getByRole } = render(<Toolbar />, { wrapper: TestParent });
+
+    expect(queryByRole("button", { name: "Bullet List" })).not.toBeInTheDocument();
+    expect(getByRole("button", { name: "Numbered List" })).toBeInTheDocument();
+
+    spy.mockRestore();
+  });
+
+  it("should show buttons when enabled is true", () => {
+    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+
+    expect(getByRole("button", { name: "Bold (Ctrl+B)" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Italic (Ctrl+I)" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Underline (Ctrl+U)" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Bullet List" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Numbered List" })).toBeInTheDocument();
   });
 });

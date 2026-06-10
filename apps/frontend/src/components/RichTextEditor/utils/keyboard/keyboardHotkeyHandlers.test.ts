@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { HistoryEditor } from "slate-history";
 
+import * as EditorConfig from "@/config/EditorConfig";
 import { MARK_DEFINITIONS } from "@/config/EditorConfig";
 
 import type { CustomEditor } from "../../types";
@@ -18,6 +19,14 @@ vi.mock("slate-history", () => ({
 vi.mock("../editorTransforms", () => ({
   toggleMark: vi.fn(),
 }));
+
+vi.mock("@/config/EditorConfig", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/EditorConfig")>();
+  return {
+    ...actual,
+    MARK_DEFINITIONS: actual.MARK_DEFINITIONS.map((d) => ({ ...d, enabled: true })),
+  };
+});
 
 const createKeyboardEvent = (overrides: Partial<KeyboardEvent> = {}): KeyboardEvent =>
   ({
@@ -98,5 +107,33 @@ describe("handleModifierHotkeys", () => {
 
     expect(utils.handleModifierHotkeys(event, editor)).toBe(false);
     expect(toggleMark).not.toHaveBeenCalled();
+  });
+
+  it("should not toggle a mark when enabled is false", () => {
+    const [first, ...rest] = MARK_DEFINITIONS;
+    const spy = vi
+      .spyOn(EditorConfig, "MARK_DEFINITIONS", "get")
+      .mockReturnValue([{ ...first, enabled: false }, ...rest]);
+
+    const event = createKeyboardEvent({ key: "b", ctrlKey: true });
+
+    expect(utils.handleModifierHotkeys(event, editor)).toBe(false);
+    expect(toggleMark).not.toHaveBeenCalled();
+
+    spy.mockRestore();
+  });
+
+  it("should still toggle marks that remain enabled", () => {
+    const [first, ...rest] = MARK_DEFINITIONS;
+    const spy = vi
+      .spyOn(EditorConfig, "MARK_DEFINITIONS", "get")
+      .mockReturnValue([{ ...first, enabled: false }, ...rest]);
+
+    const event = createKeyboardEvent({ key: "i", ctrlKey: true });
+
+    expect(utils.handleModifierHotkeys(event, editor)).toBe(true);
+    expect(toggleMark).toHaveBeenCalledWith(editor, "italic");
+
+    spy.mockRestore();
   });
 });

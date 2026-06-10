@@ -53,7 +53,7 @@ const Toolbar = (): ReactElement => {
 
   return (
     <StyledToolbar data-testid="rich-text-editor-toolbar">
-      {MARK_DEFINITIONS.map(({ format, tooltip, icon }) => (
+      {MARK_DEFINITIONS.filter(({ enabled }) => enabled).map(({ format, tooltip, icon }) => (
         <ToolbarButton
           key={format}
           label={tooltip}
@@ -64,7 +64,7 @@ const Toolbar = (): ReactElement => {
           onMouseDown={handleMarkMouseDown(format)}
         />
       ))}
-      {BLOCK_DEFINITIONS.map(({ format, tooltip, icon }) => (
+      {BLOCK_DEFINITIONS.filter(({ enabled }) => enabled).map(({ format, tooltip, icon }) => (
         <ToolbarButton
           key={format}
           label={tooltip}

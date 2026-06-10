@@ -47,7 +47,7 @@ const handleUndoRedoHotkeys = (
  * @returns {boolean} `true` if a matching mark was toggled, `false` otherwise.
  */
 const handleMarkHotkeys = (event: KeyboardEvent, editor: CustomEditor, key: string): boolean => {
-  const mark = MARK_DEFINITIONS.find((m) => m.hotkey === key);
+  const mark = MARK_DEFINITIONS.find((m) => m.hotkey === key && m.enabled);
 
   if (!mark) {
     return false;

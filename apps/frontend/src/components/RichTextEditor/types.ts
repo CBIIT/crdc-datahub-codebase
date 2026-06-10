@@ -11,6 +11,7 @@ export type MarkFormat = "bold" | "italic" | "underline";
 type EditorFormatDefinition = {
   tooltip: string;
   icon: ToolbarIcon;
+  enabled: boolean;
   hotkey?: string;
   pattern?: RegExp;
   htmlTag?: keyof React.ReactHTML;
