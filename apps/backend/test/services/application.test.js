@@ -1829,6 +1829,7 @@ describe('Application', () => {
     });
 
     describe('reopenApprovedSubmissionRequest', () => {
+        const createPermission = USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE;
         const approvedSource = {
             _id: 'approved-1',
             status: APPROVED,
@@ -1850,15 +1851,26 @@ describe('Application', () => {
             userScopeMock.isOwnScope.mockReturnValue(false);
             mockUserService.isEligibleReopenOwner.mockReturnValue(true);
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+            jest.spyOn(console, 'error').mockImplementation(() => {});
             app.userDAO = {
                 findByIdAndStatus: jest.fn().mockResolvedValue({
                     _id: 'user1',
                     id: 'user1',
                     role: USER_CONSTANTS.USER.ROLES.SUBMITTER,
                     userStatus: USER_CONSTANTS.USER.STATUSES.ACTIVE,
-                    permissions: ['submission_request:create:own'],
-                })
+                    permissions: [createPermission],
+                }),
             };
+            app.applicationDAO = {
+                reopenApprovedRevision: jest.fn().mockImplementation((_sourceId, doc) =>
+                    Promise.resolve({ ...doc, version: '3.0' })
+                ),
+            };
+            mockLogCollection.insert.mockResolvedValue();
+        });
+
+        afterEach(() => {
+            console.error.mockRestore();
         });
 
         it('clones approved SRF via reopenApprovedRevision and logs audit events', async () => {
@@ -1870,10 +1882,8 @@ describe('Application', () => {
                 submittedDate: null,
                 version: '3.0',
             };
-            app.applicationDAO = {
-                reopenApprovedRevision: jest.fn().mockResolvedValue(reopenedDoc),
-            };
-            mockLogCollection.insert.mockResolvedValue();
+            app.applicationDAO.reopenApprovedRevision.mockResolvedValue(reopenedDoc);
+
             const result = await app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context);
 
             expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
@@ -1909,13 +1919,8 @@ describe('Application', () => {
                 lastName: 'Smith',
                 email: 'jane@example.com',
                 role: USER_CONSTANTS.USER.ROLES.USER,
+                permissions: [createPermission],
             });
-            app.applicationDAO = {
-                reopenApprovedRevision: jest.fn().mockImplementation((_sourceId, doc) =>
-                    Promise.resolve({ ...doc, version: '3.0' })
-                ),
-            };
-            mockLogCollection.insert.mockResolvedValue();
 
             const result = await app.reopenApprovedSubmissionRequest(
                 { _id: 'approved-1', ownerId: 'new-owner' },
@@ -1938,14 +1943,8 @@ describe('Application', () => {
                 email: 'owner@example.com',
                 role: USER_CONSTANTS.USER.ROLES.USER,
                 userStatus: USER_CONSTANTS.USER.STATUSES.ACTIVE,
-                permissions: ['submission_request:create:own'],
+                permissions: [createPermission],
             });
-            app.applicationDAO = {
-                reopenApprovedRevision: jest.fn().mockImplementation((_sourceId, doc) =>
-                    Promise.resolve({ ...doc, version: '3.0' })
-                ),
-            };
-            mockLogCollection.insert.mockResolvedValue();
 
             const result = await app.reopenApprovedSubmissionRequest(
                 { _id: 'approved-1', ownerId: 'new-owner' },
@@ -1961,6 +1960,180 @@ describe('Application', () => {
                 applicantName: 'New Owner',
                 applicantEmail: 'owner@example.com',
             });
+        });
+
+        it('allows original owner with Admin role when create permission is present', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.userDAO.findByIdAndStatus.mockResolvedValue({
+                _id: 'user1',
+                id: 'user1',
+                fullName: 'Admin Owner',
+                email: 'admin.owner@example.com',
+                role: USER_CONSTANTS.USER.ROLES.ADMIN,
+                permissions: [createPermission],
+            });
+
+            const result = await app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context);
+
+            expect(result.applicant).toEqual({
+                applicantID: 'user1',
+                applicantName: 'Admin Owner',
+                applicantEmail: 'admin.owner@example.com',
+            });
+        });
+
+        it('allows explicitly assigning original owner with Admin role when create permission is present', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.userDAO.findByIdAndStatus.mockResolvedValue({
+                _id: 'user1',
+                id: 'user1',
+                fullName: 'Admin Owner',
+                email: 'admin.owner@example.com',
+                role: USER_CONSTANTS.USER.ROLES.ADMIN,
+                permissions: [createPermission],
+            });
+
+            const result = await app.reopenApprovedSubmissionRequest(
+                { _id: 'approved-1', ownerId: 'user1' },
+                context
+            );
+
+            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+                'approved-1',
+                expect.objectContaining({ applicantID: 'user1' })
+            );
+            expect(result.applicant.applicantID).toBe('user1');
+        });
+
+        it('rejects original owner without submission_request:create', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.userDAO.findByIdAndStatus.mockResolvedValue({
+                _id: 'user1',
+                id: 'user1',
+                role: USER_CONSTANTS.USER.ROLES.ADMIN,
+                permissions: ['submission_request:view'],
+            });
+
+            await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
+
+            expect(console.error).toHaveBeenCalledWith(
+                'Reopen owner resolution failed - original owner does not have create permission. ownerID: ',
+                'user1'
+            );
+            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
+        });
+
+        it('rejects explicitly assigning original owner without submission_request:create', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.userDAO.findByIdAndStatus.mockResolvedValue({
+                _id: 'user1',
+                id: 'user1',
+                role: USER_CONSTANTS.USER.ROLES.ADMIN,
+                permissions: ['submission_request:view'],
+            });
+
+            await expect(app.reopenApprovedSubmissionRequest(
+                { _id: 'approved-1', ownerId: 'user1' },
+                context
+            )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
+
+            expect(console.error).toHaveBeenCalledWith(
+                'Reopen owner resolution failed - original owner does not have create permission. ownerID: ',
+                'user1'
+            );
+            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
+        });
+
+        it('rejects non-original Admin with create permission', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.userDAO.findByIdAndStatus.mockResolvedValue({
+                _id: 'admin-2',
+                id: 'admin-2',
+                role: USER_CONSTANTS.USER.ROLES.ADMIN,
+                permissions: [createPermission],
+            });
+
+            await expect(app.reopenApprovedSubmissionRequest(
+                { _id: 'approved-1', ownerId: 'admin-2' },
+                context
+            )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE);
+
+            expect(console.error).toHaveBeenCalledWith(
+                'Reopen owner resolution failed - owner role is not eligible. ownerID: ',
+                'admin-2',
+                ' role: ',
+                USER_CONSTANTS.USER.ROLES.ADMIN
+            );
+            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE);
+        });
+
+        it('rejects non-original User without create permission', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.userDAO.findByIdAndStatus.mockResolvedValue({
+                _id: 'new-owner',
+                id: 'new-owner',
+                role: USER_CONSTANTS.USER.ROLES.USER,
+                permissions: [],
+            });
+
+            await expect(app.reopenApprovedSubmissionRequest(
+                { _id: 'approved-1', ownerId: 'new-owner' },
+                context
+            )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
+
+            expect(console.error).toHaveBeenCalledWith(
+                'Reopen owner resolution failed - specified owner does not have create permission. ownerID: ',
+                'new-owner'
+            );
+            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
+        });
+
+        it('rejects when source has no original owner and ownerId is not provided', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                ...approvedSource,
+                applicant: undefined,
+                applicantID: undefined,
+            });
+
+            await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED);
+
+            expect(console.error).toHaveBeenCalledWith(
+                'Reopen owner resolution failed - no original owner found in SRF. applicationID: ',
+                'approved-1'
+            );
+            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED);
+        });
+
+        it('rejects when original owner is inactive and ownerId is not provided', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.userDAO.findByIdAndStatus.mockResolvedValue(null);
+
+            await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED);
+
+            expect(console.error).toHaveBeenCalledWith(
+                'Reopen owner resolution failed - original owner account is inactive or missing. ownerID: ',
+                'user1'
+            );
+            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED);
+        });
+
+        it('rejects when specified ownerId is not found or inactive', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
+            app.userDAO.findByIdAndStatus.mockResolvedValue(null);
+
+            await expect(app.reopenApprovedSubmissionRequest(
+                { _id: 'approved-1', ownerId: 'missing-owner' },
+                context
+            )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE);
+
+            expect(console.error).toHaveBeenCalledWith(
+                'Reopen owner resolution failed - specified owner account is inactive or missing. ownerID: ',
+                'missing-owner'
+            );
+            expect(console.error).toHaveBeenCalledWith(ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE);
         });
 
         it('throws when reopenApprovedRevision reports invalid state', async () => {
@@ -2056,12 +2229,11 @@ describe('Application', () => {
                 userStatus: USER_CONSTANTS.USER.STATUSES.ACTIVE,
                 permissions: ['submission_request:create:all'],
             });
-            mockUserService.isEligibleReopenOwner.mockReturnValue(false);
 
             await expect(app.reopenApprovedSubmissionRequest(
                 { _id: 'approved-1', ownerId: 'admin-owner' },
                 context
-            )).rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
+            )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE);
         });
 
         it('rejects all-scope reassignment when target lacks create permission', async () => {
@@ -2073,12 +2245,11 @@ describe('Application', () => {
                 userStatus: USER_CONSTANTS.USER.STATUSES.ACTIVE,
                 permissions: ['submission_request:view:own'],
             });
-            mockUserService.isEligibleReopenOwner.mockReturnValue(false);
 
             await expect(app.reopenApprovedSubmissionRequest(
                 { _id: 'approved-1', ownerId: 'user-no-create' },
                 context
-            )).rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
+            )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
         });
     });
 

@@ -24,6 +24,11 @@ const UserDAO = require("../dao/user");
 const ApprovedStudyDAO = require("../dao/approvedStudy");
 const SubmissionDAO = require("../dao/submission");
 const {formatName} = require("../utility/format-name");
+const {
+    getSubmissionRequestCreatePermissionVariants,
+    isEligibleReopenOwner: isEligibleReopenOwnerUtil,
+    REOPEN_ASSIGNABLE_ROLES,
+} = require("../utility/reopen-owner-utility");
 
 const isLoggedInOrThrow = (context) => {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) throw new Error(SUBMODULE_ERROR.NOT_LOGGED_IN);
@@ -376,35 +381,15 @@ class UserService {
         return result;
     }
 
-    _getReopenOwnerCreatePermissionIds() {
-        const createPermission = USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE;
-        return [
-            createPermission,
-            `${createPermission}:${SCOPES.ALL}`,
-            `${createPermission}:${SCOPES.OWN}`,
-        ];
-    }
-
     isEligibleReopenOwner(user) {
-        if (!user || user.userStatus !== USER.STATUSES.ACTIVE) {
-            return false;
-        }
-        if (![ROLES.USER, ROLES.SUBMITTER].includes(user.role)) {
-            return false;
-        }
-        const createPermissionIds = this._getReopenOwnerCreatePermissionIds();
-        return (user.permissions ?? []).some((permission) =>
-            createPermissionIds.includes(permission?._id ?? permission)
-        );
+        return isEligibleReopenOwnerUtil(user);
     }
 
     _buildReopenListUsersMatch() {
         return {
-            role: { $in: [ROLES.USER, ROLES.SUBMITTER] },
+            role: { $in: REOPEN_ASSIGNABLE_ROLES },
             userStatus: USER.STATUSES.ACTIVE,
-            permissions: {
-                $in: this._getReopenOwnerCreatePermissionIds(),
-            },
+            permissions: { $in: getSubmissionRequestCreatePermissionVariants() },
         };
     }
 

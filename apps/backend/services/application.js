@@ -1,5 +1,4 @@
 const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED, REOPENED} = require("../constants/application-constants");
-const {APPLICATION_COLLECTION: APPLICATION} = require("../crdc-datahub-database-drivers/database-constants");
 const {v4} = require('uuid')
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {HistoryEventBuilder} = require("../domain/history-event");
@@ -22,6 +21,10 @@ const ApplicationDAO = require("../dao/application");
 const {PrismaPagination} = require("../crdc-datahub-database-drivers/domain/prisma-pagination");
 const UserDAO = require("../dao/user");
 const {formatName} = require("../utility/format-name");
+const {
+    REOPEN_ASSIGNABLE_ROLES,
+    hasSubmissionRequestCreatePermission,
+} = require("../utility/reopen-owner-utility");
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_INSTITUTION_NAME_LENGTH = 100;
 // Valid orderBy values for listApplications (Prisma field names). "applicant.applicantName" is accepted and mapped to "applicant.fullName".
@@ -784,6 +787,7 @@ class Application {
     }
 
     async reopenApprovedSubmissionRequest(params, context) {
+        // Verifications
         verifySession(context)
             .verifyInitialized();
 
@@ -817,44 +821,18 @@ class Application {
             }
         }
 
-        const ownerUser = await this._resolveReopenOwner(source, isAllScope ? params?.ownerId : null);
-        const newApp = await this._cloneApplicationForReopen(source, ownerUser, context.userInfo._id);
-        const insertedApp = await this.applicationDAO.reopenApprovedRevision(source._id, newApp);
+        // Get the reopened SRF owner and verify
+        const ownerUser = await this._getReopenSRFOwnerAndVerify(
+            source,
+            isAllScope ? params?.ownerId : null
+        );
 
-        const { _id: actorId, email, IDP } = context.userInfo;
-        await Promise.all([
-            this.logCollection.insert(CreateApplicationEvent.create(actorId, email, IDP, insertedApp._id)),
-            this.logCollection.insert(UpdateApplicationStateEvent.create(
-                actorId, email, IDP, insertedApp._id, APPROVED, REOPENED
-            ))
-        ]);
-
-        insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
-        return this._hydrateApplicationRecord(insertedApp, ownerUser);
-    }
-
-    async _resolveReopenOwner(source, ownerId) {
-        const defaultOwnerId = source?.applicant?.applicantID ?? source?.applicantID;
-        const resolvedOwnerId = ownerId || defaultOwnerId;
-        if (!resolvedOwnerId) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        const ownerUser = await this.userDAO.findByIdAndStatus(resolvedOwnerId, USER_CONSTANTS.USER.STATUSES.ACTIVE);
-        if (!ownerUser || !this.userService.isEligibleReopenOwner(ownerUser)) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        return ownerUser;
-    }
-
-    async _cloneApplicationForReopen(source, ownerUser, actorId) {
+        // Clone the application for reopen
         const timestamp = getCurrentTime();
-        const historyEvent = HistoryEventBuilder.createEvent(actorId, REOPENED, null, timestamp);
+        const historyEvent = HistoryEventBuilder.createEvent(context.userInfo._id, REOPENED, null, timestamp);
         const version = await this._getApplicationVersionByStatus(REOPENED);
-        const sourceSequence = source.sequenceNumber ?? 1;
-
-        const clone = {
+        const sourceSequence = source?.sequenceNumber ?? 1;
+        const reopenedApplication = {
             // initialization fields 
             _id: v4(undefined, undefined, undefined),
             status: REOPENED,
@@ -886,8 +864,79 @@ class Application {
             organization: source.organization,
             newInstitutions: source.newInstitutions
         };
+        const insertedApp = await this.applicationDAO.reopenApprovedRevision(source._id, reopenedApplication);
 
-        return clone;
+        // Log the audit events
+        const { _id: actorId, email, IDP } = context.userInfo;
+        await Promise.all([
+            this.logCollection.insert(CreateApplicationEvent.create(actorId, email, IDP, insertedApp._id)),
+            this.logCollection.insert(UpdateApplicationStateEvent.create(
+                actorId, email, IDP, insertedApp._id, APPROVED, REOPENED
+            ))
+        ]);
+
+        // Compile API response
+        insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
+        return this._hydrateApplicationRecord(insertedApp, ownerUser);
+    }
+
+    async _getReopenSRFOwnerAndVerify(source, inputOwnerID) {
+        const originalOwnerID = source?.applicant?.applicantID ?? source?.applicantID;
+        const maintainOriginalOwner = !inputOwnerID || inputOwnerID === originalOwnerID;
+        const activeStatus = USER_CONSTANTS.USER.STATUSES.ACTIVE;
+
+        let ownerUser;
+        if (!inputOwnerID) {
+            if (!originalOwnerID) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
+                console.error("Reopen owner resolution failed - no original owner found in SRF. applicationID: ", source._id);
+                console.error(error);
+                throw new Error(error);
+            }
+
+            ownerUser = await this.userDAO.findByIdAndStatus(originalOwnerID, activeStatus);
+            if (!ownerUser) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
+                console.error("Reopen owner resolution failed - original owner account is inactive or missing. ownerID: ", originalOwnerID);
+                console.error(error);
+                throw new Error(error);
+            }
+        } else {
+            ownerUser = await this.userDAO.findByIdAndStatus(inputOwnerID, activeStatus);
+            if (!ownerUser) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE;
+                console.error("Reopen owner resolution failed - specified owner account is inactive or missing. ownerID: ", inputOwnerID);
+                console.error(error);
+                throw new Error(error);
+            }
+        }
+
+        // Verify reopened SRF owner has create permission
+        const passPermissionCheck = hasSubmissionRequestCreatePermission(ownerUser);
+        if (!passPermissionCheck) {
+            // original owner case error response
+            if (maintainOriginalOwner) {
+                console.error("Reopen owner resolution failed - original owner does not have create permission. ownerID: ", originalOwnerID);
+                console.error(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
+                throw new Error(ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE);
+            } 
+            // new owner case error response
+            else {
+                console.error("Reopen owner resolution failed - specified owner does not have create permission. ownerID: ", inputOwnerID);
+                console.error(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
+                throw new Error(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
+            }
+        }
+
+        // Verify the reopened SRF owner is the original owner or has an assignable role
+        const passRoleCheck = maintainOriginalOwner || REOPEN_ASSIGNABLE_ROLES.includes(ownerUser?.role);
+        if (!passRoleCheck) {
+            console.error("Reopen owner resolution failed - owner role is not eligible. ownerID: ", inputOwnerID, " role: ", ownerUser?.role);
+            console.error(ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE);
+            throw new Error(ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE);
+        }
+
+        return ownerUser;
     }
 
     async _getUserScope(userInfo, permission) {

@@ -4,6 +4,10 @@ const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/c
 const ERROR = require('../../constants/error-constants');
 const { verifySession } = require('../../verifier/user-info-verifier');
 const { getDataCommonsDisplayNamesForUser } = require('../../utility/data-commons-remapper');
+const {
+    REOPEN_ASSIGNABLE_ROLES,
+    getSubmissionRequestCreatePermissionVariants,
+} = require('../../utility/reopen-owner-utility');
 
 jest.mock('../../verifier/user-info-verifier', () => ({
     verifySession: jest.fn(() => ({
@@ -802,15 +806,9 @@ describe('UserService.listUsers', () => {
             );
             expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
                 $match: {
-                    role: { $in: [USER.ROLES.USER, USER.ROLES.SUBMITTER] },
+                    role: { $in: REOPEN_ASSIGNABLE_ROLES },
                     userStatus: USER.STATUSES.ACTIVE,
-                    permissions: {
-                        $in: [
-                            USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE,
-                            'submission_request:create:all',
-                            'submission_request:create:own',
-                        ],
-                    },
+                    permissions: { $in: getSubmissionRequestCreatePermissionVariants() },
                 },
             }]);
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
