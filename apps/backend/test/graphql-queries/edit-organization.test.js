@@ -1,4 +1,4 @@
-const {Organization} = require("../../crdc-datahub-database-drivers/services/organization");
+const {Organization} = require("../../services/organization-service");
 
 describe('Test Organization Service', () => {
     let organization;

@@ -6,7 +6,6 @@ const {ApprovedStudiesService} = require("../../services/approved-studies");
 const {S3Service} = require("../../services/s3-service");
 const {BatchService} = require("../../services/batch-service");
 const {Submission} = require("../../services/submission");
-const {Organization} = require("../../crdc-datahub-database-drivers/services/organization");
 const ApplicationDAO = require("../../dao/application");
 
 // Mock Prisma
