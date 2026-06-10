@@ -4,7 +4,7 @@ const {MODEL_NAME} = require("../constants/db-constants");
 const {ORGANIZATION_COLLECTION, USER_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
 const ERROR = require("../constants/error-constants");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
-const {DIRECTION, SORT} = require("../crdc-datahub-database-drivers/constants/monogodb-constants");
+const {DIRECTION, SORT} = require("../crdc-datahub-database-drivers/constants/mongodb-constants");
 const {sanitizeMongoDBInput, escapeRegexLiteral} = require("../utility/string-util");
 
 const CONTROLLED_ACCESS_ALL = "All";

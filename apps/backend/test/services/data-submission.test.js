@@ -3,7 +3,7 @@ const { Submission } = require('../../services/submission');
 const {ValidationHandler} = require("../../utility/validation-handler");
 const {ROLE} = require("../../constants/permission-scope-constants");
 const {replaceErrorString} = require("../../utility/string-util");
-const {Organization} = require("../../crdc-datahub-database-drivers/services/organization");
+const {Organization} = require("../../services/organization-service");
 const {INTENTION, DATA_TYPE, IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN,
     NEW,
     COLLABORATOR_PERMISSIONS,
