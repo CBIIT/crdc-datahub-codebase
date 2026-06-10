@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type { KeyboardEvent } from "react";
 
 import type { CustomEditor } from "../types";
-import { handleRichTextEditorKeyDown } from "../utils/keyboard/richTextKeyboardHandlers";
+import { handleRichTextEditorKeyDown } from "../utils/keyboard/keyboardListHandlers";
 
 /**
  * Creates the memoized keyboard event handler used by the Slate editable area.

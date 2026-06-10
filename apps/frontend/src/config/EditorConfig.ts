@@ -14,6 +14,7 @@ export const MARK_DEFINITIONS: MarkDefinition[] = [
     format: "bold",
     tooltip: "Bold (Ctrl+B)",
     icon: FormatBoldIcon,
+    hotkey: "b",
     htmlTag: "strong",
     markdownSyntax: ["**", "**"],
     pattern: /\*\*(.+?)\*\*/gs,
@@ -22,6 +23,7 @@ export const MARK_DEFINITIONS: MarkDefinition[] = [
     format: "italic",
     tooltip: "Italic (Ctrl+I)",
     icon: FormatItalicIcon,
+    hotkey: "i",
     htmlTag: "em",
     markdownSyntax: ["_", "_"],
     pattern: /_(.+?)_/gs,
@@ -30,6 +32,7 @@ export const MARK_DEFINITIONS: MarkDefinition[] = [
     format: "underline",
     tooltip: "Underline (Ctrl+U)",
     icon: FormatUnderlinedIcon,
+    hotkey: "u",
     htmlTag: "u",
     markdownSyntax: ["<u>", "</u>"],
     pattern: /<u>(.+?)<\/u>/gs,
@@ -53,3 +56,47 @@ export const BLOCK_DEFINITIONS: BlockDefinition[] = [
     pattern: /^\d+\.\s+(.+)$/,
   },
 ];
+
+/**
+ * Tolerance pattern: matches italic formatted with asterisks (only underscores are serialized).
+ */
+export const ITALIC_ASTERISK_PATTERN = /\*(.+?)\*/;
+
+/**
+ * Matches backslash-escaped markdown syntax characters.
+ */
+export const ESCAPED_CHARACTER_PATTERN = /\\([*_\\])/;
+
+/**
+ * Matches runs of plain text that contain no markdown syntax characters.
+ */
+export const PLAIN_TEXT_PATTERN = /[^*_<\\]+/;
+
+/**
+ * Maps raw characters to their HTML-entity-escaped equivalents for markdown output.
+ */
+export const HTML_TEXT_ESCAPE_REPLACEMENTS: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+};
+
+/**
+ * Maps raw markdown syntax characters to their backslash-escaped equivalents.
+ */
+export const MARKDOWN_ESCAPE_REPLACEMENTS: Record<string, string> = {
+  "\\": "\\\\",
+  "*": "\\*",
+  _: "\\_",
+};
+
+/**
+ * Maps serialized HTML entities back to their decoded characters.
+ */
+export const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
+  "&nbsp;": " ",
+  "&#160;": " ",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+};

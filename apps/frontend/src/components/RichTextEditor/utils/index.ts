@@ -2,7 +2,6 @@ export * from "./documentUtils";
 export * from "./editorGuards";
 export * from "./editorTransforms";
 
-export * from "./keyboard/richTextKeyboardHandlers";
 export * from "./keyboard/keyboardHotkeyHandlers";
 export * from "./keyboard/keyboardListHandlers";
 export * from "./keyboard/keyboardSelectionUtils";

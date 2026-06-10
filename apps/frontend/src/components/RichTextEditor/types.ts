@@ -1,5 +1,5 @@
 import type { SvgIconProps } from "@mui/material/SvgIcon/SvgIcon";
-import type { ElementType } from "react";
+import type { ElementType, KeyboardEvent } from "react";
 import type { BaseEditor } from "slate";
 import type { HistoryEditor } from "slate-history";
 import type { ReactEditor } from "slate-react";
@@ -11,6 +11,7 @@ export type MarkFormat = "bold" | "italic" | "underline";
 type EditorFormatDefinition = {
   tooltip: string;
   icon: ToolbarIcon;
+  hotkey?: string;
   pattern?: RegExp;
   htmlTag?: keyof React.ReactHTML;
   markdownSyntax?: [prefix: string, suffix: string];
@@ -61,6 +62,8 @@ export type ListElement = BulletedListElement | NumberedListElement;
 export type CustomElement = ParagraphElement | ListElement | ListItemElement;
 
 export type CustomEditor = BaseEditor & ReactEditor & HistoryEditor;
+
+export type KeyboardHandler = (event: KeyboardEvent, editor: CustomEditor) => boolean;
 
 declare module "slate" {
   interface CustomTypes {
