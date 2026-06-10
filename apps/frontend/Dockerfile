@@ -10,6 +10,9 @@ RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 FROM nginx:1.30.2-alpine3.23-slim AS fnl_base_image
 
+# openssl: CVE-2026-34182, CVE-2026-45447, CVE-2026-7383, CVE-2026-34180, ...
+RUN apk update && apk add --no-cache --upgrade openssl
+
 COPY --from=build /usr/src/app/build /usr/share/nginx/html
 COPY --from=build /usr/src/app/conf/inject.template.js /usr/share/nginx/html/inject.template.js
 COPY --from=build /usr/src/app/conf/nginx.conf /etc/nginx/conf.d/configfile.template
