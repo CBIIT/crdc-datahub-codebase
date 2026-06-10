@@ -1,4 +1,11 @@
-import type { FormattedText, TextMarks } from "../../types";
+import {
+  HTML_ENTITY_REPLACEMENTS,
+  ITALIC_ASTERISK_PATTERN,
+  MARK_DEFINITIONS,
+  PLAIN_TEXT_PATTERN,
+} from "@/config/EditorConfig";
+
+import type { FormattedText, MarkFormat, TextMarks } from "../../types";
 import { normalizeTextChildren } from "../documentUtils";
 
 type MarkdownTokenResult = {
@@ -6,22 +13,16 @@ type MarkdownTokenResult = {
   consumedText: string;
 };
 
-type MarkdownTokenParser = (text: string, marks: TextMarks) => MarkdownTokenResult | null;
-
-const BOLD_MARKDOWN_PATTERN = /^\*\*(.+?)\*\*/;
-const ITALIC_ASTERISK_MARKDOWN_PATTERN = /^\*(.+?)\*/;
-const ITALIC_UNDERSCORE_MARKDOWN_PATTERN = /^_(.+?)_/;
-const UNDERLINE_MARKDOWN_PATTERN = /^<u>(.+?)<\/u>/;
-const PLAIN_TEXT_MARKDOWN_PATTERN = /^[^*_<\\]+/;
-
-const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
-  "&nbsp;": " ",
-  "&#160;": " ",
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-};
-
+/**
+ * Decodes serialized HTML entities and escaped markdown characters back to raw text.
+ *
+ * @param {string} text - The serialized text to decode.
+ * @returns {string} The decoded plain text.
+ *
+ * @example
+ * decodeSerializedText("&amp;"); // "&"
+ * decodeSerializedText("\\*"); // "*"
+ */
 const decodeSerializedText = (text: string): string => {
   const pattern = new RegExp(Object.keys(HTML_ENTITY_REPLACEMENTS).join("|"), "g");
   return text
@@ -30,132 +31,109 @@ const decodeSerializedText = (text: string): string => {
 };
 
 /**
- * Returns true when two text mark objects represent the same formatting state.
+ * Returns a new collection with the text nodes appended, merging adjacent nodes with matching marks.
+ *
+ * @param {FormattedText[]} target - The existing collection.
+ * @param {FormattedText[]} nextTexts - The text nodes to append.
+ * @returns {FormattedText[]} A new collection with all text nodes appended or merged.
+ *
+ * @example
+ * appendFormattedTexts(
+ *   [{ text: "hello", bold: true }],
+ *   [{ text: " world", bold: true }]
+ * ); // [{ text: "hello world", bold: true }]
  */
-export const marksAreEqual = (firstMarks: TextMarks, secondMarks: TextMarks): boolean =>
-  firstMarks.bold === secondMarks.bold &&
-  firstMarks.italic === secondMarks.italic &&
-  firstMarks.underline === secondMarks.underline;
+const appendFormattedTexts = (
+  target: FormattedText[],
+  nextTexts: FormattedText[]
+): FormattedText[] =>
+  nextTexts.reduce((acc, nextText) => {
+    const previousText = acc[acc.length - 1];
+    const hasSameMarks =
+      previousText && MARK_DEFINITIONS.every((d) => previousText[d.format] === nextText[d.format]);
 
-const getTextMarks = ({ bold, italic, underline }: FormattedText): TextMarks => ({
-  bold,
-  italic,
-  underline,
-});
+    if (!hasSameMarks) {
+      return [...acc, nextText];
+    }
+
+    return [...acc.slice(0, -1), { ...previousText, text: previousText.text + nextText.text }];
+  }, target);
 
 /**
- * Appends text to a target collection and merges adjacent nodes with the same marks.
+ * Parses the next markdown token from the start of the text.
+ *
+ * @param {string} text - The remaining text to parse.
+ * @param {TextMarks} marks - The currently active marks.
+ * @returns {MarkdownTokenResult} The parsed token result.
  */
-export const appendFormattedText = (target: FormattedText[], nextText: FormattedText): void => {
-  const previousText = target[target.length - 1];
+const parseNextMarkdownToken = (text: string, marks: TextMarks): MarkdownTokenResult => {
+  const anchoredMarkPatterns: Record<MarkFormat, RegExp> = Object.fromEntries(
+    MARK_DEFINITIONS.map((d) => [d.format, new RegExp(`^${d.pattern.source}`)])
+  ) as Record<MarkFormat, RegExp>;
 
-  if (!previousText || !marksAreEqual(getTextMarks(previousText), getTextMarks(nextText))) {
-    target.push(nextText);
-    return;
+  for (const def of MARK_DEFINITIONS) {
+    const match = text.match(anchoredMarkPatterns[def.format]);
+
+    if (match) {
+      return {
+        nodes: parseMarkdownInline(match[1], { ...marks, [def.format]: true }),
+        consumedText: match[0],
+      };
+    }
   }
 
-  previousText.text += nextText.text;
-};
-
-const appendFormattedTexts = (target: FormattedText[], nextTexts: FormattedText[]): void => {
-  nextTexts.forEach((nextText) => appendFormattedText(target, nextText));
-};
-
-const createMarkedTokenResult = (
-  match: RegExpExecArray | null,
-  marks: TextMarks,
-  addedMarks: TextMarks
-): MarkdownTokenResult | null => {
-  if (!match) {
-    return null;
-  }
-
-  return {
-    nodes: parseMarkdownInline(match[1], { ...marks, ...addedMarks }),
-    consumedText: match[0],
-  };
-};
-
-const parseBoldMarkdownToken: MarkdownTokenParser = (text, marks) =>
-  createMarkedTokenResult(BOLD_MARKDOWN_PATTERN.exec(text), marks, { bold: true });
-
-const parseItalicMarkdownToken: MarkdownTokenParser = (text, marks) => {
-  const asteriskMatch = ITALIC_ASTERISK_MARKDOWN_PATTERN.exec(text);
+  const asteriskMatch = text.match(new RegExp(`^${ITALIC_ASTERISK_PATTERN.source}`));
 
   if (asteriskMatch) {
-    return createMarkedTokenResult(asteriskMatch, marks, { italic: true });
-  }
-
-  return createMarkedTokenResult(ITALIC_UNDERSCORE_MARKDOWN_PATTERN.exec(text), marks, {
-    italic: true,
-  });
-};
-
-const parseUnderlineMarkdownToken: MarkdownTokenParser = (text, marks) =>
-  createMarkedTokenResult(UNDERLINE_MARKDOWN_PATTERN.exec(text), marks, { underline: true });
-
-const parsePlainMarkdownToken: MarkdownTokenParser = (text, marks) => {
-  const plainTextMatch = PLAIN_TEXT_MARKDOWN_PATTERN.exec(text);
-
-  if (plainTextMatch) {
     return {
-      nodes: [{ text: decodeSerializedText(plainTextMatch[0]), ...marks }],
-      consumedText: plainTextMatch[0],
+      nodes: parseMarkdownInline(asteriskMatch[1], { ...marks, italic: true }),
+      consumedText: asteriskMatch[0],
     };
   }
 
-  const fallbackMatch = /^./.exec(text);
+  const escapedMatch = text.match(/^\\([*_\\])/);
 
-  if (!fallbackMatch) {
-    return null;
+  if (escapedMatch) {
+    return {
+      nodes: [{ text: escapedMatch[1], ...marks }],
+      consumedText: escapedMatch[0],
+    };
   }
 
-  return {
-    nodes: [{ text: decodeSerializedText(fallbackMatch[0]), ...marks }],
-    consumedText: fallbackMatch[0],
-  };
-};
+  const plainMatch = text.match(new RegExp(`^${PLAIN_TEXT_PATTERN.source}`)) ?? text.match(/^./);
 
-const MARKDOWN_TOKEN_PARSERS: MarkdownTokenParser[] = [
-  parseBoldMarkdownToken,
-  parseItalicMarkdownToken,
-  parseUnderlineMarkdownToken,
-  parsePlainMarkdownToken,
-];
-
-const parseNextMarkdownToken = (text: string, marks: TextMarks): MarkdownTokenResult => {
-  const result = MARKDOWN_TOKEN_PARSERS.reduce<MarkdownTokenResult | null>((match, parser) => {
-    if (match) {
-      return match;
-    }
-
-    return parser(text, marks);
-  }, null);
-
-  if (result) {
-    return result;
+  if (plainMatch) {
+    return {
+      nodes: [{ text: decodeSerializedText(plainMatch[0]), ...marks }],
+      consumedText: plainMatch[0],
+    };
   }
 
-  return {
-    nodes: [{ text: decodeSerializedText(text[0] ?? ""), ...marks }],
-    consumedText: text[0] ?? "",
-  };
+  return { nodes: [{ text: "", ...marks }], consumedText: "" };
 };
 
 /**
  * Parses inline markdown into Slate text nodes using the editor's supported mark subset.
+ *
+ * @param {string} text - The inline markdown string to parse.
+ * @param {TextMarks} [marks={}] - The inherited marks from a parent token.
+ * @returns {FormattedText[]} The parsed and normalized text nodes.
+ *
+ * @example
+ * parseMarkdownInline("**bold**"); // [{ text: "bold", bold: true }]
+ * parseMarkdownInline("_italic_"); // [{ text: "italic", italic: true }]
  */
 export const parseMarkdownInline = (text: string, marks: TextMarks = {}): FormattedText[] => {
   if (!text) {
     return [];
   }
 
-  const result: FormattedText[] = [];
+  let result: FormattedText[] = [];
   let remainingText = text;
 
   while (remainingText.length > 0) {
     const nextToken = parseNextMarkdownToken(remainingText, marks);
-    appendFormattedTexts(result, nextToken.nodes);
+    result = appendFormattedTexts(result, nextToken.nodes);
     remainingText = remainingText.slice(nextToken.consumedText.length);
   }
 
