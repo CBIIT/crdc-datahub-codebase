@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { ReactElement } from "react";
+import type { KeyboardEvent, ReactElement } from "react";
 import { createEditor, Node, Transforms } from "slate";
 import type { Descendant } from "slate";
 import { HistoryEditor } from "slate-history";
@@ -9,10 +9,9 @@ import EditorElement from "../EditorElement";
 import EditorLeaf from "../EditorLeaf";
 import { createEmptyDocument } from "../utils/documentUtils";
 import { withCustomEditor } from "../utils/editorTransforms";
+import { handleRichTextEditorKeyDown } from "../utils/keyboard/keyboardListHandlers";
 import { deserializeFromMarkdown } from "../utils/markdown/markdownDeserializer";
 import { serializeToMarkdown } from "../utils/markdown/markdownSerializer";
-
-import { useRichTextKeyboardHandler } from "./useRichTextKeyboardHandler";
 
 type UseRichTextEditorParams = {
   value: string;
@@ -24,7 +23,7 @@ type UseRichTextEditorResult = {
   editor: ReturnType<typeof withCustomEditor>;
   initialValue: Descendant[];
   handleChange: (newValue: Descendant[]) => void;
-  handleKeyDown: ReturnType<typeof useRichTextKeyboardHandler>;
+  handleKeyDown: (event: KeyboardEvent) => void;
   renderElement: (props: RenderElementProps) => ReactElement;
   renderLeaf: (props: RenderLeafProps) => ReactElement;
   reset: () => void;
@@ -60,7 +59,12 @@ export const useRichTextEditor = ({
     []
   );
 
-  const handleKeyDown = useRichTextKeyboardHandler(editor);
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent): void => {
+      handleRichTextEditorKeyDown(event, editor);
+    },
+    [editor]
+  );
 
   const reset = useCallback((): void => {
     Transforms.deselect(editor);

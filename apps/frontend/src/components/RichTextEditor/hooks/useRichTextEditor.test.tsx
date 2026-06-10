@@ -15,8 +15,8 @@ vi.mock("../utils/markdown/markdownSerializer", () => ({
   serializeToMarkdown: vi.fn(() => "serialized"),
 }));
 
-vi.mock("./useRichTextKeyboardHandler", () => ({
-  useRichTextKeyboardHandler: vi.fn(() => vi.fn()),
+vi.mock("../utils/keyboard/keyboardListHandlers", () => ({
+  handleRichTextEditorKeyDown: vi.fn(),
 }));
 
 const defaultProps = {
