@@ -52,11 +52,14 @@ describe("createListItem", () => {
   });
 
   it("should create a list-item with the provided children", () => {
-    const children = [{ text: "hello", bold: true }];
+    const children = [{ text: "hello", bold: true as const }];
 
     const result = utils.createListItem(children);
 
-    expect(result).toEqual({ type: "list-item", children: [{ text: "hello", bold: true }] });
+    expect(result).toEqual({
+      type: "list-item",
+      children: [{ text: "hello", bold: true as const }],
+    });
   });
 
   it("should not share a reference with the default text node", () => {
