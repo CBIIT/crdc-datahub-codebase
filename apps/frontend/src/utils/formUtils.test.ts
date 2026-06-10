@@ -240,6 +240,28 @@ describe("formatFullStudyName cases", () => {
   });
 });
 
+describe("formatCharacterLimitPlaceholder cases", () => {
+  it("should format whole numbers with correct separators", () => {
+    expect(utils.formatCharacterLimitPlaceholder(1_000)).toBe("1,000 characters allowed");
+  });
+
+  it("should format zero", () => {
+    expect(utils.formatCharacterLimitPlaceholder(0)).toBe("0 characters allowed");
+  });
+
+  it("should round decimal values to zero fraction digits", () => {
+    expect(utils.formatCharacterLimitPlaceholder(10.4)).toBe("10 characters allowed");
+  });
+
+  it.each<[number, string]>([
+    [null, "0 characters allowed"],
+    [undefined, "0 characters allowed"],
+    [NaN, "0 characters allowed"],
+  ])("should handle %s as %s", (input, expected) => {
+    expect(utils.formatCharacterLimitPlaceholder(input)).toBe(expected);
+  });
+});
+
 describe("mapOrganizationStudyToId cases", () => {
   it("should return the id of the matching study", () => {
     const studies = [
