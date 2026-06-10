@@ -1,25 +1,20 @@
 import { Descendant, Element, Text } from "slate";
 
-import { BLOCK_DEFINITIONS, MARK_DEFINITIONS } from "@/config/EditorConfig";
+import {
+  BLOCK_DEFINITIONS,
+  ESCAPED_CHARACTER_PATTERN,
+  HTML_TEXT_ESCAPE_REPLACEMENTS,
+  ITALIC_ASTERISK_PATTERN,
+  MARK_DEFINITIONS,
+  MARKDOWN_ESCAPE_REPLACEMENTS,
+} from "@/config/EditorConfig";
 
 import type { FormattedText, TextMarks } from "../../types";
 
 const SURROUNDING_WHITESPACE_PATTERN = /^([ \t]*)(.*?)([ \t]*)$/s;
 
-const ITALIC_ASTERISK_REMOVAL_PATTERN = /\*(.+?)\*/gs;
-const ESCAPED_CHARACTER_REMOVAL_PATTERN = /\\([*_\\])/g;
-
-const HTML_TEXT_ESCAPE_REPLACEMENTS: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-};
-
-const MARKDOWN_ESCAPE_REPLACEMENTS: Record<string, string> = {
-  "\\": "\\\\",
-  "*": "\\*",
-  _: "\\_",
-};
+const ITALIC_ASTERISK_REMOVAL_PATTERN = new RegExp(ITALIC_ASTERISK_PATTERN.source, "gs");
+const ESCAPED_CHARACTER_REMOVAL_PATTERN = new RegExp(ESCAPED_CHARACTER_PATTERN.source, "g");
 
 /**
  * Escapes text for the markdown/HTML subset.
