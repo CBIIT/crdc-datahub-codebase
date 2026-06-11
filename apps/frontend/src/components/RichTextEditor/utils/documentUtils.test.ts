@@ -2,6 +2,40 @@ import type { Descendant } from "slate";
 
 import * as utils from "./documentUtils";
 
+describe("isTextNode", () => {
+  it("should return true for a text node", () => {
+    expect(utils.isTextNode({ text: "hello" })).toBe(true);
+  });
+
+  it("should return true for an empty text node", () => {
+    expect(utils.isTextNode({ text: "" })).toBe(true);
+  });
+
+  it("should return false for an element node", () => {
+    const node: Descendant = { type: "paragraph", children: [{ text: "" }] };
+
+    expect(utils.isTextNode(node)).toBe(false);
+  });
+});
+
+describe("isElementNode", () => {
+  it("should return true for a paragraph element", () => {
+    const node: Descendant = { type: "paragraph", children: [{ text: "" }] };
+
+    expect(utils.isElementNode(node)).toBe(true);
+  });
+
+  it("should return true for a list element", () => {
+    const node: Descendant = { type: "bulleted-list", children: [] };
+
+    expect(utils.isElementNode(node)).toBe(true);
+  });
+
+  it("should return false for a text node", () => {
+    expect(utils.isElementNode({ text: "hello" })).toBe(false);
+  });
+});
+
 describe("createEmptyDocument", () => {
   it("should return a single paragraph with an empty text node", () => {
     const result = utils.createEmptyDocument();

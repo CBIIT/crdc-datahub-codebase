@@ -1,4 +1,4 @@
-import { Descendant, Element, Text } from "slate";
+import type { Descendant, Element } from "slate";
 
 import type {
   FormattedText,
@@ -7,6 +7,32 @@ import type {
   ListItemElement,
   ParagraphElement,
 } from "../types";
+
+/**
+ * Returns true when the node is a Slate text leaf.
+ *
+ * @param {Descendant} node - The node to check.
+ * @returns {boolean} True when the node has a `text` string property.
+ *
+ * @example
+ * isTextNode({ text: "hello" }); // true
+ * isTextNode({ type: "paragraph", children: [] }); // false
+ */
+export const isTextNode = (node: Descendant): node is Extract<Descendant, { text: string }> =>
+  typeof (node as { text?: unknown }).text === "string";
+
+/**
+ * Returns true when the node is a Slate element (has a `children` array).
+
+ * @param {Descendant} node - The node to check.
+ * @returns {boolean} True when the node has a `children` array property.
+ *
+ * @example
+ * isElementNode({ type: "paragraph", children: [] }); // true
+ * isElementNode({ text: "hello" }); // false
+ */
+export const isElementNode = (node: Descendant): node is Element =>
+  Array.isArray((node as { children?: unknown }).children);
 
 const EMPTY_TEXT_NODE: FormattedText = { text: "" };
 
@@ -76,11 +102,11 @@ export const normalizeTextChildren = (children: FormattedText[]): FormattedText[
  */
 export const isEditorEmpty = (nodes: Descendant[]): boolean => {
   const nodeHasText = (node: Descendant): boolean => {
-    if (Text.isText(node)) {
+    if (isTextNode(node)) {
       return Boolean(node.text.trim());
     }
 
-    if (!Element.isElement(node)) {
+    if (!isElementNode(node)) {
       return false;
     }
 

@@ -1,8 +1,9 @@
-import { Descendant, Element, Text } from "slate";
+import type { Descendant } from "slate";
 
 import { MARK_DEFINITIONS } from "@/config/EditorConfig";
 
 import type { FormattedText, TextMarks } from "../../types";
+import { isElementNode, isTextNode } from "../documentUtils";
 
 import { parseMarkdownInline } from "./markdownInlineParser";
 import { ESCAPABLE_MARKDOWN_CHARACTERS, normalizeLineEndings, readListLine } from "./markdownUtils";
@@ -134,11 +135,11 @@ const serializeTextChildren = (children: FormattedText[]): string =>
  * serializeMarkdownBlock({ type: "paragraph", children: [{ text: "hello" }] }); // "hello"
  */
 const serializeMarkdownBlock = (node: Descendant): string => {
-  if (Text.isText(node)) {
+  if (isTextNode(node)) {
     return escapeMarkdownText(node.text);
   }
 
-  if (!Element.isElement(node)) {
+  if (!isElementNode(node)) {
     return "";
   }
 
