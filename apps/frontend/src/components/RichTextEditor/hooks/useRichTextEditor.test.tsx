@@ -13,6 +13,7 @@ vi.mock("../utils/markdown/markdownDeserializer", () => ({
 
 vi.mock("../utils/markdown/markdownSerializer", () => ({
   serializeToMarkdown: vi.fn(() => "serialized"),
+  getPlainTextLength: vi.fn(() => 10),
 }));
 
 vi.mock("../utils/keyboard/keyboardListHandlers", () => ({

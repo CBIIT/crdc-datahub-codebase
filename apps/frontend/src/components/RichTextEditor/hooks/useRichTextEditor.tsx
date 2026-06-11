@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
-import { createEditor, Node, Transforms } from "slate";
+import { createEditor, Transforms } from "slate";
 import type { Descendant } from "slate";
 import { HistoryEditor } from "slate-history";
 import type { RenderElementProps, RenderLeafProps } from "slate-react";
@@ -11,7 +11,7 @@ import { createEmptyDocument } from "../utils/documentUtils";
 import { withCustomEditor } from "../utils/editorTransforms";
 import { handleRichTextEditorKeyDown } from "../utils/keyboard/keyboardListHandlers";
 import { deserializeFromMarkdown } from "../utils/markdown/markdownDeserializer";
-import { serializeToMarkdown } from "../utils/markdown/markdownSerializer";
+import { getPlainTextLength, serializeToMarkdown } from "../utils/markdown/markdownSerializer";
 
 type UseRichTextEditorParams = {
   value: string;
@@ -43,10 +43,11 @@ export const useRichTextEditor = ({
 
   const handleChange = useCallback(
     (newValue: Descendant[]): void => {
-      onChange(serializeToMarkdown(newValue));
-      onTextLengthChange?.(Node.string(editor).length);
+      const serialized = serializeToMarkdown(newValue);
+      onChange(serialized);
+      onTextLengthChange?.(getPlainTextLength(serialized));
     },
-    [editor, onChange, onTextLengthChange]
+    [onChange, onTextLengthChange]
   );
 
   const renderElement = useCallback(
