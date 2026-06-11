@@ -151,7 +151,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     expect(called).toBe(false);
 
     // NOTE: This must be separate from the expect below to ensure its not called multiple times
-    await userEvent.click(getByTestId("export-validation-button"));
+    userEvent.click(getByTestId("export-validation-button"));
+
     await waitFor(() => {
       expect(called).toBe(true);
     });
@@ -189,7 +190,15 @@ describe("ExportValidationButton (Expanded View) tests", () => {
                     submissionID,
                     type: "participant",
                     errors: [],
-                    warnings: [],
+                    warnings: [
+                      {
+                        code: "M018",
+                        title: "Updated value differs from released",
+                        description: "Simulated warning for filtered export",
+                        offendingProperty: "some_property",
+                        offendingValue: "new value",
+                      },
+                    ],
                   }),
                 ],
               },
@@ -339,7 +348,16 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "There are no validation results to export.",
+        "Generating the validation results file. This may take a moment...",
+        {
+          variant: "default",
+        }
+      );
+    });
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "There are no validation results matching the selected filters.",
         {
           variant: "error",
         }
