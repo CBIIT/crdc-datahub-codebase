@@ -3,7 +3,7 @@ import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { expect, screen, userEvent, within } from "@storybook/test";
 import type { MutableRefObject } from "react";
 
-import { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
+import type { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
 import { aggregatedQCResultFactory } from "@/factories/submission/AggregatedQCResultFactory";
 import { errorMessageFactory } from "@/factories/submission/ErrorMessageFactory";
 import { qcResultFactory } from "@/factories/submission/QCResultFactory";
