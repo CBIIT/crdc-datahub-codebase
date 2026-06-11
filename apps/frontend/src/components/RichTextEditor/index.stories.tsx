@@ -33,7 +33,7 @@ const StatefulEditor = (args: StoryArgs): React.ReactElement => {
 };
 
 const meta: Meta<StoryArgs> = {
-  title: "Inputs / Rich Text Editor",
+  title: "Miscellaneous / Rich Text Editor",
   component: RichTextEditor,
   tags: ["autodocs"],
   parameters: {

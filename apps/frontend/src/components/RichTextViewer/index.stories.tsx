@@ -5,7 +5,7 @@ import RichTextViewer from "./index";
 type StoryArgs = React.ComponentProps<typeof RichTextViewer>;
 
 const meta: Meta<StoryArgs> = {
-  title: "Inputs / Rich Text Viewer",
+  title: "Miscellaneous / Rich Text Viewer",
   component: RichTextViewer,
   tags: ["autodocs"],
   parameters: {
