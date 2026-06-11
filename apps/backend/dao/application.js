@@ -82,13 +82,24 @@ class ApplicationDAO extends GenericDAO {
      * Insert a new reopened application and update the approved predecessor, rollback if the insert fails.
      * @param {string} sourceId Approved application _id
      * @param {object} newApp Full successor document (must include _id)
+     * @param {boolean} [replaceExistingLink=false] When true, overwrite an existing nextRevisionId on the source
      * @returns {Promise<object>} The inserted application document
      */
-    async reopenApprovedRevision(sourceId, newApp) {
+    async reopenApprovedRevision(sourceId, newApp, replaceExistingLink = false) {
         const timestamp = newApp.updatedAt ?? getCurrentTime();
 
+        let previousNextRevisionID = null;
+        if (replaceExistingLink) {
+            const source = await this.findFirst({ id: sourceId }, { select: { nextRevisionId: true } });
+            previousNextRevisionID = source?.nextRevisionId ?? null;
+        }
+
+        const linkFilter = replaceExistingLink
+            ? { _id: sourceId, status: APPROVED }
+            : { _id: sourceId, status: APPROVED, ...nullOrMissingMongoCondition('nextRevisionId') };
+
         const linkResult = await this.updateMany(
-            { _id: sourceId, status: APPROVED, ...nullOrMissingMongoCondition('nextRevisionId') },
+            linkFilter,
             { nextRevisionId: newApp._id, updatedAt: timestamp }
         );
 
@@ -106,7 +117,10 @@ class ApplicationDAO extends GenericDAO {
             try {
                 await this.updateMany(
                     { _id: sourceId },
-                    { nextRevisionId: null, updatedAt: getCurrentTime() }
+                    {
+                        nextRevisionId: replaceExistingLink ? previousNextRevisionID : null,
+                        updatedAt: getCurrentTime(),
+                    }
                 );
             } catch (compensateError) {
                 console.error('Failed to compensate nextRevisionId after reopen insert failure:', compensateError);

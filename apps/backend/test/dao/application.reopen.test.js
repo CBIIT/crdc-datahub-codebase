@@ -18,6 +18,7 @@ describe('ApplicationDAO.reopenApprovedRevision', () => {
         dao = new ApplicationDAO({});
         dao.updateMany = jest.fn();
         dao.insert = jest.fn();
+        dao.findFirst = jest.fn();
     });
 
     it('links source then inserts successor when update matches one document', async () => {
@@ -44,6 +45,21 @@ describe('ApplicationDAO.reopenApprovedRevision', () => {
         expect(result).toEqual(expect.objectContaining({ _id: newApp._id, status: 'Reopened' }));
     });
 
+    it('replaces an existing nextRevisionId link when replaceExistingLink is true', async () => {
+        dao.updateMany.mockResolvedValue({ modifiedCount: 1 });
+        dao.insert.mockResolvedValue({ acknowledged: true });
+
+        await dao.reopenApprovedRevision(sourceId, newApp, true);
+
+        expect(dao.updateMany).toHaveBeenCalledWith(
+            { _id: sourceId, status: APPROVED },
+            expect.objectContaining({
+                nextRevisionId: newApp._id,
+                updatedAt: newApp.updatedAt,
+            })
+        );
+    });
+
     it('throws INVALID_STATE when source update matches zero documents', async () => {
         dao.updateMany.mockResolvedValue({ modifiedCount: 0 });
 
@@ -65,6 +81,25 @@ describe('ApplicationDAO.reopenApprovedRevision', () => {
         expect(dao.updateMany).toHaveBeenLastCalledWith(
             { _id: sourceId },
             expect.objectContaining({ nextRevisionId: null })
+        );
+    });
+
+    it('restores the prior nextRevisionId when replaceExistingLink insert fails', async () => {
+        dao.findFirst.mockResolvedValue({ nextRevisionId: 'prior-successor-id' });
+        dao.updateMany
+            .mockResolvedValueOnce({ modifiedCount: 1 })
+            .mockResolvedValueOnce({ modifiedCount: 1 });
+        dao.insert.mockRejectedValue(new Error('insert failed'));
+
+        await expect(dao.reopenApprovedRevision(sourceId, newApp, true)).rejects.toThrow('insert failed');
+
+        expect(dao.findFirst).toHaveBeenCalledWith(
+            { id: sourceId },
+            { select: { nextRevisionId: true } }
+        );
+        expect(dao.updateMany).toHaveBeenLastCalledWith(
+            { _id: sourceId },
+            expect.objectContaining({ nextRevisionId: 'prior-successor-id' })
         );
     });
 

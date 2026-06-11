@@ -85,7 +85,7 @@ type Application {
     # Revision chain for approved-SRF reopen (CRDCDH-3970). sequenceNumber increments per reopen; nextRevisionId links an approved revision to its successor.
     sequenceNumber: Int! # 1-based revision index; 1 for a new SRF or first approved revision
     nextRevisionId: ID # When set on an Approved SRF, points to the reopened successor revision
-    canBeReopened: Boolean! # true when Approved and there are no active later revisions (none linked, or all successors are terminal)
+    canBeReopened: Boolean! # true when Approved and the immediate successor (if linked) is absent or terminal
 }
 
 type NewInstitution {

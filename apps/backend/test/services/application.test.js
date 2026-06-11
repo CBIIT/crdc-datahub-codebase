@@ -328,27 +328,44 @@ describe('Application', () => {
 
     describe('_hasActiveLaterRevisions', () => {
         beforeEach(() => {
-            app.getApplicationById = jest.fn();
+            app.applicationDAO.findFirst = jest.fn();
         });
 
         it('returns false when there is no nextRevisionId', async () => {
             await expect(app._hasActiveLaterRevisions({ _id: 'seq1', status: APPROVED }))
                 .resolves.toBe(false);
-            expect(app.getApplicationById).not.toHaveBeenCalled();
+            expect(app.applicationDAO.findFirst).not.toHaveBeenCalled();
         });
 
         it('returns true when the immediate successor is non-terminal', async () => {
-            app.getApplicationById.mockResolvedValueOnce({ _id: 'seq2', status: REOPENED });
+            app.applicationDAO.findFirst.mockResolvedValueOnce({ _id: 'seq2', status: REOPENED });
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
                 status: APPROVED,
                 nextRevisionId: 'seq2',
             })).resolves.toBe(true);
+
+            expect(app.applicationDAO.findFirst).toHaveBeenCalledWith(
+                { id: 'seq2' },
+                { select: { status: true } }
+            );
+        });
+
+        it('returns true when the immediate successor is Approved', async () => {
+            app.applicationDAO.findFirst.mockResolvedValueOnce({ _id: 'seq2', status: APPROVED });
+
+            await expect(app._hasActiveLaterRevisions({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq2',
+            })).resolves.toBe(true);
+
+            expect(app.applicationDAO.findFirst).toHaveBeenCalledTimes(1);
         });
 
         it('returns false when the immediate successor is terminal', async () => {
-            app.getApplicationById.mockResolvedValueOnce({ _id: 'seq2', status: CANCELED });
+            app.applicationDAO.findFirst.mockResolvedValueOnce({ _id: 'seq2', status: CANCELED });
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
@@ -357,33 +374,25 @@ describe('Application', () => {
             })).resolves.toBe(false);
         });
 
-        it('walks the chain and returns true when a later successor is active', async () => {
-            app.getApplicationById
-                .mockResolvedValueOnce({ _id: 'seq2', status: APPROVED, nextRevisionId: 'seq3' })
-                .mockResolvedValueOnce({ _id: 'seq3', status: REOPENED });
-
-            await expect(app._hasActiveLaterRevisions({
-                _id: 'seq1',
-                status: APPROVED,
-                nextRevisionId: 'seq2',
-            })).resolves.toBe(true);
-        });
-
-        it('walks the chain and returns false when all successors are terminal', async () => {
-            app.getApplicationById
-                .mockResolvedValueOnce({ _id: 'seq2', status: CANCELED, nextRevisionId: 'seq3' })
-                .mockResolvedValueOnce({ _id: 'seq3', status: REJECTED });
+        it('returns false when the immediate successor is terminal even if nextRevisionId is set', async () => {
+            app.applicationDAO.findFirst.mockResolvedValueOnce({
+                _id: 'seq2',
+                status: CANCELED,
+                nextRevisionId: 'seq3',
+            });
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
                 status: APPROVED,
                 nextRevisionId: 'seq2',
             })).resolves.toBe(false);
+
+            expect(app.applicationDAO.findFirst).toHaveBeenCalledTimes(1);
         });
 
-        it('throws when getApplicationById fails', async () => {
+        it('throws when findFirst fails', async () => {
             jest.spyOn(console, 'error').mockImplementation(() => {});
-            app.getApplicationById.mockRejectedValueOnce(new Error('not found'));
+            app.applicationDAO.findFirst.mockRejectedValueOnce(new Error('not found'));
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
@@ -395,8 +404,8 @@ describe('Application', () => {
             console.error.mockRestore();
         });
 
-        it('returns false when getApplicationById resolves null', async () => {
-            app.getApplicationById.mockResolvedValueOnce(null);
+        it('returns false when findFirst resolves null', async () => {
+            app.applicationDAO.findFirst.mockResolvedValueOnce(null);
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
@@ -470,38 +479,58 @@ describe('Application', () => {
     });
 
     describe('_computeCanBeReopened', () => {
-        it('returns true for Approved with no nextRevisionId', () => {
-            expect(app._computeCanBeReopened({ status: APPROVED, nextRevisionId: null })).toBe(true);
-            expect(app._computeCanBeReopened({ status: APPROVED })).toBe(true);
+        beforeEach(() => {
+            app.applicationDAO.findFirst = jest.fn();
         });
 
-        it('returns false when nextRevisionId is set', () => {
-            expect(app._computeCanBeReopened({
+        it('returns true for Approved with no nextRevisionId', async () => {
+            await expect(app._computeCanBeReopened({ status: APPROVED, nextRevisionId: null }))
+                .resolves.toBe(true);
+            await expect(app._computeCanBeReopened({ status: APPROVED }))
+                .resolves.toBe(true);
+            expect(app.applicationDAO.findFirst).not.toHaveBeenCalled();
+        });
+
+        it('returns false when an active successor exists', async () => {
+            app.applicationDAO.findFirst.mockResolvedValueOnce({ _id: 'successor-id', status: REOPENED });
+
+            await expect(app._computeCanBeReopened({
                 status: APPROVED,
                 nextRevisionId: 'successor-id',
-            })).toBe(false);
+            })).resolves.toBe(false);
         });
 
-        it('returns false for non-approved statuses', () => {
-            expect(app._computeCanBeReopened({ status: IN_PROGRESS })).toBe(false);
-            expect(app._computeCanBeReopened({ status: REOPENED })).toBe(false);
-            expect(app._computeCanBeReopened({ status: SUBMITTED })).toBe(false);
+        it('returns true when all successors are terminal', async () => {
+            app.applicationDAO.findFirst.mockResolvedValueOnce({ _id: 'successor-id', status: CANCELED });
+
+            await expect(app._computeCanBeReopened({
+                status: APPROVED,
+                nextRevisionId: 'successor-id',
+            })).resolves.toBe(true);
         });
 
-        it('treats approved status case-insensitively', () => {
-            expect(app._computeCanBeReopened({ status: 'approved', nextRevisionId: null })).toBe(true);
+        it('returns false for non-approved statuses', async () => {
+            await expect(app._computeCanBeReopened({ status: IN_PROGRESS })).resolves.toBe(false);
+            await expect(app._computeCanBeReopened({ status: REOPENED })).resolves.toBe(false);
+            await expect(app._computeCanBeReopened({ status: SUBMITTED })).resolves.toBe(false);
+        });
+
+        it('treats approved status case-insensitively', async () => {
+            await expect(app._computeCanBeReopened({ status: 'approved', nextRevisionId: null }))
+                .resolves.toBe(true);
         });
     });
 
-    describe('_enrichApplicationResponse', () => {
-        it('sets canBeReopened on the application object', () => {
+    describe('_computeSRFStateFields', () => {
+        it('sets canBeReopened on the application object', async () => {
             const application = { status: APPROVED, nextRevisionId: null };
-            app._enrichApplicationResponse(application);
+            app.applicationDAO.findFirst = jest.fn();
+            await app._computeSRFStateFields(application);
             expect(application.canBeReopened).toBe(true);
         });
 
-        it('returns null when application is null', () => {
-            expect(app._enrichApplicationResponse(null)).toBeNull();
+        it('returns null when application is null', async () => {
+            await expect(app._computeSRFStateFields(null)).resolves.toBeNull();
         });
     });
 
@@ -703,30 +732,28 @@ describe('Application', () => {
         it('returns last approved application', async () => {
             userScopeMock.isNoneScope.mockReturnValue(false); // Ensure user has scope
             userScopeMock.isAllScope.mockReturnValue(true);   // Ensure user has all scope
-            // Patch: use applicationDAO mock to avoid Prisma call
-            const aggregate = jest.fn().mockResolvedValue([{ _id: 'app1', status: APPROVED }]);
-            app.applicationDAO = { aggregate };
+            app.applicationDAO = {
+                aggregate: jest.fn().mockResolvedValue([{ _id: 'app1', status: APPROVED }]),
+            };
+            jest.spyOn(app, 'getApplicationById').mockResolvedValue({
+                _id: 'app1',
+                status: APPROVED,
+                institution: { id: 'inst1', _id: 'inst1' },
+            });
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
 
-            // Patch: getApplicationById now expects {id: ...} and returns institution, so mock accordingly
-            const applicationWithInstitution = { _id: 'app1', status: APPROVED, institution: { id: 'inst1', _id: 'inst1' } };
-            jest.spyOn(app, 'getApplicationById').mockResolvedValue(applicationWithInstitution);
-
             const result = await app.getMyLastApplication({}, context);
-            expect(aggregate).toHaveBeenCalledWith([
+            expect(app.applicationDAO.aggregate).toHaveBeenCalledWith([
                 {
                     $match: {
                         applicantID: 'user1',
                         status: APPROVED,
-                        $or: [
-                            { nextRevisionId: null },
-                            { nextRevisionId: { $exists: false } },
-                        ],
                     },
                 },
                 { $sort: { createdAt: -1 } },
                 { $limit: 1 },
             ]);
+            expect(app.getApplicationById).toHaveBeenCalledWith('app1');
             expect(result).toMatchObject({ _id: 'app1', version: '3.0', institution: { id: 'inst1', _id: 'inst1' } });
         });
 
@@ -735,20 +762,20 @@ describe('Application', () => {
             userScopeMock.isAllScope.mockReturnValue(true);
             UserScope.create.mockReturnValue(userScopeMock);
             app.applicationDAO = {
-                aggregate: jest.fn().mockResolvedValue([{ _id: 'app1', status: APPROVED }])
+                aggregate: jest.fn().mockResolvedValue([{ _id: 'app1', status: APPROVED }]),
             };
+            jest.spyOn(app, 'getApplicationById').mockResolvedValue({
+                _id: 'app1',
+                status: APPROVED,
+                studyName: 'study1',
+                institution: { id: 'inst1', _id: 'inst1' },
+            });
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([{
                 controlledAccess: false,
                 pendingModelChange: false,
                 pendingImageDeIdentification: true
             }]);
-            jest.spyOn(app, 'getApplicationById').mockResolvedValue({
-                _id: 'app1',
-                status: APPROVED,
-                studyName: 'study1',
-                institution: { id: 'inst1', _id: 'inst1' }
-            });
 
             const result = await app.getMyLastApplication({}, context);
 
@@ -772,6 +799,27 @@ describe('Application', () => {
 
             const result = await app.getMyLastApplication({}, context);
             expect(result).toBeNull();
+        });
+
+        it('returns the most recent approved application even when it has a successor revision', async () => {
+            userScopeMock.isNoneScope.mockReturnValue(false);
+            userScopeMock.isAllScope.mockReturnValue(true);
+            app.applicationDAO = {
+                aggregate: jest.fn().mockResolvedValue([
+                    { _id: 'seq1', status: APPROVED, nextRevisionId: 'seq2', createdAt: new Date('2024-02-01') },
+                ]),
+            };
+            jest.spyOn(app, 'getApplicationById').mockResolvedValue({
+                _id: 'seq1',
+                status: APPROVED,
+                studyName: 'Study',
+                nextRevisionId: 'seq2',
+            });
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+
+            const result = await app.getMyLastApplication({}, context);
+
+            expect(result).toMatchObject({ _id: 'seq1', version: '3.0' });
         });
     });
 
@@ -870,11 +918,12 @@ describe('Application', () => {
             expect(result.applications[0].studyName).toBe('My Full Study');
         });
 
-        it('sets canBeReopened on list rows based on Approved status and nextRevisionId', async () => {
+        it('sets canBeReopened on list rows based on Approved status and revision chain', async () => {
             const rows = [
                 { id: 'a1', status: APPROVED, nextRevisionId: null, studyName: 'S1', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
-                { id: 'a2', status: APPROVED, nextRevisionId: 'successor', studyName: 'S2', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
-                { id: 'a3', status: IN_PROGRESS, studyName: 'S3', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
+                { id: 'a2', status: APPROVED, nextRevisionId: 'successor-active', studyName: 'S2', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
+                { id: 'a3', status: APPROVED, nextRevisionId: 'successor-canceled', studyName: 'S4', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
+                { id: 'a4', status: IN_PROGRESS, studyName: 'S3', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
             ];
             let n = 0;
             const findManyMock = jest.fn().mockImplementation(() => {
@@ -885,15 +934,25 @@ describe('Application', () => {
                 return Promise.resolve([]);
             });
             app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(3);
+            app.applicationDAO.count = jest.fn().mockResolvedValue(4);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            app.applicationDAO.findFirst = jest.fn().mockImplementation(async (filter) => {
+                if (filter?.id === 'successor-active') {
+                    return { _id: 'successor-active', status: REOPENED };
+                }
+                if (filter?.id === 'successor-canceled') {
+                    return { _id: 'successor-canceled', status: CANCELED };
+                }
+                return null;
+            });
 
             const result = await app.listApplications({}, context);
 
-            expect(result.applications).toHaveLength(3);
+            expect(result.applications).toHaveLength(4);
             expect(result.applications[0].canBeReopened).toBe(true);
             expect(result.applications[1].canBeReopened).toBe(false);
-            expect(result.applications[2].canBeReopened).toBe(false);
+            expect(result.applications[2].canBeReopened).toBe(true);
+            expect(result.applications[3].canBeReopened).toBe(false);
         });
 
         it('returns empty list when scope is study (only all and own supported for filters)', async () => {
@@ -2025,6 +2084,7 @@ describe('Application', () => {
                 }),
             };
             app.applicationDAO = {
+                findFirst: jest.fn(),
                 reopenApprovedRevision: jest.fn().mockImplementation((_sourceId, doc) =>
                     Promise.resolve({ ...doc, version: '3.0' })
                 ),
@@ -2055,7 +2115,8 @@ describe('Application', () => {
                     status: REOPENED,
                     sequenceNumber: 2,
                     submittedDate: null,
-                })
+                }),
+                false
             );
             expect(CreateApplicationEvent.create).toHaveBeenCalledWith(
                 'user1', 'john@doe.com', undefined, expect.any(String)
@@ -2116,7 +2177,8 @@ describe('Application', () => {
 
             expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
                 'approved-1',
-                expect.objectContaining({ applicantID: 'new-owner' })
+                expect.objectContaining({ applicantID: 'new-owner' }),
+                false
             );
             expect(result.applicant).toEqual({
                 applicantID: 'new-owner',
@@ -2163,7 +2225,8 @@ describe('Application', () => {
 
             expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
                 'approved-1',
-                expect.objectContaining({ applicantID: 'user1' })
+                expect.objectContaining({ applicantID: 'user1' }),
+                false
             );
             expect(result.applicant.applicantID).toBe('user1');
         });
@@ -2309,14 +2372,40 @@ describe('Application', () => {
                 .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         });
 
-        it('rejects when nextRevisionId already set', async () => {
+        it('rejects when an active successor exists', async () => {
             app.getApplicationById = jest.fn().mockResolvedValue({
                 ...approvedSource,
-                nextRevisionId: 'existing-successor'
+                nextRevisionId: 'existing-successor',
             });
+            app.applicationDAO.findFirst = jest.fn().mockResolvedValue({ _id: 'existing-successor', status: REOPENED });
 
             await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
                 .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+
+            expect(app.applicationDAO.reopenApprovedRevision).not.toHaveBeenCalled();
+        });
+
+        it('allows reopen over a terminal successor and replaces the existing link', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                ...approvedSource,
+                nextRevisionId: 'canceled-successor',
+            });
+            app.applicationDAO.findFirst = jest.fn().mockResolvedValue({ _id: 'canceled-successor', status: CANCELED });
+            app.applicationDAO.reopenApprovedRevision.mockResolvedValue({
+                _id: 'new-revision-id',
+                status: REOPENED,
+                sequenceNumber: 2,
+                version: '3.0',
+            });
+
+            const result = await app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context);
+
+            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+                'approved-1',
+                expect.objectContaining({ status: REOPENED, sequenceNumber: 2 }),
+                true
+            );
+            expect(result.status).toBe(REOPENED);
         });
 
         it('rejects when status is not Approved', async () => {
@@ -2343,6 +2432,7 @@ describe('Application', () => {
             UserScope.create.mockImplementation((scopes) => new (require('../../domain/user-scope').UserScope)(scopes));
             app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
             app.applicationDAO = {
+                findFirst: jest.fn(),
                 reopenApprovedRevision: jest.fn().mockImplementation((_sourceId, doc) =>
                     Promise.resolve({ ...doc, version: '3.0' })
                 ),
@@ -2353,7 +2443,8 @@ describe('Application', () => {
 
             expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
                 'approved-1',
-                expect.objectContaining({ applicantID: 'user1', status: REOPENED })
+                expect.objectContaining({ applicantID: 'user1', status: REOPENED }),
+                false
             );
             expect(result.applicant.applicantID).toBe('user1');
         });
@@ -2664,9 +2755,13 @@ describe('Application', () => {
         });
     });
 
-    describe('_hydrateApplicationRecord', () => {
-        it('uses applicantName from nested applicant when fullName and name parts are missing', () => {
-            const result = app._hydrateApplicationRecord({
+    describe('_reformatRecordForApplicationResponse', () => {
+        beforeEach(() => {
+            app.applicationDAO.findFirst = jest.fn();
+        });
+
+        it('uses applicantName from nested applicant when fullName and name parts are missing', async () => {
+            const result = await app._reformatRecordForApplicationResponse({
                 id: 'app-1',
                 applicant: {
                     id: 'user-1',
@@ -2683,8 +2778,8 @@ describe('Application', () => {
             expect(result.canBeReopened).toBe(false);
         });
 
-        it('sets canBeReopened true when record is Approved without nextRevisionId', () => {
-            const result = app._hydrateApplicationRecord({
+        it('sets canBeReopened true when record is Approved without nextRevisionId', async () => {
+            const result = await app._reformatRecordForApplicationResponse({
                 id: 'app-1',
                 status: APPROVED,
                 nextRevisionId: null,
@@ -2693,8 +2788,8 @@ describe('Application', () => {
             expect(result.canBeReopened).toBe(true);
         });
 
-        it('prefers ownerUser fullName over nested applicant applicantName', () => {
-            const result = app._hydrateApplicationRecord(
+        it('prefers ownerUser fullName over nested applicant applicantName', async () => {
+            const result = await app._reformatRecordForApplicationResponse(
                 {
                     id: 'app-1',
                     applicant: { id: 'user-1', applicantName: 'Stored Applicant' },
