@@ -1,7 +1,6 @@
 import { Suspense, forwardRef, lazy } from "react";
 
 import type { RichTextEditorHandle, Props as RichTextEditorProps } from "./Controller";
-import { createEmptyDocument } from "./utils/documentUtils";
 
 const Controller = lazy(() => import("./Controller"));
 
@@ -13,7 +12,6 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>((pr
 
 RichTextEditor.displayName = "RichTextEditor";
 
-export { createEmptyDocument };
 export type { RichTextEditorHandle, Props as RichTextEditorProps } from "./Controller";
 
 export default RichTextEditor;
