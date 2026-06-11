@@ -64,8 +64,8 @@ class ApplicationDAO extends GenericDAO {
     }
 
     /**
-     * Clear nextRevisionId on any application pointing at the given successor (revision chain prune).
-     * @param {string} applicationId Terminal or removed successor application _id
+     * Clear nextRevisionId on any application pointing at the given successor (revision chain link removal).
+     * @param {string} applicationId Successor application _id whose inbound nextRevisionId link should be cleared
      * @returns {Promise<{ matchedCount: number, modifiedCount: number }>}
      */
     async clearNextRevisionIdPointingTo(applicationId) {

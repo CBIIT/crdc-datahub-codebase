@@ -136,11 +136,9 @@ class Application {
     }
 
     /**
-     * Clear inbound nextRevisionId links when a successor reaches a terminal state
-     * (Rejected, Canceled, Deleted) or is hard-deleted.
-     * Errors are logged but not propagated so the primary state transition still succeeds;
-     * on failure the approved predecessor may remain blocked from reopen until manually fixed.
-     * @param {string} applicationId Terminal or removed successor application _id
+     * Clear inbound nextRevisionId links for a successor application ID.
+     * Used when replacing the revision chain link during reopen (not on terminal successor states).
+     * @param {string} applicationId Successor application _id whose inbound link should be cleared
      */
     async _pruneRevisionChainOnTerminal(applicationId) {
         if (!applicationId) {
@@ -149,7 +147,7 @@ class Application {
         try {
             await this.applicationDAO.clearNextRevisionIdPointingTo(applicationId);
         } catch (err) {
-            console.error('Failed to prune revision chain for terminal application:', applicationId, err);
+            console.error('Failed to clear revision chain link for successor application:', applicationId, err);
         }
     }
 
@@ -1043,7 +1041,6 @@ class Application {
             });
         }
         if (updated) {
-            await this._pruneRevisionChainOnTerminal(document._id);
             await this._sendCancelApplicationEmail(userInfo, aApplication);
         } else {
             console.error(ERROR.FAILED_DELETE_APPLICATION, `${document._id}`);
@@ -1224,7 +1221,6 @@ class Application {
 
         await sendEmails.rejectApplication(this.notificationService, this.userService, this.emailParams, application, document.comment);
         if (updated) {
-            await this._pruneRevisionChainOnTerminal(application._id);
             const log = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, REJECTED);
             const promises = [
                 await this.getApplicationById(document._id),
@@ -1318,12 +1314,8 @@ class Application {
 
             // Use Promise.allSettled to handle partial failures gracefully
             const updateResults = await Promise.allSettled(applications.map(async (app) => {
-                const appId = app._id ?? app.id;
                 if (utilityService.isEmptyApplication(app) && app.status === NEW) {
                     const deleted = await this.applicationDAO.delete(app._id);
-                    if (deleted) {
-                        await this._pruneRevisionChainOnTerminal(appId);
-                    }
                     return deleted;
                 }
                 const result = await this.applicationDAO.update({
@@ -1333,9 +1325,6 @@ class Application {
                     inactiveReminder: true,
                     history: [...(app.history || []), history]
                 });
-                if (result) {
-                    await this._pruneRevisionChainOnTerminal(appId);
-                }
                 return result;
             }));
 

@@ -2449,10 +2449,10 @@ describe('Application', () => {
                 .mockResolvedValueOnce({ _id: 'app1', status: REJECTED, history: [], version: '2.0' });
         });
 
-        it('prunes revision chain after rejecting application', async () => {
+        it('does not prune revision chain after rejecting application', async () => {
             await app.rejectApplication({ _id: 'app1', comment: 'rejected' }, context);
 
-            expect(app.applicationDAO.clearNextRevisionIdPointingTo).toHaveBeenCalledWith('app1');
+            expect(app.applicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
     });
 
@@ -2507,7 +2507,7 @@ describe('Application', () => {
             );
         });
 
-        it('prunes revision chain when canceling to Canceled status', async () => {
+        it('does not prune revision chain when canceling to Canceled status', async () => {
             userScopeMock.isAllScope.mockReturnValue(true);
             app.getApplicationById = jest.fn().mockResolvedValue({
                 _id: 'app-reopened',
@@ -2519,10 +2519,10 @@ describe('Application', () => {
 
             await app.cancelApplication({ _id: 'app-reopened', comment: 'cancel' }, context);
 
-            expect(app.applicationDAO.clearNextRevisionIdPointingTo).toHaveBeenCalledWith('app-reopened');
+            expect(app.applicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
 
-        it('prunes revision chain after deleting empty application', async () => {
+        it('does not prune revision chain after deleting empty application', async () => {
             const callOrder = [];
             userScopeMock.isAllScope.mockReturnValue(true);
             app.getApplicationById = jest.fn()
@@ -2549,8 +2549,8 @@ describe('Application', () => {
 
             await app.cancelApplication({ _id: 'empty-app', comment: 'cancel' }, context);
 
-            expect(app.applicationDAO.clearNextRevisionIdPointingTo).toHaveBeenCalledWith('empty-app');
-            expect(callOrder).toEqual(['delete', 'prune']);
+            expect(app.applicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
+            expect(callOrder).toEqual(['delete']);
         });
 
         it('does not prune revision chain when empty application delete fails', async () => {
