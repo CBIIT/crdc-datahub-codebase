@@ -4,8 +4,7 @@ import { IconButtonProps, IconButton, styled } from "@mui/material";
 import dayjs from "dayjs";
 import { isEqual } from "lodash";
 import { useSnackbar } from "notistack";
-import { unparse } from "papaparse";
-import { memo, MutableRefObject, useMemo, useState } from "react";
+import { memo, MutableRefObject, useState } from "react";
 
 import { useSubmissionContext } from "@/components/Contexts/SubmissionContext";
 import type { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
@@ -67,19 +66,6 @@ const ExportValidationButton: React.FC<Props> = ({
 
   const { _id, name } = data?.getSubmission ?? {};
 
-  const tooltip = useMemo<JSX.Element>(() => {
-    if (isAggregated) {
-      return (
-        <span>
-          Export all validation issues for this data <br />
-          submission to a CSV file
-        </span>
-      );
-    }
-
-    return <span>Export filtered validation issues to Excel</span>;
-  }, [isAggregated]);
-
   const [getSubmissionQCResults] = useLazyQuery<SubmissionQCResultsResp, SubmissionQCResultsInput>(
     SUBMISSION_QC_RESULTS,
     {
@@ -97,87 +83,60 @@ const ExportValidationButton: React.FC<Props> = ({
   });
 
   /**
-   * Helper to generate CSV and trigger download.
-   * This function:
-   *  1) Optionally unpacks severities if not aggregated
-   *  2) Uses the given `fields` to generate CSV rows
-   *  3) Calls `downloadBlob` to save the CSV file
-   *
-   * @returns {void}
-   */
-  const createCSVAndDownload = (rows: AggregatedQCResult[], filename: string): void => {
-    try {
-      // TODO: Define this in the excel builder class.
-      const fields = {
-        "Issue Type": (d: AggregatedQCResult) => d.title,
-        Property: (d: AggregatedQCResult) => d.property,
-        Value: (d: AggregatedQCResult) => d.value,
-        Severity: (d: AggregatedQCResult) => d.severity,
-        "Record Count": (d: AggregatedQCResult) =>
-          Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(d.count || 0),
-      };
-
-      const fieldEntries = Object.entries(fields);
-      const csvArray = rows.map((row) => {
-        const csvRow: Record<string, string | number> = {};
-        fieldEntries.forEach(([header, fn]) => {
-          csvRow[header] = fn(row) ?? "";
-        });
-        return csvRow;
-      });
-
-      downloadBlob(unparse(csvArray), filename, "text/csv");
-    } catch (err) {
-      enqueueSnackbar(`Unable to export validation results. Error: ${err}`, { variant: "error" });
-    }
-  };
-
-  /**
-   *  Creates a file name by using the submission name, filtering by alpha-numeric characters,
+   * Creates a file name by using the submission name, filtering by alpha-numeric characters,
    * then adding the date and time
    *
    * @returns {string} A formatted file name for the exported file
    */
-  const createFileName = (extension: "csv" | "xlsx" = "csv"): string => {
+  const createFileName = (): string => {
     const filteredName = filterAlphaNumeric(name?.trim()?.replaceAll(" ", "-"), "-");
-    return `${filteredName}-${dayjs().format("YYYY-MM-DDTHHmmss")}.${extension}`;
+    return `${filteredName}-${dayjs().format("YYYY-MM-DDTHHmmss")}.xlsx`;
   };
 
   /**
    * Will retrieve all of the aggregated submission QC results to
-   * construct and download a CSV file
-   *
-   * @returns {Promise<void>}
+   * construct and download an Excel file
    */
   const handleAggregatedExportSetup = async (): Promise<void> => {
     setLoading(true);
 
     try {
-      const { data, error } = await getAggregatedSubmissionQCResults({
-        variables: {
+      const { AggregatedValidationResultsExcelBuilder } = await import(
+        "@/classes/AggregatedValidationResultsExcelBuilder"
+      );
+
+      const exportRows = await fetchAllData<
+        AggregatedSubmissionQCResultsResp,
+        AggregatedSubmissionQCResultsInput,
+        AggregatedQCResult
+      >(
+        getAggregatedSubmissionQCResults,
+        {
           submissionID: _id,
-          partial: false,
-          first: -1,
-          orderBy: "title",
-          sortDirection: "asc",
+          severity: filtersRef.current.severity?.toLowerCase() || "all",
+          orderBy: "count",
+          sortDirection: "desc",
         },
-      });
+        (resp) => resp?.aggregatedSubmissionQCResults?.results ?? [],
+        (resp) => resp?.aggregatedSubmissionQCResults?.total ?? 0,
+        { pageSize: 10_000 }
+      );
 
-      if (error || !data?.aggregatedSubmissionQCResults?.results) {
-        enqueueSnackbar("Unable to retrieve submission aggregated quality control results.", {
-          variant: "error",
-        });
-        return;
-      }
-
-      if (!data.aggregatedSubmissionQCResults.results.length) {
+      if (!exportRows.length) {
         enqueueSnackbar("There are no aggregated validation results to export.", {
           variant: "error",
         });
         return;
       }
 
-      createCSVAndDownload(data.aggregatedSubmissionQCResults.results, createFileName());
+      const builder = new AggregatedValidationResultsExcelBuilder(exportRows);
+      const workbook = await builder.serialize();
+
+      downloadBlob(
+        workbook,
+        createFileName(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
     } catch (err) {
       enqueueSnackbar(`Unable to export aggregated validation results. Error: ${err}`, {
         variant: "error",
@@ -192,16 +151,12 @@ const ExportValidationButton: React.FC<Props> = ({
 
   /**
    * Will retrieve all of the expanded submission QC results to
-   * construct and download a Excel file
+   * construct and download an Excel file
    */
   const handleExpandedExportSetup = async (): Promise<void> => {
     setLoading(true);
 
     try {
-      enqueueSnackbar("Generating the validation results file. This may take a moment...", {
-        variant: "default",
-      });
-
       const { ValidationResultsExcelBuilder } = await import(
         "@/classes/ValidationResultsExcelBuilder"
       );
@@ -255,7 +210,7 @@ const ExportValidationButton: React.FC<Props> = ({
 
       downloadBlob(
         workbook,
-        createFileName("xlsx"),
+        createFileName(),
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       );
     } catch (err) {
@@ -270,11 +225,11 @@ const ExportValidationButton: React.FC<Props> = ({
     }
   };
 
-  /**
-   * Click handler that triggers the setup
-   * for aggregated or expanded CSV file exporting
-   */
   const handleClick = () => {
+    enqueueSnackbar("Generating the validation results file. This may take a moment...", {
+      variant: "default",
+    });
+
     if (isAggregated) {
       handleAggregatedExportSetup();
       return;
@@ -284,7 +239,11 @@ const ExportValidationButton: React.FC<Props> = ({
   };
 
   return (
-    <StyledTooltip title={tooltip} placement="top" data-testid="export-validation-tooltip">
+    <StyledTooltip
+      title={<span>Export filtered validation issues to Excel</span>}
+      placement="top"
+      data-testid="export-validation-tooltip"
+    >
       <span>
         <StyledIconButton
           onClick={handleClick}

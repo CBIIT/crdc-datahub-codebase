@@ -572,10 +572,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         result: () => {
@@ -617,10 +619,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         result: {
@@ -650,7 +654,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
     });
   });
 
-  it("should create a valid CSV filename and call downloadBlob for aggregated results", async () => {
+  it("should create a valid xlsx filename and call downloadBlob for aggregated results", async () => {
     vi.useFakeTimers().setSystemTime(new Date("2025-01-01T08:30:00Z"));
     const aggregatorID = "aggregated-filename-test";
 
@@ -660,10 +664,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         result: {
@@ -693,8 +699,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
     userEvent.click(getByTestId("export-validation-button"));
 
     await waitFor(() => {
-      const filename = "my-aggregator-2025-01-01T083000.csv";
-      expect(mockDownloadBlob).toHaveBeenCalledWith(expect.any(String), filename, "text/csv");
+      const filename = "my-aggregator-2025-01-01T083000.xlsx";
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        expect.anything(),
+        filename,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
     });
   });
 
@@ -707,10 +717,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         error: new Error("Simulated aggregator network error"),
@@ -727,7 +739,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve submission aggregated quality control results.",
+        expect.stringContaining("Unable to export aggregated validation results. Error:"),
         { variant: "error" }
       );
     });
@@ -742,10 +754,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         result: {
@@ -764,7 +778,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve submission aggregated quality control results.",
+        expect.stringContaining("Unable to export aggregated validation results. Error:"),
         { variant: "error" }
       );
     });
@@ -779,10 +793,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         result: {

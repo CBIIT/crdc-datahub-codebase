@@ -156,7 +156,7 @@ export const AggregatedResults: Story = {
     await userEvent.hover(button);
 
     const tooltip = await screen.findByRole("tooltip");
-    expect(tooltip).toHaveTextContent("Export all validation issues for this data");
+    expect(tooltip).toHaveTextContent("Export filtered validation issues to Excel");
   },
 };
 
