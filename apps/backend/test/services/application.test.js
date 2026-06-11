@@ -304,6 +304,171 @@ describe('Application', () => {
         });
     });
 
+    describe('_isTerminalRevisionStatus', () => {
+        it('returns true for Rejected, Canceled, and Deleted', () => {
+            expect(app._isTerminalRevisionStatus(REJECTED)).toBe(true);
+            expect(app._isTerminalRevisionStatus(CANCELED)).toBe(true);
+            expect(app._isTerminalRevisionStatus(DELETED)).toBe(true);
+        });
+
+        it('returns false for non-terminal statuses', () => {
+            expect(app._isTerminalRevisionStatus(APPROVED)).toBe(false);
+            expect(app._isTerminalRevisionStatus(REOPENED)).toBe(false);
+            expect(app._isTerminalRevisionStatus(IN_PROGRESS)).toBe(false);
+            expect(app._isTerminalRevisionStatus(null)).toBe(false);
+            expect(app._isTerminalRevisionStatus("")).toBe(false);
+        });
+
+        it('treats status case-insensitively', () => {
+            expect(app._isTerminalRevisionStatus('canceled')).toBe(true);
+            expect(app._isTerminalRevisionStatus('Rejected')).toBe(true);
+            expect(app._isTerminalRevisionStatus('Approved')).toBe(false);
+        });
+    });
+
+    describe('_hasActiveLaterRevisions', () => {
+        beforeEach(() => {
+            app.getApplicationById = jest.fn();
+        });
+
+        it('returns false when there is no nextRevisionId', async () => {
+            await expect(app._hasActiveLaterRevisions({ _id: 'seq1', status: APPROVED }))
+                .resolves.toBe(false);
+            expect(app.getApplicationById).not.toHaveBeenCalled();
+        });
+
+        it('returns true when the immediate successor is non-terminal', async () => {
+            app.getApplicationById.mockResolvedValueOnce({ _id: 'seq2', status: REOPENED });
+
+            await expect(app._hasActiveLaterRevisions({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq2',
+            })).resolves.toBe(true);
+        });
+
+        it('returns false when the immediate successor is terminal', async () => {
+            app.getApplicationById.mockResolvedValueOnce({ _id: 'seq2', status: CANCELED });
+
+            await expect(app._hasActiveLaterRevisions({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq2',
+            })).resolves.toBe(false);
+        });
+
+        it('walks the chain and returns true when a later successor is active', async () => {
+            app.getApplicationById
+                .mockResolvedValueOnce({ _id: 'seq2', status: APPROVED, nextRevisionId: 'seq3' })
+                .mockResolvedValueOnce({ _id: 'seq3', status: REOPENED });
+
+            await expect(app._hasActiveLaterRevisions({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq2',
+            })).resolves.toBe(true);
+        });
+
+        it('walks the chain and returns false when all successors are terminal', async () => {
+            app.getApplicationById
+                .mockResolvedValueOnce({ _id: 'seq2', status: CANCELED, nextRevisionId: 'seq3' })
+                .mockResolvedValueOnce({ _id: 'seq3', status: REJECTED });
+
+            await expect(app._hasActiveLaterRevisions({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq2',
+            })).resolves.toBe(false);
+        });
+
+        it('throws when getApplicationById fails', async () => {
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+            app.getApplicationById.mockRejectedValueOnce(new Error('not found'));
+
+            await expect(app._hasActiveLaterRevisions({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'missing',
+            })).rejects.toThrow(ERROR.INTERNAL_ERROR);
+
+            expect(console.error).toHaveBeenCalled();
+            console.error.mockRestore();
+        });
+
+        it('returns false when getApplicationById resolves null', async () => {
+            app.getApplicationById.mockResolvedValueOnce(null);
+
+            await expect(app._hasActiveLaterRevisions({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'missing',
+            })).resolves.toBe(false);
+        });
+    });
+
+    describe('_hasParentViaNextRevisionId', () => {
+        beforeEach(() => {
+            app.applicationDAO.findPreviousSubmissionRequestByID = jest.fn();
+        });
+
+        it('returns true when another SRF links to this application via nextRevisionId', async () => {
+            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq2',
+            });
+
+            await expect(app._hasParentViaNextRevisionId({ _id: 'seq2', status: CANCELED }))
+                .resolves.toBe(true);
+        });
+
+        it('returns false when there is no parent', async () => {
+            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue(null);
+
+            await expect(app._hasParentViaNextRevisionId({ _id: 'seq2', status: CANCELED }))
+                .resolves.toBe(false);
+        });
+
+        it('returns false when parent is returned but nextRevisionId does not match', async () => {
+            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq4',
+            });
+
+            await expect(app._hasParentViaNextRevisionId({ _id: 'seq2', status: CANCELED }))
+                .resolves.toBe(false);
+        });
+
+        it('returns false when parent is returned without nextRevisionId', async () => {
+            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue({
+                _id: 'seq1',
+                status: APPROVED,
+            });
+
+            await expect(app._hasParentViaNextRevisionId({ _id: 'seq2', status: CANCELED }))
+                .resolves.toBe(false);
+        });
+
+        it('returns true when application id is on the id field', async () => {
+            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq2',
+            });
+
+            await expect(app._hasParentViaNextRevisionId({ id: 'seq2', status: CANCELED }))
+                .resolves.toBe(true);
+            expect(app.applicationDAO.findPreviousSubmissionRequestByID).toHaveBeenCalledWith('seq2');
+        });
+
+        it('returns false when application id is missing', async () => {
+            await expect(app._hasParentViaNextRevisionId({ status: CANCELED }))
+                .resolves.toBe(false);
+            expect(app.applicationDAO.findPreviousSubmissionRequestByID).not.toHaveBeenCalled();
+        });
+    });
+
     describe('_computeCanBeReopened', () => {
         it('returns true for Approved with no nextRevisionId', () => {
             expect(app._computeCanBeReopened({ status: APPROVED, nextRevisionId: null })).toBe(true);

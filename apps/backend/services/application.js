@@ -40,6 +40,8 @@ const VALID_ORDER_BY_LIST_APPLICATIONS = [
     "updatedAt",
     "submittedDate"
 ];
+const TERMINAL_REVISION_STATUSES = Object.freeze([REJECTED, CANCELED, DELETED]);
+
 class Application {
     _DELETE_REVIEW_COMMENT="This Submission Request has been deleted by the system due to inactivity.";
     _ALL_FILTER="All";
@@ -68,6 +70,57 @@ class Application {
 
     _isApprovedApplication(application) {
         return this._normalizeApplicationStatus(application?.status) === this._normalizeApplicationStatus(APPROVED);
+    }
+
+    _isTerminalRevisionStatus(status) {
+        const normalized = this._normalizeApplicationStatus(status);
+        return TERMINAL_REVISION_STATUSES.some(
+            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === normalized
+        );
+    }
+
+    /**
+     * Walk the revision chain from application.nextRevisionId. Returns true when any
+     * successor has a non-terminal status (an active later revision exists).
+     * @param {object} application Application document that may have nextRevisionId
+     * @returns {Promise<boolean>}
+     */
+    async _hasActiveLaterRevisions(application) {
+        let nextRevisionID = application?.nextRevisionId;
+        while (nextRevisionID) {
+            let successor;
+            try {
+                successor = await this.getApplicationById(nextRevisionID);
+            } catch (err) {
+                console.error('Failed to load revision successor while checking active later revisions:', nextRevisionID, err);
+                throw new Error(ERROR.INTERNAL_ERROR);
+            }
+            if (!successor) {
+                return false;
+            }
+            if (!this._isTerminalRevisionStatus(successor.status)) {
+                return true;
+            }
+            nextRevisionID = successor.nextRevisionId;
+        }
+        return false;
+    }
+
+    /**
+     * True when another SRF links to this application via nextRevisionId.
+     * @param {object} application Candidate application
+     * @returns {Promise<boolean>}
+     */
+    async _hasParentViaNextRevisionId(application) {
+        const applicationID = application?._id ?? application?.id;
+        if (!applicationID) {
+            return false;
+        }
+        const parent = await this.applicationDAO.findPreviousSubmissionRequestByID(applicationID);
+        if (!parent) {
+            return false;
+        }
+        return parent.nextRevisionId === applicationID;
     }
 
     _computeCanBeReopened(application) {
