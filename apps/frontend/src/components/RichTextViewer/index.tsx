@@ -1,6 +1,6 @@
 import { styled } from "@mui/material";
-import type { ReactElement } from "react";
-import ReactMarkdown from "react-markdown";
+import { createElement, type ReactElement, type ReactNode } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
@@ -113,6 +113,16 @@ const prepareMarkdownForViewer = (value: string): string => {
   return contentWithBlankParagraphs.split("\n").map(prepareLineForViewer).join("\n");
 };
 
+/**
+ * Removed attributes from elements to avoid unsafe assignments.
+ */
+const SANITIZED_COMPONENTS: Components = Object.fromEntries(
+  MARKDOWN_ALLOWED_ELEMENTS.map((tag) => [
+    tag,
+    ({ children }: { children?: ReactNode }) => createElement(tag, null, children),
+  ])
+) as Components;
+
 type Props = {
   content: string;
   className?: string;
@@ -130,6 +140,7 @@ const RichTextViewer = ({ content, className }: Props): ReactElement | null => {
       rehypePlugins={[rehypeRaw]}
       allowedElements={[...MARKDOWN_ALLOWED_ELEMENTS]}
       unwrapDisallowed
+      components={SANITIZED_COMPONENTS}
     >
       {prepareMarkdownForViewer(content)}
     </StyledMarkdown>

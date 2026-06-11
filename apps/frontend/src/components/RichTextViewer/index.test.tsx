@@ -30,4 +30,28 @@ describe("Basic Functionality", () => {
 
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("should strip style attributes from allowed elements", () => {
+    const { container } = render(
+      <RichTextViewer content='<u style="background:red;color:red">text</u>' />
+    );
+
+    expect(container.querySelector("u")).toBeInTheDocument();
+    expect(container.querySelector("u")).not.toHaveAttribute("style");
+  });
+
+  it("should strip event handler attributes from allowed elements", () => {
+    const { container } = render(<RichTextViewer content='<p onmouseover="alert(1)">text</p>' />);
+
+    const p = container.querySelector("p");
+
+    expect(p).toBeInTheDocument();
+    expect(p?.getAttribute("onmouseover")).toBeNull();
+  });
+
+  it("should strip class attributes from allowed elements", () => {
+    const { container } = render(<RichTextViewer content='<p class="injected">text</p>' />);
+
+    expect(container.querySelector("p")).not.toHaveAttribute("class");
+  });
 });
