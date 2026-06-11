@@ -166,7 +166,7 @@ export const unpackValidationSeverities = <T extends QCResult | CrossValidationR
  */
 export const filterValidationResults = (
   results: QCResult[],
-  severity?: string,
+  severity?: QCResult["severity"] | "All",
   issueType?: string
 ): QCResult[] =>
   results.filter((result) => {
