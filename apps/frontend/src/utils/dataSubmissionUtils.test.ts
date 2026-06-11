@@ -923,7 +923,7 @@ describe("unpackQCResultSeverities cases", () => {
   });
 });
 
-describe("filterValidationResultsBySeverityAndIssueType cases", () => {
+describe("filterValidationResults cases", () => {
   const baseResult = qcResultFactory.build({
     validationType: "" as QCResult["validationType"],
   });
