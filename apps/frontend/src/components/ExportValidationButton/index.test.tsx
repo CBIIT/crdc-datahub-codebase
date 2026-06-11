@@ -1,41 +1,66 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
-import React, { FC } from "react";
+import React, { FC, MutableRefObject, useMemo } from "react";
 import { axe } from "vitest-axe";
 
+import type { QualityControlFilterForm } from "@/content/dataSubmissions/QualityControl";
 import { aggregatedQCResultFactory } from "@/factories/submission/AggregatedQCResultFactory";
 import { errorMessageFactory } from "@/factories/submission/ErrorMessageFactory";
 import { qcResultFactory } from "@/factories/submission/QCResultFactory";
+import { submissionCtxStateFactory } from "@/factories/submission/SubmissionContextFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
-
 import {
   SUBMISSION_QC_RESULTS,
   SubmissionQCResultsResp,
   AGGREGATED_SUBMISSION_QC_RESULTS,
   AggregatedSubmissionQCResultsResp,
-} from "../../graphql";
-import { render, fireEvent, waitFor } from "../../test-utils";
+} from "@/graphql";
+import { render, fireEvent, waitFor } from "@/test-utils";
+import * as utils from "@/utils";
 
-import { ExportValidationButton } from "./ExportValidationButton";
+import {
+  SubmissionContext,
+  SubmissionCtxState,
+  SubmissionCtxStatus,
+} from "../Contexts/SubmissionContext";
+
+import ExportValidationButton from "./index";
 
 const mockDownloadBlob = vi.fn();
 
-vi.mock("../../utils", async () => ({
-  ...(await vi.importActual("../../utils")),
+vi.mock("@/utils", async () => ({
+  ...(await vi.importActual("@/utils")),
   downloadBlob: (...args: unknown[]) => mockDownloadBlob(...args),
 }));
 
 type ParentProps = {
+  submission?: Partial<Submission>;
   mocks?: MockedResponse[];
   children: React.ReactNode;
 };
 
-const TestParent: FC<ParentProps> = ({ mocks, children }: ParentProps) => (
-  <MockedProvider mocks={mocks} showWarnings>
-    {children}
-  </MockedProvider>
-);
+const TestParent: FC<ParentProps> = ({ submission = {}, mocks, children }: ParentProps) => {
+  const ctxValue: SubmissionCtxState = useMemo<SubmissionCtxState>(
+    () =>
+      submissionCtxStateFactory.build({
+        status: SubmissionCtxStatus.LOADED,
+        data: {
+          getSubmission: submissionFactory.build({ ...submission }),
+          getSubmissionAttributes: null,
+          submissionStats: { stats: [] },
+        },
+        error: null,
+      }),
+    [submission]
+  );
+
+  return (
+    <MockedProvider mocks={mocks} showWarnings>
+      <SubmissionContext.Provider value={ctxValue}>{children}</SubmissionContext.Provider>
+    </MockedProvider>
+  );
+};
 
 const baseAggregatedQCResult: AggregatedQCResult = aggregatedQCResultFactory.build({
   code: "ERROR-001",
@@ -44,6 +69,17 @@ const baseAggregatedQCResult: AggregatedQCResult = aggregatedQCResultFactory.bui
   count: 25,
 });
 
+const defaultFilters: QualityControlFilterForm = {
+  issueType: "All",
+  batchID: "All",
+  nodeType: "All",
+  severity: "All",
+};
+
+const defaultFiltersRef: MutableRefObject<QualityControlFilterForm> = {
+  current: defaultFilters,
+};
+
 describe("ExportValidationButton (Expanded View) tests", () => {
   afterEach(() => {
     vi.resetAllMocks();
@@ -51,11 +87,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
   it("should not have accessibility violations", async () => {
     const { container } = render(
-      <TestParent mocks={[]}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: "example-sub-id" })}
-          fields={{}}
-        />
+      <TestParent mocks={[]} submission={{ _id: "example-sub-id" }}>
+        <ExportValidationButton filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -64,11 +97,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
   it("should have a tooltip present on the button", async () => {
     const { getByTestId, findByRole } = render(
-      <TestParent mocks={[]}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: "test-tooltip-id" })}
-          fields={{}}
-        />
+      <TestParent mocks={[]} submission={{ _id: "test-tooltip-id" }}>
+        <ExportValidationButton filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -76,9 +106,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     const tooltip = await findByRole("tooltip");
     expect(tooltip).toBeInTheDocument();
-    expect(tooltip).toHaveTextContent(
-      "Export all validation issues for this data submission to a CSV file"
-    );
+    expect(tooltip).toHaveTextContent("Export filtered validation issues to Excel");
   });
 
   it("should execute the SUBMISSION_QC_RESULTS query onClick", async () => {
@@ -94,7 +122,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -115,11 +143,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     ];
 
     const { getByTestId } = render(
-      <TestParent mocks={mocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: submissionID })}
-          fields={{}}
-        />
+      <TestParent mocks={mocks} submission={{ _id: submissionID }}>
+        <ExportValidationButton filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -127,8 +152,86 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     // NOTE: This must be separate from the expect below to ensure its not called multiple times
     userEvent.click(getByTestId("export-validation-button"));
+
     await waitFor(() => {
       expect(called).toBe(true);
+    });
+  });
+
+  it("should pass expanded filters into recursive export query variables", async () => {
+    const submissionID = "expanded-filtered-export-sub-id";
+    let called = false;
+
+    const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+      {
+        request: {
+          query: SUBMISSION_QC_RESULTS,
+          variables: {
+            partial: false,
+            id: submissionID,
+            sortDirection: "asc",
+            orderBy: "displayID",
+            issueCode: "M018",
+            nodeTypes: ["participant"],
+            batchIDs: [101],
+            severities: "Warning",
+            first: 5000,
+            offset: 0,
+          },
+        },
+        result: () => {
+          called = true;
+          return {
+            data: {
+              submissionQCResults: {
+                total: 1,
+                results: [
+                  qcResultFactory.build({
+                    submissionID,
+                    type: "participant",
+                    errors: [],
+                    warnings: [
+                      {
+                        code: "M018",
+                        title: "Updated value differs from released",
+                        description: "Simulated warning for filtered export",
+                        offendingProperty: "some_property",
+                        offendingValue: "new value",
+                      },
+                    ],
+                  }),
+                ],
+              },
+            },
+          };
+        },
+      },
+    ];
+
+    const { getByTestId } = render(
+      <TestParent mocks={mocks} submission={{ _id: submissionID }}>
+        <ExportValidationButton
+          filtersRef={{
+            current: {
+              issueType: "M018",
+              nodeType: "participant",
+              batchID: 101,
+              severity: "Warning",
+            },
+          }}
+        />
+      </TestParent>
+    );
+
+    userEvent.click(getByTestId("export-validation-button"));
+
+    await waitFor(() => {
+      expect(called).toBe(true);
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining(".xlsx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
     });
   });
 
@@ -155,7 +258,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
               id: "example-dynamic-filename-id",
               sortDirection: "asc",
               orderBy: "displayID",
-              first: -1,
+              first: 5000,
               offset: 0,
               severities: "All",
             },
@@ -182,30 +285,23 @@ describe("ExportValidationButton (Expanded View) tests", () => {
         },
       ];
 
-      const fields = {
-        ID: vi.fn().mockImplementation((result: QCResult) => result.submissionID),
-      };
-
       const { getByTestId } = render(
-        <TestParent mocks={mocks}>
-          <ExportValidationButton
-            submission={submissionFactory.build({
-              _id: "example-dynamic-filename-id",
-              name: original,
-            })}
-            fields={fields}
-          />
+        <TestParent
+          mocks={mocks}
+          submission={{ _id: "example-dynamic-filename-id", name: original }}
+        >
+          <ExportValidationButton filtersRef={defaultFiltersRef} />
         </TestParent>
       );
 
       fireEvent.click(getByTestId("export-validation-button"));
 
       await waitFor(() => {
-        const filename = `${expected}-2021-01-19T145401.csv`;
+        const filename = `${expected}-2021-01-19T145401.xlsx`;
         expect(mockDownloadBlob).toHaveBeenCalledWith(
-          expect.any(String),
+          expect.anything(),
           filename,
-          expect.any(String)
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         );
       });
 
@@ -226,7 +322,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -243,11 +339,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     ];
 
     const { getByTestId } = render(
-      <TestParent mocks={mocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: submissionID })}
-          fields={{}}
-        />
+      <TestParent mocks={mocks} submission={{ _id: submissionID }}>
+        <ExportValidationButton filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -255,7 +348,16 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "There are no validation results to export.",
+        "Generating the validation results file. This may take a moment...",
+        {
+          variant: "default",
+        }
+      );
+    });
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "There are no validation results matching the selected filters.",
         {
           variant: "error",
         }
@@ -263,7 +365,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     });
   });
 
-  it("should call the field value callback function for each field", async () => {
+  it("should create an xlsx download for expanded results", async () => {
     const submissionID = "formatter-callback-sub-id";
 
     const qcErrors = errorMessageFactory.build(2, (index) => ({
@@ -286,7 +388,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -307,28 +409,20 @@ describe("ExportValidationButton (Expanded View) tests", () => {
       },
     ];
 
-    const fields = {
-      DisplayID: vi.fn().mockImplementation((result: QCResult) => result.displayID),
-      ValidationType: vi.fn().mockImplementation((result: QCResult) => result.validationType),
-      // Testing the fallback of falsy values
-      NullValueField: vi.fn().mockImplementation(() => null),
-    };
-
     const { getByTestId } = render(
-      <TestParent mocks={mocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: submissionID })}
-          fields={fields}
-        />
+      <TestParent mocks={mocks} submission={{ _id: submissionID }}>
+        <ExportValidationButton filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
     fireEvent.click(getByTestId("export-validation-button"));
 
     await waitFor(() => {
-      // NOTE: The results are unpacked, 3 QCResults with 2 errors and 2 warnings each = 12 calls
-      expect(fields.DisplayID).toHaveBeenCalledTimes(12);
-      expect(fields.ValidationType).toHaveBeenCalledTimes(12);
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining(".xlsx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
     });
   });
 
@@ -344,7 +438,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -354,11 +448,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     ];
 
     const { getByTestId } = render(
-      <TestParent mocks={mocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: submissionID })}
-          fields={{}}
-        />
+      <TestParent mocks={mocks} submission={{ _id: submissionID }}>
+        <ExportValidationButton filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -366,7 +457,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve submission quality control results.",
+        expect.stringContaining("Unable to export expanded validation results. Error:"),
         {
           variant: "error",
         }
@@ -386,7 +477,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -398,11 +489,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     ];
 
     const { getByTestId } = render(
-      <TestParent mocks={mocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: submissionID })}
-          fields={{}}
-        />
+      <TestParent mocks={mocks} submission={{ _id: submissionID }}>
+        <ExportValidationButton filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -410,7 +498,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve submission quality control results.",
+        expect.stringContaining("Unable to export expanded validation results. Error:"),
         {
           variant: "error",
         }
@@ -430,7 +518,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
             id: submissionID,
             sortDirection: "asc",
             orderBy: "displayID",
-            first: -1,
+            first: 5000,
             offset: 0,
             severities: "All",
           },
@@ -451,11 +539,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     ];
 
     const { getByTestId } = render(
-      <TestParent mocks={mocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: submissionID })}
-          fields={{}}
-        />
+      <TestParent mocks={mocks} submission={{ _id: submissionID }}>
+        <ExportValidationButton filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -463,7 +548,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        expect.stringContaining("Unable to export validation results. Error:"),
+        expect.stringContaining("Unable to export expanded validation results. Error:"),
         {
           variant: "error",
         }
@@ -487,10 +572,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         result: () => {
@@ -511,12 +598,8 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
     ];
 
     const { getByTestId } = render(
-      <TestParent mocks={aggregatorMocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: aggregatorID })}
-          fields={{}}
-          isAggregated
-        />
+      <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
+        <ExportValidationButton isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -536,10 +619,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         result: {
@@ -554,12 +639,8 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
     ];
 
     const { getByTestId } = render(
-      <TestParent mocks={aggregatorMocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: aggregatorID })}
-          fields={{}}
-          isAggregated
-        />
+      <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
+        <ExportValidationButton isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -573,7 +654,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
     });
   });
 
-  it("should create a valid CSV filename and call downloadBlob for aggregated results", async () => {
+  it("should create a valid xlsx filename and call downloadBlob for aggregated results", async () => {
     vi.useFakeTimers().setSystemTime(new Date("2025-01-01T08:30:00Z"));
     const aggregatorID = "aggregated-filename-test";
 
@@ -583,10 +664,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         result: {
@@ -603,19 +686,9 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
       },
     ];
 
-    const fields = {
-      "Issue Type": (row: AggregatedQCResult) => row.title ?? "",
-      Severity: (row: AggregatedQCResult) => row.severity ?? "",
-      Count: (row: AggregatedQCResult) => String(row.count ?? 0),
-    };
-
     const { getByTestId } = render(
-      <TestParent mocks={aggregatorMocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: aggregatorID, name: "my aggregator" })}
-          fields={fields}
-          isAggregated
-        />
+      <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID, name: "my aggregator" }}>
+        <ExportValidationButton isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -626,8 +699,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
     userEvent.click(getByTestId("export-validation-button"));
 
     await waitFor(() => {
-      const filename = "my-aggregator-2025-01-01T083000.csv";
-      expect(mockDownloadBlob).toHaveBeenCalledWith(expect.any(String), filename, "text/csv");
+      const filename = "my-aggregator-2025-01-01T083000.xlsx";
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        expect.anything(),
+        filename,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
     });
   });
 
@@ -640,10 +717,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         error: new Error("Simulated aggregator network error"),
@@ -651,12 +730,8 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
     ];
 
     const { getByTestId } = render(
-      <TestParent mocks={aggregatorMocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: aggregatorID })}
-          fields={{}}
-          isAggregated
-        />
+      <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
+        <ExportValidationButton isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -664,7 +739,7 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve submission aggregated quality control results.",
+        expect.stringContaining("Unable to export aggregated validation results. Error:"),
         { variant: "error" }
       );
     });
@@ -679,10 +754,12 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
           query: AGGREGATED_SUBMISSION_QC_RESULTS,
           variables: {
             submissionID: aggregatorID,
+            severity: "all",
             partial: false,
-            first: -1,
-            orderBy: "title",
-            sortDirection: "asc",
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
           },
         },
         result: {
@@ -692,12 +769,8 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
     ];
 
     const { getByTestId } = render(
-      <TestParent mocks={aggregatorMocks}>
-        <ExportValidationButton
-          submission={submissionFactory.build({ _id: aggregatorID })}
-          fields={{}}
-          isAggregated
-        />
+      <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
+        <ExportValidationButton isAggregated filtersRef={defaultFiltersRef} />
       </TestParent>
     );
 
@@ -705,7 +778,55 @@ describe("ExportValidationButton (Aggregated View) tests", () => {
 
     await waitFor(() => {
       expect(global.mockEnqueue).toHaveBeenCalledWith(
-        "Unable to retrieve submission aggregated quality control results.",
+        expect.stringContaining("Unable to export aggregated validation results. Error:"),
+        { variant: "error" }
+      );
+    });
+  });
+
+  it("should show a friendly snackbar when aggregated export setup fails", async () => {
+    const aggregatorID = "aggregated-setup-throws";
+
+    const aggregatorMocks: MockedResponse<AggregatedSubmissionQCResultsResp>[] = [
+      {
+        request: {
+          query: AGGREGATED_SUBMISSION_QC_RESULTS,
+          variables: {
+            submissionID: aggregatorID,
+            severity: "all",
+            partial: false,
+            first: 10_000,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc",
+          },
+        },
+        result: {
+          data: {
+            aggregatedSubmissionQCResults: {
+              total: 1,
+              results: [{ ...baseAggregatedQCResult }],
+            },
+          },
+        },
+      },
+    ];
+
+    vi.spyOn(utils, "filterAlphaNumeric").mockImplementation(() => {
+      throw new Error("filename normalization failed"); // Mock a failure in filename generation
+    });
+
+    const { getByTestId } = render(
+      <TestParent mocks={aggregatorMocks} submission={{ _id: aggregatorID }}>
+        <ExportValidationButton isAggregated filtersRef={defaultFiltersRef} />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("export-validation-button"));
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        expect.stringContaining("Unable to export aggregated validation results. Error:"),
         { variant: "error" }
       );
     });
