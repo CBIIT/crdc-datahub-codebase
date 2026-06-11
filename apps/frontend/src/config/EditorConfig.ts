@@ -18,7 +18,6 @@ export const MARK_DEFINITIONS: MarkDefinition[] = [
     hotkey: "b",
     htmlTag: "strong",
     markdownSyntax: ["**", "**"],
-    pattern: /\*\*(.+?)\*\*/gs,
   },
   {
     format: "italic",
@@ -28,7 +27,6 @@ export const MARK_DEFINITIONS: MarkDefinition[] = [
     hotkey: "i",
     htmlTag: "em",
     markdownSyntax: ["_", "_"],
-    pattern: /_(.+?)_/gs,
   },
   {
     format: "underline",
@@ -38,7 +36,6 @@ export const MARK_DEFINITIONS: MarkDefinition[] = [
     hotkey: "u",
     htmlTag: "u",
     markdownSyntax: ["<u>", "</u>"],
-    pattern: /<u>(.+?)<\/u>/gs,
   },
 ];
 
@@ -51,57 +48,11 @@ export const BLOCK_DEFINITIONS: BlockDefinition[] = [
     tooltip: "Bullet List",
     icon: FormatListBulletedIcon,
     enabled: true,
-    pattern: /^[-*]\s+(.+)$/,
   },
   {
     format: "numbered-list",
     tooltip: "Numbered List",
     icon: FormatListNumberedIcon,
     enabled: true,
-    pattern: /^\d+\.\s+(.+)$/,
   },
 ];
-
-/**
- * Tolerance pattern: matches italic formatted with asterisks (only underscores are serialized).
- */
-export const ITALIC_ASTERISK_PATTERN = /\*(.+?)\*/;
-
-/**
- * Matches backslash-escaped markdown syntax characters.
- */
-export const ESCAPED_CHARACTER_PATTERN = /\\([*_\\])/;
-
-/**
- * Matches runs of plain text that contain no markdown syntax characters.
- */
-export const PLAIN_TEXT_PATTERN = /[^*_<\\]+/;
-
-/**
- * Maps raw characters to their HTML-entity-escaped equivalents for markdown output.
- */
-export const HTML_TEXT_ESCAPE_REPLACEMENTS: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-};
-
-/**
- * Maps raw markdown syntax characters to their backslash-escaped equivalents.
- */
-export const MARKDOWN_ESCAPE_REPLACEMENTS: Record<string, string> = {
-  "\\": "\\\\",
-  "*": "\\*",
-  _: "\\_",
-};
-
-/**
- * Maps serialized HTML entities back to their decoded characters.
- */
-export const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
-  "&nbsp;": " ",
-  "&#160;": " ",
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-};

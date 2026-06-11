@@ -13,7 +13,6 @@ type EditorFormatDefinition = {
   icon: ToolbarIcon;
   enabled: boolean;
   hotkey?: string;
-  pattern?: RegExp;
   htmlTag?: keyof React.ReactHTML;
   markdownSyntax?: [prefix: string, suffix: string];
 };

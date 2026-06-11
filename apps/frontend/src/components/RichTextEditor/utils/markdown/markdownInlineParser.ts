@@ -1,33 +1,69 @@
-import {
-  HTML_ENTITY_REPLACEMENTS,
-  ITALIC_ASTERISK_PATTERN,
-  MARK_DEFINITIONS,
-  PLAIN_TEXT_PATTERN,
-} from "@/config/EditorConfig";
+import { MARK_DEFINITIONS } from "@/config/EditorConfig";
 
 import type { FormattedText, MarkFormat, TextMarks } from "../../types";
 import { normalizeTextChildren } from "../documentUtils";
+
+import { ESCAPABLE_MARKDOWN_CHARACTERS } from "./markdownUtils";
 
 type MarkdownTokenResult = {
   nodes: FormattedText[];
   consumedText: string;
 };
 
+type MarkSyntax = {
+  format: MarkFormat;
+  prefix: string;
+  suffix: string;
+};
+
 /**
- * Decodes serialized HTML entities and escaped markdown characters back to raw text.
+ * Returns the configured markdown syntaxes for the editor's supported marks.
  *
- * @param {string} text - The serialized text to decode.
+ * @returns {MarkSyntax[]} An array of mark syntax configurations.
+ *
+ * @example
+ * getMarkSyntaxes(); // [{ format: "bold", prefix: "**", suffix: "**" }, ...]
+ */
+const getMarkSyntaxes = (): MarkSyntax[] =>
+  MARK_DEFINITIONS.flatMap(({ format, markdownSyntax }) => {
+    if (!markdownSyntax) {
+      return [];
+    }
+
+    const [prefix, suffix] = markdownSyntax;
+
+    return [{ format, prefix, suffix }];
+  });
+
+/**
+ * Decodes escaped markdown characters back to raw text.
+ *
+ * @param {string} text - The serialized markdown text to decode.
  * @returns {string} The decoded plain text.
  *
  * @example
- * decodeSerializedText("&amp;"); // "&"
- * decodeSerializedText("\\*"); // "*"
+ * decodeMarkdownEscapes("\\*"); // "*"
  */
-const decodeSerializedText = (text: string): string => {
-  const pattern = new RegExp(Object.keys(HTML_ENTITY_REPLACEMENTS).join("|"), "g");
-  return text
-    .replace(pattern, (entity) => HTML_ENTITY_REPLACEMENTS[entity])
-    .replace(/\\([*_\\])/g, "$1");
+const decodeMarkdownEscapes = (text: string): string => {
+  let decodedText = "";
+  let index = 0;
+
+  while (index < text.length) {
+    const currentCharacter = text[index];
+    const nextCharacter = text[index + 1];
+    const isEscapedMarkdownCharacter =
+      currentCharacter === "\\" && ESCAPABLE_MARKDOWN_CHARACTERS.has(nextCharacter);
+
+    if (isEscapedMarkdownCharacter) {
+      decodedText += nextCharacter;
+      index += 2;
+    } else {
+      decodedText += currentCharacter;
+      index += 1;
+    }
+  }
+
+  return decodedText;
 };
 
 /**
@@ -50,7 +86,8 @@ const appendFormattedTexts = (
   nextTexts.reduce((acc, nextText) => {
     const previousText = acc[acc.length - 1];
     const hasSameMarks =
-      previousText && MARK_DEFINITIONS.every((d) => previousText[d.format] === nextText[d.format]);
+      previousText &&
+      MARK_DEFINITIONS.every(({ format }) => previousText[format] === nextText[format]);
 
     if (!hasSameMarks) {
       return [...acc, nextText];
@@ -60,56 +97,205 @@ const appendFormattedTexts = (
   }, target);
 
 /**
+ * Checks whether the text has an escaped markdown character at the given index.
+ *
+ * @param {string} text - The text to inspect.
+ * @param {number} index - The index to check.
+ * @returns {boolean} True when the character at the index is a markdown escape sequence.
+ *
+ * @example
+ * isEscapedMarkdownCharacterAt("\\*", 0); // true
+ * isEscapedMarkdownCharacterAt("*", 0); // false
+ */
+const isEscapedMarkdownCharacterAt = (text: string, index: number): boolean =>
+  text[index] === "\\" && ESCAPABLE_MARKDOWN_CHARACTERS.has(text[index + 1]);
+
+/**
+ * Finds the next closing markdown syntax token, ignoring escaped markdown characters.
+ *
+ * @param {string} text - The text to search.
+ * @param {number} startIndex - The index where the search should begin.
+ * @param {string} suffix - The closing markdown syntax to find.
+ * @returns {number} The closing syntax index, or -1 when no closing syntax is found.
+ *
+ * @example
+ * findClosingSyntaxIndex("**bold**", 2, "**"); // 6
+ */
+const findClosingSyntaxIndex = (text: string, startIndex: number, suffix: string): number => {
+  let index = startIndex;
+
+  while (index < text.length) {
+    const isEscapedMarkdownCharacter = isEscapedMarkdownCharacterAt(text, index);
+    const isClosingSyntax = text.startsWith(suffix, index);
+
+    if (isEscapedMarkdownCharacter) {
+      index += 2;
+    } else if (isClosingSyntax) {
+      return index;
+    } else {
+      index += 1;
+    }
+  }
+
+  return -1;
+};
+
+/**
+ * Attempts to read a configured markdown mark token from the start of the text.
+ *
+ * @param {string} text - The remaining markdown text.
+ * @param {TextMarks} marks - The currently active inherited marks.
+ * @returns {MarkdownTokenResult | null} The parsed mark token, or null when no configured token matches.
+ *
+ * @example
+ * readConfiguredMarkToken("**bold**", {}); // { nodes: [{ text: "bold", bold: true }], consumedText: "**bold**" }
+ */
+const readConfiguredMarkToken = (text: string, marks: TextMarks): MarkdownTokenResult | null => {
+  for (const { format, prefix, suffix } of getMarkSyntaxes()) {
+    const startsWithPrefix = text.startsWith(prefix);
+    const closingIndex = startsWithPrefix
+      ? findClosingSyntaxIndex(text, prefix.length, suffix)
+      : -1;
+    const hasWrappedContent = closingIndex > prefix.length;
+
+    if (startsWithPrefix && hasWrappedContent) {
+      return {
+        nodes: parseMarkdownInline(text.slice(prefix.length, closingIndex), {
+          ...marks,
+          [format]: true,
+        }),
+        consumedText: text.slice(0, closingIndex + suffix.length),
+      };
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Attempts to read single-asterisk italic markdown from the start of the text.
+ *
+ * @param {string} text - The remaining markdown text.
+ * @param {TextMarks} marks - The currently active inherited marks.
+ * @returns {MarkdownTokenResult | null} The parsed italic token, or null when it does not match.
+ *
+ * @example
+ * readAsteriskItalicToken("*italic*", {}); // { nodes: [{ text: "italic", italic: true }], consumedText: "*italic*" }
+ */
+const readAsteriskItalicToken = (text: string, marks: TextMarks): MarkdownTokenResult | null => {
+  const startsWithSingleAsterisk = text.startsWith("*") && !text.startsWith("**");
+
+  if (!startsWithSingleAsterisk) {
+    return null;
+  }
+
+  const closingIndex = findClosingSyntaxIndex(text, 1, "*");
+
+  if (closingIndex <= 1) {
+    return null;
+  }
+
+  return {
+    nodes: parseMarkdownInline(text.slice(1, closingIndex), {
+      ...marks,
+      italic: true,
+    }),
+    consumedText: text.slice(0, closingIndex + 1),
+  };
+};
+
+/**
+ * Checks whether a markdown mark token starts at the given index.
+ *
+ * @param {string} text - The markdown text to inspect.
+ * @param {number} index - The index to check.
+ * @returns {boolean} True when a markdown token starts at the index.
+ *
+ * @example
+ * hasMarkTokenAt("hello **bold**", 6); // true
+ */
+const hasMarkTokenAt = (text: string, index: number): boolean => {
+  const remainingText = text.slice(index);
+
+  if (isEscapedMarkdownCharacterAt(text, index)) {
+    return true;
+  }
+
+  const hasConfiguredMarkToken = getMarkSyntaxes().some(({ prefix, suffix }) => {
+    if (!remainingText.startsWith(prefix)) {
+      return false;
+    }
+
+    return findClosingSyntaxIndex(remainingText, prefix.length, suffix) > prefix.length;
+  });
+
+  if (hasConfiguredMarkToken) {
+    return true;
+  }
+
+  return (
+    remainingText.startsWith("*") &&
+    !remainingText.startsWith("**") &&
+    findClosingSyntaxIndex(remainingText, 1, "*") > 1
+  );
+};
+
+/**
+ * Reads plain text until the next markdown mark token.
+ *
+ * @param {string} text - The remaining markdown text.
+ * @param {TextMarks} marks - The currently active inherited marks.
+ * @returns {MarkdownTokenResult} The plain text token result.
+ *
+ * @example
+ * readPlainTextToken("hello **bold**", {}); // { nodes: [{ text: "hello " }], consumedText: "hello " }
+ */
+const readPlainTextToken = (text: string, marks: TextMarks): MarkdownTokenResult => {
+  let endIndex = 1;
+
+  while (endIndex < text.length && !hasMarkTokenAt(text, endIndex)) {
+    endIndex += 1;
+  }
+
+  const consumedText = text.slice(0, endIndex);
+
+  return {
+    nodes: [{ text: decodeMarkdownEscapes(consumedText), ...marks }],
+    consumedText,
+  };
+};
+
+/**
  * Parses the next markdown token from the start of the text.
  *
  * @param {string} text - The remaining text to parse.
  * @param {TextMarks} marks - The currently active marks.
  * @returns {MarkdownTokenResult} The parsed token result.
+ *
+ * @example
+ * parseNextMarkdownToken("**bold**", {}); // { nodes: [{ text: "bold", bold: true }], consumedText: "**bold**" }
  */
 const parseNextMarkdownToken = (text: string, marks: TextMarks): MarkdownTokenResult => {
-  const anchoredMarkPatterns: Record<MarkFormat, RegExp> = Object.fromEntries(
-    MARK_DEFINITIONS.map((d) => [d.format, new RegExp(`^${d.pattern.source}`)])
-  ) as Record<MarkFormat, RegExp>;
-
-  for (const def of MARK_DEFINITIONS) {
-    const match = text.match(anchoredMarkPatterns[def.format]);
-
-    if (match) {
-      return {
-        nodes: parseMarkdownInline(match[1], { ...marks, [def.format]: true }),
-        consumedText: match[0],
-      };
-    }
-  }
-
-  const asteriskMatch = text.match(new RegExp(`^${ITALIC_ASTERISK_PATTERN.source}`));
-
-  if (asteriskMatch) {
+  if (isEscapedMarkdownCharacterAt(text, 0)) {
     return {
-      nodes: parseMarkdownInline(asteriskMatch[1], { ...marks, italic: true }),
-      consumedText: asteriskMatch[0],
+      nodes: [{ text: text[1], ...marks }],
+      consumedText: text.slice(0, 2),
     };
   }
 
-  const escapedMatch = text.match(/^\\([*_\\])/);
+  const configuredMarkToken = readConfiguredMarkToken(text, marks);
 
-  if (escapedMatch) {
-    return {
-      nodes: [{ text: escapedMatch[1], ...marks }],
-      consumedText: escapedMatch[0],
-    };
+  if (configuredMarkToken) {
+    return configuredMarkToken;
   }
 
-  const plainMatch = text.match(new RegExp(`^${PLAIN_TEXT_PATTERN.source}`)) ?? text.match(/^./);
+  const asteriskItalicToken = readAsteriskItalicToken(text, marks);
 
-  if (plainMatch) {
-    return {
-      nodes: [{ text: decodeSerializedText(plainMatch[0]), ...marks }],
-      consumedText: plainMatch[0],
-    };
+  if (asteriskItalicToken) {
+    return asteriskItalicToken;
   }
 
-  return { nodes: [{ text: "", ...marks }], consumedText: "" };
+  return readPlainTextToken(text, marks);
 };
 
 /**

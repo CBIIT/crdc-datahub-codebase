@@ -52,20 +52,10 @@ describe("parseMarkdownInline", () => {
     expect(utils.parseMarkdownInline("hello world")).toEqual([{ text: "hello world" }]);
   });
 
-  it("should decode HTML entities", () => {
-    expect(utils.parseMarkdownInline("&amp;")).toEqual([{ text: "&" }]);
-    expect(utils.parseMarkdownInline("&lt;")).toEqual([{ text: "<" }]);
-    expect(utils.parseMarkdownInline("&gt;")).toEqual([{ text: ">" }]);
-  });
-
   it("should decode escaped markdown characters", () => {
     expect(utils.parseMarkdownInline("\\*")).toEqual([{ text: "*" }]);
     expect(utils.parseMarkdownInline("\\_")).toEqual([{ text: "_" }]);
     expect(utils.parseMarkdownInline("\\\\")).toEqual([{ text: "\\" }]);
-  });
-
-  it("should decode &nbsp; entities", () => {
-    expect(utils.parseMarkdownInline("&nbsp;")).toEqual([{ text: " " }]);
   });
 
   it("should inherit marks from the parent context", () => {

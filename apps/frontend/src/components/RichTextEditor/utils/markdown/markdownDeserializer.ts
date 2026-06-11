@@ -1,11 +1,10 @@
 import type { Descendant } from "slate";
 
-import { BLOCK_DEFINITIONS } from "@/config/EditorConfig";
-
-import type { BlockDefinition, ListItemElement } from "../../types";
+import type { ListFormat, ListItemElement } from "../../types";
 import { createEmptyDocument, createListItem } from "../documentUtils";
 
 import { parseMarkdownInline } from "./markdownInlineParser";
+import { normalizeLineEndings, readListLine } from "./markdownUtils";
 
 type MarkdownBlockResult = {
   nodes: Descendant[];
@@ -13,64 +12,44 @@ type MarkdownBlockResult = {
 };
 
 /**
- * Extracts the text content from a list item line using the given pattern.
- *
- * @param {string} line - The raw markdown line.
- * @param {RegExp} pattern - The pattern to match and extract content from.
- * @returns {string | null} The captured text content, or `null` if the line doesn't match.
- *
- * @example
- * getListItemContent("- hello", /^[-*]\s+(.+)$/); // "hello"
- */
-const getListItemContent = (line: string, pattern: RegExp): string | null => {
-  const match = line.match(pattern);
-
-  if (!match) {
-    return null;
-  }
-
-  return match[1];
-};
-
-/**
  * Reads consecutive list item lines into a single list block node.
  *
  * @param {string[]} lines - All lines in the markdown document.
  * @param {number} startLineIndex - The index of the first list item line.
- * @param {BlockDefinition} listDefinition - The block definition for the list format.
+ * @param {ListFormat} format - The list format to read.
  * @returns {MarkdownBlockResult} The list node(s) and the next line index to process.
  *
  * @example
- * readMarkdownListBlock(["- a", "- b", "text"], 0, bulletedDef);
+ * readMarkdownListBlock(["- a", "- b", "text"], 0, "bulleted-list");
  * // { nodes: [{ type: "bulleted-list", children: [...] }], nextLineIndex: 2 }
  */
 const readMarkdownListBlock = (
   lines: string[],
   startLineIndex: number,
-  listDefinition: BlockDefinition
+  format: ListFormat
 ): MarkdownBlockResult => {
   const items: ListItemElement[] = [];
   let lineIndex = startLineIndex;
 
   while (lineIndex < lines.length) {
-    const itemContent = getListItemContent(lines[lineIndex], listDefinition.pattern);
+    const listLine = readListLine(lines[lineIndex]);
 
-    if (itemContent === null) {
+    if (!listLine || listLine.format !== format) {
       break;
     }
 
-    items.push(createListItem(parseMarkdownInline(itemContent)));
+    items.push(createListItem(parseMarkdownInline(listLine.content)));
     lineIndex += 1;
   }
 
   return {
-    nodes: [{ type: listDefinition.format, children: items }],
+    nodes: [{ type: format, children: items }],
     nextLineIndex: lineIndex,
   };
 };
 
 /**
- * Reads a single block (paragraph, list, or empty line) from the markdown lines.
+ * Reads a single block from the markdown lines.
  *
  * @param {string[]} lines - All lines in the markdown document.
  * @param {number} lineIndex - The current line index to process.
@@ -81,10 +60,10 @@ const readMarkdownListBlock = (
  */
 const readMarkdownBlock = (lines: string[], lineIndex: number): MarkdownBlockResult => {
   const line = lines[lineIndex];
-  const listDefinition = BLOCK_DEFINITIONS.find(({ pattern }) => pattern.test(line)) ?? null;
+  const listLine = readListLine(line);
 
-  if (listDefinition) {
-    return readMarkdownListBlock(lines, lineIndex, listDefinition);
+  if (listLine) {
+    return readMarkdownListBlock(lines, lineIndex, listLine.format);
   }
 
   if (line.trim() === "") {
@@ -138,7 +117,7 @@ export const deserializeFromMarkdown = (content: string): Descendant[] => {
     return createEmptyDocument();
   }
 
-  const nodes = readMarkdownDocument(content.split(/\r?\n/));
+  const nodes = readMarkdownDocument(normalizeLineEndings(content).split("\n"));
 
   if (nodes.length > 0) {
     return nodes;

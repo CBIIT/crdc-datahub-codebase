@@ -1,45 +1,35 @@
 import { Descendant, Element, Text } from "slate";
 
-import {
-  BLOCK_DEFINITIONS,
-  ESCAPED_CHARACTER_PATTERN,
-  HTML_TEXT_ESCAPE_REPLACEMENTS,
-  ITALIC_ASTERISK_PATTERN,
-  MARK_DEFINITIONS,
-  MARKDOWN_ESCAPE_REPLACEMENTS,
-} from "@/config/EditorConfig";
+import { MARK_DEFINITIONS } from "@/config/EditorConfig";
 
 import type { FormattedText, TextMarks } from "../../types";
 
-const SURROUNDING_WHITESPACE_PATTERN = /^([ \t]*)(.*?)([ \t]*)$/s;
-
-const ITALIC_ASTERISK_REMOVAL_PATTERN = new RegExp(ITALIC_ASTERISK_PATTERN.source, "gs");
-const ESCAPED_CHARACTER_REMOVAL_PATTERN = new RegExp(ESCAPED_CHARACTER_PATTERN.source, "g");
+import { parseMarkdownInline } from "./markdownInlineParser";
+import { ESCAPABLE_MARKDOWN_CHARACTERS, normalizeLineEndings, readListLine } from "./markdownUtils";
 
 /**
- * Escapes text for the markdown/HTML subset.
- * NOTE: Used for preventing raw user input being interpreted as markdown syntax or HTML.
+ * Escapes only markdown syntax characters.
  *
  * @param {string} text - The raw text to escape.
- * @returns {string} The escaped text safe for markdown/HTML output.
+ * @returns {string} The text with markdown syntax characters escaped.
  *
  * @example
- * escapeMarkdownText("a & b"); // "a &amp; b"
- * escapeMarkdownText("**bold**"); // "\\*\\*bold\\*\\*"
+ * escapeMarkdownText("**not bold**"); // "\\*\\*not bold\\*\\*"
  */
-export const escapeMarkdownText = (text: string): string =>
-  text
-    .replace(/[&<>]/g, (ch) => HTML_TEXT_ESCAPE_REPLACEMENTS[ch])
-    .replace(/[\\*_]/g, (ch) => MARKDOWN_ESCAPE_REPLACEMENTS[ch]);
+export const escapeMarkdownText = (text: string): string => {
+  let escapedText = "";
 
-/**
- * Preserves indentation in markdown output by converting spaces and tabs to HTML entities.
- *
- * @param {string} whitespace - The whitespace string to preserve.
- * @returns {string} The whitespace with spaces as `&nbsp;` and tabs as four `&nbsp;`.
- */
-const serializePreservedWhitespace = (whitespace: string): string =>
-  whitespace.replace(/ /g, "&nbsp;").replace(/\t/g, "&nbsp;&nbsp;&nbsp;&nbsp;");
+  Array.from(text).forEach((character) => {
+    if (ESCAPABLE_MARKDOWN_CHARACTERS.has(character)) {
+      escapedText += `\\${character}`;
+      return;
+    }
+
+    escapedText += character;
+  });
+
+  return escapedText;
+};
 
 /**
  * Splits text into leading whitespace, inner content, and trailing whitespace.
@@ -48,20 +38,28 @@ const serializePreservedWhitespace = (whitespace: string): string =>
  * @returns {{ leadingWhitespace: string; markableText: string; trailingWhitespace: string }}
  *
  * @example
- * splitSurroundingWhitespace("  hello  "); // { leadingWhitespace: "  ", markableText: "hello", trailingWhitespace: "  " }
+ * splitSurroundingWhitespace("  hello  ");
+ * // { leadingWhitespace: "  ", markableText: "hello", trailingWhitespace: "  " }
  */
 const splitSurroundingWhitespace = (
   text: string
 ): { leadingWhitespace: string; markableText: string; trailingWhitespace: string } => {
-  const match = SURROUNDING_WHITESPACE_PATTERN.exec(text);
+  let startIndex = 0;
+  let endIndex = text.length;
 
-  if (!match) {
-    return { leadingWhitespace: "", markableText: text, trailingWhitespace: "" };
+  while (startIndex < text.length && (text[startIndex] === " " || text[startIndex] === "\t")) {
+    startIndex += 1;
   }
 
-  const [, leadingWhitespace = "", markableText = "", trailingWhitespace = ""] = match;
+  while (endIndex > startIndex && (text[endIndex - 1] === " " || text[endIndex - 1] === "\t")) {
+    endIndex -= 1;
+  }
 
-  return { leadingWhitespace, markableText, trailingWhitespace };
+  return {
+    leadingWhitespace: text.slice(0, startIndex),
+    markableText: text.slice(startIndex, endIndex),
+    trailingWhitespace: text.slice(endIndex),
+  };
 };
 
 /**
@@ -75,12 +73,14 @@ const splitSurroundingWhitespace = (
  * applyMarkdownMarksToText("hello", { bold: true, italic: true }); // "_**hello**_"
  */
 const applyMarkdownMarksToText = (text: string, marks: TextMarks): string =>
-  MARK_DEFINITIONS.reduce((markedText, { format, markdownSyntax: [prefix, suffix] }) => {
-    if (marks[format]) {
-      return `${prefix}${markedText}${suffix}`;
+  MARK_DEFINITIONS.reduce((markedText, { format, markdownSyntax }) => {
+    if (!markdownSyntax || !marks[format]) {
+      return markedText;
     }
 
-    return markedText;
+    const [prefix, suffix] = markdownSyntax;
+
+    return `${prefix}${markedText}${suffix}`;
   }, escapeMarkdownText(text));
 
 /**
@@ -98,13 +98,13 @@ export const applyMarkdownMarks = (text: string, marks: TextMarks): string => {
   const { leadingWhitespace, markableText, trailingWhitespace } = splitSurroundingWhitespace(text);
 
   if (!markableText) {
-    return serializePreservedWhitespace(text);
+    return text;
   }
 
   return [
-    serializePreservedWhitespace(leadingWhitespace),
+    leadingWhitespace,
     applyMarkdownMarksToText(markableText, marks),
-    serializePreservedWhitespace(trailingWhitespace),
+    trailingWhitespace,
   ].join("");
 };
 
@@ -152,7 +152,7 @@ const serializeMarkdownBlock = (node: Descendant): string => {
 
   if (node.type === "numbered-list") {
     return node.children
-      .map((item, i) => `${i + 1}. ${serializeTextChildren(item.children)}`)
+      .map((item, index) => `${index + 1}. ${serializeTextChildren(item.children)}`)
       .join("\n");
   }
 
@@ -169,7 +169,25 @@ const serializeMarkdownBlock = (node: Descendant): string => {
  * serializeToMarkdown([{ type: "paragraph", children: [{ text: "hello" }] }]); // "hello"
  */
 export const serializeToMarkdown = (nodes: Descendant[]): string =>
-  nodes.map(serializeMarkdownBlock).filter(Boolean).join("\n\n").trimEnd();
+  nodes.map(serializeMarkdownBlock).join("\n\n").trimEnd();
+
+/**
+ * Gets the plain text content of a markdown line.
+ *
+ * @param {string} line - The markdown line to extract text from.
+ * @returns {string} The visible plain text content of the line.
+ *
+ * @example
+ * getMarkdownLinePlainText("- **bold** item"); // "bold item"
+ */
+const getMarkdownLinePlainText = (line: string): string => {
+  const listLine = readListLine(line);
+  const inlineMarkdown = listLine ? listLine.content : line;
+
+  return parseMarkdownInline(inlineMarkdown)
+    .map(({ text }) => text)
+    .join("");
+};
 
 /**
  * Gets the user-visible text length from stored markdown rich-text content.
@@ -186,19 +204,8 @@ export const getPlainTextLength = (content: string): number => {
     return 0;
   }
 
-  let text = content;
+  const normalizedContent = normalizeLineEndings(content);
+  const visibleText = normalizedContent.split("\n").map(getMarkdownLinePlainText).join("\n").trim();
 
-  MARK_DEFINITIONS.forEach(({ pattern }) => {
-    text = text.replace(pattern, "$1");
-  });
-
-  text = text.replace(ITALIC_ASTERISK_REMOVAL_PATTERN, "$1");
-
-  BLOCK_DEFINITIONS.forEach(({ pattern }) => {
-    text = text.replace(new RegExp(pattern.source, "gm"), "$1");
-  });
-
-  text = text.replace(ESCAPED_CHARACTER_REMOVAL_PATTERN, "$1");
-
-  return text.trim().length;
+  return visibleText.length;
 };

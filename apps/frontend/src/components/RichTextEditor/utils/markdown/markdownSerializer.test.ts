@@ -3,12 +3,12 @@ import type { Descendant } from "slate";
 import * as utils from "./markdownSerializer";
 
 describe("escapeMarkdownText", () => {
-  it("should escape ampersands", () => {
-    expect(utils.escapeMarkdownText("a & b")).toBe("a &amp; b");
+  it("should preserve ampersands", () => {
+    expect(utils.escapeMarkdownText("a & b")).toBe("a & b");
   });
 
-  it("should escape angle brackets", () => {
-    expect(utils.escapeMarkdownText("<div>")).toBe("&lt;div&gt;");
+  it("should preserve angle brackets", () => {
+    expect(utils.escapeMarkdownText("<div>")).toBe("<div>");
   });
 
   it("should escape backslashes", () => {
@@ -49,24 +49,24 @@ describe("applyMarkdownMarks", () => {
     expect(utils.applyMarkdownMarks("hello", { bold: true, italic: true })).toBe("_**hello**_");
   });
 
-  it("should preserve leading whitespace as &nbsp;", () => {
-    expect(utils.applyMarkdownMarks("  hello", { bold: true })).toBe("&nbsp;&nbsp;**hello**");
+  it("should preserve leading whitespace", () => {
+    expect(utils.applyMarkdownMarks("  hello", { bold: true })).toBe("  **hello**");
   });
 
-  it("should preserve trailing whitespace as &nbsp;", () => {
-    expect(utils.applyMarkdownMarks("hello  ", { bold: true })).toBe("**hello**&nbsp;&nbsp;");
+  it("should preserve trailing whitespace", () => {
+    expect(utils.applyMarkdownMarks("hello  ", { bold: true })).toBe("**hello**  ");
   });
 
   it("should return preserved whitespace for whitespace-only text", () => {
-    expect(utils.applyMarkdownMarks("  ", {})).toBe("&nbsp;&nbsp;");
+    expect(utils.applyMarkdownMarks("  ", {})).toBe("  ");
   });
 
   it("should return plain text when no marks are active", () => {
     expect(utils.applyMarkdownMarks("hello", {})).toBe("hello");
   });
 
-  it("should escape special characters in marked text", () => {
-    expect(utils.applyMarkdownMarks("a & b", { bold: true })).toBe("**a &amp; b**");
+  it("should preserve ampersands in marked text", () => {
+    expect(utils.applyMarkdownMarks("a & b", { bold: true })).toBe("**a & b**");
   });
 });
 
@@ -112,7 +112,7 @@ describe("serializeToMarkdown", () => {
       },
     ];
 
-    expect(utils.serializeToMarkdown(nodes)).toBe("plain&nbsp;**bold**&nbsp;and&nbsp;_italic_");
+    expect(utils.serializeToMarkdown(nodes)).toBe("plain **bold** and _italic_");
   });
 
   it("should serialize a bulleted list", () => {
