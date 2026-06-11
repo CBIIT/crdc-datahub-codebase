@@ -1,5 +1,9 @@
 # Release Notes
 
+## 3.6.1 (Released 06/22/2026)
+
+TODO
+
 ## 3.6.0 (Released 05/21/2026)
 
 #### Submission Request
