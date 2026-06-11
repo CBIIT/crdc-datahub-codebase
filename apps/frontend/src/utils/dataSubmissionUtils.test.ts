@@ -923,6 +923,135 @@ describe("unpackQCResultSeverities cases", () => {
   });
 });
 
+describe("filterValidationResultsBySeverityAndIssueType cases", () => {
+  const baseResult = qcResultFactory.build({
+    validationType: "" as QCResult["validationType"],
+  });
+
+  it("should filter results by severity", () => {
+    const error = errorMessageFactory.build({ code: "M018" });
+    const warning = errorMessageFactory.build({ code: "F008" });
+
+    const results: QCResult[] = [
+      { ...baseResult, errors: [error], warnings: [], severity: "Error" },
+      { ...baseResult, errors: [], warnings: [warning], severity: "Warning" },
+    ];
+
+    const filtered = utils.filterValidationResults(results, "Error");
+
+    expect(filtered.length).toEqual(1);
+    expect(filtered[0].severity).toEqual("Error");
+  });
+
+  it("should filter results by issue type (error code)", () => {
+    const error1 = errorMessageFactory.build({ code: "M018" });
+    const error2 = errorMessageFactory.build({ code: "M010" });
+
+    const results: QCResult[] = [
+      { ...baseResult, errors: [error1], warnings: [], severity: "Error" },
+      { ...baseResult, errors: [error2], warnings: [], severity: "Error" },
+    ];
+
+    const filtered = utils.filterValidationResults(results, undefined, "M018");
+
+    expect(filtered.length).toEqual(1);
+    expect(filtered[0].errors?.[0]?.code).toEqual("M018");
+  });
+
+  it("should filter results by issue type (warning code)", () => {
+    const warning1 = errorMessageFactory.build({ code: "F008" });
+    const warning2 = errorMessageFactory.build({ code: "M010" });
+
+    const results: QCResult[] = [
+      { ...baseResult, errors: [], warnings: [warning1], severity: "Warning" },
+      { ...baseResult, errors: [], warnings: [warning2], severity: "Warning" },
+    ];
+
+    const filtered = utils.filterValidationResults(results, undefined, "F008");
+
+    expect(filtered.length).toEqual(1);
+    expect(filtered[0].warnings?.[0]?.code).toEqual("F008");
+  });
+
+  it("should filter by both severity and issue type", () => {
+    const error1 = errorMessageFactory.build({ code: "M018" });
+    const error2 = errorMessageFactory.build({ code: "M010" });
+    const warning = errorMessageFactory.build({ code: "F008" });
+
+    const results: QCResult[] = [
+      { ...baseResult, errors: [error1], warnings: [], severity: "Error" },
+      { ...baseResult, errors: [error2], warnings: [], severity: "Error" },
+      { ...baseResult, errors: [], warnings: [warning], severity: "Warning" },
+    ];
+
+    const filtered = utils.filterValidationResults(results, "Error", "M018");
+
+    expect(filtered.length).toEqual(1);
+    expect(filtered[0].severity).toEqual("Error");
+    expect(filtered[0].errors?.[0]?.code).toEqual("M018");
+  });
+
+  it("should return all results when severity is 'All'", () => {
+    const error = errorMessageFactory.build();
+    const warning = errorMessageFactory.build();
+
+    const results: QCResult[] = [
+      { ...baseResult, errors: [error], warnings: [], severity: "Error" },
+      { ...baseResult, errors: [], warnings: [warning], severity: "Warning" },
+    ];
+
+    const filtered = utils.filterValidationResults(results, "All");
+
+    expect(filtered.length).toEqual(2);
+  });
+
+  it("should return all results when issueType is 'All'", () => {
+    const error = errorMessageFactory.build({ code: "M018" });
+    const warning = errorMessageFactory.build({ code: "F008" });
+
+    const results: QCResult[] = [
+      { ...baseResult, errors: [error], warnings: [], severity: "Error" },
+      { ...baseResult, errors: [], warnings: [warning], severity: "Warning" },
+    ];
+
+    const filtered = utils.filterValidationResults(results, undefined, "All");
+
+    expect(filtered.length).toEqual(2);
+  });
+
+  it("should return all results when no filters are provided", () => {
+    const error = errorMessageFactory.build();
+    const warning = errorMessageFactory.build();
+
+    const results: QCResult[] = [
+      { ...baseResult, errors: [error], warnings: [], severity: "Error" },
+      { ...baseResult, errors: [], warnings: [warning], severity: "Warning" },
+    ];
+
+    const filtered = utils.filterValidationResults(results);
+
+    expect(filtered.length).toEqual(2);
+  });
+
+  it("should return an empty array when no results match the filters", () => {
+    const error = errorMessageFactory.build({ code: "M018" });
+
+    const results: QCResult[] = [
+      { ...baseResult, errors: [error], warnings: [], severity: "Error" },
+    ];
+
+    const filtered = utils.filterValidationResults(results, "Warning", "M018");
+
+    expect(filtered.length).toEqual(0);
+  });
+
+  it("should handle an empty input array", () => {
+    const filtered = utils.filterValidationResults([], "Error");
+
+    expect(filtered.length).toEqual(0);
+  });
+});
+
 describe("downloadBlob cases", () => {
   const mockSetAttribute = vi.fn();
   const mockClick = vi.fn();

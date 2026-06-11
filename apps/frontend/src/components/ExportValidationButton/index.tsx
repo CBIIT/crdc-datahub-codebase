@@ -17,7 +17,14 @@ import {
   SubmissionQCResultsInput,
   SubmissionQCResultsResp,
 } from "@/graphql";
-import { downloadBlob, fetchAllData, filterAlphaNumeric, Logger } from "@/utils";
+import {
+  downloadBlob,
+  fetchAllData,
+  filterAlphaNumeric,
+  filterValidationResults,
+  Logger,
+  unpackValidationSeverities,
+} from "@/utils";
 
 import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
 
@@ -228,8 +235,18 @@ const ExportValidationButton: React.FC<Props> = ({
         { pageSize: 5_000 }
       );
 
-      if (!exportRows.length) {
-        enqueueSnackbar("There are no validation results to export.", { variant: "error" });
+      // NOTE: This performs additional issueType and severity filtering because the backend
+      // filtering is not comprehensive, and still includes irrelevant results.
+      const unpackedResults = filterValidationResults(
+        unpackValidationSeverities(exportRows),
+        filtersRef.current.severity,
+        filtersRef.current.issueType
+      );
+
+      if (!unpackedResults.length) {
+        enqueueSnackbar("There are no validation results matching the selected filters.", {
+          variant: "error",
+        });
         return;
       }
 
@@ -243,7 +260,7 @@ const ExportValidationButton: React.FC<Props> = ({
         },
       ];
 
-      const builder = new ValidationResultsExcelBuilder(exportRows, updatedTabData);
+      const builder = new ValidationResultsExcelBuilder(unpackedResults, updatedTabData);
       const workbook = await builder.serialize();
 
       downloadBlob(

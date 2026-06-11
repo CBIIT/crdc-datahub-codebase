@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { isEqual } from "lodash";
 
-import { FormatDate, coerceToString, unpackValidationSeverities } from "@/utils";
+import { FormatDate, coerceToString } from "@/utils";
 
 const DELETE_DATA_SYMBOL = "<delete>";
 const SUMMARY_SHEET_NAME = "Summary";
@@ -37,9 +37,8 @@ export class ValidationResultsExcelBuilder {
   private workbook: ExcelJS.Workbook;
 
   /**
-   * The internal array of QCResult objects that represent the validation results to be exported.
-   * Each QCResult contains information about a specific validation issue, including its severity,
-   * type, submitted identifier, and any associated error or warning messages.
+   * The internal array of unpacked QCResult objects that represent the validation results to be exported.
+   * Each QCResult in this array has been unpacked so that it contains either errors or warnings (not both).
    */
   private results: QCResult[];
 
@@ -76,7 +75,7 @@ export class ValidationResultsExcelBuilder {
 
   private addSummarySheet(): void {
     const ws = this.workbook.addWorksheet(SUMMARY_SHEET_NAME);
-    const rows = unpackValidationSeverities(this.results).map((result) => {
+    const rows = this.results.map((result) => {
       const issue = result.errors?.[0] ?? result.warnings?.[0];
 
       return {
