@@ -206,7 +206,7 @@ export const getPlainTextLength = (content: string): number => {
   }
 
   const normalizedContent = normalizeLineEndings(content);
-  const visibleText = normalizedContent.split("\n").map(getMarkdownLinePlainText).join("\n").trim();
+  const visibleText = normalizedContent.split("\n").map(getMarkdownLinePlainText).join("").trim();
 
   return visibleText.length;
 };
