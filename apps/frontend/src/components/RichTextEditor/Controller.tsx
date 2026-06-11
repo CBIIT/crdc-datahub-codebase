@@ -15,6 +15,7 @@ const StyledEditorWrapper = styled(Box)({
   width: "fit-content",
   maxWidth: "100%",
   boxSizing: "border-box",
+  backgroundColor: "white",
   "&:hover": {
     borderColor: "#6B7294",
   },
@@ -40,8 +41,12 @@ const StyledEditable = styled(Editable)({
   overflowX: "hidden",
   boxSizing: "border-box",
   outline: "none",
+  backgroundColor: "white",
   "& [data-slate-placeholder]": {
     top: "12px !important",
+  },
+  "& li [data-slate-placeholder]": {
+    display: "none !important",
   },
   "& p": {
     margin: "0 0 4px 0",
