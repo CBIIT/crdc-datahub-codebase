@@ -250,17 +250,7 @@ const ExportValidationButton: React.FC<Props> = ({
         return;
       }
 
-      // TODO: Retrieve this from the backend
-      const updatedTabData = [
-        {
-          submittedID: "mock-id-abc1",
-          nodeType: "mock-node-1",
-          existing: { program_name: "mock-node-1", program_desc: "original desc" },
-          incoming: { program_name: "mock-node-1", program_desc: "some new value" },
-        },
-      ];
-
-      const builder = new ValidationResultsExcelBuilder(unpackedResults, updatedTabData);
+      const builder = new ValidationResultsExcelBuilder(unpackedResults, []);
       const workbook = await builder.serialize();
 
       downloadBlob(
