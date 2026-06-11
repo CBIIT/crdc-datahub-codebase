@@ -1,10 +1,12 @@
-import React, { memo } from "react";
+import React, { lazy, memo } from "react";
 import { useParams } from "react-router-dom";
 
-import { SubmissionProvider } from "../../components/Contexts/SubmissionContext";
+import { SubmissionProvider } from "@/components/Contexts/SubmissionContext";
+import LazyLoader from "@/components/LazyLoader";
 
-import DataSubmission from "./DataSubmission";
 import ListView from "./DataSubmissionsListView";
+
+const DataSubmission = LazyLoader(lazy(() => import("./DataSubmission")));
 
 /**
  * A memoized version of SubmissionProvider
