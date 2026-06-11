@@ -7,6 +7,8 @@ import { downloadBlob, FormatDate, Logger } from "../../utils";
 import { Status as FormStatus, useFormContext } from "../Contexts/FormContext";
 import StyledFormTooltip from "../StyledFormComponents/StyledTooltip";
 
+import { GenerateDocument } from "./pdf/Generate";
+
 const StyledButton = styled(Button)({
   color: "#156071",
   fontSize: "16px",
@@ -48,7 +50,6 @@ const ExportRequestButton = forwardRef<HTMLButtonElement, ExportRequestButtonPro
           throw new Error("Unable to locate the print region for the PDF.");
         }
 
-        const { GenerateDocument } = await import("./pdf/Generate");
         const pdfBlob = await GenerateDocument(data, printRegion.cloneNode(true) as HTMLElement);
 
         const studyAbbr =
