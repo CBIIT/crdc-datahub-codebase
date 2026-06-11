@@ -83,7 +83,7 @@ const ExportValidationButton: React.FC<Props> = ({
   });
 
   /**
-   *  Creates a file name by using the submission name, filtering by alpha-numeric characters,
+   * Creates a file name by using the submission name, filtering by alpha-numeric characters,
    * then adding the date and time
    *
    * @returns {string} A formatted file name for the exported file
@@ -95,7 +95,7 @@ const ExportValidationButton: React.FC<Props> = ({
 
   /**
    * Will retrieve all of the aggregated submission QC results to
-   * construct and download a Excel file
+   * construct and download an Excel file
    */
   const handleAggregatedExportSetup = async (): Promise<void> => {
     setLoading(true);
@@ -151,7 +151,7 @@ const ExportValidationButton: React.FC<Props> = ({
 
   /**
    * Will retrieve all of the expanded submission QC results to
-   * construct and download a Excel file
+   * construct and download an Excel file
    */
   const handleExpandedExportSetup = async (): Promise<void> => {
     setLoading(true);
@@ -225,10 +225,6 @@ const ExportValidationButton: React.FC<Props> = ({
     }
   };
 
-  /**
-   * Click handler that triggers the setup
-   * for aggregated or expanded CSV file exporting
-   */
   const handleClick = () => {
     enqueueSnackbar("Generating the validation results file. This may take a moment...", {
       variant: "default",
