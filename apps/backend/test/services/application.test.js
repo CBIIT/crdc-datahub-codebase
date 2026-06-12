@@ -415,66 +415,34 @@ describe('Application', () => {
         });
     });
 
-    describe('_hasParentViaNextRevisionId', () => {
+    describe('_hasApprovedParentSRF', () => {
         beforeEach(() => {
-            app.applicationDAO.findPreviousSubmissionRequestByID = jest.fn();
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
         });
 
-        it('returns true when another SRF links to this application via nextRevisionId', async () => {
-            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue({
+        it('returns true when an Approved parent links to this application', async () => {
+            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue({
                 _id: 'seq1',
                 status: APPROVED,
                 nextRevisionId: 'seq2',
             });
 
-            await expect(app._hasParentViaNextRevisionId({ _id: 'seq2', status: CANCELED }))
+            await expect(app._hasApprovedParentSRF({ _id: 'seq2', status: CANCELED }))
                 .resolves.toBe(true);
+            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).toHaveBeenCalledWith('seq2');
         });
 
-        it('returns false when there is no parent', async () => {
-            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue(null);
+        it('returns false when no Approved parent links to this application', async () => {
+            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue(null);
 
-            await expect(app._hasParentViaNextRevisionId({ _id: 'seq2', status: CANCELED }))
+            await expect(app._hasApprovedParentSRF({ _id: 'seq2', status: CANCELED }))
                 .resolves.toBe(false);
-        });
-
-        it('returns false when parent is returned but nextRevisionId does not match', async () => {
-            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue({
-                _id: 'seq1',
-                status: APPROVED,
-                nextRevisionId: 'seq4',
-            });
-
-            await expect(app._hasParentViaNextRevisionId({ _id: 'seq2', status: CANCELED }))
-                .resolves.toBe(false);
-        });
-
-        it('returns false when parent is returned without nextRevisionId', async () => {
-            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue({
-                _id: 'seq1',
-                status: APPROVED,
-            });
-
-            await expect(app._hasParentViaNextRevisionId({ _id: 'seq2', status: CANCELED }))
-                .resolves.toBe(false);
-        });
-
-        it('returns true when application id is on the id field', async () => {
-            app.applicationDAO.findPreviousSubmissionRequestByID.mockResolvedValue({
-                _id: 'seq1',
-                status: APPROVED,
-                nextRevisionId: 'seq2',
-            });
-
-            await expect(app._hasParentViaNextRevisionId({ id: 'seq2', status: CANCELED }))
-                .resolves.toBe(true);
-            expect(app.applicationDAO.findPreviousSubmissionRequestByID).toHaveBeenCalledWith('seq2');
         });
 
         it('returns false when application id is missing', async () => {
-            await expect(app._hasParentViaNextRevisionId({ status: CANCELED }))
+            await expect(app._hasApprovedParentSRF({ status: CANCELED }))
                 .resolves.toBe(false);
-            expect(app.applicationDAO.findPreviousSubmissionRequestByID).not.toHaveBeenCalled();
+            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
         });
     });
 
@@ -519,14 +487,129 @@ describe('Application', () => {
             await expect(app._computeCanBeReopened({ status: 'approved', nextRevisionId: null }))
                 .resolves.toBe(true);
         });
+
+        it('returns the existing boolean without querying when canBeReopened is already set', async () => {
+            await expect(app._computeCanBeReopened({
+                status: IN_PROGRESS,
+                canBeReopened: true,
+            })).resolves.toBe(true);
+            expect(app.applicationDAO.findFirst).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('_computeCanBeRestored', () => {
+        const validCanceledHistory = [{ status: IN_PROGRESS }, { status: CANCELED }];
+        const validDeletedHistory = [{ status: IN_PROGRESS }, { status: DELETED }];
+
+        beforeEach(() => {
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
+        });
+
+        it('returns true for Canceled sequence 1 with valid history', async () => {
+            await expect(app._computeCanBeRestored({
+                status: CANCELED,
+                sequenceNumber: 1,
+                history: validCanceledHistory,
+            })).resolves.toBe(true);
+            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
+        });
+
+        it('returns true for Deleted sequence 1 with valid history', async () => {
+            await expect(app._computeCanBeRestored({
+                status: DELETED,
+                sequenceNumber: 1,
+                history: validDeletedHistory,
+            })).resolves.toBe(true);
+        });
+
+        it('returns false for Canceled sequence 1 when history is too short', async () => {
+            await expect(app._computeCanBeRestored({
+                status: CANCELED,
+                sequenceNumber: 1,
+                history: [{ status: CANCELED }],
+            })).resolves.toBe(false);
+        });
+
+        it('returns true for linked Canceled revision when parent is Approved', async () => {
+            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq2',
+            });
+
+            await expect(app._computeCanBeRestored({
+                _id: 'seq2',
+                status: CANCELED,
+                sequenceNumber: 2,
+                history: validCanceledHistory,
+            })).resolves.toBe(true);
+        });
+
+        it('returns false for orphaned Canceled revision with valid history', async () => {
+            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue(null);
+
+            await expect(app._computeCanBeRestored({
+                _id: 'seq2',
+                status: CANCELED,
+                sequenceNumber: 2,
+                history: validCanceledHistory,
+            })).resolves.toBe(false);
+        });
+
+        it('returns false for non-terminal statuses', async () => {
+            await expect(app._computeCanBeRestored({ status: IN_PROGRESS, sequenceNumber: 1 }))
+                .resolves.toBe(false);
+            await expect(app._computeCanBeRestored({ status: APPROVED, sequenceNumber: 1 }))
+                .resolves.toBe(false);
+            await expect(app._computeCanBeRestored({ status: REOPENED, sequenceNumber: 2 }))
+                .resolves.toBe(false);
+        });
+
+        it('defaults missing sequenceNumber to 1 when history is valid', async () => {
+            await expect(app._computeCanBeRestored({
+                status: DELETED,
+                history: validDeletedHistory,
+            })).resolves.toBe(true);
+        });
+
+        it('returns the existing boolean without querying when canBeRestored is already set', async () => {
+            await expect(app._computeCanBeRestored({
+                status: IN_PROGRESS,
+                sequenceNumber: 2,
+                canBeRestored: true,
+            })).resolves.toBe(true);
+            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
+        });
     });
 
     describe('_computeSRFStateFields', () => {
-        it('sets canBeReopened on the application object', async () => {
-            const application = { status: APPROVED, nextRevisionId: null };
+        beforeEach(() => {
             app.applicationDAO.findFirst = jest.fn();
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
+        });
+
+        it('sets canBeReopened and canBeRestored on the application object', async () => {
+            const application = { status: APPROVED, nextRevisionId: null };
             await app._computeSRFStateFields(application);
             expect(application.canBeReopened).toBe(true);
+            expect(application.canBeRestored).toBe(false);
+        });
+
+        it('sets canBeRestored true for linked canceled revisions', async () => {
+            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue({
+                _id: 'seq1',
+                status: APPROVED,
+                nextRevisionId: 'seq2',
+            });
+            const application = {
+                _id: 'seq2',
+                status: CANCELED,
+                sequenceNumber: 2,
+                history: [{ status: REOPENED }, { status: CANCELED }],
+            };
+            await app._computeSRFStateFields(application);
+            expect(application.canBeReopened).toBe(false);
+            expect(application.canBeRestored).toBe(true);
         });
 
         it('returns null when application is null', async () => {
@@ -575,6 +658,7 @@ describe('Application', () => {
                     applicantName: '',
                 },
                 canBeReopened: false,
+                canBeRestored: false,
             });
             expect(app.applicationDAO.findFirst).toHaveBeenCalledWith(
                 { id: 'app1' },
@@ -953,6 +1037,42 @@ describe('Application', () => {
             expect(result.applications[1].canBeReopened).toBe(false);
             expect(result.applications[2].canBeReopened).toBe(true);
             expect(result.applications[3].canBeReopened).toBe(false);
+            expect(result.applications.every((row) => row.canBeRestored === false)).toBe(true);
+        });
+
+        it('sets canBeRestored on list rows for Canceled and Deleted applications', async () => {
+            const validCanceledHistory = [{ status: IN_PROGRESS }, { status: CANCELED }];
+            const validDeletedHistory = [{ status: IN_PROGRESS }, { status: DELETED }];
+            const rows = [
+                { id: 'c1', status: CANCELED, sequenceNumber: 1, history: validCanceledHistory, studyName: 'S1', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
+                { id: 'c2', status: CANCELED, sequenceNumber: 2, history: validCanceledHistory, studyName: 'S2', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
+                { id: 'd1', status: DELETED, sequenceNumber: 2, history: validDeletedHistory, studyName: 'S3', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
+                { id: 'd2', status: DELETED, sequenceNumber: 3, history: validDeletedHistory, studyName: 'S4', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
+            ];
+            let n = 0;
+            app.applicationDAO.findMany = jest.fn().mockImplementation(() => {
+                n += 1;
+                return Promise.resolve(n === 1 ? rows : []);
+            });
+            app.applicationDAO.count = jest.fn().mockResolvedValue(4);
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            app.applicationDAO.findFirst = jest.fn();
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockImplementation(async (id) => {
+                if (id === 'c2') {
+                    return { _id: 'parent-c2', status: APPROVED, nextRevisionId: 'c2' };
+                }
+                if (id === 'd2') {
+                    return { _id: 'parent-d2', status: APPROVED, nextRevisionId: 'd2' };
+                }
+                return null;
+            });
+
+            const result = await app.listApplications({}, context);
+
+            expect(result.applications[0].canBeRestored).toBe(true);
+            expect(result.applications[1].canBeRestored).toBe(true);
+            expect(result.applications[2].canBeRestored).toBe(false);
+            expect(result.applications[3].canBeRestored).toBe(true);
         });
 
         it('returns empty list when scope is study (only all and own supported for filters)', async () => {
@@ -1222,7 +1342,7 @@ describe('Application', () => {
 
     describe('approveApplication', () => {
         beforeEach(() => {
-            app.applicationDAO.findPreviousSubmissionRequestByID = jest.fn().mockResolvedValue(null);
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue(null);
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(null);
             mockApprovedStudiesService.saveApprovedStudyFromApplication.mockResolvedValue({ _id: 'study1' });
         });
@@ -1260,7 +1380,7 @@ describe('Application', () => {
             };
             const existingStudy = { _id: 'existing-study', applicationID: 'source-app', createdAt: '2020-01-01' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
-            app.applicationDAO.findPreviousSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(existingStudy);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([{ _id: 'existing-study' }]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
@@ -1288,7 +1408,7 @@ describe('Application', () => {
             };
             const existingStudy = { _id: 'other-study', applicationID: 'unrelated-source' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
-            app.applicationDAO.findPreviousSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(null);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([existingStudy]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
@@ -1314,7 +1434,7 @@ describe('Application', () => {
             };
             const existingStudy = { _id: 'existing-study', applicationID: 'source-app', createdAt: '2020-01-01' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
-            app.applicationDAO.findPreviousSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(existingStudy);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([{ _id: 'existing-study' }]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
@@ -2680,23 +2800,61 @@ describe('Application', () => {
                 .rejects.toThrow(ERROR.INVALID_APPLICATION_RESTORE_STATE);
         });
 
+        it('throws when a newer revision blocks restore', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app2',
+                status: CANCELED,
+                sequenceNumber: 2,
+                applicant: { applicantID: 'user1' },
+                history: [{ status: REOPENED }, { status: CANCELED }],
+            });
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue(null);
+
+            await expect(app.restoreApplication({ _id: 'app2', comment: 'restore' }, context))
+                .rejects.toThrow(ERROR.INVALID_APPLICATION_RESTORE_NEWER_REVISION_EXISTS);
+        });
+
+        it('throws permission error before revision-chain check for unauthorized caller', async () => {
+            mockAuthorizationService.getPermissionScope.mockResolvedValue([{ scope: 'own', scopeValues: ['user1'] }]);
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app2',
+                status: CANCELED,
+                sequenceNumber: 2,
+                applicant: { applicantID: 'other-user' },
+                history: [{ status: REOPENED }, { status: CANCELED }],
+            });
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
+
+            await expect(app.restoreApplication({ _id: 'app2', comment: 'restore' }, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
+            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
+        });
+
         it('restores canceled Reopened SRF back to Reopened', async () => {
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({
+                _id: 'approved-parent',
+                status: APPROVED,
+                nextRevisionId: 'app-reopened',
+            });
             app.getApplicationById = jest.fn()
                 .mockResolvedValueOnce({
                     _id: 'app-reopened',
                     status: CANCELED,
+                    sequenceNumber: 2,
                     applicant: { applicantID: 'user1' },
                     history: [{ status: REOPENED }, { status: CANCELED }],
                 })
                 .mockResolvedValueOnce({
                     _id: 'app-reopened',
                     status: REOPENED,
+                    sequenceNumber: 2,
                     applicant: { applicantID: 'user1' },
                 });
             app.applicationDAO.update = jest.fn().mockResolvedValue({ _id: 'app-reopened' });
 
             await app.restoreApplication({ _id: 'app-reopened', comment: 'restore' }, context);
 
+            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).toHaveBeenCalledWith('app-reopened');
             expect(app.applicationDAO.update).toHaveBeenCalledWith(
                 expect.objectContaining({ status: REOPENED })
             );
@@ -2776,6 +2934,7 @@ describe('Application', () => {
                 applicantEmail: 'user@example.com',
             });
             expect(result.canBeReopened).toBe(false);
+            expect(result.canBeRestored).toBe(false);
         });
 
         it('sets canBeReopened true when record is Approved without nextRevisionId', async () => {
@@ -2786,6 +2945,20 @@ describe('Application', () => {
             });
 
             expect(result.canBeReopened).toBe(true);
+            expect(result.canBeRestored).toBe(false);
+        });
+
+        it('sets canBeRestored true when record is Canceled sequence 1 with valid history', async () => {
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
+            const result = await app._reformatRecordForApplicationResponse({
+                id: 'app-1',
+                status: CANCELED,
+                sequenceNumber: 1,
+                history: [{ status: IN_PROGRESS }, { status: CANCELED }],
+            });
+
+            expect(result.canBeRestored).toBe(true);
+            expect(result.canBeReopened).toBe(false);
         });
 
         it('prefers ownerUser fullName over nested applicant applicantName', async () => {

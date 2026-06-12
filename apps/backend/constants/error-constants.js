@@ -13,6 +13,7 @@ const ERROR = {
     FAILED_RESTORE_APPLICATION: "An error occurred while restoring an application",
     MISSING_PROGRAM_INFO: "The program property is required to approve the submission request.",
     INVALID_APPLICATION_RESTORE_STATE: "Failed to restore application because the application history data is invalid",
+    INVALID_APPLICATION_RESTORE_NEWER_REVISION_EXISTS: "This submission request cannot be restored because a newer revision exists.",
     COMMENT_LIMIT: "comment cannot exceed $item$ characters.",
     UPDATE_FAILED: "Update unsuccessful",
     VERIFY: {

@@ -51,16 +51,16 @@ class ApplicationDAO extends GenericDAO {
 
 
     /**
-     * Find the previous submission request by ID
-     * @param {string} id The ID of the submission request
-     * @returns {Promise<object|null>} The previous submission request, or null when id is falsy or no predecessor exists.
-     * Does not filter by predecessor status (used on revision re-approval).
+     * Find the Approved parent SRF that links to this application via nextRevisionId.
+     * Only Approved rows receive nextRevisionId (set on reopen); this is the revision-chain parent lookup.
+     * @param {string} id Successor application _id
+     * @returns {Promise<object|null>} Approved parent, or null when id is falsy or no match
      */
-    async findPreviousSubmissionRequestByID(id) {
+    async findApprovedParentSubmissionRequestByID(id) {
         if (!id) {
             return null;
         }
-        return this.findFirst({ nextRevisionId: id });
+        return this.findFirst({ nextRevisionId: id, status: APPROVED });
     }
 
     /**

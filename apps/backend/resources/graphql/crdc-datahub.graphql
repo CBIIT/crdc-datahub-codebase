@@ -86,6 +86,7 @@ type Application {
     sequenceNumber: Int! # 1-based revision index; 1 for a new SRF or first approved revision
     nextRevisionId: ID # When set on an Approved SRF, points to the reopened successor revision
     canBeReopened: Boolean! # true when Approved and the immediate successor (if linked) is absent or terminal
+    canBeRestored: Boolean! # true when restoreApplication would succeed (terminal status, valid history, no blocking newer revision)
 }
 
 type NewInstitution {

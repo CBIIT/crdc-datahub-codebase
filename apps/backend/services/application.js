@@ -114,28 +114,29 @@ class Application {
     }
 
     /**
-     * True when another SRF links to this application via nextRevisionId.
+     * True when an Approved parent SRF links to this application via nextRevisionId.
      * @param {object} application Candidate application
      * @returns {Promise<boolean>}
      */
-    async _hasParentViaNextRevisionId(application) {
+    async _hasApprovedParentSRF(application) {
         const applicationID = application?._id ?? application?.id;
         if (!applicationID) {
             return false;
         }
-        const parent = await this.applicationDAO.findPreviousSubmissionRequestByID(applicationID);
-        if (!parent) {
-            return false;
-        }
-        return parent.nextRevisionId === applicationID;
+        const parent = await this.applicationDAO.findApprovedParentSubmissionRequestByID(applicationID);
+        return Boolean(parent);
     }
 
     /**
      * True when Approved and the immediate successor (if linked) is absent or terminal.
+     * Returns the existing boolean when already set on the application (response-only field).
      * @param {object} application Application document
      * @returns {Promise<boolean>}
      */
     async _computeCanBeReopened(application) {
+        if (typeof application?.canBeReopened === 'boolean') {
+            return application.canBeReopened;
+        }
         if (!this._isApprovedApplication(application)) {
             return false;
         }
@@ -143,7 +144,44 @@ class Application {
     }
 
     /**
-     * Computes SRF state fields for an application API response (e.g. canBeReopened).
+     * True when history supports restore (prior state exists and latest entry is Canceled/Deleted).
+     * @param {object} application Application document
+     * @returns {boolean}
+     */
+    _hasValidRestoreHistory(application) {
+        const history = application?.history;
+        if ((history?.length ?? 0) < 2) {
+            return false;
+        }
+        return [CANCELED, DELETED].includes(history.at(-1)?.status);
+    }
+
+    /**
+     * True when restoreApplication would succeed for this application.
+     * Returns the existing boolean when already set on the application (response-only field).
+     * @param {object} application Application document
+     * @returns {Promise<boolean>}
+     */
+    async _computeCanBeRestored(application) {
+        if (typeof application?.canBeRestored === 'boolean') {
+            return application.canBeRestored;
+        }
+        const status = this._normalizeApplicationStatus(application?.status);
+        const isCanceledOrDeleted = [CANCELED, DELETED].some(
+            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === status
+        );
+        if (!isCanceledOrDeleted || !this._hasValidRestoreHistory(application)) {
+            return false;
+        }
+        const sequenceNumber = application?.sequenceNumber ?? 1;
+        if (sequenceNumber === 1) {
+            return true;
+        }
+        return await this._hasApprovedParentSRF(application);
+    }
+
+    /**
+     * Computes SRF state fields for an application API response (e.g. canBeReopened, canBeRestored).
      * @param {object} application Application document
      * @returns {Promise<object|null>}
      */
@@ -151,7 +189,12 @@ class Application {
         if (!application) {
             return application;
         }
-        application.canBeReopened = await this._computeCanBeReopened(application);
+        const [canBeReopened, canBeRestored] = await Promise.all([
+            this._computeCanBeReopened(application),
+            this._computeCanBeRestored(application),
+        ]);
+        application.canBeReopened = canBeReopened;
+        application.canBeRestored = canBeRestored;
         return application;
     }
 
@@ -569,7 +612,7 @@ class Application {
 
     /**
      * Lists submission requests with filters, pagination, and facet values.
-     * Computes canBeReopened per row from the immediate revision successor when present.
+     * Computes canBeReopened and canBeRestored per row from revision-chain rules.
      * @param {object} params Filter, pagination, and sort parameters
      * @param {object} context Request context with userInfo
      * @returns {Promise<object>} applications, total, programs, studies, and filter facets
@@ -760,12 +803,11 @@ class Application {
                 applicantName: this._getUserDisplayName(app.applicant) || "",
                 applicantEmail: app?.applicant?.email || "",
             };
-            const canBeReopened = await this._computeCanBeReopened(app);
+            await this._computeSRFStateFields(app);
             if (!this._isApprovedApplication(app)) {
                 mappedApplications.push({
                     ...app,
                     applicant,
-                    canBeReopened,
                     studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
                 });
                 continue;
@@ -776,7 +818,6 @@ class Application {
                 applicant,
                 conditional,
                 pendingConditions,
-                canBeReopened,
                 studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
             });
         }
@@ -1103,18 +1144,21 @@ class Application {
             .notEmpty()
             .state([CANCELED, DELETED]);
 
-        if ((aApplication?.history?.length ?? 0) < 2 || ![CANCELED, DELETED].includes(aApplication?.history?.at(-1)?.status)) {
-            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_STATE);
-        }
         const userInfo = context?.userInfo;
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CANCEL);
         if (userScope.isNoneScope() || (!userScope.isOwnScope() && !userScope.isAllScope())) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        // User owned application
         const isApplicationOwned = userInfo?._id === aApplication?.applicant?.applicantID;
         if (userScope.isOwnScope() && !isApplicationOwned) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+
+        if (!this._hasValidRestoreHistory(aApplication)) {
+            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_STATE);
+        }
+        if (!(await this._computeCanBeRestored(aApplication))) {
+            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_NEWER_REVISION_EXISTS);
         }
         const prevStatus = aApplication?.history?.at(-2)?.status;
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, prevStatus, document?.comment);
@@ -1145,7 +1189,7 @@ class Application {
         const questionnaire = getApplicationQuestionnaire(application);
         const sequenceNumber = application?.sequenceNumber ?? 1;
         const [predecessor, existingProgram, duplicatePrograms] = await Promise.all([
-            this.applicationDAO.findPreviousSubmissionRequestByID(application._id),
+            this.applicationDAO.findApprovedParentSubmissionRequestByID(application._id),
             this.organizationService.getOrganizationByID(questionnaire?.program?._id, false),
             this.organizationService.findOneByProgramName(application?.programName),
             (async () => {
@@ -1160,7 +1204,7 @@ class Application {
             existingStudy = await this.approvedStudiesService.findByApplicationID(
                 predecessor._id ?? predecessor.id
             );
-            // Revision re-approval: linked via nextRevisionId; predecessor status is not checked.
+            // Revision re-approval: linked via nextRevisionId from an Approved parent.
             if (!existingStudy && duplicates.length > 0) {
                 existingStudy = duplicates[0];
             }
