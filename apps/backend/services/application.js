@@ -85,10 +85,7 @@ class Application {
      */
     async _loadRevisionChainSuccessor(revisionID) {
         try {
-            return await this.applicationDAO.findFirst(
-                { id: revisionID },
-                { select: { status: true } }
-            );
+            return await this.applicationDAO.findApplicationStatusById(revisionID);
         } catch (err) {
             console.error('Failed to load revision successor while checking active later revisions:', revisionID, err);
             throw new Error(ERROR.INTERNAL_ERROR);
@@ -97,6 +94,23 @@ class Application {
 
     /**
      * Returns true when the immediate revision successor has a non-terminal status.
+     * @param {object} application Application document that may have nextRevisionId
+     * @param {string|undefined|null} successorStatus Status of the direct successor, when known
+     * @returns {boolean}
+     */
+    _hasSuccessorWithNonTerminalStatus(application, successorStatus) {
+        const nextRevisionID = application?.nextRevisionId;
+        if (!nextRevisionID) {
+            return false;
+        }
+        if (successorStatus == null) {
+            return false;
+        }
+        return !this._isTerminalRevisionStatus(successorStatus);
+    }
+
+    /**
+     * Loads the successor and delegates to _hasSuccessorWithNonTerminalStatus.
      * Valid chains are Approved → tail; only the direct successor is checked.
      * @param {object} application Application document that may have nextRevisionId
      * @returns {Promise<boolean>}
@@ -107,10 +121,7 @@ class Application {
             return false;
         }
         const successor = await this._loadRevisionChainSuccessor(nextRevisionID);
-        if (!successor) {
-            return false;
-        }
-        return !this._isTerminalRevisionStatus(successor.status);
+        return this._hasSuccessorWithNonTerminalStatus(application, successor?.status);
     }
 
     /**
@@ -157,6 +168,57 @@ class Application {
     }
 
     /**
+     * True when status is Canceled or Deleted and history supports restore.
+     * @param {object} application Application document
+     * @returns {boolean}
+     */
+    _isRestoreCandidate(application) {
+        const status = this._normalizeApplicationStatus(application?.status);
+        const isCanceledOrDeleted = [CANCELED, DELETED].some(
+            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === status
+        );
+        return isCanceledOrDeleted && this._hasValidRestoreHistory(application);
+    }
+
+    /**
+     * True when restoreApplication would succeed for this application.
+     * @param {object} application Application document
+     * @param {boolean} hasApprovedParent Whether an Approved parent links to this application
+     * @returns {boolean}
+     */
+    _computeCanBeRestoredFromParentCheck(application, hasApprovedParent) {
+        if (typeof application?.canBeRestored === 'boolean') {
+            return application.canBeRestored;
+        }
+        if (!this._isRestoreCandidate(application)) {
+            return false;
+        }
+        const sequenceNumber = application?.sequenceNumber ?? 1;
+        if (sequenceNumber === 1) {
+            return true;
+        }
+        return hasApprovedParent;
+    }
+
+    /**
+     * True when Approved and the immediate successor (if linked) is absent or terminal.
+     * @param {object} application Application document
+     * @param {Map<string, string>} successorStatusById Prefetched successor id → status map
+     * @returns {boolean}
+     */
+    _computeCanBeReopenedFromSuccessorStatus(application, successorStatusById) {
+        if (typeof application?.canBeReopened === 'boolean') {
+            return application.canBeReopened;
+        }
+        if (!this._isApprovedApplication(application)) {
+            return false;
+        }
+        const nextRevisionID = application?.nextRevisionId;
+        const successorStatus = nextRevisionID ? successorStatusById.get(nextRevisionID) : undefined;
+        return !this._hasSuccessorWithNonTerminalStatus(application, successorStatus);
+    }
+
+    /**
      * True when restoreApplication would succeed for this application.
      * Returns the existing boolean when already set on the application (response-only field).
      * @param {object} application Application document
@@ -166,18 +228,14 @@ class Application {
         if (typeof application?.canBeRestored === 'boolean') {
             return application.canBeRestored;
         }
-        const status = this._normalizeApplicationStatus(application?.status);
-        const isCanceledOrDeleted = [CANCELED, DELETED].some(
-            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === status
-        );
-        if (!isCanceledOrDeleted || !this._hasValidRestoreHistory(application)) {
+        if (!this._isRestoreCandidate(application)) {
             return false;
         }
-        const sequenceNumber = application?.sequenceNumber ?? 1;
-        if (sequenceNumber === 1) {
+        if ((application?.sequenceNumber ?? 1) === 1) {
             return true;
         }
-        return await this._hasApprovedParentSRF(application);
+        const hasApprovedParent = await this._hasApprovedParentSRF(application);
+        return this._computeCanBeRestoredFromParentCheck(application, hasApprovedParent);
     }
 
     /**
@@ -199,9 +257,111 @@ class Application {
     }
 
     /**
-     * Clear inbound nextRevisionId links for a successor application ID.
-     * Used when replacing the revision chain link during reopen (not on terminal successor states).
-     * @param {string} applicationId Successor application _id whose inbound link should be cleared
+     * Builds conditional / pendingConditions from an approved study record.
+     * @param {object|undefined|null} study Approved study document
+     * @returns {{ conditional: boolean, pendingConditions: string[] }}
+     */
+    _resolveConditionalApprovalFields(study) {
+        if (!study) {
+            return { conditional: false, pendingConditions: [] };
+        }
+        const pendingConditions = [
+            ...(study?.controlledAccess && !study?.dbGaPID ? [ERROR.CONTROLLED_STUDY_NO_DBGAPID] : []),
+            ...(isTrue(study?.pendingModelChange) ? [ERROR.PENDING_APPROVED_STUDY] : []),
+            ...((isTrue(study?.controlledAccess) && isTrue(study?.isPendingGPA)) ? [ERROR.PENDING_APPROVED_STUDY_NO_GPA_INFO] : []),
+            ...(isTrue(study?.pendingImageDeIdentification) ? [ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION] : []),
+        ];
+        return {
+            conditional: pendingConditions.length > 0,
+            pendingConditions,
+        };
+    }
+
+    /**
+     * Batch-prefetches revision-chain and approved-study data for a list page, then sets
+     * canBeReopened / canBeRestored on each application in memory.
+     * @param {object[]} applications Paginated application rows from listApplications
+     * @returns {Promise<{ studyByLowerName: Map<string, object> }>}
+     */
+    async _batchComputeListApplicationFields(applications) {
+        const studyByLowerName = new Map();
+        if (!applications?.length) {
+            return { studyByLowerName };
+        }
+
+        const successorIds = [...new Set(
+            applications
+                .filter((app) => this._isApprovedApplication(app) && app.nextRevisionId)
+                .map((app) => app.nextRevisionId)
+        )];
+
+        const restoreCandidateIds = applications
+            .filter((app) => this._isRestoreCandidate(app) && (app?.sequenceNumber ?? 1) > 1)
+            .map((app) => app._id ?? app.id)
+            .filter(Boolean);
+
+        const studyNamesByLower = new Map();
+        for (const app of applications) {
+            if (!this._isApprovedApplication(app)) {
+                continue;
+            }
+            const name = app.studyName?.trim();
+            if (!name) {
+                continue;
+            }
+            const key = name.toLowerCase();
+            if (!studyNamesByLower.has(key)) {
+                studyNamesByLower.set(key, name);
+            }
+        }
+        const studyNames = [...studyNamesByLower.values()];
+
+        // Batch database queries and perform in parallel
+        const [successors, parents, studies] = await Promise.all([
+            successorIds.length
+                ? this.applicationDAO.findApplicationStatusesByIds(successorIds)
+                : [],
+            restoreCandidateIds.length
+                ? this.applicationDAO.findApprovedApplicationsByNextRevisionIds(restoreCandidateIds)
+                : [],
+            studyNames.length
+                ? this.approvedStudiesService.findByStudyNames(studyNames)
+                : [],
+        ]);
+
+        const successorStatusById = new Map(
+            (successors ?? []).map((successor) => [successor.id ?? successor._id, successor.status])
+        );
+        const approvedParentSuccessorIds = new Set(
+            (parents ?? []).map((parent) => parent.nextRevisionId).filter(Boolean)
+        );
+
+        for (const study of studies ?? []) {
+            const key = study.studyName?.trim().toLowerCase();
+            if (key && !studyByLowerName.has(key)) {
+                studyByLowerName.set(key, study);
+            }
+        }
+
+        for (const app of applications) {
+            if (typeof app?.canBeReopened !== 'boolean') {
+                app.canBeReopened = this._computeCanBeReopenedFromSuccessorStatus(app, successorStatusById);
+            }
+            if (typeof app?.canBeRestored !== 'boolean') {
+                const applicationID = app._id ?? app.id;
+                const hasApprovedParent = applicationID
+                    ? approvedParentSuccessorIds.has(applicationID)
+                    : false;
+                app.canBeRestored = this._computeCanBeRestoredFromParentCheck(app, hasApprovedParent);
+            }
+        }
+
+        return { studyByLowerName };
+    }
+
+    /**
+     * Clears inbound nextRevisionId links (revision chain link removal).
+     * @param {string} applicationId Successor application _id whose inbound links should be cleared
      */
     async _pruneRevisionChainOnTerminal(applicationId) {
         if (!applicationId) {
@@ -259,17 +419,7 @@ class Application {
         if (!studyArr || studyArr.length < 1) {
             return { conditional: false, pendingConditions: [] };
         }
-        const study = studyArr[0];
-        const pendingConditions = [
-            ...(study?.controlledAccess && !study?.dbGaPID ? [ERROR.CONTROLLED_STUDY_NO_DBGAPID] : []),
-            ...(isTrue(study?.pendingModelChange) ? [ERROR.PENDING_APPROVED_STUDY] : []),
-            ...((isTrue(study?.controlledAccess) && isTrue(study?.isPendingGPA)) ? [ERROR.PENDING_APPROVED_STUDY_NO_GPA_INFO] : []),
-            ...(isTrue(study?.pendingImageDeIdentification) ? [ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION] : []),
-        ];
-        return {
-            conditional: pendingConditions.length > 0,
-            pendingConditions,
-        };
+        return this._resolveConditionalApprovalFields(studyArr[0]);
     }
 
     async _checkConditionalApproval(application) {
@@ -308,28 +458,8 @@ class Application {
         return await this._computeSRFStateFields(hydrated);
     }
 
-    /**
-     * Prisma include for loading applicant fields on application record queries.
-     * @returns {{ include: { applicant: { select: object } } }}
-     */
-    _getApplicationRecordInclude() {
-        return {
-            include: {
-                applicant: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        fullName: true,
-                        email: true
-                    }
-                }
-            }
-        };
-    }
-
     async getApplicationById(id) {
-        let result = await this.applicationDAO.findFirst({ id: id }, this._getApplicationRecordInclude());
+        const result = await this.applicationDAO.findApplicationWithApplicantById(id);
         if (!result) {
             throw new Error(ERROR.APPLICATION_NOT_FOUND+id);
         }
@@ -519,16 +649,7 @@ class Application {
         }
 
         const userID = context.userInfo._id;
-        const matchApplicantIDToUser = {"$match": {"applicantID": userID, status: APPROVED}};
-        const sortCreatedAtDescending = {"$sort": {createdAt: -1}};
-        const limitReturnToOneApplication = {"$limit": 1};
-        const pipeline = [
-            matchApplicantIDToUser,
-            sortCreatedAtDescending,
-            limitReturnToOneApplication
-        ];
-        const result = await this.applicationDAO.aggregate(pipeline);
-        const application = result.length > 0 ? result[0] : null;
+        const application = await this.applicationDAO.findLatestApprovedByApplicantID(userID);
         if (!application) {
             return null;
         }
@@ -794,8 +915,9 @@ class Application {
             throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Please see logs for more information.");
         }
 
-        // Hydrate conditional approval for Approved rows (sequential study lookups) and map to plain objects
-        // so GraphQL always receives conditional / pendingConditions (Prisma entities may drop ad-hoc properties).
+        // Batch-prefetch SRF state and approved-study data, then map to plain objects so GraphQL
+        // always receives conditional / pendingConditions (Prisma entities may drop ad-hoc properties).
+        const { studyByLowerName } = await this._batchComputeListApplicationFields(applications);
         const mappedApplications = [];
         for (const app of applications) {
             const applicant = {
@@ -803,7 +925,6 @@ class Application {
                 applicantName: this._getUserDisplayName(app.applicant) || "",
                 applicantEmail: app?.applicant?.email || "",
             };
-            await this._computeSRFStateFields(app);
             if (!this._isApprovedApplication(app)) {
                 mappedApplications.push({
                     ...app,
@@ -812,7 +933,8 @@ class Application {
                 });
                 continue;
             }
-            const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(app.studyName);
+            const study = studyByLowerName.get(app.studyName?.trim().toLowerCase());
+            const { conditional, pendingConditions } = this._resolveConditionalApprovalFields(study);
             mappedApplications.push({
                 ...app,
                 applicant,
@@ -1036,14 +1158,14 @@ class Application {
             ownerUser = await this.userDAO.findByIdAndStatus(originalOwnerID, activeStatus);
             if (!ownerUser) {
                 const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
-                this._logReopenOwnerValidationFailure({ ownerID: originalOwnerID }, error);
+                this._logReopenOwnerValidationFailure({ ownerId: originalOwnerID }, error);
                 throw new Error(error);
             }
         } else {
             ownerUser = await this.userDAO.findByIdAndStatus(inputOwnerID, activeStatus);
             if (!ownerUser) {
                 const error = ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE;
-                this._logReopenOwnerValidationFailure({ ownerID: inputOwnerID }, error);
+                this._logReopenOwnerValidationFailure({ ownerId: inputOwnerID }, error);
                 throw new Error(error);
             }
         }
@@ -1054,12 +1176,12 @@ class Application {
             // original owner case error response
             if (maintainOriginalOwner) {
                 const error = ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE;
-                this._logReopenOwnerValidationFailure({ ownerID: originalOwnerID }, error);
+                this._logReopenOwnerValidationFailure({ ownerId: originalOwnerID }, error);
                 throw new Error(error);
             }
             // new owner case error response
             const error = ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE;
-            this._logReopenOwnerValidationFailure({ ownerID: inputOwnerID }, error);
+            this._logReopenOwnerValidationFailure({ ownerId: inputOwnerID }, error);
             throw new Error(error);
         }
 
@@ -1067,7 +1189,7 @@ class Application {
         const passRoleCheck = maintainOriginalOwner || REOPEN_ASSIGNABLE_ROLES.includes(ownerUser?.role);
         if (!passRoleCheck) {
             const error = ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE;
-            this._logReopenOwnerValidationFailure({ ownerID: inputOwnerID, role: ownerUser?.role }, error);
+            this._logReopenOwnerValidationFailure({ ownerId: inputOwnerID, role: ownerUser?.role }, error);
             throw new Error(error);
         }
 
