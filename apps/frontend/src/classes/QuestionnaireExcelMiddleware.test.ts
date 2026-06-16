@@ -3080,6 +3080,68 @@ describe("Parsing", () => {
     expect(output.numberOfParticipants).toEqual(150_000);
   });
 
+  it("should migrate old species header when template version is less than 1.7", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      otherSpeciesOfSubjects: "Legacy Species",
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    const metadataSheet = await middleware.serializeMetadata();
+    metadataSheet.getCell("I2").value = "1.6";
+
+    // @ts-expect-error Private member
+    await middleware.parseMetadata();
+
+    // @ts-expect-error Private member
+    const sectionCSheet = await middleware.serializeSectionC();
+    sectionCSheet.getCell("J1").value = "Other Specie(s) involved";
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionC();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+    expect(output.otherSpeciesOfSubjects).toEqual("Legacy Species");
+  });
+
+  it("should not migrate old species header when template version is 1.7 or greater", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      otherSpeciesOfSubjects: "Legacy Species",
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    const metadataSheet = await middleware.serializeMetadata();
+    metadataSheet.getCell("I2").value = "1.7";
+
+    // @ts-expect-error Private member
+    await middleware.parseMetadata();
+
+    // @ts-expect-error Private member
+    const sectionCSheet = await middleware.serializeSectionC();
+    sectionCSheet.getCell("J1").value = "Other Specie(s) involved";
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionC();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+    expect(output.otherSpeciesOfSubjects).toEqual(InitialQuestionnaire.otherSpeciesOfSubjects);
+  });
+
   it("should ignore invalid Cancer Type options in SectionC", async () => {
     const mockForm = questionnaireDataFactory.build({
       cancerTypes: [
