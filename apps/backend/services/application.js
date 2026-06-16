@@ -850,8 +850,10 @@ class Application {
         if (!updated) {
             throw new Error(ERROR.UPDATE_FAILED);
         }
-        const isDbGapMissing = (questionnaire?.accessTypes?.includes("Controlled Access") && !questionnaire?.study?.dbGaPPPHSNumber);
-        const isPendingGPA = (questionnaire?.accessTypes?.includes("Controlled Access") && Boolean(!updated?.GPAName?.trim()));
+        const isControlledAccess = questionnaire?.accessTypes?.includes("Controlled Access");
+        const isDbGapMissing = isControlledAccess && !questionnaire?.study?.dbGaPPPHSNumber;
+        const resolvedGPAName = PendingGPA.resolveGPAName(updated?.GPAName, isControlledAccess);
+        const isPendingGPA = isControlledAccess && !resolvedGPAName?.trim();
         const isPendingImageDeIdentification = isTrue(document?.pendingImageDeIdentification);
         let promises = [];
 
@@ -1403,7 +1405,8 @@ class Application {
             console.error(ERROR.APPLICATION_CONTROLLED_ACCESS_NOT_FOUND, ` id=${aApplication?._id}`);
         }
         const programName = aApplication?.programName ?? "NA";
-        const pendingGPA = PendingGPA.create(aApplication?.GPAName, isPendingGPA);
+        const resolvedGPAName = PendingGPA.resolveGPAName(aApplication?.GPAName, isTrue(controlledAccess));
+        const pendingGPA = PendingGPA.create(resolvedGPAName, isPendingGPA);
         
         // Use the existing program ID from the questionnaire lookup
         const programID = existingProgram?._id || null;

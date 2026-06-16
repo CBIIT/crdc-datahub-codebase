@@ -3,6 +3,7 @@ const ApplicationDAO = require('../../dao/application');
 const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
 const ERROR = require('../../constants/error-constants');
 const { NEW, APPROVED, IN_PROGRESS, INQUIRED, CANCELED, REJECTED, DELETED, SUBMITTED, IN_REVIEW } = require('../../constants/application-constants');
+const { DEFAULT_GPA_NAME } = require('../../domain/pending-gpa');
 
 // Mock ApplicationDAO
 jest.mock('../../dao/application');
@@ -1345,6 +1346,172 @@ describe('Application', () => {
                 mockExistingProgram
             );
         });
+
+        it('does not treat missing GPA name as pending for controlled access approval', async () => {
+            const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+            const mockQuestionnaire = {
+                program: { _id: 'program1' },
+                accessTypes: ['Controlled Access'],
+                study: { dbGaPPPHSNumber: 'phs001234' }
+            };
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                studyAbbreviation: 'S1',
+                applicantID: 'user-applicant-1',
+                applicant: {
+                    applicantID: 'user-applicant-1',
+                    applicantEmail: 'submitter@test.com',
+                    applicantName: 'Submitter Name'
+                },
+                programName: 'Program One',
+                questionnaireData: JSON.stringify(mockQuestionnaire)
+            };
+            const mockExistingProgram = { _id: 'program1', name: 'Program One' };
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Approved',
+                history: []
+            };
+
+            mockApprovedStudiesService.findByStudyName
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{
+                    controlledAccess: true,
+                    isPendingGPA: false,
+                    pendingModelChange: false,
+                    pendingImageDeIdentification: false,
+                    dbGaPID: 'phs001234'
+                }]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload, GPAName: '' })
+            );
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.find.mockResolvedValueOnce([{
+                email: 'submitter@test.com',
+                notifications: [reviewNotification]
+            }]);
+
+            const result = await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
+
+            expect(app._saveApprovedStudies).toHaveBeenCalledWith(
+                expect.objectContaining({ GPAName: '' }),
+                mockQuestionnaire,
+                undefined,
+                undefined,
+                false,
+                mockExistingProgram
+            );
+            expect(mockNotificationsService.pendingGPANotification).not.toHaveBeenCalled();
+            expect(mockNotificationsService.approveQuestionNotification).toHaveBeenCalled();
+            expect(result.pendingConditions).not.toContain(ERROR.PENDING_APPROVED_STUDY_NO_GPA_INFO);
+        });
+
+        it('persists default GPA name on approved study when approving controlled access SRF without GPA', async () => {
+            const mockQuestionnaire = {
+                program: { _id: 'program1' },
+                accessTypes: ['Controlled Access'],
+                study: { dbGaPPPHSNumber: 'phs001234' }
+            };
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                studyAbbreviation: 'S1',
+                programName: 'Program One',
+                controlledAccess: true,
+                openAccess: false,
+                ORCID: '0000-0001',
+                PI: 'PI Name',
+                organization: { name: 'Org One' },
+                questionnaireData: JSON.stringify(mockQuestionnaire)
+            };
+            const mockExistingProgram = { _id: 'program1', name: 'Program One' };
+            const approvedFromDb = {
+                ...mockApplication,
+                status: APPROVED,
+                reviewComment: 'Approved',
+                history: []
+            };
+
+            mockApprovedStudiesService.findByStudyName
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{
+                    controlledAccess: true,
+                    isPendingGPA: false,
+                    pendingModelChange: false,
+                    pendingImageDeIdentification: false,
+                    dbGaPID: 'phs001234'
+                }]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'study1' });
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload, GPAName: '' })
+            );
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(mockApplication)
+                .mockResolvedValueOnce(approvedFromDb);
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+
+            await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
+
+            expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
+            const pendingGPA = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0][12];
+            expect(pendingGPA).toEqual({
+                GPAName: DEFAULT_GPA_NAME,
+                isPendingGPA: false,
+            });
+        });
+
+        it('keeps provided GPA name for controlled access approval', async () => {
+            const mockQuestionnaire = {
+                program: { _id: 'program1' },
+                accessTypes: ['Controlled Access'],
+                study: { dbGaPPPHSNumber: 'phs001234' }
+            };
+            const mockApplication = {
+                _id: 'app1',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                programName: 'Program One',
+                questionnaireData: JSON.stringify(mockQuestionnaire)
+            };
+            const mockExistingProgram = { _id: 'program1', name: 'Program One' };
+
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload, GPAName: 'Actual GPA' })
+            );
+            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
+            app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
+            mockLogCollection.insert.mockResolvedValue();
+
+            await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
+
+            expect(app._saveApprovedStudies).toHaveBeenCalledWith(
+                expect.objectContaining({ GPAName: 'Actual GPA' }),
+                mockQuestionnaire,
+                undefined,
+                undefined,
+                false,
+                mockExistingProgram
+            );
+        });
     });
 
     describe("_saveApprovedStudies", () => {
@@ -1534,6 +1701,92 @@ describe('Application', () => {
 
             const args = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0];
             expect(args[2]).toBe('Short Name');
+        });
+
+        it.each([
+            [undefined],
+            [null],
+            [''],
+            ['   '],
+        ])('defaults blank controlled-access GPA name to Not Provided when saving approved study (GPAName: %p)', async (GPAName) => {
+            const aApplication = {
+                _id: 'app1',
+                studyName: 'Study One',
+                studyAbbreviation: 'STUDY1',
+                organization: { name: 'Org One' },
+                controlledAccess: true,
+                ORCID: '0000-0001',
+                PI: 'PI Name',
+                openAccess: false,
+                programName: 'Program One',
+                GPAName,
+            };
+            const questionnaire = {
+                study: { name: 'Study One Name', dbGaPPPHSNumber: 'phs001234' },
+            };
+            mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
+
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
+
+            const pendingGPA = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0][12];
+            expect(pendingGPA).toEqual({
+                GPAName: DEFAULT_GPA_NAME,
+                isPendingGPA: false,
+            });
+        });
+
+        it('passes provided GPA name unchanged for controlled-access approved study', async () => {
+            const aApplication = {
+                _id: 'app1',
+                studyName: 'Study One',
+                studyAbbreviation: 'STUDY1',
+                organization: { name: 'Org One' },
+                controlledAccess: true,
+                ORCID: '0000-0001',
+                PI: 'PI Name',
+                openAccess: false,
+                programName: 'Program One',
+                GPAName: '  Actual GPA  ',
+            };
+            const questionnaire = {
+                study: { name: 'Study One Name', dbGaPPPHSNumber: 'phs001234' },
+            };
+            mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
+
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
+
+            const pendingGPA = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0][12];
+            expect(pendingGPA).toEqual({
+                GPAName: 'Actual GPA',
+                isPendingGPA: false,
+            });
+        });
+
+        it('does not default GPA name for non-controlled-access approved study', async () => {
+            const aApplication = {
+                _id: 'app1',
+                studyName: 'Study One',
+                studyAbbreviation: 'STUDY1',
+                organization: { name: 'Org One' },
+                controlledAccess: false,
+                ORCID: '0000-0001',
+                PI: 'PI Name',
+                openAccess: true,
+                programName: 'Program One',
+                GPAName: '',
+            };
+            const questionnaire = {
+                study: { name: 'Study One Name', dbGaPPPHSNumber: 'phs001234' },
+            };
+            mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'approvedStudy1' });
+
+            await app._saveApprovedStudies(aApplication, questionnaire, false, undefined, false, null);
+
+            const pendingGPA = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0][12];
+            expect(pendingGPA).toEqual({
+                GPAName: '',
+                isPendingGPA: false,
+            });
         });
     });
 
