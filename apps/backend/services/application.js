@@ -931,7 +931,7 @@ class Application {
             .notEmpty()
             .state([IN_REVIEW, SUBMITTED]);
         // auto upgrade version
-        application.version = await this._getApplicationVersionByStatus(application.status);
+        application.version = await this._getApplicationVersionByStatus(application.status, application.version);
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, INQUIRED, document.comment);
         const updated = await this.applicationDAO.update({
             _id: application._id,
