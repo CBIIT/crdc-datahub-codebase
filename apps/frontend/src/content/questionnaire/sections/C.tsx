@@ -318,7 +318,7 @@ const FormSectionC: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         />
         <TextInput
           id="section-c-other-species-of-subjects"
-          label="Other Specie(s) involved"
+          label="Other Species involved"
           tooltipText='Enter additional Species, separated by pipes ("|").'
           labelStartAdornment={
             <LabelCheckbox
@@ -327,7 +327,7 @@ const FormSectionC: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
               checked={otherSpeciesEnabled}
               onChange={handleOtherSpeciesCheckboxChange}
               readOnly={readOnlyInputs}
-              inputProps={{ "aria-label": "Toggle Other Specie(s) involved" }}
+              inputProps={{ "aria-label": "Toggle Other Species involved" }}
             />
           }
           name="otherSpeciesOfSubjects"
