@@ -1814,4 +1814,62 @@ describe("DataSubmissionListFilters Component", () => {
       })
     );
   });
+
+  it("does not overwrite URL params set by other filters when the Submission Name debounce fires", async () => {
+    vi.useFakeTimers();
+
+    const mockOnChange = vi.fn();
+
+    const { getByTestId, getByRole } = render(
+      <TestParent userRole="Admin">
+        <>
+          <DataSubmissionListFilters
+            columns={columns}
+            organizations={organizations}
+            submitterNames={submitterNames}
+            dataCommons={dataCommons}
+            dataCommonsDisplayNames={dataCommons}
+            columnVisibilityModel={columnVisibilityModel}
+            onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+            onChange={mockOnChange}
+          />
+          <LocationSearchDisplay />
+        </>
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("submission-name-input")).toBeInTheDocument();
+    });
+
+    mockOnChange.mockClear();
+    userEvent.type(getByTestId("submission-name-input"), "Testing");
+
+    // Before the debounce fires, change the organization dropdown
+    const organizationSelect = within(getByTestId("organization-select")).getByRole("button");
+    userEvent.click(organizationSelect);
+
+    const organizationList = within(getByRole("listbox", { hidden: true }));
+
+    await waitFor(() => {
+      expect(organizationList.getByTestId("organization-option-Org1")).toBeInTheDocument();
+    });
+
+    userEvent.click(organizationList.getByTestId("organization-option-Org1"));
+
+    await waitFor(() => {
+      const search = getByTestId("location-search").textContent || "";
+      expect(getSearchParam(search, "program")).toBe("Org1");
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      const search = getByTestId("location-search").textContent || "";
+      expect(getSearchParam(search, "program")).toBe("Org1");
+      expect(getSearchParam(search, "name")).toBe("Testing");
+    });
+  });
 });

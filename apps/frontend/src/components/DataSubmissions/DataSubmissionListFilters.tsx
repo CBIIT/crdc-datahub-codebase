@@ -163,9 +163,13 @@ const DataSubmissionListFilters = ({
   const [selectMinWidth, setSelectMinWidth] = useState<number | null>(null);
   const [isStatusesMenuOpen, setIsStatusesMenuOpen] = useState<boolean>(false);
 
+  const searchParamsRef = useRef<URLSearchParams>(searchParams);
+  searchParamsRef.current = searchParams;
+
   const debounceAfter3CharsInputs: FilterFormKey[] = ["name", "dbGaPID"];
 
-  const updateTextSearchParams = (form: FilterForm, currentSearchParams: URLSearchParams) => {
+  const updateTextSearchParams = (form: FilterForm) => {
+    const currentSearchParams = searchParamsRef.current;
     const newSearchParams = new URLSearchParams(currentSearchParams);
 
     if (form.name?.length >= 3) {
@@ -186,9 +190,9 @@ const DataSubmissionListFilters = ({
   };
 
   const debouncedOnChangeRef = useRef(
-    debounce((form: FilterForm, currentSearchParams: URLSearchParams) => {
+    debounce((form: FilterForm) => {
       handleFormChange(form);
-      updateTextSearchParams(form, currentSearchParams);
+      updateTextSearchParams(form);
     }, 500)
   ).current;
 
@@ -308,7 +312,7 @@ const DataSubmissionListFilters = ({
       const isDebounceField = debounceAfter3CharsInputs.includes(name as FilterFormKey);
       // Debounce if value has at least 3 characters
       if (isDebounceField && formValue[name]?.length >= 3) {
-        debouncedOnChangeRef(formValue, searchParams);
+        debouncedOnChangeRef(formValue);
         return;
       }
       // Do nothing if values has between 0 and 3 (exclusive) characters
@@ -320,7 +324,7 @@ const DataSubmissionListFilters = ({
       if (isDebounceField && formValue[name]?.length === 0) {
         debouncedOnChangeRef.cancel();
         handleFormChange(formValue);
-        updateTextSearchParams(formValue, searchParams);
+        updateTextSearchParams(formValue);
         return;
       }
 
@@ -332,7 +336,7 @@ const DataSubmissionListFilters = ({
       debouncedOnChangeRef.cancel();
       subscription.unsubscribe();
     };
-  }, [watch, debouncedOnChangeRef, searchParams]);
+  }, [watch, debouncedOnChangeRef]);
 
   const handleFormChange = (form: FilterForm) => {
     if (!onChange || !form) {
