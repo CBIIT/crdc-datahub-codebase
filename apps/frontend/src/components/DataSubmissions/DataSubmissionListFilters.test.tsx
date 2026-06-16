@@ -1,13 +1,13 @@
 import userEvent from "@testing-library/user-event";
 import React, { FC, useMemo } from "react";
-import { MemoryRouterProps } from "react-router-dom";
+import { MemoryRouterProps, useLocation } from "react-router-dom";
 import { axe } from "vitest-axe";
 
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 
 import { ListSubmissionsResp } from "../../graphql";
-import { TestRouter, render, waitFor, within } from "../../test-utils";
+import { TestRouter, act, render, waitFor, within } from "../../test-utils";
 import {
   Context as AuthContext,
   ContextState as AuthContextState,
@@ -21,6 +21,32 @@ import DataSubmissionListFilters from "./DataSubmissionListFilters";
 vi.mock("../Contexts/OrganizationListContext", () => ({
   useOrganizationListContext: vi.fn(),
 }));
+
+const LocationSearchDisplay: FC = () => {
+  const { search } = useLocation();
+
+  return <div data-testid="location-search">{search}</div>;
+};
+
+const getSearchParam = (search: string, key: string) => new URLSearchParams(search).get(key);
+
+const selectDataCommonsOption = async (
+  getByTestId: ReturnType<typeof render>["getByTestId"],
+  getByRole: ReturnType<typeof render>["getByRole"],
+  option: string
+) => {
+  const dataCommonsSelect = within(getByTestId("data-commons-select")).getByRole("button");
+
+  userEvent.click(dataCommonsSelect);
+
+  const dataCommonsList = within(getByRole("listbox", { hidden: true }));
+
+  await waitFor(() => {
+    expect(dataCommonsList.getByTestId(`data-commons-option-${option}`)).toBeInTheDocument();
+  });
+
+  userEvent.click(dataCommonsList.getByTestId(`data-commons-option-${option}`));
+};
 
 type ParentProps = {
   initialEntries?: MemoryRouterProps["initialEntries"];
@@ -1310,5 +1336,482 @@ describe("DataSubmissionListFilters Component", () => {
       const statusSelect = within(getByTestId("status-select")).getByRole("button");
       expect(statusSelect).toHaveTextContent("All");
     });
+  });
+
+  it("keeps the selected Data Commons value and URL param after Status is changed to All", async () => {
+    const mockOnChange = vi.fn();
+
+    const { getByTestId, getByRole } = render(
+      <TestParent userRole="Admin">
+        <>
+          <DataSubmissionListFilters
+            columns={columns}
+            organizations={organizations}
+            submitterNames={submitterNames}
+            dataCommons={dataCommons}
+            dataCommonsDisplayNames={dataCommons}
+            columnVisibilityModel={columnVisibilityModel}
+            onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+            onChange={mockOnChange}
+          />
+          <LocationSearchDisplay />
+        </>
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("data-commons-select-input")).toHaveValue("All");
+    });
+
+    mockOnChange.mockClear();
+
+    await selectDataCommonsOption(getByTestId, getByRole, "DataCommon1");
+
+    await waitFor(() => {
+      expect(getByTestId("data-commons-select-input")).toHaveValue("DataCommon1");
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dataCommons: "DataCommon1",
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const search = getByTestId("location-search").textContent || "";
+
+      expect(getSearchParam(search, "dataCommons")).toBe("DataCommon1");
+    });
+
+    mockOnChange.mockClear();
+
+    userEvent.click(getByTestId("status-clear-button"));
+
+    await waitFor(() => {
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: [],
+          dataCommons: "DataCommon1",
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const search = getByTestId("location-search").textContent || "";
+
+      expect(getSearchParam(search, "dataCommons")).toBe("DataCommon1");
+      expect(search).toContain("status=");
+    });
+
+    expect(getByTestId("data-commons-select-input")).toHaveValue("DataCommon1");
+  });
+
+  it("allows Data Commons to change after Status is set to All without reverting to the previous value", async () => {
+    const mockOnChange = vi.fn();
+
+    const { getByTestId, getByRole } = render(
+      <TestParent userRole="Admin">
+        <>
+          <DataSubmissionListFilters
+            columns={columns}
+            organizations={organizations}
+            submitterNames={submitterNames}
+            dataCommons={dataCommons}
+            dataCommonsDisplayNames={dataCommons}
+            columnVisibilityModel={columnVisibilityModel}
+            onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+            onChange={mockOnChange}
+          />
+          <LocationSearchDisplay />
+        </>
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("data-commons-select-input")).toHaveValue("All");
+    });
+
+    await selectDataCommonsOption(getByTestId, getByRole, "DataCommon1");
+
+    await waitFor(() => {
+      expect(getByTestId("data-commons-select-input")).toHaveValue("DataCommon1");
+    });
+
+    userEvent.click(getByTestId("status-clear-button"));
+
+    await waitFor(() => {
+      expect(getByTestId("status-select-input")).toHaveValue("");
+    });
+
+    mockOnChange.mockClear();
+
+    await selectDataCommonsOption(getByTestId, getByRole, "DataCommon2");
+
+    await waitFor(() => {
+      expect(getByTestId("data-commons-select-input")).toHaveValue("DataCommon2");
+    });
+
+    await waitFor(() => {
+      const search = getByTestId("location-search").textContent || "";
+
+      expect(getSearchParam(search, "dataCommons")).toBe("DataCommon2");
+      expect(search).not.toContain("dataCommons=DataCommon1");
+    });
+
+    expect(mockOnChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: [],
+        dataCommons: "DataCommon2",
+      })
+    );
+  });
+
+  it("does not remove the Data Commons URL param when another dropdown filter changes after Data Commons", async () => {
+    const mockOnChange = vi.fn();
+
+    const { getByTestId, getByRole } = render(
+      <TestParent userRole="Admin">
+        <>
+          <DataSubmissionListFilters
+            columns={columns}
+            organizations={organizations}
+            submitterNames={submitterNames}
+            dataCommons={dataCommons}
+            dataCommonsDisplayNames={dataCommons}
+            columnVisibilityModel={columnVisibilityModel}
+            onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+            onChange={mockOnChange}
+          />
+          <LocationSearchDisplay />
+        </>
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("data-commons-select-input")).toHaveValue("All");
+    });
+
+    await selectDataCommonsOption(getByTestId, getByRole, "DataCommon1");
+
+    await waitFor(() => {
+      const search = getByTestId("location-search").textContent || "";
+
+      expect(getSearchParam(search, "dataCommons")).toBe("DataCommon1");
+    });
+
+    mockOnChange.mockClear();
+
+    const organizationSelect = within(getByTestId("organization-select")).getByRole("button");
+
+    userEvent.click(organizationSelect);
+
+    const organizationList = within(getByRole("listbox", { hidden: true }));
+
+    await waitFor(() => {
+      expect(organizationList.getByTestId("organization-option-Org1")).toBeInTheDocument();
+    });
+
+    userEvent.click(organizationList.getByTestId("organization-option-Org1"));
+
+    await waitFor(() => {
+      const search = getByTestId("location-search").textContent || "";
+
+      expect(getSearchParam(search, "dataCommons")).toBe("DataCommon1");
+      expect(getSearchParam(search, "program")).toBe("Org1");
+    });
+
+    expect(mockOnChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization: "Org1",
+        dataCommons: "DataCommon1",
+      })
+    );
+  });
+
+  it("does not call onChange or update URL search params before the Submission Name debounce finishes", async () => {
+    vi.useFakeTimers();
+
+    const mockOnChange = vi.fn();
+
+    const { getByTestId, queryByTestId } = render(
+      <TestParent userRole="Admin">
+        <>
+          <DataSubmissionListFilters
+            columns={columns}
+            organizations={organizations}
+            submitterNames={submitterNames}
+            dataCommons={dataCommons}
+            dataCommonsDisplayNames={dataCommons}
+            columnVisibilityModel={columnVisibilityModel}
+            onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+            onChange={mockOnChange}
+          />
+          <LocationSearchDisplay />
+        </>
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("submission-name-input")).toBeInTheDocument();
+    });
+
+    mockOnChange.mockClear();
+
+    userEvent.type(getByTestId("submission-name-input"), "Testing");
+
+    expect(mockOnChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Testing",
+      })
+    );
+
+    expect(getSearchParam(queryByTestId("location-search")?.textContent || "", "name")).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(499);
+    });
+
+    expect(mockOnChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Testing",
+      })
+    );
+
+    expect(getSearchParam(queryByTestId("location-search")?.textContent || "", "name")).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+
+    await waitFor(() => {
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Testing",
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(getSearchParam(getByTestId("location-search").textContent || "", "name")).toBe(
+        "Testing"
+      );
+    });
+  });
+
+  it("does not call onChange or update URL search params before the Study debounce finishes", async () => {
+    vi.useFakeTimers();
+
+    const mockOnChange = vi.fn();
+
+    const { getByTestId, queryByTestId } = render(
+      <TestParent userRole="Admin">
+        <>
+          <DataSubmissionListFilters
+            columns={columns}
+            organizations={organizations}
+            submitterNames={submitterNames}
+            dataCommons={dataCommons}
+            dataCommonsDisplayNames={dataCommons}
+            columnVisibilityModel={columnVisibilityModel}
+            onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+            onChange={mockOnChange}
+          />
+          <LocationSearchDisplay />
+        </>
+      </TestParent>
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("dbGaPID-input")).toBeInTheDocument();
+    });
+
+    mockOnChange.mockClear();
+
+    userEvent.type(getByTestId("dbGaPID-input"), "Study123");
+
+    expect(mockOnChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        dbGaPID: "Study123",
+      })
+    );
+
+    expect(
+      getSearchParam(queryByTestId("location-search")?.textContent || "", "dbGaPID")
+    ).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(499);
+    });
+
+    expect(mockOnChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        dbGaPID: "Study123",
+      })
+    );
+
+    expect(
+      getSearchParam(queryByTestId("location-search")?.textContent || "", "dbGaPID")
+    ).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+
+    await waitFor(() => {
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dbGaPID: "Study123",
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(getSearchParam(getByTestId("location-search").textContent || "", "dbGaPID")).toBe(
+        "Study123"
+      );
+    });
+  });
+
+  it("does not restore a cleared Submission Name value after it has already been applied", async () => {
+    vi.useFakeTimers();
+
+    const mockOnChange = vi.fn();
+
+    const { getByTestId, queryByTestId } = render(
+      <TestParent userRole="Admin">
+        <>
+          <DataSubmissionListFilters
+            columns={columns}
+            organizations={organizations}
+            submitterNames={submitterNames}
+            dataCommons={dataCommons}
+            dataCommonsDisplayNames={dataCommons}
+            columnVisibilityModel={columnVisibilityModel}
+            onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+            onChange={mockOnChange}
+          />
+          <LocationSearchDisplay />
+        </>
+      </TestParent>
+    );
+
+    const nameInput = getByTestId("submission-name-input");
+
+    userEvent.type(nameInput, "Testing");
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Testing",
+        })
+      );
+      expect(getSearchParam(getByTestId("location-search").textContent || "", "name")).toBe(
+        "Testing"
+      );
+    });
+
+    mockOnChange.mockClear();
+
+    userEvent.clear(nameInput);
+
+    await waitFor(() => {
+      expect(nameInput).toHaveValue("");
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "",
+        })
+      );
+    });
+
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
+
+    await waitFor(() => {
+      expect(nameInput).toHaveValue("");
+      expect(getSearchParam(queryByTestId("location-search").textContent || "", "name")).toBeNull();
+    });
+
+    expect(mockOnChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Testing",
+      })
+    );
+  });
+
+  it("does not restore a cleared Study value after it has already been applied", async () => {
+    vi.useFakeTimers();
+
+    const mockOnChange = vi.fn();
+
+    const { getByTestId, queryByTestId } = render(
+      <TestParent userRole="Admin">
+        <>
+          <DataSubmissionListFilters
+            columns={columns}
+            organizations={organizations}
+            submitterNames={submitterNames}
+            dataCommons={dataCommons}
+            dataCommonsDisplayNames={dataCommons}
+            columnVisibilityModel={columnVisibilityModel}
+            onColumnVisibilityModelChange={mockOnColumnVisibilityModelChange}
+            onChange={mockOnChange}
+          />
+          <LocationSearchDisplay />
+        </>
+      </TestParent>
+    );
+
+    const studyInput = getByTestId("dbGaPID-input");
+
+    userEvent.type(studyInput, "Study123");
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dbGaPID: "Study123",
+        })
+      );
+      expect(getSearchParam(getByTestId("location-search").textContent || "", "dbGaPID")).toBe(
+        "Study123"
+      );
+    });
+
+    mockOnChange.mockClear();
+
+    userEvent.clear(studyInput);
+
+    await waitFor(() => {
+      expect(studyInput).toHaveValue("");
+      expect(mockOnChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dbGaPID: "",
+        })
+      );
+    });
+
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
+
+    await waitFor(() => {
+      expect(studyInput).toHaveValue("");
+      expect(
+        getSearchParam(queryByTestId("location-search").textContent || "", "dbGaPID")
+      ).toBeNull();
+    });
+
+    expect(mockOnChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        dbGaPID: "Study123",
+      })
+    );
   });
 });
