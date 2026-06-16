@@ -36,7 +36,7 @@ import { SectionCtxBase } from "./Excel/SectionBase";
 /**
  * An internal template version identifier.
  */
-export const TEMPLATE_VERSION = "1.6";
+export const TEMPLATE_VERSION = "1.7";
 
 /**
  * The names of the HIDDEN sheets used in the Excel workbook.
@@ -91,6 +91,14 @@ export class QuestionnaireExcelMiddleware {
   private dependencies: MiddlewareDependencies;
 
   /**
+   * The template version of the Excel file.
+   *
+   * On serialization, this is set to the current TEMPLATE_VERSION.
+   * On parsing, this is read from the Metadata sheet.
+   */
+  private templateVersion: string | null;
+
+  /**
    * Creates an instance of the QuestionnaireExcelMiddleware.
    *
    * @param data The QuestionnaireData object, if applicable, to be exported.
@@ -100,6 +108,7 @@ export class QuestionnaireExcelMiddleware {
     this.workbook = new ExcelJS.Workbook();
     this.data = data ? cloneDeep(data) : null;
     this.dependencies = dependencies;
+    this.templateVersion = TEMPLATE_VERSION;
   }
 
   /**
@@ -380,6 +389,8 @@ export class QuestionnaireExcelMiddleware {
       });
     }
 
+    this.templateVersion = (newData?.get("templateVersion")?.[0] as string) || null;
+
     return true;
   }
 
@@ -482,6 +493,26 @@ export class QuestionnaireExcelMiddleware {
         values.map((value) => toString(value).trim())
       );
     });
+
+    // MIGRATION: Prior to v1.7 the "Other Species of Subjects" was labeled "Other Specie(s) involved".
+    const oldSpeciesHeader = "Other Specie(s) involved";
+    const newSpeciesKey = "otherSpeciesOfSubjects";
+    if (
+      parseFloat(this.templateVersion) < 1.7 &&
+      data.has(oldSpeciesHeader) &&
+      !newData.has(newSpeciesKey)
+    ) {
+      const values = data.get(oldSpeciesHeader) || [];
+      newData.set(
+        newSpeciesKey,
+        values.map((value) => toString(value).trim())
+      );
+
+      Logger.info(
+        "QuestionnaireExcelMiddleware: Detected old species header. Migrated parsed data.",
+        { templateVersion: this.templateVersion, fieldValue: values }
+      );
+    }
 
     const newMapping = SectionC.mapValues(newData, {
       cancerTypesSheet: this.workbook.getWorksheet(HIDDEN_SHEET_NAMES.cancerTypes),
