@@ -163,12 +163,37 @@ const DataSubmissionListFilters = ({
   const [selectMinWidth, setSelectMinWidth] = useState<number | null>(null);
   const [isStatusesMenuOpen, setIsStatusesMenuOpen] = useState<boolean>(false);
 
+  const searchParamsRef = useRef<URLSearchParams>(searchParams);
+  searchParamsRef.current = searchParams;
+
   const debounceAfter3CharsInputs: FilterFormKey[] = ["name", "dbGaPID"];
+
+  const updateTextSearchParams = (form: FilterForm) => {
+    const currentSearchParams = searchParamsRef.current;
+    const newSearchParams = new URLSearchParams(currentSearchParams);
+
+    if (form.name?.length >= 3) {
+      newSearchParams.set("name", form.name);
+    } else {
+      newSearchParams.delete("name");
+    }
+
+    if (form.dbGaPID?.length >= 3) {
+      newSearchParams.set("dbGaPID", form.dbGaPID);
+    } else {
+      newSearchParams.delete("dbGaPID");
+    }
+
+    if (newSearchParams.toString() !== currentSearchParams.toString()) {
+      setSearchParams(newSearchParams);
+    }
+  };
+
   const debouncedOnChangeRef = useRef(
-    debounce((form: FilterForm) => handleFormChange(form), 500)
-  ).current;
-  const debouncedDropdownRef = useRef(
-    debounce((form: FilterForm) => handleFormChange(form), 0)
+    debounce((form: FilterForm) => {
+      handleFormChange(form);
+      updateTextSearchParams(form);
+    }, 500)
   ).current;
 
   useEffect(() => {
@@ -235,7 +260,7 @@ const DataSubmissionListFilters = ({
     if (Object.values(touchedFilters).every((filter) => !filter)) {
       handleFormChange(getValues());
     }
-  }, [organizations, submitterNames, dataCommons, searchParams?.toString()]);
+  }, [searchParams?.toString()]);
 
   useEffect(() => {
     if (Object.values(touchedFilters).every((filter) => !filter)) {
@@ -270,35 +295,16 @@ const DataSubmissionListFilters = ({
       newSearchParams.delete("submitterName");
     }
 
-    if (nameFilter?.length >= 3) {
-      newSearchParams.set("name", nameFilter);
-    } else {
-      newSearchParams.delete("name");
-    }
-    if (dbGaPIDFilter?.length >= 3) {
-      newSearchParams.set("dbGaPID", dbGaPIDFilter);
-    } else {
-      newSearchParams.delete("dbGaPID");
-    }
-
     if (newSearchParams?.toString() !== searchParams?.toString()) {
       setSearchParams(newSearchParams);
     }
-  }, [
-    orgFilter,
-    statusFilter,
-    dataCommonsFilter,
-    nameFilter,
-    dbGaPIDFilter,
-    submitterNameFilter,
-    touchedFilters,
-  ]);
+  }, [orgFilter, statusFilter, dataCommonsFilter, submitterNameFilter, touchedFilters]);
 
   useEffect(() => {
     const subscription = watch((formValue: FilterForm, { name }) => {
       const isDebouncedDropdown = ["submitterName", "dataCommons", "organization"].includes(name);
       if (isDebouncedDropdown) {
-        debouncedDropdownRef(formValue);
+        handleFormChange(formValue);
         return;
       }
 
@@ -318,6 +324,7 @@ const DataSubmissionListFilters = ({
       if (isDebounceField && formValue[name]?.length === 0) {
         debouncedOnChangeRef.cancel();
         handleFormChange(formValue);
+        updateTextSearchParams(formValue);
         return;
       }
 
@@ -346,7 +353,13 @@ const DataSubmissionListFilters = ({
   };
 
   const handleFilterChange = (field: FilterFormKey) => {
-    setTouchedFilters((prev) => ({ ...prev, [field]: true }));
+    setTouchedFilters((prev) => {
+      if (prev[field]) {
+        return prev;
+      }
+
+      return { ...prev, [field]: true };
+    });
   };
 
   const handleResetFilters = () => {
