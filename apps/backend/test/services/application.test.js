@@ -1878,6 +1878,21 @@ describe('Application', () => {
                 {}
             );
         });
+
+        it('preserves application version 3.0 when inquiring', async () => {
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+            app._getApplicationVersionByStatus = Application.prototype._getApplicationVersionByStatus.bind(app);
+            const application = makeApplication({ status: IN_REVIEW, version: '3.0' });
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(application)
+                .mockResolvedValueOnce({ ...application, status: INQUIRED, version: '3.0' });
+
+            await app.inquireApplication({ _id: 'app1', comment: 'Please clarify' }, context);
+
+            expect(app.applicationDAO.update).toHaveBeenCalledWith(
+                expect.objectContaining({ version: '3.0' })
+            );
+        });
     });
 
     describe('submitApplication', () => {
