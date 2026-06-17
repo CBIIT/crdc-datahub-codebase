@@ -1,4 +1,4 @@
-const { Organization } = require('../../crdc-datahub-database-drivers/services/organization');
+const { Organization } = require('../../services/organization-service');
 const { ORGANIZATION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
 const {ERROR : SUBMODULE_ERROR}  = require('../../crdc-datahub-database-drivers/constants/error-constants');
 const ERROR = require('../../constants/error-constants');
