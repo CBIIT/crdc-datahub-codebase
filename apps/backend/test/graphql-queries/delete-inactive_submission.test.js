@@ -5,7 +5,7 @@ const {EmailService} = require("../../services/email");
 const {NotifyUser} = require("../../services/notify-user");
 const {User} = require("../../crdc-datahub-database-drivers/services/user");
 const {S3Service} = require("../../services/s3-service");
-const {Organization} = require("../../crdc-datahub-database-drivers/services/organization");
+const {Organization} = require("../../services/organization-service");
 
 // Mock Prisma
 jest.mock("../../prisma", () => {

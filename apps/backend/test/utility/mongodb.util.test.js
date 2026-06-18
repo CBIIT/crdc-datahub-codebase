@@ -1,4 +1,4 @@
-const {DIRECTION} = require("../../crdc-datahub-database-drivers/constants/monogodb-constants");
+const {DIRECTION} = require("../../crdc-datahub-database-drivers/constants/mongodb-constants");
 const {getSortDirection} = require("../../crdc-datahub-database-drivers/utility/mongodb-utility");
 describe('Mongo DB Utility Test', () => {
     test('mongo db search direction test, ()', () => {
