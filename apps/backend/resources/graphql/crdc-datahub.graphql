@@ -84,8 +84,9 @@ type Application {
     GPAName: String
     # Revision chain for approved-SRF reopen (CRDCDH-3970). sequenceNumber increments per reopen; nextRevisionId links an approved revision to its successor.
     sequenceNumber: Int! # 1-based revision index; 1 for a new SRF or first approved revision
-    nextRevisionId: ID # When set on an Approved SRF, points to the reopened successor; null means this is the latest approved revision eligible for Reopen
-    canBeReopened: Boolean! # true when Approved and no nextRevisionId (latest approved revision eligible for reopen)
+    nextRevisionId: ID # When set on an Approved SRF, points to the reopened successor revision
+    canBeReopened: Boolean! # true when Approved and the immediate successor (if linked) is absent or terminal
+    canBeRestored: Boolean! # true when restoreApplication would succeed (terminal status, valid history, no blocking newer revision)
 }
 
 type NewInstitution {
