@@ -245,7 +245,9 @@ describe("Implementation Requirements", () => {
     "Rejected",
   ])("should not render the button when status is '%s'", async (status) => {
     const { queryByTestId } = render(
-      <Button application={createApplication({ status, nextRevisionId: null, canBeReopened: false })} />,
+      <Button
+        application={createApplication({ status, nextRevisionId: null, canBeReopened: false })}
+      />,
       {
         wrapper: ({ children }) => (
           <TestParent
@@ -265,7 +267,9 @@ describe("Implementation Requirements", () => {
 
   it("should not render the button when application has a next revision", async () => {
     const { queryByTestId } = render(
-      <Button application={createApplication({ nextRevisionId: "next-revision-1", canBeReopened: false })} />,
+      <Button
+        application={createApplication({ nextRevisionId: "next-revision-1", canBeReopened: false })}
+      />,
       {
         wrapper: ({ children }) => (
           <TestParent
