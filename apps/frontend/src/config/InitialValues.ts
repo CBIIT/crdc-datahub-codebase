@@ -23,6 +23,7 @@ export const InitialApplication: Omit<Application, "questionnaireData"> = {
   sequenceNumber: 1,
   nextRevisionId: null,
   canBeReopened: false,
+  canBeRestored: false,
 };
 
 export const InitialQuestionnaire: QuestionnaireData = {

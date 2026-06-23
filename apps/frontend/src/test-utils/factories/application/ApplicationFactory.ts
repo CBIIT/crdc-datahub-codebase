@@ -30,6 +30,7 @@ export const baseApplication: Application = {
   sequenceNumber: 1,
   nextRevisionId: null,
   canBeReopened: false,
+  canBeRestored: false,
 };
 
 /**

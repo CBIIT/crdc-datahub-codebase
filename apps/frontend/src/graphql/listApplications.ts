@@ -42,6 +42,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         version
         nextRevisionId
         canBeReopened
+        canBeRestored
       }
       programs
       studies

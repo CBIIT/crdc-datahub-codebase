@@ -61,6 +61,10 @@ type Application = {
    * Indicates whether the application is eligible for reopening.
    */
   canBeReopened: boolean;
+  /**
+   * Indicates whether the application is eligible for restoring the cancelled application.
+   */
+  canBeRestored: boolean;
 };
 
 type ApplicationStatus =
