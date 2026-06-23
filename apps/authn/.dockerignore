@@ -1,0 +1,12 @@
+# Folders
+.git
+.github
+coverage
+node_modules
+logs
+sessions
+yaml
+
+# Files
+.env
+*.env
