@@ -223,10 +223,10 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
     reset,
   } = useForm<CreateSubmissionInput>({
     defaultValues: {
-      dataCommons: "CDS",
+      dataCommons: "",
       studyID: "",
-      intention: "New/Update",
-      dataType: "Metadata and Data Files",
+      intention: "" as never,
+      dataType: "" as never,
       name: "",
     },
   });

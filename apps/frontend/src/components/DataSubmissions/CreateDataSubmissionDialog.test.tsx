@@ -211,6 +211,25 @@ describe("Basic Functionality", () => {
       expect(studySelectInput).toBeInTheDocument();
     });
 
+    const intentionInput = getByTestId("create-data-submission-dialog-submission-type-input");
+    const newUpdateOption = within(intentionInput).getByText("New/Update");
+    userEvent.click(newUpdateOption);
+
+    await waitFor(() => {
+      const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+      expect(dataTypeInput).toHaveTextContent("Metadata and Data Files");
+    });
+
+    const dataCommonsInput = getByTestId("create-data-submission-dialog-data-commons-input");
+    const dataCommonsSelectButton = within(dataCommonsInput).getByRole("button");
+    userEvent.click(dataCommonsSelectButton);
+
+    await waitFor(() => {
+      expect(dataCommonsSelectButton).toHaveAttribute("aria-expanded", "true");
+    });
+
+    userEvent.click(within(dataCommonsInput).getByText("GC"));
+
     // Simulate selecting study from dropdown
     const studySelectButton = within(
       getByTestId("create-data-submission-dialog-study-id-input")
@@ -408,6 +427,24 @@ describe("Basic Functionality", () => {
       expect(studySelectInput).toBeInTheDocument();
     });
 
+    const intentionInput = getByTestId("create-data-submission-dialog-submission-type-input");
+    userEvent.click(within(intentionInput).getByText("New/Update"));
+
+    await waitFor(() => {
+      const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+      expect(dataTypeInput).toHaveTextContent("Metadata and Data Files");
+    });
+
+    const dataCommonsInput = getByTestId("create-data-submission-dialog-data-commons-input");
+    const dataCommonsSelectButton = within(dataCommonsInput).getByRole("button");
+    userEvent.click(dataCommonsSelectButton);
+
+    await waitFor(() => {
+      expect(dataCommonsSelectButton).toHaveAttribute("aria-expanded", "true");
+    });
+
+    userEvent.click(within(dataCommonsInput).getByText("GC"));
+
     // Simulate selecting study from dropdown
     const studySelectButton = within(
       getByTestId("create-data-submission-dialog-study-id-input")
@@ -494,6 +531,24 @@ describe("Basic Functionality", () => {
       expect(studySelectInput).toBeInTheDocument();
     });
 
+    const intentionInput = getByTestId("create-data-submission-dialog-submission-type-input");
+    userEvent.click(within(intentionInput).getByText("New/Update"));
+
+    await waitFor(() => {
+      const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+      expect(dataTypeInput).toHaveTextContent("Metadata and Data Files");
+    });
+
+    const dataCommonsInput = getByTestId("create-data-submission-dialog-data-commons-input");
+    const dataCommonsSelectButton = within(dataCommonsInput).getByRole("button");
+    userEvent.click(dataCommonsSelectButton);
+
+    await waitFor(() => {
+      expect(dataCommonsSelectButton).toHaveAttribute("aria-expanded", "true");
+    });
+
+    userEvent.click(within(dataCommonsInput).getByText("GC"));
+
     // Simulate selecting study from dropdown
     const studySelectButton = within(
       getByTestId("create-data-submission-dialog-study-id-input")
@@ -560,6 +615,24 @@ describe("Basic Functionality", () => {
       const studySelectInput = getByTestId("create-data-submission-dialog-study-id-input");
       expect(studySelectInput).toBeInTheDocument();
     });
+
+    const intentionInput = getByTestId("create-data-submission-dialog-submission-type-input");
+    userEvent.click(within(intentionInput).getByText("New/Update"));
+
+    await waitFor(() => {
+      const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+      expect(dataTypeInput).toHaveTextContent("Metadata and Data Files");
+    });
+
+    const dataCommonsInput = getByTestId("create-data-submission-dialog-data-commons-input");
+    const dataCommonsSelectButton = within(dataCommonsInput).getByRole("button");
+    userEvent.click(dataCommonsSelectButton);
+
+    await waitFor(() => {
+      expect(dataCommonsSelectButton).toHaveAttribute("aria-expanded", "true");
+    });
+
+    userEvent.click(within(dataCommonsInput).getByText("GC"));
 
     // Simulate selecting study from dropdown
     const studySelectButton = within(
@@ -1514,5 +1587,55 @@ describe("Implementation Requirements", () => {
 
     expect(getByTestId("study-option-active-study")).toBeInTheDocument();
     expect(queryByTestId("study-option-inactive-study")).not.toBeInTheDocument();
+  });
+
+  it("should have all form fields blank by default", async () => {
+    const { getByTestId, getByRole } = render(
+      <TestParent
+        authCtxState={authCtxStateFactory.build({
+          user: userFactory.build({
+            role: "Submitter",
+            studies: baseStudies,
+            permissions: basePermissions,
+          }),
+        })}
+      >
+        <CreateDataSubmissionDialog onCreate={vi.fn()} />
+      </TestParent>
+    );
+
+    const openDialogButton = getByRole("button", { name: "Create a Data Submission" });
+    await waitFor(() => expect(openDialogButton).toBeEnabled());
+    userEvent.click(openDialogButton);
+
+    await waitFor(() => {
+      expect(getByTestId("create-submission-dialog")).toBeInTheDocument();
+    });
+
+    const intentionInput = getByTestId("create-data-submission-dialog-submission-type-input");
+    const radioButtons = intentionInput.querySelectorAll("input[type='radio']");
+    radioButtons.forEach((radio) => {
+      expect(radio).not.toBeChecked();
+    });
+
+    const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+    const dataTypeRadios = dataTypeInput.querySelectorAll("input[type='radio']");
+    dataTypeRadios.forEach((radio) => {
+      expect(radio).not.toBeChecked();
+    });
+
+    const dataCommonsButton = within(
+      getByTestId("create-data-submission-dialog-data-commons-input")
+    ).getByRole("button");
+    expect(dataCommonsButton.textContent).toBe("\u200B"); // zero-width space
+
+    const studyButton = within(
+      getByTestId("create-data-submission-dialog-study-id-input")
+    ).getByRole("button");
+    expect(studyButton.textContent).toBe("\u200B");
+
+    const nameWrapper = getByTestId("create-data-submission-dialog-submission-name-input");
+    const nameInput = within(nameWrapper).getByRole("textbox");
+    expect(nameInput).toHaveValue("");
   });
 });
