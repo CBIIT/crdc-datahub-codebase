@@ -8,10 +8,10 @@ RUN npm ci
 COPY --chown=node:node . .
 
 # GitHub Actions build pipeline only, comment out for local build.
-# COPY crdc-datahub-database-drivers/ ./crdc-datahub-database-drivers/
+COPY crdc-datahub-database-drivers/ ./crdc-datahub-database-drivers/
 
 # Local build only, comment out before committing.
-COPY --from=db-driver . ./crdc-datahub-database-drivers/
+# COPY --from=db-driver . ./crdc-datahub-database-drivers/
 # Local build command: docker build --build-context db-driver=../../lib/db-driver -t crdc-hub-backend .
 
 # Generate Prisma client, then remove devDependencies
