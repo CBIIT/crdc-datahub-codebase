@@ -11,7 +11,7 @@ import {
   LAST_APP,
   REJECT_APP,
   INQUIRE_APP,
-  REOPEN_APP,
+  RESUME_APP,
   SAVE_APP,
   SUBMIT_APP,
   ApproveAppResp,
@@ -19,7 +19,7 @@ import {
   LastAppResp,
   InquireAppResp,
   RejectAppResp,
-  ReopenAppResp,
+  ResumeAppResp,
   SaveAppResp,
   SubmitAppResp,
   ApproveAppInput,
@@ -163,7 +163,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     fetchPolicy: "no-cache",
   });
 
-  const [reopenApp] = useMutation<ReopenAppResp>(REOPEN_APP, {
+  const [resumeApp] = useMutation<ResumeAppResp>(RESUME_APP, {
     variables: { id },
     context: { clientName: "backend" },
     fetchPolicy: "no-cache",
@@ -403,16 +403,17 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   };
 
   // Reopen a form when it has been rejected and they submit an updated form
+  // TODO: RENAME depending on API
   const reopenForm = async () => {
     setState((prevState) => ({ ...prevState, status: Status.LOADING }));
 
-    const { data: res, errors } = await reopenApp({
+    const { data: res, errors } = await resumeApp({
       variables: {
         _id: state?.data._id,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 
-    if (errors || !res?.reopenApplication?._id) {
+    if (errors || !res?.resumeInquiredApplication?._id) {
       setState((prevState) => ({ ...prevState, status: Status.ERROR }));
       return false;
     }
@@ -421,11 +422,11 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       ...prevState,
       data: {
         ...prevState?.data,
-        ...res?.reopenApplication,
+        ...res?.resumeInquiredApplication,
       },
       status: Status.LOADED,
     }));
-    return res?.reopenApplication?._id;
+    return res?.resumeInquiredApplication?._id;
   };
 
   useEffect(() => {

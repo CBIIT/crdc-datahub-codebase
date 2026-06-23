@@ -1,8 +1,9 @@
+import { TypedDocumentNode } from "@apollo/client";
 import gql from "graphql-tag";
 
-export const mutation = gql`
-  mutation reopenApplication($id: ID!) {
-    reopenApplication(_id: $id) {
+export const mutation: TypedDocumentNode<Response, Input> = gql`
+  mutation resumeInquiredApplication($id: ID!) {
+    resumeInquiredApplication(_id: $id) {
       _id
       status
       createdAt
@@ -21,8 +22,12 @@ export const mutation = gql`
   }
 `;
 
+export type Input = {
+  id: string;
+};
+
 export type Response = {
-  reopenApplication: Pick<
+  resumeInquiredApplication: Pick<
     Application,
     "_id" | "status" | "createdAt" | "updatedAt" | "history" | "applicant"
   >;

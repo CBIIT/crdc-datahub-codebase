@@ -30,10 +30,13 @@ const StyledTooltip = styled(StyledFormTooltip)({
   },
 });
 
-const StyledIconButton = styled(IconButton)(({ disabled }) => ({
+const StyledIconButton = styled(IconButton)(({ disabled, theme }) => ({
   cursor: disabled ? "not-allowed" : "pointer",
   padding: "0px",
   minWidth: "unset",
+  ...(disabled && {
+    opacity: theme.palette.action.disabledOpacity,
+  }),
 }));
 
 const StyledFormBox = styled(Box)({
@@ -110,7 +113,10 @@ const ToggleApplicationButton = ({ application, onCancel, disabled, ...rest }: P
       ) : (
         <DeleteIcon data-testid="application-cancel-icon" />
       ),
-      tooltipText: `${isRestoreAction ? "Restore" : "Cancel"} submission request`,
+      tooltipText:
+        isRestoreAction && !application?.canBeRestored
+          ? "A newer version has been reopened. This submission request can no longer be restored."
+          : `${isRestoreAction ? "Restore" : "Cancel"} submission request`,
       dialogTitle: `${isRestoreAction ? "Restore" : "Cancel"} Submission Request`,
       dialogDescription: isRestoreAction
         ? `Are you sure you want to restore the previously ${
@@ -118,7 +124,7 @@ const ToggleApplicationButton = ({ application, onCancel, disabled, ...rest }: P
           } submission request for the study listed below?`
         : `Are you sure you want to cancel the submission request for the study listed below?`,
     }),
-    [isRestoreAction, isFromDeletedStatus]
+    [isRestoreAction, isFromDeletedStatus, application?.canBeRestored]
   );
 
   const comment = watch("comment");
@@ -185,10 +191,10 @@ const ToggleApplicationButton = ({ application, onCancel, disabled, ...rest }: P
         disableInteractive
         arrow
       >
-        <span>
+        <span data-testid="cancel-restore-application-button-wrapper">
           <StyledIconButton
             onClick={onClickIcon}
-            disabled={loading || disabled}
+            disabled={loading || disabled || (isRestoreAction && !application?.canBeRestored)}
             aria-label="Cancel/Restore icon"
             data-testid="cancel-restore-application-button"
             disableRipple
