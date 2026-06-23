@@ -162,25 +162,24 @@ class ApprovedStudiesService {
      * Case-insensitive match on studyName (Prisma Mongo `equals` + `mode: insensitive`).
      * @api
      * @param {string} studyName
-     * @returns {Promise<Object[]>} At most one approved study (same shape as legacy aggregate: array with `_id`)
+     * @returns {Promise<Object[]>} Empty array when no match; otherwise a one-element array with the first case-insensitive match and `_id`
      */
     async findByStudyName(studyName) {
         const trimmed = studyName?.trim();
         if (!trimmed) {
             return [];
         }
-        const row = await prisma.approvedStudy.findFirst({
-            where: {
-                studyName: {
-                    equals: trimmed,
-                    mode: "insensitive"
-                }
-            }
-        });
-        if (!row) {
-            return [];
-        }
-        return [{ ...row, _id: row.id }];
+        const rows = await this.approvedStudyDAO.findByStudyNames([trimmed]);
+        return rows.length > 0 ? [rows[0]] : [];
+    }
+
+    /**
+     * List approved studies matching any of the given study names (case-insensitive exact match).
+     * @param {string[]} studyNames
+     * @returns {Promise<Object[]>} Approved studies with `_id` alias
+     */
+    async findByStudyNames(studyNames) {
+        return this.approvedStudyDAO.findByStudyNames(studyNames);
     }
 
     /**

@@ -1,5 +1,4 @@
 const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED, REOPENED} = require("../constants/application-constants");
-const {APPLICATION_COLLECTION: APPLICATION} = require("../crdc-datahub-database-drivers/database-constants");
 const {v4} = require('uuid')
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {HistoryEventBuilder} = require("../domain/history-event");
@@ -16,12 +15,15 @@ const {EMAIL_NOTIFICATIONS} = require("../crdc-datahub-database-drivers/constant
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {UserScope} = require("../domain/user-scope");
 const {UtilityService} = require("../services/utility");
-const {nullOrMissingMongoCondition} = require("../dao/utils/orm-converter");
 const InstitutionDAO = require("../dao/institution");
 const ApplicationDAO = require("../dao/application");
 const {PrismaPagination} = require("../crdc-datahub-database-drivers/domain/prisma-pagination");
 const UserDAO = require("../dao/user");
 const {formatName} = require("../utility/format-name");
+const {
+    REOPEN_ASSIGNABLE_ROLES,
+    hasSubmissionRequestCreatePermission,
+} = require("../utility/reopen-owner-utility");
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_INSTITUTION_NAME_LENGTH = 100;
 // Valid orderBy values for listApplications (Prisma field names). "applicant.applicantName" is accepted and mapped to "applicant.fullName".
@@ -37,6 +39,8 @@ const VALID_ORDER_BY_LIST_APPLICATIONS = [
     "updatedAt",
     "submittedDate"
 ];
+const TERMINAL_REVISION_STATUSES = Object.freeze([REJECTED, CANCELED, DELETED]);
+
 class Application {
     _DELETE_REVIEW_COMMENT="This Submission Request has been deleted by the system due to inactivity.";
     _ALL_FILTER="All";
@@ -67,24 +71,297 @@ class Application {
         return this._normalizeApplicationStatus(application?.status) === this._normalizeApplicationStatus(APPROVED);
     }
 
-    _computeCanBeReopened(application) {
-        return this._isApprovedApplication(application) && !application?.nextRevisionId;
+    _isTerminalRevisionStatus(status) {
+        const normalized = this._normalizeApplicationStatus(status);
+        return TERMINAL_REVISION_STATUSES.some(
+            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === normalized
+        );
     }
 
-    _enrichApplicationResponse(application) {
+    /**
+     * Loads status for the immediate revision successor (minimal DB read).
+     * @param {string} revisionID Successor application _id
+     * @returns {Promise<{ status: string }|null>}
+     */
+    async _loadRevisionChainSuccessor(revisionID) {
+        try {
+            return await this.applicationDAO.findApplicationStatusById(revisionID);
+        } catch (err) {
+            console.error('Failed to load revision successor while checking active later revisions:', revisionID, err);
+            throw new Error(ERROR.INTERNAL_ERROR);
+        }
+    }
+
+    /**
+     * Returns true when the immediate revision successor has a non-terminal status.
+     * @param {object} application Application document that may have nextRevisionId
+     * @param {string|undefined|null} successorStatus Status of the direct successor, when known
+     * @returns {boolean}
+     */
+    _hasSuccessorWithNonTerminalStatus(application, successorStatus) {
+        const nextRevisionID = application?.nextRevisionId;
+        if (!nextRevisionID) {
+            return false;
+        }
+        if (successorStatus == null) {
+            return false;
+        }
+        return !this._isTerminalRevisionStatus(successorStatus);
+    }
+
+    /**
+     * Loads the successor and delegates to _hasSuccessorWithNonTerminalStatus.
+     * Valid chains are Approved → tail; only the direct successor is checked.
+     * @param {object} application Application document that may have nextRevisionId
+     * @returns {Promise<boolean>}
+     */
+    async _hasActiveLaterRevisions(application) {
+        const nextRevisionID = application?.nextRevisionId;
+        if (!nextRevisionID) {
+            return false;
+        }
+        const successor = await this._loadRevisionChainSuccessor(nextRevisionID);
+        return this._hasSuccessorWithNonTerminalStatus(application, successor?.status);
+    }
+
+    /**
+     * True when an Approved parent SRF links to this application via nextRevisionId.
+     * @param {object} application Candidate application
+     * @returns {Promise<boolean>}
+     */
+    async _hasApprovedParentSRF(application) {
+        const applicationID = application?._id ?? application?.id;
+        if (!applicationID) {
+            return false;
+        }
+        const parent = await this.applicationDAO.findApprovedParentSubmissionRequestByID(applicationID);
+        return Boolean(parent);
+    }
+
+    /**
+     * True when Approved and the immediate successor (if linked) is absent or terminal.
+     * Returns the existing boolean when already set on the application (response-only field).
+     * @param {object} application Application document
+     * @returns {Promise<boolean>}
+     */
+    async _computeCanBeReopened(application) {
+        if (typeof application?.canBeReopened === 'boolean') {
+            return application.canBeReopened;
+        }
+        if (!this._isApprovedApplication(application)) {
+            return false;
+        }
+        return !(await this._hasActiveLaterRevisions(application));
+    }
+
+    /**
+     * True when history supports restore (prior state exists and latest entry is Canceled/Deleted).
+     * @param {object} application Application document
+     * @returns {boolean}
+     */
+    _hasValidRestoreHistory(application) {
+        const history = application?.history;
+        if ((history?.length ?? 0) < 2) {
+            return false;
+        }
+        return [CANCELED, DELETED].includes(history.at(-1)?.status);
+    }
+
+    /**
+     * True when status is Canceled or Deleted and history supports restore.
+     * @param {object} application Application document
+     * @returns {boolean}
+     */
+    _isRestoreCandidate(application) {
+        const status = this._normalizeApplicationStatus(application?.status);
+        const isCanceledOrDeleted = [CANCELED, DELETED].some(
+            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === status
+        );
+        return isCanceledOrDeleted && this._hasValidRestoreHistory(application);
+    }
+
+    /**
+     * True when restoreApplication would succeed for this application.
+     * @param {object} application Application document
+     * @param {boolean} hasApprovedParent Whether an Approved parent links to this application
+     * @returns {boolean}
+     */
+    _computeCanBeRestoredFromParentCheck(application, hasApprovedParent) {
+        if (typeof application?.canBeRestored === 'boolean') {
+            return application.canBeRestored;
+        }
+        if (!this._isRestoreCandidate(application)) {
+            return false;
+        }
+        const sequenceNumber = application?.sequenceNumber ?? 1;
+        if (sequenceNumber === 1) {
+            return true;
+        }
+        return hasApprovedParent;
+    }
+
+    /**
+     * True when Approved and the immediate successor (if linked) is absent or terminal.
+     * @param {object} application Application document
+     * @param {Map<string, string>} successorStatusById Prefetched successor id → status map
+     * @returns {boolean}
+     */
+    _computeCanBeReopenedFromSuccessorStatus(application, successorStatusById) {
+        if (typeof application?.canBeReopened === 'boolean') {
+            return application.canBeReopened;
+        }
+        if (!this._isApprovedApplication(application)) {
+            return false;
+        }
+        const nextRevisionID = application?.nextRevisionId;
+        const successorStatus = nextRevisionID ? successorStatusById.get(nextRevisionID) : undefined;
+        return !this._hasSuccessorWithNonTerminalStatus(application, successorStatus);
+    }
+
+    /**
+     * True when restoreApplication would succeed for this application.
+     * Returns the existing boolean when already set on the application (response-only field).
+     * @param {object} application Application document
+     * @returns {Promise<boolean>}
+     */
+    async _computeCanBeRestored(application) {
+        if (typeof application?.canBeRestored === 'boolean') {
+            return application.canBeRestored;
+        }
+        if (!this._isRestoreCandidate(application)) {
+            return false;
+        }
+        if ((application?.sequenceNumber ?? 1) === 1) {
+            return true;
+        }
+        const hasApprovedParent = await this._hasApprovedParentSRF(application);
+        return this._computeCanBeRestoredFromParentCheck(application, hasApprovedParent);
+    }
+
+    /**
+     * Computes SRF state fields for an application API response (e.g. canBeReopened, canBeRestored).
+     * @param {object} application Application document
+     * @returns {Promise<object|null>}
+     */
+    async _computeSRFStateFields(application) {
         if (!application) {
             return application;
         }
-        application.canBeReopened = this._computeCanBeReopened(application);
+        const [canBeReopened, canBeRestored] = await Promise.all([
+            this._computeCanBeReopened(application),
+            this._computeCanBeRestored(application),
+        ]);
+        application.canBeReopened = canBeReopened;
+        application.canBeRestored = canBeRestored;
         return application;
     }
 
     /**
-     * Clear inbound nextRevisionId links when a successor reaches a terminal state
-     * (Rejected, Canceled, Deleted) or is hard-deleted.
-     * Errors are logged but not propagated so the primary state transition still succeeds;
-     * on failure the approved predecessor may remain blocked from reopen until manually fixed.
-     * @param {string} applicationId Terminal or removed successor application _id
+     * Builds conditional / pendingConditions from an approved study record.
+     * @param {object|undefined|null} study Approved study document
+     * @returns {{ conditional: boolean, pendingConditions: string[] }}
+     */
+    _resolveConditionalApprovalFields(study) {
+        if (!study) {
+            return { conditional: false, pendingConditions: [] };
+        }
+        const pendingConditions = [
+            ...(study?.controlledAccess && !study?.dbGaPID ? [ERROR.CONTROLLED_STUDY_NO_DBGAPID] : []),
+            ...(isTrue(study?.pendingModelChange) ? [ERROR.PENDING_APPROVED_STUDY] : []),
+            ...((isTrue(study?.controlledAccess) && isTrue(study?.isPendingGPA)) ? [ERROR.PENDING_APPROVED_STUDY_NO_GPA_INFO] : []),
+            ...(isTrue(study?.pendingImageDeIdentification) ? [ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION] : []),
+        ];
+        return {
+            conditional: pendingConditions.length > 0,
+            pendingConditions,
+        };
+    }
+
+    /**
+     * Batch-prefetches revision-chain and approved-study data for a list page, then sets
+     * canBeReopened / canBeRestored on each application in memory.
+     * @param {object[]} applications Paginated application rows from listApplications
+     * @returns {Promise<{ studyByLowerName: Map<string, object> }>}
+     */
+    async _batchComputeListApplicationFields(applications) {
+        const studyByLowerName = new Map();
+        if (!applications?.length) {
+            return { studyByLowerName };
+        }
+
+        const successorIds = [...new Set(
+            applications
+                .filter((app) => this._isApprovedApplication(app) && app.nextRevisionId)
+                .map((app) => app.nextRevisionId)
+        )];
+
+        const restoreCandidateIds = applications
+            .filter((app) => this._isRestoreCandidate(app) && (app?.sequenceNumber ?? 1) > 1)
+            .map((app) => app._id ?? app.id)
+            .filter(Boolean);
+
+        const studyNamesByLower = new Map();
+        for (const app of applications) {
+            if (!this._isApprovedApplication(app)) {
+                continue;
+            }
+            const name = app.studyName?.trim();
+            if (!name) {
+                continue;
+            }
+            const key = name.toLowerCase();
+            if (!studyNamesByLower.has(key)) {
+                studyNamesByLower.set(key, name);
+            }
+        }
+        const studyNames = [...studyNamesByLower.values()];
+
+        // Batch database queries and perform in parallel
+        const [successors, parents, studies] = await Promise.all([
+            successorIds.length
+                ? this.applicationDAO.findApplicationStatusesByIds(successorIds)
+                : [],
+            restoreCandidateIds.length
+                ? this.applicationDAO.findApprovedApplicationsByNextRevisionIds(restoreCandidateIds)
+                : [],
+            studyNames.length
+                ? this.approvedStudiesService.findByStudyNames(studyNames)
+                : [],
+        ]);
+
+        const successorStatusById = new Map(
+            (successors ?? []).map((successor) => [successor.id ?? successor._id, successor.status])
+        );
+        const approvedParentSuccessorIds = new Set(
+            (parents ?? []).map((parent) => parent.nextRevisionId).filter(Boolean)
+        );
+
+        for (const study of studies ?? []) {
+            const key = study.studyName?.trim().toLowerCase();
+            if (key && !studyByLowerName.has(key)) {
+                studyByLowerName.set(key, study);
+            }
+        }
+
+        for (const app of applications) {
+            if (typeof app?.canBeReopened !== 'boolean') {
+                app.canBeReopened = this._computeCanBeReopenedFromSuccessorStatus(app, successorStatusById);
+            }
+            if (typeof app?.canBeRestored !== 'boolean') {
+                const applicationID = app._id ?? app.id;
+                const hasApprovedParent = applicationID
+                    ? approvedParentSuccessorIds.has(applicationID)
+                    : false;
+                app.canBeRestored = this._computeCanBeRestoredFromParentCheck(app, hasApprovedParent);
+            }
+        }
+
+        return { studyByLowerName };
+    }
+
+    /**
+     * Clears inbound nextRevisionId links (revision chain link removal).
+     * @param {string} applicationId Successor application _id whose inbound links should be cleared
      */
     async _pruneRevisionChainOnTerminal(applicationId) {
         if (!applicationId) {
@@ -93,7 +370,7 @@ class Application {
         try {
             await this.applicationDAO.clearNextRevisionIdPointingTo(applicationId);
         } catch (err) {
-            console.error('Failed to prune revision chain for terminal application:', applicationId, err);
+            console.error('Failed to clear revision chain link for successor application:', applicationId, err);
         }
     }
 
@@ -142,17 +419,7 @@ class Application {
         if (!studyArr || studyArr.length < 1) {
             return { conditional: false, pendingConditions: [] };
         }
-        const study = studyArr[0];
-        const pendingConditions = [
-            ...(study?.controlledAccess && !study?.dbGaPID ? [ERROR.CONTROLLED_STUDY_NO_DBGAPID] : []),
-            ...(isTrue(study?.pendingModelChange) ? [ERROR.PENDING_APPROVED_STUDY] : []),
-            ...((isTrue(study?.controlledAccess) && isTrue(study?.isPendingGPA)) ? [ERROR.PENDING_APPROVED_STUDY_NO_GPA_INFO] : []),
-            ...(isTrue(study?.pendingImageDeIdentification) ? [ERROR.PENDING_IMAGE_DEIDENTIFICATION_CONDITION] : []),
-        ];
-        return {
-            conditional: pendingConditions.length > 0,
-            pendingConditions,
-        };
+        return this._resolveConditionalApprovalFields(studyArr[0]);
     }
 
     async _checkConditionalApproval(application) {
@@ -161,7 +428,13 @@ class Application {
         application.pendingConditions = pendingConditions;
     }
 
-    _hydrateApplicationRecord(record, ownerUser) {
+    /**
+     * Reformats a DB record into an application API response shape and computes response fields.
+     * @param {object} record Application document from the database
+     * @param {object} [ownerUser] Optional owner user for applicant fields
+     * @returns {Promise<object|null>}
+     */
+    async _reformatRecordForApplicationResponse(record, ownerUser) {
         if (!record) {
             return record;
         }
@@ -182,29 +455,16 @@ class Application {
         if (hydrated.id && !hydrated._id) {
             hydrated._id = hydrated.id;
         }
-        return this._enrichApplicationResponse(hydrated);
+        return await this._computeSRFStateFields(hydrated);
     }
 
     async getApplicationById(id) {
-        let result = await this.applicationDAO.findFirst({id: id,
-        }, {
-            include: {
-                applicant: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        fullName: true,
-                        email: true
-                    }
-                }
-            }
-        });
+        const result = await this.applicationDAO.findApplicationWithApplicantById(id);
         if (!result) {
             throw new Error(ERROR.APPLICATION_NOT_FOUND+id);
         }
 
-        return this._hydrateApplicationRecord(result);
+        return await this._reformatRecordForApplicationResponse(result);
     }
     
     async reviewApplication(params, context) {
@@ -236,7 +496,7 @@ class Application {
         }
         // populate the version with auto upgrade based on configuration
         application.version  = await this._getApplicationVersionByStatus(application.status, application.version);
-        return this._enrichApplicationResponse(application) || null;
+        return await this._computeSRFStateFields(application) || null;
     }
 
     async createApplication(application, userInfo, status = NEW) {
@@ -281,7 +541,7 @@ class Application {
         };
         const res = await this.applicationDAO.insert(application);
         if (res?.acknowledged) await this.logCollection.insert(CreateApplicationEvent.create(userInfo._id, userInfo.email, userInfo.IDP, application._id));
-        return this._enrichApplicationResponse(application);
+        return await this._computeSRFStateFields(application);
     }
 
     /**
@@ -373,6 +633,13 @@ class Application {
         }
     }
 
+    /**
+     * Returns the current user's most recent Approved SRF.
+     * Used when starting a new submission to auto-fill PI data from the prior approval.
+     * @param {object} params Request parameters (unused)
+     * @param {object} context Request context with userInfo
+     * @returns {Promise<object|null>} Hydrated application or null when none exist
+     */
     async getMyLastApplication(params, context) {
         verifySession(context)
             .verifyInitialized();
@@ -382,28 +649,10 @@ class Application {
         }
 
         const userID = context.userInfo._id;
-        // To remove this MongoDB query, we need to refactor the schema to move applicantID to the root level.
-        const matchApplicantIDToUser = {
-            $match: {
-                applicantID: userID,
-                status: APPROVED,
-                ...nullOrMissingMongoCondition('nextRevisionId'),
-            },
-        };
-        const sortCreatedAtDescending = {"$sort": {createdAt: -1}};
-        const limitReturnToOneApplication = {"$limit": 1};
-        const pipeline = [
-            matchApplicantIDToUser,
-            sortCreatedAtDescending,
-            limitReturnToOneApplication
-        ];
-        const result = await this.applicationDAO.aggregate(pipeline);
-        const application = result.length > 0 ? result[0] : null;
-        // Return null if user has no previous approved applications
+        const application = await this.applicationDAO.findLatestApprovedByApplicantID(userID);
         if (!application) {
             return null;
         }
-        // auto upgrade version
         const res = await this.getApplicationById(application._id);
         if (this._isApprovedApplication(res)) {
             await this._checkConditionalApproval(res);
@@ -482,6 +731,13 @@ class Application {
         return { orderByPrisma, sortDirection };
     }
 
+    /**
+     * Lists submission requests with filters, pagination, and facet values.
+     * Computes canBeReopened and canBeRestored per row from revision-chain rules.
+     * @param {object} params Filter, pagination, and sort parameters
+     * @param {object} context Request context with userInfo
+     * @returns {Promise<object>} applications, total, programs, studies, and filter facets
+     */
     async listApplications(params, context) {
         // Verify that the user is authenticated and has the necessary permissions to list applications
         verifySession(context)
@@ -659,8 +915,9 @@ class Application {
             throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Please see logs for more information.");
         }
 
-        // Hydrate conditional approval for Approved rows (sequential study lookups) and map to plain objects
-        // so GraphQL always receives conditional / pendingConditions (Prisma entities may drop ad-hoc properties).
+        // Batch-prefetch SRF state and approved-study data, then map to plain objects so GraphQL
+        // always receives conditional / pendingConditions (Prisma entities may drop ad-hoc properties).
+        const { studyByLowerName } = await this._batchComputeListApplicationFields(applications);
         const mappedApplications = [];
         for (const app of applications) {
             const applicant = {
@@ -672,18 +929,17 @@ class Application {
                 mappedApplications.push({
                     ...app,
                     applicant,
-                    canBeReopened: this._computeCanBeReopened(app),
                     studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
                 });
                 continue;
             }
-            const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(app.studyName);
+            const study = studyByLowerName.get(app.studyName?.trim().toLowerCase());
+            const { conditional, pendingConditions } = this._resolveConditionalApprovalFields(study);
             mappedApplications.push({
                 ...app,
                 applicant,
                 conditional,
                 pendingConditions,
-                canBeReopened: this._computeCanBeReopened(app),
                 studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
             });
         }
@@ -776,7 +1032,7 @@ class Application {
                 });
             }
         }
-        return this._enrichApplicationResponse(application);
+        return await this._computeSRFStateFields(application);
     }
 
     async reopenApplication(params, context) {
@@ -784,6 +1040,7 @@ class Application {
     }
 
     async reopenApprovedSubmissionRequest(params, context) {
+        // Verifications
         verifySession(context)
             .verifyInitialized();
 
@@ -797,10 +1054,11 @@ class Application {
             .notEmpty()
             .state([APPROVED]);
 
-        if (source.nextRevisionId) {
+        if (!(await this._computeCanBeReopened(source))) {
             throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         }
 
+        const replaceExistingLink = Boolean(source.nextRevisionId);
         const sourceOwnerId = source?.applicant?.applicantID ?? source?.applicantID;
         const isAllScope = userScope.isAllScope();
         const isOwnScope = userScope.isOwnScope();
@@ -817,44 +1075,18 @@ class Application {
             }
         }
 
-        const ownerUser = await this._resolveReopenOwner(source, isAllScope ? params?.ownerId : null);
-        const newApp = await this._cloneApplicationForReopen(source, ownerUser, context.userInfo._id);
-        const insertedApp = await this.applicationDAO.reopenApprovedRevision(source._id, newApp);
+        // Get the reopened SRF owner and verify
+        const ownerUser = await this._getReopenSRFOwnerAndVerify(
+            source,
+            isAllScope ? params?.ownerId : null
+        );
 
-        const { _id: actorId, email, IDP } = context.userInfo;
-        await Promise.all([
-            this.logCollection.insert(CreateApplicationEvent.create(actorId, email, IDP, insertedApp._id)),
-            this.logCollection.insert(UpdateApplicationStateEvent.create(
-                actorId, email, IDP, insertedApp._id, APPROVED, REOPENED
-            ))
-        ]);
-
-        insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
-        return this._hydrateApplicationRecord(insertedApp, ownerUser);
-    }
-
-    async _resolveReopenOwner(source, ownerId) {
-        const defaultOwnerId = source?.applicant?.applicantID ?? source?.applicantID;
-        const resolvedOwnerId = ownerId || defaultOwnerId;
-        if (!resolvedOwnerId) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        const ownerUser = await this.userDAO.findByIdAndStatus(resolvedOwnerId, USER_CONSTANTS.USER.STATUSES.ACTIVE);
-        if (!ownerUser || !this.userService.isEligibleReopenOwner(ownerUser)) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        return ownerUser;
-    }
-
-    async _cloneApplicationForReopen(source, ownerUser, actorId) {
+        // Clone the application for reopen
         const timestamp = getCurrentTime();
-        const historyEvent = HistoryEventBuilder.createEvent(actorId, REOPENED, null, timestamp);
+        const historyEvent = HistoryEventBuilder.createEvent(context.userInfo._id, REOPENED, null, timestamp);
         const version = await this._getApplicationVersionByStatus(REOPENED);
-        const sourceSequence = source.sequenceNumber ?? 1;
-
-        const clone = {
+        const sourceSequence = source?.sequenceNumber ?? 1;
+        const reopenedApplication = {
             // initialization fields 
             _id: v4(undefined, undefined, undefined),
             status: REOPENED,
@@ -886,8 +1118,82 @@ class Application {
             organization: source.organization,
             newInstitutions: source.newInstitutions
         };
+        const insertedApp = await this.applicationDAO.reopenApprovedRevision(
+            source._id,
+            reopenedApplication,
+            replaceExistingLink
+        );
 
-        return clone;
+        // Log the audit events
+        const { _id: actorId, email, IDP } = context.userInfo;
+        await Promise.all([
+            this.logCollection.insert(CreateApplicationEvent.create(actorId, email, IDP, insertedApp._id)),
+            this.logCollection.insert(UpdateApplicationStateEvent.create(
+                actorId, email, IDP, insertedApp._id, APPROVED, REOPENED
+            ))
+        ]);
+
+        // Compile API response
+        insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
+        return await this._reformatRecordForApplicationResponse(insertedApp, ownerUser);
+    }
+
+    _logReopenOwnerValidationFailure(details, errorCode) {
+        console.warn("Reopen owner resolution failed:", details, errorCode);
+    }
+
+    async _getReopenSRFOwnerAndVerify(source, inputOwnerID) {
+        const originalOwnerID = source?.applicant?.applicantID ?? source?.applicantID;
+        const maintainOriginalOwner = !inputOwnerID || inputOwnerID === originalOwnerID;
+        const activeStatus = USER_CONSTANTS.USER.STATUSES.ACTIVE;
+
+        let ownerUser;
+        if (!inputOwnerID) {
+            if (!originalOwnerID) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
+                this._logReopenOwnerValidationFailure({ applicationID: source._id }, error);
+                throw new Error(error);
+            }
+
+            ownerUser = await this.userDAO.findByIdAndStatus(originalOwnerID, activeStatus);
+            if (!ownerUser) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
+                this._logReopenOwnerValidationFailure({ ownerId: originalOwnerID }, error);
+                throw new Error(error);
+            }
+        } else {
+            ownerUser = await this.userDAO.findByIdAndStatus(inputOwnerID, activeStatus);
+            if (!ownerUser) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE;
+                this._logReopenOwnerValidationFailure({ ownerId: inputOwnerID }, error);
+                throw new Error(error);
+            }
+        }
+
+        // Verify reopened SRF owner has create permission
+        const passPermissionCheck = hasSubmissionRequestCreatePermission(ownerUser);
+        if (!passPermissionCheck) {
+            // original owner case error response
+            if (maintainOriginalOwner) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE;
+                this._logReopenOwnerValidationFailure({ ownerId: originalOwnerID }, error);
+                throw new Error(error);
+            }
+            // new owner case error response
+            const error = ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE;
+            this._logReopenOwnerValidationFailure({ ownerId: inputOwnerID }, error);
+            throw new Error(error);
+        }
+
+        // Verify the reopened SRF owner is the original owner or has an assignable role
+        const passRoleCheck = maintainOriginalOwner || REOPEN_ASSIGNABLE_ROLES.includes(ownerUser?.role);
+        if (!passRoleCheck) {
+            const error = ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE;
+            this._logReopenOwnerValidationFailure({ ownerId: inputOwnerID, role: ownerUser?.role }, error);
+            throw new Error(error);
+        }
+
+        return ownerUser;
     }
 
     async _getUserScope(userInfo, permission) {
@@ -942,7 +1248,6 @@ class Application {
             });
         }
         if (updated) {
-            await this._pruneRevisionChainOnTerminal(document._id);
             await this._sendCancelApplicationEmail(userInfo, aApplication);
         } else {
             console.error(ERROR.FAILED_DELETE_APPLICATION, `${document._id}`);
@@ -961,18 +1266,21 @@ class Application {
             .notEmpty()
             .state([CANCELED, DELETED]);
 
-        if ((aApplication?.history?.length ?? 0) < 2 || ![CANCELED, DELETED].includes(aApplication?.history?.at(-1)?.status)) {
-            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_STATE);
-        }
         const userInfo = context?.userInfo;
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CANCEL);
         if (userScope.isNoneScope() || (!userScope.isOwnScope() && !userScope.isAllScope())) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        // User owned application
         const isApplicationOwned = userInfo?._id === aApplication?.applicant?.applicantID;
         if (userScope.isOwnScope() && !isApplicationOwned) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+
+        if (!this._hasValidRestoreHistory(aApplication)) {
+            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_STATE);
+        }
+        if (!(await this._computeCanBeRestored(aApplication))) {
+            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_NEWER_REVISION_EXISTS);
         }
         const prevStatus = aApplication?.history?.at(-2)?.status;
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, prevStatus, document?.comment);
@@ -1003,7 +1311,7 @@ class Application {
         const questionnaire = getApplicationQuestionnaire(application);
         const sequenceNumber = application?.sequenceNumber ?? 1;
         const [predecessor, existingProgram, duplicatePrograms] = await Promise.all([
-            this.applicationDAO.findPreviousSubmissionRequestByID(application._id),
+            this.applicationDAO.findApprovedParentSubmissionRequestByID(application._id),
             this.organizationService.getOrganizationByID(questionnaire?.program?._id, false),
             this.organizationService.findOneByProgramName(application?.programName),
             (async () => {
@@ -1018,7 +1326,7 @@ class Application {
             existingStudy = await this.approvedStudiesService.findByApplicationID(
                 predecessor._id ?? predecessor.id
             );
-            // Revision re-approval: linked via nextRevisionId; predecessor status is not checked.
+            // Revision re-approval: linked via nextRevisionId from an Approved parent.
             if (!existingStudy && duplicates.length > 0) {
                 existingStudy = duplicates[0];
             }
@@ -1123,7 +1431,6 @@ class Application {
 
         await sendEmails.rejectApplication(this.notificationService, this.userService, this.emailParams, application, document.comment);
         if (updated) {
-            await this._pruneRevisionChainOnTerminal(application._id);
             const log = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, REJECTED);
             const promises = [
                 await this.getApplicationById(document._id),
@@ -1217,12 +1524,8 @@ class Application {
 
             // Use Promise.allSettled to handle partial failures gracefully
             const updateResults = await Promise.allSettled(applications.map(async (app) => {
-                const appId = app._id ?? app.id;
                 if (utilityService.isEmptyApplication(app) && app.status === NEW) {
                     const deleted = await this.applicationDAO.delete(app._id);
-                    if (deleted) {
-                        await this._pruneRevisionChainOnTerminal(appId);
-                    }
                     return deleted;
                 }
                 const result = await this.applicationDAO.update({
@@ -1232,9 +1535,6 @@ class Application {
                     inactiveReminder: true,
                     history: [...(app.history || []), history]
                 });
-                if (result) {
-                    await this._pruneRevisionChainOnTerminal(appId);
-                }
                 return result;
             }));
 

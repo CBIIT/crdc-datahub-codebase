@@ -152,6 +152,7 @@ function toPrismaApplicationUpdateData(data) {
         applicantID,
         applicant,
         canBeReopened,
+        canBeRestored,
         conditional,
         pendingConditions,
         institution,

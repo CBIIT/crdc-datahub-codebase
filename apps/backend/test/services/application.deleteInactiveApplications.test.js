@@ -176,7 +176,7 @@ describe('deleteInactiveApplications Error Handling', () => {
             }
         });
 
-        test('prunes revision chain when application is marked Deleted', async () => {
+        test('does not prune revision chain when application is marked Deleted', async () => {
             const mockApplications = [
                 {
                     _id: 'app1',
@@ -199,10 +199,10 @@ describe('deleteInactiveApplications Error Handling', () => {
 
             await applicationService.deleteInactiveApplications();
 
-            expect(mockApplicationDAO.clearNextRevisionIdPointingTo).toHaveBeenCalledWith('app1');
+            expect(mockApplicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
 
-        test('prunes revision chain after hard-deleting empty New application', async () => {
+        test('does not prune revision chain after hard-deleting empty New application', async () => {
             const mockApplications = [
                 {
                     _id: 'empty-app',
@@ -224,7 +224,7 @@ describe('deleteInactiveApplications Error Handling', () => {
             await applicationService.deleteInactiveApplications();
 
             expect(mockApplicationDAO.delete).toHaveBeenCalledWith('empty-app');
-            expect(mockApplicationDAO.clearNextRevisionIdPointingTo).toHaveBeenCalledWith('empty-app');
+            expect(mockApplicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
 
         test('does not prune revision chain when empty New application delete fails', async () => {
