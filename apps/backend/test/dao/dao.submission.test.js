@@ -1064,13 +1064,20 @@ describe('SubmissionDAO', () => {
                     concierge: null
                 };
                 prisma.submission.findMany.mockImplementation((query) => {
-                    if (query.include) return Promise.resolve([submissionWithHistory]);
                     if (query.select?.submitter) return Promise.resolve([{ submitter: submissionWithHistory.submitter }]);
                     return Promise.resolve([submissionWithHistory]);
                 });
 
                 const result = await dao.listSubmissions(mockUserInfo, mockUserScope, mockParams);
                 expect(result.submissions[0].adminSubmitComment).toBe('latest admin comment');
+                expect(prisma.submission.findMany).toHaveBeenCalledWith(expect.objectContaining({
+                    include: expect.objectContaining({
+                        study: expect.any(Object),
+                        organization: expect.any(Object),
+                        submitter: expect.any(Object),
+                        concierge: expect.any(Object)
+                    })
+                }));
             });
 
             it('should return adminSubmitComment as null for non-internal users', async () => {
@@ -1089,13 +1096,20 @@ describe('SubmissionDAO', () => {
                     concierge: null
                 };
                 prisma.submission.findMany.mockImplementation((query) => {
-                    if (query.include) return Promise.resolve([submissionWithHistory]);
                     if (query.select?.submitter) return Promise.resolve([{ submitter: submissionWithHistory.submitter }]);
                     return Promise.resolve([submissionWithHistory]);
                 });
 
                 const result = await dao.listSubmissions(mockUserInfo, mockUserScope, mockParams);
                 expect(result.submissions[0].adminSubmitComment).toBeNull();
+                expect(prisma.submission.findMany).toHaveBeenCalledWith(expect.objectContaining({
+                    include: expect.objectContaining({
+                        study: expect.any(Object),
+                        organization: expect.any(Object),
+                        submitter: expect.any(Object),
+                        concierge: expect.any(Object)
+                    })
+                }));
             });
 
             it('should transform dataFileSize for deleted/canceled submissions', async () => {

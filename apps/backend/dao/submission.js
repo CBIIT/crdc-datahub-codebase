@@ -92,7 +92,7 @@ class SubmissionDAO extends GenericDAO {
      * @returns {Array<string>} returns.submitterNames - Distinct names of submitters filtered by all criteria except submitterName filter
      * @returns {Array<string>} returns.organizations - All organization (program) names
      * @returns {Function} returns.statuses - Function returning sorted distinct statuses
-     * @returns {string|null} returns.submissions[].adminSubmitComment - Dynamic last review comment
+    * @returns {string|null} returns.submissions[].adminSubmitComment - Latest admin-submit review comment for internal roles; null otherwise
      * @throws {Error} When database query fails or validation errors occur
      */
     async listSubmissions(userInfo, userScope, params, dataCommonsList = []) {
