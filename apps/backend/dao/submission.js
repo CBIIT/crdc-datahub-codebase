@@ -12,8 +12,10 @@ const prisma = require("../prisma");
 const { isAllStudy } = require("../utility/study-utility");
 const {subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
+const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-constants");
 const ALL_FILTER = "All";
 const NA = "NA"
+const ROLES = USER_CONSTANTS.USER.ROLES;
 class SubmissionDAO extends GenericDAO {
     constructor(submissionCollection, organizationCollection) {
         super(MODEL_NAME.SUBMISSION);
@@ -90,6 +92,7 @@ class SubmissionDAO extends GenericDAO {
      * @returns {Array<string>} returns.submitterNames - Distinct names of submitters filtered by all criteria except submitterName filter
      * @returns {Array<string>} returns.organizations - All organization (program) names
      * @returns {Function} returns.statuses - Function returning sorted distinct statuses
+     * @returns {string|null} returns.submissions[].adminSubmitComment - Dynamic last review comment
      * @throws {Error} When database query fails or validation errors occur
      */
     async listSubmissions(userInfo, userScope, params, dataCommonsList = []) {
@@ -211,6 +214,9 @@ class SubmissionDAO extends GenericDAO {
                     conciergeName: submission?.concierge?.fullName || "",
                     conciergeEmail: submission?.concierge?.email || "",
                     submissionRequestID: submission?.study?.applicationID || null,
+                    adminSubmitComment: this._isInternalUser(userInfo)
+                        ? this._getLatestAdminSubmitComment(submission?.history)
+                        : null,
                 };
             });
 
@@ -226,6 +232,41 @@ class SubmissionDAO extends GenericDAO {
             console.error('Error in listSubmissions:', error);
             throw new Error(`Failed to list submissions: ${error.message}`);
         }
+    }
+
+    /**
+     * Determines whether a user is an internal role eligible to view admin submit comments.
+     *
+     * @param {Object} userInfo - Current user context
+     * @param {string} userInfo.role - User role
+     * @returns {boolean} True when the role is Admin, Data Commons Personnel, or Federal Lead
+     */
+    _isInternalUser(userInfo) {
+        return [ROLES.ADMIN, ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD].includes(
+            userInfo?.role
+        );
+    }
+
+    /**
+     * Extracts the latest admin submit review comment from submission history.
+     *
+     * Rules:
+     * - Only history entries with status `Submitted` and `isAdminSubmit === true` are considered
+     * - Returns the most recent matching entry's `reviewComment`
+     * - Returns null when no matching event exists
+     *
+     * @param {Array<Object>} history - Submission history events
+     * @returns {string|null} Latest admin submit comment, otherwise null
+     */
+    _getLatestAdminSubmitComment(history = []) {
+        if (!Array.isArray(history) || history.length === 0) {
+            return null;
+        }
+
+        const validAdminSubmitEvents = history.filter(
+            ({ status, isAdminSubmit }) => status === SUBMITTED && isAdminSubmit === true
+        );
+        return validAdminSubmitEvents.at(-1)?.reviewComment || null;
     }
 
     /**
