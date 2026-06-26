@@ -68,8 +68,8 @@ class Application {
     }
 
     /**
-     * True when the user may view this application under submission_request:view rules.
-     * Only all and own scopes grant access; all other scopes deny.
+     * True when the user may view this application.
+     * Enforces submission_request:view scope rules: only all and own grant access.
      * @param {object} userScope Resolved UserScope for SUBMISSION_REQUEST.VIEW
      * @param {object} userInfo Session user
      * @param {object} application Loaded application document
@@ -87,7 +87,7 @@ class Application {
     }
 
     /**
-     * Returns a single submission request when the caller has view:all scope or view:own on the applicant.
+     * Returns a single application when the caller may view it (view:all, or view:own as applicant).
      * Non-all callers receive the same view error for missing and unauthorized records to avoid ID enumeration.
      * @param {{ _id: string }} params Application _id
      * @param {object} context Request context with userInfo

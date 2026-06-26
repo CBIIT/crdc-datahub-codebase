@@ -176,16 +176,9 @@ describe('Application', () => {
 
     describe('getApplication', () => {
         beforeEach(() => {
-            jest.spyOn(RealUserScope, 'create').mockImplementation(
-                (scopes) => new RealUserScope(scopes)
-            );
             mockAuthorizationService.getPermissionScope.mockResolvedValue([
                 { scope: SCOPES.ALL, scopeValues: [] },
             ]);
-        });
-
-        afterEach(() => {
-            RealUserScope.create.mockRestore();
         });
 
         it('should return application with upgraded version', async () => {
