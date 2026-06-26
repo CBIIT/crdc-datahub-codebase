@@ -339,7 +339,7 @@ const BASE_COLUMNS: Column<T>[] = [
       value: a.updatedAt ? FormatDate(a.updatedAt, "M/D/YYYY h:mm A") : "",
     }),
     sx: {
-      width: "108px",
+      width: "85px",
     },
   },
 ];
@@ -355,6 +355,7 @@ const ADMIN_COLUMNS: Column<T>[] = [
       return <TruncatedText text={adminSubmitComment} maxCharacters={10} />;
     },
     field: "adminSubmitComment",
+    sortDisabled: true,
     hideable: true,
     defaultHidden: true,
     exportValue: ({ adminSubmitComment }) => ({
