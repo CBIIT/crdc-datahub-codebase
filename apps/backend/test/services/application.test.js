@@ -4,6 +4,8 @@ const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/c
 const ERROR = require('../../constants/error-constants');
 const { NEW, APPROVED, IN_PROGRESS, INQUIRED, CANCELED, REJECTED, DELETED, SUBMITTED, IN_REVIEW } = require('../../constants/application-constants');
 const { DEFAULT_GPA_NAME } = require('../../domain/pending-gpa');
+const { UserScope: RealUserScope } = require('../../domain/user-scope');
+const SCOPES = require('../../constants/permission-scope-constants');
 
 // Mock ApplicationDAO
 jest.mock('../../dao/application');
@@ -173,12 +175,20 @@ describe('Application', () => {
     });
 
     describe('getApplication', () => {
-        it('should return application with upgraded version', async () => {
-            userScopeMock.isNoneScope.mockReturnValue(false);
-            userScopeMock.isAllScope.mockReturnValue(true);
-            userScopeMock.isOwnScope.mockReturnValue(false);
-            UserScope.create.mockReturnValue(userScopeMock);
+        beforeEach(() => {
+            jest.spyOn(RealUserScope, 'create').mockImplementation(
+                (scopes) => new RealUserScope(scopes)
+            );
+            mockAuthorizationService.getPermissionScope.mockResolvedValue([
+                { scope: SCOPES.ALL, scopeValues: [] },
+            ]);
+        });
 
+        afterEach(() => {
+            RealUserScope.create.mockRestore();
+        });
+
+        it('should return application with upgraded version', async () => {
             // Mock getApplicationById to return an application with APPROVED status and version '2.0'
             app.getApplicationById = jest.fn().mockResolvedValue({ _id: 'app1', status: APPROVED, version: '2.0' });
             // Mock _checkConditionalApproval to do nothing
@@ -194,10 +204,6 @@ describe('Application', () => {
         });
 
         it('calls _checkConditionalApproval when status matches Approved case-insensitively', async () => {
-            userScopeMock.isNoneScope.mockReturnValue(false);
-            userScopeMock.isAllScope.mockReturnValue(true);
-            UserScope.create.mockReturnValue(userScopeMock);
-
             app.getApplicationById = jest.fn().mockResolvedValue({ _id: 'app1', status: 'approved', version: '2.0' });
             app._checkConditionalApproval = jest.fn().mockResolvedValue(undefined);
             app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('2.0');
@@ -208,10 +214,6 @@ describe('Application', () => {
         });
 
         it('does not replace missing or whitespace-only studyAbbreviation with study name', async () => {
-            userScopeMock.isNoneScope.mockReturnValue(false);
-            userScopeMock.isAllScope.mockReturnValue(true);
-            UserScope.create.mockReturnValue(userScopeMock);
-
             app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('3.0');
 
             app.getApplicationById = jest.fn().mockResolvedValue({
@@ -237,6 +239,206 @@ describe('Application', () => {
                 studyAbbreviation: '   ',
                 studyName: 'Full Study'
             });
+        });
+
+        it('rejects own-scope caller who is not the applicant', async () => {
+            mockAuthorizationService.getPermissionScope.mockResolvedValue([
+                { scope: SCOPES.OWN, scopeValues: [] },
+            ]);
+
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: APPROVED,
+                applicant: { applicantID: 'other-user' },
+            });
+
+            await expect(app.getApplication({ _id: 'app1' }, context))
+                .rejects.toThrow(ERROR.INVALID_PERMISSION);
+        });
+
+        it('allows own-scope caller who owns the application', async () => {
+            mockAuthorizationService.getPermissionScope.mockResolvedValue([
+                { scope: SCOPES.OWN, scopeValues: [] },
+            ]);
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: NEW,
+                version: '3.0',
+                applicant: { applicantID: 'user1' },
+            });
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('3.0');
+
+            await expect(app.getApplication({ _id: 'app1' }, context)).resolves.toMatchObject({
+                _id: 'app1',
+                applicant: { applicantID: 'user1' },
+            });
+        });
+
+        it('allows all-scope caller to view a non-owned application', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: NEW,
+                version: '3.0',
+                applicant: { applicantID: 'other-user' },
+            });
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('3.0');
+
+            await expect(app.getApplication({ _id: 'app1' }, context)).resolves.toMatchObject({
+                _id: 'app1',
+            });
+        });
+
+        it('rejects none scope the same as unsupported scopes', async () => {
+            mockAuthorizationService.getPermissionScope.mockResolvedValue([
+                { scope: SCOPES.NONE, scopeValues: [] },
+            ]);
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: NEW,
+                applicant: { applicantID: 'user1' },
+            });
+
+            await expect(app.getApplication({ _id: 'app1' }, context))
+                .rejects.toThrow(ERROR.INVALID_PERMISSION);
+        });
+
+        it.each([
+            ['study', SCOPES.STUDY],
+            ['DC', SCOPES.DC],
+            ['role', SCOPES.ROLE],
+        ])('rejects %s scope like none', async (_label, scope) => {
+            mockAuthorizationService.getPermissionScope.mockResolvedValue([
+                { scope, scopeValues: ['study-1'] },
+            ]);
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: NEW,
+                applicant: { applicantID: 'user1' },
+            });
+
+            await expect(app.getApplication({ _id: 'app1' }, context))
+                .rejects.toThrow(ERROR.INVALID_PERMISSION);
+        });
+
+        it('allows previous owner to view their older approved revision after reassignment', async () => {
+            mockAuthorizationService.getPermissionScope.mockResolvedValue([
+                { scope: SCOPES.OWN, scopeValues: [] },
+            ]);
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'approved-v1',
+                status: APPROVED,
+                applicant: { applicantID: 'user1' },
+            });
+            app._checkConditionalApproval = jest.fn().mockResolvedValue(undefined);
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('2.0');
+
+            await expect(app.getApplication({ _id: 'approved-v1' }, context)).resolves.toMatchObject({
+                _id: 'approved-v1',
+                applicant: { applicantID: 'user1' },
+            });
+        });
+
+        it('blocks previous owner from viewing reassigned reopened revision', async () => {
+            mockAuthorizationService.getPermissionScope.mockResolvedValue([
+                { scope: SCOPES.OWN, scopeValues: [] },
+            ]);
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'reopened-v2',
+                status: IN_PROGRESS,
+                applicant: { applicantID: 'new-owner' },
+            });
+
+            await expect(app.getApplication({ _id: 'reopened-v2' }, context))
+                .rejects.toThrow(ERROR.INVALID_PERMISSION);
+        });
+
+        it('resolves view scope via submission_request:view permission', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: NEW,
+                applicant: { applicantID: 'user1' },
+            });
+            app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('3.0');
+
+            await app.getApplication({ _id: 'app1' }, context);
+
+            expect(mockAuthorizationService.getPermissionScope).toHaveBeenCalledWith(
+                context.userInfo,
+                USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.VIEW
+            );
+        });
+
+        it('returns view permission error for own-scope caller when application id is missing', async () => {
+            mockAuthorizationService.getPermissionScope.mockResolvedValue([
+                { scope: SCOPES.OWN, scopeValues: [] },
+            ]);
+            app.getApplicationById = jest.fn().mockRejectedValue(
+                new Error(`${ERROR.APPLICATION_NOT_FOUND}missing-id`)
+            );
+
+            await expect(app.getApplication({ _id: 'missing-id' }, context))
+                .rejects.toThrow(ERROR.INVALID_PERMISSION);
+        });
+
+        it('returns not found for all-scope caller when application id is missing', async () => {
+            app.getApplicationById = jest.fn().mockRejectedValue(
+                new Error(`${ERROR.APPLICATION_NOT_FOUND}missing-id`)
+            );
+
+            await expect(app.getApplication({ _id: 'missing-id' }, context))
+                .rejects.toThrow(`${ERROR.APPLICATION_NOT_FOUND}missing-id`);
+        });
+    });
+
+    describe('_canViewApplication', () => {
+        it('returns true for all scope regardless of ownership', () => {
+            const userScope = new RealUserScope([{ scope: SCOPES.ALL, scopeValues: [] }]);
+            expect(app._canViewApplication(
+                userScope,
+                { _id: 'user1' },
+                { applicant: { applicantID: 'other-user' } }
+            )).toBe(true);
+        });
+
+        it('returns true for own scope when user is the applicant', () => {
+            const userScope = new RealUserScope([{ scope: SCOPES.OWN, scopeValues: [] }]);
+            expect(app._canViewApplication(
+                userScope,
+                { _id: 'user1' },
+                { applicant: { applicantID: 'user1' } }
+            )).toBe(true);
+        });
+
+        it('resolves applicantID from root field for own scope', () => {
+            const userScope = new RealUserScope([{ scope: SCOPES.OWN, scopeValues: [] }]);
+            expect(app._canViewApplication(
+                userScope,
+                { _id: 'user1' },
+                { applicantID: 'user1' }
+            )).toBe(true);
+        });
+
+        it('returns false for own scope when user is not the applicant', () => {
+            const userScope = new RealUserScope([{ scope: SCOPES.OWN, scopeValues: [] }]);
+            expect(app._canViewApplication(
+                userScope,
+                { _id: 'user1' },
+                { applicant: { applicantID: 'other-user' } }
+            )).toBe(false);
+        });
+
+        it.each([
+            ['none', SCOPES.NONE],
+            ['study', SCOPES.STUDY],
+            ['DC', SCOPES.DC],
+            ['role', SCOPES.ROLE],
+        ])('returns false for %s scope', (_label, scope) => {
+            const userScope = new RealUserScope([{ scope, scopeValues: [] }]);
+            expect(app._canViewApplication(
+                userScope,
+                { _id: 'user1' },
+                { applicant: { applicantID: 'user1' } }
+            )).toBe(false);
         });
     });
 
