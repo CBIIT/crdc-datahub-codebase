@@ -522,6 +522,7 @@ const ListingView: FC = (): JSX.Element => {
     const scope = {
       ...filtersRef.current,
       ...tableRef.current?.tableParams,
+      isInternalUser,
     };
 
     return (
