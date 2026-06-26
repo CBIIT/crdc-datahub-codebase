@@ -67,21 +67,63 @@ class Application {
         return this._normalizeApplicationStatus(application?.status) === this._normalizeApplicationStatus(APPROVED);
     }
 
+    /**
+     * True when the user may view this application.
+     * Enforces submission_request:view scope rules: only all and own grant access.
+     * @param {object} userScope Resolved UserScope for SUBMISSION_REQUEST.VIEW
+     * @param {object} userInfo Session user
+     * @param {object} application Loaded application document
+     * @returns {boolean}
+     */
+    _canViewApplication(userScope, userInfo, application) {
+        if (userScope.isAllScope()) {
+            return true;
+        }
+        if (userScope.isOwnScope()) {
+            const ownerID = application?.applicant?.applicantID ?? application?.applicantID;
+            return userInfo?._id === ownerID;
+        }
+        return false;
+    }
+
+    /**
+     * Returns a single application when the caller may view it (view:all, or view:own as applicant).
+     * Non-all callers receive the same view error for missing and unauthorized records to avoid ID enumeration.
+     * @param {{ _id: string }} params Application _id
+     * @param {object} context Request context with userInfo
+     * @returns {Promise<object>} Hydrated application
+     * @throws {Error} When the application is missing or the caller cannot view it
+     */
     async getApplication(params, context) {
         verifySession(context)
-            .verifyInitialized()
-        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.VIEW);
-        if (userScope.isNoneScope()) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+            .verifyInitialized();
+
+        const userScopesList = await this.authorizationService.getPermissionScope(
+            context?.userInfo,
+            USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.VIEW
+        );
+        const userScope = UserScope.create(userScopesList);
+
+        // mask application not found error for non-all-scoped callers to avoid ID enumeration
+        let application;
+        try {
+            application = await this.getApplicationById(params._id);
+        } catch (error) {
+            if (!userScope.isAllScope() && error.message?.startsWith(ERROR.APPLICATION_NOT_FOUND)) {
+                throw new Error(ERROR.INVALID_PERMISSION);
+            }
+            throw error;
+        }
+        if (!this._canViewApplication(userScope, context.userInfo, application)) {
+            throw new Error(ERROR.INVALID_PERMISSION);
         }
 
-        let application = await this.getApplicationById(params._id);
         // add logics to check if conditional approval
         if (this._isApprovedApplication(application)) {
             await this._checkConditionalApproval(application);
         }
         // populate the version with auto upgrade based on configuration
-        application.version  = await this._getApplicationVersionByStatus(application.status, application.version);
+        application.version = await this._getApplicationVersionByStatus(application.status, application.version);
         return application;
     }
 
