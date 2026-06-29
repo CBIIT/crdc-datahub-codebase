@@ -35,6 +35,40 @@ class ApprovedStudyDAO extends GenericDAO  {
         return studies.map(study => ({...study, _id: study.id}))
     }
 
+    /**
+     * List approved studies matching any of the given study names (case-insensitive exact match).
+     * @param {string[]} studyNames
+     * @returns {Promise<Object[]>} Approved studies with `_id` alias
+     */
+    async findByStudyNames(studyNames) {
+        const uniqueNamesByLower = new Map();
+        for (const rawName of studyNames ?? []) {
+            const name = rawName?.trim();
+            if (!name) {
+                continue;
+            }
+            const key = name.toLowerCase();
+            if (!uniqueNamesByLower.has(key)) {
+                uniqueNamesByLower.set(key, name);
+            }
+        }
+        const uniqueNames = [...uniqueNamesByLower.values()];
+        if (!uniqueNames.length) {
+            return [];
+        }
+        const rows = await prisma.approvedStudy.findMany({
+            where: {
+                OR: uniqueNames.map((name) => ({
+                    studyName: {
+                        equals: name,
+                        mode: "insensitive",
+                    },
+                })),
+            },
+        });
+        return rows.map((row) => ({ ...row, _id: row.id }));
+    }
+
     async listApprovedStudies(studyName, controlledAccess, dbGaPIDInput, programID, statuses, first, offset, orderBy, sortDirection) {
         // set matches
         let matches = {};

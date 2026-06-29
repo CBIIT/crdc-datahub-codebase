@@ -162,7 +162,9 @@ dbConnector.connect().then(async () => {
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
             return await dataInterface.inquireApplication({...params, comment}, context);
         },
-        reopenApplication: dataInterface.reopenApplication.bind(dataInterface),
+        resumeInquiredApplication: dataInterface.resumeInquiredApplication.bind(dataInterface),
+        reopenApprovedSubmissionRequest: dataInterface.reopenApprovedSubmissionRequest.bind(dataInterface),
+        reopenApplication: dataInterface.resumeInquiredApplication.bind(dataInterface),
         cancelApplication: async (params, context)=> {
             if (params?.comment?.length > CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH));

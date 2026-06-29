@@ -57,7 +57,8 @@ describe('deleteInactiveApplications Error Handling', () => {
         mockApplicationDAO = {
             getInactiveApplication: jest.fn(),
             update: jest.fn(),
-            delete: jest.fn()
+            delete: jest.fn(),
+            clearNextRevisionIdPointingTo: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
         };
         
         applicationService = new Application(
@@ -173,6 +174,82 @@ describe('deleteInactiveApplications Error Handling', () => {
             } finally {
                 consoleSpy.mockRestore();
             }
+        });
+
+        test('does not prune revision chain when application is marked Deleted', async () => {
+            const mockApplications = [
+                {
+                    _id: 'app1',
+                    applicantID: 'user1',
+                    applicant: { applicantEmail: 'user1@test.com', applicantName: 'User 1' },
+                    studyAbbreviation: 'TEST-STUDY',
+                    studyName: 'Test Study',
+                    status: 'In Progress',
+                    history: [],
+                    updatedAt: new Date('2023-01-01'),
+                },
+            ];
+
+            mockApplicationDAO.getInactiveApplication
+                .mockResolvedValueOnce(mockApplications)
+                .mockResolvedValueOnce([]);
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockApplicationDAO.update.mockResolvedValue(true);
+
+            await applicationService.deleteInactiveApplications();
+
+            expect(mockApplicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
+        });
+
+        test('does not prune revision chain after hard-deleting empty New application', async () => {
+            const mockApplications = [
+                {
+                    _id: 'empty-app',
+                    applicantID: 'user1',
+                    applicant: { applicantEmail: 'user1@test.com', applicantName: 'User 1' },
+                    status: 'New',
+                    history: [],
+                    updatedAt: new Date('2023-01-01'),
+                },
+            ];
+
+            mockApplicationDAO.getInactiveApplication
+                .mockResolvedValueOnce(mockApplications)
+                .mockResolvedValueOnce([]);
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockApplicationDAO.delete.mockResolvedValue({ _id: 'empty-app' });
+
+            await applicationService.deleteInactiveApplications();
+
+            expect(mockApplicationDAO.delete).toHaveBeenCalledWith('empty-app');
+            expect(mockApplicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
+        });
+
+        test('does not prune revision chain when empty New application delete fails', async () => {
+            const mockApplications = [
+                {
+                    _id: 'empty-app',
+                    applicantID: 'user1',
+                    applicant: { applicantEmail: 'user1@test.com', applicantName: 'User 1' },
+                    status: 'New',
+                    history: [],
+                    updatedAt: new Date('2023-01-01'),
+                },
+            ];
+
+            mockApplicationDAO.getInactiveApplication
+                .mockResolvedValueOnce(mockApplications)
+                .mockResolvedValueOnce([]);
+            mockUserService.getUsersByNotifications.mockResolvedValue([]);
+            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockApplicationDAO.delete.mockResolvedValue(null);
+
+            await applicationService.deleteInactiveApplications();
+
+            expect(mockApplicationDAO.delete).toHaveBeenCalledWith('empty-app');
+            expect(mockApplicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
     });
 
