@@ -236,7 +236,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
   const [isDbGapRequired, setIsDbGapRequired] = useState<boolean>(false);
   const [dbGaPID, setDbGaPID] = useState<string>("");
   const [selectMinWidth, setSelectMinWidth] = useState<number | null>(null);
-  const [intention, studyID] = watch(["intention", "studyID"]);
+  const [intention, studyID, dataType] = watch(["intention", "studyID", "dataType"]);
 
   const shouldFetchAllStudies = useMemo<boolean>(
     () =>
@@ -379,11 +379,8 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
     !value?.trim() ? "This field is required" : null;
 
   useEffect(() => {
-    if (intention === "New/Update") {
-      setValue("dataType", "Metadata and Data Files");
-    }
-    if (intention === "Delete") {
-      setValue("dataType", "Metadata Only");
+    if (intention === "Delete" && dataType === "Metadata and Data Files") {
+      setValue("dataType", "" as never);
     }
   }, [intention]);
 
@@ -451,6 +448,11 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
                   />
                 )}
               />
+              {errors?.intention?.message && (
+                <StyledHelperText id="submission-intention-helper-text">
+                  {errors?.intention?.message}
+                </StyledHelperText>
+              )}
             </StyledField>
             <StyledField sx={{ marginRight: "-80px" }}>
               <Controller
@@ -473,7 +475,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
                 )}
               />
               <StyledHelperText id="submission-data-type-helper-text">
-                {errors?.intention?.message}
+                {errors?.dataType?.message}
               </StyledHelperText>
             </StyledField>
             <StyledField>
