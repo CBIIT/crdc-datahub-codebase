@@ -1044,6 +1044,74 @@ describe('SubmissionDAO', () => {
                 expect(result.submissions[0].dbGaPID).toBe('phs-fallback');
             });
 
+            it('should populate adminSubmitComment for internal users from latest admin Submitted event', async () => {
+                mockUserInfo.role = 'Admin';
+                const submissionWithHistory = {
+                    id: 'sub-1',
+                    name: 'Test Submission 1',
+                    status: NEW,
+                    dataCommons: 'test-commons',
+                    studyID: 'study-1',
+                    dataFileSize: { size: 0, formatted: 'NA' },
+                    history: [
+                        { status: 'Submitted', isAdminSubmit: true, reviewComment: 'older comment' },
+                        { status: 'Submitted', isAdminSubmit: false, reviewComment: 'ignore regular submit' },
+                        { status: 'Submitted', isAdminSubmit: true, reviewComment: 'latest admin comment' }
+                    ],
+                    study: { id: 'study-1', studyName: 'Test Study', studyAbbreviation: 'TS' },
+                    organization: null,
+                    submitter: { id: 's1', firstName: 'A', lastName: 'B', fullName: 'A B', email: 'a@b.com' },
+                    concierge: null
+                };
+                prisma.submission.findMany.mockImplementation((query) => {
+                    if (query.select?.submitter) return Promise.resolve([{ submitter: submissionWithHistory.submitter }]);
+                    return Promise.resolve([submissionWithHistory]);
+                });
+
+                const result = await dao.listSubmissions(mockUserInfo, mockUserScope, mockParams);
+                expect(result.submissions[0].adminSubmitComment).toBe('latest admin comment');
+                expect(prisma.submission.findMany).toHaveBeenCalledWith(expect.objectContaining({
+                    include: expect.objectContaining({
+                        study: expect.any(Object),
+                        organization: expect.any(Object),
+                        submitter: expect.any(Object),
+                        concierge: expect.any(Object)
+                    })
+                }));
+            });
+
+            it('should return adminSubmitComment as null for non-internal users', async () => {
+                mockUserInfo.role = 'Submitter';
+                const submissionWithHistory = {
+                    id: 'sub-1',
+                    name: 'Test Submission 1',
+                    status: NEW,
+                    dataCommons: 'test-commons',
+                    studyID: 'study-1',
+                    dataFileSize: { size: 0, formatted: 'NA' },
+                    history: [{ status: 'Submitted', isAdminSubmit: true, reviewComment: 'admin-only comment' }],
+                    study: { id: 'study-1', studyName: 'Test Study', studyAbbreviation: 'TS' },
+                    organization: null,
+                    submitter: { id: 's1', firstName: 'A', lastName: 'B', fullName: 'A B', email: 'a@b.com' },
+                    concierge: null
+                };
+                prisma.submission.findMany.mockImplementation((query) => {
+                    if (query.select?.submitter) return Promise.resolve([{ submitter: submissionWithHistory.submitter }]);
+                    return Promise.resolve([submissionWithHistory]);
+                });
+
+                const result = await dao.listSubmissions(mockUserInfo, mockUserScope, mockParams);
+                expect(result.submissions[0].adminSubmitComment).toBeNull();
+                expect(prisma.submission.findMany).toHaveBeenCalledWith(expect.objectContaining({
+                    include: expect.objectContaining({
+                        study: expect.any(Object),
+                        organization: expect.any(Object),
+                        submitter: expect.any(Object),
+                        concierge: expect.any(Object)
+                    })
+                }));
+            });
+
             it('should transform dataFileSize for deleted/canceled submissions', async () => {
                 const deletedSubmission = {
                     id: 'sub-1',
