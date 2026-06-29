@@ -73,12 +73,14 @@ const getListSubmissionsMock = (
 type ParentProps = {
   mocks?: MockedResponse[];
   initialEntries?: MemoryRouterProps["initialEntries"];
+  role?: UserRole;
   children: React.ReactNode;
 };
 
 const TestParent: FC<ParentProps> = ({
   mocks = [getListSubmissionsMock([baseSubmission])],
   initialEntries = ["/data-submissions"],
+  role = "Submitter",
   children,
 }: ParentProps) => {
   const authState = useMemo<AuthContextState>(
@@ -88,11 +90,11 @@ const TestParent: FC<ParentProps> = ({
         isLoggedIn: true,
         user: userFactory.build({
           _id: "current-user",
-          role: "Submitter",
+          role,
           permissions: ["data_submission:view"],
         }),
       }),
-    []
+    [role]
   );
 
   return (
@@ -111,6 +113,7 @@ const TestParent: FC<ParentProps> = ({
 describe("Accessibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     mockDownloadBlob.mockReset();
     mockFetchAllData.mockReset();
     mockFetchAllData.mockResolvedValue([baseSubmission]);
@@ -152,6 +155,7 @@ describe("Accessibility", () => {
 describe("Basic Functionality", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     mockDownloadBlob.mockReset();
     mockFetchAllData.mockReset();
     mockFetchAllData.mockResolvedValue([baseSubmission]);
@@ -244,11 +248,65 @@ describe("Basic Functionality", () => {
     expect(csvContent).toContain("Alex Concierge");
     expect(csvContent).toContain("10");
   });
+
+  it("should keep Admin Submit hidden by default for internal users and export it once enabled", async () => {
+    const internalSubmission = {
+      ...baseSubmission,
+      adminSubmitComment: "Approved by admin",
+    } as Submission;
+
+    mockFetchAllData.mockResolvedValue([internalSubmission]);
+
+    const { findByTestId, getAllByTestId, getByRole, getByTestId, queryByRole } = render(
+      <TestParent mocks={[getListSubmissionsMock([internalSubmission])]} role="Admin">
+        <ListingView />
+      </TestParent>
+    );
+
+    await findByTestId("submission-name-cell-sub-123");
+
+    expect(queryByRole("columnheader", { name: "Admin Submit" })).not.toBeInTheDocument();
+
+    fireEvent.click(getByTestId("column-visibility-button"));
+
+    const adminSubmitCheckbox = getByTestId("checkbox-adminSubmitComment") as HTMLInputElement;
+    expect(adminSubmitCheckbox).not.toBeChecked();
+
+    fireEvent.click(adminSubmitCheckbox);
+
+    await waitFor(() => {
+      expect(getByRole("columnheader", { name: "Admin Submit" })).toBeInTheDocument();
+    });
+
+    const [exportButton] = getAllByTestId("export-data-submissions-button");
+
+    fireEvent.click(exportButton);
+
+    await waitFor(() => {
+      expect(mockFetchAllData).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.objectContaining({ isInternalUser: true }),
+        expect.any(Function),
+        expect.any(Function),
+        { pageSize: 1000, total: Infinity }
+      );
+      expect(mockDownloadBlob).toHaveBeenCalled();
+    });
+
+    const csvContent: string = mockDownloadBlob.mock.calls[0][0];
+    const headerRow = csvContent.split("\n")[0];
+    const headers = headerRow.split(",").map((h) => h.replace(/"/g, "").trim());
+
+    expect(headers).toContain("Admin Submit");
+
+    expect(csvContent).toContain("Approved by admin");
+  });
 });
 
 describe("Implementation Requirements", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     mockDownloadBlob.mockReset();
     mockFetchAllData.mockReset();
     mockFetchAllData.mockResolvedValue([baseSubmission]);
