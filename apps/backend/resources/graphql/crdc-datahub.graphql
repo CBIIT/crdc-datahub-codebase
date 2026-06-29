@@ -292,6 +292,7 @@ type SubmissionList implements SubmissionInterface {
     inactiveReminder_30: Boolean
     inactiveReminder_60: Boolean
     dataFileSize: FileSize
+    adminSubmitComment: String
     # SubmissionList fields
     submissionRequestID: String # Application ID linked via study
     canViewSubmissionRequest: Boolean # User permission to view the submission request

@@ -13,6 +13,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
     $offset: Int
     $orderBy: String
     $sortDirection: String
+    $isInternalUser: Boolean = false
   ) {
     listSubmissions(
       organization: $organization
@@ -56,6 +57,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         }
         submissionRequestID
         canViewSubmissionRequest
+        adminSubmitComment @include(if: $isInternalUser)
       }
       organizations {
         _id
@@ -75,11 +77,11 @@ export type Input = {
   name?: string;
   dbGaPID?: string;
   submitterName?: string;
-  first: number;
-  offset: number;
-  orderBy: string;
-  sortDirection: Order;
-};
+  /**
+   * Indicates whether the user making the request is an internal user.
+   */
+  isInternalUser?: boolean;
+} & BasePaginationParams;
 
 export type Response = {
   listSubmissions: {
@@ -100,6 +102,7 @@ export type Response = {
       | "createdAt"
       | "updatedAt"
       | "intention"
+      | "adminSubmitComment"
     > & {
       dataFileSize: Pick<Submission["dataFileSize"], "formatted">;
       history: Pick<Submission["history"][number], "status">[];

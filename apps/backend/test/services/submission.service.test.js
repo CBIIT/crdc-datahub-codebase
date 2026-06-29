@@ -2149,4 +2149,36 @@ describe('Submission Service - listSubmissions', () => {
         expect(calledDataCommons).toEqual([]);
         expect(calledDataCommons).toHaveLength(0);
     });
+
+    it('should preserve adminSubmitComment values returned by DAO', async () => {
+        const submissions = [
+            {
+                _id: 'sub-001',
+                adminSubmitComment: 'latest admin comment',
+                history: [
+                    { status: 'Submitted', isAdminSubmit: true, reviewComment: 'older comment' },
+                    { status: 'Submitted', isAdminSubmit: true, reviewComment: 'latest admin comment' }
+                ]
+            },
+            {
+                _id: 'sub-002',
+                adminSubmitComment: null,
+                history: [
+                    { status: 'Submitted', isAdminSubmit: true, reviewComment: 'hidden for non-internal users' }
+                ]
+            }
+        ];
+        mockSubmissionDAO.listSubmissions.mockResolvedValueOnce({
+            submissions,
+            total: 2,
+            dataCommons: [],
+            submitterNames: [],
+            organizations: [],
+            statuses: () => []
+        });
+
+        const result = await submissionService.listSubmissions({}, mockContext);
+        expect(result.submissions[0].adminSubmitComment).toBe('latest admin comment');
+        expect(result.submissions[1].adminSubmitComment).toBeNull();
+    });
 });
