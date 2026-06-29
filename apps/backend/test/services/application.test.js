@@ -2241,7 +2241,6 @@ describe('Application', () => {
             app.getApplicationById = jest.fn()
                 .mockResolvedValueOnce(mockApplication)
                 .mockResolvedValueOnce(approvedFromDb);
-            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
             mockLogCollection.insert.mockResolvedValue();
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
@@ -2252,13 +2251,14 @@ describe('Application', () => {
 
             const result = await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
-            expect(app._saveApprovedStudies).toHaveBeenCalledWith(
+            expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).toHaveBeenCalledWith(
                 expect.objectContaining({ GPAName: '' }),
                 mockQuestionnaire,
                 undefined,
                 undefined,
                 false,
-                mockExistingProgram
+                mockExistingProgram,
+                null
             );
             expect(mockNotificationsService.pendingGPANotification).not.toHaveBeenCalled();
             expect(mockNotificationsService.approveQuestionNotification).toHaveBeenCalled();
@@ -2303,7 +2303,6 @@ describe('Application', () => {
                 }]);
             mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
             mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
-            mockApprovedStudiesService.storeApprovedStudies.mockResolvedValue({ _id: 'study1' });
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: '' })
             );
@@ -2315,12 +2314,15 @@ describe('Application', () => {
 
             await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
-            expect(mockApprovedStudiesService.storeApprovedStudies).toHaveBeenCalled();
-            const pendingGPA = mockApprovedStudiesService.storeApprovedStudies.mock.calls[0][12];
-            expect(pendingGPA).toEqual({
-                GPAName: DEFAULT_GPA_NAME,
-                isPendingGPA: false,
-            });
+            expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).toHaveBeenCalledWith(
+                expect.objectContaining({ GPAName: '', controlledAccess: true }),
+                mockQuestionnaire,
+                undefined,
+                undefined,
+                false,
+                mockExistingProgram,
+                null
+            );
         });
 
         it('keeps provided GPA name for controlled access approval', async () => {
@@ -2345,19 +2347,19 @@ describe('Application', () => {
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: 'Actual GPA' })
             );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
-            app._saveApprovedStudies = jest.fn().mockResolvedValue({ _id: 'study1' });
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
             mockLogCollection.insert.mockResolvedValue();
 
             await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
-            expect(app._saveApprovedStudies).toHaveBeenCalledWith(
+            expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).toHaveBeenCalledWith(
                 expect.objectContaining({ GPAName: 'Actual GPA' }),
                 mockQuestionnaire,
                 undefined,
                 undefined,
                 false,
-                mockExistingProgram
+                mockExistingProgram,
+                null
             );
         });
     });

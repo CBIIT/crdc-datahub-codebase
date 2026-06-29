@@ -51,11 +51,12 @@ class ApprovedStudiesService {
 
     async _buildApprovedStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
         const program = await this._validateProgramID(existingProgram?._id || null);
-        const pendingGPA = PendingGPA.create(application?.GPAName, isPendingGPA);
+        const controlledAccess = isTrue(application?.controlledAccess);
+        const resolvedGPAName = PendingGPA.resolveGPAName(application?.GPAName, controlledAccess);
+        const pendingGPA = PendingGPA.create(resolvedGPAName, isPendingGPA);
         const trimmedDbGaP = String(questionnaire?.study?.dbGaPPPHSNumber ?? "").trim();
         const baseDbGaP = trimmedDbGaP.match(/^phs\d{6}/i)?.[0]?.toLowerCase() ?? null;
         const studyAbbreviation = defaultStudyAbbreviationToStudyName((application?.studyAbbreviation ?? "").trim(), application?.studyName);
-        const controlledAccess = isTrue(application?.controlledAccess);
 
         const fields = {
             applicationID: application?._id ?? application?.id,

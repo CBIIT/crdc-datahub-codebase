@@ -9,6 +9,7 @@ const TEST_CONSTANTS = require('../test-constants');
 const USER = require('../../crdc-datahub-database-drivers/constants/user-constants');
 const { ORGANIZATION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
 const {ApprovedStudies} = require("../../crdc-datahub-database-drivers/domain/approved-studies");
+const { DEFAULT_GPA_NAME } = require('../../domain/pending-gpa');
 const { NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED } = require('../../constants/submission-constants');
 
 // Mock dependencies
@@ -1173,6 +1174,41 @@ describe('ApprovedStudiesService', () => {
             expect(service.approvedStudyDAO.create).toHaveBeenCalledWith(fakeStudy);
             expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
             expect(result).toEqual(expect.objectContaining({ _id: 'new-study-id' }));
+        });
+
+        it.each([
+            [undefined],
+            [null],
+            [''],
+            ['   '],
+        ])('defaults blank controlled-access GPA name to Not Provided (GPAName: %p)', async (GPAName) => {
+            await service.saveApprovedStudyFromApplication(
+                { ...application, GPAName },
+                questionnaire,
+                false,
+                undefined,
+                false,
+                program,
+                null
+            );
+
+            expect(ApprovedStudies.createApprovedStudies).toHaveBeenCalledWith(
+                'app-123',
+                'Study One',
+                'STUDY1',
+                'phs001234',
+                'Org One',
+                true,
+                '0000-0001',
+                'PI Name',
+                false,
+                true,
+                false,
+                null,
+                expect.objectContaining({ GPAName: DEFAULT_GPA_NAME, isPendingGPA: false }),
+                'program-1',
+                false
+            );
         });
 
         it('should update an existing study and preserve id, createdAt, studyName, and studyAbbreviation', async () => {

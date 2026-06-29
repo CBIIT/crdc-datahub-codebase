@@ -20,6 +20,7 @@ const ApplicationDAO = require("../dao/application");
 const {PrismaPagination} = require("../crdc-datahub-database-drivers/domain/prisma-pagination");
 const UserDAO = require("../dao/user");
 const {formatName} = require("../utility/format-name");
+const {PendingGPA} = require("../domain/pending-gpa");
 const {
     REOPEN_ASSIGNABLE_ROLES,
     hasSubmissionRequestCreatePermission,
