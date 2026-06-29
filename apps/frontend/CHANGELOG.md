@@ -1,5 +1,26 @@
 # Release Notes
 
+## 3.6.1 (Released 06/22/2026)
+
+#### Submission Request
+
+- A missing Genomic Program Administrator (GPA) name in the Submission
+    Request Form (SRF) will no longer grant a Conditional Approval
+    requiring the GPA name be provided before submission can begin. In
+    addition, a Conditional Approval email will no longer be sent to the
+    SRF contacts when the GPA name is missing.
+- The Submission Requests page will now correctly display the version
+    number for Submission Requests with a Status of \"Inquired\".
+- The \"CRDC Submission Request Available for Review\" email sent to
+    the CRDC Submission Review committee will now correctly display the
+    Principal Investigator name.
+- The \"CRDC Submission Request: Additional Information Needed\" email
+    sent to request additional information will now correctly display
+    the value \"NA\" in the Study Abbreviation field if the study does
+    not have an abbreviation.
+- The SRF Data Access and Disease page will now correctly display
+    \"Species\" in all species fields.
+
 ## 3.6.0 (Released 05/21/2026)
 
 #### Submission Request

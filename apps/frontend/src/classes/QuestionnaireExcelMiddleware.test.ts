@@ -2727,6 +2727,101 @@ describe("Parsing", () => {
     expect(pp2.expectedDate).toEqual("12/31/2031");
   });
 
+  it("should allow current date for planned publication expected date", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2000, 0, 1, 4, 4, 4));
+
+    const mockForm = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: "Other",
+        name: "Program A",
+        abbreviation: "PA",
+        description: "Program A Desc",
+      }),
+      study: studyFactory.build({
+        name: "Date Parsing Study",
+        abbreviation: "DPS",
+        description: "Testing date parsing.",
+        funding: [],
+        publications: [],
+        plannedPublications: [
+          plannedPublicationFactory.build({
+            title: "DateTest #1",
+            expectedDate: "01/01/2000",
+          }),
+        ],
+        repositories: [],
+      }),
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionB();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionB();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+
+    const pp1 = output.study.plannedPublications.find((p) => p.title === "DateTest #1");
+    expect(pp1).toBeDefined();
+    expect(pp1.expectedDate).toEqual("01/01/2000");
+
+    vi.useRealTimers();
+  });
+
+  it("should not allow past dates for planned publication expected date and persist value", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: "Other",
+        name: "Program A",
+        abbreviation: "PA",
+        description: "Program A Desc",
+      }),
+      study: studyFactory.build({
+        name: "Date Parsing Study",
+        abbreviation: "DPS",
+        description: "Testing date parsing.",
+        funding: [],
+        publications: [],
+        plannedPublications: [
+          plannedPublicationFactory.build({
+            title: "DateTest #1",
+            expectedDate: "01/01/2000",
+          }),
+        ],
+        repositories: [],
+      }),
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionB();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionB();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+
+    const pp1 = output.study.plannedPublications.find((p) => p.title === "DateTest #1");
+    expect(pp1).toBeDefined();
+    expect(pp1.expectedDate).toEqual("01/01/2000");
+  });
+
   it("should convert repository data types to an array of only valid options", async () => {
     const mockForm = questionnaireDataFactory.build({
       program: programInputFactory.build({
@@ -2983,6 +3078,68 @@ describe("Parsing", () => {
     expect(output.species).toEqual(speciesOptions.slice(0, speciesOptions.length - 1));
     expect(output.otherSpeciesOfSubjects).toEqual("Mythical Creature");
     expect(output.numberOfParticipants).toEqual(150_000);
+  });
+
+  it("should migrate old species header when template version is less than 1.7", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      otherSpeciesOfSubjects: "Legacy Species",
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    const metadataSheet = await middleware.serializeMetadata();
+    metadataSheet.getCell("I2").value = "1.6";
+
+    // @ts-expect-error Private member
+    await middleware.parseMetadata();
+
+    // @ts-expect-error Private member
+    const sectionCSheet = await middleware.serializeSectionC();
+    sectionCSheet.getCell("J1").value = "Other Specie(s) involved";
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionC();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+    expect(output.otherSpeciesOfSubjects).toEqual("Legacy Species");
+  });
+
+  it("should not migrate old species header when template version is 1.7 or greater", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      otherSpeciesOfSubjects: "Legacy Species",
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    const metadataSheet = await middleware.serializeMetadata();
+    metadataSheet.getCell("I2").value = "1.7";
+
+    // @ts-expect-error Private member
+    await middleware.parseMetadata();
+
+    // @ts-expect-error Private member
+    const sectionCSheet = await middleware.serializeSectionC();
+    sectionCSheet.getCell("J1").value = "Other Specie(s) involved";
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    const result = await middleware.parseSectionC();
+
+    // @ts-expect-error Private member
+    const output = middleware.data;
+
+    expect(result).toEqual(true);
+    expect(output.otherSpeciesOfSubjects).toEqual(InitialQuestionnaire.otherSpeciesOfSubjects);
   });
 
   it("should ignore invalid Cancer Type options in SectionC", async () => {

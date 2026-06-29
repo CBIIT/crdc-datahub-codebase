@@ -23,7 +23,14 @@ from aws_cdk import aws_sns as sns
 from aws_cdk import aws_sns_subscriptions as subs
 from aws_cdk import Duration
 from aws_cdk import RemovalPolicy
-from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
+from aws_cdk import aws_bedrock as bedrock
+from aws_cdk import aws_s3vectors as s3vectors
+from rds import RdsInstance
+from documentdb import DocumentDbCluster
+from knowledgebase import KnowledgeBase
+from guardrail import Guardrail
+from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, chatbotbe
+#from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
 
 class Stack(Stack):
     def __init__(self, scope: Construct, **kwargs) -> None:
@@ -134,44 +141,86 @@ class Stack(Stack):
         # )
         
         # create s3 bucket
-        bucket = s3.Bucket(self, f"{self.namingPrefix}-submission",
-            bucket_name=f"{self.namingPrefix}-submission",
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
-            cors=[
-                s3.CorsRule(
-                    allowed_methods=[
-                        s3.HttpMethods.POST,
-                        s3.HttpMethods.GET,
-                        s3.HttpMethods.HEAD,
-                        s3.HttpMethods.PUT,
-                    ],
-                    allowed_origins=[
-                        "*.datacommons.cancer.gov",
-                        "*.cancer.gov",
-                        "*.cloudfront.net",
-                        "http://localhost:4010"
-                    ],    
-                    allowed_headers=["*"],
-                    exposed_headers=["Content-Range", "ETag", "Content-Length"],
-                    max_age=3000
-                )
-            ]
-        )
+        if(config['main']['create_bucket'] == "true"):
+            bucket = s3.Bucket(self, f"{self.namingPrefix}-submission",
+                bucket_name=f"{self.namingPrefix}-submission",
+                removal_policy=RemovalPolicy.DESTROY,
+                auto_delete_objects=True,
+                cors=[
+                    s3.CorsRule(
+                        allowed_methods=[
+                            s3.HttpMethods.POST,
+                            s3.HttpMethods.GET,
+                            s3.HttpMethods.HEAD,
+                            s3.HttpMethods.PUT,
+                        ],
+                        allowed_origins=[
+                            "*.datacommons.cancer.gov",
+                            "*.cancer.gov",
+                            "*.cloudfront.net",
+                            "http://localhost:4010"
+                        ],    
+                        allowed_headers=["*"],
+                        exposed_headers=["Content-Range", "ETag", "Content-Length"],
+                        max_age=3000
+                    )
+                ]
+            )
 
 #        secret_value = json.dumps({
 #            "submission_bucket": bucket.bucket_name
 #        })
+
+
+        ### create bedrock knowledgebase
+        if config['main']['create_kb'] == "true":
+            self.knowledgebase = KnowledgeBase(self, f"{self.namingPrefix}-kb")
+
+        ### create guardrail
+        if config['main']['create_guardrail'] == "true":
+            self.guardrail = Guardrail(self, f"{self.namingPrefix}-guardrail")
+
+        ### RDS - referred to rds.py
+        if config.getboolean('db', 'create_rds', fallback=False):
+            self.rds = RdsInstance(
+              self,
+              f"{self.namingPrefix}-rds",
+              vpc=self.VPC
+            )
+            rds_endpoint = self.rds.rds.db_instance_endpoint_address
+            rds_port     = self.rds.rds.db_instance_endpoint_port
+
+        ## Document DB - referred to documentdb.py
+        if config.getboolean('db', 'create_docdb', fallback=False):
+            self.docdb = DocumentDbCluster(
+              self,
+              f"{self.namingPrefix}-docdb",
+              vpc=self.VPC
+            )
+            docdb_endpoint = self.docdb.cluster.attr_endpoint
+            docdb_port     = self.docdb.cluster.attr_port
+
         ### Secrets
         
-        
-#        if(config['cloudfront']['deploy'] == "true"):
-#            public_key_id = CFPublicKey.public_key_id
-#            cf_domain = self.cfDistribution.distribution_domain_name
-#        else:
-#            public_key_id = "K2JHABMC4EI0Q9"
-#            cf_domain = "https://d2krihsuecuuhu.cloudfront.net"
+        if(config['main']['create_bucket'] == "true"):
+            submission_bucket = bucket.bucket_name
+        else:
+            submission_bucket = config["secrets"].get("submission_bucket")
+
+
+        if(config['main']['create_kb'] == "true"):
+            datasource_bucket_arn = self.knowledgebase.datasource_bucket.bucket_arn
+            knowledge_base_id = self.knowledgebase.knowledge_base.attr_knowledge_base_id
+        else:
+            datasource_bucket_arn = config["secrets"].get("datasource_bucket_arn")
+            knowledge_base_id = config["secrets"].get("knowledge_base_id")
             
+        if(config['main']['create_guardrail'] == "true"):
+            guardrail_id = self.guardrail.guardrail.attr_guardrail_id
+        else:
+            guardrail_id = config["secrets"].get("guardrail_id")
+
+
         self.secret = secretsmanager.Secret(self, "Secret",
 #            secret_name="{}/{}/{}".format(config['main']['secret_prefix'], config['main']['tier'], "crdc-dh"),
             secret_name="{}/{}".format(config['main']['resource_prefix'], config['main']['tier']),
@@ -203,7 +252,8 @@ class Stack(Stack):
                 "email_user": SecretValue.unsafe_plain_text(config['secrets']['email_user']),
                 "email_password": SecretValue.unsafe_plain_text(config['secrets']['email_password']),
                 "email_url": SecretValue.unsafe_plain_text(config['secrets']['email_url']),
-                "submission_bucket": SecretValue.unsafe_plain_text(config['secrets']['submission_bucket']),
+                #"submission_bucket": SecretValue.unsafe_plain_text(config['secrets']['submission_bucket']),
+                "submission_bucket": SecretValue.unsafe_plain_text(submission_bucket),
 #                "google_client_id": SecretValue.unsafe_plain_text(config['secrets']['google_client_id']),
 #                "google_client_secret": SecretValue.unsafe_plain_text(config['secrets']['google_client_secret']),
                 "nih_client_id": SecretValue.unsafe_plain_text(config['secrets']['nih_client_id']),
@@ -213,7 +263,32 @@ class Stack(Stack):
                 "nih_userinfo_url": SecretValue.unsafe_plain_text(config['secrets']['nih_userinfo_url']),
                 "nih_authorize_url": SecretValue.unsafe_plain_text(config['secrets']['nih_authorize_url']),
                 "nih_token_url": SecretValue.unsafe_plain_text(config['secrets']['nih_token_url']),
-                "nih_logout_url": SecretValue.unsafe_plain_text(config['secrets']['nih_logout_url'])
+                "nih_logout_url": SecretValue.unsafe_plain_text(config['secrets']['nih_logout_url']),
+                "datasource_bucket_arn": SecretValue.unsafe_plain_text(datasource_bucket_arn),
+                "knowledge_base_id": SecretValue.unsafe_plain_text(knowledge_base_id),
+                "guardrail_id": SecretValue.unsafe_plain_text(guardrail_id),
+                **(
+                    {
+                        "rds_endpoint": SecretValue.unsafe_plain_text(self.rds.rds.db_instance_endpoint_address),
+                        "rds_port":     SecretValue.unsafe_plain_text(self.rds.rds.db_instance_endpoint_port),
+                        "rds_db_name":  SecretValue.unsafe_plain_text(config.get('db', 'rds_db_name')),
+                        "rds_username": SecretValue.unsafe_plain_text(config.get('db', 'rds_username')),
+                        "rds_password": self.rds.rds.secret.secret_value_from_json("password"),
+                    }
+                    if config.getboolean('db', 'create_rds', fallback=False)
+                    else {}
+                ),
+                **(
+                    {
+                        "docdb_db_name": SecretValue.unsafe_plain_text(config.get('db', 'docdb_db_name')),
+                        "docdb_endpoint": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_endpoint),
+                        "docdb_port": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_port),
+                        "docdb_username": SecretValue.unsafe_plain_text(config.get('db', 'docdb_user')),
+                        "docdb_password":  SecretValue.unsafe_plain_text(config.get('db', 'docdb_password')),
+                    }
+                    if config.getboolean('db', 'create_docdb', fallback=False)
+                    else {}
+                )
 #                "newrelic_license_key": SecretValue.unsafe_plain_text(config['secrets']['newrelic_license_key'])
 
             }
@@ -221,14 +296,14 @@ class Stack(Stack):
 
         ### ALB
         # Extract subnet IDs
-        subnet1 = config.get('Subnets', 'subnet1')
-        subnet2 = config.get('Subnets', 'subnet2')
-        selected_subnets = ec2.SubnetSelection(
-            subnets=[
-                ec2.Subnet.from_subnet_id(self, "Subnet1", subnet1),
-                ec2.Subnet.from_subnet_id(self, "Subnet2", subnet2)
-            ]
-        )
+        #subnet1 = config.get('Subnets', 'subnet1')
+        #subnet2 = config.get('Subnets', 'subnet2')
+        #selected_subnets = ec2.SubnetSelection(
+            #subnets=[
+                #ec2.Subnet.from_subnet_id(self, "Subnet1", subnet1),
+                #ec2.Subnet.from_subnet_id(self, "Subnet2", subnet2)
+            #]
+        #)
         # Extract security group ID
         #security_group_id = config.get('SecurityGroup', 'security_group_id')
         #security_group = ec2.SecurityGroup.from_security_group_id(self,
@@ -241,7 +316,7 @@ class Stack(Stack):
             load_balancer_name = f"{config['main']['resource_prefix']}-{config['main']['tier']}-alb",
             vpc=self.VPC,
             internet_facing=config.getboolean('alb', 'internet_facing'),
-            vpc_subnets=selected_subnets
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
         )
 
         self.ALB.add_redirect(
@@ -260,7 +335,9 @@ class Stack(Stack):
             certificates=[
                 alb_cert
             ],
-            port=443)
+            port=443,
+            ssl_policy=elbv2.SslPolicy.RECOMMENDED_TLS                                               
+        )
 
         ### ALB Access log
         log_bucket = s3.Bucket.from_bucket_name(self, "AlbAccessLogsBucket", config['main']['alb_log_bucket_name'])
@@ -287,125 +364,152 @@ class Stack(Stack):
 
 
         # create SNS topic
-        topic = sns.Topic(self, f"{self.namingPrefix}-sns-topic",
-            topic_name=f"datasync-status-topic-{config['main']['tier']}",
-            display_name=f"datasync-status-topic-{config['main']['tier']}"
-        )
+
+        if(config['main']['create_sns_topic'] == "true"):
+            topic = sns.Topic(self, f"{self.namingPrefix}-sns-topic",
+                topic_name=f"datasync-status-topic-{config['main']['tier']}",
+                display_name=f"datasync-status-topic-{config['main']['tier']}"
+            )
 
         # add email subscription
-        emails = [e.strip() for e in config['main']['sns_topic_emails'].split(',')]
+            emails = [e.strip() for e in config['main']['sns_topic_emails'].split(',')]
 
-        for email in emails:
-            topic.add_subscription(
-                subs.EmailSubscription(email)
-            )
+            for email in emails:
+                topic.add_subscription(
+                    subs.EmailSubscription(email)
+                )
 
         # Add policy to allow EventBridge to publish
-        topic.add_to_resource_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                principals=[iam.ServicePrincipal("events.amazonaws.com")],
-                actions=["sns:Publish"],
-                resources=[topic.topic_arn],
-            )
-        )  
+            topic.add_to_resource_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    principals=[iam.ServicePrincipal("events.amazonaws.com")],
+                    actions=["sns:Publish"],
+                    resources=[topic.topic_arn],
+                )
+            )  
         # create datasync role & policy
-        permission_boundary_arn = config.get('iam', 'permission_boundary')
-        self.datasync_policy_role = iam.Role(self,
-            f"{self.namingPrefix}-datasync-role",
-            assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
-            role_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-datasync-role",
-            permissions_boundary=iam.ManagedPolicy.from_managed_policy_arn(self,
-                f"{self.namingPrefix}-datasync-boundary",
-                permission_boundary_arn
-            ),
-            inline_policies={
-                "DataSyncPolicy": iam.PolicyDocument(statements=[
-                    iam.PolicyStatement(
-                        effect=iam.Effect.ALLOW,
-                        actions=[
-                            "s3:PutObjectTagging",
-                            "s3:ListObjectsV2",
-                            "s3:ListBucket",
-                            "s3:ListAllMyBuckets",
-                            "s3:GetObjectVersionTagging",
-                            "s3:GetObjectVersion",
-                            "s3:GetObjectTagging",
-                            "s3:GetObject",
-                            "s3:GetBucketLocation",
-                            "iam:ListRoles",
-                            "iam:CreateRole",
-                            "iam:CreatePolicy",
-                            "iam:AttachRolePolicy",
-                            "datasync:TagResource",
-                            "datasync:StartTaskExecution",
-                            "datasync:ListTasks",
-                            "datasync:ListTaskExecutions",
-                            "datasync:ListLocations",
-                            "datasync:DescribeTaskExecution",
-                            "datasync:DescribeTask",
-                            "datasync:DescribeLocation*",
-                            "datasync:DeleteTask",
-                            "datasync:DeleteLocation",
-                            "datasync:CreateTask",
-                            "datasync:CreateLocationS3",
-                            "datasync:CancelTaskExecution"
-                        ],
-                        resources=["*"]
-                    ),
-                    iam.PolicyStatement(
-                        effect=iam.Effect.ALLOW,
-                        actions=["iam:PassRole"],
-                        resources=["*"],
-                        conditions={
-                            "StringEquals": {
-                                "iam:PassedToService": "datasync.amazonaws.com"
+
+        if(config['main']['create_datasync_role'] == "true"):
+            tier = config['main']['tier']
+            #role_kwargs = {}
+            #if tier not in ["stage", "prod"]:
+                #role_kwargs["permissions_boundary"] = iam.ManagedPolicy.from_managed_policy_arn(
+                    #self,
+                    #f"{self.namingPrefix}-datasync-boundary",
+                    #config.get('iam', 'permission_boundary')
+                #)
+                #permissions_boundary_arn = None
+            #else:
+                #permissions_boundary=iam.ManagedPolicy.from_managed_policy_arn(self, f"{self.namingPrefix}-datasync-boundary", permission_boundary_arn)
+                #permission_boundary_arn = config.get('iam', 'permission_boundary')
+            bucket_names = [name.strip() for name in config['main']['datasync_buckets'].split(',')]
+            bucket_arns = []
+            bucket_arns2 = []
+            for bucket_name in bucket_names:
+                bucket_arns.append(f"arn:aws:s3:::{bucket_name}")
+                bucket_arns2.append(f"arn:aws:s3:::{bucket_name}/*")
+
+            self.datasync_policy_role = iam.Role(self,
+                f"{self.namingPrefix}-datasync-role",
+                assumed_by=iam.ServicePrincipal("datasync.amazonaws.com"),
+                role_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-datasync-role",
+                #permissions_boundary=iam.ManagedPolicy.from_managed_policy_arn(self,
+                    #f"{self.namingPrefix}-datasync-boundary",
+                    #permission_boundary_arn
+                #),
+                #permissions_boundary=permissions_boundary,           
+                #**role_kwargs,
+                inline_policies={
+                    "DataSyncPolicy": iam.PolicyDocument(statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "s3:PutObjectTagging",
+                                "s3:ListObjectsV2",
+                                "s3:ListBucket",
+                                "s3:ListAllMyBuckets",
+                                "s3:GetObjectVersionTagging",
+                                "s3:GetObjectVersion",
+                                "s3:GetObjectTagging",
+                                "s3:GetObject",
+                                "s3:GetBucketLocation",
+                                "iam:ListRoles",
+                                "iam:CreateRole",
+                                "iam:CreatePolicy",
+                                "iam:AttachRolePolicy",
+                                "datasync:TagResource",
+                                "datasync:StartTaskExecution",
+                                "datasync:ListTasks",
+                                "datasync:ListTaskExecutions",
+                                "datasync:ListLocations",
+                                "datasync:DescribeTaskExecution",
+                                "datasync:DescribeTask",
+                                "datasync:DescribeLocation*",
+                                "datasync:DeleteTask",
+                                "datasync:DeleteLocation",
+                                "datasync:CreateTask",
+                                "datasync:CreateLocationS3",
+                                "datasync:CancelTaskExecution"
+                            ],
+                            resources=["*"]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=["iam:PassRole"],
+                            resources=["*"],
+                            conditions={
+                                "StringEquals": {
+                                    "iam:PassedToService": "datasync.amazonaws.com"
+                                }
                             }
-                        }
-                    ),
-                    iam.PolicyStatement(
-                        effect=iam.Effect.ALLOW,
-                        actions=[
-                            "s3:ListObjectsV2",
-                            "s3:ListBucketMultipartUploads",
-                            "s3:ListBucket",
-                            "s3:GetBucketLocation"
-                        ],
-                        resources=[
-                            "arn:aws:s3:::nci-crdc-data-bucket-dev",
-                            "arn:aws:s3:::icdc-cbiit-test-metadata",
-                            "arn:aws:s3:::ctdc-cbiit-test-metadata",
-                            "arn:aws:s3:::cds-cbiit-test-metadata"
-                        ]
-                    ),
-                    iam.PolicyStatement(
-                        effect=iam.Effect.ALLOW,
-                        actions=[
-                            "s3:PutObjectTagging",
-                            "s3:PutObject",
-                            "s3:ListObjectsV2",
-                            "s3:ListMultipartUploadParts",
-                            "s3:ListBucket",
-                            "s3:GetObjectTagging",
-                            "s3:GetObject",
-                            "s3:DeleteObject",
-                            "s3:AbortMultipartUpload"
-                        ],
-                        resources=[
-                            "arn:aws:s3:::nci-crdc-data-bucket-dev/*",
-                            "arn:aws:s3:::icdc-cbiit-test-metadata/*",
-                            "arn:aws:s3:::ctdc-cbiit-test-metadata/*",
-                            "arn:aws:s3:::cds-cbiit-test-metadata/*"
-                        ]
-                    )
-                ])
-            }
-        )
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "s3:ListObjectsV2",
+                                "s3:ListBucketMultipartUploads",
+                                "s3:ListBucket",
+                                "s3:GetBucketLocation"
+                            ],
+                            #resources=[
+                                #"arn:aws:s3:::nci-crdc-data-bucket-dev",
+                                #"arn:aws:s3:::icdc-cbiit-test-metadata",
+                                #"arn:aws:s3:::ctdc-cbiit-test-metadata",
+                                #"arn:aws:s3:::cds-cbiit-test-metadata"
+                            #]
+                            resources=bucket_arns
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "s3:PutObjectTagging",
+                                "s3:PutObject",
+                                "s3:ListObjectsV2",
+                                "s3:ListMultipartUploadParts",
+                                "s3:ListBucket",
+                                "s3:GetObjectTagging",
+                                "s3:GetObject",
+                                "s3:DeleteObject",
+                                "s3:AbortMultipartUpload"
+                            ],
+                            resources=bucket_arns2
+                            #resources=[
+                                #"arn:aws:s3:::nci-crdc-data-bucket-dev/*",
+                                #"arn:aws:s3:::icdc-cbiit-test-metadata/*",
+                                #"arn:aws:s3:::ctdc-cbiit-test-metadata/*",
+                                #"arn:aws:s3:::cds-cbiit-test-metadata/*"
+                            #]
+                        )
+                    ])
+                }
+            )
         # SQS queue
        # queue = sqs.Queue(self, f"{self.namingPrefix}-{service}-queue",
        #     queue_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-{service}.fifo",
        #     fifo=True
        # )
+
 
         ### Fargate
         # Frontend Service
@@ -432,8 +536,8 @@ class Stack(Stack):
         # Pvpuller Service
         pvpuller.pvpullerService.createService(self, config)
 
-        # AuthZ Service
-        #authz.authzService.createService(self, config)
+        # Chatbotbe Service
+        chatbotbe.chatbotbeService.createService(self, config)
 
         # Files Service
         # files.filesService.createService(self, config)

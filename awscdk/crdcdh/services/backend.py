@@ -26,6 +26,30 @@ class backendService:
     else:
         entry_point = None
 
+    taskDefinition = ecs.FargateTaskDefinition(self,
+        "{}-{}-taskDef".format(self.namingPrefix, service),
+        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
+        cpu=config.getint(service, 'cpu'),
+        memory_limit_mib=config.getint(service, 'memory')
+    )
+
+    exec_role = taskDefinition.obtain_execution_role()
+    role_arn = exec_role.role_arn
+    #task_role = taskDefinition.task_role
+
+    # Add task role ARN to the execution role trust relationship needed buy the dev team to get temporary credential, the code needs to assume the role first.
+
+    #exec_role.assume_role_policy.add_statements(
+        #iam.PolicyStatement(
+            #effect=iam.Effect.ALLOW,
+            #principals=[iam.ServicePrincipal('ecs-tasks.amazonaws.com'), iam.ArnPrincipal(task_role.role_arn)],
+            #actions=["sts:AssumeRole"]
+        #)
+    #)
+    #not working - role_arn = taskDefinition.execution_role.role_arn
+    #debug
+    #print(f"Fargate Task Definition Execution Role ARN: {role_arn}")
+
     environment={
             "DATE":date.today().isoformat(),
             "PROJECT":"crdc-hub",
@@ -38,7 +62,7 @@ class backendService:
             "NEW_RELIC_APP_NAME":"{}-{}".format(self.namingPrefix, service),
             "NEW_RELIC_DISTRIBUTED_TRACING_ENABLED":"true",
             "NEW_RELIC_HOST":"gov-collector.newrelic.com",
-            "NEW_RELIC_LABELS":"Project:{};Environment:{}".format('crdc-hub', config['main']['tier']),
+            "NEW_RELIC_LABELS":"Project:{};Environment:{}".format('crdc-hub', config['main']['env']),
             "NEW_RELIC_LOG_FILE_NAME":"STDOUT",
             "NRIA_IS_FORWARD_ONLY":"true",
             "NRIA_PASSTHROUGH_ENVIRONMENT":"ECS_CONTAINER_METADATA_URI,ECS_CONTAINER_METADATA_URI_V4,FARGATE",
@@ -46,6 +70,8 @@ class backendService:
             "NRIA_OVERRIDE_HOST_ROOT":"",
             "JAVA_OPTS": "-javaagent:/usr/local/tomcat/newrelic/newrelic.jar",
             "AUTH_ENABLED":"true",
+            "ROLE_ARN": role_arn,
+#            "ROLE_ARN": exec_role.role_arn,
 #            "AUTH_ENDPOINT":"/api/auth/",
 #            "BENTO_API_VERSION":config[service]['image'],
 #            "MYSQL_SESSION_ENABLED":"true",
@@ -70,15 +96,17 @@ class backendService:
             "SUBMISSION_BUCKET":ecs.Secret.from_secrets_manager(self.secret, 'submission_bucket'),
         }   
     
-    taskDefinition = ecs.FargateTaskDefinition(self,
-        "{}-{}-taskDef".format(self.namingPrefix, service),
-        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
-        cpu=config.getint(service, 'cpu'),
-        memory_limit_mib=config.getint(service, 'memory')
-    )
+    #taskDefinition = ecs.FargateTaskDefinition(self,
+        #"{}-{}-taskDef".format(self.namingPrefix, service),
+        #family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory')
+    #)
+
     
     ecr_repo = ecr.Repository.from_repository_arn(self, "{}_repo".format(service), repository_arn=config[service]['repo'])
     
+    #no sumolog
     taskDefinition.add_container(
         service,
         #image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
@@ -94,8 +122,52 @@ class backendService:
         )
     )
 
+    # use sumo log
+    #taskDefinition.add_container(
+        #service,
+        ##image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
+        #image=ecs.ContainerImage.from_ecr_repository(repository=ecr_repo, tag=config[service]['image']),
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory'),
+        #port_mappings=[ecs.PortMapping(app_protocol=ecs.AppProtocol.http, container_port=config.getint(service, 'port'), name=service)],
+        #entry_point=entry_point,
+        #environment=environment,
+        #secrets=secrets,
+        #logging=ecs.LogDrivers.firelens(
+            #options={
+                #"Name": "http",
+                #"Host": config['secrets']['sumo_collector_endpoint'],
+                #"URI": "/receiver/v1/http/{}".format(config['secrets']['sumo_collector_token_backend']),
+                #"Port": "443",
+                #"tls": "on",
+                #"tls.verify": "off",
+                #"Retry_Limit": "2",
+                #"Format": "json_lines"
+            #}
+        #)
+    #)
+
+    # Sumo Logic FireLens Log Router Container
+    #sumo_logic_container = taskDefinition.add_firelens_log_router(
+        #"sumologic-firelens",
+        #image=ecs.ContainerImage.from_registry("public.ecr.aws/aws-observability/aws-for-fluent-bit:stable"),
+        #firelens_config=ecs.FirelensConfig(
+            #type=ecs.FirelensLogRouterType.FLUENTBIT,
+            #options=ecs.FirelensOptions(
+                #enable_ecs_log_metadata=True
+            #)
+        #),
+    #essential=True
+    #)
+
+
     #roles attached to ecs
-    bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-be-ref", f"{self.namingPrefix}-submission")
+    if(config['main']['create_bucket'] == "true"):
+        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-be-ref", f"{self.namingPrefix}-submission")
+    else:
+        existing_bucket_name = config["secrets"].get("submission_bucket")
+        bucket = s3.Bucket.from_bucket_name(self, f"{self.namingPrefix}-submission-be-existing", existing_bucket_name)
+
     # add s3 bucket policy to allow task def role to access submission bucket
     bucket_submission_policy = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
@@ -157,6 +229,13 @@ class backendService:
     )
 
     # allowed access the other buckets
+
+    bucket_names = [name.strip() for name in config['main']['datasync_buckets'].split(',')]
+    bucket_arns_be = []
+    for bucket_name in bucket_names:
+        bucket_arns_be.append(f"arn:aws:s3:::{bucket_name}")
+        bucket_arns_be.append(f"arn:aws:s3:::{bucket_name}/*")
+
     data_sync_other_buckets = iam.PolicyStatement(
         effect=iam.Effect.ALLOW,
         actions=[
@@ -171,16 +250,7 @@ class backendService:
             "s3:DeleteObject",
             "s3:AbortMultipartUpload"
         ],
-        resources=[
-            "arn:aws:s3:::nci-crdc-data-bucket-dev",
-            "arn:aws:s3:::icdc-cbiit-test-metadata",
-            "arn:aws:s3:::ctdc-cbiit-test-metadata",
-            "arn:aws:s3:::cds-cbiit-test-metadata",
-            "arn:aws:s3:::nci-crdc-data-bucket-dev/*",
-            "arn:aws:s3:::icdc-cbiit-test-metadata/*",
-            "arn:aws:s3:::ctdc-cbiit-test-metadata/*",
-            "arn:aws:s3:::cds-cbiit-test-metadata/*"
-        ]
+        resources=bucket_arns_be
     )
 
     # attach sqs iam access
@@ -250,14 +320,14 @@ class backendService:
 
     
     # get subnet for the ecs service
-    subnet_be1 = config.get(service, 'subnet_be1')
-    subnet_be2 = config.get(service, 'subnet_be2')
-    subnets_be = ec2.SubnetSelection(
-        subnets=[
-          ec2.Subnet.from_subnet_id(self, "Subnet_be1", subnet_be1),
-          ec2.Subnet.from_subnet_id(self, "Subnet_be2", subnet_be2)
-        ]
-    )
+    #subnet_be1 = config.get(service, 'subnet_be1')
+    #subnet_be2 = config.get(service, 'subnet_be2')
+    #subnets_be = ec2.SubnetSelection(
+        #subnets=[
+          #ec2.Subnet.from_subnet_id(self, "Subnet_be1", subnet_be1),
+          #ec2.Subnet.from_subnet_id(self, "Subnet_be2", subnet_be2)
+        #]
+    #)
     ecsService = ecs.FargateService(self,
         "{}-{}-service".format(self.namingPrefix, service),
         service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend",
@@ -270,7 +340,7 @@ class backendService:
             enable=True,
             rollback=True
         ),
-        vpc_subnets=subnets_be
+        vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)
     )
 
     scalable_target = ecsService.auto_scale_task_count(
@@ -286,12 +356,12 @@ class backendService:
     )
 
     # scale on schedule
-    tier = config['main']['tier']
-    if tier.lower() != 'prod':
+    env = config['main']['env']
+    if env.lower() != 'prod':
         scalable_target.scale_on_schedule(
             f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend-start",
             schedule=appscaling.Schedule.cron(
-                minute="7",
+                minute="5",
                 hour="11",
                 week_day="MON-FRI" 
             ),
@@ -309,7 +379,7 @@ class backendService:
             ),
             min_capacity=0,
             max_capacity=0
-        #    schedule_time_zone="America/New_York"
+            #schedule_time_zone="America/New_York"
         )
     ecsTarget = self.listener.add_targets("ECS-{}-Target".format(service),
         port=int(config[service]['port']),
@@ -323,7 +393,7 @@ class backendService:
 
     elbv2.ApplicationListenerRule(self, id="alb-{}-rule".format(service),
         conditions=[
-            elbv2.ListenerCondition.host_headers(config[service]['host'].split(',')),
+            #elbv2.ListenerCondition.host_headers(config[service]['host'].split(',')),
             elbv2.ListenerCondition.path_patterns(config[service]['path'].split(','))
         ],
         priority=int(config[service]['priority_rule_number']),

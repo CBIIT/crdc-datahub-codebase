@@ -1,3 +1,4 @@
+import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
 import { FC } from "react";
 import { MemoryRouterProps } from "react-router-dom";
@@ -13,6 +14,7 @@ import {
   ContextState as FormContextState,
   Status as FormStatus,
 } from "@/components/Contexts/FormContext";
+import { query as GET_LAST_APP } from "@/graphql/getMyLastApplication";
 import { render, waitFor, within } from "@/test-utils";
 import { applicationFactory } from "@/test-utils/factories/application/ApplicationFactory";
 import { authCtxStateFactory } from "@/test-utils/factories/auth/AuthCtxStateFactory";
@@ -106,6 +108,19 @@ const baseAuthCtxState: AuthContextState = authCtxStateFactory.build({
   }),
 });
 
+const baseMocks: MockedResponse[] = [
+  {
+    request: {
+      query: GET_LAST_APP,
+    },
+    result: {
+      data: {
+        getMyLastApplication: null,
+      },
+    },
+  },
+];
+
 type ParentProps = {
   formCtxState?: FormContextState;
   authCtxState?: AuthContextState;
@@ -120,11 +135,13 @@ const TestParent: FC<ParentProps> = ({
   initialEntries = [`/submission-request/test-app-id/${section}`],
 }) => (
   <TestRouter initialEntries={initialEntries}>
-    <AuthContext.Provider value={authCtxState}>
-      <FormContext.Provider value={formCtxState}>
-        <FormView section={section} />
-      </FormContext.Provider>
-    </AuthContext.Provider>
+    <MockedProvider mocks={baseMocks}>
+      <AuthContext.Provider value={authCtxState}>
+        <FormContext.Provider value={formCtxState}>
+          <FormView section={section} />
+        </FormContext.Provider>
+      </AuthContext.Provider>
+    </MockedProvider>
   </TestRouter>
 );
 
@@ -251,6 +268,44 @@ describe("Basic Functionality", () => {
         preventScrollReset: true,
       });
     });
+  });
+
+  it("should handle getMyLastApplication returning null when saving Section A", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+
+    const mockSections: Section[] = [
+      { name: "A", status: "Not Started" },
+      { name: "B", status: "Not Started" },
+      { name: "C", status: "In Progress" },
+      { name: "D", status: "Not Started" },
+    ];
+
+    mockFormObject = {
+      ref: { current: document.createElement("form") },
+      data: { sections: mockSections } as QuestionnaireData,
+    };
+
+    const setDataMock = vi
+      .fn()
+      .mockResolvedValue({ status: "success", id: baseFormCtxState.data._id });
+
+    const formCtxState: FormContextState = {
+      ...baseFormCtxState,
+      setData: setDataMock,
+    };
+
+    const { getByText } = render(<TestParent section="A" formCtxState={formCtxState} />);
+
+    userEvent.click(getByText("Save"));
+
+    await waitFor(() => {
+      expect(setDataMock).toHaveBeenCalled();
+    });
+
+    expect(global.mockEnqueue).toHaveBeenCalledWith(
+      "Your changes for the Principal Investigator and Contact section have been successfully saved.",
+      { variant: "success" }
+    );
   });
 });
 

@@ -16,6 +16,11 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true
   },
-  "exclude": ["node_modules"],
-  "include": ["src"]
+  "exclude": [
+    "node_modules"
+  ],
+  "include": [
+    "src",
+    "vite.config.ts"
+  ]
 }

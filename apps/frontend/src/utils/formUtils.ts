@@ -1,4 +1,4 @@
-import { cloneDeep, mergeWith, has, unset, some, values, get } from "lodash";
+import { cloneDeep, mergeWith, has, unset, some, values, get, isEqual } from "lodash";
 import type * as z from "zod";
 
 import { ColumnKey, shouldPersistColumnValue } from "@/classes/Excel/PersistentColumns";
@@ -145,6 +145,15 @@ export const formatFullStudyName = (studyName: string, studyAbbreviation: string
 
   return studyName.trim();
 };
+
+/**
+ * Formats a character limit value into the shared UI placeholder pattern.
+ *
+ * @param max The maximum character limit
+ * @returns A formatted string indicating the character limit, e.g. "1,000 characters allowed"
+ */
+export const formatCharacterLimitPlaceholder = (max: number): string =>
+  `${Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(max || 0)} characters allowed`;
 
 /**
  * Attempts to map a study name + abbreviation combination to an approved study ID.
@@ -452,15 +461,18 @@ export const determineSectionStatus = (passed: boolean, hasData: boolean): Secti
  *
  * @param section The section to check for data
  * @param data The questionnaire data to check against
+ * @param contextualData Provides additional data that may be needed to determine if the section has data.
  * @returns A boolean flag indicating if the section has any meaningful data
  */
 export const sectionHasData = (
   section: SectionKey,
-  data: RecursivePartial<QuestionnaireData>
+  data: RecursivePartial<QuestionnaireData>,
+  contextualData: RecursivePartial<QuestionnaireData> = {}
 ): boolean => {
   switch (section) {
     case "A": {
       const hasPIFields = some(values(data?.pi), (v) => typeof v === "string" && v.trim() !== "");
+      const hasEnteredPIFields = hasPIFields && !isEqual(data?.pi, contextualData?.pi);
       const hasPrimaryContactFields = some(
         values(data?.primaryContact),
         (v) => typeof v === "string" && v.trim() !== ""
@@ -468,8 +480,11 @@ export const sectionHasData = (
       const hasAdditionalContactFields = some(data?.additionalContacts || [], (contact) =>
         some(values(contact), (v) => typeof v === "string" && v.trim() !== "")
       );
+      const sameAsPI = data?.piAsPrimaryContact === true;
 
-      return hasPIFields || hasPrimaryContactFields || hasAdditionalContactFields;
+      return (
+        hasEnteredPIFields || sameAsPI || hasPrimaryContactFields || hasAdditionalContactFields
+      );
     }
     case "B": {
       const hasProgramFields = some(

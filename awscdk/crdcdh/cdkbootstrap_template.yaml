@@ -536,6 +536,7 @@ Resources:
                   - cloudformation:UpdateTerminationProtection
                   - sts:GetCallerIdentity
                   - cloudformation:GetTemplateSummary
+                  - cloudformation:DescribeEvents
                 Resource: "*"
                 Effect: Allow
               - Sid: CliStagingBucket
@@ -654,7 +655,7 @@ Resources:
       Type: String
       Name:
         Fn::Sub: /cdk-bootstrap/${Qualifier}/version
-      Value: "21"
+      Value: "30"
 Outputs:
   BucketName:
     Description: The name of the S3 bucket owned by the CDK toolkit stack

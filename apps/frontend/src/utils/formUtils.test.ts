@@ -240,6 +240,28 @@ describe("formatFullStudyName cases", () => {
   });
 });
 
+describe("formatCharacterLimitPlaceholder cases", () => {
+  it("should format whole numbers with correct separators", () => {
+    expect(utils.formatCharacterLimitPlaceholder(1_000)).toBe("1,000 characters allowed");
+  });
+
+  it("should format zero", () => {
+    expect(utils.formatCharacterLimitPlaceholder(0)).toBe("0 characters allowed");
+  });
+
+  it("should round decimal values to zero fraction digits", () => {
+    expect(utils.formatCharacterLimitPlaceholder(10.4)).toBe("10 characters allowed");
+  });
+
+  it.each<[number, string]>([
+    [null, "0 characters allowed"],
+    [undefined, "0 characters allowed"],
+    [NaN, "0 characters allowed"],
+  ])("should handle %s as %s", (input, expected) => {
+    expect(utils.formatCharacterLimitPlaceholder(input)).toBe(expected);
+  });
+});
+
 describe("mapOrganizationStudyToId cases", () => {
   it("should return the id of the matching study", () => {
     const studies = [
@@ -886,6 +908,105 @@ describe("sectionHasData", () => {
           })
         )
       ).toBe(false);
+    });
+
+    it("should return false for empty object input", () => {
+      expect(utils.sectionHasData("A", {}, {})).toBe(false);
+    });
+
+    it("should treat the presence of only autofilled PI information as empty", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const data = questionnaireDataFactory.build({
+        pi: lastAppPi,
+        primaryContact: null,
+        additionalContacts: [],
+      });
+
+      expect(utils.sectionHasData("A", data, { pi: lastAppPi })).toBe(false);
+    });
+
+    it("should return true when PI is autofilled but other Section A data exists (additionalContacts)", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const dataWithOther = questionnaireDataFactory.build({
+        pi: lastAppPi,
+        additionalContacts: [contactFactory.build({ firstName: "jane" })],
+      });
+
+      expect(utils.sectionHasData("A", dataWithOther, { pi: lastAppPi })).toBe(true);
+    });
+
+    it("should return true when PI is autofilled but other Section A data exists (primaryContactSameAsPI)", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const dataWithOther = questionnaireDataFactory.build({
+        pi: lastAppPi,
+        piAsPrimaryContact: true,
+      });
+
+      expect(utils.sectionHasData("A", dataWithOther, { pi: lastAppPi })).toBe(true);
+    });
+
+    it("should return true when PI is autofilled but modified", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const dataWithOther = questionnaireDataFactory.build({
+        pi: {
+          ...lastAppPi,
+          firstName: "Brad",
+        },
+      });
+
+      expect(utils.sectionHasData("A", dataWithOther, { pi: lastAppPi })).toBe(true);
+    });
+
+    it("should return false when contextual PI exists but user cleared PI field", () => {
+      const lastAppPi = {
+        ...contactFactory.build({
+          firstName: "John",
+          lastName: "Doe",
+          email: "john.doe@example.com",
+        }),
+        address: "100 Main St",
+      };
+
+      const data = questionnaireDataFactory.build({
+        pi: {
+          ...contactFactory.build(),
+          address: "",
+        },
+      });
+
+      expect(utils.sectionHasData("A", data, { pi: lastAppPi })).toBe(false);
     });
   });
 

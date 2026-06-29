@@ -9,7 +9,7 @@ const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-
 const {CreateApplicationEvent, UpdateApplicationStateEvent} = require("../crdc-datahub-database-drivers/domain/log-events");
 const ROLES = USER_CONSTANTS.USER.ROLES;
 const {parseJsonString, isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
-const {replaceErrorString} = require("../utility/string-util");
+const {isUndefined, replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
 const {defaultStudyAbbreviationToStudyName, defaultStudyAbbreviationToNA} = require("../utility/study-abbrev-helpers");
 const {EMAIL_NOTIFICATIONS} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
@@ -383,21 +383,63 @@ class Application {
         return user?.fullName?.trim() || formatName(user) || user?.applicantName || "";
     }
 
+    /**
+     * True when the user may view this application.
+     * Enforces submission_request:view scope rules: only all and own grant access.
+     * @param {object} userScope Resolved UserScope for SUBMISSION_REQUEST.VIEW
+     * @param {object} userInfo Session user
+     * @param {object} application Loaded application document
+     * @returns {boolean}
+     */
+    _canViewApplication(userScope, userInfo, application) {
+        if (userScope.isAllScope()) {
+            return true;
+        }
+        if (userScope.isOwnScope()) {
+            const ownerID = application?.applicant?.applicantID ?? application?.applicantID;
+            return userInfo?._id === ownerID;
+        }
+        return false;
+    }
+
+    /**
+     * Returns a single application when the caller may view it (view:all, or view:own as applicant).
+     * Non-all callers receive the same view error for missing and unauthorized records to avoid ID enumeration.
+     * @param {{ _id: string }} params Application _id
+     * @param {object} context Request context with userInfo
+     * @returns {Promise<object>} Hydrated application
+     * @throws {Error} When the application is missing or the caller cannot view it
+     */
     async getApplication(params, context) {
         verifySession(context)
-            .verifyInitialized()
-        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.VIEW);
-        if (userScope.isNoneScope()) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+            .verifyInitialized();
+
+        const userScopesList = await this.authorizationService.getPermissionScope(
+            context?.userInfo,
+            USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.VIEW
+        );
+        const userScope = UserScope.create(userScopesList);
+
+        // mask application not found error for non-all-scoped callers to avoid ID enumeration
+        let application;
+        try {
+            application = await this.getApplicationById(params._id);
+        } catch (error) {
+            if (!userScope.isAllScope() && error.message?.startsWith(ERROR.APPLICATION_NOT_FOUND)) {
+                throw new Error(ERROR.INVALID_PERMISSION);
+            }
+            throw error;
+        }
+        if (!this._canViewApplication(userScope, context.userInfo, application)) {
+            throw new Error(ERROR.INVALID_PERMISSION);
         }
 
-        let application = await this.getApplicationById(params._id);
         // add logics to check if conditional approval
         if (this._isApprovedApplication(application)) {
             await this._checkConditionalApproval(application);
         }
         // populate the version with auto upgrade based on configuration
-        application.version  = await this._getApplicationVersionByStatus(application.status, application.version);
+        application.version = await this._getApplicationVersionByStatus(application.status, application.version);
         return application;
     }
 
@@ -665,7 +707,7 @@ class Application {
         if (submitterName != null && submitterName !== this._ALL_FILTER) {
             return {applicant: {
                 is: {
-                    fullName: {contains: submitterName.trim().replace(/\\/g, "\\\\"), mode: "insensitive"}
+                    fullName: {contains: escapeRegexLiteral(submitterName.trim()), mode: "insensitive"}
                 }
             }}
         }
@@ -790,7 +832,7 @@ class Application {
         const hasStudyFilter = studySearchTerm?.length > 0 && params.studyName !== this._ALL_FILTER;
         let studyCondition = {};
         if (hasStudyFilter) {
-            const studySearchTermSanitized = studySearchTerm.replace(/\\/g, "\\\\");
+            const studySearchTermSanitized = escapeRegexLiteral(studySearchTerm);
             const containsOption = { contains: studySearchTermSanitized, mode: "insensitive" };
             studyCondition = {
                 OR: [
@@ -1357,8 +1399,10 @@ class Application {
         if (!updated) {
             throw new Error(ERROR.UPDATE_FAILED);
         }
-        const isDbGapMissing = (questionnaire?.accessTypes?.includes("Controlled Access") && !questionnaire?.study?.dbGaPPPHSNumber);
-        const isPendingGPA = (questionnaire?.accessTypes?.includes("Controlled Access") && Boolean(!updated?.GPAName?.trim()));
+        const isControlledAccess = questionnaire?.accessTypes?.includes("Controlled Access");
+        const isDbGapMissing = isControlledAccess && !questionnaire?.study?.dbGaPPPHSNumber;
+        const resolvedGPAName = PendingGPA.resolveGPAName(updated?.GPAName, isControlledAccess);
+        const isPendingGPA = isControlledAccess && !resolvedGPAName?.trim();
         const isPendingImageDeIdentification = isTrue(document?.pendingImageDeIdentification);
         let promises = [];
 
@@ -1451,7 +1495,7 @@ class Application {
             .notEmpty()
             .state([IN_REVIEW, SUBMITTED]);
         // auto upgrade version
-        application.version = await this._getApplicationVersionByStatus(application.status);
+        application.version = await this._getApplicationVersionByStatus(application.status, application.version);
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, INQUIRED, document.comment);
         const updated = await this.applicationDAO.update({
             _id: application._id,
@@ -1916,6 +1960,34 @@ class Application {
         }, {[`${this._FINAL_INACTIVE_REMINDER}`]: status});
     }
 
+    async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
+        // Only the application field (user input); do not substitute study name or questionnaire when missing
+        const studyAbbreviation = (aApplication?.studyAbbreviation ?? "").trim();
+        const controlledAccess = aApplication?.controlledAccess;
+        if (isUndefined(controlledAccess)) {
+            console.error(ERROR.APPLICATION_CONTROLLED_ACCESS_NOT_FOUND, ` id=${aApplication?._id}`);
+        }
+        const programName = aApplication?.programName ?? "NA";
+        const resolvedGPAName = PendingGPA.resolveGPAName(aApplication?.GPAName, isTrue(controlledAccess));
+        const pendingGPA = PendingGPA.create(resolvedGPAName, isPendingGPA);
+        
+        // Use the existing program ID from the questionnaire lookup
+        const programID = existingProgram?._id || null;
+      
+        // Clean dbGaPPPHSNumber to only store the base "phs######"
+        const trimmedDbGaP = String(questionnaire?.study?.dbGaPPPHSNumber ?? "").trim();
+        const baseDbGaP = trimmedDbGaP.match(/^phs\d{6}/i)?.[0]?.toLowerCase() ?? null;
+
+        // Upon approval of the submission request, the data concierge is retrieved from the associated program.
+        // These two parameters for storeApprovedStudies will be constant here, saved to variables for clarity.
+        const useProgramPC = true;
+        const primaryContactID = null;
+        return await this.approvedStudiesService.storeApprovedStudies(
+            aApplication?._id, aApplication?.studyName, studyAbbreviation, baseDbGaP, aApplication?.organization?.name, controlledAccess, aApplication?.ORCID,
+            aApplication?.PI, aApplication?.openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification
+        );
+    }
+
     async verifyReviewerPermission(context) {
         verifySession(context)
             .verifyInitialized();
@@ -1956,9 +2028,18 @@ const setDefaultIfNoName = (str) => {
     return (name.length > 0) ? (name) : "NA";
 }
 
-/** Abbreviation for $study-style email slots; falls back to application study name. (Inquire/PV abbrev lines use defaultStudyAbbreviationToNA separately.) */
+/**
+ * Label for `$study`-style message variables and notification template `studyName`.
+ * First resolves via `defaultStudyAbbreviationToStudyName` (trimmed abbreviation if non-empty,
+ * otherwise trimmed `studyName`). Then `setDefaultIfNoName` maps empty or whitespace-only results
+ * to the literal string `NA`, so callers and templates always get a non-empty value (e.g. blank
+ * New submission requests). Inquire/PV Study Abbreviation lines use `defaultStudyAbbreviationToNA` separately.
+ * @param {{ studyAbbreviation?: string, studyName?: string }} [application]
+ * @returns {string} Resolved abbreviation or study name, or `NA`
+ */
 function studyLabelForEmailBody(application) {
-    return defaultStudyAbbreviationToStudyName(application?.studyAbbreviation, application?.studyName);
+    const label = defaultStudyAbbreviationToStudyName(application?.studyAbbreviation, application?.studyName);
+    return setDefaultIfNoName(label);
 }
 
 const getCCEmails = (submitterEmail, application) => {
@@ -1974,15 +2055,18 @@ const getCCEmails = (submitterEmail, application) => {
 const sendEmails = {
     inactiveApplications: async (notificationService, emailParams, email, applicantName, application, BCCEmails) => {
         try {
+            const studyLabel = studyLabelForEmailBody(application);
             const CCEmails = getCCEmails(email, application);
             const toBCCEmails = BCCEmails
                 ?.filter((BCCEmail) => !CCEmails.includes(BCCEmail) && BCCEmail !== email);
             await notificationService.inactiveApplicationsNotification(email,
                 CCEmails,
                 toBCCEmails, {
-                firstName: applicantName},{
+                firstName: applicantName,
+                studyName: studyLabel
+            },{
                 pi: `${applicantName}`,
-                study: studyLabelForEmailBody(application),
+                study: studyLabel,
                 officialEmail: `${emailParams.officialEmail}.`,
                 inactiveDays: emailParams.inactiveDays,
                 url: emailParams.url
@@ -2027,7 +2111,7 @@ const sendEmails = {
             await notificationService.submitQuestionNotification(getUserEmails(toUsers),
                 [],
                 toBCCEmails, {
-                pi: `${userInfo.firstName} ${userInfo.lastName}${programName === "NA" ? "." : `, and associated with the ${programName} program.`}`,
+                pi: `${setDefaultIfNoName(application?.PI)}${programName === "NA" ? "." : `, and associated with the ${programName} program.`}`,
                 study: studyLabelForEmailBody(application),
                 url: emailParams.url
             });

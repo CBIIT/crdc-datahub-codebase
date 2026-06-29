@@ -1,3 +1,5 @@
 untracked/
 .vscode/
 /.cursor
+.cursor
+.DS_Store

@@ -1,4 +1,6 @@
-FROM python:3.14.2-alpine3.22 AS fnl_base_image
+FROM python:3.14.6-alpine3.24 AS fnl_base_image
+
+RUN apk upgrade --no-cache
 
 WORKDIR /usr/validator
 COPY src/bento/ ./src/bento/

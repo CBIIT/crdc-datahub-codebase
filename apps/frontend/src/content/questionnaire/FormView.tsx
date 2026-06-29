@@ -1,3 +1,4 @@
+import { useQuery } from "@apollo/client";
 import { LoadingButton } from "@mui/lab";
 import {
   Checkbox,
@@ -12,6 +13,9 @@ import { isEqual, cloneDeep } from "lodash";
 import { useSnackbar } from "notistack";
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useBlocker, Blocker, Navigate, useLocation } from "react-router-dom";
+
+import { LastAppResp, LAST_APP } from "@/graphql";
+import { determineSectionStatus, Logger, safeParse, sectionHasData } from "@/utils";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
 import CheckboxCheckedIconSvg from "../../assets/icons/checkbox_checked.svg?url";
@@ -32,7 +36,6 @@ import { hasPermission } from "../../config/AuthPermissions";
 import map, { InitialSections } from "../../config/SectionConfig";
 import useFormMode from "../../hooks/useFormMode";
 import usePageTitle from "../../hooks/usePageTitle";
-import { determineSectionStatus, Logger, sectionHasData } from "../../utils";
 
 import Section from "./sections";
 
@@ -188,13 +191,13 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const {
     status,
     data,
+    error,
     setData,
     submitData,
     approveForm,
     inquireForm,
     rejectForm,
     reopenForm,
-    error,
   } = useFormContext();
   const { user, status: authStatus } = useAuthContext();
   const { formMode, readOnlyInputs } = useFormMode();
@@ -232,6 +235,22 @@ const FormView: FC<Props> = ({ section }: Props) => {
   };
 
   usePageTitle(`Submission Request${data?._id && data?._id !== "new" ? ` - ${data._id}` : ""}`);
+
+  const { data: lastAppData } = useQuery<LastAppResp>(LAST_APP, {
+    context: { clientName: "backend" },
+    fetchPolicy: "cache-first",
+    skip: activeSection !== "A" || formMode !== "Edit",
+  });
+
+  const pi = useMemo<PI | null>(() => {
+    if (!lastAppData?.getMyLastApplication?.questionnaireData) {
+      return null;
+    }
+
+    return (
+      safeParse<QuestionnaireData>(lastAppData?.getMyLastApplication?.questionnaireData)?.pi || null
+    );
+  }, [lastAppData]);
 
   /**
    * Determines if the form has unsaved changes.
@@ -437,9 +456,17 @@ const FormView: FC<Props> = ({ section }: Props) => {
       newData.sections = cloneDeep(InitialSections);
     }
 
+    // NOTE: This provides additional context for validating the current status of Section A
+    // The current requirements dictate that auto-filled PI info alone should not change the status
+    // of Section A to In Progress.
+    const additionalContext: RecursivePartial<QuestionnaireData> = {};
+    if (activeSection === "A") {
+      additionalContext.pi = pi;
+    }
+
     const newStatus: SectionStatus = determineSectionStatus(
       ref.current.checkValidity(),
-      sectionHasData(activeSection, newData)
+      sectionHasData(activeSection, newData, additionalContext)
     );
     const currentSection: Section = newData.sections.find((s) => s.name === activeSection);
     if (currentSection) {

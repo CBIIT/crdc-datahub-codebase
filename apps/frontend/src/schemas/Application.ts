@@ -4,6 +4,7 @@ import * as z from "zod";
 import { repositoryDataTypesOptions } from "@/components/Questionnaire/Repository";
 import accessTypeOptions from "@/config/AccessTypesConfig";
 import cancerTypeOptions from "@/config/CancerTypesConfig";
+import { CHARACTER_LIMITS } from "@/config/CharacterLimitsConfig";
 import DataTypes from "@/config/DataTypesConfig";
 import { validatePHSNumber } from "@/utils";
 
@@ -264,10 +265,15 @@ export const plannedPublicationSchema = z
      */
     title: z.string().max(500).nonempty(),
     /**
-     * Target date for publication release.
-     * Stored as MM/DD/YYYY.
+     * Target date for publication release. Stored as MM/DD/YYYY.
+     * Must be a future date.
      */
-    expectedDate: z.string().refine((val) => dayjs(val, "MM/DD/YYYY", true)?.isValid()),
+    expectedDate: z.string().refine((val) => {
+      const date = dayjs(val, "MM/DD/YYYY", true)?.startOf("day");
+      const dateIsTodayOrAfter =
+        date?.isSame(dayjs().startOf("day")) || date?.isAfter(dayjs().startOf("day"));
+      return date?.isValid() && dateIsTodayOrAfter;
+    }),
   })
   .strict();
 
@@ -308,11 +314,11 @@ export const studySchema = z
     /**
      * The full study title.
      */
-    name: z.string().max(1_000).nonempty(),
+    name: z.string().max(CHARACTER_LIMITS.study.name.max).nonempty(),
     /**
      * The short study title.
      */
-    abbreviation: z.string().max(20).optional(),
+    abbreviation: z.string().max(CHARACTER_LIMITS.study.abbreviation.max).optional(),
     /**
      * A short description of the effort that these data have been collected for.
      */
