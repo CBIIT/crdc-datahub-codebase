@@ -1,6 +1,6 @@
 const request = require('supertest');
 const session = require('express-session');
-const {NIH, LOGIN_GOV} = require("../constants/idp-constants");
+const { NIH, LOGIN_GOV } = require("../constants/idp-constants");
 
 // Mock database dependencies before requiring app
 jest.mock("../crdc-datahub-database-drivers/database-connector", () => ({
@@ -21,12 +21,21 @@ jest.mock("../crdc-datahub-database-drivers/mongodb-collection", () => ({
 
 jest.mock("../crdc-datahub-database-drivers/services/user", () => ({
     User: jest.fn().mockImplementation(() => ({
-        isEmailAndIDPLoginPermitted: jest.fn().mockResolvedValue(true)
+        isEmailAndIDPLoginPermitted: jest.fn().mockImplementation((email) => Promise.resolve(email !== 'inactive@test.gov'))
     }))
 }));
 
 jest.mock("../crdc-datahub-database-drivers/mongo-health-check", () => ({
     MongoDBHealthCheck: jest.fn().mockResolvedValue(true)
+}));
+
+jest.mock("../crdc-datahub-database-drivers/domain/log-events", () => ({
+    LoginEvent: {
+        create: jest.fn().mockReturnValue({})
+    },
+    LogoutEvent: {
+        create: jest.fn().mockReturnValue({})
+    }
 }));
 
 // Mock session middleware to use memory store instead of MongoDB
@@ -47,7 +56,7 @@ jest.mock("../services/nih-auth");
 
 const app = require('../app');
 
-describe('GET /auth test', ()=> {
+describe('GET /auth test', () => {
     const LOGOUT_ROUTE = '/api/authn/logout';
     const LOGIN_ROUTE = '/api/authn/login';
     const mockLoginResult = { name: '', tokens: '', email: '', idp: '' };
@@ -61,7 +70,7 @@ describe('GET /auth test', ()=> {
         nihClient.login.mockReturnValue(Promise.resolve(mockLoginResult));
         const res = await request(app)
             .post(LOGIN_ROUTE)
-            .send({code: 'code', IDP: NIH});
+            .send({ code: 'code', IDP: NIH });
         expect(res.status).toBe(200);
         expect(nihClient.login).toBeCalledTimes(1);
     }, 10000);
@@ -71,7 +80,7 @@ describe('GET /auth test', ()=> {
         nihClient.login.mockReturnValue(Promise.resolve(mockLoginResult));
         const res = await request(app)
             .post(LOGIN_ROUTE)
-            .send({code: 'code', IDP: LOGIN_GOV});
+            .send({ code: 'code', IDP: LOGIN_GOV });
         expect(res.status).toBe(200);
         expect(nihClient.login).toBeCalledTimes(1);
     }, 10000);
@@ -81,7 +90,7 @@ describe('GET /auth test', ()=> {
         nihClient.logout.mockReturnValue(Promise.resolve());
         const res = await request(app)
             .post(LOGOUT_ROUTE)
-            .send({IDP: NIH});
+            .send({ IDP: NIH });
         expect(res.status).toBe(200);
         expect(nihClient.logout).toBeCalledTimes(1);
     }, 10000);
@@ -91,8 +100,23 @@ describe('GET /auth test', ()=> {
         nihClient.logout.mockReturnValue(Promise.resolve());
         const res = await request(app)
             .post(LOGOUT_ROUTE)
-            .send({IDP: LOGIN_GOV});
+            .send({ IDP: LOGIN_GOV });
         expect(res.status).toBe(200);
         expect(nihClient.logout).toBeCalledTimes(1);
+    }, 10000);
+
+    test('auth login returns inactive account error with CRDC Helpdesk contact', async () => {
+        const nihClient = require('../idps/nih');
+        const inactiveLoginResult = { name: 'Test', tokens: 'token', email: 'inactive@test.gov', idp: NIH };
+        const expectedInactiveMessage = 'Login Failed: This user account has been marked as inactive and must be reactivated before it can be used. Please contact the CRDC Helpdesk (NCICRDCHelpdesk@mail.nih.gov) to reactivate your account.';
+
+        nihClient.login.mockResolvedValue(inactiveLoginResult);
+
+        const res = await request(app)
+            .post(LOGIN_ROUTE)
+            .send({ code: 'code', IDP: NIH });
+
+        expect(res.status).toBe(403);
+        expect(res.body.error).toBe(expectedInactiveMessage);
     }, 10000);
 });
