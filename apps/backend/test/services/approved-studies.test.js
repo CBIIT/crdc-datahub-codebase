@@ -9,6 +9,7 @@ const TEST_CONSTANTS = require('../test-constants');
 const USER = require('../../crdc-datahub-database-drivers/constants/user-constants');
 const { ORGANIZATION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
 const {ApprovedStudies} = require("../../crdc-datahub-database-drivers/domain/approved-studies");
+const { DEFAULT_GPA_NAME } = require('../../domain/pending-gpa');
 const { NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED } = require('../../constants/submission-constants');
 
 // Mock dependencies
@@ -1112,6 +1113,309 @@ describe('ApprovedStudiesService', () => {
         it('should propagate error from getDataCommonsDisplayNamesForApprovedStudy', async () => {
             getDataCommonsDisplayNamesForApprovedStudy.mockImplementation(() => { throw new Error('Mapping error'); });
             await expect(service.getApprovedStudyAPI({ ...mockParams }, mockContext)).rejects.toThrow('Mapping error');
+        });
+    });
+
+    describe('saveApprovedStudyFromApplication', () => {
+        const application = {
+            _id: 'app-123',
+            studyName: 'Study One',
+            studyAbbreviation: 'STUDY1',
+            organization: { name: 'Org One' },
+            controlledAccess: true,
+            ORCID: '0000-0001',
+            PI: 'PI Name',
+            openAccess: false,
+            GPAName: 'GPA Name',
+        };
+        const questionnaire = {
+            study: { dbGaPPPHSNumber: 'phs001234.v5' },
+        };
+        const program = { _id: 'program-1', name: 'Program One' };
+        const fakeStudy = { studyName: 'Study One', studyAbbreviation: 'STUDY1' };
+
+        beforeEach(() => {
+            mockOrganizationService.getOrganizationByID.mockResolvedValue(program);
+            ApprovedStudies.createApprovedStudies.mockImplementation(() => fakeStudy);
+            service.approvedStudyDAO = {
+                create: jest.fn().mockResolvedValue({ ...fakeStudy, _id: 'new-study-id' }),
+                update: jest.fn().mockResolvedValue({ _id: 'existing-study-id', createdAt: '2020-01-01' }),
+            };
+        });
+
+        it('should create a new approved study when no existing study is provided', async () => {
+            const result = await service.saveApprovedStudyFromApplication(
+                application,
+                questionnaire,
+                false,
+                undefined,
+                false,
+                program,
+                null
+            );
+
+            expect(ApprovedStudies.createApprovedStudies).toHaveBeenCalledWith(
+                'app-123',
+                'Study One',
+                'STUDY1',
+                'phs001234',
+                'Org One',
+                true,
+                '0000-0001',
+                'PI Name',
+                false,
+                true,
+                false,
+                null,
+                expect.objectContaining({ GPAName: 'GPA Name' }),
+                'program-1',
+                false
+            );
+            expect(service.approvedStudyDAO.create).toHaveBeenCalledWith(fakeStudy);
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+            expect(result).toEqual(expect.objectContaining({ _id: 'new-study-id' }));
+        });
+
+        it.each([
+            [undefined],
+            [null],
+            [''],
+            ['   '],
+        ])('defaults blank controlled-access GPA name to Not Provided (GPAName: %p)', async (GPAName) => {
+            await service.saveApprovedStudyFromApplication(
+                { ...application, GPAName },
+                questionnaire,
+                false,
+                undefined,
+                false,
+                program,
+                null
+            );
+
+            expect(ApprovedStudies.createApprovedStudies).toHaveBeenCalledWith(
+                'app-123',
+                'Study One',
+                'STUDY1',
+                'phs001234',
+                'Org One',
+                true,
+                '0000-0001',
+                'PI Name',
+                false,
+                true,
+                false,
+                null,
+                expect.objectContaining({ GPAName: DEFAULT_GPA_NAME, isPendingGPA: false }),
+                'program-1',
+                false
+            );
+        });
+
+        it('should update an existing study and preserve id, createdAt, studyName, and studyAbbreviation', async () => {
+            const existingStudy = {
+                _id: 'existing-study-id',
+                id: 'existing-study-id',
+                createdAt: '2020-01-01',
+                applicationID: 'source-app',
+                studyName: 'Old Name',
+                studyAbbreviation: 'OLD',
+            };
+
+            const result = await service.saveApprovedStudyFromApplication(
+                application,
+                questionnaire,
+                true,
+                true,
+                false,
+                program,
+                existingStudy
+            );
+
+            expect(ApprovedStudies.createApprovedStudies).not.toHaveBeenCalled();
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'existing-study-id',
+                expect.objectContaining({
+                    _id: 'existing-study-id',
+                    createdAt: '2020-01-01',
+                    applicationID: 'app-123',
+                    studyName: 'Old Name',
+                    studyAbbreviation: 'OLD',
+                    dbGaPID: 'phs001234',
+                    ORCID: '0000-0001',
+                    pendingModelChange: true,
+                    pendingImageDeIdentification: true,
+                    primaryContactID: null,
+                    useProgramPC: true,
+                })
+            );
+            expect(result).toEqual(expect.objectContaining({ _id: 'existing-study-id' }));
+        });
+
+        it('should preserve study identity but sync other fields when application name differs', async () => {
+            const existingStudy = {
+                _id: 'existing-study-id',
+                id: 'existing-study-id',
+                createdAt: '2020-01-01',
+                applicationID: 'source-app',
+                studyName: 'Canonical Study',
+                studyAbbreviation: 'CANON',
+                ORCID: '0000-0000-0000-0000',
+            };
+
+            await service.saveApprovedStudyFromApplication(
+                {
+                    ...application,
+                    studyName: 'Changed Study',
+                    studyAbbreviation: 'CHG',
+                    ORCID: '0000-0001',
+                },
+                questionnaire,
+                false,
+                undefined,
+                false,
+                program,
+                existingStudy
+            );
+
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'existing-study-id',
+                expect.objectContaining({
+                    studyName: 'Canonical Study',
+                    studyAbbreviation: 'CANON',
+                    ORCID: '0000-0001',
+                    dbGaPID: 'phs001234',
+                })
+            );
+        });
+
+        it('should fall back to study name when studyAbbreviation is empty', async () => {
+            await service.saveApprovedStudyFromApplication(
+                { ...application, studyAbbreviation: '   ' },
+                questionnaire,
+                false,
+                undefined,
+                false,
+                program,
+                null
+            );
+
+            expect(ApprovedStudies.createApprovedStudies).toHaveBeenCalledWith(
+                'app-123',
+                'Study One',
+                'Study One',
+                'phs001234',
+                'Org One',
+                true,
+                '0000-0001',
+                'PI Name',
+                false,
+                true,
+                false,
+                null,
+                expect.anything(),
+                'program-1',
+                false
+            );
+        });
+
+        it('should throw when updating a study without an id', async () => {
+            await expect(service.saveApprovedStudyFromApplication(
+                application,
+                questionnaire,
+                false,
+                undefined,
+                false,
+                program,
+                { studyName: 'Orphan Study' }
+            )).rejects.toThrow(ERROR.APPROVED_STUDY_NOT_FOUND);
+        });
+
+        it('should clear stale dbGaPID, GPAName, and isPendingGPA on update when absent in the application', async () => {
+            const existingStudy = {
+                _id: 'existing-study-id',
+                id: 'existing-study-id',
+                createdAt: '2020-01-01',
+                applicationID: 'source-app',
+                studyName: 'Old Name',
+                dbGaPID: 'phs999999',
+                GPAName: 'Old GPA',
+                isPendingGPA: true,
+            };
+
+            await service.saveApprovedStudyFromApplication(
+                { ...application, controlledAccess: false, GPAName: undefined },
+                { study: { dbGaPPPHSNumber: null } },
+                false,
+                undefined,
+                false,
+                program,
+                existingStudy
+            );
+
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'existing-study-id',
+                expect.objectContaining({
+                    dbGaPID: null,
+                    GPAName: null,
+                    isPendingGPA: false,
+                })
+            );
+        });
+
+        it.each([
+            ['phs001234.v5', 'phs001234'],
+            ['phs001234.p2', 'phs001234'],
+            ['phs001234.v5.p2', 'phs001234'],
+            ['  phs001234.v5  ', 'phs001234'],
+            ['PHS001234.V5', 'phs001234'],
+            [null, null],
+            ['', null],
+            ['invalid', null],
+            ['phs12345', null],
+        ])('should normalize dbGaPPPHSNumber %p to dbGaPID %p', async (input, expectedDbGaPID) => {
+            ApprovedStudies.createApprovedStudies.mockClear();
+
+            await service.saveApprovedStudyFromApplication(
+                application,
+                { study: { dbGaPPPHSNumber: input } },
+                false,
+                undefined,
+                false,
+                program,
+                null
+            );
+
+            expect(ApprovedStudies.createApprovedStudies).toHaveBeenCalledWith(
+                'app-123',
+                'Study One',
+                'STUDY1',
+                expectedDbGaPID,
+                'Org One',
+                true,
+                '0000-0001',
+                'PI Name',
+                false,
+                true,
+                false,
+                null,
+                expect.objectContaining({ GPAName: 'GPA Name' }),
+                'program-1',
+                false
+            );
+        });
+
+        it('should throw when approved study creation fails', async () => {
+            service.approvedStudyDAO.create = jest.fn().mockResolvedValue(null);
+
+            await expect(service.saveApprovedStudyFromApplication(
+                application,
+                questionnaire,
+                false,
+                undefined,
+                false,
+                program,
+                null
+            )).rejects.toThrow(ERROR.FAILED_APPROVED_STUDY_INSERTION);
         });
     });
 

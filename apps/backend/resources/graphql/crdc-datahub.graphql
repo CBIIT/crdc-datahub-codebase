@@ -57,7 +57,7 @@ interface SubmissionInterface {
 type Application {
     # backend managed fields
     _id: ID!
-    status: String # [New, In Progress, Submitted, In Review, Approved, Rejected]
+    status: String # [New, In Progress, Submitted, In Review, Inquired, Approved, Reopened, Rejected, Canceled, Deleted]
     createdAt: Date # ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
     updatedAt: Date # ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
     submittedDate: Date # ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
@@ -82,6 +82,11 @@ type Application {
     version: String
     reviewComment: String
     GPAName: String
+    # Revision chain for approved-SRF reopen (CRDCDH-3970). sequenceNumber increments per reopen; nextRevisionId links an approved revision to its successor.
+    sequenceNumber: Int! # 1-based revision index; 1 for a new SRF or first approved revision
+    nextRevisionId: ID # When set on an Approved SRF, points to the reopened successor revision
+    canBeReopened: Boolean! # true when Approved and the immediate successor (if linked) is absent or terminal
+    canBeRestored: Boolean! # true when restoreApplication would succeed (terminal status, valid history, no blocking newer revision)
 }
 
 type NewInstitution {
@@ -961,7 +966,7 @@ type Query {
     "Limit to current user only"
     getMyUser : User
 
-    "Admin and Org Owner only operations, Org Owner only see users within same organization"
+    "Users with user:manage see users per their scope. Users with submission_request:reopen (without user:manage) see Submitter/User accounts with submission_request:create only."
     listUsers: [User]
     listActiveCurators: [UserInfo]
     getUser(userID: ID!): User
@@ -1084,7 +1089,12 @@ type Mutation {
     "User initiated operations"
     saveApplication(application: AppInput!, status: String = "In Progress"): Application
     submitApplication(_id: ID!): Application
-    reopenApplication(_id: ID!): Application
+    "Applicant resumes work on an Inquired submission request (Inquired → In Progress). Preferred over reopenApplication."
+    resumeInquiredApplication(_id: ID!): Application
+    "Admin/Fed Lead/DC Personnel with reopen:all permission clones an Approved SRF into a new Reopened revision; optional ownerId reassigns the applicant to an eligible User/Submitter. Submitter/User owners with reopen:own may reopen only their own Approved SRF; ownerId is ignored. Source row remains Approved and receives nextRevisionId."
+    reopenApprovedSubmissionRequest(_id: ID!, ownerId: ID): Application
+    "Deprecated because the name is misleading, use resumeInquiredApplication as a replacement. Owner-only; resumes an Inquired SRF on the same record."
+    reopenApplication(_id: ID!): Application @deprecated
 
     "Fed lead initiated operations"
     reviewApplication (_id: ID!): Application # same as getApplication but will set Application to "In Review" state

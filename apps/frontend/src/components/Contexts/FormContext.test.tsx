@@ -16,9 +16,9 @@ import {
   INQUIRE_APP,
   InquireAppResp,
   REJECT_APP,
-  REOPEN_APP,
+  RESUME_APP,
   RejectAppResp,
-  ReopenAppResp,
+  ResumeAppResp,
   GET_APPLICATION_FORM_VERSION,
   SAVE_APP,
   SaveAppInput,
@@ -882,17 +882,17 @@ describe("reopenForm Tests", () => {
 
   it("should send a reopen request to the API", async () => {
     const mockVariableMatcher = vi.fn().mockImplementation(() => true);
-    const mock: MockedResponse<ReopenAppResp> = {
+    const mock: MockedResponse<ResumeAppResp> = {
       request: {
-        query: REOPEN_APP,
+        query: RESUME_APP,
       },
       variableMatcher: mockVariableMatcher,
       result: {
         data: {
-          reopenApplication: {
+          resumeInquiredApplication: {
             _id: "mock-reopen-id",
             status: "In Progress",
-          } as ReopenAppResp["reopenApplication"],
+          } as ResumeAppResp["resumeInquiredApplication"],
         },
       },
     };
@@ -917,9 +917,9 @@ describe("reopenForm Tests", () => {
   });
 
   it("should gracefully handle API GraphQL errors", async () => {
-    const mock: MockedResponse<ReopenAppResp> = {
+    const mock: MockedResponse<ResumeAppResp> = {
       request: {
-        query: REOPEN_APP,
+        query: RESUME_APP,
       },
       variableMatcher: () => true,
       result: {
@@ -946,9 +946,9 @@ describe("reopenForm Tests", () => {
   });
 
   it("should gracefully handle API network errors", async () => {
-    const mock: MockedResponse<ReopenAppResp> = {
+    const mock: MockedResponse<ResumeAppResp> = {
       request: {
-        query: REOPEN_APP,
+        query: RESUME_APP,
       },
       variableMatcher: () => true,
       error: new Error("Test Reopen network error"),

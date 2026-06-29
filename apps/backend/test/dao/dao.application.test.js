@@ -10,16 +10,20 @@ jest.mock('../../prisma', () => ({
     }
 }));
 
-jest.mock('../../dao/utils/orm-converter', () => ({
-    convertIdFields: jest.fn((x) => x),
-    convertMongoFilterToPrismaFilter: jest.fn((x) => x),
-    handleDotNotation: jest.fn((x) => x),
-    mongoSortToPrismaOrderBy: jest.fn((sortObj) => {
-        // Mock implementation that returns a simple orderBy object
-        const [key, direction] = Object.entries(sortObj)[0];
-        return { [key]: direction === 1 ? 'asc' : 'desc' };
-    })
-}));
+jest.mock('../../dao/utils/orm-converter', () => {
+    const actual = jest.requireActual('../../dao/utils/orm-converter');
+    return {
+        convertIdFields: jest.fn((x) => x),
+        convertMongoFilterToPrismaFilter: jest.fn((x) => x),
+        nullOrMissingMongoCondition: actual.nullOrMissingMongoCondition,
+        handleDotNotation: jest.fn((x) => x),
+        toPrismaApplicationUpdateData: actual.toPrismaApplicationUpdateData,
+        mongoSortToPrismaOrderBy: jest.fn((sortObj) => {
+            const [key, direction] = Object.entries(sortObj)[0];
+            return { [key]: direction === 1 ? 'asc' : 'desc' };
+        }),
+    };
+});
 
 describe('ApplicationDAO', () => {
     let dao;

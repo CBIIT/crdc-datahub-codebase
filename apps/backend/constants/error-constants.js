@@ -13,6 +13,7 @@ const ERROR = {
     FAILED_RESTORE_APPLICATION: "An error occurred while restoring an application",
     MISSING_PROGRAM_INFO: "The program property is required to approve the submission request.",
     INVALID_APPLICATION_RESTORE_STATE: "Failed to restore application because the application history data is invalid",
+    INVALID_APPLICATION_RESTORE_NEWER_REVISION_EXISTS: "This submission request cannot be restored because a newer revision exists.",
     COMMENT_LIMIT: "comment cannot exceed $item$ characters.",
     UPDATE_FAILED: "Update unsuccessful",
     VERIFY: {
@@ -39,7 +40,12 @@ const ERROR = {
         REJECT_ACTION_COMMENT_REQUIRED: "Reject submission action must include a comment.",
         SUBMIT_ACTION_COMMENT_REQUIRED: "Submit action must include a comment.",
         INVALID_ORGANIZATION_STATUS: "No organization assigned, or your organization is currently inactive and needs reactivation for use",
-        INVALID_PERMISSION: "You do not have permission to perform this action."
+        INVALID_PERMISSION: "You do not have permission to perform this action.",
+        REOPEN_OWNER_UNRESOLVED: "Please specify an ownerId to reopen this submission request, the original owner could not be found or is now inactive",
+        REOPEN_OWNER_NOT_ASSIGNABLE: "The specified ownerId could not be found or is inactive",
+        REOPEN_OWNER_ORIGINAL_INELIGIBLE: "Please specify an ownerId to reopen this submission request, the original owner does not meet the requirements to be the owner of this reopened submission request",
+        REOPEN_OWNER_SPECIFIED_INELIGIBLE: "The specified ownerId does not meet the requirements to be the owner of this reopened submission request",
+        REOPEN_OWNER_ROLE_INELIGIBLE: "The user associated with the specified ownerId does not have the required role to be the owner of this reopened submission request",
     },
     // Batch
     FAILED_NEW_BATCH_INSERTION: "An error occurred while creating a new batch",

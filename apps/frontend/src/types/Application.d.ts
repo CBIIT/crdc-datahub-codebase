@@ -12,6 +12,7 @@ type Application = {
   PI: string; // Principal Investigator's full name "<first name> <last name>"
   controlledAccess: boolean;
   openAccess: boolean;
+  studyName: Study["name"];
   // Sort Fields
   studyAbbreviation: Study["abbreviation"];
   // FE Questionnaire Data
@@ -48,6 +49,22 @@ type Application = {
    * The current form version
    */
   version: string;
+  /**
+   * The sequence number identifying the revision of this SRF
+   */
+  sequenceNumber: number;
+  /**
+   * The ID of the next revision of this SRF. Null if this is the latest version.
+   */
+  nextRevisionId: string | null;
+  /**
+   * Indicates whether the application is eligible for reopening.
+   */
+  canBeReopened: boolean;
+  /**
+   * Indicates whether the application is eligible for restoring the cancelled application.
+   */
+  canBeRestored: boolean;
 };
 
 type ApplicationStatus =
@@ -58,6 +75,7 @@ type ApplicationStatus =
   | "Approved"
   | "Rejected"
   | "Inquired"
+  | "Reopened"
   | "Canceled"
   | "Deleted";
 
