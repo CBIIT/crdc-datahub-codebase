@@ -9,8 +9,12 @@ COPY  --chown=node:node . .
 
 RUN npm ci
 
+RUN rm -rf /usr/local/lib/node_modules/npm \
+  && rm -f /usr/local/bin/npm \
+  && rm -f /usr/local/bin/npx
+
 ENV PORT=8081
 ENV NODE_ENV=production
 
 EXPOSE 8081
-CMD ["npm", "start"]
+CMD ["node", "src/index.ts"]
