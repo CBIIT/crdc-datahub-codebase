@@ -114,6 +114,4 @@ const Controller = forwardRef<RichTextEditorHandle, Props>(
   }
 );
 
-Controller.displayName = "RichTextEditor";
-
 export default Controller;
