@@ -24,6 +24,11 @@ const UserDAO = require("../dao/user");
 const ApprovedStudyDAO = require("../dao/approvedStudy");
 const SubmissionDAO = require("../dao/submission");
 const {formatName} = require("../utility/format-name");
+const {
+    getSubmissionRequestCreatePermissionVariants,
+    isEligibleReopenOwner: isEligibleReopenOwnerUtil,
+    REOPEN_ASSIGNABLE_ROLES,
+} = require("../utility/reopen-owner-utility");
 
 const isLoggedInOrThrow = (context) => {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) throw new Error(SUBMODULE_ERROR.NOT_LOGGED_IN);
@@ -227,20 +232,79 @@ class UserService {
             .map((study) => study.studyName);
     }
 
-    async _findApprovedStudies(studies) {
-        if (!studies || studies.length === 0) return [];
-        const studiesIDs = studies.map((study) => {
+
+    // Extracts the study IDs from the studies array
+    _extractStudyIds(studies) {
+        if (!studies || studies.length === 0) {
+            return [];
+        }
+        return studies.map((study) => {
             if (study && study instanceof Object && (study?._id || study?.id)) {
                 return study._id || study.id;
             }
             return study;
-        }).filter(studyID => studyID !== null && studyID !== undefined); // Filter out null/undefined values
-        if(studiesIDs.includes("All"))
-            return [{_id: "All", studyName: "All" }];
+        }).filter(studyID => studyID !== null && studyID !== undefined);
+    }
+
+    // Returns the study array content for when the user has access to all studies
+    _getAllStudiesPlaceholder() {
+        return [{ _id: ALL_STUDY_FILTER, studyName: ALL_STUDY_FILTER }];
+    }
+
+    // Uses a single query to fetch the study data for all studies in the provided array
+    async _findApprovedStudies(studies) {
+        const studiesIDs = this._extractStudyIds(studies);
+        if (studiesIDs.length === 0) {
+            return [];
+        }
+        if (studiesIDs.includes(ALL_STUDY_FILTER)) {
+            return this._getAllStudiesPlaceholder();
+        }
 
         return await this.approvedStudyDAO.findMany({
             id: { in: studiesIDs }
         });
+    }
+
+    // Adds full study data to the user objects
+    async _enrichUsersWithApprovedStudies(users) {
+        if (!users?.length) {
+            return users || [];
+        }
+
+        const pendingLookups = [];
+        const uniqueIds = new Set();
+
+        // Populates the study data in the all or no studies cases
+        // Creates a list of users that require study lookups and maintains a set of unique study IDs that need to be fetched
+        for (const user of users) {
+            const studyIds = this._extractStudyIds(user?.studies);
+            if (studyIds.includes(ALL_STUDY_FILTER)) {
+                user.studies = this._getAllStudiesPlaceholder();
+                getDataCommonsDisplayNamesForUser(user);
+            } else if (studyIds.length === 0) {
+                user.studies = [];
+                getDataCommonsDisplayNamesForUser(user);
+            } else {
+                pendingLookups.push({ user, studyIds });
+                studyIds.forEach((id) => uniqueIds.add(id));
+            }
+        }
+
+        if (uniqueIds.size > 0) {
+            // Uses a single query to fetch the necessary study data
+            const approvedStudies = await this.approvedStudyDAO.findMany({
+                id: { in: [...uniqueIds] },
+            });
+            const studyById = new Map(approvedStudies.map((study) => [study._id, study]));
+            // Populates the study data for the remaining users using the results from the single study query
+            for (const { user, studyIds } of pendingLookups) {
+                user.studies = studyIds.map((id) => studyById.get(id)).filter(Boolean);
+                getDataCommonsDisplayNamesForUser(user);
+            }
+        }
+
+        return users;
     }
 
     async getUser(params, context) {
@@ -287,25 +351,46 @@ class UserService {
     async listUsers(params, context) {
         verifySession(context)
             .verifyInitialized();
-        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER);
-        if (userScope.isNoneScope()) {
-            return [];
+        const manageUserScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER);
+
+        let match;
+        if (!manageUserScope.isNoneScope()) {
+            const roleScope = manageUserScope.getRoleScope();
+            const roleSet = new Set(Object.values(ROLES));
+            const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
+            match = {
+                ...(!manageUserScope.isAllScope() ?
+                    { role: { $in: filteredRoles || [] } } : {})
+            };
+        } else {
+            const reopenScope = await this._getUserScope(
+                context?.userInfo,
+                USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
+            );
+            if (!reopenScope.isAllScope()) {
+                throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+            }
+            match = this._buildReopenListUsersMatch();
         }
 
-        const roleScope = userScope.getRoleScope();
-        const roleSet = new Set(Object.values(ROLES));
-        const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
-        const result = await this.userCollection.aggregate([{
-            "$match": {
-                ...(!userScope.isAllScope() ?
-                    { role: {$in: filteredRoles || []} } : {})
-            }
-        }]);
-        result.map(async (user) => {
-            user.studies = await this._findApprovedStudies(user?.studies);
-            return getDataCommonsDisplayNamesForUser(user);
-        });
-        return result || [];
+        const result = await this.userCollection.aggregate([{ "$match": match }]);
+        if (!result?.length) {
+            return [];
+        }
+        await this._enrichUsersWithApprovedStudies(result);
+        return result;
+    }
+
+    isEligibleReopenOwner(user) {
+        return isEligibleReopenOwnerUtil(user);
+    }
+
+    _buildReopenListUsersMatch() {
+        return {
+            role: { $in: REOPEN_ASSIGNABLE_ROLES },
+            userStatus: USER.STATUSES.ACTIVE,
+            permissions: { $in: getSubmissionRequestCreatePermissionVariants() },
+        };
     }
 
     /**

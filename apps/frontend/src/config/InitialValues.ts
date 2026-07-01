@@ -10,6 +10,7 @@ export const InitialApplication: Omit<Application, "questionnaireData"> = {
   openAccess: false,
   ORCID: "",
   programName: "",
+  studyName: "",
   studyAbbreviation: "",
   PI: "",
   conditional: false,
@@ -19,6 +20,10 @@ export const InitialApplication: Omit<Application, "questionnaireData"> = {
   newInstitutions: [],
   version: "",
   GPAName: "",
+  sequenceNumber: 1,
+  nextRevisionId: null,
+  canBeReopened: false,
+  canBeRestored: false,
 };
 
 export const InitialQuestionnaire: QuestionnaireData = {

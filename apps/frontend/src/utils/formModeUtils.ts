@@ -3,7 +3,7 @@ import { hasPermission } from "../config/AuthPermissions";
 export type FormMode = "Unauthorized" | "Edit" | "View Only" | "Review";
 
 export const ViewOnlyStatuses = ["Submitted", "In Review", "Approved", "Rejected"];
-export const EditStatuses = ["New", "In Progress", "Inquired"];
+export const EditStatuses = ["New", "In Progress", "Inquired", "Reopened"];
 export const ReviewStatuses = ["In Review"];
 export const FormModes = {
   UNAUTHORIZED: "Unauthorized",

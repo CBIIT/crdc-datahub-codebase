@@ -26,6 +26,8 @@ export const query: TypedDocumentNode<Response, Input> = gql`
       applications {
         _id
         programName
+        programAbbreviation
+        studyName
         studyAbbreviation
         status
         createdAt
@@ -38,6 +40,9 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         conditional
         pendingConditions
         version
+        nextRevisionId
+        canBeReopened
+        canBeRestored
       }
       programs
       studies

@@ -31,6 +31,7 @@ export const baseSubmission: Submission = {
   validationType: [],
   fileErrors: [],
   history: [],
+  adminSubmitComment: "",
   conciergeName: "",
   conciergeEmail: "",
   intention: "New/Update",
