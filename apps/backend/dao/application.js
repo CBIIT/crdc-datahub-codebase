@@ -1,7 +1,7 @@
 const prisma = require("../prisma");
 const { MODEL_NAME, SORT} = require('../constants/db-constants');
 const GenericDAO = require("./generic");
-const {convertIdFields, convertMongoFilterToPrismaFilter, handleDotNotation, toPrismaApplicationUpdateData} = require('./utils/orm-converter');
+const {convertIdFields, convertMongoFilterToPrismaFilter, handleDotNotation, toPrismaApplicationUpdateData, nullOrMissingMongoCondition} = require('./utils/orm-converter');
 
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {NEW, IN_PROGRESS, INQUIRED, REOPENED, APPROVED} = require("../constants/application-constants");
@@ -203,10 +203,10 @@ class ApplicationDAO extends GenericDAO {
 
         const linkWhere = replaceExistingLink
             ? { id: sourceId, status: APPROVED }
-            : { id: sourceId, status: APPROVED, nextRevisionId: null };
+            : { id: sourceId, status: APPROVED, ...nullOrMissingMongoCondition('nextRevisionId') };
 
         const linkResult = await prisma.application.updateMany({
-            where: linkWhere,
+            where: convertMongoFilterToPrismaFilter(linkWhere),
             data: { nextRevisionId: newApp._id, updatedAt: timestamp },
         });
 
