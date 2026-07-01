@@ -10,6 +10,9 @@ const BLANK_LINE_RUN_PATTERN = /\n{3,}/g;
 const NON_BREAKING_SPACE = "\u00A0";
 const TAB_SIZE = 2;
 
+const HORIZONTAL_RULE_CHARS = new Set(["-", "*", "_"]);
+const UNORDERED_LIST_MARKERS = new Set(["-", "*", "+"]);
+
 const StyledMarkdown = styled(ReactMarkdown)({
   lineHeight: "25px",
 
@@ -30,6 +33,20 @@ const StyledMarkdown = styled(ReactMarkdown)({
     whiteSpace: "pre-wrap",
   },
 });
+
+/**
+ * Determines whether a line would be rendered as a horizontal rule.
+ *
+ * @param {string} line - A single markdown line.
+ * @returns {boolean} True if the line would be parsed as a horizontal rule.
+ */
+const isHorizontalRule = (line: string): boolean => {
+  const trimmed = line.trimEnd();
+  if (trimmed.length < 3 || !HORIZONTAL_RULE_CHARS.has(trimmed[0])) {
+    return false;
+  }
+  return Array.from(trimmed).every((char) => char === trimmed[0]);
+};
 
 /**
  * Normalize line endings so blank paragraph handling is consistent.
@@ -86,6 +103,7 @@ const preserveLeadingWhitespace = (line: string): string => {
 
 /**
  * Preserve leading indentation while leaving raw HTML placeholder lines alone.
+ * Also escapes lines that remark would otherwise misinterpret as a horizontal break.
  *
  * @param {string} line - A single markdown line.
  * @returns {string} A viewer-safe markdown line.
@@ -95,6 +113,13 @@ const prepareLineForViewer = (line: string): string => {
 
   if (trimmedLine === "<br />") {
     return line;
+  }
+
+  const startTrimmed = line.trimStart();
+  const isSingleMarker = startTrimmed.length === 1 && UNORDERED_LIST_MARKERS.has(startTrimmed);
+  if (isHorizontalRule(startTrimmed) || isSingleMarker) {
+    const leadingWhitespace = line.slice(0, line.length - startTrimmed.length);
+    return preserveLeadingWhitespace(`${leadingWhitespace}\\${startTrimmed}`);
   }
 
   return preserveLeadingWhitespace(line);

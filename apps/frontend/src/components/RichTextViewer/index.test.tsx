@@ -54,4 +54,37 @@ describe("Basic Functionality", () => {
 
     expect(container.querySelector("p")).not.toHaveAttribute("class");
   });
+
+  it("should render a single dash as text, not as a bullet list item", () => {
+    const { getByText, container } = render(<RichTextViewer content="-" />);
+
+    expect(getByText("-")).toBeInTheDocument();
+    expect(container.querySelector("li")).not.toBeInTheDocument();
+  });
+
+  it("should render a double dash as text", () => {
+    const { getByText } = render(<RichTextViewer content="--" />);
+
+    expect(getByText("--")).toBeInTheDocument();
+  });
+
+  it("should render a triple dash as text and not disappear", () => {
+    const { getByText, container } = render(<RichTextViewer content="---" />);
+
+    expect(getByText("---")).toBeInTheDocument();
+    expect(container.querySelector("hr")).not.toBeInTheDocument();
+  });
+
+  it("should render four or more dashes as text and not disappear", () => {
+    const { getByText } = render(<RichTextViewer content="----" />);
+
+    expect(getByText("----")).toBeInTheDocument();
+  });
+
+  it("should still render a list item as a bullet", () => {
+    const { container } = render(<RichTextViewer content="- item" />);
+
+    expect(container.querySelector("li")).toBeInTheDocument();
+    expect(container.querySelector("li")).toHaveTextContent("item");
+  });
 });
