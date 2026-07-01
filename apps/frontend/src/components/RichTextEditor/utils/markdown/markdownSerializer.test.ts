@@ -218,4 +218,8 @@ describe("getPlainTextLength", () => {
   it("should return the correct length for plain text", () => {
     expect(utils.getPlainTextLength("hello world")).toBe(11);
   });
+
+  it("should count newlines between paragraphs", () => {
+    expect(utils.getPlainTextLength("a\n\nb\n\nc\n\nd")).toBe(7);
+  });
 });
