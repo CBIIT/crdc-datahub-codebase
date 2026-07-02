@@ -306,6 +306,6 @@ export const DialogWithValidationErrors: Story = {
     await userEvent.click(createButton);
 
     // All required field errors should be visible
-    await screen.findByText("This field is required");
+    await screen.findAllByText("This field is required");
   },
 };
