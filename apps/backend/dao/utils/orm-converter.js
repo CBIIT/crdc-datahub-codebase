@@ -30,8 +30,21 @@ function convertIdFields(obj) {
     }
 }
 // note: We should remove Prisma filter conversion since it can’t handle all scenarios.
+function nullOrMissingMongoCondition(fieldName) {
+    return {
+        $or: [
+            { [fieldName]: null },
+            { [fieldName]: { $exists: false } },
+        ],
+    };
+}
+
 function convertMongoFilterToPrismaFilter(mongoFilter) {
   if (!mongoFilter || typeof mongoFilter !== 'object') return mongoFilter;
+
+  if (Object.keys(mongoFilter).length === 1 && '$exists' in mongoFilter) {
+    return { isSet: Boolean(mongoFilter.$exists) };
+  }
 
   const operatorMap = {
     $eq: 'equals',
@@ -57,6 +70,8 @@ function convertMongoFilterToPrismaFilter(mongoFilter) {
       prismaFilter[operatorMap[key]] = mappedValue;
     } else if (key === '$not' && typeof value === 'object') {
       prismaFilter['not'] = convertMongoFilterToPrismaFilter(value);
+    } else if (key === '$or' && Array.isArray(value)) {
+      prismaFilter.OR = value.map((v) => convertMongoFilterToPrismaFilter(v));
     } else if ((key === 'in' || key === 'notIn') && Array.isArray(value)) {
       // TODO: Fix Prisma conversion error for status field
       // The current implementation attempts to convert all array values as dates,
@@ -123,6 +138,29 @@ function handleDotNotation(query) {
   }
 }
 
+/**
+ * Remove API-hydrated and computed fields before Prisma Application.update().
+ * Relation FK applicantID must use applicant.connect on write, not scalar updates.
+ */
+function toPrismaApplicationUpdateData(data) {
+    if (!data || typeof data !== 'object') {
+        return data;
+    }
+    const {
+        _id,
+        id,
+        applicantID,
+        applicant,
+        canBeReopened,
+        canBeRestored,
+        conditional,
+        pendingConditions,
+        institution,
+        ...prismaData
+    } = data;
+    return prismaData;
+}
+
 function mongoSortToPrismaOrderBy(sortObj) {
       return Object.entries(sortObj).map(([key, direction]) => {
           const parts = key.split(".");
@@ -139,8 +177,10 @@ function mongoSortToPrismaOrderBy(sortObj) {
 module.exports = {
     convertIdFields,
     convertMongoFilterToPrismaFilter,
+    nullOrMissingMongoCondition,
     tryConvertDate,
     handleDotNotation,
-    mongoSortToPrismaOrderBy
+    mongoSortToPrismaOrderBy,
+    toPrismaApplicationUpdateData,
 
 };

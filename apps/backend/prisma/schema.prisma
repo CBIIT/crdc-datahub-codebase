@@ -192,6 +192,8 @@ model Application {
   inactiveReminder_15  Boolean?
   inactiveReminder_30  Boolean?
   finalInactiveReminder Boolean?
+  sequenceNumber        Int       @default(1)
+  nextRevisionId        String?
   @@map("applications")
 }
 

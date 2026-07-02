@@ -2,8 +2,17 @@
 export { mutation as REVIEW_APP } from "./reviewApplication";
 export type { Response as ReviewAppResp, Input as ReviewAppInput } from "./reviewApplication";
 
-export { mutation as REOPEN_APP } from "./reopenApplication";
-export type { Response as ReopenAppResp } from "./reopenApplication";
+export { mutation as RESUME_APP } from "./resumeInquiredApplication";
+export type {
+  Response as ResumeAppResp,
+  Input as ResumeAppInput,
+} from "./resumeInquiredApplication";
+
+export { mutation as REOPEN_APPROVED_SR } from "./reopenApprovedSubmissionRequest";
+export type {
+  Response as ReopenApprovedSRResp,
+  Input as ReopenApprovedSRInput,
+} from "./reopenApprovedSubmissionRequest";
 
 export { mutation as APPROVE_APP } from "./approveApplication";
 export type { Input as ApproveAppInput, Response as ApproveAppResp } from "./approveApplication";

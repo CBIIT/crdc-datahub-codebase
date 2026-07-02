@@ -12,6 +12,7 @@ import { CSSProperties } from "react";
 
 import CloseIconSvg from "../../assets/icons/close_icon.svg?react";
 import { FormatDate } from "../../utils";
+import RichTextViewer from "../RichTextViewer";
 
 const StyledDialog = styled(Dialog, {
   shouldForwardProp: (prop) => prop !== "status" && prop !== "getColorScheme",
@@ -72,8 +73,18 @@ const StyledDialogContent = styled(DialogContent)({
   marginBottom: "11px",
   minHeight: "44px",
   overflowX: "hidden",
-  whiteSpace: "pre-line",
   overflowWrap: "break-word",
+  "& p": {
+    margin: "0 0 4px 0",
+    "&:last-child": { marginBottom: 0 },
+  },
+  "& ul, & ol": {
+    margin: "0 0 4px 0",
+    paddingLeft: "24px",
+  },
+  "& li": {
+    lineHeight: "1.6",
+  },
 });
 
 const StyledSubTitle = styled("p")({
@@ -177,7 +188,9 @@ const ReviewCommentsDialog = <T, H>({
         {`Based on submission from ${FormatDate(lastReview?.dateTime, "M/D/YYYY", "N/A")}:`}
       </StyledSubTitle>
     </StyledDialogTitle>
-    <StyledDialogContent>{lastReview?.reviewComment}</StyledDialogContent>
+    <StyledDialogContent>
+      <RichTextViewer content={lastReview?.reviewComment ?? ""} />
+    </StyledDialogContent>
     <DialogActions>
       <StyledCloseButton
         id="close-review-comments-button"
