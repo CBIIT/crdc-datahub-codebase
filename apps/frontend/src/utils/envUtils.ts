@@ -57,10 +57,10 @@ export const buildReleaseNotesUrl = (): string => {
     typeof VITE_FE_VERSION === "string" &&
     ReleaseRegex.test(VITE_FE_VERSION)
   ) {
-    return `https://raw.githubusercontent.com/CBIIT/crdc-datahub-ui/refs/tags/${VITE_FE_VERSION}/CHANGELOG.md`;
+    return `https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/tags/${VITE_FE_VERSION}/apps/frontend/CHANGELOG.md`;
   }
 
-  return "https://raw.githubusercontent.com/CBIIT/crdc-datahub-ui/refs/heads/main/CHANGELOG.md";
+  return "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/heads/master/apps/frontend/CHANGELOG.md";
 };
 
 /**

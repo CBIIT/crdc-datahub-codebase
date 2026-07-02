@@ -1,4 +1,4 @@
-FROM python:3.14.4-alpine3.23 AS fnl_base_image
+FROM python:3.14.6-alpine3.24 AS fnl_base_image
 
 RUN apk upgrade --no-cache
 

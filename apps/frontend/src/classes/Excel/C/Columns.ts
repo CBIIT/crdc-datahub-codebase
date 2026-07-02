@@ -77,7 +77,7 @@ export const COLUMNS: ColumnDef<CKeys>[] = [
       "If there is more than one entry, you may use additional rows for the details of each entry.",
   },
   {
-    header: "Other Specie(s) involved",
+    header: "Other Species involved",
     key: "otherSpeciesOfSubjects",
     width: 30,
     protection: { locked: true },

@@ -501,7 +501,7 @@ const FormSectionReview: FC<FormSectionProps> = ({ SectionOption, refs }: FormSe
           />
           <ReviewDataListingProperty
             idPrefix="review-subjects-other-species"
-            label="Other Specie(s) involved"
+            label="Other Species involved"
             value={data.otherSpeciesOfSubjects}
             valuePlacement="bottom"
             delimiter="|"
