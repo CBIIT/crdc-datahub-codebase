@@ -36,7 +36,14 @@ describe('ApplicationDAO.reopenApprovedRevision', () => {
         const result = await dao.reopenApprovedRevision(sourceId, newApp);
 
         expect(prisma.application.updateMany).toHaveBeenCalledWith({
-            where: { id: sourceId, status: APPROVED, nextRevisionId: null },
+            where: {
+                id: sourceId,
+                status: APPROVED,
+                OR: [
+                    { nextRevisionId: null },
+                    { nextRevisionId: { isSet: false } },
+                ],
+            },
             data: expect.objectContaining({
                 nextRevisionId: newApp._id,
                 updatedAt: newApp.updatedAt,
