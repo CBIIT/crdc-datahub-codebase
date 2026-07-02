@@ -382,7 +382,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
     if (intention === "Delete" && dataType === "Metadata and Data Files") {
       setValue("dataType", "" as never);
     }
-  }, [intention]);
+  }, [intention, dataType]);
 
   useEffect(() => {
     const studyID = watch("studyID");
