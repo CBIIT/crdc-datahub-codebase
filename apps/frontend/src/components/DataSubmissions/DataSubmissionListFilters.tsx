@@ -544,7 +544,7 @@ const DataSubmissionListFilters = ({
 
           <Grid item xs={4}>
             <StyledFormControl>
-              <StyledInlineLabel id="submission-name-filter">
+              <StyledInlineLabel htmlFor="submission-name-filter">
                 Submission
                 <br />
                 Name
@@ -559,7 +559,7 @@ const DataSubmissionListFilters = ({
                 size="small"
                 placeholder="Minimum 3 characters required"
                 inputProps={{
-                  "aria-labelledby": "submission-name-filter",
+                  id: "submission-name-filter",
                   "data-testid": "submission-name-input",
                 }}
                 required
@@ -569,7 +569,7 @@ const DataSubmissionListFilters = ({
 
           <Grid item xs={4}>
             <StyledFormControl>
-              <StyledInlineLabel id="dbGaPID-filter">Study</StyledInlineLabel>
+              <StyledInlineLabel htmlFor="dbGaPID-filter">Study</StyledInlineLabel>
               <StyledTextField
                 {...register("dbGaPID", {
                   setValueAs: (val) => val?.trim(),
@@ -580,7 +580,7 @@ const DataSubmissionListFilters = ({
                 size="small"
                 placeholder="Enter Study Name, Acronym, or dbGaP ID"
                 inputProps={{
-                  "aria-labelledby": "dbGaPID-filter",
+                  id: "dbGaPID-filter",
                   "data-testid": "dbGaPID-input",
                 }}
                 required
