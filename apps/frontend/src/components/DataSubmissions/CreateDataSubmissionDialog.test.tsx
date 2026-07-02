@@ -652,7 +652,7 @@ describe("Basic Functionality", () => {
     });
   });
 
-  it("sets dataType to 'Metadata and Data Files' when intention is 'New/Update'", async () => {
+  it("does not auto-select a dataType when intention is 'New/Update'", async () => {
     const { getByRole, getByTestId } = render(
       <TestParent
         authCtxState={authCtxStateFactory.build({
@@ -681,11 +681,16 @@ describe("Basic Functionality", () => {
     const newUpdateOption = within(intentionInput).getByText("New/Update");
     userEvent.click(newUpdateOption);
 
-    const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
-    userEvent.click(within(dataTypeInput).getByText("Metadata and Data Files"));
+    await waitFor(() => {
+      const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+      const dataTypeRadios = dataTypeInput.querySelectorAll("input[type='radio']");
+      dataTypeRadios.forEach((radio) => {
+        expect(radio).not.toBeChecked();
+      });
+    });
   });
 
-  it("sets dataType to 'Metadata Only' when intention is 'Delete'", async () => {
+  it("does not auto-select a dataType when intention is 'Delete'", async () => {
     const { getByRole, getByTestId } = render(
       <TestParent
         authCtxState={authCtxStateFactory.build({
@@ -716,7 +721,10 @@ describe("Basic Functionality", () => {
 
     await waitFor(() => {
       const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
-      expect(dataTypeInput).toHaveTextContent("Metadata Only");
+      const dataTypeRadios = dataTypeInput.querySelectorAll("input[type='radio']");
+      dataTypeRadios.forEach((radio) => {
+        expect(radio).not.toBeChecked();
+      });
     });
   });
 
