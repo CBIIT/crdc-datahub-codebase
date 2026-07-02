@@ -236,7 +236,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
   const [isDbGapRequired, setIsDbGapRequired] = useState<boolean>(false);
   const [dbGaPID, setDbGaPID] = useState<string>("");
   const [selectMinWidth, setSelectMinWidth] = useState<number | null>(null);
-  const [intention, studyID] = watch(["intention", "studyID"]);
+  const [intention, studyID, dataType] = watch(["intention", "studyID", "dataType"]);
 
   const shouldFetchAllStudies = useMemo<boolean>(
     () =>
@@ -379,13 +379,10 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
     !value?.trim() ? "This field is required" : null;
 
   useEffect(() => {
-    if (intention === "New/Update") {
-      setValue("dataType", "Metadata and Data Files");
+    if (intention === "Delete" && dataType === "Metadata and Data Files") {
+      setValue("dataType", "" as never);
     }
-    if (intention === "Delete") {
-      setValue("dataType", "Metadata Only");
-    }
-  }, [intention]);
+  }, [intention, dataType]);
 
   useEffect(() => {
     const studyID = watch("studyID");
@@ -444,6 +441,9 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
                     label="Submission Type"
                     value={field.value}
                     options={submissionTypeOptions}
+                    aria-describedby={
+                      errors?.intention?.message ? "submission-intention-helper-text" : undefined
+                    }
                     data-testid="create-data-submission-dialog-submission-type-input"
                     inline
                     required
@@ -451,6 +451,11 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
                   />
                 )}
               />
+              {errors?.intention?.message && (
+                <StyledHelperText id="submission-intention-helper-text" role="alert">
+                  {errors?.intention?.message}
+                </StyledHelperText>
+              )}
             </StyledField>
             <StyledField sx={{ marginRight: "-80px" }}>
               <Controller
@@ -473,11 +478,11 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
                 )}
               />
               <StyledHelperText id="submission-data-type-helper-text">
-                {errors?.intention?.message}
+                {errors?.dataType?.message}
               </StyledHelperText>
             </StyledField>
             <StyledField>
-              <StyledLabel id="dataCommons">
+              <StyledLabel id="dataCommons" htmlFor="dataCommons">
                 Data Commons
                 <StyledAsterisk />
               </StyledLabel>
@@ -491,7 +496,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
                     value={field.value}
                     MenuProps={{ disablePortal: true }}
                     aria-describedby="submission-data-commons-helper-text"
-                    inputProps={{ "aria-labelledby": "dataCommons" }}
+                    inputProps={{ "aria-labelledby": "dataCommons", id: "dataCommons" }}
                     data-testid="create-data-submission-dialog-data-commons-input"
                   >
                     {DataCommons.map((dc) => (
@@ -507,7 +512,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
               </StyledHelperText>
             </StyledField>
             <StyledField>
-              <StyledLabel id="study">
+              <StyledLabel id="study" htmlFor="study">
                 Study
                 <StyledAsterisk />
               </StyledLabel>
@@ -527,7 +532,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
                       sx: { width: selectMinWidth ? `${selectMinWidth}px` : "auto" },
                     }}
                     aria-describedby="submission-study-abbreviation-helper-text"
-                    inputProps={{ "aria-labelledby": "study" }}
+                    inputProps={{ "aria-labelledby": "study", id: "study" }}
                     data-testid="create-data-submission-dialog-study-id-input"
                   >
                     {studies.map((study) => (
@@ -547,7 +552,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
               </StyledHelperText>
             </StyledField>
             <StyledField sx={{ display: isDbGapRequired ? "flex" : "none" }}>
-              <StyledLabel id="dbGaPID" data-testid="dbGaP-id-label">
+              <StyledLabel id="dbGaPID" htmlFor="dbGaPID" data-testid="dbGaP-id-label">
                 dbGaP ID
                 <StyledAsterisk />
               </StyledLabel>
@@ -561,7 +566,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
               >
                 <StyledOutlinedInput
                   value={dbGaPID}
-                  inputProps={{ "aria-labelledby": "dbGaPID" }}
+                  inputProps={{ "aria-labelledby": "dbGaPID", id: "dbGaPID" }}
                   placeholder="<Not Provided>"
                   data-testid="create-data-submission-dialog-dbgap-id-input"
                   readOnly
@@ -589,7 +594,7 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
               <StyledHelperText />
             </StyledField>
             <StyledField>
-              <StyledLabel id="submissionName">
+              <StyledLabel id="submissionName" htmlFor="submissionName">
                 Submission Name
                 <StyledAsterisk />
               </StyledLabel>
@@ -603,7 +608,11 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
                 })}
                 rows={3}
                 placeholder="25 characters allowed"
-                inputProps={{ maxLength: 25, "aria-labelledby": "submissionName" }}
+                inputProps={{
+                  maxLength: 25,
+                  "aria-labelledby": "submissionName",
+                  id: "submissionName",
+                }}
                 aria-describedby="submission-name-helper-text"
                 data-testid="create-data-submission-dialog-submission-name-input"
               />

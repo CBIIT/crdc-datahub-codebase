@@ -87,6 +87,7 @@ type Props = {
 const RadioInput = forwardRef<HTMLDivElement, Props>(
   ({ label, name, value, options, id, inline, helpText, required, ...rest }, ref) => {
     const radioId = id || useId();
+    const labelId = `${radioId}-label`;
     const [val, setVal] = useState<string>(
       value?.toString() === "" || value?.toString() === undefined ? null : value?.toString()
     );
@@ -115,7 +116,7 @@ const RadioInput = forwardRef<HTMLDivElement, Props>(
         direction={inline ? "row" : "column"}
         alignItems={inline ? "center" : "initial"}
       >
-        <StyledFormLabel className="radio-label" htmlFor={radioId}>
+        <StyledFormLabel as="span" className="radio-label" id={labelId}>
           {label}
           {required ? <StyledAsterisk /> : ""}
         </StyledFormLabel>
@@ -125,6 +126,7 @@ const RadioInput = forwardRef<HTMLDivElement, Props>(
           value={val}
           onChange={onChangeWrapper}
           id={radioId}
+          aria-labelledby={labelId}
           {...rest}
         >
           {options?.map((option: RadioOption, idx: number) => (

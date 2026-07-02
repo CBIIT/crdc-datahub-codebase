@@ -291,3 +291,21 @@ export const DialogWithPendingImageDeIdentification: Story = {
     expect(tooltip).toBeInTheDocument();
   },
 };
+
+export const DialogWithValidationErrors: Story = {
+  ...Button,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // Open the dialog
+    await userEvent.click(canvas.getByRole("button", { name: "Create a Data Submission" }));
+    await screen.findAllByRole("presentation");
+
+    // Click Create without filling in any fields to trigger all validations
+    const createButton = await screen.findByTestId("create-data-submission-dialog-create-button");
+    await userEvent.click(createButton);
+
+    // All required field errors should be visible
+    await screen.findAllByText("This field is required");
+  },
+};

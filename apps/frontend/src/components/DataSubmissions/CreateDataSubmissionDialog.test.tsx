@@ -215,10 +215,8 @@ describe("Basic Functionality", () => {
     const newUpdateOption = within(intentionInput).getByText("New/Update");
     userEvent.click(newUpdateOption);
 
-    await waitFor(() => {
-      const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
-      expect(dataTypeInput).toHaveTextContent("Metadata and Data Files");
-    });
+    const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+    userEvent.click(within(dataTypeInput).getByText("Metadata and Data Files"));
 
     const dataCommonsInput = getByTestId("create-data-submission-dialog-data-commons-input");
     const dataCommonsSelectButton = within(dataCommonsInput).getByRole("button");
@@ -430,10 +428,8 @@ describe("Basic Functionality", () => {
     const intentionInput = getByTestId("create-data-submission-dialog-submission-type-input");
     userEvent.click(within(intentionInput).getByText("New/Update"));
 
-    await waitFor(() => {
-      const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
-      expect(dataTypeInput).toHaveTextContent("Metadata and Data Files");
-    });
+    const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+    userEvent.click(within(dataTypeInput).getByText("Metadata and Data Files"));
 
     const dataCommonsInput = getByTestId("create-data-submission-dialog-data-commons-input");
     const dataCommonsSelectButton = within(dataCommonsInput).getByRole("button");
@@ -534,10 +530,8 @@ describe("Basic Functionality", () => {
     const intentionInput = getByTestId("create-data-submission-dialog-submission-type-input");
     userEvent.click(within(intentionInput).getByText("New/Update"));
 
-    await waitFor(() => {
-      const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
-      expect(dataTypeInput).toHaveTextContent("Metadata and Data Files");
-    });
+    const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+    userEvent.click(within(dataTypeInput).getByText("Metadata and Data Files"));
 
     const dataCommonsInput = getByTestId("create-data-submission-dialog-data-commons-input");
     const dataCommonsSelectButton = within(dataCommonsInput).getByRole("button");
@@ -619,10 +613,8 @@ describe("Basic Functionality", () => {
     const intentionInput = getByTestId("create-data-submission-dialog-submission-type-input");
     userEvent.click(within(intentionInput).getByText("New/Update"));
 
-    await waitFor(() => {
-      const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
-      expect(dataTypeInput).toHaveTextContent("Metadata and Data Files");
-    });
+    const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+    userEvent.click(within(dataTypeInput).getByText("Metadata and Data Files"));
 
     const dataCommonsInput = getByTestId("create-data-submission-dialog-data-commons-input");
     const dataCommonsSelectButton = within(dataCommonsInput).getByRole("button");
@@ -660,7 +652,7 @@ describe("Basic Functionality", () => {
     });
   });
 
-  it("sets dataType to 'Metadata and Data Files' when intention is 'New/Update'", async () => {
+  it("does not auto-select a dataType when intention is 'New/Update'", async () => {
     const { getByRole, getByTestId } = render(
       <TestParent
         authCtxState={authCtxStateFactory.build({
@@ -691,11 +683,14 @@ describe("Basic Functionality", () => {
 
     await waitFor(() => {
       const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
-      expect(dataTypeInput).toHaveTextContent("Metadata and Data Files");
+      const dataTypeRadios = dataTypeInput.querySelectorAll("input[type='radio']");
+      dataTypeRadios.forEach((radio) => {
+        expect(radio).not.toBeChecked();
+      });
     });
   });
 
-  it("sets dataType to 'Metadata Only' when intention is 'Delete'", async () => {
+  it("does not auto-select a dataType when intention is 'Delete'", async () => {
     const { getByRole, getByTestId } = render(
       <TestParent
         authCtxState={authCtxStateFactory.build({
@@ -726,7 +721,10 @@ describe("Basic Functionality", () => {
 
     await waitFor(() => {
       const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
-      expect(dataTypeInput).toHaveTextContent("Metadata Only");
+      const dataTypeRadios = dataTypeInput.querySelectorAll("input[type='radio']");
+      dataTypeRadios.forEach((radio) => {
+        expect(radio).not.toBeChecked();
+      });
     });
   });
 
@@ -882,6 +880,108 @@ describe("Basic Functionality", () => {
 
     await waitFor(() => {
       expect(getByText("This field contains invalid characters")).toBeInTheDocument();
+    });
+  });
+
+  it("clears dataType when switching intention to 'Delete' if 'Metadata and Data Files' was selected", async () => {
+    const { getByRole, getByTestId } = render(
+      <TestParent
+        authCtxState={authCtxStateFactory.build({
+          user: userFactory.build({ role: "Submitter", permissions: basePermissions }),
+        })}
+      >
+        <CreateDataSubmissionDialog onCreate={handleCreate} />
+      </TestParent>
+    );
+
+    const openDialogButton = getByRole("button", { name: "Create a Data Submission" });
+    await waitFor(() => expect(openDialogButton).toBeEnabled());
+    userEvent.click(openDialogButton);
+
+    await waitFor(() => {
+      expect(getByTestId("create-submission-dialog")).toBeInTheDocument();
+    });
+
+    const intentionInput = getByTestId("create-data-submission-dialog-submission-type-input");
+    userEvent.click(within(intentionInput).getByText("New/Update"));
+
+    const dataTypeInput = getByTestId("create-data-submission-dialog-data-type-input");
+    userEvent.click(within(dataTypeInput).getByText("Metadata and Data Files"));
+
+    await waitFor(() => {
+      const metadataAndFilesRadio = dataTypeInput.querySelector(
+        "input[type='radio'][value='Metadata and Data Files']"
+      );
+      expect(metadataAndFilesRadio).toBeChecked();
+    });
+
+    userEvent.click(within(intentionInput).getByText("Delete"));
+
+    await waitFor(() => {
+      const dataTypeRadios = dataTypeInput.querySelectorAll("input[type='radio']");
+      dataTypeRadios.forEach((radio) => {
+        expect(radio).not.toBeChecked();
+      });
+    });
+  });
+
+  it("shows required error messages for both intention and dataType when form is submitted without selecting them", async () => {
+    const { getByRole, getByTestId, getAllByText } = render(
+      <TestParent
+        authCtxState={authCtxStateFactory.build({
+          user: userFactory.build({
+            role: "Submitter",
+            studies: baseStudies,
+            permissions: basePermissions,
+          }),
+        })}
+      >
+        <CreateDataSubmissionDialog onCreate={handleCreate} />
+      </TestParent>
+    );
+
+    const openDialogButton = getByRole("button", { name: "Create a Data Submission" });
+    await waitFor(() => expect(openDialogButton).toBeEnabled());
+    userEvent.click(openDialogButton);
+
+    await waitFor(() => {
+      expect(getByTestId("create-submission-dialog")).toBeInTheDocument();
+    });
+
+    const dataCommonsInput = getByTestId("create-data-submission-dialog-data-commons-input");
+    const dataCommonsSelectButton = within(dataCommonsInput).getByRole("button");
+    userEvent.click(dataCommonsSelectButton);
+
+    await waitFor(() => {
+      expect(dataCommonsSelectButton).toHaveAttribute("aria-expanded", "true");
+    });
+    userEvent.click(within(dataCommonsInput).getByText("GC"));
+
+    const studySelectButton = within(
+      getByTestId("create-data-submission-dialog-study-id-input")
+    ).getByRole("button");
+    userEvent.click(studySelectButton);
+
+    await waitFor(() => {
+      expect(studySelectButton).toHaveAttribute("aria-expanded", "true");
+    });
+    userEvent.click(getByTestId("study-option-study1"));
+
+    const submissionNameWrapper = getByTestId(
+      "create-data-submission-dialog-submission-name-input"
+    );
+    const submissionNameInput = within(submissionNameWrapper).getByRole("textbox");
+    userEvent.type(submissionNameInput, "Test Submission");
+
+    await waitFor(() => {
+      expect(submissionNameInput).toHaveValue("Test Submission");
+    });
+
+    userEvent.click(getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      const errorMessages = getAllByText("This field is required");
+      expect(errorMessages).toHaveLength(2);
     });
   });
 });
