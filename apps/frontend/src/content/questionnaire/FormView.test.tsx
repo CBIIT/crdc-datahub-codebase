@@ -67,6 +67,42 @@ vi.mock("../../components/SuspenseLoader", () => ({
   default: () => <div data-testid="mock-loader">Loading...</div>,
 }));
 
+vi.mock("../../components/RichTextEditor", () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  const { forwardRef } = require("react");
+  return {
+    default: forwardRef(
+      ({
+        value,
+        onChange,
+        onTextLengthChange,
+        "data-testid": dataTestId,
+        placeholder,
+        disabled,
+      }: {
+        value: string;
+        onChange: (v: string) => void;
+        onTextLengthChange?: (n: number) => void;
+        "data-testid"?: string;
+        placeholder?: string;
+        disabled?: boolean;
+      }) => (
+        <div data-testid={dataTestId}>
+          <textarea
+            placeholder={placeholder}
+            disabled={disabled}
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value);
+              onTextLengthChange?.(e.target.value.length);
+            }}
+          />
+        </div>
+      )
+    ),
+  };
+});
+
 vi.mock("../../components/CancelApplicationButton", () => ({
   default: () => <div data-testid="mock-cancel-button">Cancel</div>,
 }));

@@ -5,6 +5,42 @@ import { render, waitFor, within } from "../../test-utils";
 
 import ReviewFormDialog from "./ReviewFormDialog";
 
+vi.mock("../RichTextEditor", () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  const { forwardRef } = require("react");
+  return {
+    default: forwardRef(
+      ({
+        value,
+        onChange,
+        onTextLengthChange,
+        "data-testid": dataTestId,
+        placeholder,
+        disabled,
+      }: {
+        value: string;
+        onChange: (v: string) => void;
+        onTextLengthChange?: (n: number) => void;
+        "data-testid"?: string;
+        placeholder?: string;
+        disabled?: boolean;
+      }) => (
+        <div data-testid={dataTestId}>
+          <textarea
+            placeholder={placeholder}
+            disabled={disabled}
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value);
+              onTextLengthChange?.(e.target.value.length);
+            }}
+          />
+        </div>
+      )
+    ),
+  };
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -129,7 +165,7 @@ describe("Implementation Requirements", () => {
     expect(getByTestId("review-form-dialog-confirm-button")).not.toBeDisabled();
   });
 
-  it("should not allow typing more than 10,000 characters in the review comment input field", async () => {
+  it("should show a validation error when the review comment exceeds 10,000 characters", async () => {
     const mockOnSubmit = vi.fn();
 
     const { getByTestId } = render(
@@ -139,15 +175,13 @@ describe("Implementation Requirements", () => {
     const input = within(getByTestId("review-comment")).getByRole("textbox");
     userEvent.paste(input, "X".repeat(10_050));
 
-    expect(input).toHaveValue("X".repeat(10_000));
-
     userEvent.click(getByTestId("review-form-dialog-confirm-button"));
 
     await waitFor(() => {
-      expect(mockOnSubmit).toHaveBeenCalledTimes(1);
+      expect(getByTestId("review-comment-dialog-error")).toBeInTheDocument();
     });
 
-    expect(mockOnSubmit).toHaveBeenCalledWith(expect.stringMatching(/^X{10000}$/));
+    expect(mockOnSubmit).not.toHaveBeenCalled();
   });
 
   it("should display a character counter that updates as the user types", () => {
