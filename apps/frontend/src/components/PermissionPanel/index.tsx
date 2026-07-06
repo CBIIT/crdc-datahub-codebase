@@ -17,8 +17,6 @@ import { useSnackbar } from "notistack";
 import { FC, memo, useEffect, useMemo, useRef } from "react";
 import { useFormContext } from "react-hook-form";
 
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-
 import {
   EditUserInput,
   RetrievePBACDefaultsResp,
@@ -119,11 +117,6 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
   const { enqueueSnackbar } = useSnackbar();
   const { setValue, watch } = useFormContext<EditUserInput>();
 
-  const [storedTooltips, setStoredTooltips] = useLocalStorage<GetTooltipsResp["getTooltips"]>(
-    "profile-tooltips",
-    []
-  );
-
   const { data, loading } = useQuery<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput>(
     RETRIEVE_PBAC_DEFAULTS,
     {
@@ -137,21 +130,13 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
     }
   );
 
-  useQuery<GetTooltipsResp, GetTooltipsInput>(GET_TOOLTIPS, {
+  const { data: storedTooltips } = useQuery<GetTooltipsResp, GetTooltipsInput>(GET_TOOLTIPS, {
     context: { clientName: "backend" },
     fetchPolicy: "cache-first",
-    onCompleted: (data) => {
-      if (!data?.getTooltips) {
-        return;
-      }
-
-      setStoredTooltips(data.getTooltips.map((t) => ({ key: t.key, value: t.value })));
-    },
     onError: (error) => {
       Logger.error("Failed to retrieve PBAC tooltips", { error });
       enqueueSnackbar("Failed to retrieve PBAC tooltips", { variant: "error" });
     },
-    skip: storedTooltips?.length > 0,
   });
 
   const selectedRole = watch("role");
@@ -303,12 +288,12 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
   }, [notificationsValue]);
 
   const getTooltip = (_id: string) => {
-    if (!_id || !storedTooltips?.length) {
+    if (!_id || !storedTooltips?.getTooltips.length) {
       return null;
     }
 
     const baseKey = _id.split(":", 2)?.join(":");
-    return storedTooltips.find((t) => t.key === baseKey)?.value || null;
+    return storedTooltips?.getTooltips?.find((t) => t.key === baseKey)?.value || null;
   };
 
   return (
