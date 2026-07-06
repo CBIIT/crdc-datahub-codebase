@@ -24,6 +24,7 @@
   "submission_request:canceled": "Receive an email when a submission request is canceled or restored.",
   "submission_request:expiring": "Receive reminders when a submission request is nearing expiration (includes final notice).",
   "submission_request:deleted": "Receive an email when a submission request is deleted.",
+  "submission_request:reopened": "Receive an email when a submission request is reopened.",
   "data_submission:created": "Receive an email when a data submission is created.",
   "data_submission:submitted": "Receive an email when a data submission is submitted for processing.",
   "data_submission:cancelled": "Receive an email when a data submission is canceled.",
