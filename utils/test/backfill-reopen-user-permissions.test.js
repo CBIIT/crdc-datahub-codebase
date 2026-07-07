@@ -1,7 +1,7 @@
 const {
     backfillReopenUserPermissions,
     backfillReopenUserNotification,
-} = require('../../../documentation/3-7-0/backfill-reopen-user-permissions');
+} = require('../scripts/backfill-reopen-user-permissions');
 
 describe('backfill-reopen-user-permissions', () => {
     let mockUsersCollection;
