@@ -1,0 +1,21 @@
+{
+  "name": "submission-portal-one-time-scripts",
+  "version": "1.0.0",
+  "description": "One-time scripts for the submission portal",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "backfill-release-studyids": "node scripts/backfill-release-studyids.js",
+    "backfill-submission-type-admin-3687": "node scripts/backfill-submission-type-admin-3687.js",
+    "sync-study-fields-applications-3808": "node scripts/sync-study-fields-applications-3808.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "mongodb": "^6.12.0",
+    "yaml": "^2.9.0"
+  }
+}
