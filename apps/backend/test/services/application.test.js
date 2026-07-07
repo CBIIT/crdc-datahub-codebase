@@ -1035,6 +1035,33 @@ describe('Application', () => {
             jest.spyOn(app, 'getApplicationById').mockResolvedValue({ _id: 'app1', applicant: { applicantID: 'other' }, status: NEW });
             await expect(app.saveApplication(params, context)).rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
         });
+
+        it('should throw an error when studyAbbreviation exceeds the character limit', async () => {
+            jest.spyOn(app, 'getApplicationById').mockResolvedValue({ _id: 'app1', applicant: { applicantID: 'user1' }, status: IN_PROGRESS });
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+
+            const params = { application: { _id: 'app1', studyAbbreviation: 'A'.repeat(1001) }, status: IN_PROGRESS };
+            await expect(app.saveApplication(params, context)).rejects.toThrow("Study abbreviation cannot exceed");
+        });
+
+        it('should not throw when studyAbbreviation is at the character limit', async () => {
+            jest.spyOn(app, 'getApplicationById').mockResolvedValue({ _id: 'app1', applicant: { applicantID: 'user1' }, status: IN_PROGRESS });
+            jest.spyOn(app, '_updateApplication').mockResolvedValue({ _id: 'app1', status: IN_PROGRESS });
+            jest.spyOn(app, 'getApplicationById').mockResolvedValueOnce({ _id: 'app1', applicant: { applicantID: 'user1' }, status: IN_PROGRESS });
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+
+            const params = { application: { _id: 'app1', studyAbbreviation: 'A'.repeat(1000) }, status: IN_PROGRESS };
+            await expect(app.saveApplication(params, context)).resolves.not.toThrow();
+        });
+
+        it('should not throw when studyAbbreviation is absent', async () => {
+            jest.spyOn(app, 'getApplicationById').mockResolvedValue({ _id: 'app1', applicant: { applicantID: 'user1' }, status: IN_PROGRESS });
+            jest.spyOn(app, '_updateApplication').mockResolvedValue({ _id: 'app1', status: IN_PROGRESS });
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+
+            const params = { application: { _id: 'app1' }, status: IN_PROGRESS };
+            await expect(app.saveApplication(params, context)).resolves.not.toThrow();
+        });
     });
 
     describe('getMyLastApplication', () => {
