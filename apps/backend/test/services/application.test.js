@@ -1051,7 +1051,7 @@ describe('Application', () => {
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
 
             const params = { application: { _id: 'app1', studyAbbreviation: 'A'.repeat(1000) }, status: IN_PROGRESS };
-            await expect(app.saveApplication(params, context)).resolves.not.toThrow();
+            await expect(app.saveApplication(params, context)).resolves.toBeDefined();
         });
 
         it('should not throw when studyAbbreviation is absent', async () => {
@@ -1060,7 +1060,7 @@ describe('Application', () => {
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
 
             const params = { application: { _id: 'app1' }, status: IN_PROGRESS };
-            await expect(app.saveApplication(params, context)).resolves.not.toThrow();
+            await expect(app.saveApplication(params, context)).resolves.toBeDefined();
         });
     });
 
