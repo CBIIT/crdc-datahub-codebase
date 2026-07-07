@@ -288,7 +288,7 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
   }, [notificationsValue]);
 
   const getTooltip = (_id: string) => {
-    if (!_id || !storedTooltips?.getTooltips.length) {
+    if (!_id || !storedTooltips?.getTooltips?.length) {
       return null;
     }
 
