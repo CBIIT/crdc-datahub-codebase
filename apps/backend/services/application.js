@@ -1,4 +1,6 @@
 const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED, REOPENED} = require("../constants/application-constants");
+const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+const {APPLICATION_COLLECTION: APPLICATION} = require("../crdc-datahub-database-drivers/database-constants");
 const {v4} = require('uuid')
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {HistoryEventBuilder} = require("../domain/history-event");
@@ -628,6 +630,10 @@ class Application {
         let application = {...storedApplication, ...inputApplication, status: targetStatus };
         // auto upgrade version based on configuration
         application.version = await this._getApplicationVersionByStatus(application.status);
+
+        if (inputApplication?.studyAbbreviation && inputApplication.studyAbbreviation?.length > STUDY_ABBREVIATION_MAX_LENGTH) {
+            throw new Error(replaceErrorString(ERROR.MAX_STUDY_ABBREVIATION_LENGTH, STUDY_ABBREVIATION_MAX_LENGTH));
+        }
 
         if (inputApplication?.newInstitutions?.length > 0) {
             await this._validateNewInstitution(inputApplication?.newInstitutions);
