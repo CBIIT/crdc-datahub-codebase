@@ -8,7 +8,7 @@
  * Usage: Called by the 3.7.0 migration orchestrator, or run via npm run migrate:3.7.0
  */
 
-const { USER } = require('../../crdc-datahub-database-drivers/constants/user-constants');
+import { USER } from '../../../lib/db-driver/constants/user-constants';
 
 const USERS_COLLECTION = 'users';
 
