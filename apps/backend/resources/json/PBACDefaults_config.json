@@ -1,7 +1,7 @@
 {
     "_id": "06e527d4-0040-48cd-a4a1-bd8d850ab828",
     "type": "PBAC",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "Defaults": [
       {
         "role": "Federal Lead",
@@ -46,7 +46,7 @@
             "group": "Submission Request Permissions",
             "name": "Cancel/Restore",
             "inherited": ["submission_request:view:all"],
-            "order": 5,
+            "order": 6,
             "checked": false,
             "disabled": false
           },
@@ -55,8 +55,8 @@
             "group": "Submission Request Permissions",
             "name": "Reopen",
             "inherited": ["submission_request:view:all"],
-            "order": 6,
-            "checked": true,
+            "order": 5,
+            "checked": false,
             "disabled": false
           },
           {
@@ -195,10 +195,18 @@
             "disabled": false
           },
           {
+            "_id": "submission_request:reopened",
+            "group": "Submission Request Emails",
+            "name": "When Reopened",
+            "order": 5,
+            "checked": false,
+            "disabled": false
+          },
+          {
             "_id": "submission_request:canceled",
             "group": "Submission Request Emails",
             "name": "When canceled/restored",
-            "order": 5,
+            "order": 6,
             "checked": false,
             "disabled": false
           },
@@ -206,7 +214,7 @@
             "_id": "submission_request:deleted",
             "group": "Submission Request Emails",
             "name": "When deleted",
-            "order": 7,
+            "order": 8,
             "checked": false,
             "disabled": false
           },
@@ -214,7 +222,7 @@
             "_id": "submission_request:expiring",
             "group": "Submission Request Emails",
             "name": "When expiring",
-            "order": 6,
+            "order": 7,
             "checked": false,
             "disabled": false
           },
@@ -383,7 +391,7 @@
             "group": "Submission Request Permissions",
             "name": "Cancel/Restore",
             "inherited": ["submission_request:view:all"],
-            "order": 5,
+            "order": 6,
             "checked": false,
             "disabled": false
           },
@@ -392,8 +400,8 @@
             "group": "Submission Request Permissions",
             "name": "Reopen",
             "inherited": ["submission_request:view:all"],
-            "order": 6,
-            "checked": true,
+            "order": 5,
+            "checked": false,
             "disabled": false
           },
           {
@@ -533,10 +541,18 @@
             "disabled": false
           },
           {
+            "_id": "submission_request:reopened",
+            "group": "Submission Request Emails",
+            "name": "When Reopened",
+            "order": 5,
+            "checked": false,
+            "disabled": false
+          },
+          {
             "_id": "submission_request:canceled",
             "group": "Submission Request Emails",
             "name": "When canceled/restored",
-            "order": 5,
+            "order": 6,
             "checked": false,
             "disabled": false
           },
@@ -544,7 +560,7 @@
             "_id": "submission_request:deleted",
             "group": "Submission Request Emails",
             "name": "When deleted",
-            "order": 7,
+            "order": 8,
             "checked": false,
             "disabled": false
           },
@@ -552,7 +568,7 @@
             "_id": "submission_request:expiring",
             "group": "Submission Request Emails",
             "name": "When expiring",
-            "order": 6,
+            "order": 7,
             "checked": false,
             "disabled": false
           },
@@ -721,7 +737,7 @@
             "group": "Submission Request Permissions",
             "name": "Cancel/Restore",
             "inherited": ["submission_request:view:all"],
-            "order": 5,
+            "order": 6,
             "checked": false,
             "disabled": false
           },
@@ -730,7 +746,7 @@
             "group": "Submission Request Permissions",
             "name": "Reopen",
             "inherited": ["submission_request:view:all"],
-            "order": 6,
+            "order": 5,
             "checked": true,
             "disabled": false
           },
@@ -870,10 +886,18 @@
             "disabled": false
           },
           {
+            "_id": "submission_request:reopened",
+            "group": "Submission Request Emails",
+            "name": "When Reopened",
+            "order": 5,
+            "checked": true,
+            "disabled": false
+          },
+          {
             "_id": "submission_request:canceled",
             "group": "Submission Request Emails",
             "name": "When canceled/restored",
-            "order": 5,
+            "order": 6,
             "checked": false,
             "disabled": false
           },
@@ -881,7 +905,7 @@
             "_id": "submission_request:deleted",
             "group": "Submission Request Emails",
             "name": "When deleted",
-            "order": 7,
+            "order": 8,
             "checked": false,
             "disabled": false
           },
@@ -889,7 +913,7 @@
             "_id": "submission_request:expiring",
             "group": "Submission Request Emails",
             "name": "When expiring",
-            "order": 6,
+            "order": 7,
             "checked": false,
             "disabled": false
           },
@@ -1058,7 +1082,7 @@
             "group": "Submission Request Permissions",
             "name": "Cancel/Restore",
             "inherited": ["submission_request:view:own"],
-            "order": 5,
+            "order": 6,
             "checked": true,
             "disabled": true
           },
@@ -1067,7 +1091,7 @@
             "group": "Submission Request Permissions",
             "name": "Reopen",
             "inherited": ["submission_request:view:own"],
-            "order": 6,
+            "order": 5,
             "checked": true,
             "disabled": true
           },
@@ -1207,10 +1231,18 @@
             "disabled": true
           },
           {
+            "_id": "submission_request:reopened",
+            "group": "Submission Request Emails",
+            "name": "When Reopened",
+            "order": 5,
+            "checked": true,
+            "disabled": true
+          },
+          {
             "_id": "submission_request:canceled",
             "group": "Submission Request Emails",
             "name": "When canceled/restored",
-            "order": 5,
+            "order": 6,
             "checked": true,
             "disabled": true
           },
@@ -1218,7 +1250,7 @@
             "_id": "submission_request:deleted",
             "group": "Submission Request Emails",
             "name": "When deleted",
-            "order": 7,
+            "order": 8,
             "checked": true,
             "disabled": true
           },
@@ -1226,7 +1258,7 @@
             "_id": "submission_request:expiring",
             "group": "Submission Request Emails",
             "name": "When expiring",
-            "order": 6,
+            "order": 7,
             "checked": true,
             "disabled": true
           },
@@ -1395,7 +1427,7 @@
             "group": "Submission Request Permissions",
             "name": "Cancel/Restore",
             "inherited": ["submission_request:view:own"],
-            "order": 5,
+            "order": 6,
             "checked": true,
             "disabled": true
           },
@@ -1404,7 +1436,7 @@
             "group": "Submission Request Permissions",
             "name": "Reopen",
             "inherited": ["submission_request:view:own"],
-            "order": 6,
+            "order": 5,
             "checked": true,
             "disabled": true
           },
@@ -1542,10 +1574,18 @@
             "disabled": true
           },
           {
+            "_id": "submission_request:reopened",
+            "group": "Submission Request Emails",
+            "name": "When Reopened",
+            "order": 5,
+            "checked": true,
+            "disabled": true
+          },
+          {
             "_id": "submission_request:canceled",
             "group": "Submission Request Emails",
             "name": "When canceled/restored",
-            "order": 5,
+            "order": 6,
             "checked": true,
             "disabled": true
           },
@@ -1553,7 +1593,7 @@
             "_id": "submission_request:deleted",
             "group": "Submission Request Emails",
             "name": "When deleted",
-            "order": 7,
+            "order": 8,
             "checked": true,
             "disabled": true
           },
@@ -1561,7 +1601,7 @@
             "_id": "submission_request:expiring",
             "group": "Submission Request Emails",
             "name": "When expiring",
-            "order": 6,
+            "order": 7,
             "checked": true,
             "disabled": true
           },
