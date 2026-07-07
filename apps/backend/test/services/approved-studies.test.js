@@ -1787,6 +1787,23 @@ describe('ApprovedStudiesService', () => {
                     service._verifyAndFormatStudyParams({ name: 'S', controlledAccess: false, status: 'Pending' })
                 ).toThrow(ERROR.INVALID_APPROVED_STUDY_STATUS);
             });
+
+            it('should throw error when acronym exceeds the character limit', () => {
+                const params = { name: 'Test Study', controlledAccess: false, acronym: 'A'.repeat(1001) };
+                expect(() => service._verifyAndFormatStudyParams(params)).toThrow(
+                    replaceErrorString(ERROR.MAX_STUDY_ABBREVIATION_LENGTH, 1000)
+                );
+            });
+
+            it('should not throw error when acronym is exactly at the character limit', () => {
+                const params = { name: 'Test Study', controlledAccess: false, acronym: 'A'.repeat(1000) };
+                expect(() => service._verifyAndFormatStudyParams(params)).not.toThrow();
+            });
+
+            it('should not throw error when acronym is absent', () => {
+                const params = { name: 'Test Study', controlledAccess: false };
+                expect(() => service._verifyAndFormatStudyParams(params)).not.toThrow();
+            });
         });
 
         describe('_validatePendingGPA', () => {
