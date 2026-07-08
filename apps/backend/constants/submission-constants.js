@@ -70,7 +70,10 @@ module.exports = Object.freeze({
         DEFAULT_METADATA_BATCH_SIZE: 1000,
         MIN_METADATA_BATCH_SIZE: 100,
         // SQS FIFO limit is 256KB; ~6,890 UUIDs fit per message. 5,000 provides ~27% headroom.
-        MAX_METADATA_BATCH_SIZE: 5000
+        MAX_METADATA_BATCH_SIZE: 5000,
+        CODES: {
+            UPDATE_EXISTING_DATA: "M018",
+        },
     },
     INTENTION: {
         UPDATE: "New/Update",

@@ -588,6 +588,81 @@ class DataRecordService {
         releaseNode.props = JSON.stringify(releaseNode.props);
         return [newNode, releaseNode]
     }
+
+    /**
+     * Batch fetch released/new node pairs for a list of submitted IDs and node types.
+     * Missing pairs are skipped so exports can continue for valid records.
+     *
+     * @param {string} submissionID
+     * @param {string} dataCommons
+     * @param {string} status
+     * @param {{submittedID: string, nodeType: string}[]} candidates
+     * @returns {Promise<{comparisons: {submittedID: string, nodeType: string, existing: Object, incoming: Object}[], skipped: number}>}
+     */
+    async getReleasedAndNewNodesByList(submissionID, dataCommons, status, candidates = []) {
+        if (!submissionID || !dataCommons || !Array.isArray(candidates) || candidates.length === 0) {
+            return {comparisons: [], skipped: 0};
+        }
+
+        const targetStatus = status || "Released";
+        const grouped = candidates.reduce((acc, row) => {
+            if (!row?.nodeType || !row?.submittedID) {
+                return acc;
+            }
+            if (!acc[row.nodeType]) {
+                acc[row.nodeType] = new Set();
+            }
+            acc[row.nodeType].add(row.submittedID);
+            return acc;
+        }, {});
+
+        let skipped = 0;
+        const comparisons = [];
+
+        const nodeTypes = Object.keys(grouped);
+        for (const nodeType of nodeTypes) {
+            const nodeIDs = Array.from(grouped[nodeType]);
+            if (nodeIDs.length === 0) {
+                continue;
+            }
+
+            const [incomingNodes, releasedNodes] = await Promise.all([
+                this.dataRecordDAO.findMany({
+                    submissionID,
+                    nodeType,
+                    nodeID: {$in: nodeIDs}
+                }),
+                this.releaseDAO.findMany({
+                    dataCommons,
+                    nodeType,
+                    nodeID: {$in: nodeIDs},
+                    status: targetStatus
+                })
+            ]);
+
+            const incomingMap = new Map((incomingNodes || []).map((node) => [node.nodeID, node]));
+            const existingMap = new Map((releasedNodes || []).map((node) => [node.nodeID, node]));
+
+            nodeIDs.forEach((nodeID) => {
+                const incoming = incomingMap.get(nodeID);
+                const existing = existingMap.get(nodeID);
+                if (!incoming || !existing) {
+                    skipped += 1;
+                    return;
+                }
+
+                comparisons.push({
+                    submittedID: nodeID,
+                    nodeType,
+                    existing: existing?.props || {},
+                    incoming: incoming?.props || {}
+                });
+            });
+        }
+
+        return {comparisons, skipped};
+    }
+
     /**
      * createDBGaPLoadSheetForCDS
      * @param {*} aSubmission 
