@@ -6,7 +6,7 @@
  *
  * Migration files:
  * - sync-pbac-defaults-migration.js: Sync PBAC defaults from JSON (recurring step)
- * - backfill-reopen-user-permissions.js: Backfill submission_request:reopen:* on existing users
+ * - backfill-reopen-user-permissions.js: Backfill submission_request:reopen:* and submission_request:reopened on existing users
  * - backfill-application-sequence-number.js: Backfill Application.sequenceNumber where missing
  */
 
@@ -16,7 +16,6 @@ const {
 } = require('../recurring-steps/migration-utils');
 
 const { executeSyncPbacDefaults } = require('./sync-pbac-defaults-migration');
-const { executeBackfillReopenUserPermissions } = require('./backfill-reopen-user-permissions');
 const { executeBackfillApplicationSequenceNumber } = require('./backfill-application-sequence-number');
 
 async function orchestrateMigration() {
@@ -36,11 +35,6 @@ async function orchestrateMigration() {
                 name: 'Sync PBAC defaults from JSON (recurring)',
                 file: 'sync-pbac-defaults-migration.js',
                 execute: () => executeSyncPbacDefaults(db)
-            },
-            {
-                name: 'Backfill reopen permissions on existing users',
-                file: 'backfill-reopen-user-permissions.js',
-                execute: () => executeBackfillReopenUserPermissions(db)
             },
             {
                 name: 'Backfill Application.sequenceNumber',

@@ -33,6 +33,7 @@ const ApplicationDAO = require("../dao/application");
 const {PendingGPA} = require("../domain/pending-gpa");
 const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } = require("../utility/study-utility");
 const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev-helpers");
+const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
 
 class ApprovedStudiesService {
     constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
@@ -643,6 +644,9 @@ class ApprovedStudiesService {
         // trim acronym if it exists
         if (!!params.acronym && params.acronym.length > 0) {
             params.acronym = params.acronym.trim();
+        }
+        if (!!params.acronym && params.acronym.length > STUDY_ABBREVIATION_MAX_LENGTH) {
+            throw new Error(replaceErrorString(ERROR.MAX_STUDY_ABBREVIATION_LENGTH, STUDY_ABBREVIATION_MAX_LENGTH));
         }
         // ensure controlledAccess has a boolean value
         params.controlledAccess = params.controlledAccess === true;
