@@ -12,9 +12,11 @@ import { submissionCtxStateFactory } from "@/factories/submission/SubmissionCont
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
 import {
   SUBMISSION_QC_RESULTS,
-  SubmissionQCResultsResp,
   AGGREGATED_SUBMISSION_QC_RESULTS,
   AggregatedSubmissionQCResultsResp,
+  RETRIEVE_SUBMISSION_QC_COMPARISONS,
+  RetrieveSubmissionQCComparisonsResp,
+  RetrieveSubmissionQCComparisonsInput,
 } from "@/graphql";
 import { render, fireEvent, waitFor } from "@/test-utils";
 import * as utils from "@/utils";
@@ -80,6 +82,26 @@ const defaultFiltersRef: MutableRefObject<QualityControlFilterForm> = {
   current: defaultFilters,
 };
 
+const mockQCComparsions: MockedResponse<
+  RetrieveSubmissionQCComparisonsResp,
+  RetrieveSubmissionQCComparisonsInput
+> = {
+  request: {
+    query: RETRIEVE_SUBMISSION_QC_COMPARISONS,
+  },
+  variableMatcher: () => true,
+  result: {
+    data: {
+      retrieveSubmissionQCComparisons: {
+        total: 0,
+        skipped: 0,
+        comparisons: [],
+      },
+    },
+  },
+  maxUsageCount: Infinity,
+};
+
 describe("ExportValidationButton (Expanded View) tests", () => {
   afterEach(() => {
     vi.resetAllMocks();
@@ -113,7 +135,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     const submissionID = "example-execute-test-sub-id";
 
     let called = false;
-    const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+    const mocks: MockedResponse[] = [
+      mockQCComparsions,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -162,7 +185,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     const submissionID = "expanded-filtered-export-sub-id";
     let called = false;
 
-    const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+    const mocks: MockedResponse[] = [
+      mockQCComparsions,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -235,6 +259,112 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     });
   });
 
+  it("should pass expanded filters into comparisons query variables", async () => {
+    const submissionID = "expanded-filtered-comparison-sub-id";
+    let comparisonCalled = false;
+
+    const mocks: MockedResponse[] = [
+      {
+        request: {
+          query: SUBMISSION_QC_RESULTS,
+          variables: {
+            partial: false,
+            id: submissionID,
+            sortDirection: "asc",
+            orderBy: "displayID",
+            issueCode: "M018",
+            nodeTypes: ["participant"],
+            batchIDs: [101],
+            severities: "Warning",
+            first: 5000,
+            offset: 0,
+          },
+        },
+        result: {
+          data: {
+            submissionQCResults: {
+              total: 1,
+              results: [
+                qcResultFactory.build({
+                  submissionID,
+                  type: "participant",
+                  errors: [],
+                  warnings: [
+                    {
+                      code: "M018",
+                      title: "Updated value differs from released",
+                      description: "Simulated warning for comparison export",
+                      offendingProperty: "some_property",
+                      offendingValue: "new value",
+                    },
+                  ],
+                }),
+              ],
+            },
+          },
+        },
+      },
+      {
+        request: {
+          query: RETRIEVE_SUBMISSION_QC_COMPARISONS,
+        },
+        variableMatcher: (variables) =>
+          variables?.id === submissionID &&
+          variables?.issueCode === "M018" &&
+          variables?.severities === "Warning" &&
+          Array.isArray(variables?.nodeTypes) &&
+          variables.nodeTypes[0] === "participant" &&
+          Array.isArray(variables?.batchIDs) &&
+          variables.batchIDs[0] === 101,
+        result: () => {
+          comparisonCalled = true;
+          return {
+            data: {
+              retrieveSubmissionQCComparisons: {
+                total: 1,
+                skipped: 0,
+                comparisons: [
+                  {
+                    submittedID: "participant_1",
+                    nodeType: "participant",
+                    existingProps: JSON.stringify({ program_name: "old" }),
+                    incomingProps: JSON.stringify({ program_name: "new" }),
+                  },
+                ],
+              },
+            },
+          };
+        },
+      },
+    ];
+
+    const { getByTestId } = render(
+      <TestParent mocks={mocks} submission={{ _id: submissionID }}>
+        <ExportValidationButton
+          filtersRef={{
+            current: {
+              issueType: "M018",
+              nodeType: "participant",
+              batchID: 101,
+              severity: "Warning",
+            },
+          }}
+        />
+      </TestParent>
+    );
+
+    userEvent.click(getByTestId("export-validation-button"));
+
+    await waitFor(() => {
+      expect(comparisonCalled).toBe(true);
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining(".xlsx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+    });
+  });
+
   it.each<{ original: string; expected: string }>([
     { original: "A B C 1 2 3", expected: "A-B-C-1-2-3" },
     { original: "long name".repeat(100), expected: "long-name".repeat(100) },
@@ -249,7 +379,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     async ({ original, expected }) => {
       vi.useFakeTimers().setSystemTime(new Date("2021-01-19T14:54:01Z"));
 
-      const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+      const mocks: MockedResponse[] = [
+        mockQCComparsions,
         {
           request: {
             query: SUBMISSION_QC_RESULTS,
@@ -313,7 +444,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
   it("should alert the user if there are no QC Results to export", async () => {
     const submissionID = "example-no-results-to-export-id";
 
-    const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+    const mocks: MockedResponse[] = [
+      mockQCComparsions,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -379,7 +511,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
       description: `Warning 0${index + 1} description`,
     }));
 
-    const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+    const mocks: MockedResponse[] = [
+      mockQCComparsions,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -429,7 +562,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
   it("should handle network errors when fetching the QC Results without crashing", async () => {
     const submissionID = "random-010101-sub-id";
 
-    const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+    const mocks: MockedResponse[] = [
+      mockQCComparsions,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -468,7 +602,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
   it("should handle GraphQL errors when fetching the QC Results without crashing", async () => {
     const submissionID = "example-GraphQL-level-errors-id";
 
-    const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+    const mocks: MockedResponse[] = [
+      mockQCComparsions,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -509,7 +644,8 @@ describe("ExportValidationButton (Expanded View) tests", () => {
   it("should handle invalid datasets without crashing", async () => {
     const submissionID = "example-dataset-level-errors-id";
 
-    const mocks: MockedResponse<SubmissionQCResultsResp>[] = [
+    const mocks: MockedResponse[] = [
+      mockQCComparsions,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
