@@ -2,7 +2,7 @@ const { ApprovedStudiesService } = require('../../services/approved-studies');
 const { ADMIN } = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
 const ERROR = require('../../constants/error-constants');
 const { replaceErrorString } = require('../../utility/string-util');
-const { APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH } = require('../../crdc-datahub-database-drivers/constants/approved-study-constants');
+const { APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH, STUDY_ABBREVIATION_MAX_LENGTH } = require('../../crdc-datahub-database-drivers/constants/approved-study-constants');
 const { verifySession } = require('../../verifier/user-info-verifier');
 const { getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesForUser } = require('../../utility/data-commons-remapper');
 const TEST_CONSTANTS = require('../test-constants');
@@ -1789,14 +1789,14 @@ describe('ApprovedStudiesService', () => {
             });
 
             it('should throw error when acronym exceeds the character limit', () => {
-                const params = { name: 'Test Study', controlledAccess: false, acronym: 'A'.repeat(1001) };
+                const params = { name: 'Test Study', controlledAccess: false, acronym: 'A'.repeat(STUDY_ABBREVIATION_MAX_LENGTH + 1) };
                 expect(() => service._verifyAndFormatStudyParams(params)).toThrow(
-                    replaceErrorString(ERROR.MAX_STUDY_ABBREVIATION_LENGTH, 1000)
+                    replaceErrorString(ERROR.MAX_STUDY_ABBREVIATION_LENGTH, STUDY_ABBREVIATION_MAX_LENGTH)
                 );
             });
 
             it('should not throw error when acronym is exactly at the character limit', () => {
-                const params = { name: 'Test Study', controlledAccess: false, acronym: 'A'.repeat(1000) };
+                const params = { name: 'Test Study', controlledAccess: false, acronym: 'A'.repeat(STUDY_ABBREVIATION_MAX_LENGTH) };
                 expect(() => service._verifyAndFormatStudyParams(params)).not.toThrow();
             });
 
