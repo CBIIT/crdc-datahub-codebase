@@ -610,6 +610,7 @@ class Application {
             if (![NEW, IN_PROGRESS].includes(requestedStatus)) {
                 throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
             }
+            this._validateStudy(inputApplication);
             return await this.createApplication(inputApplication, context.userInfo, requestedStatus);
         }
 
@@ -630,9 +631,7 @@ class Application {
         // auto upgrade version based on configuration
         application.version = await this._getApplicationVersionByStatus(application.status);
 
-        if (inputApplication?.studyAbbreviation && inputApplication.studyAbbreviation?.length > STUDY_ABBREVIATION_MAX_LENGTH) {
-            throw new Error(replaceErrorString(ERROR.MAX_STUDY_ABBREVIATION_LENGTH, STUDY_ABBREVIATION_MAX_LENGTH));
-        }
+        this._validateStudy(inputApplication);
 
         if (inputApplication?.newInstitutions?.length > 0) {
             await this._validateNewInstitution(inputApplication?.newInstitutions);
@@ -643,6 +642,12 @@ class Application {
             await logStateChange(this.logCollection, context.userInfo, application, prevStatus);
         }
         return this.getApplicationById(application?._id);
+    }
+
+    _validateStudy(application) {
+        if (application?.studyAbbreviation && application.studyAbbreviation.length > STUDY_ABBREVIATION_MAX_LENGTH) {
+            throw new Error(replaceErrorString(ERROR.MAX_STUDY_ABBREVIATION_LENGTH, STUDY_ABBREVIATION_MAX_LENGTH));
+        }
     }
 
     async _validateNewInstitution(newInstitutions) {
