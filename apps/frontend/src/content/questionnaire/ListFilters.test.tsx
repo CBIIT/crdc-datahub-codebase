@@ -1,12 +1,24 @@
 import userEvent from "@testing-library/user-event";
-import React, { FC } from "react";
+import React, { FC, useMemo } from "react";
 import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
+import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
+import { userFactory } from "@/factories/auth/UserFactory";
+
+import {
+  Context as AuthContext,
+  ContextState as AuthContextState,
+  Status as AuthStatus,
+} from "../../components/Contexts/AuthContext";
 import { SearchParamsProvider } from "../../components/Contexts/SearchParamsContext";
 import { TestRouter, render, fireEvent, waitFor, act, within } from "../../test-utils";
 
-import ListFilters, { defaultValues, DEFAULT_STATUSES_SELECTED } from "./ListFilters";
+import ListFilters, {
+  getDefaultFilterValues,
+  DEFAULT_STATUSES_SELECTED,
+  FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED,
+} from "./ListFilters";
 import type { FilterForm } from "./ListFilters";
 
 const mockApplicationData = {
@@ -20,14 +32,29 @@ const mockApplicationData = {
 
 type ParentProps = {
   initialEntries?: MemoryRouterProps["initialEntries"];
+  role?: UserRole;
   children: React.ReactNode;
 };
 
-const TestParent: FC<ParentProps> = ({ initialEntries = ["/"], children }) => (
-  <TestRouter initialEntries={initialEntries}>
-    <SearchParamsProvider>{children}</SearchParamsProvider>
-  </TestRouter>
-);
+const TestParent: FC<ParentProps> = ({ initialEntries = ["/"], role = "Submitter", children }) => {
+  const authContextValue = useMemo<AuthContextState>(
+    () =>
+      authCtxStateFactory.build({
+        status: AuthStatus.LOADED,
+        isLoggedIn: true,
+        user: userFactory.build({ _id: "current-user", role }),
+      }),
+    [role]
+  );
+
+  return (
+    <TestRouter initialEntries={initialEntries}>
+      <AuthContext.Provider value={authContextValue}>
+        <SearchParamsProvider>{children}</SearchParamsProvider>
+      </AuthContext.Provider>
+    </TestRouter>
+  );
+};
 
 describe("Accessibility", () => {
   beforeEach(() => {
@@ -73,12 +100,57 @@ describe("ListFilters Component", () => {
     expect(getByTestId("application-status-filter")).toBeInTheDocument();
   });
 
-  it("calls onChange callback after debounced input changes with valid values", async () => {
+  it("uses Federal Lead default status filter selection", () => {
+    const { getByText } = render(
+      <TestParent role="Federal Lead">
+        <ListFilters applicationData={mockApplicationData} />
+      </TestParent>
+    );
+
+    expect(
+      getByText(
+        new RegExp(`${FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED.length} statuses selected`, "i")
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("resets to Federal Lead defaults", async () => {
     vi.useFakeTimers();
 
     const onChangeMock = vi.fn();
     const { getByTestId } = render(
-      <TestParent>
+      <TestParent role="Federal Lead">
+        <ListFilters applicationData={mockApplicationData} onChange={onChangeMock} />
+      </TestParent>
+    );
+
+    const clearButton = getByTestId("status-clear-button");
+    userEvent.click(clearButton);
+
+    const resetButton = getByTestId("reset-filters-button");
+    userEvent.click(resetButton);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(onChangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statuses: FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED,
+        })
+      );
+    });
+  });
+
+  it("calls onChange callback after debounced input changes with valid values", async () => {
+    vi.useFakeTimers();
+
+    const defaultValues = getDefaultFilterValues("Submitter");
+
+    const onChangeMock = vi.fn();
+    const { getByTestId } = render(
+      <TestParent role="Submitter">
         <ListFilters applicationData={mockApplicationData} onChange={onChangeMock} />
       </TestParent>
     );
@@ -108,9 +180,10 @@ describe("ListFilters Component", () => {
   it("sends empty strings for submitterName and studyName if input length is less than 3", async () => {
     vi.useFakeTimers();
 
+    const defaultValues = getDefaultFilterValues("Submitter");
     const onChangeMock = vi.fn();
     const { getByTestId } = render(
-      <TestParent>
+      <TestParent role="Submitter">
         <ListFilters applicationData={mockApplicationData} onChange={onChangeMock} />
       </TestParent>
     );
@@ -142,9 +215,10 @@ describe("ListFilters Component", () => {
   it("reset button resets filters to default values and calls onChange callback", async () => {
     vi.useFakeTimers();
 
+    const defaultValues = getDefaultFilterValues("Submitter");
     const onChangeMock = vi.fn();
     const { getByTestId } = render(
-      <TestParent>
+      <TestParent role="Submitter">
         <ListFilters applicationData={mockApplicationData} onChange={onChangeMock} />
       </TestParent>
     );
@@ -209,6 +283,7 @@ describe("ListFilters Component", () => {
 
     expect(within(statusOptions).getByTestId("application-status-New")).toBeInTheDocument();
     expect(within(statusOptions).getByTestId("application-status-Submitted")).toBeInTheDocument();
+    expect(within(statusOptions).getByTestId("application-status-Reopened")).toBeInTheDocument();
   });
 
   it("works correctly even when no onChange prop is provided", () => {

@@ -34,7 +34,7 @@ import usePageTitle from "../../hooks/usePageTitle";
 import { extractVersion, FormatDate, Logger } from "../../utils";
 
 import QuestionnaireContext from "./Contexts/QuestionnaireContext";
-import ListFilters, { defaultValues, FilterForm } from "./ListFilters";
+import ListFilters, { FilterForm, getDefaultFilterValues } from "./ListFilters";
 
 type T = ListApplicationsResp["listApplications"]["applications"][number];
 
@@ -289,7 +289,7 @@ const ListingView: FC = () => {
   const [error, setError] = useState<boolean>(false);
   const [data, setData] = useState<ListApplicationsResp["listApplications"]>(null);
 
-  const filtersRef = useRef<FilterForm>({ ...defaultValues });
+  const filtersRef = useRef<FilterForm>(getDefaultFilterValues(user?.role));
   const tableRef = useRef<TableMethods>(null);
 
   const [listApplications] = useLazyQuery<ListApplicationsResp, ListApplicationsInput>(

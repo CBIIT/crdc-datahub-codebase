@@ -16,6 +16,7 @@ import { memo, useCallback, useMemo, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
 import ClearButton from "../../components/ClearButton";
+import { useAuthContext } from "../../components/Contexts/AuthContext";
 import { useSearchParamsContext } from "../../components/Contexts/SearchParamsContext";
 import StyledAutocompleteFormComponent from "../../components/StyledFormComponents/StyledAutocomplete";
 import StyledTextFieldFormComponent from "../../components/StyledFormComponents/StyledOutlinedInput";
@@ -113,15 +114,24 @@ export const DEFAULT_STATUSES_SELECTED: ApplicationStatus[] = [
   "Submitted",
   "In Review",
   "Inquired",
-  "Reopened",
+  // "Reopened",
+  // "In Revision",
 ];
 
-export const defaultValues: FilterForm = {
+export const FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED: ApplicationStatus[] = [
+  "Submitted",
+  "In Review",
+  // "In Revision",
+  "Inquired",
+];
+
+export const getDefaultFilterValues = (role?: UserRole | null): FilterForm => ({
   programName: "All",
   studyName: "",
-  statuses: DEFAULT_STATUSES_SELECTED,
+  statuses:
+    role === "Federal Lead" ? FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED : DEFAULT_STATUSES_SELECTED,
   submitterName: "",
-};
+});
 
 const FIELDS_TO_DEBOUNCE: (keyof FilterForm)[] = [
   "studyName",
@@ -143,6 +153,7 @@ const statusValues: ApplicationStatus[] = [
   "Submitted",
   "In Review",
   "Inquired",
+  // "In Revision",
   "Reopened",
   "Approved",
   "Rejected",
@@ -156,7 +167,11 @@ const statusValues: ApplicationStatus[] = [
  * @see {@link FilterProps} for the props
  */
 const ListFilters = ({ applicationData, onChange }: FilterProps) => {
+  const { user } = useAuthContext();
   const { searchParams, setSearchParams } = useSearchParamsContext();
+
+  const defaultValues = useMemo<FilterForm>(() => getDefaultFilterValues(user?.role), [user?.role]);
+
   const { watch, setValue, control, register, reset, getValues } = useForm<FilterForm>({
     defaultValues,
   });
@@ -260,6 +275,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
     studyNameFilter,
     statusesFilter,
     submitterNameFilter,
+    defaultValues.statuses,
     searchParams,
     setSearchParams,
   ]);
