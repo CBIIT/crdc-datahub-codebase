@@ -75,6 +75,7 @@ type ApplicationStatus =
   | "Approved"
   | "Rejected"
   | "Inquired"
+  // | "In Revision"
   | "Reopened"
   | "Canceled"
   | "Deleted";
