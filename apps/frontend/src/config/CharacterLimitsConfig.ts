@@ -18,7 +18,7 @@ export const CHARACTER_LIMITS = {
       max: 1_000,
     },
     abbreviation: {
-      max: 1_000,
+      max: 50,
     },
   },
 } satisfies CharacterLimitsConfig;
