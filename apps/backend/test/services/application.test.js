@@ -7,6 +7,7 @@ const USER_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/us
 const { DEFAULT_GPA_NAME } = require('../../domain/pending-gpa');
 const { UserScope: RealUserScope } = require('../../domain/user-scope');
 const SCOPES = require('../../constants/permission-scope-constants');
+const { STUDY_ABBREVIATION_MAX_LENGTH } = require('../../crdc-datahub-database-drivers/constants/approved-study-constants');
 
 // Mock ApplicationDAO
 jest.mock('../../dao/application');
@@ -1040,7 +1041,7 @@ describe('Application', () => {
             jest.spyOn(app, 'getApplicationById').mockResolvedValue({ _id: 'app1', applicant: { applicantID: 'user1' }, status: IN_PROGRESS });
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
 
-            const params = { application: { _id: 'app1', studyAbbreviation: 'A'.repeat(1001) }, status: IN_PROGRESS };
+            const params = { application: { _id: 'app1', studyAbbreviation: 'A'.repeat(STUDY_ABBREVIATION_MAX_LENGTH + 1) }, status: IN_PROGRESS };
             await expect(app.saveApplication(params, context)).rejects.toThrow("Study abbreviation cannot exceed");
         });
 
@@ -1050,7 +1051,7 @@ describe('Application', () => {
             jest.spyOn(app, 'getApplicationById').mockResolvedValueOnce({ _id: 'app1', applicant: { applicantID: 'user1' }, status: IN_PROGRESS });
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
 
-            const params = { application: { _id: 'app1', studyAbbreviation: 'A'.repeat(1000) }, status: IN_PROGRESS };
+            const params = { application: { _id: 'app1', studyAbbreviation: 'A'.repeat(STUDY_ABBREVIATION_MAX_LENGTH) }, status: IN_PROGRESS };
             await expect(app.saveApplication(params, context)).resolves.toBeDefined();
         });
 
