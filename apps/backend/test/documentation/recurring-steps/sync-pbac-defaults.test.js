@@ -1,3 +1,4 @@
+const fs = require('fs');
 const {
     loadPbacDefaultsFromJson,
     shouldOverwriteVersion,
@@ -30,6 +31,15 @@ describe('sync-pbac-defaults', () => {
         it('returns true when Mongo version is invalid or missing', () => {
             expect(shouldOverwriteVersion(undefined, '2.3.0')).toBe(true);
             expect(shouldOverwriteVersion('not-a-version', '2.3.0')).toBe(true);
+        });
+
+        it('throws when JSON version is invalid', () => {
+            expect(() => shouldOverwriteVersion('2.3.0', 'not-a-version')).toThrow(
+                'Invalid PBAC JSON version: not-a-version'
+            );
+            expect(() => shouldOverwriteVersion('2.3.0', undefined)).toThrow(
+                'Invalid PBAC JSON version: undefined'
+            );
         });
     });
 
@@ -138,6 +148,37 @@ describe('sync-pbac-defaults', () => {
 
             expect(result.success).toBe(true);
             expect(result.skipped).toBe(true);
+            expect(mockCollection.insertOne).not.toHaveBeenCalled();
+            expect(mockCollection.replaceOne).not.toHaveBeenCalled();
+        });
+
+        it('returns failure when JSON load throws', async () => {
+            jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
+                throw new Error('ENOENT: no such file');
+            });
+
+            const result = await syncPbacDefaults(mockDb);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('ENOENT: no such file');
+            expect(mockCollection.findOne).not.toHaveBeenCalled();
+            expect(mockCollection.insertOne).not.toHaveBeenCalled();
+            expect(mockCollection.replaceOne).not.toHaveBeenCalled();
+        });
+
+        it('returns failure when JSON version is invalid', async () => {
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+                _id: 'test-id',
+                type: 'PBAC',
+                version: 'not-a-version',
+                Defaults: []
+            }));
+
+            const result = await syncPbacDefaults(mockDb);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('Invalid PBAC JSON version: not-a-version');
+            expect(mockCollection.findOne).not.toHaveBeenCalled();
             expect(mockCollection.insertOne).not.toHaveBeenCalled();
             expect(mockCollection.replaceOne).not.toHaveBeenCalled();
         });

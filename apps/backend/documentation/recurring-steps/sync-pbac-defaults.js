@@ -20,18 +20,28 @@ function loadPbacDefaultsFromJson() {
 }
 
 /**
+ * Coerces a version string to a valid semver, or null if unparseable.
+ * @param {*} version
+ * @returns {string|null}
+ */
+function coerceSemver(version) {
+    return semver.valid(semver.coerce(version));
+}
+
+/**
  * True when the Mongo PBAC version should be replaced by the JSON version.
  * Invalid or missing Mongo versions are treated as older so overwrite still runs.
  * @param {string} mongoVersion
- * @param {string} jsonVersion
+ * @param {string} jsonVersion Must be a valid (coercible) semver
  * @returns {boolean}
+ * @throws {Error} When jsonVersion is invalid or unparseable
  */
 function shouldOverwriteVersion(mongoVersion, jsonVersion) {
-    const mongo = semver.valid(semver.coerce(mongoVersion));
-    const json = semver.valid(semver.coerce(jsonVersion));
+    const json = coerceSemver(jsonVersion);
     if (!json) {
-        return false;
+        throw new Error(`Invalid PBAC JSON version: ${jsonVersion}`);
     }
+    const mongo = coerceSemver(mongoVersion);
     if (!mongo) {
         return true;
     }
@@ -48,10 +58,14 @@ function shouldOverwriteVersion(mongoVersion, jsonVersion) {
 async function syncPbacDefaults(db) {
     console.log('🔄 Syncing PBAC defaults from JSON into configuration...');
 
-    const jsonConfig = loadPbacDefaultsFromJson();
     const collection = db.collection(CONFIGURATION_COLLECTION);
 
     try {
+        const jsonConfig = loadPbacDefaultsFromJson();
+        if (!coerceSemver(jsonConfig.version)) {
+            throw new Error(`Invalid PBAC JSON version: ${jsonConfig.version}`);
+        }
+
         const existing = await collection.findOne({ type: PBAC_CONFIG_TYPE });
 
         if (!existing) {
