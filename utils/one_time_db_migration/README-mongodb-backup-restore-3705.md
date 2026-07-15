@@ -1,6 +1,6 @@
 # MongoDB backup and DocumentDB restore (3705)
 
-Scripts for a one-time migration: dump selected collections from a source MongoDB instance, restore them into Amazon DocumentDB, and verify document counts match.
+Scripts for a one-time migration: dump the project's MongoDB collections from a source MongoDB instance, restore them into Amazon DocumentDB, and verify document counts match.
 
 | File | Role |
 | ---- | ---- |
@@ -45,13 +45,26 @@ mongodb://username:password@host:port/?tls=true&tlsCAFile=/path/to/example.pem&r
 
 Backup and compare operate on the collections defined in [`utilities/3705-constants.js`](utilities/3705-constants.js):
 
+- `applications`
+- `approvedStudies`
+- `batch`
+- `configuration`
+- `dataCommons`
 - `dataRecords`
+- `dataRecordsArchived`
 - `fileMD5`
+- `institutions`
+- `logs`
+- `organization`
+- `pendingPvs`
 - `propertyPVs`
 - `pvConceptCodes`
+- `qcResults`
 - `release`
+- `submissions`
 - `synonyms`
-- `configuration`
+- `users`
+- `validation`
 
 To add or remove collections, edit that file; both backup and compare import the same list.
 
