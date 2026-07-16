@@ -13,6 +13,7 @@ Last Updated: 06 June 2023
    - [Creating a .env File](#creating-a-env-file)
  - [Running the CRDC DataHub Backend API](#running-the-crdc-datahub-backend-api)
  - [List of API Endpoints](#list-of-api-endpoints)
+ - [DocumentDB + Mongoose Compatibility Reference](documentation/documentdb-mongoose-compatibility.md)
 
 ## Introduction
 
