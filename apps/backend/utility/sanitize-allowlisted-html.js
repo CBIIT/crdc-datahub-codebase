@@ -46,7 +46,17 @@ const PRESET_SR_APPROVAL_PENDING_HTML = {
     }
 };
 
+/**
+ * Preset: Notification email body text. Only safe inline text formatting tags allowed.
+ * Strips everything except bold, italic, and underline.
+ */
+const PRESET_NOTIFICATION_TEXT_HTML = {
+    allowedTags: ['b', 'strong', 'i', 'em', 'u'],
+    allowedAttributes: {},
+};
+
 module.exports = {
     sanitizeAllowlistedHtml,
-    PRESET_SR_APPROVAL_PENDING_HTML
+    PRESET_SR_APPROVAL_PENDING_HTML,
+    PRESET_NOTIFICATION_TEXT_HTML
 };
