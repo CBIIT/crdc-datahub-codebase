@@ -71,7 +71,7 @@ class NotifyUser {
     }
 
     async submitRequestReceivedNotification(email, CCEmails, BCCsEmails, messageVariables, templateParams) {
-        const message = replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_RECEIVE_CONTENT_FIRST, {});
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_RECEIVE_CONTENT_FIRST, {}), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_RECEIVE_CONTENT_SECOND, messageVariables);
         const subject = this.email_constants.SUBMISSION_SUBMIT_RECEIVE_SUBJECT;
         return await this.send(async () => {
@@ -383,7 +383,7 @@ class NotifyUser {
 
 
     async inactiveUserNotification(email, template_params, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.INACTIVE_USER_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.INACTIVE_USER_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.INACTIVE_USER_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -399,7 +399,7 @@ class NotifyUser {
     }
 
     async inactiveUserAdminNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.INACTIVE_ADMIN_USER_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.INACTIVE_ADMIN_USER_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.INACTIVE_ADMIN_USER_SUBJECT;
         const recipientName = this.email_constants.INACTIVE_ADMIN_USER_RECIPIENT_NAME;
         return await this.send(async () => {
@@ -448,7 +448,7 @@ class NotifyUser {
     }
 
     async remindApplicationsNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_SECOND_CONTENT, messageVariables);
         const subject = replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_SUBJECT, messageVariables);
         return await this.send(async () => {
@@ -466,7 +466,7 @@ class NotifyUser {
     }
 
     async finalRemindApplicationsNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_SECOND_CONTENT, messageVariables);
         const thirdMessage = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_THIRD_CONTENT, messageVariables);
         const subject = this.email_constants.FINAL_INACTIVE_APPLICATION_SUBJECT;
@@ -588,7 +588,7 @@ class NotifyUser {
     }
 
     async deactivateUserNotification(email, template_params, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.DEACTIVATE_USER_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.DEACTIVATE_USER_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.DEACTIVATE_USER_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
