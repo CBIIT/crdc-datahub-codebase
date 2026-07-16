@@ -17,8 +17,7 @@ const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLE
     CDE_COLLECTION,
     DATA_RECORDS_ARCHIVE_COLLECTION,
     QC_RESULTS_COLLECTION,
-    RELEASE_DATA_RECORDS_COLLECTION,
-    PENDING_PVS_COLLECTION
+    RELEASE_DATA_RECORDS_COLLECTION
 } = require("../crdc-datahub-database-drivers/database-constants");
 const {MongoDBCollection} = require("../crdc-datahub-database-drivers/mongodb-collection");
 const {DatabaseConnector} = require("../crdc-datahub-database-drivers/database-connector");
