@@ -22,6 +22,7 @@ const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLE
 } = require("../crdc-datahub-database-drivers/database-constants");
 const {MongoDBCollection} = require("../crdc-datahub-database-drivers/mongodb-collection");
 const {DatabaseConnector} = require("../crdc-datahub-database-drivers/database-connector");
+const {connectMongoose} = require("../mongoose/connection");
 const {EmailService} = require("../services/email");
 const {NotifyUser} = require("../services/notify-user");
 const {ApprovedStudiesService} = require("../services/approved-studies");
@@ -70,6 +71,7 @@ const public_api_list = extractAPINames(schema, PUBLIC)
 let root;
 let authenticationService, userInitializationService;
 dbConnector.connect().then(async () => {
+    await connectMongoose(configuration.mongo_db_connection_string);
     const config = await configuration.updateConfig(dbConnector);
     const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
     const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
