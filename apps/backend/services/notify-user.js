@@ -6,7 +6,8 @@ const {replaceMessageVariables} = require("../utility/string-util");
 const {defaultStudyAbbreviationToNA} = require("../utility/study-abbrev-helpers");
 const {
     sanitizeAllowlistedHtml,
-    PRESET_SR_APPROVAL_PENDING_HTML
+    PRESET_SR_APPROVAL_PENDING_HTML,
+    PRESET_NOTIFICATION_TEXT_HTML
 } = require("../utility/sanitize-allowlisted-html");
 const NOTIFICATION_USER_HTML_TEMPLATE = "notification-template-user.html";
 const ROLE = "Role";
@@ -52,7 +53,7 @@ class NotifyUser {
     }
 
     async submitQuestionNotification(toEmails, CCEmails, BCCEmails, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_FIRST_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_FIRST_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_SECOND_CONTENT, messageVariables);
         const subject = this.email_constants.SUBMISSION_SUBJECT;
         return await this.send(async () => {
@@ -91,7 +92,7 @@ class NotifyUser {
     }
 
     async inactiveApplicationsNotification(email, CCEmails, BCCEmails, template_params, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.INACTIVE_APPLICATION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.INACTIVE_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.INACTIVE_APPLICATION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -108,7 +109,7 @@ class NotifyUser {
     }
 
     async cancelApplicationNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.CANCEL_APPLICATION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.CANCEL_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.CANCEL_APPLICATION_SUBJECT;
         return await this.send(async () => {
             const res = await this.emailService.sendNotification(
@@ -128,7 +129,7 @@ class NotifyUser {
     }
 
     async restoreApplicationNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_SECOND_CONTENT, messageVariables);
         const thirdMessage = replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_THIRD_CONTENT, messageVariables);
         const subject = this.email_constants.RESTORE_APPLICATION_SUBJECT;
@@ -169,7 +170,7 @@ class NotifyUser {
     }
 
     async rejectQuestionNotification(email, toCCEmails, toBCCEmails, templateParams, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.REJECT_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REJECT_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.REJECT_SECOND_CONTENT, {});
         const subject = this.email_constants.REJECT_SUBJECT;
         return await this.send(async () => {
@@ -188,7 +189,7 @@ class NotifyUser {
 
     async approveQuestionNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
         return await this.send(async () => {
-            const message = replaceMessageVariables(this.email_constants.APPROVE_CONTENT, messageVariables);
+            const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.APPROVE_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
             const secondMessage = replaceMessageVariables(this.email_constants.APPROVE_SECOND_CONTENT, messageVariables);
             const thirdMessage = replaceMessageVariables(this.email_constants.APPROVE_THIRD_CONTENT, messageVariables);
             const subject = this.email_constants.APPROVE_SUBJECT;
@@ -208,7 +209,7 @@ class NotifyUser {
     async dbGapMissingApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams) {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
+            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
             const missingDbGapPendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.MISSING_DBGAP_PENDING_CHANGE, templateParams),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -232,7 +233,7 @@ class NotifyUser {
     async pendingGPANotification(email, CCEmails, BCCEmails, templateParams) {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
+            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
             const GPAPendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.MISSING_GPA_INFO, templateParams),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -257,7 +258,7 @@ class NotifyUser {
     async dataModelChangeApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams) {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
+            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
             const dataModelPendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.DATA_MODEL_PENDING_CHANGE, {}),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -282,7 +283,7 @@ class NotifyUser {
     async pendingImageDeIdentificationApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams) {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = replaceMessageVariables(this.email_constants.IMAGE_DEIDENTIFICATION_PENDING_TOP_MESSAGE, templateParams);
+            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.IMAGE_DEIDENTIFICATION_PENDING_TOP_MESSAGE, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
             const imagePendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.PENDING_IMAGE_DEIDENTIFICATION_APPROVE_EMAIL, templateParams),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -307,7 +308,7 @@ class NotifyUser {
     async multipleChangesApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams, isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification) {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = replaceMessageVariables(this.email_constants.CONDITIONAL_PENDING_MULTIPLE_CHANGES, templateParams);
+            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.CONDITIONAL_PENDING_MULTIPLE_CHANGES, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
             const dataModelPendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.DATA_MODEL_PENDING_CHANGE_MULTIPLE, {}),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -416,7 +417,7 @@ class NotifyUser {
     }
 
     async deleteSubmissionNotification(email, BCCEmails, templateParams, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.SUBMISSION_FIRST_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SUBMISSION_FIRST_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.SUBMISSION_SECOND_CONTENT, messageVariables);
         const subject = this.email_constants.DELETE_SUBMISSION_SUBJECT;
         return await this.send(async () => {
@@ -484,7 +485,7 @@ class NotifyUser {
     }
 
     async releaseDataSubmissionNotification(emails, BCCsEmails,template_params, subjectVariables, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.RELEASE_DATA_SUBMISSION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.RELEASE_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = replaceMessageVariables(this.email_constants.RELEASE_DATA_SUBMISSION_SUBJECT, subjectVariables)
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -519,7 +520,7 @@ class NotifyUser {
     }
 
     async completeSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.COMPLETE_DATA_SUBMISSION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.COMPLETE_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.COMPLETE_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -536,7 +537,7 @@ class NotifyUser {
     }
 
     async cancelSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.CANCEL_DATA_SUBMISSION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.CANCEL_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.CANCEL_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -553,7 +554,7 @@ class NotifyUser {
     }
 
     async withdrawSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.WITHDRAW_DATA_SUBMISSION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.WITHDRAW_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.WITHDRAW_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -603,7 +604,7 @@ class NotifyUser {
 
     async inactiveSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
         const subject = replaceMessageVariables(this.email_constants.INACTIVE_SUBMISSION_SUBJECT, messageVariables);
-        const message = replaceMessageVariables(this.email_constants.INACTIVE_SUBMISSION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.INACTIVE_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         return await this.send(async () => {
             await this.emailService.sendNotification(
                 this.email_constants.NOTIFICATION_SENDER,
@@ -699,7 +700,7 @@ class NotifyUser {
 
     async finalInactiveSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
         const subject = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_SUBMISSION_SUBJECT, messageVariables);
-        const message = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_SUBMISSION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.FINAL_INACTIVE_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const additionalMsg = this.email_constants.FINAL_INACTIVE_SUBMISSION_ADDITIONAL_CONTENT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
