@@ -13,7 +13,7 @@
   </head>
   <body>
     <p>Dear {{ firstName }},</p>
-    <p>{{ message }}</p>
+    <p>{{{ message }}}</p>
     {{#if reviewComments}}
     <p>
       <span>[Review Comments]:</span><br>
@@ -21,7 +21,7 @@
     </p>
     {{/if}}
     {{#if secondMessage}}
-      <p>{{ secondMessage }}</p>
+      <p>{{{ secondMessage }}}</p>
     {{/if}}
     {{#if studyName}}
     <p>
@@ -30,7 +30,7 @@
     </p>
     {{/if}}
     {{#if thirdMessage}}
-    <p>{{ thirdMessage }}</p>
+    <p>{{{ thirdMessage }}}</p>
     {{/if}}
     {{#if additionalMsg}}
       {{#each additionalMsg}}
