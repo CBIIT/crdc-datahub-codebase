@@ -3,3 +3,4 @@ untracked/
 /.cursor
 .cursor
 .DS_Store
+.env
