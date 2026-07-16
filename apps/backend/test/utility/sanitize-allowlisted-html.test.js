@@ -1,6 +1,7 @@
 const {
     sanitizeAllowlistedHtml,
-    PRESET_SR_APPROVAL_PENDING_HTML
+    PRESET_SR_APPROVAL_PENDING_HTML,
+    PRESET_NOTIFICATION_TEXT_HTML
 } = require('../../utility/sanitize-allowlisted-html');
 
 describe('sanitizeAllowlistedHtml', () => {
@@ -97,5 +98,91 @@ describe('PRESET_SR_APPROVAL_PENDING_HTML via sanitizeAllowlistedHtml', () => {
         expect(out).toContain('<p>');
         expect(out).toContain('<strong>');
         expect(out).toContain('<em>');
+    });
+});
+
+describe('PRESET_NOTIFICATION_TEXT_HTML via sanitizeAllowlistedHtml', () => {
+    const sanitize = (html) => sanitizeAllowlistedHtml(html, PRESET_NOTIFICATION_TEXT_HTML);
+
+    it('preserves <b> tags', () => {
+        const html = 'The <b>Test Study</b> has been approved.';
+        const out = sanitize(html);
+        expect(out).toBe('The <b>Test Study</b> has been approved.');
+    });
+
+    it('preserves <strong> tags', () => {
+        const out = sanitize('<strong>Important</strong> text');
+        expect(out).toContain('<strong>Important</strong>');
+    });
+
+    it('preserves <i> and <em> tags', () => {
+        const out = sanitize('<i>italic</i> and <em>emphasis</em>');
+        expect(out).toContain('<i>italic</i>');
+        expect(out).toContain('<em>emphasis</em>');
+    });
+
+    it('preserves <u> tags', () => {
+        const out = sanitize('<u>underlined</u> text');
+        expect(out).toContain('<u>underlined</u>');
+    });
+
+    it('strips anchor tags but keeps inner text', () => {
+        const html = 'Contact <a href="https://evil.com">Click Here</a> for info.';
+        const out = sanitize(html);
+        expect(out).not.toMatch(/<a[\s>]/);
+        expect(out).not.toContain('href');
+        expect(out).toContain('Click Here');
+    });
+
+    it('strips script tags completely', () => {
+        const html = '<script>alert("xss")</script>Safe content';
+        const out = sanitize(html);
+        expect(out).not.toMatch(/script/i);
+        expect(out).toContain('Safe content');
+    });
+
+    it('strips iframe tags', () => {
+        const html = '<iframe src="https://evil.com"></iframe>Normal text';
+        const out = sanitize(html);
+        expect(out).not.toMatch(/iframe/i);
+        expect(out).toContain('Normal text');
+    });
+
+    it('strips block-level tags like p, div, span', () => {
+        const html = '<p>paragraph</p><div>div</div><span>span</span>';
+        const out = sanitize(html);
+        expect(out).not.toMatch(/<p>/);
+        expect(out).not.toMatch(/<div>/);
+        expect(out).not.toMatch(/<span>/);
+        expect(out).toContain('paragraph');
+        expect(out).toContain('div');
+        expect(out).toContain('span');
+    });
+
+    it('strips list tags', () => {
+        const html = '<ul><li>item</li></ul>';
+        const out = sanitize(html);
+        expect(out).not.toMatch(/<ul>/);
+        expect(out).not.toMatch(/<li>/);
+        expect(out).toContain('item');
+    });
+
+    it('strips all attributes from allowed tags', () => {
+        const html = '<b class="highlight" style="color:red" onclick="alert(1)">bold</b>';
+        const out = sanitize(html);
+        expect(out).toBe('<b>bold</b>');
+    });
+
+    it('handles typical notification message with <b> study name', () => {
+        const html = 'Data Submission SUB-001 / My-Sub for study <b>Cancer Research Study</b> has been canceled by user Admin.';
+        const out = sanitize(html);
+        expect(out).toBe(html);
+    });
+
+    it('strips injected anchor from user-controlled study name', () => {
+        const html = 'The Data Submission for the <b><a href="https://evil.com">Fake Study</a></b> study has been completed.';
+        const out = sanitize(html);
+        expect(out).not.toMatch(/<a[\s>]/);
+        expect(out).toContain('<b>Fake Study</b>');
     });
 });
