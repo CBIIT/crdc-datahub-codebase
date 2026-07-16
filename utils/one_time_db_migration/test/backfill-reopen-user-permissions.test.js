@@ -1,73 +1,97 @@
-const {
+import assert from 'node:assert';
+import { test, afterEach } from 'node:test';
+
+import {
     backfillReopenUserPermissions,
     backfillReopenUserNotification,
-} = require('../scripts/backfill-reopen-user-permissions');
+} from '../scripts/backfill-reopen-user-permissions.js';
 
-describe('backfill-reopen-user-permissions', () => {
-    let mockUsersCollection;
-    let mockDb;
+let restoreConsole = null;
 
-    beforeEach(() => {
-        jest.spyOn(console, 'log').mockImplementation(() => {});
-        jest.spyOn(console, 'error').mockImplementation(() => {});
+afterEach(() => {
+    if (restoreConsole) {
+        restoreConsole();
+        restoreConsole = null;
+    }
+});
 
-        mockUsersCollection = {
-            updateMany: jest.fn().mockResolvedValue({ matchedCount: 1, modifiedCount: 1 }),
-        };
-        mockDb = {
-            collection: jest.fn(() => mockUsersCollection),
-        };
-    });
+function stubConsole() {
+    const originals = {
+        log: console.log,
+        error: console.error
+    };
+    for (const k of Object.keys(originals)) {
+        console[k] = () => {};
+    }
+    return () => {
+        Object.assign(console, originals);
+    };
+}
 
-    afterEach(() => {
-        jest.restoreAllMocks();
-    });
+/**
+ * @param {(filter: Record<string, unknown>, update: Record<string, unknown>) => void} onUpdateMany
+ */
+function createMockDb(onUpdateMany) {
+    const usersCollection = {
+        updateMany: async (filter, update) => {
+            onUpdateMany?.(filter, update);
+            return { matchedCount: 1, modifiedCount: 1 };
+        }
+    };
+    const calls = [];
+    const db = {
+        collection: (name) => {
+            calls.push(name);
+            return usersCollection;
+        }
+    };
+    return { db, calls };
+}
 
-    it('adds reopen permissions per role on active users', async () => {
-        const result = await backfillReopenUserPermissions(mockDb);
+test('adds reopen permissions per role on active users', async () => {
+    restoreConsole = stubConsole();
+    const updateCalls = [];
+    const { db, calls } = createMockDb((filter, update) => updateCalls.push({ filter, update }));
 
-        expect(result.success).toBe(true);
-        expect(mockDb.collection).toHaveBeenCalledWith('users');
-        expect(mockUsersCollection.updateMany).toHaveBeenCalledTimes(3);
-        expect(mockUsersCollection.updateMany).toHaveBeenCalledWith(
-            {
-                role: 'Submitter',
-                userStatus: 'Active',
-                permissions: { $ne: 'submission_request:reopen:own' },
-            },
-            { $addToSet: { permissions: 'submission_request:reopen:own' } }
-        );
-        expect(mockUsersCollection.updateMany).toHaveBeenCalledWith(
-            {
-                role: 'Admin',
-                userStatus: 'Active',
-                permissions: { $ne: 'submission_request:reopen:all' },
-            },
-            { $addToSet: { permissions: 'submission_request:reopen:all' } }
-        );
-    });
+    const result = await backfillReopenUserPermissions(db);
 
-    it('adds reopen notification per role on active users', async () => {
-        const result = await backfillReopenUserNotification(mockDb);
+    assert.equal(result.success, true);
+    assert.deepEqual(calls, ['users']);
+    assert.equal(updateCalls.length, 3);
+    assert.ok(updateCalls.some(({ filter, update }) =>
+        filter.role === 'Submitter' &&
+        filter.userStatus === 'Active' &&
+        filter.permissions.$ne === 'submission_request:reopen:own' &&
+        update.$addToSet.permissions === 'submission_request:reopen:own'
+    ));
+    assert.ok(updateCalls.some(({ filter, update }) =>
+        filter.role === 'Admin' &&
+        filter.userStatus === 'Active' &&
+        filter.permissions.$ne === 'submission_request:reopen:all' &&
+        update.$addToSet.permissions === 'submission_request:reopen:all'
+    ));
+});
 
-        expect(result.success).toBe(true);
-        expect(mockDb.collection).toHaveBeenCalledWith('users');
-        expect(mockUsersCollection.updateMany).toHaveBeenCalledTimes(3);
-        expect(mockUsersCollection.updateMany).toHaveBeenCalledWith(
-            {
-                role: 'Submitter',
-                userStatus: 'Active',
-                notifications: { $ne: 'submission_request:reopened' },
-            },
-            { $addToSet: { notifications: 'submission_request:reopened' } }
-        );
-        expect(mockUsersCollection.updateMany).toHaveBeenCalledWith(
-            {
-                role: 'Admin',
-                userStatus: 'Active',
-                notifications: { $ne: 'submission_request:reopened' },
-            },
-            { $addToSet: { notifications: 'submission_request:reopened' } }
-        );
-    });
+test('adds reopen notification per role on active users', async () => {
+    restoreConsole = stubConsole();
+    const updateCalls = [];
+    const { db, calls } = createMockDb((filter, update) => updateCalls.push({ filter, update }));
+
+    const result = await backfillReopenUserNotification(db);
+
+    assert.equal(result.success, true);
+    assert.deepEqual(calls, ['users']);
+    assert.equal(updateCalls.length, 3);
+    assert.ok(updateCalls.some(({ filter, update }) =>
+        filter.role === 'Submitter' &&
+        filter.userStatus === 'Active' &&
+        filter.notifications.$ne === 'submission_request:reopened' &&
+        update.$addToSet.notifications === 'submission_request:reopened'
+    ));
+    assert.ok(updateCalls.some(({ filter, update }) =>
+        filter.role === 'Admin' &&
+        filter.userStatus === 'Active' &&
+        filter.notifications.$ne === 'submission_request:reopened' &&
+        update.$addToSet.notifications === 'submission_request:reopened'
+    ));
 });

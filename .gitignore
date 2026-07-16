@@ -3,3 +3,5 @@ untracked/
 /.cursor
 .cursor
 .DS_Store
+.env
+node_modules/

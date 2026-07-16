@@ -6,7 +6,7 @@
 
 ## Environment variables
 
-Copy `.env.example` to `.env` in the repository root and set values for your environment:
+Copy `env.example` to `.env` and set values for your environment:
 
 | Variable | Description |
 | -------- | ----------- |
@@ -24,7 +24,7 @@ The [3705 backup/restore scripts](README-mongodb-backup-restore-3705.md) use the
 ## Install
 
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 Edit `.env`, then:
