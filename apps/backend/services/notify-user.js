@@ -502,7 +502,7 @@ class NotifyUser {
     }
 
     async submitDataSubmissionNotification(email, BCCEmails,templateParams, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.SUBMIT_DATA_SUBMISSION_CONTENT_FIRST, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SUBMIT_DATA_SUBMISSION_CONTENT_FIRST, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.SUBMIT_DATA_SUBMISSION_CONTENT_SECOND, messageVariables);
         const subject = this.email_constants.SUBMIT_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
@@ -571,7 +571,7 @@ class NotifyUser {
     }
 
     async rejectSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.REJECT_DATA_SUBMISSION_CONTENT, messageVariables);
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REJECT_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.REJECT_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
