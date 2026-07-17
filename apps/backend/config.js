@@ -42,16 +42,129 @@ const SCHEDULED_JOBS = "SCHEDULED_JOBS";
 const LIST_OF_EMAIL_ADDRESS = "LIST_OF_EMAIL_ADDRESS";
 const LIST_OF_URLS = "LIST_OF_URLS";
 const TIMEOUT = "TIMEOUT";
-process.env.DATABASE_URL = `mongodb://${process.env.MONGO_DB_USER}:${process.env.MONGO_DB_PASSWORD}@${process.env.MONGO_DB_HOST}:${process.env.MONGO_DB_PORT}/${process.env.DATABASE_NAME}?authSource=admin`;
+
+// TEMPORARY (Prisma→DocumentDB migration): dual-datasource DocumentDB env keys.
+// See documentation/temporary-dual-datasources.md for reversal inventory.
+const DOCUMENTDB_ENV_KEYS = [
+    'DOCUMENTDB_USER',
+    'DOCUMENTDB_PASSWORD',
+    'DOCUMENTDB_HOST',
+    'DOCUMENTDB_PORT',
+    'DOCUMENTDB_NAME',
+    'DOCUMENTDB_CA_FILE',
+];
+
+/**
+ * TEMPORARY (Prisma→DocumentDB migration): true when every DocumentDB env var is non-empty (all-or-nothing dual mode).
+ * @returns {boolean}
+ */
+function isDocumentDbFullyConfigured() {
+    return DOCUMENTDB_ENV_KEYS.every((key) => {
+        const value = process.env[key];
+        return typeof value === 'string' && value.trim().length > 0;
+    });
+}
+
+/**
+ * Builds a MongoDB-compatible connection URI.
+ * Encodes user, password, and database for reserved URI characters.
+ * Query values (including tlsCAFile) are built via URLSearchParams.
+ * When caFile is set, enables TLS (tls=true + tlsCAFile). Always disables retryWrites.
+ * @param {string} user
+ * @param {string} password
+ * @param {string} host
+ * @param {string} port
+ * @param {string} database
+ * @param {string} [caFile]
+ * @returns {string}
+ */
+function buildConnectionString(user, password, host, port, database, caFile) {
+    const params = new URLSearchParams({
+        authSource: 'admin',
+        retryWrites: 'false',
+    });
+    if (caFile) {
+        params.set('tls', 'true');
+        params.set('tlsCAFile', caFile);
+    }
+    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}?${params.toString()}`;
+}
+
+/**
+ * Builds the Prisma / native MongoDB connection URI from MONGO_DB_* variables.
+ * @returns {string}
+ */
+function buildMongoConnectionString() {
+    return buildConnectionString(
+        process.env.MONGO_DB_USER,
+        process.env.MONGO_DB_PASSWORD,
+        process.env.MONGO_DB_HOST,
+        process.env.MONGO_DB_PORT,
+        process.env.DATABASE_NAME,
+        process.env.MONGO_DB_CA_FILE,
+    );
+}
+
+/**
+ * TEMPORARY (Prisma→DocumentDB migration): builds the DocumentDB URI from DOCUMENTDB_* variables.
+ * @returns {string}
+ */
+function buildDocumentDbConnectionString() {
+    return buildConnectionString(
+        process.env.DOCUMENTDB_USER,
+        process.env.DOCUMENTDB_PASSWORD,
+        process.env.DOCUMENTDB_HOST,
+        process.env.DOCUMENTDB_PORT,
+        process.env.DOCUMENTDB_NAME,
+        process.env.DOCUMENTDB_CA_FILE,
+    );
+}
+
+/**
+ * TEMPORARY (Prisma→DocumentDB migration): logs dual vs single datasource mode once at startup.
+ * @param {boolean} usesDualDatasources
+ */
+function logDatasourceMode(usesDualDatasources) {
+    if (usesDualDatasources) {
+        console.log('Using dual datasources: MongoDB (Prisma) and DocumentDB (Mongoose)');
+    } else {
+        console.log('Using single datasource: MongoDB for Prisma and Mongoose');
+    }
+}
+
+// TEMPORARY (Prisma→DocumentDB migration): dual-datasource URI selection.
+// See documentation/temporary-dual-datasources.md for reversal inventory.
+const usesDualDatasources = isDocumentDbFullyConfigured();
+const mongoDbConnectionString = buildMongoConnectionString();
+const mongooseConnectionString = usesDualDatasources
+    ? buildDocumentDbConnectionString()
+    : mongoDbConnectionString;
+const mongooseTlsCaFile = usesDualDatasources
+    ? process.env.DOCUMENTDB_CA_FILE
+    : (process.env.MONGO_DB_CA_FILE || null);
+
+process.env.DATABASE_URL = mongoDbConnectionString;
+logDatasourceMode(usesDualDatasources);
+
 let config = {
     //info variables
     version: process.env.VERSION || 'Version not set',
     date: process.env.DATE || new Date(),
-    //Mongo DB
+    //Mongo DB (Prisma / native drivers)
     mongo_db_user: process.env.MONGO_DB_USER,
     mongo_db_password: process.env.MONGO_DB_PASSWORD,
     mongo_db_host: process.env.MONGO_DB_HOST,
     mongo_db_port: process.env.MONGO_DB_PORT,
+    mongo_db_ca_file: process.env.MONGO_DB_CA_FILE || null,
+    // TEMPORARY (Prisma→DocumentDB migration): DocumentDB + Mongoose dual-datasource fields
+    documentdb_user: usesDualDatasources ? process.env.DOCUMENTDB_USER : null,
+    documentdb_password: usesDualDatasources ? process.env.DOCUMENTDB_PASSWORD : null,
+    documentdb_host: usesDualDatasources ? process.env.DOCUMENTDB_HOST : null,
+    documentdb_port: usesDualDatasources ? process.env.DOCUMENTDB_PORT : null,
+    documentdb_name: usesDualDatasources ? process.env.DOCUMENTDB_NAME : null,
+    documentdb_ca_file: usesDualDatasources ? process.env.DOCUMENTDB_CA_FILE : null,
+    uses_dual_datasources: usesDualDatasources,
+    mongoose_tls_ca_file: mongooseTlsCaFile,
 
     //session
     session_secret: process.env.SESSION_SECRET,
@@ -161,7 +274,9 @@ let config = {
         };
     }
 }
-config.mongo_db_connection_string = process.env.DATABASE_URL;
+config.mongo_db_connection_string = mongoDbConnectionString;
+// TEMPORARY (Prisma→DocumentDB migration): Mongoose may use a separate DocumentDB URI.
+config.mongoose_connection_string = mongooseConnectionString;
 function parseHiddenModels(hiddenModels) {
     return hiddenModels.split(',')
         .filter(item => item?.trim().length > 0)
