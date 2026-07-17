@@ -71,7 +71,8 @@ const public_api_list = extractAPINames(schema, PUBLIC)
 let root;
 let authenticationService, userInitializationService;
 dbConnector.connect().then(async () => {
-    await connectMongoose(configuration.mongo_db_connection_string);
+    // TEMPORARY (Prisma→DocumentDB migration): Mongoose may use DocumentDB while Prisma uses MongoDB.
+    await connectMongoose(configuration.mongoose_connection_string, configuration.mongoose_tls_ca_file);
     const config = await configuration.updateConfig(dbConnector);
     const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
     const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
