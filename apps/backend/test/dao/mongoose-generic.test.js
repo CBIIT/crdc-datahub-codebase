@@ -85,6 +85,13 @@ describe('MongooseGenericDAO', () => {
         expect(res).toBeNull();
     });
 
+    it('should reject null where in findFirst', async () => {
+        await expect(dao.findFirst(null)).rejects.toThrow(
+            'MongooseGenericDAO.findFirst requires a filter object for TestModel'
+        );
+        expect(model.findOne).not.toHaveBeenCalled();
+    });
+
     it('should find many', async () => {
         model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }, { _id: '2', foo: 2 }]));
         const res = await dao.findMany({ foo: { $in: [1, 2] } });
@@ -93,6 +100,20 @@ describe('MongooseGenericDAO', () => {
             { id: '2', foo: 2, _id: '2' }
         ]);
         expect(model.find).toHaveBeenCalledWith({ foo: { $in: [1, 2] } });
+    });
+
+    it('should allow empty filter object in findMany', async () => {
+        model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }]));
+        const res = await dao.findMany({});
+        expect(res).toEqual([{ id: '1', foo: 1, _id: '1' }]);
+        expect(model.find).toHaveBeenCalledWith({});
+    });
+
+    it('should reject null filter in findMany', async () => {
+        await expect(dao.findMany(null)).rejects.toThrow(
+            'MongooseGenericDAO.findMany requires a filter object for TestModel'
+        );
+        expect(model.find).not.toHaveBeenCalled();
     });
 
     it('should update a record', async () => {
@@ -121,11 +142,32 @@ describe('MongooseGenericDAO', () => {
         expect(res).toEqual({ count: 2 });
     });
 
+    it('should reject null where in deleteMany', async () => {
+        await expect(dao.deleteMany(null)).rejects.toThrow(
+            'MongooseGenericDAO.deleteMany requires a filter object for TestModel'
+        );
+        expect(model.deleteMany).not.toHaveBeenCalled();
+    });
+
     it('should count records', async () => {
         model.countDocuments.mockResolvedValue(2);
         const res = await dao.count({ foo: 'bar' });
         expect(res).toBe(2);
         expect(model.countDocuments).toHaveBeenCalledWith({ foo: 'bar' });
+    });
+
+    it('should allow empty filter object in count', async () => {
+        model.countDocuments.mockResolvedValue(5);
+        const res = await dao.count({});
+        expect(res).toBe(5);
+        expect(model.countDocuments).toHaveBeenCalledWith({});
+    });
+
+    it('should reject null where in count', async () => {
+        await expect(dao.count(null)).rejects.toThrow(
+            'MongooseGenericDAO.count requires a filter object for TestModel'
+        );
+        expect(model.countDocuments).not.toHaveBeenCalled();
     });
 
     it('should get distinct values', async () => {
