@@ -192,7 +192,7 @@ const ExportValidationButton: React.FC<Props> = ({
         severities: filtersRef.current.severity || "All",
       };
 
-      const [exportRows, comparisonResponse] = await Promise.all([
+      const [exportRows, comparisonResponse] = await Promise.allSettled([
         fetchAllData<SubmissionQCResultsResp, SubmissionQCResultsInput, QCResult>(
           getSubmissionQCResults,
           variables,
@@ -200,10 +200,14 @@ const ExportValidationButton: React.FC<Props> = ({
           (resp) => resp?.submissionQCResults?.total ?? 0,
           { pageSize: 5_000 }
         ),
-        getSubmissionQCComparisons({
-          variables,
-        }),
-      ]);
+        getSubmissionQCComparisons({ variables }),
+      ]).then(
+        (results) =>
+          [
+            results[0].status === "fulfilled" ? results[0].value : null,
+            results[1].status === "fulfilled" ? results[1].value : null,
+          ] as const
+      );
 
       // NOTE: This performs additional issueType and severity filtering because the backend
       // filtering is not comprehensive, and still includes irrelevant results.
