@@ -34,7 +34,19 @@ const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev
 const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
 
 class ApprovedStudiesService {
+    /**
+     * @param {object} approvedStudiesCollection Native Mongo collection retained as a temporary bridge for
+     *   UserService (and callers via userService.approvedStudiesCollection). Not used by ApprovedStudyDAO
+     *   (Mongoose); remove once those paths migrate to approvedStudyDAO.
+     * @param {object} userCollection Native user collection
+     * @param {object} organizationService Organization service (provides program collection for ProgramDAO)
+     * @param {object} submissionCollection Native submission collection
+     * @param {object} [authorizationService] Authorization service
+     * @param {object} [notificationsService] Notifications service
+     * @param {object} [emailParams] Email URL / contact params
+     */
     constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
+        // TEMPORARY: native-driver bridge for UserService until it uses approvedStudyDAO.
         this.approvedStudiesCollection = approvedStudiesCollection;
         this.userCollection = userCollection;
         this.organizationService = organizationService;

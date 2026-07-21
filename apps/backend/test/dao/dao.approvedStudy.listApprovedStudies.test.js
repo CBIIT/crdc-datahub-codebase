@@ -14,6 +14,7 @@ describe('ApprovedStudyDAO - listApprovedStudies', () => {
     let dao;
 
     beforeEach(() => {
+        jest.clearAllMocks();
         dao = new ApprovedStudyDAO();
         ApprovedStudyModel.countDocuments.mockResolvedValue(1);
         ApprovedStudyModel.aggregate.mockResolvedValue([]);
@@ -24,9 +25,6 @@ describe('ApprovedStudyDAO - listApprovedStudies', () => {
                 { $limit: 10 },
             ]),
         }));
-        jest.clearAllMocks();
-        ApprovedStudyModel.countDocuments.mockResolvedValue(1);
-        ApprovedStudyModel.aggregate.mockResolvedValue([]);
     });
 
     afterEach(() => {
