@@ -142,12 +142,24 @@ class QcResultService{
             throw new Error("DataRecordService is not initialized.");
         }
 
+        const normalizedIssueCode = typeof params.issueCode === "string"
+            ? params.issueCode.trim()
+            : null;
+        const isAllIssueCode = !normalizedIssueCode || normalizedIssueCode.toLowerCase() === "all";
+        if (!isAllIssueCode && normalizedIssueCode !== VALIDATION.CODES.UPDATE_EXISTING_DATA) {
+            return {
+                total: 0,
+                skipped: 0,
+                comparisons: []
+            };
+        }
+
         const qcResults = await this.qcResultDAO.submissionQCResults(
             params._id,
             params.nodeTypes,
             params.batchIDs,
             params.severities,
-            params.issueCode,
+            VALIDATION.CODES.UPDATE_EXISTING_DATA,
             -1,
             0,
             "uploadedDate",
@@ -157,7 +169,7 @@ class QcResultService{
         const filteredResults = this._filterUnpackedValidationResults(
             qcResults?.results || [],
             params.severities,
-            params.issueCode
+            VALIDATION.CODES.UPDATE_EXISTING_DATA
         );
 
         const comparisonCandidates = filteredResults
@@ -219,14 +231,16 @@ class QcResultService{
 
     _filterUnpackedValidationResults(results, severity, issueCode) {
         const severityFilter = typeof severity === "string" ? severity.toLowerCase() : null;
+        const targetIssueCode = typeof issueCode === "string" ? issueCode.trim() : null;
+        const normalizedIssueCode = typeof issueCode === "string" ? issueCode.trim().toLowerCase() : null;
         return this._unpackValidationSeverities(results).filter((row) => {
             const rowSeverity = row?.severity?.toLowerCase?.();
             const severityMatch = !severityFilter || severityFilter === "all"
                 ? true
                 : rowSeverity === severityFilter;
-            const issueCodeMatch = !issueCode || issueCode === "ALL"
+            const issueCodeMatch = !normalizedIssueCode || normalizedIssueCode === "all"
                 ? true
-                : row?.errors?.[0]?.code === issueCode || row?.warnings?.[0]?.code === issueCode;
+                : row?.errors?.[0]?.code === targetIssueCode || row?.warnings?.[0]?.code === targetIssueCode;
             return severityMatch && issueCodeMatch;
         });
     }

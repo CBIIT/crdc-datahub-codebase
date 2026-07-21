@@ -760,7 +760,7 @@ describe('QcResultService', () => {
                 mockParams.nodeTypes,
                 mockParams.batchIDs,
                 mockParams.severities,
-                mockParams.issueCode,
+                VALIDATION.CODES.UPDATE_EXISTING_DATA,
                 -1,
                 0,
                 "uploadedDate",
@@ -812,6 +812,53 @@ describe('QcResultService', () => {
 
             expect(result).toEqual({ total: 0, skipped: 0, comparisons: [] });
             expect(qcResultService.dataRecordService.getReleasedAndNewNodesByList).not.toHaveBeenCalled();
+        });
+
+        it('should short-circuit when issueCode is provided and is not update-existing-data', async () => {
+            qcResultService.qcResultDAO = {
+                submissionQCResults: jest.fn()
+            };
+
+            qcResultService.dataRecordService = {
+                getReleasedAndNewNodesByList: jest.fn()
+            };
+
+            const result = await qcResultService.retrieveSubmissionQCComparisonsAPI(
+                { ...mockParams, issueCode: "E001" },
+                mockContext
+            );
+
+            expect(result).toEqual({ total: 0, skipped: 0, comparisons: [] });
+            expect(qcResultService.qcResultDAO.submissionQCResults).not.toHaveBeenCalled();
+            expect(qcResultService.dataRecordService.getReleasedAndNewNodesByList).not.toHaveBeenCalled();
+        });
+
+        it('should treat issueCode "All" as broad filter and still force update-existing-data query', async () => {
+            qcResultService.qcResultDAO = {
+                submissionQCResults: jest.fn().mockResolvedValue({ total: 0, results: [] })
+            };
+
+            qcResultService.dataRecordService = {
+                getReleasedAndNewNodesByList: jest.fn()
+            };
+
+            const result = await qcResultService.retrieveSubmissionQCComparisonsAPI(
+                { ...mockParams, issueCode: "All" },
+                mockContext
+            );
+
+            expect(result).toEqual({ total: 0, skipped: 0, comparisons: [] });
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
+                mockParams._id,
+                mockParams.nodeTypes,
+                mockParams.batchIDs,
+                mockParams.severities,
+                VALIDATION.CODES.UPDATE_EXISTING_DATA,
+                -1,
+                0,
+                "uploadedDate",
+                "DESC"
+            );
         });
     });
 
