@@ -8,9 +8,9 @@ Reference for Mongoose ODM APIs and features that are incompatible with, or requ
 | Field         | Value                                                             |
 | ------------- | ----------------------------------------------------------------- |
 | Target engine | Amazon DocumentDB **8.0** (see `awscdk/crdcdh/app/documentdb.py`) |
-| ODM / driver  | **Mongoose 9.6.1** (nested MongoDB Node driver **7.x**)           |
+| ODM / driver  | **Mongoose 9.8.0** (nested MongoDB Node driver **7.5.x**)         |
 | Other drivers | Top-level `mongodb@5` remains for sessions (`connect-mongo`) and migration scripts — separate from Mongoose’s nested driver |
-| Last reviewed | 2026-07-20                                                        |
+| Last reviewed | 2026-07-21                                                        |
 
 
 
@@ -82,7 +82,7 @@ Example URI shape (also used in this repo’s DocumentDB restore docs):
 mongodb://username:password@host:port/?tls=true&tlsCAFile=/path/to/global-bundle.pem&retryWrites=false&authMechanism=SCRAM-SHA-1
 ```
 
-**Driver note:** Mongoose 9.6.1 ships with MongoDB Node driver 7.x. The backend still declares top-level `mongodb@^5.5.0` for `connect-mongo` sessions and migration scripts. Do not assume a single driver version for all Mongo clients in this process.
+**Driver note:** Mongoose 9.8.0 ships with MongoDB Node driver 7.5.x. The backend still declares top-level `mongodb@^5.5.0` for `connect-mongo` sessions and migration scripts. Do not assume a single driver version for all Mongo clients in this process.
 ```javascript
 await mongoose.connect(process.env.DATABASE_URL, {
   // Prefer putting retryWrites=false in the URI; options reinforce intent
