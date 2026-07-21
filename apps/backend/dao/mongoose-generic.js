@@ -228,14 +228,18 @@ class MongooseGenericDAO {
     }
 
     /**
-     * Update multiple documents matching the condition
+     * Update multiple documents matching the condition.
+     * Requires an explicit filter object; null/undefined are rejected to avoid
+     * accidentally updating all documents. Pass `{}` only when update-all is intentional.
      * @param {object} condition Mongo filter
      * @param {object} data Fields to update
      * @returns {Promise<{count: number}>}
+     * @throws {Error} When condition is null or undefined
      */
     async updateMany(condition, data) {
+        const filter = this._requireFilter(condition, 'updateMany');
         try {
-            const result = await this.model.updateMany(condition, { $set: data });
+            const result = await this.model.updateMany(filter, { $set: data });
             return { count: result.modifiedCount };
         } catch (error) {
             console.error(`MongooseGenericDAO.updateMany failed for ${this._modelName}:`, {

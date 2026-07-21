@@ -128,6 +128,14 @@ describe('MongooseGenericDAO', () => {
         model.updateMany.mockResolvedValue({ modifiedCount: 2 });
         const res = await dao.updateMany({ foo: 1 }, { foo: 2 });
         expect(res).toEqual({ count: 2 });
+        expect(model.updateMany).toHaveBeenCalledWith({ foo: 1 }, { $set: { foo: 2 } });
+    });
+
+    it('should reject null condition in updateMany', async () => {
+        await expect(dao.updateMany(null, { foo: 2 })).rejects.toThrow(
+            'MongooseGenericDAO.updateMany requires a filter object for TestModel'
+        );
+        expect(model.updateMany).not.toHaveBeenCalled();
     });
 
     it('should delete a record', async () => {
