@@ -1,12 +1,14 @@
 /**
  * Recurring step: sync PBAC defaults from resources/json/PBACDefaults_config.json into MongoDB.
- * Merges missing permission and notification entries per role without replacing the whole document.
+ * Inserts when no PBAC config exists; overwrites when the JSON version is higher than Mongo;
+ * otherwise does nothing.
  *
  * Usage: Called by the current release migration orchestrator (e.g. 3.7.0)
  */
 
 const path = require('path');
 const fs = require('fs');
+const semver = require('semver');
 
 const CONFIGURATION_COLLECTION = 'configuration';
 const PBAC_CONFIG_TYPE = 'PBAC';
@@ -18,87 +20,53 @@ function loadPbacDefaultsFromJson() {
 }
 
 /**
- * Merge items from source array into target by _id (permissions or notifications).
- * @param {Array} targetItems
- * @param {Array} sourceItems
- * @returns {{ merged: Array, addedCount: number }}
+ * Coerces a version string to a valid semver, or null if unparseable.
+ * @param {*} version
+ * @returns {string|null}
  */
-function mergeItemsById(targetItems, sourceItems) {
-    const merged = Array.isArray(targetItems) ? [...targetItems] : [];
-    const existingIds = new Set(merged.map((item) => item?._id).filter(Boolean));
-    let addedCount = 0;
-
-    for (const item of sourceItems || []) {
-        if (!item?._id || existingIds.has(item._id)) {
-            continue;
-        }
-        merged.push(item);
-        existingIds.add(item._id);
-        addedCount += 1;
-    }
-
-    return { merged, addedCount };
+function coerceSemver(version) {
+    return semver.valid(semver.coerce(version));
 }
 
 /**
- * Merge JSON Defaults into Mongo role defaults (permissions + notifications).
- * @param {Array} mongoDefaults
- * @param {Array} jsonDefaults
- * @returns {{ defaults: Array, rolesUpdated: number, itemsAdded: number }}
+ * True when the Mongo PBAC version should be replaced by the JSON version.
+ * Invalid or missing Mongo versions are treated as older so overwrite still runs.
+ * @param {string} mongoVersion
+ * @param {string} jsonVersion Must be a valid (coercible) semver
+ * @returns {boolean}
+ * @throws {Error} When jsonVersion is invalid or unparseable
  */
-function mergeRoleDefaults(mongoDefaults, jsonDefaults) {
-    const defaults = Array.isArray(mongoDefaults) ? mongoDefaults.map((roleDef) => ({ ...roleDef })) : [];
-    let rolesUpdated = 0;
-    let itemsAdded = 0;
-
-    for (const jsonRole of jsonDefaults || []) {
-        const roleName = jsonRole?.role;
-        if (!roleName) {
-            continue;
-        }
-
-        let mongoRole = defaults.find((r) => r.role === roleName);
-        if (!mongoRole) {
-            defaults.push({
-                role: roleName,
-                permissions: [...(jsonRole.permissions || [])],
-                notifications: [...(jsonRole.notifications || [])]
-            });
-            rolesUpdated += 1;
-            itemsAdded += (jsonRole.permissions?.length || 0) + (jsonRole.notifications?.length || 0);
-            continue;
-        }
-
-        const permMerge = mergeItemsById(mongoRole.permissions, jsonRole.permissions);
-        const notifMerge = mergeItemsById(mongoRole.notifications, jsonRole.notifications);
-        const roleAdded = permMerge.addedCount + notifMerge.addedCount;
-
-        if (roleAdded > 0) {
-            mongoRole.permissions = permMerge.merged;
-            mongoRole.notifications = notifMerge.merged;
-            rolesUpdated += 1;
-            itemsAdded += roleAdded;
-        }
+function shouldOverwriteVersion(mongoVersion, jsonVersion) {
+    const json = coerceSemver(jsonVersion);
+    if (!json) {
+        throw new Error(`Invalid PBAC JSON version: ${jsonVersion}`);
     }
-
-    return { defaults, rolesUpdated, itemsAdded };
+    const mongo = coerceSemver(mongoVersion);
+    if (!mongo) {
+        return true;
+    }
+    return semver.lt(mongo, json);
 }
 
 /**
+ * Syncs PBAC defaults from JSON into the configuration collection.
+ * Inserts when no PBAC doc exists; overwrites type/version/Defaults when Mongo version is lower;
+ * skips when versions are equal or Mongo is newer.
  * @param {import('mongodb').Db} db
- * @returns {Promise<{success: boolean, message?: string, rolesUpdated?: number, itemsAdded?: number, inserted?: boolean, error?: string}>}
+ * @returns {Promise<{success: boolean, message?: string, inserted?: boolean, overwritten?: boolean, skipped?: boolean, error?: string}>}
  */
 async function syncPbacDefaults(db) {
     console.log('🔄 Syncing PBAC defaults from JSON into configuration...');
 
-    const jsonConfig = loadPbacDefaultsFromJson();
     const collection = db.collection(CONFIGURATION_COLLECTION);
 
     try {
-        const existing = await collection.findOne({
-            type: PBAC_CONFIG_TYPE,
-            version: jsonConfig.version
-        });
+        const jsonConfig = loadPbacDefaultsFromJson();
+        if (!coerceSemver(jsonConfig.version)) {
+            throw new Error(`Invalid PBAC JSON version: ${jsonConfig.version}`);
+        }
+
+        const existing = await collection.findOne({ type: PBAC_CONFIG_TYPE });
 
         if (!existing) {
             const doc = {
@@ -112,33 +80,30 @@ async function syncPbacDefaults(db) {
             return {
                 success: true,
                 inserted: true,
-                message: `Inserted PBAC configuration version ${jsonConfig.version}`,
-                rolesUpdated: jsonConfig.Defaults?.length || 0,
-                itemsAdded: 0
+                message: `Inserted PBAC configuration version ${jsonConfig.version}`
             };
         }
 
-        const { defaults, rolesUpdated, itemsAdded } = mergeRoleDefaults(
-            existing.Defaults,
-            jsonConfig.Defaults
-        );
-
-        if (itemsAdded === 0 && rolesUpdated === 0) {
+        if (!shouldOverwriteVersion(existing.version, jsonConfig.version)) {
             console.log('   ℹ️  PBAC configuration already up to date');
             return { success: true, skipped: true, message: 'PBAC configuration already up to date' };
         }
 
-        await collection.updateOne(
+        await collection.replaceOne(
             { _id: existing._id },
-            { $set: { Defaults: defaults } }
+            {
+                _id: existing._id,
+                type: jsonConfig.type,
+                version: jsonConfig.version,
+                Defaults: jsonConfig.Defaults
+            }
         );
 
-        console.log(`   ✅ Updated PBAC: ${rolesUpdated} role(s), ${itemsAdded} new permission/notification entries`);
+        console.log(`   ✅ Overwrote PBAC configuration (version ${existing.version} → ${jsonConfig.version})`);
         return {
             success: true,
-            rolesUpdated,
-            itemsAdded,
-            message: `Merged ${itemsAdded} entries across ${rolesUpdated} role(s)`
+            overwritten: true,
+            message: `Overwrote PBAC configuration version ${existing.version} with ${jsonConfig.version}`
         };
     } catch (error) {
         console.error('   ❌ Error syncing PBAC defaults:', error.message);
@@ -149,6 +114,5 @@ async function syncPbacDefaults(db) {
 module.exports = {
     syncPbacDefaults,
     loadPbacDefaultsFromJson,
-    mergeItemsById,
-    mergeRoleDefaults
+    shouldOverwriteVersion
 };

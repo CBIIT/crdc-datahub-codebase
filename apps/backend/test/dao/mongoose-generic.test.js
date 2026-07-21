@@ -64,6 +64,19 @@ describe('MongooseGenericDAO', () => {
         expect(res).toBeNull();
     });
 
+    it('should coerce ObjectId-like _id to string in findById', async () => {
+        const objectId = { toString: () => '507f1f77bcf86cd799439011' };
+        model.findById.mockReturnValue(createLeanQuery({ _id: objectId, foo: 'bar' }));
+        const res = await dao.findById('507f1f77bcf86cd799439011');
+        expect(res).toEqual({
+            id: '507f1f77bcf86cd799439011',
+            foo: 'bar',
+            _id: '507f1f77bcf86cd799439011',
+        });
+        expect(typeof res.id).toBe('string');
+        expect(typeof res._id).toBe('string');
+    });
+
     it('should find all', async () => {
         model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }, { _id: '2', foo: 2 }]));
         const res = await dao.findAll();
@@ -92,6 +105,18 @@ describe('MongooseGenericDAO', () => {
         expect(model.findOne).not.toHaveBeenCalled();
     });
 
+    it('should apply sort, skip, and limit on findFirst in order', async () => {
+        const query = createLeanQuery({ _id: '1', foo: 1 });
+        model.findOne.mockReturnValue(query);
+        const res = await dao.findFirst({ foo: 1 }, { sort: { foo: -1 }, skip: 2, limit: 1 });
+        expect(res).toEqual({ id: '1', foo: 1, _id: '1' });
+        expect(query.sort).toHaveBeenCalledWith({ foo: -1 });
+        expect(query.skip).toHaveBeenCalledWith(2);
+        expect(query.limit).toHaveBeenCalledWith(1);
+        expect(query.sort.mock.invocationCallOrder[0]).toBeLessThan(query.skip.mock.invocationCallOrder[0]);
+        expect(query.skip.mock.invocationCallOrder[0]).toBeLessThan(query.limit.mock.invocationCallOrder[0]);
+    });
+
     it('should find many', async () => {
         model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }, { _id: '2', foo: 2 }]));
         const res = await dao.findMany({ foo: { $in: [1, 2] } });
@@ -114,6 +139,18 @@ describe('MongooseGenericDAO', () => {
             'MongooseGenericDAO.findMany requires a filter object for TestModel'
         );
         expect(model.find).not.toHaveBeenCalled();
+    });
+
+    it('should apply sort, skip, and take (as limit) on findMany in order', async () => {
+        const query = createLeanQuery([{ _id: '1', foo: 1 }]);
+        model.find.mockReturnValue(query);
+        const res = await dao.findMany({ foo: 1 }, { sort: { foo: 1 }, skip: 5, take: 10 });
+        expect(res).toEqual([{ id: '1', foo: 1, _id: '1' }]);
+        expect(query.sort).toHaveBeenCalledWith({ foo: 1 });
+        expect(query.skip).toHaveBeenCalledWith(5);
+        expect(query.limit).toHaveBeenCalledWith(10);
+        expect(query.sort.mock.invocationCallOrder[0]).toBeLessThan(query.skip.mock.invocationCallOrder[0]);
+        expect(query.skip.mock.invocationCallOrder[0]).toBeLessThan(query.limit.mock.invocationCallOrder[0]);
     });
 
     it('should update a record', async () => {

@@ -17,7 +17,8 @@ class MongooseGenericDAO {
     }
 
     /**
-     * Normalize a Mongoose document or lean object to include both id and _id.
+     * Normalize a Mongoose document or lean object to include both id and _id as strings.
+     * Coerces ObjectId-like values so consumers get Prisma-like string IDs.
      * @param {object|null} doc
      * @returns {object|null}
      */
@@ -26,10 +27,11 @@ class MongooseGenericDAO {
             return null;
         }
         const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
-        const id = plain._id ?? plain.id;
-        if (id === undefined || id === null) {
+        const rawId = plain._id ?? plain.id;
+        if (rawId === undefined || rawId === null) {
             return plain;
         }
+        const id = typeof rawId === 'string' ? rawId : String(rawId);
         return { ...plain, id, _id: id };
     }
 

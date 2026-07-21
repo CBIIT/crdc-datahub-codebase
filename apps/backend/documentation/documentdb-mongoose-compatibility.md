@@ -312,6 +312,5 @@ Suggested maintenance steps:
 | **No** / Incompatible  | Do not use against DocumentDB 8.0                                  |
 | Supported with caveats | Allowed, but behavior or limits differ from MongoDB                |
 | Yes                    | Supported on DocumentDB 8.0 instance-based clusters per AWS matrix |
-| )                      |                                                                    |
 
 

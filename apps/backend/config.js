@@ -67,6 +67,8 @@ function isDocumentDbFullyConfigured() {
 
 /**
  * Builds a MongoDB-compatible connection URI.
+ * Encodes user, password, and database for reserved URI characters.
+ * Query values (including tlsCAFile) are built via URLSearchParams.
  * When caFile is set, enables TLS (tls=true + tlsCAFile). Always disables retryWrites.
  * @param {string} user
  * @param {string} password
@@ -77,12 +79,15 @@ function isDocumentDbFullyConfigured() {
  * @returns {string}
  */
 function buildConnectionString(user, password, host, port, database, caFile) {
-    // Keep tlsCAFile unencoded so the driver receives a usable filesystem path.
-    let query = 'authSource=admin&retryWrites=false';
+    const params = new URLSearchParams({
+        authSource: 'admin',
+        retryWrites: 'false',
+    });
     if (caFile) {
-        query += `&tls=true&tlsCAFile=${caFile}`;
+        params.set('tls', 'true');
+        params.set('tlsCAFile', caFile);
     }
-    return `mongodb://${user}:${password}@${host}:${port}/${database}?${query}`;
+    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}?${params.toString()}`;
 }
 
 /**

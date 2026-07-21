@@ -8,7 +8,26 @@
  * Usage: Called by the 3.7.0 migration orchestrator, or run via npm run migrate:3.7.0
  */
 
-import { USER } from '../../../lib/db-driver/constants/user-constants';
+import path from 'node:path';
+import { parseArgs } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+import { openDatedConsoleFileMirror } from '../utilities/logging.js';
+import { connectDatabaseFromEnv } from '../utilities/mongo.js';
+import UserConstants from '../../../lib/db-driver/constants/user-constants.js';
+
+dotenv.config();
+
+const scriptPath = fileURLToPath(import.meta.url);
+
+const { USER } = UserConstants;
+
+const options = {
+    output: {
+        type: 'string'
+    }
+};
 
 const USERS_COLLECTION = 'users';
 
@@ -30,7 +49,7 @@ const REOPEN_NOTIFICATIONS_BY_ROLE = [
  * @param {import('mongodb').Db} db
  * @returns {Promise<{success: boolean, message?: string, matchedCount?: number, modifiedCount?: number, error?: string}>}
  */
-async function backfillReopenUserPermissions(db) {
+export async function backfillReopenUserPermissions(db) {
     console.log('🔄 Backfilling submission_request:reopen:* permissions on existing users...');
 
     const usersCollection = db.collection(USERS_COLLECTION);
@@ -69,7 +88,7 @@ async function backfillReopenUserPermissions(db) {
  * @param {import('mongodb').Db} db
  * @returns {Promise<{success: boolean, message?: string, matchedCount?: number, modifiedCount?: number, error?: string}>}
  */
-async function backfillReopenUserNotification(db) {
+export async function backfillReopenUserNotification(db) {
     console.log('🔄 Backfilling submission_request:reopened notification on existing users...');
 
     const usersCollection = db.collection(USERS_COLLECTION);
@@ -108,7 +127,7 @@ async function backfillReopenUserNotification(db) {
  * Orchestrator entry point for this migration step.
  * @param {import('mongodb').Db} db
  */
-async function executeBackfillReopenUserPermissions(db) {
+export async function executeBackfillReopenUserPermissions(db) {
     console.log('🔄 Executing reopen user permission and notification backfill...');
 
     try {
@@ -134,8 +153,36 @@ async function executeBackfillReopenUserPermissions(db) {
     }
 }
 
-module.exports = {
-    backfillReopenUserPermissions,
-    backfillReopenUserNotification,
-    executeBackfillReopenUserPermissions,
-};
+async function main() {
+    const { values } = parseArgs({ options, allowPositionals: true });
+    const outputArg = values['output'];
+
+    let logPath;
+    let endConsoleFileMirror = null;
+    if (outputArg) {
+        const out = await openDatedConsoleFileMirror(outputArg);
+        endConsoleFileMirror = out.endConsoleFileMirror;
+        logPath = out.logPath;
+    }
+    if (logPath) {
+        console.log(`Log file: ${logPath}`);
+    }
+
+    const { client, db } = await connectDatabaseFromEnv();
+    try {
+        await executeBackfillReopenUserPermissions(db);
+    } finally {
+        await client.close();
+        if (endConsoleFileMirror) {
+            await endConsoleFileMirror();
+        }
+    }
+}
+
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(scriptPath);
+if (isMainModule) {
+    main().catch((err) => {
+        console.error('Fatal:', err);
+        process.exit(1);
+    });
+}
