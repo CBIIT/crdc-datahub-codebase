@@ -1,9 +1,9 @@
+const fs = require('fs');
 const {
-    mergeItemsById,
-    mergeRoleDefaults,
-    loadPbacDefaultsFromJson
+    loadPbacDefaultsFromJson,
+    shouldOverwriteVersion,
+    syncPbacDefaults
 } = require('../../../documentation/recurring-steps/sync-pbac-defaults');
-const { syncPbacDefaults } = require('../../../documentation/recurring-steps/sync-pbac-defaults');
 
 describe('sync-pbac-defaults', () => {
     beforeEach(() => {
@@ -15,38 +15,31 @@ describe('sync-pbac-defaults', () => {
         jest.restoreAllMocks();
     });
 
-    describe('mergeItemsById', () => {
-        it('adds only missing permission entries', () => {
-            const target = [{ _id: 'submission_request:view:all', name: 'View' }];
-            const source = [
-                { _id: 'submission_request:view:all', name: 'View' },
-                { _id: 'submission_request:reopen:all', name: 'Reopen' }
-            ];
-            const { merged, addedCount } = mergeItemsById(target, source);
-            expect(merged).toHaveLength(2);
-            expect(addedCount).toBe(1);
-            expect(merged[1]._id).toBe('submission_request:reopen:all');
+    describe('shouldOverwriteVersion', () => {
+        it('returns true when Mongo version is lower than JSON', () => {
+            expect(shouldOverwriteVersion('2.2.0', '2.3.0')).toBe(true);
         });
-    });
 
-    describe('mergeRoleDefaults', () => {
-        it('merges new permissions into existing role', () => {
-            const mongoDefaults = [{
-                role: 'Admin',
-                permissions: [{ _id: 'submission_request:view:all' }],
-                notifications: []
-            }];
-            const jsonDefaults = [{
-                role: 'Admin',
-                permissions: [
-                    { _id: 'submission_request:view:all' },
-                    { _id: 'submission_request:reopen:all' }
-                ],
-                notifications: []
-            }];
-            const { defaults, itemsAdded } = mergeRoleDefaults(mongoDefaults, jsonDefaults);
-            expect(defaults[0].permissions).toHaveLength(2);
-            expect(itemsAdded).toBe(1);
+        it('returns false when versions are equal', () => {
+            expect(shouldOverwriteVersion('2.3.0', '2.3.0')).toBe(false);
+        });
+
+        it('returns false when Mongo version is higher', () => {
+            expect(shouldOverwriteVersion('2.4.0', '2.3.0')).toBe(false);
+        });
+
+        it('returns true when Mongo version is invalid or missing', () => {
+            expect(shouldOverwriteVersion(undefined, '2.3.0')).toBe(true);
+            expect(shouldOverwriteVersion('not-a-version', '2.3.0')).toBe(true);
+        });
+
+        it('throws when JSON version is invalid', () => {
+            expect(() => shouldOverwriteVersion('2.3.0', 'not-a-version')).toThrow(
+                'Invalid PBAC JSON version: not-a-version'
+            );
+            expect(() => shouldOverwriteVersion('2.3.0', undefined)).toThrow(
+                'Invalid PBAC JSON version: undefined'
+            );
         });
     });
 
@@ -75,12 +68,13 @@ describe('sync-pbac-defaults', () => {
             mockCollection = {
                 findOne: jest.fn(),
                 insertOne: jest.fn(),
-                updateOne: jest.fn()
+                replaceOne: jest.fn()
             };
             mockDb = { collection: jest.fn(() => mockCollection) };
         });
 
         it('inserts PBAC document when missing', async () => {
+            const jsonConfig = loadPbacDefaultsFromJson();
             mockCollection.findOne.mockResolvedValue(null);
             mockCollection.insertOne.mockResolvedValue({ acknowledged: true });
 
@@ -88,28 +82,105 @@ describe('sync-pbac-defaults', () => {
 
             expect(result.success).toBe(true);
             expect(result.inserted).toBe(true);
-            expect(mockCollection.insertOne).toHaveBeenCalled();
+            expect(mockCollection.findOne).toHaveBeenCalledWith({ type: 'PBAC' });
+            expect(mockCollection.insertOne).toHaveBeenCalledWith({
+                _id: jsonConfig._id,
+                type: jsonConfig.type,
+                version: jsonConfig.version,
+                Defaults: jsonConfig.Defaults
+            });
+            expect(mockCollection.replaceOne).not.toHaveBeenCalled();
         });
 
-        it('merges missing permissions when document exists', async () => {
+        it('overwrites when existing version is lower than JSON', async () => {
+            const jsonConfig = loadPbacDefaultsFromJson();
+            mockCollection.findOne.mockResolvedValue({
+                _id: jsonConfig._id,
+                type: 'PBAC',
+                version: '0.0.0',
+                Defaults: [{ role: 'Admin', permissions: [], notifications: [] }]
+            });
+            mockCollection.replaceOne.mockResolvedValue({ modifiedCount: 1 });
+
+            const result = await syncPbacDefaults(mockDb);
+
+            expect(result.success).toBe(true);
+            expect(result.overwritten).toBe(true);
+            expect(mockCollection.insertOne).not.toHaveBeenCalled();
+            expect(mockCollection.replaceOne).toHaveBeenCalledWith(
+                { _id: jsonConfig._id },
+                {
+                    _id: jsonConfig._id,
+                    type: jsonConfig.type,
+                    version: jsonConfig.version,
+                    Defaults: jsonConfig.Defaults
+                }
+            );
+        });
+
+        it('skips when versions are equal', async () => {
             const jsonConfig = loadPbacDefaultsFromJson();
             mockCollection.findOne.mockResolvedValue({
                 _id: jsonConfig._id,
                 type: 'PBAC',
                 version: jsonConfig.version,
-                Defaults: [{
-                    role: 'Admin',
-                    permissions: [{ _id: 'submission_request:view:all' }],
-                    notifications: []
-                }]
+                Defaults: jsonConfig.Defaults
             });
-            mockCollection.updateOne.mockResolvedValue({ modifiedCount: 1 });
 
             const result = await syncPbacDefaults(mockDb);
 
             expect(result.success).toBe(true);
-            expect(result.itemsAdded).toBeGreaterThan(0);
-            expect(mockCollection.updateOne).toHaveBeenCalled();
+            expect(result.skipped).toBe(true);
+            expect(mockCollection.insertOne).not.toHaveBeenCalled();
+            expect(mockCollection.replaceOne).not.toHaveBeenCalled();
+        });
+
+        it('skips when existing version is higher', async () => {
+            const jsonConfig = loadPbacDefaultsFromJson();
+            mockCollection.findOne.mockResolvedValue({
+                _id: jsonConfig._id,
+                type: 'PBAC',
+                version: '99.0.0',
+                Defaults: jsonConfig.Defaults
+            });
+
+            const result = await syncPbacDefaults(mockDb);
+
+            expect(result.success).toBe(true);
+            expect(result.skipped).toBe(true);
+            expect(mockCollection.insertOne).not.toHaveBeenCalled();
+            expect(mockCollection.replaceOne).not.toHaveBeenCalled();
+        });
+
+        it('returns failure when JSON load throws', async () => {
+            jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
+                throw new Error('ENOENT: no such file');
+            });
+
+            const result = await syncPbacDefaults(mockDb);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('ENOENT: no such file');
+            expect(mockCollection.findOne).not.toHaveBeenCalled();
+            expect(mockCollection.insertOne).not.toHaveBeenCalled();
+            expect(mockCollection.replaceOne).not.toHaveBeenCalled();
+        });
+
+        it('returns failure when JSON version is invalid', async () => {
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+                _id: 'test-id',
+                type: 'PBAC',
+                version: 'not-a-version',
+                Defaults: []
+            }));
+
+            const result = await syncPbacDefaults(mockDb);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('Invalid PBAC JSON version: not-a-version');
+            expect(mockCollection.findOne).not.toHaveBeenCalled();
+            expect(mockCollection.insertOne).not.toHaveBeenCalled();
+            expect(mockCollection.replaceOne).not.toHaveBeenCalled();
         });
     });
 });

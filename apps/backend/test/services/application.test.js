@@ -2776,7 +2776,7 @@ describe('Application', () => {
                 ['admin@test.com'],
                 expect.objectContaining({
                     pi: 'Dr. Jane Smith, and associated with the CDS program.',
-                    study: 'TS',
+                    study: 'Test Study',
                     url: 'http://test'
                 })
             );

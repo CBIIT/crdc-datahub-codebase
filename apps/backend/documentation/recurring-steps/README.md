@@ -8,7 +8,7 @@ Do not run these scripts standalone unless debugging; use the version orchestrat
 
 | File | Purpose |
 |------|---------|
-| `sync-pbac-defaults.js` | Merge PBAC permissions/notifications from `resources/json/PBACDefaults_config.json` into Mongo `configuration` |
+| `sync-pbac-defaults.js` | Insert or overwrite PBAC defaults from `resources/json/PBACDefaults_config.json` into Mongo `configuration` when JSON version is higher |
 | `migration-utils.js` | Shared MongoDB connection helpers for orchestrators |
 
 ## Adding a new recurring step
