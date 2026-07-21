@@ -69,7 +69,7 @@ const expandedResultsMock: MockedResponse<SubmissionQCResultsResp, SubmissionQCR
   maxUsageCount: Infinity,
 };
 
-const mockQCComparsions: MockedResponse<
+const mockQCComparisons: MockedResponse<
   RetrieveSubmissionQCComparisonsResp,
   RetrieveSubmissionQCComparisonsInput
 > = {
@@ -195,7 +195,7 @@ type Story = StoryObj<typeof meta>;
 export const ExpandedResults: Story = {
   parameters: {
     apolloClient: {
-      mocks: [expandedResultsMock, mockQCComparsions],
+      mocks: [expandedResultsMock, mockQCComparisons],
     },
   },
   play: async ({ canvasElement }) => {

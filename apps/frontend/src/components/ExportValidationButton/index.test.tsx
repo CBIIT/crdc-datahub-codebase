@@ -82,7 +82,7 @@ const defaultFiltersRef: MutableRefObject<QualityControlFilterForm> = {
   current: defaultFilters,
 };
 
-const mockQCComparsions: MockedResponse<
+const mockQCComparisons: MockedResponse<
   RetrieveSubmissionQCComparisonsResp,
   RetrieveSubmissionQCComparisonsInput
 > = {
@@ -136,7 +136,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
 
     let called = false;
     const mocks: MockedResponse[] = [
-      mockQCComparsions,
+      mockQCComparisons,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -186,7 +186,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     let called = false;
 
     const mocks: MockedResponse[] = [
-      mockQCComparsions,
+      mockQCComparisons,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -380,7 +380,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
       vi.useFakeTimers().setSystemTime(new Date("2021-01-19T14:54:01Z"));
 
       const mocks: MockedResponse[] = [
-        mockQCComparsions,
+        mockQCComparisons,
         {
           request: {
             query: SUBMISSION_QC_RESULTS,
@@ -445,7 +445,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     const submissionID = "example-no-results-to-export-id";
 
     const mocks: MockedResponse[] = [
-      mockQCComparsions,
+      mockQCComparisons,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -512,7 +512,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     }));
 
     const mocks: MockedResponse[] = [
-      mockQCComparsions,
+      mockQCComparisons,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -563,7 +563,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     const submissionID = "random-010101-sub-id";
 
     const mocks: MockedResponse[] = [
-      mockQCComparsions,
+      mockQCComparisons,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -603,7 +603,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     const submissionID = "example-GraphQL-level-errors-id";
 
     const mocks: MockedResponse[] = [
-      mockQCComparsions,
+      mockQCComparisons,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
@@ -645,7 +645,7 @@ describe("ExportValidationButton (Expanded View) tests", () => {
     const submissionID = "example-dataset-level-errors-id";
 
     const mocks: MockedResponse[] = [
-      mockQCComparsions,
+      mockQCComparisons,
       {
         request: {
           query: SUBMISSION_QC_RESULTS,
