@@ -315,7 +315,7 @@ class Submission {
             return study;
         }).filter(studyID => studyID !== null && studyID !== undefined); // Filter out null/undefined values
         return this.approvedStudyDAO.findMany({
-            id: {in: studiesIDs}
+            _id: { $in: studiesIDs }
         });
     }
 
@@ -1693,7 +1693,7 @@ class Submission {
             this.userService.getUserByID(aSubmission?.submitterID),
             this.userService.getUsersByNotifications([EN.DATA_SUBMISSION.DELETE],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
-            this.approvedStudyDAO.findFirst({ id: aSubmission?.studyID })
+            this.approvedStudyDAO.findFirst({ _id: aSubmission?.studyID })
          ]);
          if (!aSubmitter?.email) {
             console.error(ERROR.NO_SUBMISSION_RECEIVER, "Delete", `id=${aSubmission?._id}`);

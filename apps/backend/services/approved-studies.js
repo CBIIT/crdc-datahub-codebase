@@ -18,12 +18,10 @@ const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-
 const {getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesForUser,
     getDataCommonsDisplayNamesForApprovedStudyList
 } = require("../utility/data-commons-remapper");
-const {SORT: PRISMA_SORT} = require("../constants/db-constants");
 const {UserScope} = require("../domain/user-scope");
 const {replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
 const NA_PROGRAM = "NA";
 const NA = "NA";
-const prisma = require("../prisma");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const ProgramDAO = require("../dao/program");
@@ -46,7 +44,7 @@ class ApprovedStudiesService {
         this.submissionDAO = new SubmissionDAO(submissionCollection);
         this.notificationsService = notificationsService;
         this.emailParams = emailParams;
-        this.approvedStudyDAO = new ApprovedStudyDAO(approvedStudiesCollection);
+        this.approvedStudyDAO = new ApprovedStudyDAO();
         this.applicationDAO = new ApplicationDAO();
     }
 
@@ -191,16 +189,7 @@ class ApprovedStudiesService {
      * @returns {Promise<Object|null>}
      */
     async findByApplicationID(applicationID) {
-        if (!applicationID) {
-            return null;
-        }
-        const row = await prisma.approvedStudy.findFirst({
-            where: { applicationID }
-        });
-        if (!row) {
-            return null;
-        }
-        return { ...row, _id: row.id };
+        return await this.approvedStudyDAO.findByApplicationID(applicationID);
     }
 
     /**
@@ -386,7 +375,7 @@ class ApprovedStudiesService {
             status
         } = this._verifyAndFormatStudyParams(params);
         // Find the study to update
-        let updateStudy = await this.approvedStudyDAO.findFirst({id: studyID});
+        let updateStudy = await this.approvedStudyDAO.findFirst({_id: studyID});
         if (!updateStudy) {
             throw new Error(ERROR.APPROVED_STUDY_NOT_FOUND);
         }

@@ -1,10 +1,9 @@
-const prisma = require("../prisma");
-const GenericDAO = require("./generic");
-const {MODEL_NAME} = require("../constants/db-constants");
+const MongooseGenericDAO = require("./mongoose-generic");
+const ApprovedStudyModel = require("../mongoose/models/approved-study");
 const {ORGANIZATION_COLLECTION, USER_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
 const ERROR = require("../constants/error-constants");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
-const {DIRECTION, SORT} = require("../crdc-datahub-database-drivers/constants/mongodb-constants");
+const {DIRECTION} = require("../crdc-datahub-database-drivers/constants/mongodb-constants");
 const {sanitizeMongoDBInput, escapeRegexLiteral} = require("../utility/string-util");
 
 const CONTROLLED_ACCESS_ALL = "All";
@@ -12,33 +11,35 @@ const CONTROLLED_ACCESS_OPEN = "Open";
 const CONTROLLED_ACCESS_CONTROLLED = "Controlled";
 const CONTROLLED_ACCESS_OPTIONS = [CONTROLLED_ACCESS_ALL, CONTROLLED_ACCESS_OPEN, CONTROLLED_ACCESS_CONTROLLED];
 
-class ApprovedStudyDAO extends GenericDAO  {
+class ApprovedStudyDAO extends MongooseGenericDAO {
     _ALL = "All";
-    constructor(approvedStudiesCollection = null) {
-        super(MODEL_NAME.APPROVED_STUDY);
-        this.approvedStudiesCollection = approvedStudiesCollection;
+
+    constructor() {
+        super(ApprovedStudyModel);
     }
 
+    /**
+     * @param {string} studyID
+     * @returns {Promise<object|null>}
+     */
     async getApprovedStudyByID(studyID) {
-        return await this.findById(studyID)
+        return await this.findById(studyID);
     }
 
+    /**
+     * @param {string[]} studyIDs
+     * @returns {Promise<object[]>}
+     */
     async getApprovedStudiesInStudies(studyIDs) {
-        const studies = await prisma.approvedStudy.findMany({
-            where: {
-                id: {
-                    in: studyIDs || []
-                }
-            },
+        return await this.findMany({
+            _id: { $in: studyIDs || [] },
         });
-        //prisma doesn't allow using _id, so we have to map it
-        return studies.map(study => ({...study, _id: study.id}))
     }
 
     /**
      * List approved studies matching any of the given study names (case-insensitive exact match).
      * @param {string[]} studyNames
-     * @returns {Promise<Object[]>} Approved studies with `_id` alias
+     * @returns {Promise<object[]>} Approved studies with `id` and `_id`
      */
     async findByStudyNames(studyNames) {
         const uniqueNamesByLower = new Map();
@@ -56,152 +57,182 @@ class ApprovedStudyDAO extends GenericDAO  {
         if (!uniqueNames.length) {
             return [];
         }
-        const rows = await prisma.approvedStudy.findMany({
-            where: {
-                OR: uniqueNames.map((name) => ({
-                    studyName: {
-                        equals: name,
-                        mode: "insensitive",
-                    },
-                })),
-            },
+        return await this.findMany({
+            $or: uniqueNames.map((name) => ({
+                studyName: {
+                    $regex: `^${escapeRegexLiteral(name)}$`,
+                    $options: 'i',
+                },
+            })),
         });
-        return rows.map((row) => ({ ...row, _id: row.id }));
     }
 
-    async listApprovedStudies(studyName, controlledAccess, dbGaPIDInput, programID, statuses, first, offset, orderBy, sortDirection) {
-        // set matches
-        let matches = {};
+    /**
+     * Find an approved study linked to a submission request application ID.
+     * @param {string} applicationID
+     * @returns {Promise<object|null>}
+     */
+    async findByApplicationID(applicationID) {
+        if (!applicationID) {
+            return null;
+        }
+        return await this.findFirst({ applicationID });
+    }
+
+    /**
+     * Builds the Mongo filter for listApprovedStudies from API inputs.
+     * @param {string|null} studyName
+     * @param {string|null} controlledAccess
+     * @param {string|null} dbGaPIDInput
+     * @param {string|null} programID
+     * @param {string[]|null} statuses
+     * @returns {object}
+     */
+    _buildListMatches(studyName, controlledAccess, dbGaPIDInput, programID, statuses) {
+        const matches = {};
         const study = sanitizeMongoDBInput(studyName);
-        if (study)
-            matches.$or = [{studyName: {$regex: escapeRegexLiteral(study), $options: 'i'}}, {studyAbbreviation: {$regex: escapeRegexLiteral(study), $options: 'i'}}];
+        if (study) {
+            matches.$or = [
+                { studyName: { $regex: escapeRegexLiteral(study), $options: 'i' } },
+                { studyAbbreviation: { $regex: escapeRegexLiteral(study), $options: 'i' } },
+            ];
+        }
         if (controlledAccess) {
             if (!CONTROLLED_ACCESS_OPTIONS.includes(controlledAccess)) {
                 throw new Error(ERROR.INVALID_CONTROLLED_ACCESS);
             }
-            if (controlledAccess !== CONTROLLED_ACCESS_ALL)
-            {
-                if (controlledAccess === CONTROLLED_ACCESS_CONTROLLED)
-                {
+            if (controlledAccess !== CONTROLLED_ACCESS_ALL) {
+                if (controlledAccess === CONTROLLED_ACCESS_CONTROLLED) {
                     matches.controlledAccess = true;
-                }
-                else
-                {
+                } else {
                     matches.openAccess = true;
                 }
             }
         }
         const dbGaPID = sanitizeMongoDBInput(dbGaPIDInput);
         if (dbGaPID) {
-            matches.dbGaPID = {$regex: escapeRegexLiteral(dbGaPID), $options: 'i'};
+            matches.dbGaPID = { $regex: escapeRegexLiteral(dbGaPID), $options: 'i' };
         }
-
         if (programID && programID !== this._ALL) {
-            matches["programID"] = programID;
+            matches.programID = programID;
         }
-
         if (Array.isArray(statuses) && statuses.length > 0) {
             matches.status = { $in: statuses };
         }
+        return matches;
+    }
 
-        let pipelines = [
-            // Join with the program using the programID as the foreign field
-            {"$lookup": {
+    /**
+     * Lists approved studies with program/contact enrichment and pagination.
+     * Uses separate count and results queries (DocumentDB does not support $facet).
+     *
+     * @returns {Promise<Array<{total: number, results: object[]}>>}
+     */
+    async listApprovedStudies(studyName, controlledAccess, dbGaPIDInput, programID, statuses, first, offset, orderBy, sortDirection) {
+        const matches = this._buildListMatches(studyName, controlledAccess, dbGaPIDInput, programID, statuses);
+
+        let sortField = orderBy;
+        const resultsPipeline = [
+            { $match: matches },
+            {
+                $lookup: {
                     from: ORGANIZATION_COLLECTION,
                     localField: "programID",
                     foreignField: "_id",
-                    as: "program"}},
-            {"$lookup": {
+                    as: "program",
+                },
+            },
+            {
+                $lookup: {
                     from: USER_COLLECTION,
                     localField: "primaryContactID",
                     foreignField: "_id",
-                    as: "primaryContact"}},
-            {"$addFields": {
+                    as: "primaryContact",
+                },
+            },
+            {
+                $addFields: {
                     program: { $arrayElemAt: ["$program", 0] },
-                    primaryContact: { $arrayElemAt: ["$primaryContact", 0] }
-                }},
-            {"$addFields": {
+                    primaryContact: { $arrayElemAt: ["$primaryContact", 0] },
+                },
+            },
+            {
+                $addFields: {
                     primaryContact: {
                         _id: {
                             $cond: [
                                 "$useProgramPC",
                                 "$program.conciergeID",
-                                "$primaryContact._id"
-                            ]
+                                "$primaryContact._id",
+                            ],
                         },
                         firstName: {
                             $cond: [
                                 "$useProgramPC",
                                 {
                                     $ifNull: [
-                                        { $arrayElemAt: [
+                                        {
+                                            $arrayElemAt: [
                                                 { $split: ["$program.conciergeName", " "] },
-                                                0 // first element → firstName
-                                            ] },
-                                        ""
-                                    ]
+                                                0,
+                                            ],
+                                        },
+                                        "",
+                                    ],
                                 },
-                                "$primaryContact.firstName"
-                            ]
+                                "$primaryContact.firstName",
+                            ],
                         },
                         lastName: {
                             $cond: [
                                 "$useProgramPC",
                                 {
                                     $ifNull: [
-                                        { $arrayElemAt: [
+                                        {
+                                            $arrayElemAt: [
                                                 { $split: ["$program.conciergeName", " "] },
-                                                1 // second element → lastName
-                                            ] },
-                                        ""
-                                    ]
+                                                1,
+                                            ],
+                                        },
+                                        "",
+                                    ],
                                 },
-                                "$primaryContact.lastName"
-                            ]
-                        }
-                    }
-                }}
+                                "$primaryContact.lastName",
+                            ],
+                        },
+                    },
+                },
+            },
         ];
 
-        pipelines.push({$match: matches});
-        let sortField = orderBy;
         if (sortField === "program.name") {
-            pipelines.push({
+            resultsPipeline.push({
                 $set: {
                     programSort: {
-                        $toLower: "$program.name"
-                    }
-                }
+                        $toLower: "$program.name",
+                    },
+                },
             });
             sortField = "programSort";
         }
+
         const pagination = new MongoPagination(first, offset, sortField, sortDirection);
-        const paginationPipe = pagination.getPaginationPipeline()
-        // Added the custom sort
+        const paginationPipe = pagination.getPaginationPipeline();
         const isNotStudyName = orderBy !== "studyName";
-        const customPaginationPipeline = paginationPipe?.map(pagination =>
-            Object.keys(pagination)?.includes("$sort") && isNotStudyName ? {...pagination, $sort: {...pagination.$sort, studyName: DIRECTION.ASC}} : pagination
+        const customPaginationPipeline = paginationPipe?.map((stage) =>
+            Object.keys(stage)?.includes("$sort") && isNotStudyName
+                ? { ...stage, $sort: { ...stage.$sort, studyName: DIRECTION.ASC } }
+                : stage
         );
+        resultsPipeline.push(...customPaginationPipeline);
 
-        pipelines.push({
-            $facet: {
-                total: [{
-                    $count: "total"
-                }],
-                results: customPaginationPipeline
-            }
-        });
-        pipelines.push({
-            $set: {
-                total: {
-                    $first: "$total.total",
-                }
-            }
-        });
+        const [total, results] = await Promise.all([
+            this.count(matches),
+            this.aggregate(resultsPipeline),
+        ]);
 
-        return await this.approvedStudiesCollection.aggregate(pipelines);
+        return [{ total, results }];
     }
-
 }
 
-module.exports = ApprovedStudyDAO
+module.exports = ApprovedStudyDAO;

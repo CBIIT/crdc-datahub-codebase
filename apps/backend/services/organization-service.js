@@ -14,10 +14,16 @@ class Organization {
   _ALL = "All";
   _READ_ONLY_FIELDS = ["name", "abbreviation", "description", "status"];
 
-  constructor(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection) {
+  /**
+   * @param {object} organizationCollection Native org collection (also used by ProgramDAO)
+   * @param {object} userCollection Native user collection
+   * @param {object} submissionCollection Native submission collection
+   * @param {object} applicationCollection Native application collection
+   */
+  constructor(organizationCollection, userCollection, submissionCollection, applicationCollection) {
     this.organizationCollection = organizationCollection;
     this.programDAO = new ProgramDAO(organizationCollection);
-    this.approvedStudyDAO = new ApprovedStudyDAO(approvedStudiesCollection);
+    this.approvedStudyDAO = new ApprovedStudyDAO();
     this.submissionDAO = new SubmissionDAO(submissionCollection);
     this.userDAO = new UserDAO(userCollection);
     this.applicationDAO = new ApplicationDAO(applicationCollection);
@@ -385,7 +391,7 @@ class Organization {
    */
   async findOneByStudyID(studyID) {
     // Get the approved study first to find its programID
-    const approvedStudy = await this.approvedStudyDAO.findFirst({ id: studyID?.trim() });
+    const approvedStudy = await this.approvedStudyDAO.findFirst({ _id: studyID?.trim() });
     if (!approvedStudy?.programID) {
       return null;
     }

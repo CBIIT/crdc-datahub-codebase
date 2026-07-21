@@ -379,7 +379,7 @@ describe('ApprovedStudiesService', () => {
             const result = await service.editApprovedStudyAPI(paramsWithPendingGPA, mockContext);
             expect(verifySession).toHaveBeenCalledWith(mockContext);
             expect(service._getUserScope).toHaveBeenCalledWith(mockContext.userInfo, ADMIN.MANAGE_STUDIES);
-            expect(service.approvedStudyDAO.findFirst).toHaveBeenCalledWith({id: 'study-id'});
+            expect(service.approvedStudyDAO.findFirst).toHaveBeenCalledWith({_id: 'study-id'});
             expect(service._validateStudyName).toHaveBeenCalledWith('Updated Study');
             expect(service._findUserByID).toHaveBeenCalledWith('contact-id');
             expect(service.approvedStudyDAO.update).toHaveBeenCalled();
