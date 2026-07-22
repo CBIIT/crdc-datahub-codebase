@@ -3150,7 +3150,7 @@ const sendEmails = {
 
         const filteredBCCUsers = BCCUsers.filter((u) => isUserScope(u?._id, u?.role, u?.studies, u?.dataCommons, aSubmission));
         await notificationsService.withdrawSubmissionNotification(getUserEmails(filteredDCPUsers), getUserEmails(filteredBCCUsers), {
-            firstName: `${aSubmission?.dataCommons} Data Commons Personnel`
+            firstName: `${aSubmission?.dataCommonsDisplayName} Data Commons Personnel`
         }, {
             submissionID: aSubmission?._id,
             submissionName: aSubmission?.name,
