@@ -50,10 +50,21 @@ class ProgramDAO extends GenericDAO {
             name: name?.trim()
         });
     }
+
+    /**
+     * Lists programs with related studies and pagination.
+     * Uses separate count and results queries (DocumentDB does not support $facet).
+     * @param {number} first Page size
+     * @param {number} offset Skip count
+     * @param {string} orderBy Sort field
+     * @param {string} sortDirection Sort direction
+     * @param {object} [statusCondition={}] Mongo filter applied to programs (e.g. status)
+     * @returns {Promise<{total: number, results: object[]}>}
+     */
     async listPrograms(first, offset, orderBy, sortDirection, statusCondition = {}) {
         const pagination = new MongoPagination(first, offset, orderBy, sortDirection);
         const paginationPipeline = pagination.getPaginationPipeline();
-        const programs = await this.organizationCollection.aggregate([
+        const resultsPipeline = [
             {
                 $lookup: {
                     from: APPROVED_STUDIES_COLLECTION,
@@ -62,24 +73,16 @@ class ProgramDAO extends GenericDAO {
                     as: "studies"
                 }
             },
-            {"$match": statusCondition},
-            {
-                $facet: {
-                    total: [{
-                        $count: "total"
-                    }],
-                    results: paginationPipeline
-                }
-            },
-            {
-                $set: {
-                    total: {
-                        $first: "$total.total",
-                    }
-                }
-            }
+            { $match: statusCondition },
+            ...paginationPipeline,
+        ];
+
+        const [total, results] = await Promise.all([
+            this.organizationCollection.countDoc(statusCondition),
+            this.organizationCollection.aggregate(resultsPipeline),
         ]);
-        return programs.length > 0 ? programs[0] : {};
+
+        return { total: total || 0, results: results || [] };
     }
 
 }
