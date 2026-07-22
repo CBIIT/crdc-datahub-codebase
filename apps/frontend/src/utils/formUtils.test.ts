@@ -2,6 +2,7 @@ import { cloneDeep } from "lodash";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
 
+import { applicationFactory } from "@/factories/application/ApplicationFactory";
 import { contactFactory } from "@/factories/application/ContactFactory";
 import { fileInfoFactory } from "@/factories/application/FileInfoFactory";
 import { fundingFactory } from "@/factories/application/FundingFactory";
@@ -17,6 +18,73 @@ import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
 
 import * as utils from "./formUtils";
 import { Logger } from "./logger";
+
+describe("questionnaire lock helpers", () => {
+  it("locks configured fields only when sequenceNumber >= 2", () => {
+    const firstSequence = applicationFactory.build({ sequenceNumber: 1 });
+    const reopened = applicationFactory.build({ sequenceNumber: 2 });
+
+    expect(utils.isLockedField(firstSequence, "study.name")).toBe(false);
+    expect(utils.isLockedField(reopened, "study.name")).toBe(true);
+  });
+
+  it("preserves locked values and allows unlocked values for reopened sequences", () => {
+    const application = applicationFactory.build({ sequenceNumber: 3 });
+    const currentData = questionnaireDataFactory.build({
+      pi: {
+        firstName: "Locked",
+        lastName: "Principal",
+        position: "PI",
+        email: "locked@example.org",
+        ORCID: "0000-0000-0000-0001",
+        institution: "Locked Org",
+        institutionID: "11111111-1111-4111-8111-111111111111",
+        address: "Locked address",
+      },
+      program: {
+        _id: "22222222-2222-4222-8222-222222222222",
+        name: "Locked Program",
+        abbreviation: "LPG",
+        description: "Original description",
+      },
+      study: studyFactory.build({
+        name: "Locked Study",
+        abbreviation: "LST",
+        description: "Original study description",
+      }),
+    });
+
+    const incomingData = questionnaireDataFactory.build({
+      ...currentData,
+      pi: {
+        ...currentData.pi,
+        firstName: "Changed",
+      },
+      program: {
+        ...currentData.program,
+        name: "Changed Program",
+        description: "Allowed program description change",
+      },
+      study: {
+        ...currentData.study,
+        name: "Changed Study",
+        description: "Allowed study description change",
+      },
+    });
+
+    const result = utils.preserveLockedFields({
+      application,
+      incomingData,
+      currentData,
+    });
+
+    expect(result.pi.firstName).toBe("Locked");
+    expect(result.program.name).toBe("Locked Program");
+    expect(result.study.name).toBe("Locked Study");
+    expect(result.program.description).toBe("Allowed program description change");
+    expect(result.study.description).toBe("Allowed study description change");
+  });
+});
 
 describe("filterNonNumeric cases", () => {
   it("should filter non-numerics", () => {
