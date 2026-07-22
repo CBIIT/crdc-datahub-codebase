@@ -42,7 +42,7 @@ describe('Organization.listPrograms', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     organization = new Organization(
-      {}, {}, {}, {}, {}
+      {}, {}, {}, {}
     );
     jest.clearAllMocks();
   });
@@ -175,7 +175,7 @@ describe('Organization.createOrganization', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     organization = new Organization(
-      {}, {}, {}, {}, {}
+      {}, {}, {}, {}
     );
     jest.clearAllMocks();
     organization._checkRemovedStudies = jest.fn();
@@ -273,7 +273,7 @@ describe('Organization.getOrganizationAPI', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     organization = new Organization(
-      {}, {}, {}, {}, {}
+      {}, {}, {}, {}
     );
     jest.clearAllMocks();
   });
@@ -320,7 +320,7 @@ describe('Organization.getOrganizationByID', () => {
   beforeEach(() => {
     mockProgramDAO = { getOrganizationByID: jest.fn() };
     ProgramDAO.mockImplementation(() => mockProgramDAO);
-    organization = new Organization({}, {}, {}, {}, {});
+    organization = new Organization({}, {}, {}, {});
     jest.clearAllMocks();
   });
 
@@ -357,7 +357,7 @@ describe('Organization.editOrganization', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     
-    organization = new Organization({}, {}, {}, {}, {});
+    organization = new Organization({}, {}, {}, {});
     jest.clearAllMocks();
   });
 

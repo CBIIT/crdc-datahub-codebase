@@ -18,12 +18,10 @@ const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-
 const {getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesForUser,
     getDataCommonsDisplayNamesForApprovedStudyList
 } = require("../utility/data-commons-remapper");
-const {SORT: PRISMA_SORT} = require("../constants/db-constants");
 const {UserScope} = require("../domain/user-scope");
 const {replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
 const NA_PROGRAM = "NA";
 const NA = "NA";
-const prisma = require("../prisma");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const ProgramDAO = require("../dao/program");
@@ -36,7 +34,19 @@ const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev
 const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
 
 class ApprovedStudiesService {
+    /**
+     * @param {object} approvedStudiesCollection Native Mongo collection retained as a temporary bridge for
+     *   UserService (and callers via userService.approvedStudiesCollection). Not used by ApprovedStudyDAO
+     *   (Mongoose); remove once those paths migrate to approvedStudyDAO.
+     * @param {object} userCollection Native user collection
+     * @param {object} organizationService Organization service (provides program collection for ProgramDAO)
+     * @param {object} submissionCollection Native submission collection
+     * @param {object} [authorizationService] Authorization service
+     * @param {object} [notificationsService] Notifications service
+     * @param {object} [emailParams] Email URL / contact params
+     */
     constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
+        // TEMPORARY: native-driver bridge for UserService until it uses approvedStudyDAO.
         this.approvedStudiesCollection = approvedStudiesCollection;
         this.userCollection = userCollection;
         this.organizationService = organizationService;
@@ -46,7 +56,7 @@ class ApprovedStudiesService {
         this.submissionDAO = new SubmissionDAO(submissionCollection);
         this.notificationsService = notificationsService;
         this.emailParams = emailParams;
-        this.approvedStudyDAO = new ApprovedStudyDAO(approvedStudiesCollection);
+        this.approvedStudyDAO = new ApprovedStudyDAO();
         this.applicationDAO = new ApplicationDAO();
     }
 
@@ -191,16 +201,7 @@ class ApprovedStudiesService {
      * @returns {Promise<Object|null>}
      */
     async findByApplicationID(applicationID) {
-        if (!applicationID) {
-            return null;
-        }
-        const row = await prisma.approvedStudy.findFirst({
-            where: { applicationID }
-        });
-        if (!row) {
-            return null;
-        }
-        return { ...row, _id: row.id };
+        return await this.approvedStudyDAO.findByApplicationID(applicationID);
     }
 
     /**
@@ -386,7 +387,7 @@ class ApprovedStudiesService {
             status
         } = this._verifyAndFormatStudyParams(params);
         // Find the study to update
-        let updateStudy = await this.approvedStudyDAO.findFirst({id: studyID});
+        let updateStudy = await this.approvedStudyDAO.findFirst({_id: studyID});
         if (!updateStudy) {
             throw new Error(ERROR.APPROVED_STUDY_NOT_FOUND);
         }

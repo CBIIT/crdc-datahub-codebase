@@ -143,7 +143,7 @@ describe('UserService.getUsersByIDs', () => {
 
             expect(result).toHaveLength(1);
             expect(mockApprovedStudyDAO.findMany).toHaveBeenCalledWith({
-                id: { in: ['study1', 'study2'] }
+                _id: { $in: ['study1', 'study2'] }
             });
         });
 
@@ -174,7 +174,7 @@ describe('UserService.getUsersByIDs', () => {
             expect(result).toHaveLength(1);
             // Should only call findMany with valid study IDs (null/undefined filtered out)
             expect(mockApprovedStudyDAO.findMany).toHaveBeenCalledWith({
-                id: { in: ['study1', 'study2'] }
+                _id: { $in: ['study1', 'study2'] }
             });
         });
 

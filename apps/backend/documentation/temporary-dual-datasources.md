@@ -4,6 +4,8 @@
 
 During migration, the backend can run Prisma (and native Mongo drivers) against MongoDB while Mongoose uses Amazon DocumentDB. When DocumentDB is not fully configured, both share the MongoDB connection.
 
+**Driver split:** Mongoose **9.8.0** uses a nested MongoDB Node driver **7.5.x**. Prisma, `connect-mongo` sessions, and migration scripts continue to use the top-level `mongodb@5` dependency. Treat these as separate client stacks.
+
 Related: [DocumentDB + Mongoose Compatibility Reference](./documentdb-mongoose-compatibility.md)
 
 ## Behavior

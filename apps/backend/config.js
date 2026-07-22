@@ -107,10 +107,11 @@ function buildMongoConnectionString() {
 
 /**
  * TEMPORARY (Prisma→DocumentDB migration): builds the DocumentDB URI from DOCUMENTDB_* variables.
+ * Appends authMechanism=SCRAM-SHA-1 for MongoDB Node driver 7.x / Mongoose 9 compatibility.
  * @returns {string}
  */
 function buildDocumentDbConnectionString() {
-    return buildConnectionString(
+    const uri = buildConnectionString(
         process.env.DOCUMENTDB_USER,
         process.env.DOCUMENTDB_PASSWORD,
         process.env.DOCUMENTDB_HOST,
@@ -118,6 +119,7 @@ function buildDocumentDbConnectionString() {
         process.env.DOCUMENTDB_NAME,
         process.env.DOCUMENTDB_CA_FILE,
     );
+    return `${uri}&authMechanism=SCRAM-SHA-1`;
 }
 
 /**

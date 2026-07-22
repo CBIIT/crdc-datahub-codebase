@@ -1,6 +1,5 @@
 /**
- * Mongoose-backed GenericDAO. Mirrors the Prisma GenericDAO method surface so DAOs
- * can migrate by swapping the parent class and passing a Mongoose model.
+ * Mongoose-backed GenericDAO
  */
 class MongooseGenericDAO {
     /**
@@ -56,6 +55,25 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Requires an explicit filter object. Null/undefined are rejected so callers
+     * cannot accidentally match or delete all documents (Mongoose 9 throws on null filters).
+     * Explicit `{}` remains allowed when matching all documents is intentional.
+     * @param {object} filter Mongo filter
+     * @param {string} methodName Calling method name for the error message
+     * @returns {object}
+     * @throws {Error} When filter is null or undefined
+     */
+    _requireFilter(filter, methodName) {
+        if (filter == null) {
+            throw new Error(
+                `MongooseGenericDAO.${methodName} requires a filter object for ${this._modelName}`
+            );
+        }
+        return filter;
+    }
+
+    /**
+     * Create a single document
      * @param {object} data Document fields to create
      * @returns {Promise<object>}
      */
@@ -76,6 +94,7 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Create multiple documents
      * @param {object[]} data Documents to insert
      * @returns {Promise<{count: number}>}
      */
@@ -95,6 +114,7 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Find a single document by ID
      * @param {string} id Document ID
      * @returns {Promise<object|null>}
      */
@@ -113,6 +133,7 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Find all documents
      * @returns {Promise<object[]>}
      */
     async findAll() {
@@ -129,13 +150,17 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Find the first document matching the filter.
+     * Requires an explicit filter object; null/undefined are rejected.
+     * Pass `{}` to match any document intentionally.
      * @param {object} where Mongo filter
      * @param {object} [option] Query options (sort, skip, limit/take)
      * @returns {Promise<object|null>}
      */
     async findFirst(where, option = {}) {
+        const filter = this._requireFilter(where, 'findFirst');
         try {
-            let query = this.model.findOne(where);
+            let query = this.model.findOne(filter);
             query = this._applyQueryOptions(query, option);
             const result = await query.lean();
             return this._mapDoc(result);
@@ -151,13 +176,17 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Find multiple documents matching the filter.
+     * Requires an explicit filter object; null/undefined are rejected.
+     * Pass `{}` to match all documents intentionally.
      * @param {object} filter Mongo filter
      * @param {object} [option] Query options (sort, skip, limit/take)
      * @returns {Promise<object[]>}
      */
     async findMany(filter, option = {}) {
+        const where = this._requireFilter(filter, 'findMany');
         try {
-            let query = this.model.find(filter || {});
+            let query = this.model.find(where);
             query = this._applyQueryOptions(query, option);
             const result = await query.lean();
             return result.map((item) => this._mapDoc(item));
@@ -173,6 +202,7 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Update a single document by ID
      * @param {string} id Document ID
      * @param {object} data Fields to update
      * @returns {Promise<object>}
@@ -200,13 +230,18 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Update multiple documents matching the condition.
+     * Requires an explicit filter object; null/undefined are rejected to avoid
+     * accidentally updating all documents. Pass `{}` only when update-all is intentional.
      * @param {object} condition Mongo filter
      * @param {object} data Fields to update
      * @returns {Promise<{count: number}>}
+     * @throws {Error} When condition is null or undefined
      */
     async updateMany(condition, data) {
+        const filter = this._requireFilter(condition, 'updateMany');
         try {
-            const result = await this.model.updateMany(condition, { $set: data });
+            const result = await this.model.updateMany(filter, { $set: data });
             return { count: result.modifiedCount };
         } catch (error) {
             console.error(`MongooseGenericDAO.updateMany failed for ${this._modelName}:`, {
@@ -220,12 +255,16 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Delete multiple documents matching the condition.
+     * Requires an explicit filter object; null/undefined are rejected to avoid
+     * accidentally deleting all documents. Pass `{}` only when delete-all is intentional.
      * @param {object} where Mongo filter
      * @returns {Promise<{count: number}>}
      */
     async deleteMany(where) {
+        const filter = this._requireFilter(where, 'deleteMany');
         try {
-            const result = await this.model.deleteMany(where);
+            const result = await this.model.deleteMany(filter);
             return { count: result.deletedCount };
         } catch (error) {
             console.error(`MongooseGenericDAO.deleteMany failed for ${this._modelName}:`, {
@@ -238,6 +277,7 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Delete a single document by ID
      * @param {string} id Document ID
      * @returns {Promise<object>}
      */
@@ -260,12 +300,15 @@ class MongooseGenericDAO {
 
     /**
      * Counts documents matching the filter.
+     * Requires an explicit filter object; null/undefined are rejected.
+     * Pass `{}` to count all documents intentionally.
      * @param {object} where Mongo filter
      * @returns {Promise<number>}
      */
     async count(where) {
+        const filter = this._requireFilter(where, 'count');
         try {
-            return await this.model.countDocuments(where || {});
+            return await this.model.countDocuments(filter);
         } catch (error) {
             console.error(`MongooseGenericDAO.count failed for ${this._modelName}:`, {
                 error: error.message,
@@ -277,7 +320,7 @@ class MongooseGenericDAO {
     }
 
     /**
-     * Distinct values for a field.
+     * Finds distinct values for a given field.
      * @param {string} field Field name
      * @param {object} [filter] Mongo filter
      * @returns {Promise<Array>}

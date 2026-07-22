@@ -262,7 +262,7 @@ class UserService {
         }
 
         return await this.approvedStudyDAO.findMany({
-            id: { in: studiesIDs }
+            _id: { $in: studiesIDs }
         });
     }
 
@@ -294,7 +294,7 @@ class UserService {
         if (uniqueIds.size > 0) {
             // Uses a single query to fetch the necessary study data
             const approvedStudies = await this.approvedStudyDAO.findMany({
-                id: { in: [...uniqueIds] },
+                _id: { $in: [...uniqueIds] },
             });
             const studyById = new Map(approvedStudies.map((study) => [study._id, study]));
             // Populates the study data for the remaining users using the results from the single study query

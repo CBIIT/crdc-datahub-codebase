@@ -21,7 +21,7 @@ This API is used to store and query data related to the CRDC DataHub pre-submiss
 
 ## Prerequisites
 
- - Node.js version 18.16.0 is installed on the runtime environment
+ - Node.js version >= 20.19.0 is installed on the runtime environment (required by Mongoose 9)
  - A MongoDB deployment is accessible, running, and a user has been created for this API
 
 ## Configuring Environment Variables

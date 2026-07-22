@@ -3,6 +3,9 @@
   "version": "3.1.0",
   "description": "The CRDC DataHub Backend API service",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "prestart": "prisma generate",
     "start": "node ./bin/www",
@@ -32,7 +35,7 @@
     "jsonwebtoken": "^9.0.2",
     "mdf-reader": "^1.2.0",
     "mongodb": "^5.5.0",
-    "mongoose": "^8.24.1",
+    "mongoose": "9.8.0",
     "morgan": "^1.10.0",
     "node-cron": "^3.0.2",
     "nodemailer": "^9.0.1",

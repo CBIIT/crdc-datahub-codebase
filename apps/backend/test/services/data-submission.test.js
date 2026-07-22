@@ -1671,7 +1671,7 @@ describe('Submission._sendEmailsDeletedSubmissions', () => {
             [USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.DATA_SUBMISSION.DELETE],
             [USER.ROLES.FEDERAL_LEAD, USER.ROLES.DATA_COMMONS_PERSONNEL, USER.ROLES.ADMIN]
         );
-        expect(mockApprovedStudyDAO.findFirst).toHaveBeenCalledWith({ id: 'study123' });
+        expect(mockApprovedStudyDAO.findFirst).toHaveBeenCalledWith({ _id: 'study123' });
         
         // The notification should be sent since the submitter has DELETE notifications enabled
         expect(mockNotificationService.deleteSubmissionNotification).toHaveBeenCalledWith(

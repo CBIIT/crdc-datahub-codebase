@@ -184,8 +184,8 @@ describe('UserService.listUsers', () => {
         verifySession.mockImplementation(() => ({
             verifyInitialized: jest.fn(),
         }));
-        userService.approvedStudyDAO.findMany = jest.fn().mockImplementation(({ id }) => {
-            const ids = id?.in || [];
+        userService.approvedStudyDAO.findMany = jest.fn().mockImplementation(({ _id }) => {
+            const ids = _id?.$in || [];
             return Promise.resolve(ids.map((studyId) => ({
                 _id: studyId,
                 studyName: `Study ${studyId}`,
@@ -229,7 +229,7 @@ describe('UserService.listUsers', () => {
                 "$match": {}
             }]);
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
-            expect(userService.approvedStudyDAO.findMany.mock.calls[0][0].id.in).toHaveLength(9);
+            expect(userService.approvedStudyDAO.findMany.mock.calls[0][0]._id.$in).toHaveLength(9);
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(9);
             expect(result).toHaveLength(9);
         });
@@ -661,7 +661,7 @@ describe('UserService.listUsers', () => {
             const result = await userService.listUsers(params, context);
 
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
-                id: { in: ['study-user'] },
+                _id: { $in: ['study-user'] },
             });
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledWith(
@@ -695,7 +695,7 @@ describe('UserService.listUsers', () => {
 
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
-                id: { in: ['study-shared'] },
+                _id: { $in: ['study-shared'] },
             });
             expect(result[0].studies).toEqual([{
                 _id: 'study-shared',
@@ -751,7 +751,7 @@ describe('UserService.listUsers', () => {
 
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
-                id: { in: ['study-concrete'] },
+                _id: { $in: ['study-concrete'] },
             });
             expect(result[0].studies).toEqual([{ _id: 'All', studyName: 'All' }]);
             expect(result[1].studies).toEqual([{
