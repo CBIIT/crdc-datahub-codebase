@@ -58,7 +58,7 @@ class ProgramDAO extends GenericDAO {
      * @param {number} offset Skip count
      * @param {string} orderBy Sort field
      * @param {string} sortDirection Sort direction
-     * @param {object} [statusCondition={}] Mongo filter applied to programs (e.g. status)
+     * @param {object} [statusCondition={}] Mongo filter on program fields only (e.g. status); must not reference studies
      * @returns {Promise<{total: number, results: object[]}>}
      */
     async listPrograms(first, offset, orderBy, sortDirection, statusCondition = {}) {
@@ -77,6 +77,9 @@ class ProgramDAO extends GenericDAO {
             ...paginationPipeline,
         ];
 
+        // Count uses the program collection filter only; results $lookup studies then $match.
+        // Safe while statusCondition is program-field-only. If filters ever include study fields,
+        // count must use the same pre-pagination pipeline as results.
         const [total, results] = await Promise.all([
             this.organizationCollection.countDoc(statusCondition),
             this.organizationCollection.aggregate(resultsPipeline),

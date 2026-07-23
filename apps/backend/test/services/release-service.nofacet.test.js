@@ -87,6 +87,23 @@ describe('ReleaseService DocumentDB $facet removals', () => {
                 dataCommonsDisplayNames: [],
             });
         });
+
+        it('should return stable empty shape when user has none scope', async () => {
+            service._getUserScope.mockResolvedValue({ isNoneScope: () => true });
+
+            const result = await service.listReleasedStudies(
+                { first: 10, offset: 0, orderBy: 'studyName', sortDirection: 'asc' },
+                context
+            );
+
+            expect(result).toEqual({
+                total: 0,
+                studies: [],
+                dataCommonsDisplayNames: [],
+            });
+            expect(mockReleaseCollection.aggregate).not.toHaveBeenCalled();
+            expect(mockReleaseCollection.distinct).not.toHaveBeenCalled();
+        });
     });
 
     describe('getReleaseNodeTypes', () => {
@@ -122,6 +139,19 @@ describe('ReleaseService DocumentDB $facet removals', () => {
             );
 
             expect(result).toEqual({ total: 0, nodes: [] });
+        });
+
+        it('should return stable empty shape when user has none scope', async () => {
+            service._getUserScope.mockResolvedValue({ isNoneScope: () => true });
+
+            const result = await service.getReleaseNodeTypes(
+                { studyID: 'study1', dataCommonsDisplayName: 'CDS' },
+                context
+            );
+
+            expect(result).toEqual({ total: 0, nodes: [] });
+            expect(result).not.toHaveProperty('properties');
+            expect(mockReleaseCollection.aggregate).not.toHaveBeenCalled();
         });
     });
 
@@ -186,6 +216,31 @@ describe('ReleaseService DocumentDB $facet removals', () => {
                 properties: [],
                 nodes: [],
             });
+        });
+
+        it('should return stable empty shape when user has none scope', async () => {
+            service._getUserScope.mockResolvedValue({ isNoneScope: () => true });
+
+            const result = await service.listReleasedDataRecords(
+                {
+                    studyID: 'study1',
+                    nodeType: 'study',
+                    first: 10,
+                    offset: 0,
+                    orderBy: 'title',
+                    sortDirection: 'asc',
+                    properties: [],
+                    dataCommonsDisplayName: 'CDS',
+                },
+                context
+            );
+
+            expect(result).toEqual({
+                total: 0,
+                properties: [],
+                nodes: [],
+            });
+            expect(mockReleaseCollection.aggregate).not.toHaveBeenCalled();
         });
     });
 });

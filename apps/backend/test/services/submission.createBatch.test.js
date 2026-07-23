@@ -70,28 +70,28 @@ describe('Submission Service - createBatch with Status Change to In Progress', (
         submissionService = new Submission(
             null, // logCollection
             null, // submissionCollection
-            mockSubmissionDAO,
-            null, // programDAO
-            mockOrganizationService, // organizationService
+            mockSubmissionDAO, // batchService (overridden below)
             null, // userService
+            mockOrganizationService, // organizationService
+            null, // notificationService
             null, // dataRecordService
-            mockBatchService,
-            null, // userInitializationService
-            null, // notifyUser
-            null, // s3Service
+            mockBatchService, // fetchDataModelInfo (batchService overridden below)
             null, // awsService
+            null, // metadataQueueName
+            null, // s3Service
+            null, // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            null, // approvedStudyDAO
-            null, // validationDAO
-            null, // pendingPVDAO
+            null, // sqsLoaderQueue
+            null, // qcResultsService
+            null, // uploaderCLIConfigs
             'test-bucket', // submissionBucketName
-            null, // configService
-            null, // monitor
-            {}, // bucketMap
-            mockAuthorizationService,
+            null, // configurationService
+            null, // uploadingMonitor
+            {}, // dataCommonsBucketMap
+            mockAuthorizationService, // authorizationService
             null, // dataModelService
-            null // submissionMongoCollection
+            null // dataRecordsCollection
         );
         
         // Override submissionDAO and batchService with our mocks after construction
