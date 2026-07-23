@@ -968,6 +968,111 @@ describe('DataRecordService', () => {
     });
   });
 
+  describe('getReleasedAndNewNodesByList', () => {
+    beforeEach(() => {
+      dataRecordService.dataRecordDAO = {
+        findMany: jest.fn()
+      };
+      dataRecordService.releaseDAO = {
+        findMany: jest.fn()
+      };
+    });
+
+    test('should merge parent relationship values into incoming and existing props', async () => {
+      dataRecordService.dataRecordDAO.findMany.mockResolvedValue([
+        {
+          nodeID: 'diag-1',
+          props: { diagnosis_id: 'D1', site: 'New Site' },
+          parents: [
+            { parentType: 'participant', parentIDPropName: 'participant_id', parentIDValue: 'P1' },
+            { parentType: 'participant', parentIDPropName: 'participant_id', parentIDValue: 'P2' },
+            { parentType: 'sample', parentIDPropName: 'sample_id', parentIDValue: 'S1' }
+          ]
+        }
+      ]);
+
+      dataRecordService.releaseDAO.findMany.mockResolvedValue([
+        {
+          nodeID: 'diag-1',
+          props: { diagnosis_id: 'D1', site: 'Old Site' },
+          parents: [
+            { parentType: 'participant', parentIDPropName: 'participant_id', parentIDValue: 'P0' }
+          ]
+        }
+      ]);
+
+      const result = await dataRecordService.getReleasedAndNewNodesByList(
+        'sub-1',
+        'CCDI',
+        'Released',
+        [{ submittedID: 'diag-1', nodeType: 'diagnosis' }]
+      );
+
+      expect(result).toEqual({
+        skipped: 0,
+        comparisons: [
+          {
+            submittedID: 'diag-1',
+            nodeType: 'diagnosis',
+            existing: {
+              diagnosis_id: 'D1',
+              site: 'Old Site',
+              'participant.participant_id': 'P0'
+            },
+            incoming: {
+              diagnosis_id: 'D1',
+              site: 'New Site',
+              'participant.participant_id': 'P1 | P2',
+              'sample.sample_id': 'S1'
+            }
+          }
+        ]
+      });
+    });
+
+    test('should skip missing incoming or existing pairs and continue with valid comparisons', async () => {
+      dataRecordService.dataRecordDAO.findMany.mockResolvedValue([
+        { nodeID: 'diag-1', props: { diagnosis_id: 'D1' }, parents: [] }
+      ]);
+
+      dataRecordService.releaseDAO.findMany.mockResolvedValue([
+        { nodeID: 'diag-1', props: { diagnosis_id: 'D1' }, parents: [] },
+        { nodeID: 'diag-2', props: { diagnosis_id: 'D2' }, parents: [] }
+      ]);
+
+      const result = await dataRecordService.getReleasedAndNewNodesByList(
+        'sub-1',
+        'CCDI',
+        'Released',
+        [
+          { submittedID: 'diag-1', nodeType: 'diagnosis' },
+          { submittedID: 'diag-2', nodeType: 'diagnosis' }
+        ]
+      );
+
+      expect(result.skipped).toBe(1);
+      expect(result.comparisons).toEqual([
+        {
+          submittedID: 'diag-1',
+          nodeType: 'diagnosis',
+          existing: { diagnosis_id: 'D1' },
+          incoming: { diagnosis_id: 'D1' }
+        }
+      ]);
+      expect(dataRecordService.dataRecordDAO.findMany).toHaveBeenCalledWith({
+        submissionID: 'sub-1',
+        nodeType: 'diagnosis',
+        nodeID: { $in: ['diag-1', 'diag-2'] }
+      });
+      expect(dataRecordService.releaseDAO.findMany).toHaveBeenCalledWith({
+        dataCommons: 'CCDI',
+        nodeType: 'diagnosis',
+        nodeID: { $in: ['diag-1', 'diag-2'] },
+        status: 'Released'
+      });
+    });
+  });
+
   describe('getDistinctParentRelationshipKeys', () => {
     beforeEach(() => {
       mockDataRecordsCollection.aggregate.mockReset();

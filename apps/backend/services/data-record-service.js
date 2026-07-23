@@ -357,6 +357,38 @@ class DataRecordService {
         return convertedParents ;
     }
 
+    _parentsToComparableProps(node = {}) {
+        const baseProps = (node && typeof node.props === "object" && node.props !== null)
+            ? {...node.props}
+            : {};
+        const parents = Array.isArray(node?.parents) ? node.parents : [];
+        if (parents.length === 0) {
+            return baseProps;
+        }
+
+        const grouped = parents.reduce((acc, parent) => {
+            const parentType = parent?.parentType;
+            const parentIDPropName = parent?.parentIDPropName;
+            const parentIDValue = parent?.parentIDValue;
+            if (!parentType || !parentIDPropName || !parentIDValue) {
+                return acc;
+            }
+
+            const key = `${parentType}.${parentIDPropName}`;
+            if (!acc[key]) {
+                acc[key] = [];
+            }
+            acc[key].push(parentIDValue);
+            return acc;
+        }, {});
+
+        Object.entries(grouped).forEach(([key, values]) => {
+            baseProps[key] = values.join(" | ");
+        });
+
+        return baseProps;
+    }
+
     async _getNodeChildren(submissionID, nodeType, nodeID){
         // get children
         const children = await this.dataRecordDAO.findMany({
@@ -654,8 +686,8 @@ class DataRecordService {
                 comparisons.push({
                     submittedID: nodeID,
                     nodeType,
-                    existing: existing?.props || {},
-                    incoming: incoming?.props || {}
+                    existing: this._parentsToComparableProps(existing),
+                    incoming: this._parentsToComparableProps(incoming)
                 });
             });
         }
