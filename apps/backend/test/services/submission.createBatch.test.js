@@ -82,7 +82,6 @@ describe('Submission Service - createBatch with Status Change to In Progress', (
             null, // awsService
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            null, // qcResultService
             null, // approvedStudyDAO
             null, // validationDAO
             null, // pendingPVDAO
