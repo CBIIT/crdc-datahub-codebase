@@ -699,21 +699,6 @@ type Dashboard {
     expiresIn: Int
 }
 
-input CDEInput {
-    CDECode: String!,
-    CDEVersion: String
-}
-
-type CDE {
-    _id: ID,
-    CDEFullName: String,
-    CDECode: String,
-    CDEVersion: String,
-    PermissibleValues: [String],
-    createdAt: Date,
-    updatedAt: Date
-}
-
 type Collaborator {
     collaboratorID: ID,
     collaboratorName: String,
@@ -1030,10 +1015,6 @@ type Query {
     getDashboardURL(type: String!): Dashboard
 
     getInstitution(_id: ID!): Institution
-
-    retrieveCDEs  (
-        CDEInfo: [CDEInput!]!
-    ) : [CDE] @public
 
     listPotentialCollaborators(submissionID: String!): [User]
     
