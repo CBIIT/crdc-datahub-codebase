@@ -54,8 +54,14 @@ class ConfigurationService {
             return null;
         }
         let pbacArray = result.Defaults.map(role => {
-            const permissions = role.permissions.map(permission => ({...permission, _id: permission.id}));
-            const notifications = (role.notifications || []).map(n => ({...n, _id: n.id}));
+            const permissions = role.permissions.map(permission => {
+                const id = permission.id ?? permission._id;
+                return { ...permission, id, _id: id };
+            });
+            const notifications = (role.notifications || []).map(n => {
+                const id = n.id ?? n._id;
+                return { ...n, id, _id: id };
+            });
             return {...role, permissions: permissions, notifications: notifications}
         });
         result = {Defaults:pbacArray};
