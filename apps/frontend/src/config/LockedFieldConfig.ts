@@ -20,6 +20,6 @@ export const LOCKED_QUESTIONNAIRE_FIELDS = [
   "study.abbreviation",
 ] as const satisfies readonly Path<QuestionnaireData>[];
 
-export const LOCKED_QUESTIONNAIRE_FIELDSET = new Set<string>(
-  LOCKED_QUESTIONNAIRE_FIELDS as readonly string[]
+export const LOCKED_QUESTIONNAIRE_FIELDSET = new Set<Path<QuestionnaireData>>(
+  LOCKED_QUESTIONNAIRE_FIELDS
 );
