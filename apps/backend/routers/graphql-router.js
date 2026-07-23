@@ -5,7 +5,6 @@ const configuration = require("../config");
 const {Application} = require("../services/application");
 const {Submission} = require("../services/submission");
 const {AWSService} = require("../services/aws-request");
-const {CDE} = require("../services/CDEService");
 const {TooltipService} = require("../services/tooltip-service");
 const {MongoQueries} = require("../crdc-datahub-database-drivers/mongo-queries");
 const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLECTION, ORGANIZATION_COLLECTION, LOG_COLLECTION,
@@ -14,7 +13,6 @@ const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLE
     INSTITUTION_COLLECTION,
     VALIDATION_COLLECTION,
     CONFIGURATION_COLLECTION,
-    CDE_COLLECTION,
     DATA_RECORDS_ARCHIVE_COLLECTION,
     QC_RESULTS_COLLECTION,
     RELEASE_DATA_RECORDS_COLLECTION,
@@ -122,7 +120,6 @@ dbConnector.connect().then(async () => {
         
     const uploadingMonitor = UploadingMonitor.getInstance(batchService.batchDAO, configurationService);
 
-    const cdeService = new CDE();
     const tooltipService = new TooltipService();
     const dataModelService = new DataModelService(fetchDataModelInfo, config.model_url);
     const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
@@ -253,7 +250,6 @@ dbConnector.connect().then(async () => {
         },
         deleteDataRecords: submissionService.deleteDataRecords.bind(submissionService),
         getDashboardURL: dashboardService.getDashboardURL.bind(dashboardService),
-        retrieveCDEs: cdeService.getCDEs.bind(cdeService),
         editSubmissionCollaborators: submissionService.editSubmissionCollaborators.bind(submissionService),
         requestAccess: async (params, context)=> {
             const institutionName = sanitizeHtml(params?.institutionName, {allowedTags: [],allowedAttributes: {}});
