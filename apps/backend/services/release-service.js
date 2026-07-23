@@ -39,13 +39,20 @@ class ReleaseService {
         this.config = config;
     }
 
+    /**
+     * Lists released studies with dataCommons enrichment and pagination.
+     * Uses separate count and results aggregations (DocumentDB does not support $facet).
+     * @param {object} params Query params (name, dbGaPID, dataCommonsDisplayNames, pagination/sort)
+     * @param {object} context GraphQL context with userInfo
+     * @returns {Promise<{total: number, studies: object[], dataCommonsDisplayNames: string[]}>}
+     */
     async listReleasedStudies(params, context) {
         verifySession(context)
             .verifyInitialized();
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.VIEW);
         if (userScope.isNoneScope()) {
             console.warn("Failed permission verification for listing release studies, returning empty list");
-            return {total: 0, studies: []};
+            return {total: 0, studies: [], dataCommonsDisplayNames: []};
         }
 
         const originalDataCommons = (params.dataCommonsDisplayNames || []).map(value => {
@@ -64,7 +71,8 @@ class ReleaseService {
         // Don’t include this custom sort in the pagination sort — it can cause unexpected sorting behavior.
         const customSort = params.orderBy === DATA_COMMONS_DISPLAY_NAMES ? null : params.orderBy
         const paginationPipe = new MongoPagination(params?.first, params.offset, customSort, params.sortDirection);
-        const combinedPipeline = [
+        // Shared stages before pagination/count (DocumentDB does not support $facet).
+        const basePipeline = [
             {$match: {nodeType: this._STUDY_NODE, studyID: {$exists: true}}},
             {$group:{
                 _id: "$studyID",
@@ -155,20 +163,23 @@ class ReleaseService {
                 }]
                 : []),
             {"$match": listConditions},
-            {$facet: {
-                studies: paginationPipe.getPaginationPipeline(),
-                totalCount: [{ $count: "count" }]
-            }}
         ];
 
-        const [releaseStudies, dataCommons] = await Promise.all([
-            this.releaseCollection.aggregate(combinedPipeline),
+        const [studies, totalResult, dataCommons] = await Promise.all([
+            this.releaseCollection.aggregate([
+                ...basePipeline,
+                ...paginationPipe.getPaginationPipeline(),
+            ]),
+            this.releaseCollection.aggregate([
+                ...basePipeline,
+                { $count: "count" },
+            ]),
             this.releaseCollection.distinct("dataCommons", {nodeType: this._STUDY_NODE, studyID: {$exists: true}, ...dataCommonsCondition}),
         ]);
 
         return {
-            studies: releaseStudies[0].studies,
-            total: releaseStudies[0]?.totalCount[0]?.count || 0,
+            studies: studies || [],
+            total: totalResult[0]?.count || 0,
             dataCommonsDisplayNames: (dataCommons || [])
                 .map(getDataCommonsDisplayName)
                 .sort((a, b) => a?.toLowerCase()?.localeCompare(b?.toLowerCase()))
@@ -176,6 +187,7 @@ class ReleaseService {
     }
     /**
      * API: Retrieves the total count and list of node types from the release collection for a given study.
+     * Sums node counts in application code (DocumentDB does not support $facet).
      * @param {*} params
      * @param {*} context
      * @returns {Promise<{ total: number, nodes: Array<{ name: string, count: number }> }>}
@@ -186,10 +198,11 @@ class ReleaseService {
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.VIEW);
         if (userScope.isNoneScope()) {
             console.warn("Failed permission verification for get list node types, returning empty list");
-            return {total: 0, properties: [], nodes: []};
+            return {total: 0, nodes: []};
         }
         const originDataCommons = getDataCommonsOrigin(params?.dataCommonsDisplayName) || params?.dataCommonsDisplayName;
         const userConditions = this._listNodesConditions(null, originDataCommons, userScope, params?.studyID);
+        // DocumentDB does not support $facet; sum node counts in application code.
         const nodeTypesPipeline = [
             {$match: {studyID: params?.studyID, ...userConditions}},
             {$addFields: {
@@ -226,30 +239,21 @@ class ReleaseService {
             {$sort: {
                     count: 1
             }},
-            {$facet: {
-                    nodes: [],
-                    total: [
-                        {$group: {_id: null, total: { $sum: "$count" }}},
-                        {$project: { _id: 0, total: 1 }}
-                    ]
-            }},
-            {$project: {
-                    nodes: "$nodes",
-                    total: { $arrayElemAt: ["$total.total", 0] }
-            }}
         ];
 
-        const groupByNodes = await this.releaseCollection.aggregate(nodeTypesPipeline)
+        const nodes = await this.releaseCollection.aggregate(nodeTypesPipeline);
+        const total = (nodes || []).reduce((sum, node) => sum + (node.count || 0), 0);
         return {
-            total: groupByNodes[0]?.total || 0,
-            nodes: groupByNodes[0]?.nodes || []
+            total,
+            nodes: nodes || []
         }
     }
     /**
      * API: List all released records from the release collection for a given study.
+     * Uses separate count and results aggregations (DocumentDB does not support $facet).
      * @param {*} params
      * @param {*} context
-     * @returns {Promise<JSON>}
+     * @returns {Promise<{total: number, properties: string[], nodes: object[]}>}
      */
     async listReleasedDataRecords(params, context) {
         verifySession(context)
@@ -422,10 +426,6 @@ class ReleaseService {
                     {
                         $unset: "_sortKey",
                     }] : [] ) ,
-            {$facet: {
-                    studies: paginationPipe.getPaginationPipeline(),
-                    totalCount: [{ $count: "count" }]
-                }}
         ];
 
         const allPropertiesPipeline = [
@@ -464,15 +464,23 @@ class ReleaseService {
             }
         ];
 
-        const [releaseNodes, allProperties] = await Promise.all([
-            this.releaseCollection.aggregate(combinedPipeline),
+        // DocumentDB does not support $facet; run page and count as separate aggregations.
+        const [nodes, totalResult, allProperties] = await Promise.all([
+            this.releaseCollection.aggregate([
+                ...combinedPipeline,
+                ...paginationPipe.getPaginationPipeline(),
+            ]),
+            this.releaseCollection.aggregate([
+                ...combinedPipeline,
+                { $count: "count" },
+            ]),
             this.releaseCollection.aggregate(allPropertiesPipeline),
         ]);
 
         return {
-            total: releaseNodes[0]?.totalCount[0]?.count || 0,
+            total: totalResult[0]?.count || 0,
             properties: allProperties[0]?.allProperties || [],
-            nodes: releaseNodes?.[0].studies || []
+            nodes: nodes || []
         }
     }
 
