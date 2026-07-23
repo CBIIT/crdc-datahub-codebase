@@ -20,6 +20,7 @@ import {
   RejectAppResp,
   ResumeAppResp,
   GET_APPLICATION_FORM_VERSION,
+  LIST_INSTITUTIONS,
   SAVE_APP,
   SaveAppInput,
   SaveAppResp,
@@ -1524,6 +1525,136 @@ describe("saveApp Tests", () => {
       expect.objectContaining({
         application: expect.objectContaining({
           studyAbbreviation: null,
+        }),
+      })
+    );
+  });
+
+  it("should preserve the locked fields for reopened forms", async () => {
+    const createListInstitutionsMock = (): MockedResponse => ({
+      request: {
+        query: LIST_INSTITUTIONS,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          listInstitutions: {
+            total: 0,
+            institutions: [],
+          },
+        },
+      },
+    });
+
+    const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
+    const mockVariableMatcher = vi.fn().mockImplementation(() => true);
+
+    const existingQuestionnaireData = questionnaireDataFactory.build({
+      sections: [{ name: "A", status: "In Progress" }],
+      pi: {
+        firstName: "Locked",
+        lastName: "Owner",
+        position: "PI",
+        email: "locked@example.org",
+        ORCID: "0000-0000-0000-0001",
+        institution: "Locked Institution",
+        institutionID: "11111111-1111-4111-8111-111111111111",
+        address: "Locked Address",
+      },
+      program: {
+        _id: "22222222-2222-4222-8222-222222222222",
+        name: "Locked Program",
+        abbreviation: "LPG",
+        description: "Editable description",
+      },
+      study: studyFactory.build({
+        name: "Locked Study",
+        abbreviation: "LST",
+        description: "Original description",
+      }),
+    });
+
+    const mockGetApp: MockedResponse<GetAppResp, GetAppInput> = {
+      request: {
+        query: GET_APP,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          getApplication: {
+            ...applicationFactory.build({
+              _id: appId,
+              sequenceNumber: 2,
+            }),
+            questionnaireData: JSON.stringify(existingQuestionnaireData),
+          },
+        },
+      },
+    };
+
+    const mockSave: MockedResponse<SaveAppResp, SaveAppInput> = {
+      request: {
+        query: SAVE_APP,
+      },
+      variableMatcher: mockVariableMatcher,
+      result: {
+        data: {
+          saveApplication: applicationFactory.build({
+            _id: appId,
+            status: "In Progress",
+          }),
+        },
+      },
+    };
+
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent
+          mocks={[mockGetApp, createListInstitutionsMock(), createListInstitutionsMock(), mockSave]}
+          appId={appId}
+        >
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    const incomingData = questionnaireDataFactory.build({
+      ...existingQuestionnaireData,
+      pi: {
+        ...existingQuestionnaireData.pi,
+        firstName: "Changed",
+        lastName: "Person",
+      },
+      program: {
+        ...existingQuestionnaireData.program,
+        _id: "Other",
+        name: "Changed Program",
+        abbreviation: "CHG",
+      },
+      study: {
+        ...existingQuestionnaireData.study,
+        name: "Changed Study",
+        abbreviation: "CHS",
+      },
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(incomingData);
+      expect(saveResp.status).toEqual("success");
+    });
+
+    expect(mockVariableMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        application: expect.objectContaining({
+          PI: "Locked Owner",
+          programName: "Locked Program",
+          programAbbreviation: "LPG",
+          studyName: "Locked Study",
+          studyAbbreviation: "LST",
         }),
       })
     );
