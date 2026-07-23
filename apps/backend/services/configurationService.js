@@ -54,7 +54,7 @@ class ConfigurationService {
             return null;
         }
         let pbacArray = result.Defaults.map(role => {
-            const permissions = role.permissions.map(permission => {
+            const permissions = (role.permissions || []).map(permission => {
                 const id = permission.id ?? permission._id;
                 return { ...permission, id, _id: id };
             });

@@ -64,8 +64,31 @@ describe('ConfigurationService.getPBACByRoles', () => {
     });
 
     it('returns null when PBAC config is missing Defaults', async () => {
-        service.configurationDAO.findByType.mockResolvedValue({ type: 'PBAC', Defaults: [] });
+        service.configurationDAO.findByType.mockResolvedValue({ type: 'PBAC' });
 
         await expect(service.getPBACByRoles(['Admin'])).resolves.toBeNull();
+    });
+
+    it('defaults omitted permissions to an empty array', async () => {
+        service.configurationDAO.findByType.mockResolvedValue({
+            type: 'PBAC',
+            Defaults: [
+                {
+                    role: 'User',
+                    notifications: [
+                        { _id: 'notif-1', name: 'email', checked: true, disabled: false },
+                    ],
+                },
+            ],
+        });
+
+        const result = await service.getPBACByRoles(['User']);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].permissions).toEqual([]);
+        expect(result[0].notifications[0]).toEqual(expect.objectContaining({
+            id: 'notif-1',
+            _id: 'notif-1',
+        }));
     });
 });
