@@ -31,6 +31,7 @@ export const query: TypedDocumentNode<Response, GetAppInput> = gql`
       questionnaireData
       conditional
       pendingConditions
+      sequenceNumber
       version
     }
   }
