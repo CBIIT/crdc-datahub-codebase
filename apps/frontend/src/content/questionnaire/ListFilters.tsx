@@ -114,15 +114,16 @@ export const DEFAULT_STATUSES_SELECTED: ApplicationStatus[] = [
   "Submitted",
   "In Review",
   "Inquired",
-  // "Reopened",
+  "Reopened",
   // "In Revision",
 ];
 
 export const FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED: ApplicationStatus[] = [
   "Submitted",
   "In Review",
-  // "In Revision",
   "Inquired",
+  "Reopened",
+  // "In Revision",
 ];
 
 export const getDefaultFilterValues = (role?: UserRole | null): FilterForm => ({
