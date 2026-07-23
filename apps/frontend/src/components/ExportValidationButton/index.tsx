@@ -12,6 +12,9 @@ import {
   AGGREGATED_SUBMISSION_QC_RESULTS,
   AggregatedSubmissionQCResultsInput,
   AggregatedSubmissionQCResultsResp,
+  RETRIEVE_SUBMISSION_QC_COMPARISONS,
+  RetrieveSubmissionQCComparisonsInput,
+  RetrieveSubmissionQCComparisonsResp,
   SUBMISSION_QC_RESULTS,
   SubmissionQCResultsInput,
   SubmissionQCResultsResp,
@@ -22,6 +25,7 @@ import {
   filterAlphaNumeric,
   filterValidationResults,
   Logger,
+  safeParse,
   unpackValidationSeverities,
 } from "@/utils";
 
@@ -78,6 +82,14 @@ const ExportValidationButton: React.FC<Props> = ({
     AggregatedSubmissionQCResultsResp,
     AggregatedSubmissionQCResultsInput
   >(AGGREGATED_SUBMISSION_QC_RESULTS, {
+    context: { clientName: "backend" },
+    fetchPolicy: "no-cache",
+  });
+
+  const [getSubmissionQCComparisons] = useLazyQuery<
+    RetrieveSubmissionQCComparisonsResp,
+    RetrieveSubmissionQCComparisonsInput
+  >(RETRIEVE_SUBMISSION_QC_COMPARISONS, {
     context: { clientName: "backend" },
     fetchPolicy: "no-cache",
   });
@@ -161,33 +173,40 @@ const ExportValidationButton: React.FC<Props> = ({
         "@/classes/ValidationResultsExcelBuilder"
       );
 
-      const exportRows = await fetchAllData<
-        SubmissionQCResultsResp,
-        SubmissionQCResultsInput,
-        QCResult
-      >(
-        getSubmissionQCResults,
-        {
-          id: _id,
-          sortDirection: "asc",
-          orderBy: "displayID",
-          issueCode:
-            !filtersRef.current.issueType || filtersRef.current.issueType === "All"
-              ? undefined
-              : filtersRef.current.issueType,
-          nodeTypes:
-            !filtersRef.current.nodeType || filtersRef.current.nodeType === "All"
-              ? undefined
-              : [filtersRef.current.nodeType],
-          batchIDs:
-            !filtersRef.current.batchID || filtersRef.current.batchID === "All"
-              ? undefined
-              : [filtersRef.current.batchID],
-          severities: filtersRef.current.severity || "All",
-        },
-        (resp) => resp?.submissionQCResults?.results ?? [],
-        (resp) => resp?.submissionQCResults?.total ?? 0,
-        { pageSize: 5_000 }
+      const variables: SubmissionQCResultsInput & RetrieveSubmissionQCComparisonsInput = {
+        id: _id,
+        sortDirection: "asc",
+        orderBy: "displayID",
+        issueCode:
+          !filtersRef.current.issueType || filtersRef.current.issueType === "All"
+            ? undefined
+            : filtersRef.current.issueType,
+        nodeTypes:
+          !filtersRef.current.nodeType || filtersRef.current.nodeType === "All"
+            ? undefined
+            : [filtersRef.current.nodeType],
+        batchIDs:
+          !filtersRef.current.batchID || filtersRef.current.batchID === "All"
+            ? undefined
+            : [filtersRef.current.batchID],
+        severities: filtersRef.current.severity || "All",
+      };
+
+      const [exportRows, comparisonResponse] = await Promise.allSettled([
+        fetchAllData<SubmissionQCResultsResp, SubmissionQCResultsInput, QCResult>(
+          getSubmissionQCResults,
+          variables,
+          (resp) => resp?.submissionQCResults?.results ?? [],
+          (resp) => resp?.submissionQCResults?.total ?? 0,
+          { pageSize: 5_000 }
+        ),
+        getSubmissionQCComparisons({ variables }),
+      ]).then(
+        (results) =>
+          [
+            results[0].status === "fulfilled" ? results[0].value : null,
+            results[1].status === "fulfilled" ? results[1].value : null,
+          ] as const
       );
 
       // NOTE: This performs additional issueType and severity filtering because the backend
@@ -205,7 +224,15 @@ const ExportValidationButton: React.FC<Props> = ({
         return;
       }
 
-      const builder = new ValidationResultsExcelBuilder(unpackedResults, []);
+      const comparisonRows =
+        comparisonResponse?.data?.retrieveSubmissionQCComparisons?.comparisons?.map((item) => ({
+          submittedID: item.submittedID,
+          nodeType: item.nodeType,
+          existing: safeParse<Record<string, unknown>>(item.existingProps),
+          incoming: safeParse<Record<string, unknown>>(item.incomingProps),
+        })) ?? [];
+
+      const builder = new ValidationResultsExcelBuilder(unpackedResults, comparisonRows);
       const workbook = await builder.serialize();
 
       downloadBlob(
