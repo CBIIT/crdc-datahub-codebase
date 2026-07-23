@@ -2356,6 +2356,67 @@ describe('Submission.submissionAction', () => {
         const lastEvent = updatePayload.history[updatePayload.history.length - 1];
         expect(lastEvent.isAdminSubmit).toBe(true);
     });
+
+    it('should use dataCommonsDisplayName (not the raw dataCommons code) in the withdraw notification greeting', async () => {
+        const { EMAIL_NOTIFICATIONS } = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
+        const { getDataCommonsDisplayNamesForSubmission } = require('../../utility/data-commons-remapper');
+        getDataCommonsDisplayNamesForSubmission.mockImplementation((s) => ({
+            ...s,
+            dataCommonsDisplayName: 'Test Data Commons Display Name'
+        }));
+
+        const submissionUpdate = jest.fn().mockResolvedValue({ _id: 'sub1' });
+        submissionService.submissionDAO = { update: submissionUpdate };
+        submissionService._getUserScope = jest.fn().mockResolvedValue({ isNoneScope: () => false });
+        submissionService._getS3DirectorySize = jest.fn().mockResolvedValue({ size: 1, formatted: '1 B' });
+        submissionService.qcResultsService = { findBySubmissionErrorCodes: jest.fn().mockResolvedValue([]) };
+        submissionService.batchService = { findOneBatchByStatus: jest.fn().mockResolvedValue([]) };
+        submissionService._isValidReleaseAction = jest.fn().mockResolvedValue();
+        submissionService._createLogEntry = jest.fn().mockResolvedValue(null);
+
+        const withdrawSubmissionNotification = jest.fn().mockResolvedValue(null);
+        submissionService.notificationService = { withdrawSubmissionNotification };
+        submissionService.userService = {
+            getDCPs: jest.fn().mockResolvedValue([{
+                _id: 'dcp-1',
+                role: USER.ROLES.ADMIN,
+                email: 'dcp@example.com',
+                dataCommons: ['test-dc'],
+                notifications: [EMAIL_NOTIFICATIONS.DATA_SUBMISSION.WITHDRAW]
+            }]),
+            getUsersByNotifications: jest.fn().mockResolvedValue([]),
+            approvedStudiesCollection: { find: jest.fn().mockResolvedValue([{ studyName: 'Test Study' }]) }
+        };
+
+        const validSub = {
+            ...mockSubmission,
+            dataCommons: 'test-dc',
+            status: SUBMITTED
+        };
+        const afterWithdraw = {
+            ...validSub,
+            id: validSub._id,
+            status: WITHDRAWN,
+            history: []
+        };
+        let findByIdN = 0;
+        submissionService._findByID = jest.fn().mockImplementation(async () => {
+            findByIdN += 1;
+            return findByIdN === 1 ? validSub : afterWithdraw;
+        });
+
+        await submissionService.submissionAction(
+            { submissionID: 'sub1', action: ACTIONS.WITHDRAW, comment: 'Test comment' },
+            mockContext
+        );
+
+        expect(withdrawSubmissionNotification).toHaveBeenCalledWith(
+            ['dcp@example.com'],
+            [],
+            { firstName: 'Test Data Commons Display Name Data Commons Personnel' },
+            expect.objectContaining({ submissionID: 'sub1' })
+        );
+    });
 });
 
 describe('Submission.validateSubmission', () => {
