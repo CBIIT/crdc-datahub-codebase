@@ -701,7 +701,7 @@ describe('QcResultService', () => {
 
     describe('retrieveSubmissionQCComparisonsAPI', () => {
         const mockParams = {
-            _id: "test_submission_id",
+            submissionID: "test_submission_id",
             nodeTypes: ["participant"],
             batchIDs: ["batch1"],
             severities: "All",
@@ -756,7 +756,7 @@ describe('QcResultService', () => {
             const result = await qcResultService.retrieveSubmissionQCComparisonsAPI(mockParams, mockContext);
 
             expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
-                mockParams._id,
+                mockParams.submissionID,
                 mockParams.nodeTypes,
                 mockParams.batchIDs,
                 mockParams.severities,
@@ -767,7 +767,7 @@ describe('QcResultService', () => {
                 "DESC"
             );
             expect(qcResultService.dataRecordService.getReleasedAndNewNodesByList).toHaveBeenCalledWith(
-                mockParams._id,
+                mockParams.submissionID,
                 "CCDI",
                 mockParams.status,
                 [{ submittedID: "participant_001", nodeType: "participant" }]
@@ -849,7 +849,7 @@ describe('QcResultService', () => {
 
             expect(result).toEqual({ total: 0, skipped: 0, comparisons: [] });
             expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
-                mockParams._id,
+                mockParams.submissionID,
                 mockParams.nodeTypes,
                 mockParams.batchIDs,
                 mockParams.severities,

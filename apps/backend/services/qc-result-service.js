@@ -134,7 +134,7 @@ class QcResultService{
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        const submission = await this.submissionDAO.findFirst({id: params._id});
+        const submission = await this.submissionDAO.findFirst({id: params.submissionID});
         if (!submission) {
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
@@ -155,7 +155,7 @@ class QcResultService{
         }
 
         const qcResults = await this.qcResultDAO.submissionQCResults(
-            params._id,
+            params.submissionID,
             params.nodeTypes,
             params.batchIDs,
             params.severities,
@@ -188,7 +188,7 @@ class QcResultService{
         }
 
         const {comparisons, skipped} = await this.dataRecordService.getReleasedAndNewNodesByList(
-            params._id,
+            params.submissionID,
             submission?.dataCommons,
             params.status,
             comparisonCandidates

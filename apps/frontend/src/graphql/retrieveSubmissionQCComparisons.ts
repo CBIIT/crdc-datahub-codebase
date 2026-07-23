@@ -14,7 +14,7 @@ export const query: TypedDocumentNode<
     $status: String
   ) {
     retrieveSubmissionQCComparisons(
-      _id: $id
+      submissionID: $id
       issueCode: $issueCode
       nodeTypes: $nodeTypes
       batchIDs: $batchIDs

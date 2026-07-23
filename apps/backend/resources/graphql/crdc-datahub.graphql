@@ -1059,7 +1059,7 @@ type Query {
     retrieveReleasedDataByID(submissionID: String!, nodeType: String!, nodeID: String!, status: String = "Released") : [Released_Node]
 
     retrieveSubmissionQCComparisons(
-        _id: ID!,
+        submissionID: ID!,
         nodeTypes: [String],
         batchIDs: [ID],
         severities: String,
