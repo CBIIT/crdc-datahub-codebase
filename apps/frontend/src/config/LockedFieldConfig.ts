@@ -2,7 +2,7 @@ import type { Path } from "react-hook-form";
 
 /**
  * Defines a list of fields that are locked from editing when the application is reopened
- * aka. The `sueqenceNumber` is greater than 1.
+ * aka. The `sequenceNumber` is greater than 1.
  */
 export const LOCKED_QUESTIONNAIRE_FIELDS = [
   "pi.firstName",
