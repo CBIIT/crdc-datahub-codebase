@@ -1,20 +1,30 @@
-const prisma = require("../prisma");
-const { MODEL_NAME } = require('../constants/db-constants');
-const GenericDAO = require("./generic");
+const MongooseGenericDAO = require("./mongoose-generic");
+const ConfigurationModel = require("../mongoose/models/configuration");
 
-class ConfigurationDAO extends GenericDAO {
+/**
+ * Mongoose-backed DAO for configuration documents (type-discriminated).
+ */
+class ConfigurationDAO extends MongooseGenericDAO {
     constructor() {
-        super(MODEL_NAME.CONFIGURATION);
+        super(ConfigurationModel);
     }
 
+    /**
+     * Find the first configuration document with the given type.
+     * @param {string} type Configuration type discriminator
+     * @returns {Promise<object|null>}
+     */
     async findByType(type) {
-        const config = await this.findFirst({type: type});
-        return config? {...config, _id: config.id} : null;
+        return this.findFirst({ type });
     }
 
+    /**
+     * Find all configuration documents with the given type.
+     * @param {string} type Configuration type discriminator
+     * @returns {Promise<object[]>}
+     */
     async findManyByType(type) {
-        const configs = await this.findMany({type: type});
-        return configs.map(c => ({...c, _id: c.id}));
+        return this.findMany({ type });
     }
 }
 
