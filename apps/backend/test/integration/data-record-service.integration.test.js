@@ -13,7 +13,6 @@ describe('DataRecordService Integration Tests', () => {
   let dataRecordService;
   let mockDataRecordsCollection;
   let mockDataRecordArchiveCollection;
-  let mockReleaseCollection;
   let mockAwsService;
   let mockS3Service;
   let mockQcResultsService;
@@ -34,10 +33,6 @@ describe('DataRecordService Integration Tests', () => {
 
     mockDataRecordArchiveCollection = {
       insertMany: jest.fn()
-    };
-
-    mockReleaseCollection = {
-      aggregate: jest.fn()
     };
 
     // Mock services
@@ -61,7 +56,6 @@ describe('DataRecordService Integration Tests', () => {
     dataRecordService = new DataRecordService(
       mockDataRecordsCollection,
       mockDataRecordArchiveCollection,
-      mockReleaseCollection,
       'file-queue',
       'metadata-queue',
       mockAwsService,

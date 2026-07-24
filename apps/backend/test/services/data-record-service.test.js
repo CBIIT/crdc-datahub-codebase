@@ -51,7 +51,6 @@ describe('DataRecordService', () => {
   let dataRecordService;
   let mockDataRecordsCollection;
   let mockDataRecordArchiveCollection;
-  let mockReleaseCollection;
   let mockAwsService;
   let mockS3Service;
   let mockQcResultsService;
@@ -74,10 +73,6 @@ describe('DataRecordService', () => {
       insertMany: jest.fn()
     };
 
-    mockReleaseCollection = {
-      aggregate: jest.fn()
-    };
-
     // Mock services
     mockAwsService = {
       sendSQSMessage: jest.fn()
@@ -95,7 +90,6 @@ describe('DataRecordService', () => {
     dataRecordService = new DataRecordService(
       mockDataRecordsCollection,
       mockDataRecordArchiveCollection,
-      mockReleaseCollection,
       'file-queue',
       'metadata-queue',
       mockAwsService,
@@ -114,7 +108,7 @@ describe('DataRecordService', () => {
     test('should initialize with all dependencies', () => {
       expect(dataRecordService.dataRecordsCollection).toBe(mockDataRecordsCollection);
       expect(dataRecordService.dataRecordArchiveCollection).toBe(mockDataRecordArchiveCollection);
-      expect(dataRecordService.releaseCollection).toBe(mockReleaseCollection);
+      expect(dataRecordService.releaseDAO).toBeDefined();
       expect(dataRecordService.awsService).toBe(mockAwsService);
       expect(dataRecordService.s3Service).toBe(mockS3Service);
       expect(dataRecordService.qcResultsService).toBe(mockQcResultsService);

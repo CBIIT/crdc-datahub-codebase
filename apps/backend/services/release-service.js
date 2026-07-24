@@ -29,8 +29,13 @@ const DATA_COMMONS_DISPLAY_NAMES = "dataCommonsDisplayNames";
 class ReleaseService {
     _ALL_FILTER = "All";
     _STUDY_NODE = "study";
-    constructor(releaseCollection, authorizationService, dataModelService, s3Service, config) {
-        this.releaseCollection = releaseCollection;
+    /**
+     * @param {object} authorizationService
+     * @param {object} dataModelService
+     * @param {object} s3Service
+     * @param {object} config
+     */
+    constructor(authorizationService, dataModelService, s3Service, config) {
         this.authorizationService = authorizationService;
         this.dataModelService = dataModelService;
         this.releaseDAO = new ReleaseDAO();
@@ -39,6 +44,13 @@ class ReleaseService {
         this.config = config;
     }
 
+    /**
+     * Lists released studies with dataCommons enrichment and pagination.
+     * Uses separate count and results aggregations (DocumentDB does not support $facet).
+     * @param {object} params GraphQL list params (name, dbGaPID, dataCommonsDisplayNames, pagination)
+     * @param {object} context Request context with userInfo
+     * @returns {Promise<{studies: object[], total: number, dataCommonsDisplayNames: string[]}>}
+     */
     async listReleasedStudies(params, context) {
         verifySession(context)
             .verifyInitialized();
@@ -64,7 +76,8 @@ class ReleaseService {
         // Don’t include this custom sort in the pagination sort — it can cause unexpected sorting behavior.
         const customSort = params.orderBy === DATA_COMMONS_DISPLAY_NAMES ? null : params.orderBy
         const paginationPipe = new MongoPagination(params?.first, params.offset, customSort, params.sortDirection);
-        const combinedPipeline = [
+        // Shared stages only — DocumentDB does not support $facet; count and page in parallel.
+        const basePipeline = [
             {$match: {nodeType: this._STUDY_NODE, studyID: {$exists: true}}},
             {$group:{
                 _id: "$studyID",
@@ -155,29 +168,36 @@ class ReleaseService {
                 }]
                 : []),
             {"$match": listConditions},
-            {$facet: {
-                studies: paginationPipe.getPaginationPipeline(),
-                totalCount: [{ $count: "count" }]
-            }}
         ];
 
-        const [releaseStudies, dataCommons] = await Promise.all([
-            this.releaseCollection.aggregate(combinedPipeline),
-            this.releaseCollection.distinct("dataCommons", {nodeType: this._STUDY_NODE, studyID: {$exists: true}, ...dataCommonsCondition}),
+        const resultsPipeline = [
+            ...basePipeline,
+            ...paginationPipe.getPaginationPipeline(),
+        ];
+        const countPipeline = [
+            ...basePipeline,
+            { $count: "count" },
+        ];
+
+        const [studies, totalCountResult, dataCommons] = await Promise.all([
+            this.releaseDAO.aggregate(resultsPipeline),
+            this.releaseDAO.aggregate(countPipeline),
+            this.releaseDAO.distinct("dataCommons", {nodeType: this._STUDY_NODE, studyID: {$exists: true}, ...dataCommonsCondition}),
         ]);
 
         return {
-            studies: releaseStudies[0].studies,
-            total: releaseStudies[0]?.totalCount[0]?.count || 0,
+            studies,
+            total: totalCountResult[0]?.count || 0,
             dataCommonsDisplayNames: (dataCommons || [])
                 .map(getDataCommonsDisplayName)
                 .sort((a, b) => a?.toLowerCase()?.localeCompare(b?.toLowerCase()))
         }
     }
     /**
-     * API: Retrieves the total count and list of node types from the release collection for a given study.
-     * @param {*} params
-     * @param {*} context
+     * Retrieves the total count and list of node types from the release collection for a given study.
+     * Uses a single grouped aggregation; total is the sum of per-type counts (DocumentDB does not support $facet).
+     * @param {object} params
+     * @param {object} context
      * @returns {Promise<{ total: number, nodes: Array<{ name: string, count: number }> }>}
      */
     async getReleaseNodeTypes(params, context) {
@@ -190,6 +210,7 @@ class ReleaseService {
         }
         const originDataCommons = getDataCommonsOrigin(params?.dataCommonsDisplayName) || params?.dataCommonsDisplayName;
         const userConditions = this._listNodesConditions(null, originDataCommons, userScope, params?.studyID);
+        // DocumentDB does not support $facet; return grouped nodes and sum counts in JS.
         const nodeTypesPipeline = [
             {$match: {studyID: params?.studyID, ...userConditions}},
             {$addFields: {
@@ -226,30 +247,21 @@ class ReleaseService {
             {$sort: {
                     count: 1
             }},
-            {$facet: {
-                    nodes: [],
-                    total: [
-                        {$group: {_id: null, total: { $sum: "$count" }}},
-                        {$project: { _id: 0, total: 1 }}
-                    ]
-            }},
-            {$project: {
-                    nodes: "$nodes",
-                    total: { $arrayElemAt: ["$total.total", 0] }
-            }}
         ];
 
-        const groupByNodes = await this.releaseCollection.aggregate(nodeTypesPipeline)
+        const nodes = await this.releaseDAO.aggregate(nodeTypesPipeline);
+        const total = (nodes || []).reduce((sum, node) => sum + (node.count || 0), 0);
         return {
-            total: groupByNodes[0]?.total || 0,
-            nodes: groupByNodes[0]?.nodes || []
+            total,
+            nodes: nodes || []
         }
     }
     /**
-     * API: List all released records from the release collection for a given study.
-     * @param {*} params
-     * @param {*} context
-     * @returns {Promise<JSON>}
+     * Lists released data records for a study/node type with property filters and pagination.
+     * Uses separate count, results, and property aggregations (DocumentDB does not support $facet).
+     * @param {object} params
+     * @param {object} context
+     * @returns {Promise<{total: number, properties: string[], nodes: object[]}>}
      */
     async listReleasedDataRecords(params, context) {
         verifySession(context)
@@ -422,10 +434,16 @@ class ReleaseService {
                     {
                         $unset: "_sortKey",
                     }] : [] ) ,
-            {$facet: {
-                    studies: paginationPipe.getPaginationPipeline(),
-                    totalCount: [{ $count: "count" }]
-                }}
+        ];
+
+        // DocumentDB does not support $facet; page and count in parallel.
+        const resultsPipeline = [
+            ...combinedPipeline,
+            ...paginationPipe.getPaginationPipeline(),
+        ];
+        const countPipeline = [
+            ...combinedPipeline,
+            { $count: "count" },
         ];
 
         const allPropertiesPipeline = [
@@ -464,15 +482,16 @@ class ReleaseService {
             }
         ];
 
-        const [releaseNodes, allProperties] = await Promise.all([
-            this.releaseCollection.aggregate(combinedPipeline),
-            this.releaseCollection.aggregate(allPropertiesPipeline),
+        const [nodes, totalCountResult, allProperties] = await Promise.all([
+            this.releaseDAO.aggregate(resultsPipeline),
+            this.releaseDAO.aggregate(countPipeline),
+            this.releaseDAO.aggregate(allPropertiesPipeline),
         ]);
 
         return {
-            total: releaseNodes[0]?.totalCount[0]?.count || 0,
+            total: totalCountResult[0]?.count || 0,
             properties: allProperties[0]?.allProperties || [],
-            nodes: releaseNodes?.[0].studies || []
+            nodes: nodes || []
         }
     }
 
@@ -730,7 +749,7 @@ class ReleaseService {
                 }
             }
         ];
-        const result = await this.releaseCollection.aggregate(pipeline);
+        const result = await this.releaseDAO.aggregate(pipeline);
         // get unique props.keys
         result.forEach(doc => {
             Object.assign(uniquePropObj, doc.props || {});

@@ -17,7 +17,6 @@ const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLE
     CDE_COLLECTION,
     DATA_RECORDS_ARCHIVE_COLLECTION,
     QC_RESULTS_COLLECTION,
-    RELEASE_DATA_RECORDS_COLLECTION,
     PENDING_PVS_COLLECTION
 } = require("../crdc-datahub-database-drivers/database-constants");
 const {MongoDBCollection} = require("../crdc-datahub-database-drivers/mongodb-collection");
@@ -107,10 +106,9 @@ dbConnector.connect().then(async () => {
     const qcResultCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, QC_RESULTS_COLLECTION);
     const qcResultsService = new QcResultService(qcResultCollection, submissionCollection, authorizationService);
 
-    const releaseCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, RELEASE_DATA_RECORDS_COLLECTION);
     const dataRecordCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_COLLECTION);
     const dataRecordArchiveCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_ARCHIVE_COLLECTION);
-    const dataRecordService = new DataRecordService(dataRecordCollection, dataRecordArchiveCollection, releaseCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
+    const dataRecordService = new DataRecordService(dataRecordCollection, dataRecordArchiveCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
 
     const validationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, VALIDATION_COLLECTION);
 
@@ -135,7 +133,7 @@ dbConnector.connect().then(async () => {
     userInitializationService = new UserInitializationService(userCollection, organizationCollection, approvedStudiesCollection, configurationService);
     authenticationService = new AuthenticationService(userCollection);
 
-    const releaseService = new Release(releaseCollection, authorizationService, dataModelService, s3Service, config);
+    const releaseService = new Release(authorizationService, dataModelService, s3Service, config);
     root = {
         version: () => {return config.version},
         saveApplication: dataInterface.saveApplication.bind(dataInterface),

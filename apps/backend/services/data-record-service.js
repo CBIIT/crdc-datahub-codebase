@@ -43,7 +43,18 @@ const DATA_SHEET = {
     MD5SUM: "md5sum"
 };
 class DataRecordService {
-    constructor(dataRecordsCollection, dataRecordArchiveCollection, releaseCollection, fileQueueName, metadataQueueName, awsService, s3Service, qcResultsService, exportQueue, configurationService) {
+    /**
+     * @param {object} dataRecordsCollection
+     * @param {object} dataRecordArchiveCollection
+     * @param {string} fileQueueName
+     * @param {string} metadataQueueName
+     * @param {object} awsService
+     * @param {object} s3Service
+     * @param {object} qcResultsService
+     * @param {string} exportQueue
+     * @param {object} configurationService
+     */
+    constructor(dataRecordsCollection, dataRecordArchiveCollection, fileQueueName, metadataQueueName, awsService, s3Service, qcResultsService, exportQueue, configurationService) {
         this.dataRecordsCollection = dataRecordsCollection;
         this.fileQueueName = fileQueueName;
         this.metadataQueueName = metadataQueueName;
@@ -52,7 +63,6 @@ class DataRecordService {
         this.dataRecordArchiveCollection = dataRecordArchiveCollection;
         this.qcResultsService = qcResultsService;
         this.exportQueue = exportQueue;
-        this.releaseCollection = releaseCollection;
         this.configurationService = configurationService;
         this.dataRecordDAO = new DataRecordDAO(this.dataRecordsCollection);
         this.releaseDAO = new ReleaseDAO();
