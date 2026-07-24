@@ -206,7 +206,7 @@ class ReleaseService {
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.VIEW);
         if (userScope.isNoneScope()) {
             console.warn("Failed permission verification for get list node types, returning empty list");
-            return {total: 0, properties: [], nodes: []};
+            return {total: 0, nodes: []};
         }
         const originDataCommons = getDataCommonsOrigin(params?.dataCommonsDisplayName) || params?.dataCommonsDisplayName;
         const userConditions = this._listNodesConditions(null, originDataCommons, userScope, params?.studyID);
@@ -442,7 +442,7 @@ class ReleaseService {
             ...paginationPipe.getPaginationPipeline(),
         ];
         const countPipeline = [
-            ...combinedPipeline,
+            ...commonQuery,
             { $count: "count" },
         ];
 
