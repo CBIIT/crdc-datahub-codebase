@@ -7,6 +7,7 @@ import {
   LOCKED_QUESTIONNAIRE_FIELDS,
   LOCKED_QUESTIONNAIRE_FIELDSET,
 } from "@/config/LockedFieldConfig";
+import type { SaveAppInput } from "@/graphql";
 
 import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
 
@@ -403,6 +404,35 @@ export const preserveLockedFields = ({
   }
 
   return sanitized;
+};
+
+/**
+ * Computes the next SRF status to use during a normal save operation.
+ *
+ * Rules:
+ * - Existing SRFs currently in In Revision stay in In Revision while being edited.
+ * - New SRFs (id === "new") are New until any section has activity.
+ * - All other active draft saves are In Progress when section activity exists, otherwise New.
+ *
+ * @param currentStatus The current application status from state.
+ * @param applicationId The current application id.
+ * @param hasSectionActivity Whether any questionnaire section is not Not Started.
+ * @returns The status that should be sent to saveApplication.
+ */
+export const computeNextStatus = ({
+  currentStatus,
+  applicationId,
+  hasSectionActivity,
+}: {
+  currentStatus?: ApplicationStatus | null;
+  applicationId?: string | null;
+  hasSectionActivity: boolean;
+}): SaveAppInput["status"] => {
+  if (applicationId !== "new" && currentStatus === "In Revision") {
+    return "In Revision";
+  }
+
+  return hasSectionActivity ? "In Progress" : "New";
 };
 
 /**

@@ -8,6 +8,7 @@ import ExportApplicationsButton, {
   ExportApplicationsButtonProps,
 } from "@/components/ExportApplicationsButton";
 import ExportTemplateButton from "@/components/ExportTemplateButton";
+import { EditStatuses, extractVersion, FormatDate, Logger } from "@/utils";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
 import BellIcon from "../../assets/icons/filled_bell_icon.svg?react";
@@ -31,7 +32,6 @@ import {
   ReviewAppResp,
 } from "../../graphql";
 import usePageTitle from "../../hooks/usePageTitle";
-import { extractVersion, FormatDate, Logger } from "../../utils";
 
 import QuestionnaireContext from "./Contexts/QuestionnaireContext";
 import ListFilters, { FilterForm, getDefaultFilterValues } from "./ListFilters";
@@ -204,7 +204,7 @@ const columns: Column<T>[] = [
           if (
             hasPermission(user, "submission_request", "create") &&
             a.applicant?.applicantID === user._id &&
-            ["New", "In Progress", "Inquired", "Reopened"].includes(a.status)
+            EditStatuses.includes(a.status)
           ) {
             return (
               <Stack direction="row" alignItems="center" justifyContent="center">
