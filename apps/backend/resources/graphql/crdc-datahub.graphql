@@ -57,7 +57,7 @@ interface SubmissionInterface {
 type Application {
     # backend managed fields
     _id: ID!
-    status: String # [New, In Progress, Submitted, In Review, Inquired, Approved, Reopened, Rejected, Canceled, Deleted]
+    status: String # [New, In Progress, Submitted, In Review, Inquired, In Revision, Approved, Reopened, Rejected, Canceled, Deleted]
     createdAt: Date # ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
     updatedAt: Date # ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
     submittedDate: Date # ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
@@ -1112,7 +1112,7 @@ type Mutation {
     "User initiated operations"
     saveApplication(application: AppInput!, status: String = "In Progress"): Application
     submitApplication(_id: ID!): Application
-    "Applicant resumes work on an Inquired submission request (Inquired → In Progress). Preferred over reopenApplication."
+    "Applicant resumes work on an Inquired submission request (Inquired → In Revision). Preferred over reopenApplication."
     resumeInquiredApplication(_id: ID!): Application
     "Admin/Fed Lead/DC Personnel with reopen:all permission clones an Approved SRF into a new Reopened revision; optional ownerId reassigns the applicant to an eligible User/Submitter. Submitter/User owners with reopen:own may reopen only their own Approved SRF; ownerId is ignored. Source row remains Approved and receives nextRevisionId."
     reopenApprovedSubmissionRequest(_id: ID!, ownerId: ID): Application
