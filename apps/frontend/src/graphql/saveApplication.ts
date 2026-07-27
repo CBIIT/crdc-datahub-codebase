@@ -30,6 +30,7 @@ export const mutation: TypedDocumentNode<Response, Input> = gql`
         name
       }
       GPAName
+      sequenceNumber
     }
   }
 `;

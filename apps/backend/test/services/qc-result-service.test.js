@@ -699,6 +699,169 @@ describe('QcResultService', () => {
         });
     });
 
+    describe('retrieveSubmissionQCComparisonsAPI', () => {
+        const mockParams = {
+            submissionID: "test_submission_id",
+            nodeTypes: ["participant"],
+            batchIDs: ["batch1"],
+            severities: "All",
+            issueCode: undefined,
+            status: "Released"
+        };
+
+        beforeEach(() => {
+            qcResultService.submissionDAO = {
+                findFirst: jest.fn().mockResolvedValue({
+                    id: "test_submission_id",
+                    dataCommons: "CCDI"
+                })
+            };
+        });
+
+        it('should return comparisons derived from filtered update-existing-data warnings', async () => {
+            qcResultService.qcResultDAO = {
+                submissionQCResults: jest.fn().mockResolvedValue({
+                    total: 2,
+                    results: [
+                        {
+                            submittedID: "participant_001",
+                            type: "participant",
+                            errors: [],
+                            warnings: [{ code: "M018", title: "Update Existing Data" }]
+                        },
+                        {
+                            submittedID: "participant_002",
+                            type: "participant",
+                            errors: [],
+                            warnings: [{ code: "W001", title: "Other Warning" }]
+                        }
+                    ]
+                })
+            };
+
+            qcResultService.dataRecordService = {
+                getReleasedAndNewNodesByList: jest.fn().mockResolvedValue({
+                    skipped: 1,
+                    comparisons: [
+                        {
+                            submittedID: "participant_001",
+                            nodeType: "participant",
+                            existing: { program_name: "Old" },
+                            incoming: { program_name: "New" }
+                        }
+                    ]
+                })
+            };
+
+            const result = await qcResultService.retrieveSubmissionQCComparisonsAPI(mockParams, mockContext);
+
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
+                mockParams.submissionID,
+                mockParams.nodeTypes,
+                mockParams.batchIDs,
+                mockParams.severities,
+                VALIDATION.CODES.UPDATE_EXISTING_DATA,
+                -1,
+                0,
+                "uploadedDate",
+                "DESC"
+            );
+            expect(qcResultService.dataRecordService.getReleasedAndNewNodesByList).toHaveBeenCalledWith(
+                mockParams.submissionID,
+                "CCDI",
+                mockParams.status,
+                [{ submittedID: "participant_001", nodeType: "participant" }]
+            );
+            expect(result).toEqual({
+                total: 1,
+                skipped: 1,
+                comparisons: [
+                    {
+                        submittedID: "participant_001",
+                        nodeType: "participant",
+                        existingProps: JSON.stringify({ program_name: "Old" }),
+                        incomingProps: JSON.stringify({ program_name: "New" })
+                    }
+                ]
+            });
+        });
+
+        it('should return empty comparisons when no update-existing-data warnings remain after filtering', async () => {
+            qcResultService.qcResultDAO = {
+                submissionQCResults: jest.fn().mockResolvedValue({
+                    total: 1,
+                    results: [
+                        {
+                            submittedID: "participant_002",
+                            type: "participant",
+                            errors: [{ code: "E001", title: "Error" }],
+                            warnings: []
+                        }
+                    ]
+                })
+            };
+
+            qcResultService.dataRecordService = {
+                getReleasedAndNewNodesByList: jest.fn()
+            };
+
+            const result = await qcResultService.retrieveSubmissionQCComparisonsAPI(
+                { ...mockParams, severities: "Error" },
+                mockContext
+            );
+
+            expect(result).toEqual({ total: 0, skipped: 0, comparisons: [] });
+            expect(qcResultService.dataRecordService.getReleasedAndNewNodesByList).not.toHaveBeenCalled();
+        });
+
+        it('should short-circuit when issueCode is provided and is not update-existing-data', async () => {
+            qcResultService.qcResultDAO = {
+                submissionQCResults: jest.fn()
+            };
+
+            qcResultService.dataRecordService = {
+                getReleasedAndNewNodesByList: jest.fn()
+            };
+
+            const result = await qcResultService.retrieveSubmissionQCComparisonsAPI(
+                { ...mockParams, issueCode: "E001" },
+                mockContext
+            );
+
+            expect(result).toEqual({ total: 0, skipped: 0, comparisons: [] });
+            expect(qcResultService.qcResultDAO.submissionQCResults).not.toHaveBeenCalled();
+            expect(qcResultService.dataRecordService.getReleasedAndNewNodesByList).not.toHaveBeenCalled();
+        });
+
+        it('should treat issueCode "All" as broad filter and still force update-existing-data query', async () => {
+            qcResultService.qcResultDAO = {
+                submissionQCResults: jest.fn().mockResolvedValue({ total: 0, results: [] })
+            };
+
+            qcResultService.dataRecordService = {
+                getReleasedAndNewNodesByList: jest.fn()
+            };
+
+            const result = await qcResultService.retrieveSubmissionQCComparisonsAPI(
+                { ...mockParams, issueCode: "All" },
+                mockContext
+            );
+
+            expect(result).toEqual({ total: 0, skipped: 0, comparisons: [] });
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
+                mockParams.submissionID,
+                mockParams.nodeTypes,
+                mockParams.batchIDs,
+                mockParams.severities,
+                VALIDATION.CODES.UPDATE_EXISTING_DATA,
+                -1,
+                0,
+                "uploadedDate",
+                "DESC"
+            );
+        });
+    });
+
     describe('qcResultDAO.aggregatedSubmissionQCResults', () => {
         it('should aggregate QC results by error severity', async () => {
             const mockCountResult = [{ total: 2 }];

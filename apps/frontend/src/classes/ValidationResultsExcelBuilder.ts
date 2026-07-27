@@ -128,8 +128,8 @@ export class ValidationResultsExcelBuilder {
         const base: Record<string, string> = { "Submitted ID": row.submittedID };
 
         allPropertyNames.forEach((property) => {
-          base[`${property}_existing`] = coerceToString(row.existing?.[property]);
-          base[`${property}_new`] = coerceToString(row.incoming?.[property]);
+          base[`${property} (existing)`] = coerceToString(row.existing?.[property]);
+          base[`${property} (new)`] = coerceToString(row.incoming?.[property]);
         });
 
         return base;
@@ -153,7 +153,7 @@ export class ValidationResultsExcelBuilder {
         });
 
         changedProperties.forEach((property) => {
-          const columnKey = `${property}_new`;
+          const columnKey = `${property} (new)`;
           const targetCol = ws.columns.findIndex((column) => column.key === columnKey) + 1;
 
           if (!targetCol) {

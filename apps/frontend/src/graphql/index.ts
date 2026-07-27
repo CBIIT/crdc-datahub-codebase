@@ -139,6 +139,12 @@ export type {
   Response as RetrieveReleasedDataResp,
 } from "./retrieveReleasedDataByID";
 
+export { query as RETRIEVE_SUBMISSION_QC_COMPARISONS } from "./retrieveSubmissionQCComparisons";
+export type {
+  RetrieveSubmissionQCComparisonsInput,
+  RetrieveSubmissionQCComparisonsResp,
+} from "./retrieveSubmissionQCComparisons";
+
 export { query as SUBMISSION_STATS } from "./submissionStats";
 export type {
   Input as SubmissionStatsInput,
