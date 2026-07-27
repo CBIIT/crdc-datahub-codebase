@@ -86,6 +86,58 @@ describe("questionnaire lock helpers", () => {
   });
 });
 
+describe("computeNextStatus", () => {
+  it("returns In Revision for existing In Revision applications", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "In Revision",
+      applicationId: "existing-id",
+      hasSectionActivity: false,
+    });
+
+    expect(status).toBe("In Revision");
+  });
+
+  it("returns In Progress for new applications with section activity", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "New",
+      applicationId: "new",
+      hasSectionActivity: true,
+    });
+
+    expect(status).toBe("In Progress");
+  });
+
+  it("returns New for new applications without section activity", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "New",
+      applicationId: "new",
+      hasSectionActivity: false,
+    });
+
+    expect(status).toBe("New");
+  });
+
+  it("returns In Progress for existing non-In Revision applications with section activity", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "Inquired",
+      applicationId: "existing-id",
+      hasSectionActivity: true,
+    });
+
+    expect(status).toBe("In Progress");
+  });
+
+  it("returns New for existing non-In Revision applications without section activity", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "Inquired",
+      applicationId: "existing-id",
+      hasSectionActivity: false,
+    });
+
+    expect(status).toBe("New");
+  });
+});
+
 describe("filterNonNumeric cases", () => {
   it("should filter non-numerics", () => {
     expect(utils.filterNonNumeric("123abc")).toEqual("123");
