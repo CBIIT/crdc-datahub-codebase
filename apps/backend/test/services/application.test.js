@@ -2870,6 +2870,31 @@ describe('Application', () => {
             }));
         });
 
+        it('rejects when application is already In Revision', async () => {
+            const application = {
+                _id: 'app1',
+                status: IN_REVISION,
+                version: '2.0',
+                history: [{ status: IN_REVISION, reviewComment: 'already in revision' }],
+                applicant: { applicantID: 'user1' }
+            };
+
+            app.getApplicationById = jest.fn().mockResolvedValueOnce(application);
+            await expect(app.resumeInquiredApplication({ _id: 'app1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+        });
+
+        it('rejects invalid starting statuses such as Submitted', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: SUBMITTED,
+                applicant: { applicantID: 'user1' }
+            });
+
+            await expect(app.resumeInquiredApplication({ _id: 'app1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+        });
+
         it('rejects non-owner', async () => {
             app.getApplicationById = jest.fn().mockResolvedValue({
                 _id: 'app1',

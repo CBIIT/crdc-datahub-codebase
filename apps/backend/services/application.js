@@ -449,8 +449,8 @@ class Application {
         const config = await this.configurationService.findByType("APPLICATION_FORM_VERSIONS"); //get version config dynamically
         const currentVersion = config?.current || "2.0";
         const newStatusVersion = config?.new || "3.0";
-        // auto upgrade version based on configuration if status is NEW, IN_PROGRESS, INQUIRED, IN_REVISION
-        // for status other than NEW, IN_PROGRESS, INQUIRED, IN_REVISION, keep original version if exists, else set current version.
+        // auto upgrade version based on configuration if status is NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED
+        // for status other than NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, keep original version if exists, else set current version.
         return [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED].includes(status)
             ? newStatusVersion
             : (!version) ? currentVersion : version;
@@ -1067,6 +1067,10 @@ class Application {
         if (context?.userInfo?._id !== application?.applicant?.applicantID) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
+
+        verifyApplication(application)
+            .notEmpty()
+            .state([INQUIRED]);
 
         application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
         if (application && application.status) {
