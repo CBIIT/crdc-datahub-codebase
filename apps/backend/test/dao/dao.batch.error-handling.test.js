@@ -1,81 +1,83 @@
+jest.mock('../../mongoose/models/batch', () => ({
+    modelName: 'Batch',
+    create: jest.fn(),
+    findById: jest.fn(),
+    find: jest.fn(),
+    findOne: jest.fn(),
+    findByIdAndUpdate: jest.fn(),
+    deleteMany: jest.fn(),
+    countDocuments: jest.fn(),
+}));
+
 const BatchDAO = require('../../dao/batch');
+const BatchModel = require('../../mongoose/models/batch');
 
-// Mock the prisma module
-jest.mock('../../prisma', () => {
-    const mockPrismaModel = {
-        create: jest.fn(),
-        createMany: jest.fn(),
-        findUnique: jest.fn(),
-        findMany: jest.fn(),
-        findFirst: jest.fn(),
-        update: jest.fn(),
-        updateMany: jest.fn(),
-        deleteMany: jest.fn(),
-        delete: jest.fn(),
-        count: jest.fn(),
-        name: 'Batch'
-    };
-
+/**
+ * Builds a thenable lean query mock that resolves or rejects with the given value/error.
+ * @param {*} resolvedValue
+ * @param {Error} [rejectedError]
+ * @returns {{ lean: jest.Mock, select: jest.Mock, sort: jest.Mock, skip: jest.Mock, limit: jest.Mock }}
+ */
+function createLeanQuery(resolvedValue, rejectedError) {
+    const lean = rejectedError
+        ? jest.fn().mockRejectedValue(rejectedError)
+        : jest.fn().mockResolvedValue(resolvedValue);
     return {
-        batch: mockPrismaModel
+        lean,
+        select: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
     };
-});
+}
 
 describe('BatchDAO Error Handling', () => {
     let batchDAO;
     let consoleSpy;
-    let mockPrismaModel;
 
     beforeEach(() => {
-        // Clear all mocks
         jest.clearAllMocks();
-        
-        // Get the mock model
-        mockPrismaModel = require('../../prisma').batch;
-        
-        // Create a new instance for each test
         batchDAO = new BatchDAO();
-        
-        // Spy on console.error
         consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     });
 
     afterEach(() => {
         consoleSpy.mockRestore();
     });
+
     describe('deleteBatchesBySubmissionID method', () => {
         it('should handle constraint violation errors', async () => {
             const submissionID = 'sub-123';
             const constraintError = new Error('Foreign key constraint violation');
-            
-            mockPrismaModel.deleteMany.mockRejectedValue(constraintError);
+
+            BatchModel.deleteMany.mockRejectedValue(constraintError);
 
             await expect(batchDAO.deleteBatchesBySubmissionID(submissionID)).rejects.toThrow('Failed to delete batches');
         });
 
         it('should handle invalid submissionID errors', async () => {
             const invalidSubmissionID = undefined;
-            // The method may not call deleteMany if submissionID is invalid, so we don't need to mock deleteMany here
 
             await expect(batchDAO.deleteBatchesBySubmissionID(invalidSubmissionID)).resolves.toBeUndefined();
+            expect(BatchModel.deleteMany).not.toHaveBeenCalled();
         });
     });
 
     describe('findByStatus method', () => {
-        it('should handle Prisma findFirst errors gracefully', async () => {
+        it('should handle findOne errors gracefully', async () => {
             const submissionID = 'sub-123';
             const status = 'Uploaded';
-            const prismaError = new Error('Query execution failed');
-            
-            mockPrismaModel.findFirst.mockRejectedValue(prismaError);
+            const queryError = new Error('Query execution failed');
+
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null, queryError));
 
             await expect(batchDAO.findByStatus(submissionID, status)).rejects.toThrow('Failed to find batch by status');
-            
+
             expect(consoleSpy).toHaveBeenCalledWith('BatchDAO.findByStatus failed:', {
                 error: 'Query execution failed',
                 submissionID,
                 status,
-                stack: prismaError.stack
+                stack: queryError.stack
             });
         });
 
@@ -83,75 +85,91 @@ describe('BatchDAO Error Handling', () => {
             const submissionID = 'sub-123';
             const status = 'Uploaded';
             const connectionError = new Error('Connection timeout');
-            
-            mockPrismaModel.findFirst.mockRejectedValue(connectionError);
+
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null, connectionError));
 
             await expect(batchDAO.findByStatus(submissionID, status)).rejects.toThrow('Failed to find batch by status');
         });
 
-        it('should handle invalid status parameter errors', async () => {
+        it('should return mapped batch when found', async () => {
             const submissionID = 'sub-123';
-            const status = 'InvalidStatus';
-            const parameterError = new Error('Invalid status parameter');
-            
-            mockPrismaModel.findFirst.mockRejectedValue(parameterError);
+            const status = 'Uploaded';
 
-            await expect(batchDAO.findByStatus(submissionID, status)).rejects.toThrow('Failed to find batch by status');
+            BatchModel.findOne.mockReturnValue(
+                createLeanQuery({ _id: 'batch-1', submissionID, status })
+            );
+
+            const result = await batchDAO.findByStatus(submissionID, status);
+
+            expect(BatchModel.findOne).toHaveBeenCalledWith({ submissionID, status });
+            expect(result).toEqual([{
+                id: 'batch-1',
+                _id: 'batch-1',
+                submissionID,
+                status,
+            }]);
+        });
+
+        it('should return empty array when no batch found', async () => {
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null));
+
+            const result = await batchDAO.findByStatus('sub-123', 'Uploaded');
+
+            expect(result).toEqual([]);
         });
     });
 
     describe('getNextDisplayID method', () => {
-        it('should handle Prisma count errors gracefully', async () => {
+        it('should handle countDocuments errors gracefully', async () => {
             const submissionID = 'sub-123';
-            const prismaError = new Error('Count operation failed');
-            
-            mockPrismaModel.count.mockRejectedValue(prismaError);
+            const countError = new Error('Count operation failed');
+
+            BatchModel.countDocuments.mockRejectedValue(countError);
 
             await expect(batchDAO.getNextDisplayID(submissionID)).rejects.toThrow('Failed to get next display ID');
-            
+
             expect(consoleSpy).toHaveBeenCalledWith('BatchDAO.getNextDisplayID failed:', {
                 error: 'Count operation failed',
                 submissionID,
-                stack: prismaError.stack
+                stack: countError.stack
             });
         });
 
         it('should handle database connection errors', async () => {
             const submissionID = 'sub-123';
             const connectionError = new Error('Database connection lost');
-            
-            mockPrismaModel.count.mockRejectedValue(connectionError);
+
+            BatchModel.countDocuments.mockRejectedValue(connectionError);
 
             await expect(batchDAO.getNextDisplayID(submissionID)).rejects.toThrow('Failed to get next display ID');
         });
 
-        it('should handle invalid submissionID errors', async () => {
-            const submissionID = 'invalid-id';
-            const validationError = new Error('Invalid submission ID');
-            
-            mockPrismaModel.count.mockRejectedValue(validationError);
+        it('should return count plus one', async () => {
+            BatchModel.countDocuments.mockResolvedValue(2);
 
-            await expect(batchDAO.getNextDisplayID(submissionID)).rejects.toThrow('Failed to get next display ID');
+            const result = await batchDAO.getNextDisplayID('sub-123');
+
+            expect(BatchModel.countDocuments).toHaveBeenCalledWith({ submissionID: 'sub-123' });
+            expect(result).toBe(3);
         });
     });
 
     describe('getLastFileBatchID method', () => {
-        it('should handle Prisma findFirst errors gracefully', async () => {
+        it('should handle findOne errors gracefully', async () => {
             const submissionID = 'sub-123';
             const fileName = 'test.csv';
-            const prismaError = new Error('Query execution failed');
-            
-            // Mock findFirst to fail (MongoDB array query fails)
-            mockPrismaModel.findFirst.mockRejectedValue(prismaError);
+            const queryError = new Error('Query execution failed');
+
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null, queryError));
 
             await expect(batchDAO.getLastFileBatchID(submissionID, fileName)).rejects.toThrow('Failed to get last file batch ID');
-            
+
             expect(consoleSpy).toHaveBeenCalledWith('BatchDAO.getLastFileBatchID failed:', {
                 error: 'Query execution failed',
                 submissionID,
                 fileName,
                 maxBatches: 10,
-                stack: prismaError.stack
+                stack: queryError.stack
             });
         });
 
@@ -159,20 +177,43 @@ describe('BatchDAO Error Handling', () => {
             const submissionID = 'sub-123';
             const fileName = 'test.csv';
             const connectionError = new Error('Connection timeout');
-            
-            mockPrismaModel.findFirst.mockRejectedValue(connectionError);
+
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null, connectionError));
 
             await expect(batchDAO.getLastFileBatchID(submissionID, fileName)).rejects.toThrow('Failed to get last file batch ID');
         });
 
-        it('should handle invalid parameters gracefully', async () => {
+        it('should query with $elemMatch, select displayID, and sort by displayID descending', async () => {
             const submissionID = 'sub-123';
             const fileName = 'test.csv';
-            const parameterError = new Error('Invalid parameters');
-            
-            mockPrismaModel.findFirst.mockRejectedValue(parameterError);
+            const query = createLeanQuery({ _id: 'batch-1', displayID: 5 });
 
-            await expect(batchDAO.getLastFileBatchID(submissionID, fileName)).rejects.toThrow('Failed to get last file batch ID');
+            BatchModel.findOne.mockReturnValue(query);
+
+            const result = await batchDAO.getLastFileBatchID(submissionID, fileName);
+
+            expect(BatchModel.findOne).toHaveBeenCalledWith({
+                submissionID,
+                type: 'data file',
+                status: 'Uploaded',
+                files: {
+                    $elemMatch: {
+                        fileName,
+                        status: 'Uploaded',
+                    },
+                },
+            });
+            expect(query.select).toHaveBeenCalledWith('displayID');
+            expect(query.sort).toHaveBeenCalledWith({ displayID: -1 });
+            expect(result).toBe(5);
+        });
+
+        it('should return null when no matching batch is found', async () => {
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null));
+
+            const result = await batchDAO.getLastFileBatchID('sub-123', 'missing.csv');
+
+            expect(result).toBeNull();
         });
 
         it('should handle custom maxBatches parameter', async () => {
@@ -180,57 +221,59 @@ describe('BatchDAO Error Handling', () => {
             const fileName = 'test.csv';
             const maxBatches = 5;
             const limitError = new Error('Query limit exceeded');
-            
-            mockPrismaModel.findFirst.mockRejectedValue(limitError);
+
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null, limitError));
 
             await expect(batchDAO.getLastFileBatchID(submissionID, fileName, maxBatches)).rejects.toThrow('Failed to get last file batch ID');
+            expect(consoleSpy).toHaveBeenCalledWith('BatchDAO.getLastFileBatchID failed:', expect.objectContaining({
+                maxBatches: 5,
+            }));
         });
     });
 
     describe('Inherited method error handling', () => {
-        it('should handle create errors from GenericDAO', async () => {
+        it('should handle create errors from MongooseGenericDAO', async () => {
             const batchData = { name: 'Test Batch', submissionID: 'sub-123' };
-            const prismaError = new Error('Create operation failed');
-            
-            mockPrismaModel.create.mockRejectedValue(prismaError);
+            const createError = new Error('Create operation failed');
+
+            BatchModel.create.mockRejectedValue(createError);
 
             await expect(batchDAO.create(batchData)).rejects.toThrow('Failed to create Batch');
         });
 
-        it('should handle update errors from GenericDAO', async () => {
+        it('should handle update errors from MongooseGenericDAO', async () => {
             const batchId = 'batch-123';
             const updateData = { name: 'Updated Batch' };
-            const prismaError = new Error('Update operation failed');
-            
-            mockPrismaModel.update.mockRejectedValue(prismaError);
+            const updateError = new Error('Update operation failed');
+
+            BatchModel.findByIdAndUpdate.mockReturnValue(createLeanQuery(null, updateError));
 
             await expect(batchDAO.update(batchId, updateData)).rejects.toThrow('Failed to update Batch');
         });
 
-        it('should handle findById errors from GenericDAO', async () => {
+        it('should handle findById errors from MongooseGenericDAO', async () => {
             const batchId = 'batch-123';
-            const prismaError = new Error('Find operation failed');
-            
-            mockPrismaModel.findUnique.mockRejectedValue(prismaError);
+            const findError = new Error('Find operation failed');
+
+            BatchModel.findById.mockReturnValue(createLeanQuery(null, findError));
 
             await expect(batchDAO.findById(batchId)).rejects.toThrow('Failed to find Batch by ID');
         });
 
-        it('should handle findMany errors from GenericDAO', async () => {
+        it('should handle findMany errors from MongooseGenericDAO', async () => {
             const filter = { status: 'active' };
-            const options = { orderBy: { createdAt: 'desc' } };
-            const prismaError = new Error('FindMany operation failed');
-            
-            mockPrismaModel.findMany.mockRejectedValue(prismaError);
+            const findError = new Error('FindMany operation failed');
 
-            await expect(batchDAO.findMany(filter, options)).rejects.toThrow('Failed to find many Batch');
+            BatchModel.find.mockReturnValue(createLeanQuery(null, findError));
+
+            await expect(batchDAO.findMany(filter, { sort: { createdAt: 'desc' } })).rejects.toThrow('Failed to find many Batch');
         });
 
-        it('should handle count errors from GenericDAO', async () => {
+        it('should handle count errors from MongooseGenericDAO', async () => {
             const where = { status: 'active' };
-            const prismaError = new Error('Count operation failed');
-            
-            mockPrismaModel.count.mockRejectedValue(prismaError);
+            const countError = new Error('Count operation failed');
+
+            BatchModel.countDocuments.mockRejectedValue(countError);
 
             await expect(batchDAO.count(where)).rejects.toThrow('Failed to count Batch');
         });
@@ -239,9 +282,9 @@ describe('BatchDAO Error Handling', () => {
     describe('Error message consistency', () => {
         it('should include "Batch" model name in all error messages', async () => {
             const testData = { submissionID: 'sub-123' };
-            const prismaError = new Error('Generic error');
-            
-            mockPrismaModel.create.mockRejectedValue(prismaError);
+            const createError = new Error('Generic error');
+
+            BatchModel.create.mockRejectedValue(createError);
 
             try {
                 await batchDAO.create(testData);
@@ -253,16 +296,15 @@ describe('BatchDAO Error Handling', () => {
         it('should preserve original error messages in console logs', async () => {
             const submissionID = 'sub-123';
             const originalError = new Error('Original error message');
-            
-            mockPrismaModel.count.mockRejectedValue(originalError);
+
+            BatchModel.countDocuments.mockRejectedValue(originalError);
 
             try {
                 await batchDAO.getNextDisplayID(submissionID);
             } catch (error) {
                 expect(error.message).not.toContain('Original error message');
             }
-            
-            // Verify the original error message is preserved in console logs
+
             expect(consoleSpy).toHaveBeenCalledWith('BatchDAO.getNextDisplayID failed:', {
                 error: 'Original error message',
                 submissionID,
@@ -275,10 +317,10 @@ describe('BatchDAO Error Handling', () => {
         it('should log all error details including contextual information', async () => {
             const submissionID = 'sub-123';
             const status = 'Uploaded';
-            const prismaError = new Error('Test error');
-            prismaError.stack = 'Error stack trace';
-            
-            mockPrismaModel.findFirst.mockRejectedValue(prismaError);
+            const queryError = new Error('Test error');
+            queryError.stack = 'Error stack trace';
+
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null, queryError));
 
             try {
                 await batchDAO.findByStatus(submissionID, status);
@@ -300,9 +342,9 @@ describe('BatchDAO Error Handling', () => {
         it('should log different error contexts for different methods', async () => {
             const submissionID = 'sub-123';
             const fileName = 'test.tsv';
-            const prismaError = new Error('Query failed');
-            
-            mockPrismaModel.findFirst.mockRejectedValue(prismaError);
+            const queryError = new Error('Query failed');
+
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null, queryError));
 
             try {
                 await batchDAO.getLastFileBatchID(submissionID, fileName);
@@ -324,9 +366,9 @@ describe('BatchDAO Error Handling', () => {
 
     describe('Edge cases and error scenarios', () => {
         it('should handle null/undefined parameters gracefully', async () => {
-            const prismaError = new Error('Parameter validation failed');
-            
-            mockPrismaModel.findFirst.mockRejectedValue(prismaError);
+            const queryError = new Error('Parameter validation failed');
+
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null, queryError));
 
             try {
                 await batchDAO.findByStatus(null, undefined);
@@ -337,9 +379,9 @@ describe('BatchDAO Error Handling', () => {
         });
 
         it('should handle empty string parameters', async () => {
-            const prismaError = new Error('Empty parameter error');
-            
-            mockPrismaModel.count.mockRejectedValue(prismaError);
+            const countError = new Error('Empty parameter error');
+
+            BatchModel.countDocuments.mockRejectedValue(countError);
 
             try {
                 await batchDAO.getNextDisplayID('');
@@ -351,9 +393,9 @@ describe('BatchDAO Error Handling', () => {
 
         it('should handle very long parameter values', async () => {
             const longSubmissionID = 'a'.repeat(1000);
-            const prismaError = new Error('Parameter too long');
-            
-            mockPrismaModel.findFirst.mockRejectedValue(prismaError);
+            const queryError = new Error('Parameter too long');
+
+            BatchModel.findOne.mockReturnValue(createLeanQuery(null, queryError));
 
             try {
                 await batchDAO.findByStatus(longSubmissionID, 'status');
@@ -363,4 +405,4 @@ describe('BatchDAO Error Handling', () => {
             }
         });
     });
-}); 
+});

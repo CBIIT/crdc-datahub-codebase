@@ -280,8 +280,14 @@ describe('BatchService', () => {
 
             const result = await batchService.listBatches(params);
 
-            expect(mockBatchDAO.findMany).toHaveBeenCalled();
-            expect(mockBatchDAO.count).toHaveBeenCalled();
+            expect(mockBatchDAO.findMany).toHaveBeenCalledWith(
+                { submissionID: 'sub1' },
+                expect.objectContaining({
+                    sort: { createdAt: 'desc' },
+                    take: 10,
+                })
+            );
+            expect(mockBatchDAO.count).toHaveBeenCalledWith({ submissionID: 'sub1' });
             expect(result.batches).toEqual(mockBatches);
             expect(result.total).toBe(2);
         });
