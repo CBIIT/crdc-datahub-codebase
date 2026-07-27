@@ -153,6 +153,24 @@ describe('MongooseGenericDAO', () => {
         expect(query.skip.mock.invocationCallOrder[0]).toBeLessThan(query.limit.mock.invocationCallOrder[0]);
     });
 
+    it('should return empty array for findMany when take is 0 without querying', async () => {
+        const res = await dao.findMany({ foo: 1 }, { take: 0 });
+        expect(res).toEqual([]);
+        expect(model.find).not.toHaveBeenCalled();
+    });
+
+    it('should return empty array for findMany when limit is 0 without querying', async () => {
+        const res = await dao.findMany({ foo: 1 }, { limit: 0 });
+        expect(res).toEqual([]);
+        expect(model.find).not.toHaveBeenCalled();
+    });
+
+    it('should return null for findFirst when take is 0 without querying', async () => {
+        const res = await dao.findFirst({ foo: 1 }, { take: 0 });
+        expect(res).toBeNull();
+        expect(model.findOne).not.toHaveBeenCalled();
+    });
+
     it('should update a record', async () => {
         const query = createLeanQuery({ _id: '1', foo: 'baz' });
         model.findByIdAndUpdate.mockReturnValue(query);

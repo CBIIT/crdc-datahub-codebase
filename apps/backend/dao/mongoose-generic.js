@@ -36,6 +36,14 @@ class MongooseGenericDAO {
     }
 
     /**
+     * @param {object} [option]
+     * @returns {number|undefined} Resolved limit from limit or take; undefined means no limit
+     */
+    _resolveLimit(option = {}) {
+        return option.limit ?? option.take;
+    }
+
+    /**
      * @param {import('mongoose').Query} query
      * @param {object} [option]
      * @returns {import('mongoose').Query}
@@ -47,8 +55,10 @@ class MongooseGenericDAO {
         if (option.skip !== undefined) {
             query = query.skip(option.skip);
         }
-        const limit = option.limit ?? option.take;
-        if (limit !== undefined) {
+        const limit = this._resolveLimit(option);
+        // Mongoose/MongoDB limit(0) means "no limit"; skip applying zero so callers
+        // that pass Prisma-style take: 0 do not get an unbounded query here.
+        if (limit !== undefined && limit !== 0) {
             query = query.limit(limit);
         }
         return query;
@@ -153,12 +163,17 @@ class MongooseGenericDAO {
      * Find the first document matching the filter.
      * Requires an explicit filter object; null/undefined are rejected.
      * Pass `{}` to match any document intentionally.
+     * limit/take of 0 returns null without querying (Prisma empty-page semantics;
+     * Mongoose limit(0) would otherwise mean unlimited).
      * @param {object} where Mongo filter
      * @param {object} [option] Query options (sort, skip, limit/take)
      * @returns {Promise<object|null>}
      */
     async findFirst(where, option = {}) {
         const filter = this._requireFilter(where, 'findFirst');
+        if (this._resolveLimit(option) === 0) {
+            return null;
+        }
         try {
             let query = this.model.findOne(filter);
             query = this._applyQueryOptions(query, option);
@@ -179,12 +194,17 @@ class MongooseGenericDAO {
      * Find multiple documents matching the filter.
      * Requires an explicit filter object; null/undefined are rejected.
      * Pass `{}` to match all documents intentionally.
+     * limit/take of 0 returns [] without querying (Prisma empty-page semantics;
+     * Mongoose limit(0) would otherwise mean unlimited).
      * @param {object} filter Mongo filter
      * @param {object} [option] Query options (sort, skip, limit/take)
      * @returns {Promise<object[]>}
      */
     async findMany(filter, option = {}) {
         const where = this._requireFilter(filter, 'findMany');
+        if (this._resolveLimit(option) === 0) {
+            return [];
+        }
         try {
             let query = this.model.find(where);
             query = this._applyQueryOptions(query, option);
