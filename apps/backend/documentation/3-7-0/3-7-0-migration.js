@@ -6,7 +6,6 @@
  *
  * Migration files:
  * - sync-pbac-defaults-migration.js: Sync PBAC defaults from JSON (recurring step)
- * - backfill-reopen-user-permissions.js: Backfill submission_request:reopen:* and submission_request:reopened on existing users
  * - backfill-application-sequence-number.js: Backfill Application.sequenceNumber where missing
  */
 

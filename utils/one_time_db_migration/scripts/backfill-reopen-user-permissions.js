@@ -1,11 +1,12 @@
 /**
- * 3.7.0 one-time migration: backfill submission_request:reopen:* permissions and
+ * One-time migration: backfill submission_request:reopen:* permissions and
  * submission_request:reopened notification on existing active users.
  *
  * Idempotent via $addToSet. Run once after sync-pbac-defaults (manual or first deploy).
  * Not intended for recurring startup sync — admins may remove permissions/notifications per user afterward.
  *
- * Usage: Called by the 3.7.0 migration orchestrator, or run via npm run migrate:3.7.0
+ * Usage: npm run backfill-reopen-user-permissions -- [--output <path>]
+ *         (from utils/one_time_db_migration)
  */
 
 import path from 'node:path';
@@ -124,8 +125,9 @@ export async function backfillReopenUserNotification(db) {
 }
 
 /**
- * Orchestrator entry point for this migration step.
+ * Runs reopen permission and notification backfills.
  * @param {import('mongodb').Db} db
+ * @returns {Promise<{success: boolean, permissions?: object, notifications?: object, error?: string}>}
  */
 export async function executeBackfillReopenUserPermissions(db) {
     console.log('🔄 Executing reopen user permission and notification backfill...');
