@@ -10,6 +10,7 @@
   "scripts": {
     "backfill-release-studyids": "node scripts/backfill-release-studyids.js",
     "backfill-submission-type-admin-3687": "node scripts/backfill-submission-type-admin-3687.js",
+    "backfill-reopen-user-permissions": "node scripts/backfill-reopen-user-permissions.js",
     "sync-study-fields-applications-3808": "node scripts/sync-study-fields-applications-3808.js",
     "test": "node --test test/*.test.js"
   },
