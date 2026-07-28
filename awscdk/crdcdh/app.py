@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-import os, sys
 import logging
 import aws_cdk as cdk
 
 from configparser import ConfigParser
-from aws_cdk import aws_iam as iam
 
 #from getArgs import getArgs
 # from aws_cdk import core as cdk
 # from aws_cdk import core
 
-from app.stack import Stack
-from app.aspects import MyAspect
+from app import build_stack
 
 if __name__=="__main__":
   # tierName = getArgs.set_tier(sys.argv[1:])
@@ -56,38 +53,8 @@ if __name__=="__main__":
       
     )
   
-  app = cdk.App(
-    context={
-        "@aws-cdk/core:stackRelativeExports": "true",
-    }
-  )
+  app = cdk.App()
 
-  stack = Stack(
-    app,
-    stack_name="{}-{}".format(config['main']['resource_prefix'], config['main']['tier']),
-    synthesizer=synthesizer,
-    env=cdk.Environment(
-      #account=os.environ["AWS_DEFAULT_ACCOUNT"],
-      #region=os.environ["AWS_DEFAULT_REGION"],
-      account=config['main']['account_id'],
-      region=config['main']['region']
-    ),
-  )
-
-  # Rename all roles to add role prefix
-  cdk.Aspects.of(stack).add(MyAspect())
-
-  # set permission boundary on all roles
-  if config.has_option('iam', 'permission_boundary'):
-    boundary = iam.ManagedPolicy.from_managed_policy_arn(stack, "Boundary", config['iam']['permission_boundary'])
-    iam.PermissionsBoundary.of(stack).apply(boundary)
-
-  #tags = dict(s.split(':') for s in config['main']['tags'].split(","))
-  config_tags = dict(s.split(':') for s in config['main']['tags'].split(","))
-  env_tags = {'Environment': config['main']['tier']}
-  tags = config_tags | env_tags
-
-  for tag,value in tags.items():
-    cdk.Tags.of(stack).add(tag, value)
+  stack = build_stack(app, config, synthesizer=synthesizer)
 
   app.synth()
