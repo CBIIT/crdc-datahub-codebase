@@ -142,11 +142,22 @@ class BatchService {
         return await this.findByID(aBatch._id);
     }
 
+    /**
+     * Lists batches for a submission with pagination.
+     * @param {object} params
+     * @param {string} params.submissionID
+     * @param {number} [params.first]
+     * @param {number} [params.offset]
+     * @param {string} [params.orderBy]
+     * @param {string} [params.sortDirection]
+     * @returns {Promise<{batches: object[], total: number}>}
+     */
     async listBatches(params) {
         const where = {submissionID: params.submissionID};
         const pagination = new PrismaPagination(params?.first, params.offset, params.orderBy, params.sortDirection);
+        const { orderBy, skip, take } = pagination.getPagination();
         const [batches, count] = await Promise.all([
-            this.batchDAO.findMany(where, pagination.getPagination()),
+            this.batchDAO.findMany(where, { sort: orderBy, skip, take }),
             this.batchDAO.count(where)
         ]);
 
