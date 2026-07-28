@@ -3,6 +3,7 @@ import jsii
 from constructs import Construct, IConstruct
 from configparser import ConfigParser
 from aws_cdk import aws_iam as iam
+from aws_cdk import aws_logs as logs
 #import random
 import string
 
@@ -21,3 +22,9 @@ class MyAspect:
                 roleName = config['iam']['role_prefix'] + '-' + config['main']['tier'] + '-' + resolvedLogicalId
                 roleName = roleName[:64]  # Ensure the role name is within the 64 character limit
                 node.role_name = roleName
+
+        # Apply the security defaults to every log group, including log groups
+        # created implicitly by ECS aws_logs drivers.
+        if isinstance(node, logs.CfnLogGroup):
+            node.retention_in_days = 30
+            node.apply_removal_policy(cdk.RemovalPolicy.DESTROY)
