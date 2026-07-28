@@ -357,6 +357,7 @@ class Stack(Stack):
             "ecs",
             cluster_name = f"{config['main']['resource_prefix']}-{config['main']['tier']}-ecs",
             vpc=self.VPC,
+            container_insights_v2=ecs.ContainerInsights.ENABLED,
             execute_command_configuration=ecs.ExecuteCommandConfiguration(
                 kms_key=self.kmsKey
             ),

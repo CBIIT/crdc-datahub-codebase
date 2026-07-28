@@ -5,6 +5,8 @@ configparser
 boto3
 jsii
 
+cdk-nag
+pytest
 pyyaml
 
 cdk-ec2-key-pair==4.0.1
