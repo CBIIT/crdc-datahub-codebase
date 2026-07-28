@@ -22,7 +22,8 @@ describe('ProgramDAO', () => {
     beforeEach(() => {
         mockOrganizationCollection = {
             findOne: jest.fn(),
-            aggregate: jest.fn()
+            aggregate: jest.fn(),
+            countDoc: jest.fn(),
         };
 
         programDAO = new ProgramDAO(mockOrganizationCollection);
@@ -34,6 +35,8 @@ describe('ProgramDAO', () => {
         mockPrisma = require('../../prisma');
         
         jest.clearAllMocks();
+        mockOrganizationCollection.countDoc.mockResolvedValue(0);
+        mockOrganizationCollection.aggregate.mockResolvedValue([]);
     });
 
     describe('getOrganizationByName', () => {
@@ -476,13 +479,37 @@ describe('ProgramDAO', () => {
     });
 
     describe('listPrograms', () => {
+        it('should call count and aggregate without $facet', async () => {
+            const statusCondition = { status: 'Active' };
+            const mockResults = [{ _id: 'org1', name: 'Program A', studies: [] }];
+            mockOrganizationCollection.countDoc.mockResolvedValue(1);
+            mockOrganizationCollection.aggregate.mockResolvedValue(mockResults);
+
+            const result = await programDAO.listPrograms(10, 0, 'updateAt', 'ASC', statusCondition);
+
+            expect(mockOrganizationCollection.countDoc).toHaveBeenCalledTimes(1);
+            expect(mockOrganizationCollection.countDoc).toHaveBeenCalledWith(statusCondition);
+            expect(mockOrganizationCollection.aggregate).toHaveBeenCalledTimes(1);
+            const pipeline = mockOrganizationCollection.aggregate.mock.calls[0][0];
+            expect(pipeline.some((stage) => stage.$facet)).toBe(false);
+            expect(result).toEqual({ total: 1, results: mockResults });
+        });
+
         it('should $match using the provided statusCondition', async () => {
-            mockOrganizationCollection.aggregate.mockResolvedValue([{ total: 0, results: [] }]);
             const statusCondition = { status: 'Active' };
             await programDAO.listPrograms(10, 0, 'updateAt', 'ASC', statusCondition);
             const pipeline = mockOrganizationCollection.aggregate.mock.calls[0][0];
             const matchStage = pipeline.find((stage) => stage.$match);
             expect(matchStage.$match).toEqual(statusCondition);
+        });
+
+        it('should return empty results with zero total', async () => {
+            mockOrganizationCollection.countDoc.mockResolvedValue(0);
+            mockOrganizationCollection.aggregate.mockResolvedValue([]);
+
+            const result = await programDAO.listPrograms(10, 0, 'updateAt', 'ASC', { status: 'Active' });
+
+            expect(result).toEqual({ total: 0, results: [] });
         });
     });
 });

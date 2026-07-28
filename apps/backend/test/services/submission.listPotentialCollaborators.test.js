@@ -31,7 +31,7 @@ describe('Submission.listPotentialCollaborators', () => {
         mockOrganizationService, mockNotificationService, mockDataRecordService, 
         mockFetchDataModelInfo, mockAwsService, mockMetadataQueueName, mockS3Service, 
         mockEmailParams, mockDataCommonsList, mockHiddenDataCommonsList, 
-        mockValidationCollection, mockSqsLoaderQueue, mockQcResultsService, 
+        mockSqsLoaderQueue, mockQcResultsService, 
         mockUploaderCLIConfigs, mockSubmissionBucketName, mockConfigurationService, 
         mockUploadingMonitor, mockDataCommonsBucketMap, mockAuthorizationService, 
         mockDataModelService;
@@ -148,7 +148,6 @@ describe('Submission.listPotentialCollaborators', () => {
         mockEmailParams = {};
         mockDataCommonsList = ['commons1', 'commons2'];
         mockHiddenDataCommonsList = [];
-        mockValidationCollection = {};
         mockSqsLoaderQueue = 'test-sqs-queue';
         mockQcResultsService = {};
         mockUploaderCLIConfigs = {};
@@ -182,7 +181,6 @@ describe('Submission.listPotentialCollaborators', () => {
             mockEmailParams,
             mockDataCommonsList,
             mockHiddenDataCommonsList,
-            mockValidationCollection,
             mockSqsLoaderQueue,
             mockQcResultsService,
             mockUploaderCLIConfigs,

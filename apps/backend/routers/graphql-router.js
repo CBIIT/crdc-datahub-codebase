@@ -12,7 +12,6 @@ const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLE
     APPROVED_STUDIES_COLLECTION,
     DATA_RECORDS_COLLECTION,
     INSTITUTION_COLLECTION,
-    VALIDATION_COLLECTION,
     CONFIGURATION_COLLECTION,
     CDE_COLLECTION,
     DATA_RECORDS_ARCHIVE_COLLECTION,
@@ -113,8 +112,6 @@ dbConnector.connect().then(async () => {
     const dataRecordService = new DataRecordService(dataRecordCollection, dataRecordArchiveCollection, releaseCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
     qcResultsService.setDataRecordService(dataRecordService);
 
-    const validationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, VALIDATION_COLLECTION);
-
     const emailParams = {url: config.emails_url, officialEmail: config.official_email, inactiveDays: config.inactive_application_days, remindDay: config.remind_application_days,
         submissionSystemPortal: config.submission_system_portal, submissionHelpdesk: config.submission_helpdesk, remindSubmissionDay: config.inactiveSubmissionNotifyDays,
         techSupportEmail: config.techSupportEmail, conditionalSubmissionContact: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl,
@@ -128,7 +125,7 @@ dbConnector.connect().then(async () => {
     const dataModelService = new DataModelService(fetchDataModelInfo, config.model_url);
     const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
         organizationService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
-        s3Service, emailParams, config.dataCommonsList, config.hiddenModels, validationCollection, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
+        s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
         config.submission_bucket, configurationService, uploadingMonitor, config.dataCommonsBucketMap, authorizationService, dataModelService, dataRecordCollection);
     const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, organizationService, institutionService, configurationService, authorizationService);
 

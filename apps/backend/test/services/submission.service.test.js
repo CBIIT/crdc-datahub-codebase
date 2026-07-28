@@ -221,7 +221,6 @@ describe('Submission Service - getSubmission', () => {
             {}, // emailParams
             ['test-commons'], // dataCommonsList
             ['hidden-commons'], // hiddenDataCommonsList
-            {}, // validationCollection
             'sqs-loader-queue',
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -2054,7 +2053,6 @@ describe('Submission Service - listSubmissions', () => {
             {}, // emailParams
             dataCommonsList,
             hiddenDataCommonsList,
-            {}, // validationCollection
             'sqs-loader-queue', // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -2112,7 +2110,7 @@ describe('Submission Service - listSubmissions', () => {
         const serviceNoHidden = new Submission(
             {}, {}, {}, {}, {}, {}, {}, jest.fn(), {}, 'queue', {}, {},
             dataCommonsListNoHidden, emptyHiddenList,
-            {}, 'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
+            'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
         );
         serviceNoHidden.submissionDAO = mockSubmissionDAO;
         serviceNoHidden._getUserScope = jest.fn().mockResolvedValue(
@@ -2135,7 +2133,7 @@ describe('Submission Service - listSubmissions', () => {
         const serviceAllHidden = new Submission(
             {}, {}, {}, {}, {}, {}, {}, jest.fn(), {}, 'queue', {}, {},
             allDataCommons, allHidden,
-            {}, 'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
+            'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
         );
         serviceAllHidden.submissionDAO = mockSubmissionDAO;
         serviceAllHidden._getUserScope = jest.fn().mockResolvedValue(
