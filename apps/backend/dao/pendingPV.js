@@ -1,11 +1,15 @@
-const prisma = require("../prisma");
 const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-utility");
-const GenericDAO = require("./generic");
-const {MODEL_NAME} = require("../constants/db-constants");
-class PendingPVDAO extends GenericDAO {
+const MongooseGenericDAO = require("./mongoose-generic");
+const PendingPVModel = require("../mongoose/models/pending-pv");
+
+/**
+ * Mongoose-backed DAO for pending PV requests.
+ */
+class PendingPVDAO extends MongooseGenericDAO {
     constructor() {
-        super(MODEL_NAME.PENDING_PVS);
+        super(PendingPVModel);
     }
+
     /**
      * Finds all pending PVs associated with a given submission ID.
      *
@@ -13,21 +17,26 @@ class PendingPVDAO extends GenericDAO {
      * @returns {Promise<Array<Object>>} - A promise that resolves to an array of pending PV records.
      */
     async findBySubmissionID(submissionID) {
-        const pendingPVs = await prisma.pendingPVs.findMany({where: {submissionID}});
-        return pendingPVs.map(pv => ({...pv, _id: pv.id}))
+        return await this.findMany({ submissionID });
     }
 
+    /**
+     * Inserts a pending PV request for a submission.
+     * Soft-fails (logs and returns undefined) so callers can surface a failed-insert error.
+     *
+     * @param {string} submissionID
+     * @param {string} offendingProperty
+     * @param {string} value
+     * @returns {Promise<object|undefined>}
+     */
     async insertOne(submissionID, offendingProperty, value) {
         try {
             const newPendingPV = PendingPVData.createPendingPV(submissionID, offendingProperty, value);
-            return await prisma.pendingPVs.create({
-                data: newPendingPV,
-            });
+            return await this.create(newPendingPV);
         } catch (error) {
             console.error(`Error inserting pending PV: ${submissionID}`, error);
         }
     }
-
 }
 
 class PendingPVData {
@@ -37,9 +46,10 @@ class PendingPVData {
         this.value = value;
         this.createdAt = this.updatedAt = getCurrentTime();
     }
+
     static createPendingPV(submissionID, offendingProperty, value) {
         return new PendingPVData(submissionID, offendingProperty, value);
     }
 }
 
-module.exports = PendingPVDAO
+module.exports = PendingPVDAO;
