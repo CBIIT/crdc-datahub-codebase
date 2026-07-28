@@ -24,6 +24,7 @@ async function getNIHToken(code, redirectURi) {
         })
     });
     const jsonResponse = await response.json();
+    console.log('66c3d9f3-8f1c-4deb-85d8-d2128fb23444:jsonResponse:', jsonResponse);
     validateResponseOrThrow(response);
     return jsonResponse.access_token;
 }
