@@ -1,11 +1,13 @@
-const prisma = require("../prisma");
-const {OMB_INFO} = require('../constants/db-constants');
+const { OMB_INFO } = require('../constants/db-constants');
+const ConfigurationDAO = require('./configuration');
+
+/**
+ * Load the OMB_INFO configuration document.
+ * @returns {Promise<object|null>}
+ */
 async function getOMBConfiguration() {
-    const ombConfig = await prisma.configuration.findFirst({where: {type: OMB_INFO}})
-    if (!ombConfig) {
-        return null;
-    }
-    return {...ombConfig, _id: ombConfig.id}
+    const configurationDAO = new ConfigurationDAO();
+    return configurationDAO.findByType(OMB_INFO);
 }
 
-module.exports = getOMBConfiguration
+module.exports = getOMBConfiguration;

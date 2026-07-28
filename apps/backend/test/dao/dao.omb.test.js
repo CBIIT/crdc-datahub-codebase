@@ -1,29 +1,38 @@
-const getOMBConfiguration = require('../../dao/omb');
-const prisma = require('../../prisma');
+jest.mock('../../dao/configuration');
 
-jest.mock('../../prisma', () => ({
-    configuration: {
-        findFirst: jest.fn(),
-    },
-}));
+const getOMBConfiguration = require('../../dao/omb');
+const ConfigurationDAO = require('../../dao/configuration');
 
 describe('getOMBConfiguration', () => {
+    let findByType;
+
+    beforeEach(() => {
+        findByType = jest.fn();
+        ConfigurationDAO.mockImplementation(() => ({
+            findByType,
+        }));
+    });
+
     afterEach(() => {
         jest.clearAllMocks();
     });
 
-    it('should return OMB configuration with _id field when found', async () => {
-        const mockConfig = { id: 'omb123', type: 'OMB_INFO', OMBNumber: '123' };
-        prisma.configuration.findFirst.mockResolvedValue(mockConfig);
+    it('should return OMB configuration when found', async () => {
+        const mockConfig = { id: 'omb123', _id: 'omb123', type: 'OMB_INFO', OMBNumber: '123' };
+        findByType.mockResolvedValue(mockConfig);
+
         const result = await getOMBConfiguration();
-        expect(prisma.configuration.findFirst).toHaveBeenCalledWith({ where: { type: 'OMB_INFO' } });
-        expect(result).toEqual({ ...mockConfig, _id: mockConfig.id });
+
+        expect(findByType).toHaveBeenCalledWith('OMB_INFO');
+        expect(result).toEqual(mockConfig);
     });
 
     it('should return null when OMB configuration not found', async () => {
-        prisma.configuration.findFirst.mockResolvedValue(null);
+        findByType.mockResolvedValue(null);
+
         const result = await getOMBConfiguration();
-        expect(prisma.configuration.findFirst).toHaveBeenCalledWith({ where: { type: 'OMB_INFO' } });
+
+        expect(findByType).toHaveBeenCalledWith('OMB_INFO');
         expect(result).toBeNull();
     });
 });
