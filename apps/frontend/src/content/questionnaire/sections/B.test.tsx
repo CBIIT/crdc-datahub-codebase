@@ -638,6 +638,90 @@ describe("Basic Functionality", () => {
     expect(getByDisplayValue("CSN")).toBeInTheDocument();
   });
 
+  it("locks configured program/study identity fields when sequenceNumber is >= 2", () => {
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        sequenceNumber: 2,
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "program-1",
+            name: "Test Program 1",
+            abbreviation: "TP1",
+            description: "Test Program 1 Description",
+          },
+          study: studyFactory.build({
+            name: "Locked Study",
+            abbreviation: "LST",
+          }),
+        }),
+      }),
+    };
+
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId } = render(
+      <TestParent formCtxState={formCtxState} orgCtxState={orgCtxState} />
+    );
+
+    const programTitleInput = within(getByTestId("section-b-program-title")).getByRole("textbox");
+    const programAbbreviationInput = within(
+      getByTestId("section-b-program-abbreviation")
+    ).getByRole("textbox");
+    const studyTitleInput = within(getByTestId("section-b-study-title")).getByRole("textbox");
+    const studyAbbreviationInput = within(
+      getByTestId("section-b-study-abbreviation-or-acronym")
+    ).getByRole("textbox");
+
+    expect(programTitleInput).toHaveAttribute("readonly");
+    expect(programAbbreviationInput).toHaveAttribute("readonly");
+    expect(studyTitleInput).toHaveAttribute("readonly");
+    expect(studyAbbreviationInput).toHaveAttribute("readonly");
+  });
+
+  it("does not lock program/study identity fields when sequenceNumber is 1", () => {
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        sequenceNumber: 1,
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "Other",
+            name: "Editable Program",
+            abbreviation: "EDP",
+            description: "Editable Program Description",
+          },
+          study: studyFactory.build({
+            name: "Editable Study",
+            abbreviation: "EDS",
+          }),
+        }),
+      }),
+    };
+
+    const { getByTestId } = render(<TestParent formCtxState={formCtxState} />);
+
+    const programTitleInput = within(getByTestId("section-b-program-title")).getByRole("textbox");
+    const programAbbreviationInput = within(
+      getByTestId("section-b-program-abbreviation")
+    ).getByRole("textbox");
+    const studyTitleInput = within(getByTestId("section-b-study-title")).getByRole("textbox");
+    const studyAbbreviationInput = within(
+      getByTestId("section-b-study-abbreviation-or-acronym")
+    ).getByRole("textbox");
+
+    expect(programTitleInput).not.toHaveAttribute("readonly");
+    expect(programAbbreviationInput).not.toHaveAttribute("readonly");
+    expect(studyTitleInput).not.toHaveAttribute("readonly");
+    expect(studyAbbreviationInput).not.toHaveAttribute("readonly");
+  });
+
   it("should display program name without abbreviation when abbreviation is empty", async () => {
     const programsWithoutAbbreviation = [
       organizationFactory.build({

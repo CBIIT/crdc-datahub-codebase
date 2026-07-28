@@ -74,7 +74,7 @@ class Submission {
     _NOT_ASSIGNED = "Not yet assigned";
     constructor(logCollection, submissionCollection, batchService, userService, organizationService, notificationService,
                 dataRecordService, fetchDataModelInfo, awsService, metadataQueueName, s3Service, emailParams, dataCommonsList,
-                hiddenDataCommonsList, validationCollection, sqsLoaderQueue, qcResultsService, uploaderCLIConfigs, 
+                hiddenDataCommonsList, sqsLoaderQueue, qcResultsService, uploaderCLIConfigs, 
                 submissionBucketName, configurationService, uploadingMonitor, dataCommonsBucketMap, authorizationService, dataModelService, dataRecordsCollection) {
         this.logCollection = logCollection;
         this.submissionCollection = submissionCollection;
@@ -91,7 +91,6 @@ class Submission {
         this.emailParams = emailParams;
         this.allowedDataCommons = new Set(dataCommonsList);
         this.hiddenDataCommons = new Set(hiddenDataCommonsList);
-        this.validationCollection = validationCollection;
         this.sqsLoaderQueue = sqsLoaderQueue;
         this.qcResultsService = qcResultsService;
         this.uploaderCLIConfigs = uploaderCLIConfigs;

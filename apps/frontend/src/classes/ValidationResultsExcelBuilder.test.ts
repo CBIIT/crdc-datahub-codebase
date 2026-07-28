@@ -44,7 +44,7 @@ describe("ValidationResultsExcelBuilder", () => {
     ]);
   });
 
-  it("should create Updated sheets and highlight changed *_new cells", async () => {
+  it("should create Updated sheets and highlight changed *(new) cells", async () => {
     const results = qcResultFactory.build(1);
 
     const builder = new ValidationResultsExcelBuilder(results, [
@@ -66,11 +66,11 @@ describe("ValidationResultsExcelBuilder", () => {
 
     const header = updatedSheet.getRow(1).values as string[];
     expect(header).toContain("Submitted ID");
-    expect(header).toContain("program_name_existing");
-    expect(header).toContain("program_name_new");
+    expect(header).toContain("program_name (existing)");
+    expect(header).toContain("program_name (new)");
 
-    const changedColumnIndex = header.findIndex((value) => value === "program_name_new");
-    const unchangedColumnIndex = header.findIndex((value) => value === "pi_email_new");
+    const changedColumnIndex = header.findIndex((value) => value === "program_name (new)");
+    const unchangedColumnIndex = header.findIndex((value) => value === "pi_email (new)");
 
     const changedCell = updatedSheet.getRow(2).getCell(changedColumnIndex);
     const unchangedCell = updatedSheet.getRow(2).getCell(unchangedColumnIndex);

@@ -29,7 +29,7 @@ describe('Submission.editSubmissionCollaborators', () => {
         mockOrganizationService, mockNotificationService, mockDataRecordService, 
         mockFetchDataModelInfo, mockAwsService, mockMetadataQueueName, mockS3Service, 
         mockEmailParams, mockDataCommonsList, mockHiddenDataCommonsList, 
-        mockValidationCollection, mockSqsLoaderQueue, mockQcResultsService, 
+        mockSqsLoaderQueue, mockQcResultsService, 
         mockUploaderCLIConfigs, mockSubmissionBucketName, mockConfigurationService, 
         mockUploadingMonitor, mockDataCommonsBucketMap, mockAuthorizationService, 
         mockDataModelService, mockUserDAO;
@@ -96,7 +96,6 @@ describe('Submission.editSubmissionCollaborators', () => {
         mockEmailParams = {};
         mockDataCommonsList = ['commons1', 'commons2'];
         mockHiddenDataCommonsList = [];
-        mockValidationCollection = {};
         mockSqsLoaderQueue = {};
         mockQcResultsService = {};
         mockUploaderCLIConfigs = {};
@@ -126,7 +125,6 @@ describe('Submission.editSubmissionCollaborators', () => {
             mockEmailParams,
             mockDataCommonsList,
             mockHiddenDataCommonsList,
-            mockValidationCollection,
             mockSqsLoaderQueue,
             mockQcResultsService,
             mockUploaderCLIConfigs,

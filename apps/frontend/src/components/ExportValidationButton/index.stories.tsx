@@ -13,6 +13,9 @@ import {
   AGGREGATED_SUBMISSION_QC_RESULTS,
   AggregatedSubmissionQCResultsInput,
   AggregatedSubmissionQCResultsResp,
+  RETRIEVE_SUBMISSION_QC_COMPARISONS,
+  RetrieveSubmissionQCComparisonsInput,
+  RetrieveSubmissionQCComparisonsResp,
   SUBMISSION_QC_RESULTS,
   SubmissionQCResultsInput,
   SubmissionQCResultsResp,
@@ -59,6 +62,73 @@ const expandedResultsMock: MockedResponse<SubmissionQCResultsResp, SubmissionQCR
               }),
             ],
           }),
+        ],
+      },
+    },
+  },
+  maxUsageCount: Infinity,
+};
+
+const mockQCComparisons: MockedResponse<
+  RetrieveSubmissionQCComparisonsResp,
+  RetrieveSubmissionQCComparisonsInput
+> = {
+  request: {
+    query: RETRIEVE_SUBMISSION_QC_COMPARISONS,
+  },
+  variableMatcher: () => true,
+  result: {
+    data: {
+      retrieveSubmissionQCComparisons: {
+        total: 3,
+        skipped: 0,
+        comparisons: [
+          {
+            submittedID: "participant_01",
+            nodeType: "participant",
+            existingProps: JSON.stringify({
+              firstName: "John",
+              lastName: "Doe",
+              age: 30,
+            }),
+            incomingProps: JSON.stringify({
+              firstName: "John",
+              lastName: "Doe",
+              age: 31,
+            }),
+          },
+          {
+            submittedID: "sample_01",
+            nodeType: "sample",
+            existingProps: JSON.stringify({
+              sample_type: "Blood",
+              volume: 5,
+              collection_location: "Clinic A",
+              participant_id: "participant_01",
+            }),
+            incomingProps: JSON.stringify({
+              sample_type: "Blood",
+              volume: "<delete>",
+              collection_location: "<delete>",
+              participant_id: "participant_01",
+            }),
+          },
+          {
+            submittedID: "study_phs00001",
+            nodeType: "study",
+            existingProps: JSON.stringify({
+              title: "Study Title",
+              description: "Study Description",
+              lead_investigator: "Dr. Smith",
+              participant_count: 100,
+            }),
+            incomingProps: JSON.stringify({
+              title: "",
+              description: "",
+              lead_investigator: "",
+              participant_count: "",
+            }),
+          },
         ],
       },
     },
@@ -125,7 +195,7 @@ type Story = StoryObj<typeof meta>;
 export const ExpandedResults: Story = {
   parameters: {
     apolloClient: {
-      mocks: [expandedResultsMock],
+      mocks: [expandedResultsMock, mockQCComparisons],
     },
   },
   play: async ({ canvasElement }) => {

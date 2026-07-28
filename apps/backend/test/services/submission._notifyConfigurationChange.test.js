@@ -34,7 +34,6 @@ describe('Submission._notifyConfigurationChange', () => {
             { url: 'https://test.com' }, // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            null, // validationCollection
             null, // sqsLoaderQueue
             null, // qcResultsService
             null, // uploaderCLIConfigs

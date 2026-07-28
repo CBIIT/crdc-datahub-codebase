@@ -30,7 +30,7 @@ import {
   GetApplicationFormVersionResp,
   GET_APPLICATION_FORM_VERSION,
 } from "@/graphql";
-import { Logger } from "@/utils";
+import { Logger, preserveLockedFields } from "@/utils";
 
 import { useAuthContext } from "./AuthContext";
 import { useOrganizationListContext, Status as ProgramStatus } from "./OrganizationListContext";
@@ -190,9 +190,14 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     data: QuestionnaireData,
     opts?: { skipSave?: boolean; runMigrations?: boolean }
   ): Promise<SetDataReturnType> => {
-    let processedData: QuestionnaireData = data;
+    let processedData: QuestionnaireData = preserveLockedFields({
+      application: state?.data,
+      incomingData: data,
+      currentData: state?.data?.questionnaireData,
+    });
+
     if (opts?.runMigrations) {
-      const migrator = new QuestionnaireDataMigrator(data, {
+      const migrator = new QuestionnaireDataMigrator(processedData, {
         getInstitutions,
         newInstitutions: state.data?.newInstitutions || [],
         getLastApplication: lastApp,

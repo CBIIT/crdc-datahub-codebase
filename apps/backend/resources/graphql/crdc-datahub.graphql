@@ -699,21 +699,6 @@ type Dashboard {
     expiresIn: Int
 }
 
-input CDEInput {
-    CDECode: String!,
-    CDEVersion: String
-}
-
-type CDE {
-    _id: ID,
-    CDEFullName: String,
-    CDECode: String,
-    CDEVersion: String,
-    PermissibleValues: [String],
-    createdAt: Date,
-    updatedAt: Date
-}
-
 type Collaborator {
     collaboratorID: ID,
     collaboratorName: String,
@@ -786,6 +771,19 @@ type Released_Node {
     props: String, #a stringified JSON string contains all properties of the node, including parent mapping properties like program.prorgam_acronym
     createdAt: Date,
     updatedAt: Date
+}
+
+type SubmissionQCComparisonRow {
+    submittedID: String
+    nodeType: String
+    existingProps: String
+    incomingProps: String
+}
+
+type SubmissionQCComparisons {
+    total: Int
+    skipped: Int
+    comparisons: [SubmissionQCComparisonRow]
 }
 
 type SubmissionAttributesResult {
@@ -1031,10 +1029,6 @@ type Query {
 
     getInstitution(_id: ID!): Institution
 
-    retrieveCDEs  (
-        CDEInfo: [CDEInput!]!
-    ) : [CDE] @public
-
     listPotentialCollaborators(submissionID: String!): [User]
     
     collaborators: [Collaborator]
@@ -1044,6 +1038,15 @@ type Query {
     retrieveFileNodeConfig(submissionID: String!) : DataFileConfig
 
     retrieveReleasedDataByID(submissionID: String!, nodeType: String!, nodeID: String!, status: String = "Released") : [Released_Node]
+
+    retrieveSubmissionQCComparisons(
+        submissionID: ID!,
+        nodeTypes: [String],
+        batchIDs: [ID],
+        severities: String,
+        issueCode: String,
+        status: String = "Released"
+    ): SubmissionQCComparisons
 
     downloadMetadataFile(batchID: String!, fileName: String):String # download metadata file from S3 with presigned URL
 

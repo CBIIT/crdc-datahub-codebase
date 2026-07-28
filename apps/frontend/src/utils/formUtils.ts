@@ -1,7 +1,12 @@
-import { cloneDeep, mergeWith, has, unset, some, values, get, isEqual } from "lodash";
+import { cloneDeep, mergeWith, has, unset, some, values, get, isEqual, set } from "lodash";
+import type { Path } from "react-hook-form";
 import type * as z from "zod";
 
 import { ColumnKey, shouldPersistColumnValue } from "@/classes/Excel/PersistentColumns";
+import {
+  LOCKED_QUESTIONNAIRE_FIELDS,
+  LOCKED_QUESTIONNAIRE_FIELDSET,
+} from "@/config/LockedFieldConfig";
 
 import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
 
@@ -356,6 +361,48 @@ export const isValidInRange = (
   }
 
   return true;
+};
+
+/**
+ * Determines if a given field in the questionnaire data is locked based on
+ * whether the application was reopened or not.
+ *
+ * @param application - The application object containing the sequence number.
+ * @param fieldPath - The path to the field in the questionnaire data to check for locking.
+ * @returns A boolean indicating whether the field is locked (true) or not (false).
+ */
+export const isLockedField = (
+  application: Pick<Application, "sequenceNumber"> | null | undefined,
+  fieldPath: Path<QuestionnaireData>
+): boolean => application?.sequenceNumber !== 1 && LOCKED_QUESTIONNAIRE_FIELDSET.has(fieldPath);
+
+/**
+ * A utility function that preserves the values of locked fields in the questionnaire data when an application is reopened.
+ *
+ * @returns The sanitized questionnaire data with locked fields preserved.
+ */
+export const preserveLockedFields = ({
+  application,
+  incomingData,
+  currentData,
+}: {
+  application: Pick<Application, "sequenceNumber"> | null | undefined;
+  incomingData: QuestionnaireData;
+  currentData: QuestionnaireData | null | undefined;
+}): QuestionnaireData => {
+  if (application?.sequenceNumber === 1 || !currentData) {
+    return incomingData;
+  }
+
+  const sanitized = cloneDeep(incomingData);
+  for (const fieldPath of LOCKED_QUESTIONNAIRE_FIELDS) {
+    const currentValue = get(currentData, fieldPath);
+    if (currentValue !== undefined) {
+      set(sanitized, fieldPath, currentValue);
+    }
+  }
+
+  return sanitized;
 };
 
 /**

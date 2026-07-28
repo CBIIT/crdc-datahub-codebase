@@ -76,12 +76,12 @@ describe('Submission.getPendingPVs', () => {
         // Instantiate Submission with mocked submissionCollection
         service = new Submission(
             null,                   // logCollection
-            mockSubmissionCollection, // 👈 mocked collection
-            null, null, organizationService, null,
-            null, null, null, null,
-            null, null, [], [],    // dataCommonsList, hiddenDataCommonsList
-            null, null, null, null,
-            'bucket', null, null, {}, null, // submissionBucketName, configService, monitor, bucketMap, authService, dataModelService
+            mockSubmissionCollection, // submissionCollection
+            null, null, organizationService, null, // batchService, userService, organizationService, notificationService
+            null, null, null, null, // dataRecordService, fetchDataModelInfo, awsService, metadataQueueName
+            null, null, [], [],    // s3Service, emailParams, dataCommonsList, hiddenDataCommonsList
+            null, null, null,      // sqsLoaderQueue, qcResultsService, uploaderCLIConfigs
+            'bucket', null, null, {}, null, // submissionBucketName, configurationService, uploadingMonitor, dataCommonsBucketMap, authorizationService
             {
                 getDataModelByDataCommonAndVersion: jest.fn().mockResolvedValue({
                     terms_: {
@@ -89,8 +89,8 @@ describe('Submission.getPendingPVs', () => {
                         Age: 'Age'
                     }
                 })
-            },
-            mockSubmissionCollection
+            }, // dataModelService
+            mockSubmissionCollection // dataRecordsCollection
         );
 
         // Mock dependencies
@@ -404,7 +404,6 @@ describe('Submission.getSubmission', () => {
             { remindSubmissionDay: 30 }, // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -873,7 +872,6 @@ describe("Submission.createSubmission", () => {
             {}, // emailParams
             ["commonsA"], // dataCommonsList
             [], // hiddenDataCommonsList
-            {}, // validationCollection
             {}, // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -1476,7 +1474,6 @@ describe('Submission._remindPrimaryContactEmail', () => {
             {}, // emailParams
             ["commonsA"], // dataCommonsList
             [], // hiddenDataCommonsList
-            {}, // validationCollection
             {}, // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -1606,7 +1603,6 @@ describe('Submission._sendEmailsDeletedSubmissions', () => {
             {}, // emailParams
             ["commonsA"], // dataCommonsList
             [], // hiddenDataCommonsList
-            {}, // validationCollection
             {}, // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -1752,7 +1748,6 @@ describe('Submission.editSubmissionCollaborators', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2174,7 +2169,6 @@ describe('Submission.submissionAction', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2450,7 +2444,6 @@ describe('Submission.validateSubmission', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            mockValidationDAO, // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2635,7 +2628,6 @@ describe('Submission.updateSubmissionInfo', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2906,7 +2898,6 @@ describe('Submission.editSubmission', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -3056,7 +3047,6 @@ describe('Submission._recordSubmissionValidation and _updateValidationStatus', (
             jest.fn(),
             [],
             [],
-            jest.fn(),
             jest.fn(),
             jest.fn(),
             jest.fn(),

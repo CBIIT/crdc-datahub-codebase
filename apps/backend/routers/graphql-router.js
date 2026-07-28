@@ -5,19 +5,14 @@ const configuration = require("../config");
 const {Application} = require("../services/application");
 const {Submission} = require("../services/submission");
 const {AWSService} = require("../services/aws-request");
-const {CDE} = require("../services/CDEService");
 const {TooltipService} = require("../services/tooltip-service");
 const {MongoQueries} = require("../crdc-datahub-database-drivers/mongo-queries");
 const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLECTION, ORGANIZATION_COLLECTION, LOG_COLLECTION,
     APPROVED_STUDIES_COLLECTION,
     DATA_RECORDS_COLLECTION,
     INSTITUTION_COLLECTION,
-    VALIDATION_COLLECTION,
-    CONFIGURATION_COLLECTION,
-    CDE_COLLECTION,
     DATA_RECORDS_ARCHIVE_COLLECTION,
-    QC_RESULTS_COLLECTION,
-    PENDING_PVS_COLLECTION
+    QC_RESULTS_COLLECTION
 } = require("../crdc-datahub-database-drivers/database-constants");
 const {MongoDBCollection} = require("../crdc-datahub-database-drivers/mongodb-collection");
 const {DatabaseConnector} = require("../crdc-datahub-database-drivers/database-connector");
@@ -109,8 +104,7 @@ dbConnector.connect().then(async () => {
     const dataRecordCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_COLLECTION);
     const dataRecordArchiveCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_ARCHIVE_COLLECTION);
     const dataRecordService = new DataRecordService(dataRecordCollection, dataRecordArchiveCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
-
-    const validationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, VALIDATION_COLLECTION);
+    qcResultsService.setDataRecordService(dataRecordService);
 
     const emailParams = {url: config.emails_url, officialEmail: config.official_email, inactiveDays: config.inactive_application_days, remindDay: config.remind_application_days,
         submissionSystemPortal: config.submission_system_portal, submissionHelpdesk: config.submission_helpdesk, remindSubmissionDay: config.inactiveSubmissionNotifyDays,
@@ -120,12 +114,11 @@ dbConnector.connect().then(async () => {
         
     const uploadingMonitor = UploadingMonitor.getInstance(batchService.batchDAO, configurationService);
 
-    const cdeService = new CDE();
     const tooltipService = new TooltipService();
     const dataModelService = new DataModelService(fetchDataModelInfo, config.model_url);
     const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
         organizationService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
-        s3Service, emailParams, config.dataCommonsList, config.hiddenModels, validationCollection, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
+        s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
         config.submission_bucket, configurationService, uploadingMonitor, config.dataCommonsBucketMap, authorizationService, dataModelService, dataRecordCollection);
     const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, organizationService, institutionService, configurationService, authorizationService);
 
@@ -208,6 +201,7 @@ dbConnector.connect().then(async () => {
         listPotentialCollaborators: submissionService.listPotentialCollaborators.bind(submissionService),
         retrieveFileNodeConfig: submissionService.getDataFileConfigs.bind(submissionService),
         retrieveReleasedDataByID: submissionService.getReleasedNodeByIDs.bind(submissionService),
+        retrieveSubmissionQCComparisons: qcResultsService.retrieveSubmissionQCComparisonsAPI.bind(qcResultsService),
         updateSubmissionInfo: submissionService.updateSubmissionInfo.bind(submissionService),
         editSubmission: submissionService.editSubmission.bind(submissionService),
         listInstitutions: institutionService.listInstitutions.bind(institutionService),
@@ -251,7 +245,6 @@ dbConnector.connect().then(async () => {
         },
         deleteDataRecords: submissionService.deleteDataRecords.bind(submissionService),
         getDashboardURL: dashboardService.getDashboardURL.bind(dashboardService),
-        retrieveCDEs: cdeService.getCDEs.bind(cdeService),
         editSubmissionCollaborators: submissionService.editSubmissionCollaborators.bind(submissionService),
         requestAccess: async (params, context)=> {
             const institutionName = sanitizeHtml(params?.institutionName, {allowedTags: [],allowedAttributes: {}});

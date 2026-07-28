@@ -149,18 +149,6 @@ type newInstitution {
     name String
 }
 
-model CDE {
-  id                String   @id @default(uuid()) @map("_id")
-  CDECode           String
-  CDEFullName       String
-  CDEVersion        String?
-  PermissibleValues String[]
-  createdAt         DateTime @default(now()) @db.Date
-  updatedAt         DateTime @updatedAt @db.Date
-
-  @@index([CDECode, CDEVersion], map: "CDECode_1_CDEVersion_1")
-}
-
 model Application {
   id                  String    @id @default(uuid()) @map("_id")
   version             String

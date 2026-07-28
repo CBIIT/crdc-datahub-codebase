@@ -57,7 +57,7 @@ class ReleaseService {
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.VIEW);
         if (userScope.isNoneScope()) {
             console.warn("Failed permission verification for listing release studies, returning empty list");
-            return {total: 0, studies: []};
+            return {total: 0, studies: [], dataCommonsDisplayNames: []};
         }
 
         const originalDataCommons = (params.dataCommonsDisplayNames || []).map(value => {
@@ -186,7 +186,7 @@ class ReleaseService {
         ]);
 
         return {
-            studies,
+            studies: studies || [],
             total: totalCountResult[0]?.count || 0,
             dataCommonsDisplayNames: (dataCommons || [])
                 .map(getDataCommonsDisplayName)

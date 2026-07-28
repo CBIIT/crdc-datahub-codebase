@@ -24,6 +24,7 @@ import {
   filterForNumbers,
   formatORCIDInput,
   isValidORCID,
+  isLockedField,
   mapObjectWithKey,
   validateEmail,
   validateUTF8,
@@ -56,11 +57,9 @@ const HiddenField = styled("input")({
  * @returns {JSX.Element}
  */
 const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSectionProps) => {
-  const {
-    status,
-    data: { questionnaireData: data },
-    formRef,
-  } = useFormContext();
+  const { status, data: applicationData, formRef } = useFormContext();
+  const data = applicationData?.questionnaireData;
+
   const { data: institutionList } = useAggregatedInstitutions();
   const location = useLocation();
   const { readOnlyInputs } = useFormMode();
@@ -195,7 +194,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           placeholder="Enter first name"
           maxLength={50}
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.firstName")}
         />
         <TextInput
           id="section-a-pi-last-name"
@@ -205,7 +204,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           placeholder="Enter last name"
           maxLength={50}
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.lastName")}
         />
         <TextInput
           id="section-a-pi-position"
@@ -215,7 +214,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           placeholder="Enter position"
           maxLength={100}
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.position")}
         />
         <TextInput
           id="section-a-pi-email"
@@ -227,7 +226,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           validate={validateEmail}
           errorText="Please provide a valid email address"
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.email")}
         />
         <TextInput
           id="section-a-pi-orcid"
@@ -238,7 +237,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           validate={(val) => val?.length === 0 || isValidORCID(val)}
           filter={formatORCIDInput}
           errorText="Please provide a valid ORCID"
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.ORCID")}
         />
         <AutocompleteInput
           id="section-a-pi-institution"
@@ -258,7 +257,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           required
           disableClearable
           freeSolo
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.institution")}
         />
         <HiddenField
           type="text"
@@ -280,7 +279,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           rows={4}
           multiline
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.address")}
         />
       </SectionGroup>
 
