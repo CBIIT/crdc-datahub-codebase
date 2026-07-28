@@ -53,6 +53,7 @@ async function nihUserInfo(accessToken) {
 
 const getIDP = (email) => {
     // LOGIN.GOV Login
+    console.log('66c3d9f3-8f1c-4deb-85d8-d2128fb23444:email:', email);
     if (isLoginGovLogin(email)) return LOGIN_GOV;
     // NIH Login
     if (isNIHLogin(email)) return NIH;
