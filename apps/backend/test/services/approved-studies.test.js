@@ -1419,6 +1419,45 @@ describe('ApprovedStudiesService', () => {
         });
     });
 
+    describe('relinkApplicationID', () => {
+        beforeEach(() => {
+            service.approvedStudyDAO = {
+                update: jest.fn().mockResolvedValue({ id: 'existing-study-id', applicationID: 'new-app-id' }),
+            };
+        });
+
+        it('updates the approved study applicationID', async () => {
+            const result = await service.relinkApplicationID('existing-study-id', 'new-app-id');
+
+            expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
+                'existing-study-id',
+                expect.objectContaining({ applicationID: 'new-app-id' })
+            );
+            expect(result).toEqual(expect.objectContaining({ _id: 'existing-study-id', applicationID: 'new-app-id' }));
+        });
+
+        it('returns null when studyID is missing', async () => {
+            const result = await service.relinkApplicationID(null, 'new-app-id');
+
+            expect(result).toBeNull();
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
+        it('returns null when applicationID is missing', async () => {
+            const result = await service.relinkApplicationID('existing-study-id', null);
+
+            expect(result).toBeNull();
+            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+        });
+
+        it('throws when the DAO update fails', async () => {
+            service.approvedStudyDAO.update = jest.fn().mockResolvedValue(null);
+
+            await expect(service.relinkApplicationID('existing-study-id', 'new-app-id'))
+                .rejects.toThrow(ERROR.FAILED_APPROVED_STUDY_UPDATE);
+        });
+    });
+
     describe('storeApprovedStudies', () => {
         const studyName = 'Study A';
         const studyAbbreviation = 'SA';

@@ -1453,6 +1453,12 @@ class Application {
                     promises.push(this.userService.updateUserInfo(
                         applicant, updateUser, _id, applicant?.userStatus, applicant?.role, newStudiesIDs));
                 }
+            } else if (isRevisionReapproval && existingStudyID) {
+                // Revision re-approval: the approved study already exists, but should now be linked
+                // to this newly approved revision instead of the predecessor application.
+                if (existingStudy?.applicationID !== application._id) {
+                    promises.push(this.approvedStudiesService.relinkApplicationID(existingStudyID, application._id));
+                }
             }
             promises.push(this.logCollection.insert(
                 UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, APPROVED)

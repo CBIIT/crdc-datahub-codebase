@@ -204,6 +204,28 @@ class ApprovedStudiesService {
     }
 
     /**
+     * Relink an approved study to the current application ID.
+     * Used on revision re-approval (e.g. reopening then reapproving a Submission Request),
+     * where the approved study already exists but should now point at the newly approved revision.
+     * @param {string} studyID Approved study _id
+     * @param {string} applicationID Application _id the study should now be linked to
+     * @returns {Promise<Object>} The updated approved study
+     */
+    async relinkApplicationID(studyID, applicationID) {
+        if (!studyID || !applicationID) {
+            return null;
+        }
+        const result = await this.approvedStudyDAO.update(studyID, {
+            applicationID,
+            updatedAt: getCurrentTime(),
+        });
+        if (!result) {
+            throw new Error(ERROR.FAILED_APPROVED_STUDY_UPDATE);
+        }
+        return { ...result, _id: result._id ?? result.id };
+    }
+
+    /**
      * Get an Approved Study by ID API Interface.
      * 
      * @api
