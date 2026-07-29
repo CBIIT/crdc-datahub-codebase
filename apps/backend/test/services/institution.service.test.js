@@ -15,11 +15,13 @@ const mockAuthorizationService = {
 };
 
 const mockInstitutionDAO = {
-  findFirst: jest.fn(),
+  findById: jest.fn(),
   create: jest.fn(),
-  updateMany: jest.fn(),
+  update: jest.fn(),
   listInstitution: jest.fn(),
-  findMany: jest.fn()
+  findAll: jest.fn(),
+  findByCaseInsensitiveName: jest.fn(),
+  createMany: jest.fn()
 };
 
 jest.mock('../../dao/institution', () => {
@@ -50,7 +52,7 @@ describe('InstitutionService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new InstitutionService({}, mockAuthorizationService);
+    service = new InstitutionService(mockAuthorizationService);
     setupVerifySession(true);
     mockAuthorizationService.getPermissionScope.mockResolvedValue([{ scope: 'all', scopeValues: [] }]);
   });
@@ -75,7 +77,7 @@ describe('InstitutionService', () => {
   describe('getInstitution', () => {
     it('returns institution if found and user has permission', async () => {
       mockAuthorizationService.getPermissionScope.mockResolvedValue([{ scope: 'all', scopeValues: [] }]);
-      mockInstitutionDAO.findFirst.mockResolvedValue({ _id: 'id1', name: 'foo' });
+      mockInstitutionDAO.findById.mockResolvedValue({ _id: 'id1', name: 'foo' });
       const params = { _id: 'id1' };
       const result = await service.getInstitution(params, validContext);
       expect(result).toEqual({ _id: 'id1', name: 'foo' });
@@ -86,7 +88,7 @@ describe('InstitutionService', () => {
       await expect(service.getInstitution({ _id: 'id1' }, validContext)).rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
     });
     it('throws if institution not found', async () => {
-      mockInstitutionDAO.findFirst.mockResolvedValue(null);
+      mockInstitutionDAO.findById.mockResolvedValue(null);
       await expect(service.getInstitution({ _id: 'notfound' }, validContext)).rejects.toThrow(replaceErrorString(ERROR.INSTITUTION_ID_NOT_EXIST, 'notfound'));
     });
   });
@@ -94,15 +96,14 @@ describe('InstitutionService', () => {
   describe('createInstitution', () => {
     beforeEach(() => {
       service._getUserScope = jest.fn().mockResolvedValue(validUserScope);
-      // Patch: mock the aggregate method for _findOneByCaseInsensitiveName
-      service.institutionCollection.aggregate = jest.fn().mockResolvedValue([]);
+      mockInstitutionDAO.findByCaseInsensitiveName.mockResolvedValue(null);
     });
     it('creates institution successfully', async () => {
-      mockInstitutionDAO.findFirst.mockResolvedValue(null);
       mockInstitutionDAO.create.mockResolvedValue({ _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.ACTIVE });
       const params = { name: 'foo', status: INSTITUTION.STATUSES.ACTIVE };
       const result = await service.createInstitution(params, validContext);
       expect(result).toEqual({ _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.ACTIVE });
+      expect(mockInstitutionDAO.findByCaseInsensitiveName).toHaveBeenCalledWith('foo');
     });
     it('throws if user has no permission', async () => {
       service._getUserScope = jest.fn().mockResolvedValue(noneScope);
@@ -115,17 +116,14 @@ describe('InstitutionService', () => {
       await expect(service.createInstitution({ name: 'foo', status: 'bad' }, validContext)).rejects.toThrow(ERROR.INVALID_INSTITUTION_STATUS.replace('$item$', 'bad'));
     });
     it('throws if institution name is duplicate', async () => {
-      mockInstitutionDAO.findFirst.mockResolvedValue({ _id: 'id1', name: 'duplicate' });
-      service.institutionCollection.aggregate = jest.fn().mockResolvedValue([{name: "duplicate"}]);
+      mockInstitutionDAO.findByCaseInsensitiveName.mockResolvedValue({ _id: 'id1', name: 'duplicate' });
       await expect(service.createInstitution({ name: 'foo' }, validContext)).rejects.toThrow(ERROR.DUPLICATE_INSTITUTION_NAME);
     });
     it('throws if name is too long', async () => {
-      mockInstitutionDAO.findFirst.mockResolvedValue(null);
       const longName = 'a'.repeat(101);
       await expect(service.createInstitution({ name: longName }, validContext)).rejects.toThrow(ERROR.MAX_INSTITUTION_NAME_LIMIT);
     });
     it('throws if DAO create fails', async () => {
-      mockInstitutionDAO.findFirst.mockResolvedValue(null);
       mockInstitutionDAO.create.mockResolvedValue(null);
       await expect(service.createInstitution({ name: 'foo' }, validContext)).rejects.toThrow(ERROR.FAILED_CREATE_INSTITUTION);
     });
@@ -134,54 +132,93 @@ describe('InstitutionService', () => {
   describe('updateInstitution', () => {
     beforeEach(() => {
       service._getUserScope = jest.fn().mockResolvedValue(validUserScope);
-      service.institutionCollection.aggregate = jest.fn().mockResolvedValue([]);
+      mockInstitutionDAO.findByCaseInsensitiveName.mockResolvedValue(null);
     });
     it('updates institution successfully', async () => {
       const params = { _id: 'id1', name: 'bar', status: INSTITUTION.STATUSES.ACTIVE };
       const existing = { _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.INACTIVE };
-      mockInstitutionDAO.findFirst.mockResolvedValueOnce(existing); // getInstitutionByID
-      mockInstitutionDAO.updateMany.mockResolvedValue({ count: 1 });
-      mockInstitutionDAO.findFirst.mockResolvedValueOnce({ ...existing, ...params }); // final fetch
+      const updated = { ...existing, ...params };
+      mockInstitutionDAO.findById.mockResolvedValue(existing);
+      mockInstitutionDAO.update.mockResolvedValue(updated);
       const result = await service.updateInstitution(params, validContext);
-      expect(result).toEqual({ ...existing, ...params });
+      expect(result).toEqual(updated);
+      expect(mockInstitutionDAO.update).toHaveBeenCalledWith('id1', expect.objectContaining({
+        name: 'bar',
+        status: INSTITUTION.STATUSES.ACTIVE,
+      }));
     });
     it('returns original if no changes', async () => {
       const params = { _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.INACTIVE };
       const existing = { _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.INACTIVE };
-      mockInstitutionDAO.findFirst.mockResolvedValue(existing);
+      mockInstitutionDAO.findById.mockResolvedValue(existing);
       const result = await service.updateInstitution(params, validContext);
       expect(result).toEqual(existing);
+      expect(mockInstitutionDAO.update).not.toHaveBeenCalled();
     });
     it('throws if user has no permission', async () => {
       service._getUserScope = jest.fn().mockResolvedValue(noneScope);
       await expect(service.updateInstitution({ _id: 'id1', name: 'foo' }, validContext)).rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
     });
-    
+
     it('throws if institution not found', async () => {
-      mockInstitutionDAO.findFirst.mockResolvedValueOnce(null);
+      mockInstitutionDAO.findById.mockResolvedValueOnce(null);
       await expect(service.updateInstitution({ _id: 'notfound', name: 'foo' }, validContext)).rejects.toThrow(replaceErrorString(ERROR.INSTITUTION_ID_NOT_EXIST, 'notfound'));
     });
     it('throws if name is empty', async () => {
       const existing = { _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.INACTIVE };
-      mockInstitutionDAO.findFirst.mockResolvedValue(existing);
+      mockInstitutionDAO.findById.mockResolvedValue(existing);
       await expect(service.updateInstitution({ _id: 'id1', name: '   ' }, validContext)).rejects.toThrow(ERROR.EMPTY_INSTITUTION_NAME);
     });
     it('throws if name is too long', async () => {
       const existing = { _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.INACTIVE };
-      mockInstitutionDAO.findFirst.mockResolvedValue(existing);
+      mockInstitutionDAO.findById.mockResolvedValue(existing);
       await expect(service.updateInstitution({ _id: 'id1', name: 'a'.repeat(101) }, validContext)).rejects.toThrow(ERROR.MAX_INSTITUTION_NAME_LIMIT);
     });
     it('throws if duplicate name', async () => {
-      const existing = { _id: 'id1', name: 'duplicate', status: INSTITUTION.STATUSES.INACTIVE };
-      mockInstitutionDAO.findFirst.mockResolvedValueOnce(existing);
-      service.institutionCollection.aggregate = jest.fn().mockResolvedValue([{name: "duplicate"}]);
-      mockInstitutionDAO.findFirst.mockResolvedValueOnce({ _id: 'id2', name: 'bar' });
+      const existing = { _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.INACTIVE };
+      mockInstitutionDAO.findById.mockResolvedValue(existing);
+      mockInstitutionDAO.findByCaseInsensitiveName.mockResolvedValue({ _id: 'id2', name: 'bar' });
       await expect(service.updateInstitution({ _id: 'id1', name: 'bar' }, validContext)).rejects.toThrow(ERROR.DUPLICATE_INSTITUTION_NAME);
     });
     it('throws if status is invalid', async () => {
       const existing = { _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.INACTIVE };
-      mockInstitutionDAO.findFirst.mockResolvedValue(existing);
+      mockInstitutionDAO.findById.mockResolvedValue(existing);
       await expect(service.updateInstitution({ _id: 'id1', name: 'foo', status: 'bad' }, validContext)).rejects.toThrow(ERROR.INVALID_INSTITUTION_STATUS.replace('$item$', 'bad'));
+    });
+    it('throws FAILED_UPDATE_INSTITUTION when DAO update fails', async () => {
+      const params = { _id: 'id1', name: 'bar', status: INSTITUTION.STATUSES.ACTIVE };
+      const existing = { _id: 'id1', name: 'foo', status: INSTITUTION.STATUSES.INACTIVE };
+      mockInstitutionDAO.findById.mockResolvedValue(existing);
+      mockInstitutionDAO.update.mockRejectedValue(new Error('Failed to update Institution'));
+      await expect(service.updateInstitution(params, validContext)).rejects.toThrow(ERROR.FAILED_UPDATE_INSTITUTION);
+    });
+  });
+
+  describe('addNewInstitutions', () => {
+    it('creates only institutions with new names', async () => {
+      mockInstitutionDAO.findAll.mockResolvedValue([{ name: 'Existing U' }]);
+      mockInstitutionDAO.createMany.mockResolvedValue({ count: 1 });
+      const institutionList = [
+        { id: 'id-existing', name: 'Existing U' },
+        { id: 'id-new', name: 'New U' },
+      ];
+
+      await service.addNewInstitutions(institutionList);
+
+      expect(mockInstitutionDAO.createMany).toHaveBeenCalledTimes(1);
+      const createdDocs = mockInstitutionDAO.createMany.mock.calls[0][0];
+      expect(createdDocs).toHaveLength(1);
+      expect(createdDocs[0]).toEqual(expect.objectContaining({
+        _id: 'id-new',
+        name: 'New U',
+        status: INSTITUTION.STATUSES.ACTIVE,
+      }));
+    });
+
+    it('does not call createMany when all names already exist', async () => {
+      mockInstitutionDAO.findAll.mockResolvedValue([{ name: 'Existing U' }]);
+      await service.addNewInstitutions([{ id: 'id-existing', name: 'Existing U' }]);
+      expect(mockInstitutionDAO.createMany).not.toHaveBeenCalled();
     });
   });
 });
