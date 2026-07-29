@@ -1,121 +1,118 @@
+jest.mock('../../mongoose/models/property-pv', () => ({
+    modelName: 'PropertyPV',
+    find: jest.fn(),
+}));
+
 const PropertyPVDAO = require('../../dao/propertyPV');
+const PropertyPVModel = require('../../mongoose/models/property-pv');
+const MongooseGenericDAO = require('../../dao/mongoose-generic');
 
-describe('PropertyPVDAO.findByPropertiesVersionAndModel', () => {
+/**
+ * @param {*} resolvedValue
+ * @returns {{ lean: jest.Mock }}
+ */
+function createLeanQuery(resolvedValue) {
+    return {
+        lean: jest.fn().mockResolvedValue(resolvedValue),
+        sort: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+    };
+}
+
+describe('PropertyPVDAO', () => {
     let dao;
-    let collection;
-
-    const expectedPipeline = (propertyNames, version, model) => [
-        {
-            $match: {
-                property: { $in: propertyNames },
-                version,
-                model,
-            },
-        },
-        {
-            $project: {
-                id: '$_id',
-                property: '$property',
-                model: '$model',
-                version: '$version',
-                permissibleValues: '$PermissibleValues',
-                createdAt: '$createdAt',
-                updatedAt: '$updatedAt',
-            },
-        },
-    ];
 
     beforeEach(() => {
-        collection = {
-            aggregate: jest.fn(),
-        };
-        dao = new PropertyPVDAO(collection);
+        dao = new PropertyPVDAO();
         jest.clearAllMocks();
     });
 
-    it('returns [] for empty propertyNames without querying', async () => {
-        const result = await dao.findByPropertiesVersionAndModel([], '1', 'ICDC');
-        expect(result).toEqual([]);
-        expect(collection.aggregate).not.toHaveBeenCalled();
+    it('extends MongooseGenericDAO with the PropertyPV model', () => {
+        expect(dao).toBeInstanceOf(MongooseGenericDAO);
+        expect(dao.model).toBe(PropertyPVModel);
+        expect(dao._modelName).toBe('PropertyPV');
     });
 
-    it('maps BSON PermissibleValues null to permissibleValues null', async () => {
-        collection.aggregate.mockResolvedValue([
-            {
-                _id: 'id1',
-                property: 'study_id',
-                model: 'ICDC',
+    describe('findByPropertiesVersionAndModel', () => {
+        it('returns [] for empty propertyNames without querying', async () => {
+            const result = await dao.findByPropertiesVersionAndModel([], '1', 'ICDC');
+            expect(result).toEqual([]);
+            expect(PropertyPVModel.find).not.toHaveBeenCalled();
+        });
+
+        it('maps BSON PermissibleValues null to permissibleValues null', async () => {
+            PropertyPVModel.find.mockReturnValue(createLeanQuery([
+                {
+                    _id: 'id1',
+                    property: 'study_id',
+                    model: 'ICDC',
+                    version: '1.0',
+                    PermissibleValues: null,
+                    createdAt: new Date('2020-01-01'),
+                    updatedAt: new Date('2020-01-02'),
+                },
+            ]));
+
+            const result = await dao.findByPropertiesVersionAndModel(['study_id'], '1.0', 'ICDC');
+
+            expect(PropertyPVModel.find).toHaveBeenCalledWith({
+                property: { $in: ['study_id'] },
                 version: '1.0',
-                PermissibleValues: null,
-                id: 'id1',
-                permissibleValues: null,
-                createdAt: new Date('2020-01-01'),
-                updatedAt: new Date('2020-01-02'),
-            },
-        ]);
-
-        const result = await dao.findByPropertiesVersionAndModel(['study_id'], '1.0', 'ICDC');
-
-        expect(result).toHaveLength(1);
-        expect(result[0].permissibleValues).toBeNull();
-        expect(result[0].property).toBe('study_id');
-        expect(result[0].id).toBe('id1');
-        expect(result[0]._id).toBe('id1');
-        expect(collection.aggregate).toHaveBeenCalledWith(
-            expectedPipeline(['study_id'], '1.0', 'ICDC')
-        );
-    });
-
-    it('preserves empty array PermissibleValues', async () => {
-        collection.aggregate.mockResolvedValue([
-            {
-                _id: 'id1',
-                property: 'p',
                 model: 'ICDC',
-                version: '1',
-                PermissibleValues: [],
-                id: 'id1',
-                permissibleValues: [],
-            },
-        ]);
+            });
+            expect(result).toHaveLength(1);
+            expect(result[0].permissibleValues).toBeNull();
+            expect(result[0].property).toBe('study_id');
+            expect(result[0].id).toBe('id1');
+            expect(result[0]._id).toBe('id1');
+        });
 
-        const result = await dao.findByPropertiesVersionAndModel(['p'], '1', 'ICDC');
+        it('preserves empty array PermissibleValues', async () => {
+            PropertyPVModel.find.mockReturnValue(createLeanQuery([
+                {
+                    _id: 'id1',
+                    property: 'p',
+                    model: 'ICDC',
+                    version: '1',
+                    PermissibleValues: [],
+                },
+            ]));
 
-        expect(result[0].permissibleValues).toEqual([]);
-    });
+            const result = await dao.findByPropertiesVersionAndModel(['p'], '1', 'ICDC');
 
-    it('maps missing PermissibleValues key to permissibleValues null', async () => {
-        collection.aggregate.mockResolvedValue([
-            {
-                _id: 'id1',
-                property: 'p',
-                model: 'ICDC',
-                version: '1',
-                id: 'id1',
-                permissibleValues: null,
-            },
-        ]);
+            expect(result[0].permissibleValues).toEqual([]);
+        });
 
-        const result = await dao.findByPropertiesVersionAndModel(['p'], '1', 'ICDC');
+        it('maps missing PermissibleValues key to permissibleValues null', async () => {
+            PropertyPVModel.find.mockReturnValue(createLeanQuery([
+                {
+                    _id: 'id1',
+                    property: 'p',
+                    model: 'ICDC',
+                    version: '1',
+                },
+            ]));
 
-        expect(result[0].permissibleValues).toBeNull();
-    });
+            const result = await dao.findByPropertiesVersionAndModel(['p'], '1', 'ICDC');
 
-    it('passes through non-null PermissibleValues arrays', async () => {
-        collection.aggregate.mockResolvedValue([
-            {
-                _id: 'id1',
-                property: 'p',
-                model: 'ICDC',
-                version: '1',
-                PermissibleValues: ['a', 'b'],
-                id: 'id1',
-                permissibleValues: ['a', 'b'],
-            },
-        ]);
+            expect(result[0].permissibleValues).toBeNull();
+        });
 
-        const result = await dao.findByPropertiesVersionAndModel(['p'], '1', 'ICDC');
+        it('passes through non-null PermissibleValues arrays', async () => {
+            PropertyPVModel.find.mockReturnValue(createLeanQuery([
+                {
+                    _id: 'id1',
+                    property: 'p',
+                    model: 'ICDC',
+                    version: '1',
+                    PermissibleValues: ['a', 'b'],
+                },
+            ]));
 
-        expect(result[0].permissibleValues).toEqual(['a', 'b']);
+            const result = await dao.findByPropertiesVersionAndModel(['p'], '1', 'ICDC');
+
+            expect(result[0].permissibleValues).toEqual(['a', 'b']);
+        });
     });
 });

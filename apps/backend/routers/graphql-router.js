@@ -47,7 +47,6 @@ const {ADMIN} = require("../crdc-datahub-database-drivers/constants/user-permiss
 const {CONSTRAINTS} = require("../constants/submission-constants");
 const {Release} = require("../services/release-service");
 const DataModelService = require("../services/data-model-service");
-const { MODEL_NAME } = require("../constants/db-constants");
 const PropertyPVDAO = require("../dao/propertyPV");
 const { PropertyPVService } = require("../services/property-pv-service");
 
@@ -76,8 +75,7 @@ dbConnector.connect().then(async () => {
     const notificationsService = new NotifyUser(emailService, config.tier);
 
     const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
-    const propertyPVCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, MODEL_NAME.PROPERTY_PVS);
-    const propertyPVDAO = new PropertyPVDAO(propertyPVCollection);
+    const propertyPVDAO = new PropertyPVDAO();
     const propertyPVService = new PropertyPVService(configurationService, propertyPVDAO);
     const authorizationService = new AuthorizationService(configurationService);
     const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
