@@ -1453,7 +1453,7 @@ class Application {
                     promises.push(this.userService.updateUserInfo(
                         applicant, updateUser, _id, applicant?.userStatus, applicant?.role, newStudiesIDs));
                 }
-            } else if (isRevisionReapproval && existingStudy) {
+            } else if (isRevisionReapproval && existingStudy && questionnaire) {
                 // Revision re-approval: refresh the existing approved study from the current application
                 // (and relink applicationID to this revision), without touching studyName, studyAbbreviation,
                 // or program-related fields.
