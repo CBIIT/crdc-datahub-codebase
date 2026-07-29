@@ -56,7 +56,7 @@ class ApprovedStudiesService {
      * is approved (studyName, studyAbbreviation, ORCID, PI), so it can be safely reused both for
      * creating a new study and for updating the remaining fields on an existing one.
      */
-    _buildStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA) {
+    _buildUpdatableStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA) {
         const controlledAccess = isTrue(application?.controlledAccess);
         const resolvedGPAName = PendingGPA.resolveGPAName(application?.GPAName, controlledAccess);
         const pendingGPA = PendingGPA.create(resolvedGPAName, isPendingGPA);
@@ -86,7 +86,7 @@ class ApprovedStudiesService {
     }
 
     async _buildApprovedStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
-        const { fields, pendingGPA } = this._buildStudyFieldsFromApplication(
+        const { fields, pendingGPA } = this._buildUpdatableStudyFieldsFromApplication(
             application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
         );
         const program = await this._validateProgramID(existingProgram?._id || null);
@@ -237,7 +237,7 @@ class ApprovedStudiesService {
             throw new Error(ERROR.APPROVED_STUDY_NOT_FOUND);
         }
 
-        const { fields } = this._buildStudyFieldsFromApplication(
+        const { fields } = this._buildUpdatableStudyFieldsFromApplication(
             application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
         );
 
