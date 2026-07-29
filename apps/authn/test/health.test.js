@@ -28,6 +28,15 @@ jest.mock("../crdc-datahub-database-drivers/mongo-health-check", () => ({
     MongoDBHealthCheck: jest.fn().mockResolvedValue(true)
 }));
 
+jest.mock("../crdc-datahub-database-drivers/domain/log-events", () => ({
+    LoginEvent: {
+        create: jest.fn().mockReturnValue({})
+    },
+    LogoutEvent: {
+        create: jest.fn().mockReturnValue({})
+    }
+}));
+
 // Mock session middleware to use memory store instead of MongoDB
 jest.mock("../crdc-datahub-database-drivers/session-middleware", () => {
     const session = require('express-session');
