@@ -28,7 +28,7 @@ const mockApprovedStudiesService = {
     findByApplicationID: jest.fn(),
     storeApprovedStudies: jest.fn(),
     saveApprovedStudyFromApplication: jest.fn(),
-    relinkApplicationID: jest.fn(),
+    updateReapprovedStudy: jest.fn(),
 };
 const mockUserService = {
     userCollection: { find: jest.fn(), aggregate: jest.fn() },
@@ -1646,7 +1646,7 @@ describe('Application', () => {
             app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue(null);
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(null);
             mockApprovedStudiesService.saveApprovedStudyFromApplication.mockResolvedValue({ _id: 'study1' });
-            mockApprovedStudiesService.relinkApplicationID.mockReset().mockResolvedValue({ _id: 'existing-study', applicationID: 'revision-app' });
+            mockApprovedStudiesService.updateReapprovedStudy.mockReset().mockResolvedValue({ _id: 'existing-study', applicationID: 'revision-app' });
         });
 
         it('throws error if duplicate approved study', async () => {
@@ -1672,7 +1672,7 @@ describe('Application', () => {
                 .rejects.toThrow(/duplicate/i);
         });
 
-        it('skips approved study create on revision re-approval, but relinks applicationID', async () => {
+        it('skips approved study create on revision re-approval, but updates the existing study', async () => {
             const mockApplication = {
                 _id: 'revision-app',
                 status: IN_REVIEW,
@@ -1698,10 +1698,17 @@ describe('Application', () => {
             expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).not.toHaveBeenCalled();
             expect(app._findUsersByApplicantIDs).not.toHaveBeenCalled();
             expect(mockApprovedStudiesService.findByStudyName).toHaveBeenCalled();
-            expect(mockApprovedStudiesService.relinkApplicationID).toHaveBeenCalledWith('existing-study', 'revision-app');
+            expect(mockApprovedStudiesService.updateReapprovedStudy).toHaveBeenCalledWith(
+                existingStudy,
+                expect.objectContaining({ _id: 'revision-app' }),
+                expect.any(Object),
+                undefined,
+                undefined,
+                undefined
+            );
         });
 
-        it('does not relink applicationID on revision re-approval when already linked to the current application', async () => {
+        it('updates the existing study on revision re-approval even when already linked to the current application', async () => {
             const mockApplication = {
                 _id: 'revision-app',
                 status: IN_REVIEW,
@@ -1709,7 +1716,8 @@ describe('Application', () => {
                 sequenceNumber: 2,
                 questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
             };
-            // applicationID already points at the application being (re)approved.
+            // applicationID already points at the application being (re)approved, but other fields
+            // (e.g. dbGaPID, GPAName, controlledAccess) may still have changed and should be refreshed.
             const existingStudy = { _id: 'existing-study', applicationID: 'revision-app', createdAt: '2020-01-01' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
@@ -1724,7 +1732,14 @@ describe('Application', () => {
 
             await app.approveApplication({ _id: 'revision-app', comment: 'Approved' }, context);
 
-            expect(mockApprovedStudiesService.relinkApplicationID).not.toHaveBeenCalled();
+            expect(mockApprovedStudiesService.updateReapprovedStudy).toHaveBeenCalledWith(
+                existingStudy,
+                expect.objectContaining({ _id: 'revision-app' }),
+                expect.any(Object),
+                undefined,
+                undefined,
+                undefined
+            );
         });
 
         it('allows revision re-approval when predecessor is linked and study name already exists', async () => {
@@ -1750,7 +1765,14 @@ describe('Application', () => {
             await app.approveApplication({ _id: 'revision-app', comment: 'Approved' }, context);
 
             expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).not.toHaveBeenCalled();
-            expect(mockApprovedStudiesService.relinkApplicationID).toHaveBeenCalledWith('other-study', 'revision-app');
+            expect(mockApprovedStudiesService.updateReapprovedStudy).toHaveBeenCalledWith(
+                existingStudy,
+                expect.objectContaining({ _id: 'revision-app' }),
+                expect.any(Object),
+                undefined,
+                undefined,
+                undefined
+            );
         });
 
         it('allows revision re-approval when program name already exists from initial approval', async () => {
@@ -1778,7 +1800,14 @@ describe('Application', () => {
 
             expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).not.toHaveBeenCalled();
             expect(mockOrganizationService.upsertByProgramName).not.toHaveBeenCalled();
-            expect(mockApprovedStudiesService.relinkApplicationID).toHaveBeenCalledWith('existing-study', 'revision-app');
+            expect(mockApprovedStudiesService.updateReapprovedStudy).toHaveBeenCalledWith(
+                existingStudy,
+                expect.objectContaining({ _id: 'revision-app' }),
+                expect.any(Object),
+                undefined,
+                undefined,
+                expect.any(Boolean)
+            );
         });
 
         it('throws UPDATE_FAILED when DAO update returns falsy and does not call addNewInstitutions', async () => {

@@ -1419,41 +1419,90 @@ describe('ApprovedStudiesService', () => {
         });
     });
 
-    describe('relinkApplicationID', () => {
+    describe('updateReapprovedStudy', () => {
+        const existingStudy = {
+            _id: 'existing-study-id',
+            id: 'existing-study-id',
+            createdAt: '2020-01-01',
+            applicationID: 'old-application-id',
+            studyName: 'Existing Name',
+            studyAbbreviation: 'EXIST',
+            ORCID: '0000-0001',
+            PI: 'Existing PI',
+            programID: 'existing-program-id',
+            useProgramPC: false,
+            primaryContactID: 'existing-contact-id',
+        };
+        const application = {
+            _id: 'revision-app',
+            studyName: 'New Name From Application',
+            studyAbbreviation: 'NEWNAME',
+            organization: { name: 'Org Two' },
+            controlledAccess: true,
+            ORCID: '0000-0002',
+            PI: 'New PI',
+            openAccess: false,
+            GPAName: 'New GPA Name',
+        };
+        const questionnaire = {
+            study: { dbGaPPPHSNumber: 'phs009999.v2' },
+        };
+
         beforeEach(() => {
             service.approvedStudyDAO = {
-                update: jest.fn().mockResolvedValue({ id: 'existing-study-id', applicationID: 'new-app-id' }),
+                update: jest.fn().mockResolvedValue({ id: 'existing-study-id', createdAt: '2020-01-01' }),
             };
         });
 
-        it('updates the approved study applicationID', async () => {
-            const result = await service.relinkApplicationID('existing-study-id', 'new-app-id');
+        it('updates the refreshable fields from the current application', async () => {
+            const result = await service.updateReapprovedStudy(
+                existingStudy,
+                application,
+                questionnaire,
+                true,
+                true,
+                false
+            );
 
             expect(service.approvedStudyDAO.update).toHaveBeenCalledWith(
                 'existing-study-id',
-                expect.objectContaining({ applicationID: 'new-app-id' })
+                expect.objectContaining({
+                    applicationID: 'revision-app',
+                    originalOrg: 'Org Two',
+                    controlledAccess: true,
+                    openAccess: false,
+                    pendingModelChange: true,
+                    pendingImageDeIdentification: true,
+                    dbGaPID: 'phs009999',
+                    GPAName: 'New GPA Name',
+                })
             );
-            expect(result).toEqual(expect.objectContaining({ _id: 'existing-study-id', applicationID: 'new-app-id' }));
+            expect(result).toEqual(expect.objectContaining({ _id: 'existing-study-id' }));
         });
 
-        it('returns null when studyID is missing', async () => {
-            const result = await service.relinkApplicationID(null, 'new-app-id');
+        it('does not update studyName, studyAbbreviation, ORCID, PI, or program-related fields', async () => {
+            await service.updateReapprovedStudy(existingStudy, application, questionnaire, true, true, false);
 
-            expect(result).toBeNull();
-            expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
+            const updatePayload = service.approvedStudyDAO.update.mock.calls[0][1];
+            expect(updatePayload.studyName).toBe('Existing Name');
+            expect(updatePayload.studyAbbreviation).toBe('EXIST');
+            expect(updatePayload.ORCID).toBe('0000-0001');
+            expect(updatePayload.PI).toBe('Existing PI');
+            expect(updatePayload.programID).toBe('existing-program-id');
+            expect(updatePayload.useProgramPC).toBe(false);
+            expect(updatePayload.primaryContactID).toBe('existing-contact-id');
         });
 
-        it('returns null when applicationID is missing', async () => {
-            const result = await service.relinkApplicationID('existing-study-id', null);
-
-            expect(result).toBeNull();
+        it('throws when the existing study has no id', async () => {
+            await expect(service.updateReapprovedStudy({}, application, questionnaire, true, true, false))
+                .rejects.toThrow(ERROR.APPROVED_STUDY_NOT_FOUND);
             expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
         });
 
         it('throws when the DAO update fails', async () => {
             service.approvedStudyDAO.update = jest.fn().mockResolvedValue(null);
 
-            await expect(service.relinkApplicationID('existing-study-id', 'new-app-id'))
+            await expect(service.updateReapprovedStudy(existingStudy, application, questionnaire, true, true, false))
                 .rejects.toThrow(ERROR.FAILED_APPROVED_STUDY_UPDATE);
         });
     });
