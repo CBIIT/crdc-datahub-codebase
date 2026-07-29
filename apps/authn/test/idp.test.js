@@ -1,4 +1,6 @@
-const {isLoginGovLogin, isNIHLogin} = require("../services/nih-auth");
+const {isLoginGovLogin, isNIHLogin, getIDP} = require("../services/nih-auth");
+const {NIH, LOGIN_GOV} = require("../constants/idp-constants");
+const {LOGIN_ERROR} = require("../constants/errors");
 
 describe('Util Test', () => {
     test('/nih idp test', () => {
@@ -38,6 +40,50 @@ describe('Util Test', () => {
             let result = isLoginGovLogin(t.src);
             expect(result).toBe(t.result);
         }
+    });
+});
+
+describe('getIDP', () => {
+    let consoleErrorSpy;
+    let consoleWarnSpy;
+
+    beforeEach(() => {
+        consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        consoleErrorSpy.mockRestore();
+        consoleWarnSpy.mockRestore();
+    });
+
+    test('returns NIH for nih.gov preferred username', () => {
+        expect(getIDP('user@nih.gov')).toBe(NIH);
+        expect(getIDP('user@NIH.GOV')).toBe(NIH);
+    });
+
+    test('returns LOGIN.GOV for login.gov preferred username', () => {
+        expect(getIDP('user@login.gov')).toBe(LOGIN_GOV);
+        expect(getIDP('user@Login.GOV')).toBe(LOGIN_GOV);
+    });
+
+    test('defaults empty preferred username to LOGIN.GOV', () => {
+        expect(getIDP('')).toBe(LOGIN_GOV);
+        expect(consoleWarnSpy).toHaveBeenCalled();
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    test('throws LOGIN_ERROR when preferred username is null or undefined', () => {
+        expect(() => getIDP(null)).toThrow(LOGIN_ERROR);
+        expect(() => getIDP(undefined)).toThrow(LOGIN_ERROR);
+        expect(consoleErrorSpy).toHaveBeenCalled();
+        expect(consoleWarnSpy).not.toHaveBeenCalled();
+    });
+
+    test('throws LOGIN_ERROR when preferred username format is unrecognized', () => {
+        expect(() => getIDP('user@example.com')).toThrow(LOGIN_ERROR);
+        expect(consoleWarnSpy).toHaveBeenCalled();
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
 });
 

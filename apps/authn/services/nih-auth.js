@@ -1,6 +1,7 @@
 const nodeFetch = require("node-fetch");
 const config = require("../config");
 const {LOGIN_GOV, NIH} = require("../constants/idp-constants");
+const {LOGIN_ERROR} = require("../constants/errors");
 const loginGovRegex = new RegExp(/(?:.){1}(@login.gov){1}\b/i);
 const nihRegex = new RegExp(/(?:.){1}(@nih.gov){1}\b/i);
 
@@ -51,13 +52,28 @@ async function nihUserInfo(accessToken) {
     return result.json();
 }
 
-const getIDP = (email) => {
-    // LOGIN.GOV Login
-    if (isLoginGovLogin(email)) return LOGIN_GOV;
+/**
+ * Resolves the identity provider from a preferred username.
+ * @param {string|null|undefined} preferredUsername Identity string from the login service
+ * @returns {string} NIH or LOGIN.GOV IDP constant
+ * @throws {Error} When the identity is missing or does not match a known IDP format
+ */
+const getIDP = (preferredUsername) => {
+    if (preferredUsername == null) {
+        console.error("Preferred username is not specified in the login service response, cannot determine IDP");
+        throw new Error(LOGIN_ERROR);
+    }
     // NIH Login
-    if (isNIHLogin(email)) return NIH;
-
-    throw new Error("Invalid IDP Exception");
+    if (isNIHLogin(preferredUsername)) return NIH;
+    // LOGIN.GOV Login
+    if (isLoginGovLogin(preferredUsername)) return LOGIN_GOV;
+    // Empty preferred username defaults to LOGIN.GOV with warning
+    if (preferredUsername === '') {
+        console.warn("The preferred_username property from the login response is empty, assuming this is a LOGIN.GOV login");
+        return LOGIN_GOV;
+    }
+    console.warn(`The preferred_username property from the login response does not match one of the expected formats: ${preferredUsername}`);
+    throw new Error(LOGIN_ERROR);
 }
 
 const isNIHLogin = (email)=> {
