@@ -1453,6 +1453,18 @@ class Application {
                     promises.push(this.userService.updateUserInfo(
                         applicant, updateUser, _id, applicant?.userStatus, applicant?.role, newStudiesIDs));
                 }
+            } else if (isRevisionReapproval && existingStudy && questionnaire) {
+                // Revision re-approval: refresh the existing approved study from the current application
+                // (and relink applicationID to this revision), without touching studyName, studyAbbreviation,
+                // or program-related fields.
+                promises.push(this.approvedStudiesService.updateReapprovedStudy(
+                    existingStudy,
+                    updated,
+                    questionnaire,
+                    document?.pendingModelChange,
+                    document?.pendingImageDeIdentification,
+                    isPendingGPA
+                ));
             }
             promises.push(this.logCollection.insert(
                 UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, APPROVED)

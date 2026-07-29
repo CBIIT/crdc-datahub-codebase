@@ -50,29 +50,26 @@ class ApprovedStudiesService {
         this.applicationDAO = new ApplicationDAO();
     }
 
-    async _buildApprovedStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
-        const program = await this._validateProgramID(existingProgram?._id || null);
+    /**
+     * Builds Approved Study fields from an application/questionnaire, excluding program-related
+     * fields (programID, useProgramPC, primaryContactID) and fields that must not change once a study
+     * is approved (studyName, studyAbbreviation, ORCID, PI), so it can be safely reused both for
+     * creating a new study and for updating the remaining fields on an existing one.
+     */
+    _buildUpdatableStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA) {
         const controlledAccess = isTrue(application?.controlledAccess);
         const resolvedGPAName = PendingGPA.resolveGPAName(application?.GPAName, controlledAccess);
         const pendingGPA = PendingGPA.create(resolvedGPAName, isPendingGPA);
         const trimmedDbGaP = String(questionnaire?.study?.dbGaPPPHSNumber ?? "").trim();
         const baseDbGaP = trimmedDbGaP.match(/^phs\d{6}/i)?.[0]?.toLowerCase() ?? null;
-        const studyAbbreviation = defaultStudyAbbreviationToStudyName((application?.studyAbbreviation ?? "").trim(), application?.studyName);
 
         const fields = {
             applicationID: application?._id ?? application?.id,
-            studyName: application?.studyName ?? null,
-            studyAbbreviation,
             originalOrg: application?.organization?.name ?? null,
             controlledAccess,
-            ORCID: application?.ORCID ?? null,
-            PI: application?.PI ?? null,
             openAccess: isTrue(application?.openAccess),
-            useProgramPC: true,
             pendingModelChange: isTrue(pendingModelChange ?? true),
             pendingImageDeIdentification: isTrue(pendingImageDeIdentification),
-            programID: program?._id ?? null,
-            primaryContactID: null,
             // Always set explicitly (null when absent) so the update path clears stale values instead of preserving them.
             dbGaPID: baseDbGaP,
         };
@@ -84,6 +81,24 @@ class ApprovedStudiesService {
             fields.isPendingGPA = false;
             fields.GPAName = null;
         }
+
+        return { fields, pendingGPA };
+    }
+
+    async _buildApprovedStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
+        const { fields, pendingGPA } = this._buildUpdatableStudyFieldsFromApplication(
+            application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
+        );
+        const program = await this._validateProgramID(existingProgram?._id || null);
+        const studyAbbreviation = defaultStudyAbbreviationToStudyName((application?.studyAbbreviation ?? "").trim(), application?.studyName);
+
+        fields.studyName = application?.studyName ?? null;
+        fields.studyAbbreviation = studyAbbreviation;
+        fields.useProgramPC = true;
+        fields.primaryContactID = null;
+        fields.programID = program?._id ?? null;
+        fields.ORCID = application?.ORCID ?? null;
+        fields.PI = application?.PI ?? null;
 
         return { fields, pendingGPA };
     }
@@ -201,6 +216,42 @@ class ApprovedStudiesService {
             return null;
         }
         return { ...row, _id: row.id };
+    }
+
+    /**
+     * Update an existing approved study using data from the current application on revision re-approval
+     * (e.g. reopening then reapproving a Submission Request). Relinks applicationID to the current
+     * application and refreshes the remaining fields, but leaves studyName, studyAbbreviation, ORCID, PI,
+     * and program-related fields (programID, useProgramPC, primaryContactID) untouched.
+     * @param {Object} existingStudy The current approved study record to update
+     * @param {Object} application The current (reopened) application being approved
+     * @param {Object} questionnaire The application's parsed questionnaire data
+     * @param {boolean} pendingModelChange
+     * @param {boolean} pendingImageDeIdentification
+     * @param {boolean} isPendingGPA
+     * @returns {Promise<Object>} The updated approved study
+     */
+    async updateReapprovedStudy(existingStudy, application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA) {
+        const studyID = existingStudy?._id ?? existingStudy?.id;
+        if (!studyID) {
+            throw new Error(ERROR.APPROVED_STUDY_NOT_FOUND);
+        }
+
+        const { fields } = this._buildUpdatableStudyFieldsFromApplication(
+            application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
+        );
+
+        const updateStudy = {
+            ...existingStudy,
+            ...fields,
+            updatedAt: getCurrentTime(),
+        };
+
+        const result = await this.approvedStudyDAO.update(studyID, updateStudy);
+        if (!result) {
+            throw new Error(ERROR.FAILED_APPROVED_STUDY_UPDATE);
+        }
+        return { ...result, _id: result._id ?? result.id };
     }
 
     /**
