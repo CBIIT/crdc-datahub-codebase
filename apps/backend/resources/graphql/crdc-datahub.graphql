@@ -42,7 +42,7 @@ interface SubmissionInterface {
     studyID: String
     studyName: String @deprecated # use the nested field in the study object
     study: SubmissionStudy
-    applicationID: String
+    submissionRequestID: String
     controlledAccess: Boolean
     ORCID: String
     deletingData: Boolean
@@ -228,7 +228,7 @@ type Submission implements SubmissionInterface {
     # note: FE should use study object instead
     studyName: String @deprecated # use the nested field in the study object
     study: SubmissionStudy
-    applicationID: String
+    submissionRequestID: String
     controlledAccess: Boolean
     ORCID: String
     deletingData: Boolean
