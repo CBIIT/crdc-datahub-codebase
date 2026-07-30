@@ -15,11 +15,13 @@ Startup (`bin/www.js`) runs this orchestrator unless `SKIP_STARTUP_MIGRATIONS=tr
 | `3-7-0-migration.js` | Orchestrator (runs all steps below) |
 | `sync-pbac-defaults-migration.js` | Sync PBAC from JSON via `recurring-steps/sync-pbac-defaults.js` |
 | `backfill-application-sequence-number.js` | Set `sequenceNumber: 1` where missing (CRDCDH-3970) |
+| `backfill-submission-submission-request-id.js` | Set `submissionRequestID` from the linked study's `applicationID` where missing |
 
 ## Execution order
 
 1. `sync-pbac-defaults-migration.js` (recurring) — merges PBAC defaults into `configuration`
 2. `backfill-application-sequence-number.js` (one-time)
+3. `backfill-submission-submission-request-id.js` (recurring) — only touches submissions missing `submissionRequestID`, so it also repairs records whose study gained an `applicationID` after the submission was created
 
 ## Prerequisites
 
