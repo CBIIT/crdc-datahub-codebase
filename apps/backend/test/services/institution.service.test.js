@@ -124,7 +124,7 @@ describe('InstitutionService', () => {
       await expect(service.createInstitution({ name: longName }, validContext)).rejects.toThrow(ERROR.MAX_INSTITUTION_NAME_LIMIT);
     });
     it('throws if DAO create fails', async () => {
-      mockInstitutionDAO.create.mockResolvedValue(null);
+      mockInstitutionDAO.create.mockRejectedValue(new Error('DAO failure'));
       await expect(service.createInstitution({ name: 'foo' }, validContext)).rejects.toThrow(ERROR.FAILED_CREATE_INSTITUTION);
     });
   });

@@ -108,7 +108,7 @@ class InstitutionDAO extends MongooseGenericDAO {
         const validStatus = [INSTITUTION.STATUSES.INACTIVE, INSTITUTION.STATUSES.ACTIVE];
         const nameCondition = institutionName ? {name: { $regex: escapeRegexLiteral(institutionName.trim()), $options: "i" }} : {};
         const statusCondition = status && status !== this._ALL_FILTER ?
-            { status: { $in: [status] || [] } } : { status: { $in: validStatus } };
+            { status: { $in: [status] } } : { status: { $in: validStatus } };
         return {...nameCondition , ...statusCondition}
     }
 }

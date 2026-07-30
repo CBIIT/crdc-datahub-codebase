@@ -45,7 +45,7 @@ class InstitutionService {
 
         const institutions = await this.institutionDAO.findByCaseInsensitiveName(newName);
         if (institutions) {
-            throw new Error(ERROR.DUPLICATE_INSTITUTION_NAME, newName);
+            throw new Error(ERROR.DUPLICATE_INSTITUTION_NAME);
         }
 
         if (newName?.trim()?.length > 100) {
@@ -53,11 +53,11 @@ class InstitutionService {
         }
 
         const newInstitution = Institution.createInstitution(newName, params?.status);
-        const res = await this.institutionDAO.create(newInstitution);
-        if (!res) {
+        try {
+            return await this.institutionDAO.create(newInstitution);
+        } catch (error) {
             throw new Error(ERROR.FAILED_CREATE_INSTITUTION);
         }
-        return res;
     }
 
     /**
@@ -158,7 +158,7 @@ class InstitutionService {
             const existingInstitution = await this.institutionDAO.findByCaseInsensitiveName(trimmedName);
             const isDuplicate = (existingInstitution) && existingInstitution?._id !== institutionID
             if (isDuplicate) {
-                throw new Error(ERROR.DUPLICATE_INSTITUTION_NAME, trimmedName);
+                throw new Error(ERROR.DUPLICATE_INSTITUTION_NAME);
             }
         }
 
