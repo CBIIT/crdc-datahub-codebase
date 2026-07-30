@@ -41,13 +41,16 @@ class ProgramDAO extends MongooseGenericDAO {
 
     /**
      * Exact name match after trim (case-sensitive), matching prior Prisma findFirst behavior.
+     * Returns null without querying when name is null, undefined, or whitespace-only.
      * @param {string} name
      * @returns {Promise<object|null>}
      */
     async getProgramByName(name) {
-        return await this.findFirst({
-            name: name?.trim()
-        });
+        const trimmed = name?.trim();
+        if (!trimmed) {
+            return null;
+        }
+        return await this.findFirst({ name: trimmed });
     }
 
     /**

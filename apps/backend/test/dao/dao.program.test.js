@@ -62,13 +62,18 @@ describe('ProgramDAO', () => {
             expect(result).toBeNull();
         });
 
-        it('should handle null input', async () => {
-            ProgramModel.findOne.mockReturnValue(createLeanQuery(null));
-
+        it('should return null for null input without querying', async () => {
             const result = await programDAO.getProgramByName(null);
 
-            expect(ProgramModel.findOne).toHaveBeenCalledWith({ name: undefined });
             expect(result).toBeNull();
+            expect(ProgramModel.findOne).not.toHaveBeenCalled();
+        });
+
+        it('should return null for whitespace-only input without querying', async () => {
+            const result = await programDAO.getProgramByName('   ');
+
+            expect(result).toBeNull();
+            expect(ProgramModel.findOne).not.toHaveBeenCalled();
         });
 
         it('should handle database errors', async () => {
