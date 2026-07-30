@@ -272,7 +272,7 @@ const ReviewCommentsListDialog = <T,>({
             container
             columnSpacing={3}
             key={`comment-event-${event.dateTime}`}
-            data-testid={`review-comment-${index}`}
+            data-testid={`comments-item-${index}`}
           >
             <Grid xs={2}>
               <DotContainer>
@@ -283,12 +283,12 @@ const ReviewCommentsListDialog = <T,>({
               </DotContainer>
             </Grid>
             <Grid xs={3}>
-              <StyledEventCell title={event.dateTime} data-testid={`review-comment-${index}-date`}>
+              <StyledEventCell title={event.dateTime} data-testid={`comments-item-${index}-date`}>
                 {FormatDate(event.dateTime, "M/D/YYYY", "N/A")}
               </StyledEventCell>
             </Grid>
             <Grid xs={3}>
-              <StyledEventCell data-testid={`review-comment-${index}-time`}>
+              <StyledEventCell data-testid={`comments-item-${index}-time`}>
                 {FormatDate(event.dateTime, "h:mm A", "N/A")}
               </StyledEventCell>
             </Grid>
@@ -300,7 +300,7 @@ const ReviewCommentsListDialog = <T,>({
                 buttonBorderColor={colorScheme.buttonBorderColor}
                 buttonHoverBackground={colorScheme.buttonHoverBackground}
                 onClick={() => onView(event)}
-                data-testid={`review-comment-${index}-view`}
+                data-testid={`comments-item-${index}-view`}
               >
                 View
               </StyledViewButton>
@@ -310,7 +310,7 @@ const ReviewCommentsListDialog = <T,>({
       </StyledDialogContent>
       <StyledFooter>
         <StyledCloseButton
-          id="close-review-comments-list-button"
+          id="close-comments-button"
           onClick={onClose}
           variant="contained"
           color="info"

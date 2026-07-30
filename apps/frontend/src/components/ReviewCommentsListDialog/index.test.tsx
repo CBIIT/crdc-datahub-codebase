@@ -21,7 +21,7 @@ const events: HistoryBase<ApplicationStatus>[] = [
   },
 ];
 
-describe("ReviewCommentsListDialog Accessibility Tests", () => {
+describe("Accessibility", () => {
   it("has no base accessibility violations", async () => {
     const { container } = render(
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -54,12 +54,12 @@ describe("ReviewCommentsListDialog Tests", () => {
       </BrowserRouter>
     );
 
-    expect(getByTestId("review-comments-list-item-0-date")).toHaveTextContent("5/28/2023");
-    expect(getByTestId("review-comments-list-item-0-time")).toHaveTextContent(
+    expect(getByTestId("comments-item-0-date")).toHaveTextContent("5/28/2023");
+    expect(getByTestId("comments-item-0-time")).toHaveTextContent(
       FormatDate(events[0].dateTime, "h:mm A", "N/A")
     );
-    expect(getByTestId("review-comments-list-item-1-date")).toHaveTextContent("5/15/2023");
-    expect(getByTestId("review-comments-list-item-1-time")).toHaveTextContent(
+    expect(getByTestId("comments-item-1-date")).toHaveTextContent("5/15/2023");
+    expect(getByTestId("comments-item-1-time")).toHaveTextContent(
       FormatDate(events[1].dateTime, "h:mm A", "N/A")
     );
   });
@@ -79,7 +79,7 @@ describe("ReviewCommentsListDialog Tests", () => {
       </BrowserRouter>
     );
 
-    fireEvent.click(getByTestId("review-comments-list-item-1-view"));
+    fireEvent.click(getByTestId("comments-item-1-view"));
 
     expect(onView).toHaveBeenCalledWith(events[1]);
   });

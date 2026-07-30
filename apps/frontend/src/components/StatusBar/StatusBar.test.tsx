@@ -223,7 +223,7 @@ describe("StatusBar > Comments Modal Tests", () => {
 
     fireEvent.click(getByText("View Comments"));
 
-    expect(getByTestId("review-comments-list-dialog")).toBeVisible();
+    expect(getByTestId("comments-dialog")).toBeVisible();
   });
 
   it("renders all comment events in descending order by date", async () => {
@@ -248,10 +248,10 @@ describe("StatusBar > Comments Modal Tests", () => {
 
     fireEvent.click(getByText("View Comments"));
 
-    expect(getByTestId("review-comments-list-dialog")).toBeVisible();
-    expect(getByTestId("review-comments-list-item-0-date")).toHaveTextContent("11/30/2019");
-    expect(getByTestId("review-comments-list-item-1-date")).toHaveTextContent("11/26/2019");
-    expect(getByTestId("review-comments-list-item-2-date")).toHaveTextContent("11/23/2019");
+    expect(getByTestId("comments-dialog")).toBeVisible();
+    expect(getByTestId("comments-item-0-date")).toHaveTextContent("11/30/2019");
+    expect(getByTestId("comments-item-1-date")).toHaveTextContent("11/26/2019");
+    expect(getByTestId("comments-item-2-date")).toHaveTextContent("11/23/2019");
   });
 
   it("opens the detail dialog for the selected review event", async () => {
@@ -279,7 +279,7 @@ describe("StatusBar > Comments Modal Tests", () => {
     const { getByTestId, getByText } = render(<BaseComponent data={data} />);
 
     fireEvent.click(getByText("View Comments"));
-    fireEvent.click(getByTestId("review-comments-list-item-0-view"));
+    fireEvent.click(getByTestId("comments-item-0-view"));
 
     expect(getByTestId("review-comments-dialog")).toBeVisible();
     expect(getByText(/BASED ON SUBMISSION FROM 12\/30\/2023:/i)).toBeVisible();
@@ -303,9 +303,9 @@ describe("StatusBar > Comments Modal Tests", () => {
 
     fireEvent.click(getByText("View Comments"));
 
-    expect(getByTestId("review-comments-list-dialog")).toBeVisible();
-    expect(getByTestId("review-comments-list-item-0-date")).toHaveTextContent("11/26/2023");
-    expect(() => getByTestId("review-comments-list-item-1")).toThrow();
+    expect(getByTestId("comments-dialog")).toBeVisible();
+    expect(getByTestId("comments-item-0-date")).toHaveTextContent("11/26/2023");
+    expect(() => getByTestId("comments-item-1")).toThrow();
   });
 
   it("provides the unformatted review date as a title attribute in detail dialog", () => {
@@ -321,7 +321,7 @@ describe("StatusBar > Comments Modal Tests", () => {
     const { getByTestId, getByText } = render(<BaseComponent data={data} />);
 
     fireEvent.click(getByText("View Comments"));
-    fireEvent.click(getByTestId("review-comments-list-item-0-view"));
+    fireEvent.click(getByTestId("comments-item-0-view"));
 
     expect(getByText(/BASED ON SUBMISSION FROM 11\/24\/2009:/i)).toHaveAttribute(
       "title",
@@ -339,13 +339,13 @@ describe("StatusBar > Comments Modal Tests", () => {
     const { getByTestId, getByText } = render(<BaseComponent data={data} />);
 
     fireEvent.click(getByText("View Comments"));
-    fireEvent.click(getByTestId("review-comments-list-item-0-view"));
+    fireEvent.click(getByTestId("comments-item-0-view"));
 
     expect(getByTestId("review-comments-dialog")).toBeVisible();
 
     fireEvent.click(getByTestId("review-comments-dialog-back"));
 
-    await waitFor(() => expect(getByTestId("review-comments-list-dialog")).toBeVisible());
+    await waitFor(() => expect(getByTestId("comments-dialog")).toBeVisible());
   });
 
   it("closes the list dialog with the Close button", async () => {
@@ -357,11 +357,11 @@ describe("StatusBar > Comments Modal Tests", () => {
 
     fireEvent.click(getByText("View Comments"));
 
-    expect(queryByTestId("review-comments-list-dialog")).toBeVisible();
+    expect(queryByTestId("comments-dialog")).toBeVisible();
 
-    fireEvent.click(queryByTestId("review-comments-list-dialog-close"));
+    fireEvent.click(queryByTestId("comments-dialog-close"));
 
-    await waitFor(() => expect(queryByTestId("review-comments-list-dialog")).toBeNull());
+    await waitFor(() => expect(queryByTestId("comments-dialog")).toBeNull());
   });
 
   it("closes the detail dialog with the Close button", async () => {
@@ -374,7 +374,7 @@ describe("StatusBar > Comments Modal Tests", () => {
     const { queryByTestId, getByTestId, getByText } = render(<BaseComponent data={data} />);
 
     fireEvent.click(getByText("View Comments"));
-    fireEvent.click(getByTestId("review-comments-list-item-0-view"));
+    fireEvent.click(getByTestId("comments-item-0-view"));
 
     expect(queryByTestId("review-comments-dialog")).toBeVisible();
 
