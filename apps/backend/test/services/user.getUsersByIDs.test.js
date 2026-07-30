@@ -26,7 +26,6 @@ describe('UserService.getUsersByIDs', () => {
 
         // Create UserService instance with mocked dependencies
         userService = new UserService(
-            mockUserDAO, // userCollection
             {}, // logCollection
             {}, // organizationCollection
             {}, // notificationsService

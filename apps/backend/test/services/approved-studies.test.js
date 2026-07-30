@@ -35,7 +35,6 @@ jest.mock('../../crdc-datahub-database-drivers/domain/approved-studies', () => {
 describe('ApprovedStudiesService', () => {
     let service;
     let mockApprovedStudiesCollection;
-    let mockUserCollection;
     let mockOrganizationService;
     let mockSubmissionCollection;
     let mockAuthorizationService;
@@ -49,9 +48,6 @@ describe('ApprovedStudiesService', () => {
             findOneAndUpdate: jest.fn(),
             insert: jest.fn(),
             update: jest.fn()
-        };
-        mockUserCollection = {
-            aggregate: jest.fn()
         };
         mockOrganizationService = {
             findByStudyID: jest.fn(),
@@ -77,7 +73,6 @@ describe('ApprovedStudiesService', () => {
 
         service = new ApprovedStudiesService(
             mockApprovedStudiesCollection,
-            mockUserCollection,
             mockOrganizationService,
             mockSubmissionCollection,
             mockAuthorizationService

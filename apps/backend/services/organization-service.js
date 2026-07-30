@@ -16,16 +16,15 @@ class Organization {
 
   /**
    * @param {object} organizationCollection Native org collection (also used by ProgramDAO)
-   * @param {object} userCollection Native user collection
    * @param {object} submissionCollection Native submission collection
    * @param {object} applicationCollection Native application collection
    */
-  constructor(organizationCollection, userCollection, submissionCollection, applicationCollection) {
+  constructor(organizationCollection, submissionCollection, applicationCollection) {
     this.organizationCollection = organizationCollection;
     this.programDAO = new ProgramDAO(organizationCollection);
     this.approvedStudyDAO = new ApprovedStudyDAO();
     this.submissionDAO = new SubmissionDAO(submissionCollection);
-    this.userDAO = new UserDAO(userCollection);
+    this.userDAO = new UserDAO();
     this.applicationDAO = new ApplicationDAO(applicationCollection);
   }
 
@@ -182,7 +181,7 @@ class Organization {
     // Only update the concierge if it is provided and different from the currently assigned concierge
     if (conciergeProvided && !!params.conciergeID && params.conciergeID !== currentOrg.conciergeID) {
       const conciergeUser = await this.userDAO.findFirst({
-          id: params.conciergeID, // assuming _id maps to Prisma's `id`
+          _id: params.conciergeID,
           role: USER.ROLES.DATA_COMMONS_PERSONNEL,
           userStatus: USER.STATUSES.ACTIVE,
       });
@@ -232,11 +231,7 @@ class Organization {
         );
       }
 
-      const [updateUser, updatedApplication] = await Promise.all(promises);
-
-      if (updatedOrg.name && !updateUser?.acknowledged) {
-        console.error("Failed to update the organization name in users");
-      }
+      const [, updatedApplication] = await Promise.all(promises);
 
       if (updatedOrg.name && !updatedApplication?.acknowledged) {
         console.error("Failed to update the organization name in submission requests");

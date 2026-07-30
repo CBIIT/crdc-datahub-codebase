@@ -19,7 +19,6 @@ jest.mock('../../dao/application');
 describe('ApprovedStudiesService - Notification Error Handling', () => {
     let service;
     let mockApprovedStudiesCollection;
-    let mockUserCollection;
     let mockOrganizationService;
     let mockSubmissionCollection;
     let mockAuthorizationService;
@@ -38,9 +37,6 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             findOneAndUpdate: jest.fn(),
             insert: jest.fn(),
             update: jest.fn()
-        };
-        mockUserCollection = {
-            aggregate: jest.fn()
         };
         mockOrganizationService = {
             findByStudyID: jest.fn(),
@@ -85,7 +81,6 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
         service = new ApprovedStudiesService(
             mockApprovedStudiesCollection,
-            mockUserCollection,
             mockOrganizationService,
             mockSubmissionCollection,
             mockAuthorizationService,

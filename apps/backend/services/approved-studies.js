@@ -38,21 +38,19 @@ class ApprovedStudiesService {
      * @param {object} approvedStudiesCollection Native Mongo collection retained as a temporary bridge for
      *   UserService (and callers via userService.approvedStudiesCollection). Not used by ApprovedStudyDAO
      *   (Mongoose); remove once those paths migrate to approvedStudyDAO.
-     * @param {object} userCollection Native user collection
      * @param {object} organizationService Organization service (provides program collection for ProgramDAO)
      * @param {object} submissionCollection Native submission collection
      * @param {object} [authorizationService] Authorization service
      * @param {object} [notificationsService] Notifications service
      * @param {object} [emailParams] Email URL / contact params
      */
-    constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
+    constructor(approvedStudiesCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
         // TEMPORARY: native-driver bridge for UserService until it uses approvedStudyDAO.
         this.approvedStudiesCollection = approvedStudiesCollection;
-        this.userCollection = userCollection;
         this.organizationService = organizationService;
         this.authorizationService = authorizationService;
         this.programDAO = new ProgramDAO(organizationService.organizationCollection);
-        this.userDAO = new UserDAO(userCollection);
+        this.userDAO = new UserDAO();
         this.submissionDAO = new SubmissionDAO(submissionCollection);
         this.notificationsService = notificationsService;
         this.emailParams = emailParams;
@@ -570,7 +568,7 @@ class ApprovedStudiesService {
                 throw new Error("Unable to find application with ID: " + updateStudy.applicationID);
             }
 
-            const aSubmitter = await this.userDAO.findFirst({id: application?.applicantID});
+            const aSubmitter = await this.userDAO.findFirst({_id: application?.applicantID});
             if (!aSubmitter?._id) {
                 // internal error for the logs, this will not be displayed to the user
                 throw new Error("Unable to find submitter with ID: " + application?.applicantID);

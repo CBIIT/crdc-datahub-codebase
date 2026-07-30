@@ -42,7 +42,7 @@ describe('Organization.listPrograms', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     organization = new Organization(
-      {}, {}, {}, {}
+      {}, {}, {}
     );
     jest.clearAllMocks();
   });
@@ -175,7 +175,7 @@ describe('Organization.createOrganization', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     organization = new Organization(
-      {}, {}, {}, {}
+      {}, {}, {}
     );
     jest.clearAllMocks();
     organization._checkRemovedStudies = jest.fn();
@@ -273,7 +273,7 @@ describe('Organization.getOrganizationAPI', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     organization = new Organization(
-      {}, {}, {}, {}
+      {}, {}, {}
     );
     jest.clearAllMocks();
   });
@@ -320,7 +320,7 @@ describe('Organization.getOrganizationByID', () => {
   beforeEach(() => {
     mockProgramDAO = { getOrganizationByID: jest.fn() };
     ProgramDAO.mockImplementation(() => mockProgramDAO);
-    organization = new Organization({}, {}, {}, {});
+    organization = new Organization({}, {}, {});
     jest.clearAllMocks();
   });
 
@@ -357,7 +357,7 @@ describe('Organization.editOrganization', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     
-    organization = new Organization({}, {}, {}, {});
+    organization = new Organization({}, {}, {});
     jest.clearAllMocks();
   });
 
@@ -369,11 +369,14 @@ describe('Organization.editOrganization', () => {
     mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
     mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
     mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+    mockUserDAO.updateUserOrg.mockResolvedValue({ count: 1 });
+    mockApplicationDAO.updateApplicationOrg.mockResolvedValue({ acknowledged: true });
 
     const result = await organization.editOrganization(orgID, params);
 
     expect(result).toEqual({ ...currentOrg, name: 'Updated Org', updateAt: expect.any(Date) });
     expect(mockProgramDAO.updateMany).toHaveBeenCalled();
+    expect(mockUserDAO.updateUserOrg).toHaveBeenCalledWith(orgID, expect.objectContaining({ name: 'Updated Org' }));
     expect(mockApprovedStudyDAO.findMany).not.toHaveBeenCalled();
     expect(mockApprovedStudyDAO.updateMany).not.toHaveBeenCalled();
   });

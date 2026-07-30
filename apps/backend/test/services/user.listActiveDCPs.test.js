@@ -5,7 +5,7 @@ const { ERROR } = require('../../constants/error-constants');
 
 describe('UserService.listActiveDCPsAPI', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, mockNotificationsService, 
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, 
         mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, 
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
@@ -45,9 +45,8 @@ describe('UserService.listActiveDCPsAPI', () => {
     ];
 
     beforeEach(() => {
-        // Mock collections
-        mockUserCollection = {
-            aggregate: jest.fn()
+        mockUserDAO = {
+            findMany: jest.fn()
         };
 
         mockLogCollection = {};
@@ -64,9 +63,7 @@ describe('UserService.listActiveDCPsAPI', () => {
             getPermissionScope: jest.fn()
         };
 
-        // Create service instance
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
@@ -80,6 +77,7 @@ describe('UserService.listActiveDCPsAPI', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
 
         // Mock context and params
         context = {

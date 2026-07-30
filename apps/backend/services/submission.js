@@ -593,7 +593,7 @@ class Submission {
                             .filter(Boolean))
                     );
 
-                    const users = await this.userDAO.findMany({id: {in: collabIDs || []}});
+                    const users = await this.userDAO.findMany({_id: {$in: collabIDs || []}});
                     const userById = new Map(users.map(u => [String(u?._id), u]));
                     aSubmission?.collaborators.forEach(collaborator => {
                         const user = userById.get(String(collaborator?.collaboratorID));
@@ -1357,7 +1357,7 @@ class Submission {
             }
 
             //find a submitter with the collaborator ID
-            const user = await this.userDAO.findFirst({id: collaborator.collaboratorID});
+            const user = await this.userDAO.findFirst({_id: collaborator.collaboratorID});
             //find if the submission including existing collaborator
             if (!aSubmission.collaborators.find(c => c.collaboratorID === collaborator.collaboratorID)) {
                 if (!user) {
@@ -2110,8 +2110,8 @@ class Submission {
             })(),
             (async () => {
                 if (submitterID) {
-                    const newSubmitter = await this.userDAO.findFirst({id: submitterID});
-                    const preSubmitter = await this.userDAO.findFirst({id: aSubmission?.submitterID});
+                    const newSubmitter = await this.userDAO.findFirst({_id: submitterID});
+                    const preSubmitter = await this.userDAO.findFirst({_id: aSubmission?.submitterID});
                     return {prevSubmitter: preSubmitter, newSubmitter: newSubmitter};
                 }
                 return {};

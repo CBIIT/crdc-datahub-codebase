@@ -3,7 +3,7 @@ const { USER } = require('../../crdc-datahub-database-drivers/constants/user-con
 
 describe('UserService.getAdmin', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockAdminUsers = [
         {
@@ -60,8 +60,8 @@ describe('UserService.getAdmin', () => {
 
     beforeEach(() => {
         // Mock all dependencies
-        mockUserCollection = {
-            aggregate: jest.fn()
+        mockUserDAO = {
+            findMany: jest.fn()
         };
         mockLogCollection = {};
         mockOrganizationCollection = {};
@@ -75,7 +75,6 @@ describe('UserService.getAdmin', () => {
 
         // Initialize UserService with mocked dependencies
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
@@ -89,6 +88,7 @@ describe('UserService.getAdmin', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
     });
 
     afterEach(() => {
@@ -98,57 +98,51 @@ describe('UserService.getAdmin', () => {
     describe('successful scenarios', () => {
         it('should return admin users when they exist', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             const result = await userService.getAdmin();
 
             // Assert
             expect(result).toEqual(mockAdminUsers);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.ADMIN,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.ADMIN,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should return empty array when no admin users exist', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue([]);
+            mockUserDAO.findMany.mockResolvedValue([]);
 
             // Act
             const result = await userService.getAdmin();
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.ADMIN,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.ADMIN,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should return single admin user when only one exists', async () => {
             // Arrange
             const singleAdmin = [mockAdminUsers[0]];
-            mockUserCollection.aggregate.mockResolvedValue(singleAdmin);
+            mockUserDAO.findMany.mockResolvedValue(singleAdmin);
 
             // Act
             const result = await userService.getAdmin();
 
             // Assert
             expect(result).toEqual(singleAdmin);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.ADMIN,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.ADMIN,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
     });
 
@@ -156,7 +150,7 @@ describe('UserService.getAdmin', () => {
         it('should only return users with ADMIN role', async () => {
             // Arrange
             const mixedUsers = [...mockAdminUsers, mockNonAdminUser];
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             const result = await userService.getAdmin();
@@ -164,18 +158,16 @@ describe('UserService.getAdmin', () => {
             // Assert
             expect(result).toEqual(mockAdminUsers);
             expect(result.every(user => user.role === USER.ROLES.ADMIN)).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.ADMIN,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.ADMIN,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should only return users with ACTIVE status', async () => {
             // Arrange
             const mixedStatusUsers = [...mockAdminUsers, mockInactiveAdmin];
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             const result = await userService.getAdmin();
@@ -183,17 +175,15 @@ describe('UserService.getAdmin', () => {
             // Assert
             expect(result).toEqual(mockAdminUsers);
             expect(result.every(user => user.userStatus === USER.STATUSES.ACTIVE)).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.ADMIN,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.ADMIN,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should filter by both role and status correctly', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             const result = await userService.getAdmin();
@@ -204,12 +194,10 @@ describe('UserService.getAdmin', () => {
                 user.role === USER.ROLES.ADMIN && 
                 user.userStatus === USER.STATUSES.ACTIVE
             )).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.ADMIN,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.ADMIN,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
     });
 
@@ -217,88 +205,84 @@ describe('UserService.getAdmin', () => {
         it('should propagate database errors', async () => {
             // Arrange
             const dbError = new Error('Database connection failed');
-            mockUserCollection.aggregate.mockRejectedValue(dbError);
+            mockUserDAO.findMany.mockRejectedValue(dbError);
 
             // Act & Assert
             await expect(userService.getAdmin()).rejects.toThrow('Database connection failed');
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should handle null result from database', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(null);
+            mockUserDAO.findMany.mockResolvedValue(null);
 
             // Act
             const result = await userService.getAdmin();
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should handle undefined result from database', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(undefined);
+            mockUserDAO.findMany.mockResolvedValue(undefined);
 
             // Act
             const result = await userService.getAdmin();
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
     });
 
     describe('query structure validation', () => {
-        it('should use correct MongoDB aggregation pipeline', async () => {
+        it('should use correct findMany query', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             await userService.getAdmin();
 
             // Assert
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.ADMIN,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.ADMIN,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should use correct USER constants', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             await userService.getAdmin();
 
             // Assert
-            const expectedQuery = [{
-                "$match": {
-                    role: USER.ROLES.ADMIN,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }];
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith(expectedQuery);
+            const expectedQuery = {
+                role: USER.ROLES.ADMIN,
+                userStatus: USER.STATUSES.ACTIVE
+            };
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
     });
 
     describe('performance and behavior', () => {
-        it('should call aggregate only once per invocation', async () => {
+        it('should call findMany only once per invocation', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             await userService.getAdmin();
 
             // Assert
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should return the same result on multiple calls with same data', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             const result1 = await userService.getAdmin();
@@ -306,7 +290,7 @@ describe('UserService.getAdmin', () => {
 
             // Assert
             expect(result1).toEqual(result2);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(2);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(2);
         });
     });
 
@@ -318,7 +302,7 @@ describe('UserService.getAdmin', () => {
                 role: USER.ROLES.ADMIN,
                 userStatus: USER.STATUSES.ACTIVE
             }];
-            mockUserCollection.aggregate.mockResolvedValue(minimalAdmin);
+            mockUserDAO.findMany.mockResolvedValue(minimalAdmin);
 
             // Act
             const result = await userService.getAdmin();
@@ -354,7 +338,7 @@ describe('UserService.getAdmin', () => {
                     timezone: 'UTC'
                 }
             }];
-            mockUserCollection.aggregate.mockResolvedValue(extensiveAdmin);
+            mockUserDAO.findMany.mockResolvedValue(extensiveAdmin);
 
             // Act
             const result = await userService.getAdmin();
@@ -371,28 +355,26 @@ describe('UserService.getAdmin', () => {
     describe('comparison with other user retrieval methods', () => {
         it('should use same query structure as getFedLeads but with different role', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             await userService.getAdmin();
 
             // Assert
-            const expectedQuery = [{
-                "$match": {
-                    role: USER.ROLES.ADMIN,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }];
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith(expectedQuery);
+            const expectedQuery = {
+                role: USER.ROLES.ADMIN,
+                userStatus: USER.STATUSES.ACTIVE
+            };
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
             
             // Verify it's different from getFedLeads query
-            expect(expectedQuery[0].$match.role).toBe(USER.ROLES.ADMIN);
-            expect(expectedQuery[0].$match.role).not.toBe(USER.ROLES.FEDERAL_LEAD);
+            expect(expectedQuery.role).toBe(USER.ROLES.ADMIN);
+            expect(expectedQuery.role).not.toBe(USER.ROLES.FEDERAL_LEAD);
         });
 
         it('should return array format consistent with other user retrieval methods', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminUsers);
 
             // Act
             const result = await userService.getAdmin();

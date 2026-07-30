@@ -282,7 +282,7 @@ describe('Submission.editSubmissionCollaborators', () => {
 
             expect(result).toBeDefined();
             // The method still calls findFirst to get user info for collaboratorName and Organization
-            expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ id: 'collaborator-1' });
+            expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ _id: 'collaborator-1' });
         });
     });
 

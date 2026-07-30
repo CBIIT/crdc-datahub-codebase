@@ -10,7 +10,7 @@ jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
 
 describe('UserService.checkForInactiveUsers', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockInactiveUsers = [
         {
@@ -72,9 +72,11 @@ describe('UserService.checkForInactiveUsers', () => {
     };
 
     beforeEach(() => {
-        // Mock all dependencies
-        mockUserCollection = {
-            aggregate: jest.fn()
+        mockUserDAO = {
+            findMany: jest.fn(),
+            updateMany: jest.fn(),
+            aggregate: jest.fn(),
+            getUsersByNotifications: jest.fn()
         };
         mockLogCollection = {};
         mockOrganizationCollection = {};
@@ -86,9 +88,7 @@ describe('UserService.checkForInactiveUsers', () => {
         mockInstitutionService = {};
         mockAuthorizationService = {};
 
-        // Initialize UserService with mocked dependencies
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
@@ -102,6 +102,7 @@ describe('UserService.checkForInactiveUsers', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
     });
 
     afterEach(() => {
@@ -113,15 +114,15 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login', 'logout', 'submission_created'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             const result = await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
             expect(result).toEqual(mockInactiveUsers);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith(expect.arrayContaining([
+            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.aggregate).toHaveBeenCalledWith(expect.arrayContaining([
                 expect.objectContaining({
                     $match: expect.objectContaining({
                         userStatus: USER.STATUSES.ACTIVE,
@@ -143,14 +144,14 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login', 'logout'];
             
-            mockUserCollection.aggregate.mockResolvedValue([]);
+            mockUserDAO.aggregate.mockResolvedValue([]);
 
             // Act
             const result = await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
         });
 
         it('should return single inactive user when only one exists', async () => {
@@ -158,14 +159,14 @@ describe('UserService.checkForInactiveUsers', () => {
             const qualifyingEvents = ['login'];
             const singleInactiveUser = [mockInactiveUsers[0]];
             
-            mockUserCollection.aggregate.mockResolvedValue(singleInactiveUser);
+            mockUserDAO.aggregate.mockResolvedValue(singleInactiveUser);
 
             // Act
             const result = await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
             expect(result).toEqual(singleInactiveUser);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
         });
     });
 
@@ -175,13 +176,13 @@ describe('UserService.checkForInactiveUsers', () => {
             const qualifyingEvents = ['login', 'logout'];
             const { subtractDaysFromNowTimestamp } = require('../../crdc-datahub-database-drivers/utility/time-utility');
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             expect(pipeline).toHaveLength(6); // 6 stages in the pipeline
             
             // Stage 1: Initial $match
@@ -273,13 +274,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             
             // Check field names are correctly mapped
             expect(pipeline[0].$match.userStatus).toBe(USER.STATUSES.ACTIVE);
@@ -292,13 +293,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login', 'logout'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             
             expect(pipeline[0].$match.userStatus).toBe(USER.STATUSES.ACTIVE);
             expect(pipeline[0].$match.IDP).toEqual({ $not: { $regex: 'nih', $options: 'i' } });
@@ -311,13 +312,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const filterStage = pipeline[2].$set.log_events_array.$filter;
             expect(filterStage.cond.$and[1].$in[1]).toEqual(qualifyingEvents);
         });
@@ -326,13 +327,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login', 'logout', 'submission_created', 'data_uploaded'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const filterStage = pipeline[2].$set.log_events_array.$filter;
             expect(filterStage.cond.$and[1].$in[1]).toEqual(qualifyingEvents);
         });
@@ -341,13 +342,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = [];
             
-            mockUserCollection.aggregate.mockResolvedValue([]);
+            mockUserDAO.aggregate.mockResolvedValue([]);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const filterStage = pipeline[2].$set.log_events_array.$filter;
             expect(filterStage.cond.$and[1].$in[1]).toEqual(qualifyingEvents);
         });
@@ -358,13 +359,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             expect(pipeline[0].$match.IDP).toEqual({ $not: { $regex: 'nih', $options: 'i' } });
         });
 
@@ -372,13 +373,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             expect(pipeline[0].$match.userStatus).toBe(USER.STATUSES.ACTIVE);
         });
 
@@ -386,13 +387,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const filterStage = pipeline[2].$set.log_events_array.$filter;
             expect(filterStage.cond.$and[0].$eq).toEqual(['$$log.userIDP', '$IDP']);
         });
@@ -401,13 +402,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login', 'logout'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const filterStage = pipeline[2].$set.log_events_array.$filter;
             expect(filterStage.cond.$and[1].$in).toEqual(['$$log.eventType', qualifyingEvents]);
         });
@@ -418,13 +419,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const finalMatchStage = pipeline[4].$match;
             expect(finalMatchStage.$or[0]).toEqual({
                 'latest_log_event.timestamp': {
@@ -438,13 +439,13 @@ describe('UserService.checkForInactiveUsers', () => {
             const qualifyingEvents = ['login'];
             const { subtractDaysFromNowTimestamp } = require('../../crdc-datahub-database-drivers/utility/time-utility');
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const finalMatchStage = pipeline[4].$match;
             expect(finalMatchStage.$or[1]).toEqual({
                 'latest_log_event.timestamp': {
@@ -458,13 +459,13 @@ describe('UserService.checkForInactiveUsers', () => {
             const qualifyingEvents = ['login'];
             const { subtractDaysFromNowTimestamp } = require('../../crdc-datahub-database-drivers/utility/time-utility');
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const finalMatchStage = pipeline[4].$match;
             expect(finalMatchStage.$or[1]['latest_log_event.timestamp'].$lt).toBe(subtractDaysFromNowTimestamp(30));
         });
@@ -475,13 +476,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const projectStage = pipeline[5].$project;
             expect(projectStage).toEqual({
                 _id: 1,
@@ -495,7 +496,7 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             const result = await userService.checkForInactiveUsers(qualifyingEvents);
@@ -514,39 +515,39 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             const dbError = new Error('Database connection failed');
-            mockUserCollection.aggregate.mockRejectedValue(dbError);
+            mockUserDAO.aggregate.mockRejectedValue(dbError);
 
             // Act & Assert
             await expect(userService.checkForInactiveUsers(qualifyingEvents)).rejects.toThrow('Database connection failed');
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
         });
 
         it('should handle null result from database', async () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(null);
+            mockUserDAO.aggregate.mockResolvedValue(null);
 
             // Act
             const result = await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
             expect(result).toBeNull();
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
         });
 
         it('should handle undefined result from database', async () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(undefined);
+            mockUserDAO.aggregate.mockResolvedValue(undefined);
 
             // Act
             const result = await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
             expect(result).toBeUndefined();
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
         });
     });
 
@@ -555,20 +556,20 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
         });
 
         it('should return the same result on multiple calls with same data', async () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             const result1 = await userService.checkForInactiveUsers(qualifyingEvents);
@@ -576,7 +577,7 @@ describe('UserService.checkForInactiveUsers', () => {
 
             // Assert
             expect(result1).toEqual(result2);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(2);
+            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(2);
         });
     });
 
@@ -585,13 +586,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const finalMatchStage = pipeline[4].$match;
             // Should include users with no qualifying log events
             expect(finalMatchStage.$or[0]['latest_log_event.timestamp'].$exists).toBe(0);
@@ -601,13 +602,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const finalMatchStage = pipeline[4].$match;
             // Should include users with no qualifying log events
             expect(finalMatchStage.$or[0]['latest_log_event.timestamp'].$exists).toBe(0);
@@ -617,13 +618,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             expect(pipeline[0].$match.IDP).toEqual({ $not: { $regex: 'nih', $options: 'i' } });
         });
     });
@@ -634,13 +635,13 @@ describe('UserService.checkForInactiveUsers', () => {
             const qualifyingEvents = ['login'];
             const { subtractDaysFromNowTimestamp } = require('../../crdc-datahub-database-drivers/utility/time-utility');
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const finalMatchStage = pipeline[4].$match;
             expect(finalMatchStage.$or[1]['latest_log_event.timestamp'].$lt).toBe(subtractDaysFromNowTimestamp(30));
             expect(subtractDaysFromNowTimestamp).toHaveBeenCalledWith(30);
@@ -653,7 +654,6 @@ describe('UserService.checkForInactiveUsers', () => {
             
             // Create service with different inactiveUserDays
             const userServiceWithDifferentDays = new UserService(
-                mockUserCollection,
                 mockLogCollection,
                 mockOrganizationCollection,
                 mockNotificationsService,
@@ -667,14 +667,15 @@ describe('UserService.checkForInactiveUsers', () => {
                 mockInstitutionService,
                 mockAuthorizationService
             );
+            userServiceWithDifferentDays.userDAO = mockUserDAO;
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userServiceWithDifferentDays.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const finalMatchStage = pipeline[4].$match;
             expect(finalMatchStage.$or[1]['latest_log_event.timestamp'].$lt).toBe(subtractDaysFromNowTimestamp(60));
         });
@@ -685,7 +686,7 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login', 'logout', 'submission_created'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             const result = await userService.checkForInactiveUsers(qualifyingEvents);
@@ -704,13 +705,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const initialMatch = pipeline[0].$match;
             expect(initialMatch.IDP).toEqual({ $not: { $regex: 'nih', $options: 'i' } });
         });
@@ -719,13 +720,13 @@ describe('UserService.checkForInactiveUsers', () => {
             // Arrange
             const qualifyingEvents = ['login'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
 
             // Act
             await userService.checkForInactiveUsers(qualifyingEvents);
 
             // Assert
-            const pipeline = mockUserCollection.aggregate.mock.calls[0][0];
+            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
             const initialMatch = pipeline[0].$match;
             expect(initialMatch.userStatus).toBe(USER.STATUSES.ACTIVE);
         });
