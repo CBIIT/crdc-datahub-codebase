@@ -5,6 +5,7 @@ import { CSSProperties, FC, useMemo, useState } from "react";
 import { SortHistory } from "../../../utils";
 import { useFormContext } from "../../Contexts/FormContext";
 import ReviewCommentsDialog from "../../ReviewCommentsDialog";
+import ReviewCommentsListDialog from "../../ReviewCommentsListDialog";
 
 import { StatusIconMap } from "./SubmissionRequestIconMap";
 
@@ -71,18 +72,38 @@ const StyledButton = styled(Button)<{ status: ApplicationStatus }>(({ status }) 
 /**
  * Status Bar Application Status Section
  *
- * @returns {JSX.Element}
+ * @returns The comprehensive status bar section.
  */
-const StatusSection: FC = () => {
+const StatusSection: FC = (): JSX.Element => {
   const {
     data: { status, history },
   } = useFormContext();
 
-  const [open, setOpen] = useState<boolean>(false);
-  const lastReview = useMemo(
-    () => SortHistory(history).find((h: HistoryEvent) => h.reviewComment?.length > 0),
+  const [openDialog, setOpenDialog] = useState<"list" | "detail" | null>(null);
+  const [selectedReview, setSelectedReview] = useState<HistoryEvent | null>(null);
+
+  const reviewEvents = useMemo<HistoryEvent[]>(
+    () =>
+      SortHistory(history).filter(
+        (h: HistoryEvent) =>
+          typeof h.reviewComment === "string" && h.reviewComment.trim().length > 0
+      ),
     [history]
   );
+
+  const handleCloseDialogs = () => {
+    setOpenDialog(null);
+    setSelectedReview(null);
+  };
+
+  const handleViewReview = (event: HistoryEvent) => {
+    setSelectedReview(event);
+    setOpenDialog("detail");
+  };
+
+  const handleBackToList = () => {
+    setOpenDialog("list");
+  };
 
   return (
     <>
@@ -99,22 +120,31 @@ const StatusSection: FC = () => {
         {status}
       </StyledStatus>
 
-      {lastReview?.reviewComment && (
+      {reviewEvents.length > 0 && (
         <>
           <StyledButton
             id="status-bar-review-comments-button"
             variant="contained"
-            onClick={() => setOpen(true)}
+            onClick={() => setOpenDialog("list")}
             aria-label="View Comments"
             status={status}
           >
             View Comments
           </StyledButton>
-          <ReviewCommentsDialog
-            open={open}
-            onClose={() => setOpen(false)}
+          <ReviewCommentsListDialog
+            open={openDialog === "list"}
+            onClose={handleCloseDialogs}
             status={status}
-            lastReview={lastReview}
+            preTitle="CRDC Submission Request"
+            events={reviewEvents}
+            onView={handleViewReview}
+          />
+          <ReviewCommentsDialog
+            open={openDialog === "detail"}
+            onClose={handleCloseDialogs}
+            onBack={handleBackToList}
+            status={status}
+            lastReview={selectedReview ?? undefined}
             preTitle="CRDC Submission Request"
             title="Comments"
           />
