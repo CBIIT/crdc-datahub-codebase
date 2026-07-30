@@ -105,7 +105,7 @@ class UserService {
         const userInfo = context?.userInfo;
 
         if (adminEmails.length === 0) {
-            console.error("The request access notification does not have any recipient");
+            console.error(ERROR.NO_ADMIN_USER);
             return ValidationHandler.handle(ERROR.NO_ADMIN_USER);
         }
 
@@ -446,15 +446,15 @@ class UserService {
     async updateMyUser(params, context) {
         isLoggedInOrThrow(context);
         isValidUserStatus(context?.userInfo?.userStatus);
-        let sessionCurrentTime = getCurrentTime();
-        let user = await this.userDAO.findById(context.userInfo._id);
-        if (!user) throw new Error("User is not in the database")
-
         if (!context.userInfo._id) {
-            let error = "there is no UserId in the session";
+            let error = "User ID is missing from the context user information";
             console.error(error)
             throw new Error(error)
         }
+        let sessionCurrentTime = getCurrentTime();
+        let user = await this.userDAO.findById(context.userInfo._id);
+        if (!user) throw new Error("User is not found in the database")
+
         const updateUser ={
             _id: context.userInfo._id,
             firstName: params.userInfo.firstName,
@@ -465,8 +465,7 @@ class UserService {
         try {
             await this.userDAO.update(updateUser._id, updateUser);
         } catch (error) {
-            let errMsg = "there is an error getting the result";
-            console.error(errMsg)
+            console.error("An error occurred while updating the User object: ", error);
             throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
         }
         // store user update log
@@ -628,13 +627,12 @@ class UserService {
             throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
         }
 
-        const promiseArray = [
-            await this._notifyDeactivatedUser(prevUser, status),
-            await this._notifyUpdatedUser(prevUser, userAfterUpdate, role),
-            await this._logAfterUserEdit(prevUser, userAfterUpdate),
-            await this._removePrimaryContact(prevUser, userAfterUpdate)
-        ];
-        await Promise.all(promiseArray);
+        await Promise.all([
+            this._notifyDeactivatedUser(prevUser, status),
+            this._notifyUpdatedUser(prevUser, userAfterUpdate, role),
+            this._logAfterUserEdit(prevUser, userAfterUpdate),
+            this._removePrimaryContact(prevUser, userAfterUpdate)
+        ]);
 
         if (userAfterUpdate.studies) {
             userAfterUpdate.studies = validStudies; // return approved studies dynamically with all properties of studies
