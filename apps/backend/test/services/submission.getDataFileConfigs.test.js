@@ -73,15 +73,15 @@ describe('Submission.getDataFileConfigs', () => {
         };
 
         // Initialize Submission with required dependencies
-        // Provide a mock organizationService with an organizationCollection as required by Submission
-        const mockOrganizationService = { organizationCollection: {} };
+        // Provide a mock programService with an programService
+        const mockProgramService = { organizationCollection: {} };
 
         submission = new Submission(
             null, // logCollection
             null, // submissionCollection
             null, // batchService
             null, // userService
-            mockOrganizationService, // organizationService with organizationCollection
+            mockProgramService, // programService with organizationCollection
             null, // notificationService
             null, // dataRecordService
             mockFetchDataModelInfo, // fetchDataModelInfo

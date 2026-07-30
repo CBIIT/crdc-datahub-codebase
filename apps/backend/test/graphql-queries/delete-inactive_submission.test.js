@@ -5,7 +5,7 @@ const {EmailService} = require("../../services/email");
 const {NotifyUser} = require("../../services/notify-user");
 const {User} = require("../../crdc-datahub-database-drivers/services/user");
 const {S3Service} = require("../../services/s3-service");
-const {Organization} = require("../../services/organization-service");
+const {Program} = require("../../services/program-service");
 
 // Mock Prisma
 jest.mock("../../prisma", () => {
@@ -54,8 +54,8 @@ const submissionCollection = mockPrisma.submission;
 const dataRecordCollection = mockPrisma.dataRecord;
 const dataRecordService = new DataRecordService(dataRecordCollection, config.file_queue, config.metadata_queue, null);
 const s3Service = new S3Service();
-const organizationService = new Organization(testCollection);
-const subInterface = new Submission(logCollection, submissionCollection, null, userService, organizationService, notificationsService, dataRecordService, "dev2", null, null, null, s3Service)
+const programService = new Program({}, {}, {});
+const subInterface = new Submission(logCollection, submissionCollection, null, userService, programService, notificationsService, dataRecordService, "dev2", null, null, null, s3Service)
 
 describe('Submission service test', () => {
 

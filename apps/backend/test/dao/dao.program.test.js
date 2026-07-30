@@ -1,480 +1,193 @@
-const ProgramDAO = require('../../dao/program');
-const { ERROR: SUBMODULE_ERROR } = require('../../crdc-datahub-database-drivers/constants/error-constants');
-
-// Mock Prisma
-jest.mock('../../prisma', () => ({
-    program: {
-        findUnique: jest.fn(),
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn(),
-        name: 'Program'
-    },
+jest.mock('../../mongoose/models/program', () => ({
+    modelName: 'Program',
+    findById: jest.fn(),
+    findOne: jest.fn(),
+    find: jest.fn(),
+    create: jest.fn(),
+    countDocuments: jest.fn(),
+    aggregate: jest.fn(),
+    findOneAndUpdate: jest.fn(),
 }));
+
+const ProgramDAO = require('../../dao/program');
+const ProgramModel = require('../../mongoose/models/program');
+const MongooseGenericDAO = require('../../dao/mongoose-generic');
+const { ERROR: SUBMODULE_ERROR } = require('../../crdc-datahub-database-drivers/constants/error-constants');
+const { APPROVED_STUDIES_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
+
+/**
+ * @param {*} resolvedValue
+ * @returns {{ lean: jest.Mock }}
+ */
+function createLeanQuery(resolvedValue) {
+    return {
+        lean: jest.fn().mockResolvedValue(resolvedValue),
+    };
+}
 
 describe('ProgramDAO', () => {
     let programDAO;
-    let mockOrganizationCollection;
-    let mockPrisma;
 
     beforeEach(() => {
-        mockOrganizationCollection = {
-            findOne: jest.fn(),
-            aggregate: jest.fn(),
-            countDoc: jest.fn(),
-        };
-
-        programDAO = new ProgramDAO(mockOrganizationCollection);
-        
-        // Override the organizationCollection property directly
-        programDAO.organizationCollection = mockOrganizationCollection;
-        
-        // Get the mocked Prisma client
-        mockPrisma = require('../../prisma');
-        
+        programDAO = new ProgramDAO();
         jest.clearAllMocks();
-        mockOrganizationCollection.countDoc.mockResolvedValue(0);
-        mockOrganizationCollection.aggregate.mockResolvedValue([]);
     });
 
-    describe('getOrganizationByName', () => {
-        const testCases = [
-            // Basic functionality
-            {
-                name: 'should find organization with exact match',
-                inputName: 'Cancer Research Program',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should find organization with case-insensitive match',
-                inputName: 'cancer research program',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^cancer research program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should find organization with mixed case',
-                inputName: 'CaNcEr ReSeArCh PrOgRaM',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^CaNcEr ReSeArCh PrOgRaM$', 'i') } },
-                shouldFind: true
-            },
+    it('extends MongooseGenericDAO with the Program model', () => {
+        expect(programDAO).toBeInstanceOf(MongooseGenericDAO);
+        expect(programDAO.model).toBe(ProgramModel);
+        expect(programDAO._modelName).toBe('Program');
+    });
 
-            // Whitespace handling
-            {
-                name: 'should handle leading whitespace',
-                inputName: '  Cancer Research Program',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle trailing whitespace',
-                inputName: 'Cancer Research Program  ',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle multiple spaces between words',
-                inputName: 'Cancer   Research   Program',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer   Research   Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle tabs',
-                inputName: '\tCancer Research Program\t',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research Program$', 'i') } },
-                shouldFind: true
-            },
+    describe('getProgramByName', () => {
+        it('should find program with trimmed name', async () => {
+            const mockResult = { _id: 'org123', name: 'Cancer Research Program' };
+            ProgramModel.findOne.mockReturnValue(createLeanQuery(mockResult));
 
-            // Special characters
-            {
-                name: 'should handle apostrophes',
-                inputName: "Children's Cancer Research",
-                dbName: "Children's Cancer Research",
-                expectedQuery: { name: { $regex: new RegExp("^Children's Cancer Research$", 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle hyphens',
-                inputName: 'Multi-Center Cancer Study',
-                dbName: 'Multi-Center Cancer Study',
-                expectedQuery: { name: { $regex: new RegExp('^Multi-Center Cancer Study$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle parentheses',
-                inputName: 'Cancer Research (NIH Funded)',
-                dbName: 'Cancer Research (NIH Funded)',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research (NIH Funded)$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle ampersands',
-                inputName: 'Cancer & Immunology Research',
-                dbName: 'Cancer & Immunology Research',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer & Immunology Research$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle periods',
-                inputName: 'Dr. Smith Cancer Program',
-                dbName: 'Dr. Smith Cancer Program',
-                expectedQuery: { name: { $regex: new RegExp('^Dr. Smith Cancer Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle exclamation marks',
-                inputName: 'Cancer Research Initiative!',
-                dbName: 'Cancer Research Initiative!',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research Initiative!$', 'i') } },
-                shouldFind: true
-            },
+            const result = await programDAO.getProgramByName('  Cancer Research Program  ');
 
-            // Regex special characters that need escaping
-            {
-                name: 'should handle regex special characters - brackets',
-                inputName: '[Cancer Research] Program',
-                dbName: '[Cancer Research] Program',
-                expectedQuery: { name: { $regex: new RegExp('^[Cancer Research] Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle regex special characters - braces',
-                inputName: '{Cancer} Research Program',
-                dbName: '{Cancer} Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^{Cancer} Research Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle regex special characters - pipe',
-                inputName: 'Cancer Research|Immunology',
-                dbName: 'Cancer Research|Immunology',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research|Immunology$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle regex special characters - question mark',
-                inputName: 'Cancer Research? Program',
-                dbName: 'Cancer Research? Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research? Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle regex special characters - plus',
-                inputName: 'Cancer Research+ Program',
-                dbName: 'Cancer Research+ Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research+ Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle regex special characters - asterisk',
-                inputName: 'Cancer Research* Program',
-                dbName: 'Cancer Research* Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research* Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle regex special characters - dollar sign',
-                inputName: 'Cancer Research$ Program',
-                dbName: 'Cancer Research$ Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research$ Program$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle regex special characters - caret',
-                inputName: 'Cancer Research^ Program',
-                dbName: 'Cancer Research^ Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research^ Program$', 'i') } },
-                shouldFind: true
-            },
-
-            // Edge cases
-            {
-                name: 'should handle empty string',
-                inputName: '',
-                dbName: '',
-                expectedQuery: { name: { $regex: new RegExp('^$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle only whitespace',
-                inputName: '   ',
-                dbName: '',
-                expectedQuery: { name: { $regex: new RegExp('^$', 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle very long organization name',
-                inputName: 'A'.repeat(500),
-                dbName: 'A'.repeat(500),
-                expectedQuery: { name: { $regex: new RegExp(`^${'A'.repeat(500)}$`, 'i') } },
-                shouldFind: true
-            },
-            {
-                name: 'should handle unicode characters',
-                inputName: 'Cáncer Research Program™',
-                dbName: 'Cáncer Research Program™',
-                expectedQuery: { name: { $regex: new RegExp('^Cáncer Research Program™$', 'i') } },
-                shouldFind: true
-            },
-
-            // No match cases
-            {
-                name: 'should not match partial name',
-                inputName: 'Cancer',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer$', 'i') } },
-                shouldFind: false
-            },
-            {
-                name: 'should not match when partial match at end',
-                inputName: 'Research Program',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Research Program$', 'i') } },
-                shouldFind: false
-            },
-            {
-                name: 'should not match when partial match in middle',
-                inputName: 'Research',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Research$', 'i') } },
-                shouldFind: false
-            },
-            {
-                name: 'should not match completely different name',
-                inputName: 'Diabetes Research',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Diabetes Research$', 'i') } },
-                shouldFind: false
-            },
-            {
-                name: 'should not match when name has extra characters',
-                inputName: 'Cancer Research Program Extra',
-                dbName: 'Cancer Research Program',
-                expectedQuery: { name: { $regex: new RegExp('^Cancer Research Program Extra$', 'i') } },
-                shouldFind: false
-            }
-        ];
-
-        testCases.forEach(testCase => {
-            it(testCase.name, async () => {
-                // Setup mock
-                const mockResult = testCase.shouldFind ? { 
-                    id: 'org123', 
-                    name: testCase.dbName,
-                    studyProgramLeadName: 'Dr. Test',
-                    studyProgramLeadEmail: 'test@example.com'
-                } : null;
-                
-                mockPrisma.program.findFirst.mockResolvedValue(mockResult);
-
-                // Execute
-                const result = await programDAO.getOrganizationByName(testCase.inputName);
-
-                // Verify query was called with expected parameters
-                expect(mockPrisma.program.findFirst).toHaveBeenCalledWith({
-                    where: { name: testCase.inputName?.trim() }
-                });
-
-                // Verify result
-                if (testCase.shouldFind) {
-                    expect(result).toEqual({ ...mockResult, _id: mockResult.id });
-                } else {
-                    expect(result).toBeNull();
-                }
+            expect(ProgramModel.findOne).toHaveBeenCalledWith({ name: 'Cancer Research Program' });
+            expect(result).toEqual({
+                ...mockResult,
+                id: 'org123',
+                _id: 'org123',
             });
         });
 
-        // Edge case: null/undefined input
+        it('should return null when not found', async () => {
+            ProgramModel.findOne.mockReturnValue(createLeanQuery(null));
+
+            const result = await programDAO.getProgramByName('Missing');
+
+            expect(result).toBeNull();
+        });
+
         it('should handle null input', async () => {
-            mockPrisma.program.findFirst.mockResolvedValue(null);
-            
-            const result = await programDAO.getOrganizationByName(null);
-            
-            expect(mockPrisma.program.findFirst).toHaveBeenCalledWith({
-                where: { name: undefined }
-            });
+            ProgramModel.findOne.mockReturnValue(createLeanQuery(null));
+
+            const result = await programDAO.getProgramByName(null);
+
+            expect(ProgramModel.findOne).toHaveBeenCalledWith({ name: undefined });
             expect(result).toBeNull();
         });
 
-        it('should handle undefined input', async () => {
-            mockPrisma.program.findFirst.mockResolvedValue(null);
-            
-            const result = await programDAO.getOrganizationByName(undefined);
-            
-            expect(mockPrisma.program.findFirst).toHaveBeenCalledWith({
-                where: { name: undefined }
+        it('should handle database errors', async () => {
+            ProgramModel.findOne.mockReturnValue({
+                lean: jest.fn().mockRejectedValue(new Error('Database connection failed')),
             });
-            expect(result).toBeNull();
-        });
 
-        // Error handling
-        it('should handle database errors gracefully', async () => {
-            const dbError = new Error('Database connection failed');
-            mockPrisma.program.findFirst.mockRejectedValue(dbError);
-
-            await expect(programDAO.getOrganizationByName('Test Program'))
+            await expect(programDAO.getProgramByName('Test Program'))
                 .rejects.toThrow('Failed to find first Program');
         });
+    });
 
-        // Test - multiple concurrent calls
-        it('should handle multiple rapid calls', async () => {
-            const testNames = [
-                'Cancer Research Program',
-                'Diabetes Research Program',
-                'Neurology Study Program',
-                'Cardiology Research Program',
-                'Immunology Study Program'
-            ];
+    describe('findOneByProgramName', () => {
+        it('should match case-insensitively', async () => {
+            const mockResult = { _id: 'org123', name: 'Cancer Research Program' };
+            ProgramModel.findOne.mockReturnValue(createLeanQuery(mockResult));
 
-            mockPrisma.program.findFirst.mockResolvedValue({ 
-                id: 'org123', 
-                name: 'Test Program' 
+            const result = await programDAO.findOneByProgramName('cancer research program');
+
+            expect(ProgramModel.findOne).toHaveBeenCalledWith({
+                name: {
+                    $regex: '^cancer research program$',
+                    $options: 'i',
+                },
             });
-
-            const results = await Promise.all(testNames.map(name => 
-                programDAO.getOrganizationByName(name)
-            ));
-
-            expect(mockPrisma.program.findFirst).toHaveBeenCalledTimes(testNames.length);
-            expect(results).toHaveLength(testNames.length);
-            expect(results.every(result => result._id === 'org123')).toBe(true);
+            expect(result).toEqual({
+                ...mockResult,
+                id: 'org123',
+                _id: 'org123',
+            });
         });
 
-        // Integration-style test
-        it('should work correctly with realistic organization names', async () => {
-            const realisticNames = [
-                "NIH Cancer Research Program",
-                "Children's Hospital Oncology Research",
-                "Multi-Center Lung Cancer Trial (MCLT)",
-                "Breast Cancer Research Foundation",
-                "American Cancer Society Research Program",
-                "Stanford Cancer Institute",
-                "MD Anderson Cancer Center Research"
-            ];
-
-            // Mock returning different results for each call
-            let callCount = 0;
-            mockPrisma.program.findFirst.mockImplementation(() => {
-                callCount++;
-                return Promise.resolve({ 
-                    id: `org${callCount}`, 
-                    name: realisticNames[callCount - 1]
-                });
-            });
-
-            // Test each realistic name
-            for (let i = 0; i < realisticNames.length; i++) {
-                const result = await programDAO.getOrganizationByName(realisticNames[i]);
-                
-                expect(result).toEqual({
-                    id: `org${i + 1}`,
-                    name: realisticNames[i],
-                    _id: `org${i + 1}`
-                });
-                
-                expect(mockPrisma.program.findFirst).toHaveBeenCalledWith({
-                    where: { name: realisticNames[i] }
-                });
-            }
+        it('should return null for empty name', async () => {
+            const result = await programDAO.findOneByProgramName('   ');
+            expect(result).toBeNull();
+            expect(ProgramModel.findOne).not.toHaveBeenCalled();
         });
     });
 
-    describe('getOrganizationByID', () => {
+    describe('getProgramByID', () => {
         it('should throw when includeStudies is omitted', async () => {
-            await expect(programDAO.getOrganizationByID('org123')).rejects.toThrow(
+            await expect(programDAO.getProgramByID('org123')).rejects.toThrow(
                 SUBMODULE_ERROR.INVALID_INCLUDE_STUDIES_LIST_ARGUMENT
             );
         });
 
-        it('should find organization by ID', async () => {
-            const mockOrg = {
-                id: 'org123',
-                name: 'Test Organization',
-                studyProgramLeadName: 'Dr. Test',
-                studyProgramLeadEmail: 'test@example.com'
-            };
+        it('should find program by ID without studies', async () => {
+            const mockOrg = { _id: 'org123', name: 'Test Organization' };
+            ProgramModel.findById.mockReturnValue(createLeanQuery(mockOrg));
 
-            mockPrisma.program.findUnique.mockResolvedValue(mockOrg);
+            const result = await programDAO.getProgramByID('org123', false);
 
-            const result = await programDAO.getOrganizationByID('org123', false);
-
-            expect(mockPrisma.program.findUnique).toHaveBeenCalledWith({
-                where: { id: 'org123' }
-            });
-            expect(result).toEqual({ ...mockOrg, _id: mockOrg.id });
+            expect(ProgramModel.findById).toHaveBeenCalledWith('org123');
+            expect(result).toEqual({ ...mockOrg, id: 'org123', _id: 'org123' });
         });
 
-        it('should return null when organization not found', async () => {
-            mockPrisma.program.findUnique.mockResolvedValue(null);
+        it('should return null when program not found', async () => {
+            ProgramModel.findById.mockReturnValue(createLeanQuery(null));
 
-            const result = await programDAO.getOrganizationByID('nonexistent', false);
+            const result = await programDAO.getProgramByID('nonexistent', false);
 
             expect(result).toBeNull();
         });
 
         it('should handle database errors', async () => {
-            const dbError = new Error('Database connection failed');
-            mockPrisma.program.findUnique.mockRejectedValue(dbError);
+            ProgramModel.findById.mockReturnValue({
+                lean: jest.fn().mockRejectedValue(new Error('Database connection failed')),
+            });
 
-            await expect(programDAO.getOrganizationByID('org123', false))
+            await expect(programDAO.getProgramByID('org123', false))
                 .rejects.toThrow('Failed to find Program by ID');
         });
 
         it('should include studies when includeStudies is true', async () => {
             const mockStudies = [
-                { id: 'study1', studyAbbreviation: 'ABC', studyName: 'Study A' },
+                { _id: 'study1', studyAbbreviation: 'ABC', studyName: 'Study A' },
             ];
             const mockOrg = {
-                id: 'org123',
+                _id: 'org123',
                 name: 'Test Organization',
                 studies: mockStudies,
             };
+            ProgramModel.aggregate.mockResolvedValue([mockOrg]);
 
-            mockPrisma.program.findUnique.mockResolvedValue(mockOrg);
+            const result = await programDAO.getProgramByID('org123', true);
 
-            const result = await programDAO.getOrganizationByID('org123', true);
-
-            expect(mockPrisma.program.findUnique).toHaveBeenCalledWith({
-                where: { id: 'org123' },
-                include: { studies: true },
-            });
+            expect(ProgramModel.aggregate).toHaveBeenCalledWith([
+                { $match: { _id: 'org123' } },
+                {
+                    $lookup: {
+                        from: APPROVED_STUDIES_COLLECTION,
+                        localField: '_id',
+                        foreignField: 'programID',
+                        as: 'studies',
+                    },
+                },
+            ]);
             expect(result).toEqual({
                 id: 'org123',
-                name: 'Test Organization',
                 _id: 'org123',
-                studies: [
-                    { id: 'study1', studyAbbreviation: 'ABC', studyName: 'Study A', _id: 'study1' },
-                ],
+                name: 'Test Organization',
+                studies: mockStudies,
             });
         });
 
-        it('should return empty studies array when none related and includeStudies is true', async () => {
-            const mockOrg = {
-                id: 'org123',
-                name: 'Test Organization',
-                studies: [],
-            };
-            mockPrisma.program.findUnique.mockResolvedValue(mockOrg);
-            const result = await programDAO.getOrganizationByID('org123', true);
-            expect(result.studies).toEqual([]);
+        it('should return null when not found and includeStudies is true', async () => {
+            ProgramModel.aggregate.mockResolvedValue([]);
+
+            const result = await programDAO.getProgramByID('org123', true);
+
+            expect(result).toBeNull();
         });
 
         it('should handle database errors when includeStudies is true', async () => {
-            const dbError = new Error('Database connection failed');
-            mockPrisma.program.findUnique.mockRejectedValue(dbError);
+            ProgramModel.aggregate.mockRejectedValue(new Error('Database connection failed'));
 
             await expect(
-                programDAO.getOrganizationByID('org123', true)
-            ).rejects.toThrow('Failed to find Program by ID');
+                programDAO.getProgramByID('org123', true)
+            ).rejects.toThrow('Failed to aggregate Program');
         });
     });
 
@@ -482,34 +195,56 @@ describe('ProgramDAO', () => {
         it('should call count and aggregate without $facet', async () => {
             const statusCondition = { status: 'Active' };
             const mockResults = [{ _id: 'org1', name: 'Program A', studies: [] }];
-            mockOrganizationCollection.countDoc.mockResolvedValue(1);
-            mockOrganizationCollection.aggregate.mockResolvedValue(mockResults);
+            ProgramModel.countDocuments.mockResolvedValue(1);
+            ProgramModel.aggregate.mockResolvedValue(mockResults);
 
             const result = await programDAO.listPrograms(10, 0, 'updateAt', 'ASC', statusCondition);
 
-            expect(mockOrganizationCollection.countDoc).toHaveBeenCalledTimes(1);
-            expect(mockOrganizationCollection.countDoc).toHaveBeenCalledWith(statusCondition);
-            expect(mockOrganizationCollection.aggregate).toHaveBeenCalledTimes(1);
-            const pipeline = mockOrganizationCollection.aggregate.mock.calls[0][0];
+            expect(ProgramModel.countDocuments).toHaveBeenCalledTimes(1);
+            expect(ProgramModel.countDocuments).toHaveBeenCalledWith(statusCondition);
+            expect(ProgramModel.aggregate).toHaveBeenCalledTimes(1);
+            const pipeline = ProgramModel.aggregate.mock.calls[0][0];
             expect(pipeline.some((stage) => stage.$facet)).toBe(false);
-            expect(result).toEqual({ total: 1, results: mockResults });
+            expect(result).toEqual({
+                total: 1,
+                results: [{ ...mockResults[0], id: 'org1', _id: 'org1' }],
+            });
         });
 
         it('should $match using the provided statusCondition', async () => {
             const statusCondition = { status: 'Active' };
+            ProgramModel.countDocuments.mockResolvedValue(0);
+            ProgramModel.aggregate.mockResolvedValue([]);
+
             await programDAO.listPrograms(10, 0, 'updateAt', 'ASC', statusCondition);
-            const pipeline = mockOrganizationCollection.aggregate.mock.calls[0][0];
+            const pipeline = ProgramModel.aggregate.mock.calls[0][0];
             const matchStage = pipeline.find((stage) => stage.$match);
             expect(matchStage.$match).toEqual(statusCondition);
         });
 
         it('should return empty results with zero total', async () => {
-            mockOrganizationCollection.countDoc.mockResolvedValue(0);
-            mockOrganizationCollection.aggregate.mockResolvedValue([]);
+            ProgramModel.countDocuments.mockResolvedValue(0);
+            ProgramModel.aggregate.mockResolvedValue([]);
 
             const result = await programDAO.listPrograms(10, 0, 'updateAt', 'ASC', { status: 'Active' });
 
             expect(result).toEqual({ total: 0, results: [] });
+        });
+    });
+
+    describe('upsertByName', () => {
+        it('should upsert and map id/_id', async () => {
+            const doc = { name: 'New Program', status: 'Active' };
+            ProgramModel.findOneAndUpdate.mockResolvedValue({ _id: 'org-new', ...doc });
+
+            const result = await programDAO.upsertByName('New Program', doc);
+
+            expect(ProgramModel.findOneAndUpdate).toHaveBeenCalledWith(
+                { name: 'New Program' },
+                { $set: doc },
+                { upsert: true, new: true, lean: true, setDefaultsOnInsert: true }
+            );
+            expect(result).toEqual({ id: 'org-new', _id: 'org-new', ...doc });
         });
     });
 });

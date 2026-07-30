@@ -49,13 +49,13 @@ class Application {
     _FINAL_INACTIVE_REMINDER = "finalInactiveReminder";
     _INACTIVE_REMINDER = "inactiveReminder";
     _CRDC_TEAM = "the CRDC team";
-    constructor(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, organizationService, institutionService, configurationService, authorizationService) {
+    constructor(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, institutionService, configurationService, authorizationService) {
         this.logCollection = logCollection;
         this.approvedStudiesService = approvedStudiesService;
         this.userService = userService;
         this.notificationService = notificationsService;
         this.emailParams = emailParams;
-        this.organizationService = organizationService;
+        this.programService = programService;
         this.institutionService = institutionService;
         this.configurationService = configurationService;
         this.authorizationService = authorizationService;
@@ -1365,8 +1365,8 @@ class Application {
         const sequenceNumber = application?.sequenceNumber ?? 1;
         const [predecessor, existingProgram, duplicatePrograms] = await Promise.all([
             this.applicationDAO.findApprovedParentSubmissionRequestByID(application._id),
-            this.organizationService.getOrganizationByID(questionnaire?.program?._id, false),
-            this.organizationService.findOneByProgramName(application?.programName),
+            this.programService.getProgramByID(questionnaire?.program?._id, false),
+            this.programService.findOneByProgramName(application?.programName),
             (async () => {
                 application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
             })()
@@ -1426,7 +1426,7 @@ class Application {
                 let program = existingProgram;
                 if (name?.trim()?.length > 0 && !existingProgram?._id) {
                     // Await program creation before creating approved study to avoid race condition
-                    program = await this.organizationService.upsertByProgramName(name, abbreviation, description);
+                    program = await this.programService.upsertByProgramName(name, abbreviation, description);
                 }
                 const newApprovedStudy = await this.approvedStudiesService.saveApprovedStudyFromApplication(
                     updated,

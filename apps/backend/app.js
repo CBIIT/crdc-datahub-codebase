@@ -26,7 +26,7 @@ const {EmailService} = require("./services/email");
 const {NotifyUser} = require("./services/notify-user");
 const {extractAndJoinFields} = require("./utility/string-util");
 const {ApprovedStudiesService} = require("./services/approved-studies");
-const {Organization} = require("./services/organization-service");
+const {Program} = require("./services/program-service");
 const {LOGIN, REACTIVATE_USER} = require("./crdc-datahub-database-drivers/constants/event-constants");
 const {BatchService} = require("./services/batch-service");
 const {AWSService} = require("./services/aws-request");
@@ -108,8 +108,8 @@ app.use("/api/graphql", graphqlRouter);
         const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
         const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
         const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
-        const organizationService = new Organization(organizationCollection, userCollection, submissionCollection, applicationCollection);
-        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, userCollection, organizationService, submissionCollection);
+        const programService = new Program(userCollection, submissionCollection, applicationCollection);
+        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, userCollection, programService, submissionCollection);
 
         const userService = new UserService(userCollection, logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
         const s3Service = new S3Service();
@@ -132,11 +132,11 @@ app.use("/api/graphql", graphqlRouter);
         qcResultsService.setDataRecordService(dataRecordService);
 
         const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
-            organizationService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
+            programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
             s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, 
             config.uploaderCLIConfigs, config.submission_bucket, configurationService);
 
-        const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, organizationService, null, configurationService, null);
+        const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, null, configurationService, null);
         
         
         cronJob.schedule(config.scheduledJobTime, async () => {
