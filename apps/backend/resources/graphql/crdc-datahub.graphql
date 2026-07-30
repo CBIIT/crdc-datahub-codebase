@@ -296,7 +296,7 @@ type SubmissionList implements SubmissionInterface {
     dataFileSize: FileSize
     adminSubmitComment: String
     # SubmissionList fields
-    submissionRequestID: String # Application ID linked via study
+    submissionRequestID: String # Application ID 
     canViewSubmissionRequest: Boolean # User permission to view the submission request
 }
 
@@ -860,7 +860,6 @@ type SubmissionStudy {
     _id: ID
     studyName: String
     studyAbbreviation: String
-    applicationID: String
     dbGaPID: String
 }
 

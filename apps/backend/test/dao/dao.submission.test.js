@@ -984,7 +984,6 @@ describe('SubmissionDAO', () => {
                     _id: 'study-1',
                     studyName: 'Test Study',
                     studyAbbreviation: 'TS',
-                    applicationID: undefined,
                     dbGaPID: 'phs001234'
                 });
             });
