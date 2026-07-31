@@ -892,7 +892,7 @@ describe("reopenForm Tests", () => {
         data: {
           resumeInquiredApplication: {
             _id: "mock-reopen-id",
-            status: "In Progress",
+            status: "In Revision",
           } as ResumeAppResp["resumeInquiredApplication"],
         },
       },

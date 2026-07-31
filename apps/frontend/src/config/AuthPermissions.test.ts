@@ -70,7 +70,7 @@ describe("Edge Cases", () => {
 });
 
 describe("submission_request:submit Permission", () => {
-  const validStatuses: ApplicationStatus[] = ["In Progress", "Inquired"];
+  const validStatuses: ApplicationStatus[] = ["In Progress", "Inquired", "In Revision"];
   const invalidStatuses: ApplicationStatus[] = [
     "Approved",
     "In Review",

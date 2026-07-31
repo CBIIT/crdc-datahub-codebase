@@ -98,7 +98,7 @@ export type Input = {
   /**
    * The status to save the application as
    */
-  status?: Extends<ApplicationStatus, "New" | "In Progress">;
+  status?: Extends<ApplicationStatus, "New" | "In Progress" | "In Revision">;
 };
 
 export type Response = {

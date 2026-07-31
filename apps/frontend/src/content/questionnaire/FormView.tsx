@@ -418,7 +418,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
     if (!res) {
       navigate("/submission-requests", {
         state: {
-          error: "An error occurred while marking the form as In Progress. Please try again.",
+          error: "An error occurred while marking the form as In Revision. Please try again.",
         },
       });
     }
