@@ -169,4 +169,109 @@ describe('NotifyUser', () => {
             );
         });
     });
+
+    describe('reopenApplicationNotification', () => {
+        it('uses notification-template-sr-reopen and passes study and program fields', async () => {
+            await notify.reopenApplicationNotification(
+                'owner@example.org',
+                ['cc@example.org'],
+                ['bcc@example.org'],
+                {
+                    firstName: 'Jane Doe',
+                    isOwnershipChanged: false,
+                },
+                {
+                    studyName: 'My Study',
+                    studyAbbreviation: 'MS',
+                    programName: 'My Program',
+                    programAbbreviation: 'MP',
+                    contactEmail: 'helpdesk@nih.gov.',
+                }
+            );
+            expect(createEmailTemplate).toHaveBeenCalledWith(
+                'notification-template-sr-reopen.html',
+                expect.objectContaining({
+                    firstName: 'Jane Doe',
+                    studyName: 'My Study',
+                    studyAbbreviation: 'MS',
+                    programName: 'My Program',
+                    programAbbreviation: 'MP',
+                    isOwnershipChanged: false,
+                })
+            );
+        });
+
+        it('passes isOwnershipChanged true when ownership changed', async () => {
+            await notify.reopenApplicationNotification(
+                'owner@example.org',
+                [],
+                [],
+                {
+                    firstName: 'New Owner',
+                    isOwnershipChanged: true,
+                },
+                {
+                    studyName: 'Study',
+                    studyAbbreviation: 'S',
+                    programName: 'Prog',
+                    programAbbreviation: 'P',
+                    contactEmail: 'help@test.gov.',
+                }
+            );
+            expect(createEmailTemplate).toHaveBeenCalledWith(
+                'notification-template-sr-reopen.html',
+                expect.objectContaining({
+                    isOwnershipChanged: true,
+                })
+            );
+        });
+
+        it('passes through NA display values for study fields from the caller', async () => {
+            await notify.reopenApplicationNotification(
+                'a@a',
+                [],
+                [],
+                { firstName: 'Q', isOwnershipChanged: false },
+                {
+                    studyName: 'NA',
+                    studyAbbreviation: 'NA',
+                    programName: 'NA',
+                    programAbbreviation: 'NA',
+                    contactEmail: 'help@test.gov.',
+                }
+            );
+            expect(createEmailTemplate).toHaveBeenCalledWith(
+                'notification-template-sr-reopen.html',
+                expect.objectContaining({
+                    studyName: 'NA',
+                    studyAbbreviation: 'NA',
+                    programName: 'NA',
+                    programAbbreviation: 'NA',
+                })
+            );
+        });
+
+        it('includes message content derived from email constants', async () => {
+            await notify.reopenApplicationNotification(
+                'owner@example.org',
+                [],
+                [],
+                { firstName: 'Pat', isOwnershipChanged: false },
+                {
+                    studyName: 'Study',
+                    studyAbbreviation: 'S',
+                    programName: 'Prog',
+                    programAbbreviation: 'P',
+                    contactEmail: 'help@test.gov.',
+                }
+            );
+            const templateCall = createEmailTemplate.mock.calls.find(
+                (c) => c[0] === 'notification-template-sr-reopen.html'
+            );
+            expect(templateCall[1].message).toBeDefined();
+            expect(templateCall[1].secondMessage).toBeDefined();
+            expect(templateCall[1].thirdMessage).toBeDefined();
+            expect(templateCall[1].thirdMessage).toContain('help@test.gov.');
+        });
+    });
 });
