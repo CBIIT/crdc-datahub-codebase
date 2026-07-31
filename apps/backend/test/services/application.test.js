@@ -41,6 +41,7 @@ const mockNotificationsService = {
     approveQuestionNotification: jest.fn(),
     cancelApplicationNotification: jest.fn(),
     restoreApplicationNotification: jest.fn(),
+    reopenApplicationNotification: jest.fn(),
     finalRemindApplicationsNotification: jest.fn(),
     remindApplicationsNotification: jest.fn(),
     multipleChangesApproveQuestionNotification: jest.fn(),
@@ -116,7 +117,8 @@ global.EMAIL_NOTIFICATIONS = {
         REQUEST_DELETE: 'REQUEST_DELETE',
         REQUEST_REVIEW: 'REQUEST_REVIEW',
         REQUEST_CANCEL: 'REQUEST_CANCEL',
-        REQUEST_EXPIRING: 'REQUEST_EXPIRING'
+        REQUEST_EXPIRING: 'REQUEST_EXPIRING',
+        REQUEST_REOPENED: 'REQUEST_REOPENED'
     }
 };
 global.ROLES = {
@@ -3426,6 +3428,186 @@ describe('Application', () => {
                 { _id: 'approved-1', ownerId: 'user-no-create' },
                 context
             )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
+        });
+    });
+
+    describe('_sendReopenApplicationEmail', () => {
+        const reopenedApplication = {
+            _id: 'reopen-app-1',
+            status: REOPENED,
+            studyName: 'Test Study',
+            studyAbbreviation: 'TS',
+            programName: 'Test Program',
+            programAbbreviation: 'TP',
+            questionnaireData: JSON.stringify({ primaryContact: { email: 'pc@test.com' }, pi: { email: 'pi@test.com' } }),
+        };
+
+        const ownerUser = {
+            _id: 'owner-1',
+            id: 'owner-1',
+            firstName: 'Jane',
+            lastName: 'Doe',
+            email: 'jane@example.com',
+            notifications: ['submission_request:reopened'],
+        };
+
+        beforeEach(() => {
+            mockUserService.userCollection.find.mockResolvedValue([ownerUser]);
+            mockUserService.getUsersByNotifications.mockResolvedValue([
+                { _id: 'bcc-user', email: 'bcc@example.com' }
+            ]);
+            mockNotificationsService.reopenApplicationNotification.mockResolvedValue();
+        });
+
+        it('sends reopen notification email to the owner', async () => {
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Jane Doe',
+                    isOwnershipChanged: false,
+                }),
+                expect.objectContaining({
+                    studyName: 'Test Study',
+                    studyAbbreviation: 'TS',
+                    programName: 'Test Program',
+                    programAbbreviation: 'TP',
+                    contactEmail: `${mockEmailParams.conditionalSubmissionContact}.`,
+                })
+            );
+        });
+
+        it('sets isOwnershipChanged to true when owner differs from previous owner', async () => {
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'previous-owner-id');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    isOwnershipChanged: true,
+                }),
+                expect.any(Object)
+            );
+        });
+
+        it('includes previous owner in CC when ownership changed', async () => {
+            const previousOwner = { _id: 'prev-owner', email: 'prev@example.com' };
+            mockUserService.userCollection.find
+                .mockResolvedValueOnce([ownerUser])
+                .mockResolvedValueOnce([previousOwner]);
+
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'prev-owner');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.arrayContaining(['prev@example.com']),
+                expect.any(Array),
+                expect.objectContaining({ isOwnershipChanged: true }),
+                expect.any(Object)
+            );
+        });
+
+        it('does not include previous owner in CC when their email matches the new owner', async () => {
+            const previousOwner = { _id: 'prev-owner', email: 'jane@example.com' };
+            mockUserService.userCollection.find
+                .mockResolvedValueOnce([ownerUser])
+                .mockResolvedValueOnce([previousOwner]);
+
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'prev-owner');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.not.arrayContaining(['jane@example.com']),
+                expect.any(Array),
+                expect.any(Object),
+                expect.any(Object)
+            );
+        });
+
+        it('returns early without sending email when applicant has no email', async () => {
+            mockUserService.userCollection.find.mockResolvedValue([{ ...ownerUser, email: null }]);
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            await app._sendReopenApplicationEmail(reopenedApplication, { ...ownerUser, email: null }, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).not.toHaveBeenCalled();
+            consoleSpy.mockRestore();
+        });
+
+        it('returns early when applicant notifications do not include REQUEST_REOPENED', async () => {
+            const ownerWithoutNotification = { ...ownerUser, notifications: ['other_notification'] };
+            mockUserService.userCollection.find.mockResolvedValue([ownerWithoutNotification]);
+
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerWithoutNotification, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).not.toHaveBeenCalled();
+        });
+
+        it('uses "NA" for missing studyName via studyLabelForEmailBody', async () => {
+            const appNoStudy = { ...reopenedApplication, studyName: null };
+
+            await app._sendReopenApplicationEmail(appNoStudy, ownerUser, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(Array),
+                expect.any(Array),
+                expect.any(Object),
+                expect.objectContaining({
+                    studyName: 'NA',
+                })
+            );
+        });
+
+        it('uses "NA" for missing studyAbbreviation', async () => {
+            const appNoAbbrev = { ...reopenedApplication, studyAbbreviation: null };
+
+            await app._sendReopenApplicationEmail(appNoAbbrev, ownerUser, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(Array),
+                expect.any(Array),
+                expect.any(Object),
+                expect.objectContaining({
+                    studyAbbreviation: 'NA',
+                })
+            );
+        });
+
+        it('does not throw when notification service rejects', async () => {
+            mockNotificationsService.reopenApplicationNotification.mockRejectedValue(new Error('SMTP failure'));
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            await expect(app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'owner-1'))
+                .resolves.toBeUndefined();
+
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Failed to send reopen application notification email'),
+                'SMTP failure'
+            );
+            consoleSpy.mockRestore();
+        });
+
+        it('filters BCC emails to exclude CC and applicant emails', async () => {
+            mockUserService.getUsersByNotifications.mockResolvedValue([
+                { _id: 'bcc1', email: 'bcc1@example.com' },
+                { _id: 'bcc2', email: 'jane@example.com' },
+            ]);
+
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.any(Array),
+                expect.not.arrayContaining(['jane@example.com']),
+                expect.any(Object),
+                expect.any(Object)
+            );
         });
     });
 
