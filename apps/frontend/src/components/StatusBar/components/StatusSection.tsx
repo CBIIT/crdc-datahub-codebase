@@ -135,7 +135,6 @@ const StatusSection: FC = (): JSX.Element => {
             <ReviewCommentsListDialog
               open
               onClose={handleCloseDialogs}
-              status={status}
               preTitle="CRDC Submission Request"
               events={reviewEvents}
               onView={handleViewReview}

@@ -12,24 +12,19 @@ import Grid from "@mui/material/Unstable_Grid2";
 import CloseIconSvg from "@/assets/icons/close_icon.svg?react";
 import { FormatDate } from "@/utils";
 
-const StyledDialog = styled(Dialog, {
-  shouldForwardProp: (prop) => prop !== "status" && prop !== "accentColor",
-})<{
-  status: unknown;
-  accentColor: string;
-}>(({ accentColor }) => ({
+const StyledDialog = styled(Dialog)({
   "& .MuiDialog-paper": {
     borderRadius: "8px",
     border: "2px solid",
-    borderColor: accentColor,
+    borderColor: "#13B9DD",
     background: "linear-gradient(0deg, #F2F6FA 0%, #F2F6FA 100%), #2E4D7B",
     boxShadow: "0px 4px 45px 0px rgba(0, 0, 0, 0.40)",
     padding: "22px 24px 24px 24px",
     width: "567px !important",
   },
-}));
+});
 
-const StyledCloseDialogButton = styled(IconButton)(() => ({
+const StyledCloseDialogButton = styled(IconButton)({
   position: "absolute",
   right: "21px",
   top: "11px",
@@ -37,7 +32,7 @@ const StyledCloseDialogButton = styled(IconButton)(() => ({
   "& svg": {
     color: "#44627C",
   },
-}));
+});
 
 const StyledDialogTitle = styled(DialogTitle)({
   paddingBottom: "0",
@@ -53,16 +48,14 @@ const StyledPreTitle = styled("p")({
   margin: "0",
 });
 
-const StyledTitle = styled("p", {
-  shouldForwardProp: (prop) => prop !== "accentColor",
-})<{ accentColor: string }>(({ accentColor }) => ({
-  color: accentColor,
+const StyledTitle = styled("p")({
+  color: "#4B5368",
   fontSize: "35px",
   fontFamily: "Nunito Sans",
   fontWeight: "900",
   lineHeight: "30px",
   margin: "0",
-}));
+});
 
 const StyledDialogContent = styled(DialogContent)({
   "--border-bottom-width": "0.5px",
@@ -86,9 +79,7 @@ const DotContainer = styled("div")({
   zIndex: 999,
 });
 
-const VerticalDot = styled("div", {
-  shouldForwardProp: (prop) => prop !== "accentColor",
-})<{ accentColor: string }>(({ accentColor }) => ({
+const VerticalDot = styled("div")({
   position: "absolute",
   top: "50%",
   left: "0px",
@@ -96,43 +87,37 @@ const VerticalDot = styled("div", {
   width: "16px",
   height: "16px",
   borderRadius: "50%",
-  background: accentColor,
-}));
+  background: "#7E969C",
+});
 
-const TopConnector = styled("div", {
-  shouldForwardProp: (prop) => prop !== "accentColor",
-})<{ accentColor: string }>(({ accentColor }) => ({
+const TopConnector = styled("div")({
   content: '""',
   position: "absolute",
   left: "5px",
   bottom: "50%",
   width: "6px",
   height: "calc(27px + var(--border-bottom-width) / 2)",
-  background: accentColor,
-}));
+  background: "#7E969C",
+});
 
-const BottomConnector = styled("div", {
-  shouldForwardProp: (prop) => prop !== "accentColor",
-})<{ accentColor: string }>(({ accentColor }) => ({
+const BottomConnector = styled("div")({
   content: '""',
   position: "absolute",
   left: "5px",
   top: "50%",
   width: "6px",
   height: "calc(27px + var(--border-bottom-width) / 2)",
-  background: accentColor,
-}));
+  background: "#7E969C",
+});
 
-const HorizontalLine = styled("div", {
-  shouldForwardProp: (prop) => prop !== "accentColor",
-})<{ accentColor: string }>(({ accentColor }) => ({
+const HorizontalLine = styled("div")({
   position: "absolute",
   top: "50%",
   left: "0px",
   transform: "translateY(-50%)",
   width: "68px",
   height: "1px",
-  background: accentColor,
+  background: "#7E969C",
   "&::after": {
     content: '""',
     position: "absolute",
@@ -142,9 +127,9 @@ const HorizontalLine = styled("div", {
     width: "5px",
     height: "5px",
     borderRadius: "50%",
-    background: accentColor,
+    background: "#7E969C",
   },
-}));
+});
 
 const StyledEventCell = styled("p")({
   color: "#212121",
@@ -158,28 +143,24 @@ const StyledEventCell = styled("p")({
   whiteSpace: "nowrap",
 });
 
-const StyledViewButton = styled(Button, {
-  shouldForwardProp: (prop) =>
-    prop !== "accentColor" && prop !== "buttonBorderColor" && prop !== "buttonHoverBackground",
-})<{ accentColor: string; buttonBorderColor: string; buttonHoverBackground: string }>(
-  ({ accentColor, buttonBorderColor, buttonHoverBackground }) => ({
-    width: "63px",
-    borderRadius: "9px",
-    borderColor: buttonBorderColor,
-    background: "#fff",
-    color: accentColor,
-    fontFamily: "Nunito Sans",
-    fontSize: "16px",
-    fontWeight: "700",
-    letterSpacing: "0.32px",
-    lineHeight: "1.2",
-    textTransform: "none",
-    "&:hover": {
-      borderColor: buttonBorderColor,
-      backgroundColor: buttonHoverBackground,
-    },
-  })
-);
+const StyledViewButton = styled(Button)({
+  width: "63px",
+  borderRadius: "9px",
+  borderColor: "#AEBBC5",
+  borderWidth: "2px !important",
+  background: "#fff",
+  color: "#5A676A",
+  fontFamily: "Nunito Sans",
+  fontSize: "16px",
+  fontWeight: "700",
+  letterSpacing: "0.32px",
+  lineHeight: "1.2",
+  textTransform: "none",
+  "&:hover": {
+    borderColor: "#AEBBC5",
+    backgroundColor: "#E6F0F3",
+  },
+});
 
 const StyledFooter = styled(DialogActions)({
   justifyContent: "center",
@@ -194,11 +175,11 @@ const StyledCloseButton = styled(Button)({
   lineHeight: "24px",
   letterSpacing: "0.32px",
   textTransform: "none",
+  background: "#fff",
 });
 
 type Props<T> = {
   open: boolean;
-  status?: ApplicationStatus;
   preTitle: string;
   title?: string;
   events: HistoryBase<T>[];
@@ -206,123 +187,83 @@ type Props<T> = {
   onView: (event: HistoryBase<T>) => void;
 };
 
-type ReviewCommentsListColorScheme = {
-  color: string;
-  buttonBorderColor: string;
-  buttonHoverBackground: string;
-};
-
-const getColorScheme = (status: ApplicationStatus): ReviewCommentsListColorScheme => {
-  switch (status) {
-    case "Approved":
-      return {
-        color: "#0D6E87",
-        buttonBorderColor: "#A9D3DD",
-        buttonHoverBackground: "#EDF8FB",
-      };
-    case "Rejected":
-      return {
-        color: "#E25C22",
-        buttonBorderColor: "#E8B9A8",
-        buttonHoverBackground: "#FFF7F4",
-      };
-    default:
-      return {
-        color: "#0D6E87",
-        buttonBorderColor: "#A9D3DD",
-        buttonHoverBackground: "#EDF8FB",
-      };
-  }
-};
-
 const ReviewCommentsListDialog = <T,>({
   open,
-  status,
   preTitle,
   title = "Review Comments",
   events,
   onClose,
   onView,
-}: Props<T>) => {
-  const colorScheme = status ? getColorScheme(status) : getColorScheme("Rejected");
-  const accentColor = colorScheme.color;
-
-  return (
-    <StyledDialog
-      open={open}
-      onClose={onClose}
-      maxWidth={false}
-      data-testid="comments-dialog"
-      status={status}
-      accentColor={accentColor}
-      TransitionProps={{ timeout: 0 }}
+}: Props<T>) => (
+  <StyledDialog
+    open={open}
+    onClose={onClose}
+    maxWidth={false}
+    data-testid="comments-dialog"
+    TransitionProps={{ timeout: 0 }}
+  >
+    <StyledCloseDialogButton
+      onClick={onClose}
+      aria-label="Close review comments list"
+      data-testid="comments-dialog-close-icon-button"
     >
-      <StyledCloseDialogButton
-        onClick={onClose}
-        aria-label="Close review comments list"
-        data-testid="comments-dialog-close-icon-button"
-      >
-        <CloseIconSvg />
-      </StyledCloseDialogButton>
-      <StyledDialogTitle>
-        <StyledPreTitle>{preTitle}</StyledPreTitle>
-        <StyledTitle accentColor={accentColor}>{title}</StyledTitle>
-      </StyledDialogTitle>
-      <StyledDialogContent>
-        {events.map((event, index) => (
-          <StyledEventRow
-            container
-            key={`comment-event-${event.dateTime}`}
-            data-testid={`comments-item-${index}`}
-          >
-            <Grid xs={3}>
-              <DotContainer>
-                {index !== 0 && <TopConnector accentColor={accentColor} />}
-                <VerticalDot accentColor={accentColor} />
-                <HorizontalLine accentColor={accentColor} />
-                {index !== events.length - 1 && <BottomConnector accentColor={accentColor} />}
-              </DotContainer>
-            </Grid>
-            <Grid xs={3}>
-              <StyledEventCell title={event.dateTime} data-testid={`comments-item-${index}-date`}>
-                {FormatDate(event.dateTime, "M/D/YYYY", "N/A")}
-              </StyledEventCell>
-            </Grid>
-            <Grid xs={3}>
-              <StyledEventCell data-testid={`comments-item-${index}-time`}>
-                {FormatDate(event.dateTime, "h:mm A", "N/A")}
-              </StyledEventCell>
-            </Grid>
-            <Grid xs={3} sx={{ display: "flex", justifyContent: "center" }}>
-              <StyledViewButton
-                variant="outlined"
-                color="info"
-                accentColor={accentColor}
-                buttonBorderColor={colorScheme.buttonBorderColor}
-                buttonHoverBackground={colorScheme.buttonHoverBackground}
-                onClick={() => onView(event)}
-                data-testid={`comments-item-${index}-view`}
-              >
-                View
-              </StyledViewButton>
-            </Grid>
-          </StyledEventRow>
-        ))}
-      </StyledDialogContent>
-      <StyledFooter>
-        <StyledCloseButton
-          id="close-comments-button"
-          onClick={onClose}
-          variant="contained"
-          color="info"
-          aria-label="Close dialog"
-          data-testid="comments-dialog-close"
+      <CloseIconSvg />
+    </StyledCloseDialogButton>
+    <StyledDialogTitle>
+      <StyledPreTitle>{preTitle}</StyledPreTitle>
+      <StyledTitle>{title}</StyledTitle>
+    </StyledDialogTitle>
+    <StyledDialogContent>
+      {events.map((event, index) => (
+        <StyledEventRow
+          container
+          key={`comment-event-${event.dateTime}`}
+          data-testid={`comments-item-${index}`}
         >
-          Close
-        </StyledCloseButton>
-      </StyledFooter>
-    </StyledDialog>
-  );
-};
+          <Grid xs={3}>
+            <DotContainer>
+              {index !== 0 && <TopConnector />}
+              <VerticalDot />
+              <HorizontalLine />
+              {index !== events.length - 1 && <BottomConnector />}
+            </DotContainer>
+          </Grid>
+          <Grid xs={3}>
+            <StyledEventCell title={event.dateTime} data-testid={`comments-item-${index}-date`}>
+              {FormatDate(event.dateTime, "M/D/YYYY", "N/A")}
+            </StyledEventCell>
+          </Grid>
+          <Grid xs={3}>
+            <StyledEventCell data-testid={`comments-item-${index}-time`}>
+              {FormatDate(event.dateTime, "h:mm A", "N/A")}
+            </StyledEventCell>
+          </Grid>
+          <Grid xs={3} sx={{ display: "flex", justifyContent: "center" }}>
+            <StyledViewButton
+              variant="outlined"
+              color="info"
+              onClick={() => onView(event)}
+              data-testid={`comments-item-${index}-view`}
+            >
+              View
+            </StyledViewButton>
+          </Grid>
+        </StyledEventRow>
+      ))}
+    </StyledDialogContent>
+    <StyledFooter>
+      <StyledCloseButton
+        id="close-comments-button"
+        onClick={onClose}
+        variant="contained"
+        color="info"
+        aria-label="Close dialog"
+        data-testid="comments-dialog-close"
+      >
+        Close
+      </StyledCloseButton>
+    </StyledFooter>
+  </StyledDialog>
+);
 
 export default ReviewCommentsListDialog;
