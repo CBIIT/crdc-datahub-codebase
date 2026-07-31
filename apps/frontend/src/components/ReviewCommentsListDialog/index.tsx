@@ -255,6 +255,7 @@ const ReviewCommentsListDialog = <T,>({
       data-testid="comments-dialog"
       status={status}
       accentColor={accentColor}
+      TransitionProps={{ timeout: 0 }}
     >
       <StyledCloseDialogButton
         onClick={onClose}

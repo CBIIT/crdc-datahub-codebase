@@ -184,6 +184,7 @@ const ReviewCommentsDialog = <T, H>({
         "data-testid": "review-comments-dialog-paper",
       } as ExtendedPaperProps
     }
+    TransitionProps={{ timeout: 0 }}
   >
     <StyledCloseDialogButton
       onClick={onClose}

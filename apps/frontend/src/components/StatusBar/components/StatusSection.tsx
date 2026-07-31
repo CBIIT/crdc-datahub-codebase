@@ -131,23 +131,27 @@ const StatusSection: FC = (): JSX.Element => {
           >
             View Comments
           </StyledButton>
-          <ReviewCommentsListDialog
-            open={openDialog === "list"}
-            onClose={handleCloseDialogs}
-            status={status}
-            preTitle="CRDC Submission Request"
-            events={reviewEvents}
-            onView={handleViewReview}
-          />
-          <ReviewCommentsDialog
-            open={openDialog === "detail"}
-            onClose={handleCloseDialogs}
-            onBack={handleBackToList}
-            status={status}
-            lastReview={selectedReview ?? undefined}
-            preTitle="CRDC Submission Request"
-            title="Comments"
-          />
+          {openDialog === "list" && (
+            <ReviewCommentsListDialog
+              open
+              onClose={handleCloseDialogs}
+              status={status}
+              preTitle="CRDC Submission Request"
+              events={reviewEvents}
+              onView={handleViewReview}
+            />
+          )}
+          {openDialog === "detail" && (
+            <ReviewCommentsDialog
+              open
+              onClose={handleCloseDialogs}
+              onBack={handleBackToList}
+              status={status}
+              lastReview={selectedReview}
+              preTitle="CRDC Submission Request"
+              title="Comments"
+            />
+          )}
         </>
       )}
     </>
