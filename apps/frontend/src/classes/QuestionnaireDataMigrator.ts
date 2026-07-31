@@ -3,7 +3,6 @@ import { cloneDeep, unset } from "lodash";
 import { validate as validateUUID } from "uuid";
 
 import { LastAppResp, ListInstitutionsResp } from "@/graphql";
-import { safeParse } from "@/utils";
 import { Logger } from "@/utils/logger";
 
 /**
@@ -94,12 +93,15 @@ export class QuestionnaireDataMigrator {
     if (!sectionA || sectionA?.status === "Not Started") {
       const { data: lastAppData } = await getLastApplication();
       const { getMyLastApplication: lastApp } = lastAppData || {};
-      const parsedLastAppData = safeParse<QuestionnaireData>(lastApp?.questionnaireData);
 
-      Logger.info("_migrateLastApp: Migrating last app", { ...this.data }, parsedLastAppData);
+      Logger.info(
+        "_migrateLastApp: Migrating last app",
+        { ...this.data },
+        lastApp?.questionnaireData
+      );
       this.data.pi = {
         ...this.data.pi,
-        ...parsedLastAppData.pi,
+        ...lastApp?.questionnaireData?.pi,
       };
     }
   }

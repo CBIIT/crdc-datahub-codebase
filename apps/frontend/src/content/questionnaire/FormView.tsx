@@ -15,7 +15,7 @@ import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useBlocker, Blocker, Navigate, useLocation } from "react-router-dom";
 
 import { LastAppResp, LAST_APP } from "@/graphql";
-import { determineSectionStatus, Logger, safeParse, sectionHasData } from "@/utils";
+import { determineSectionStatus, Logger, sectionHasData } from "@/utils";
 
 import bannerPng from "../../assets/banner/submission_banner.png";
 import CheckboxCheckedIconSvg from "../../assets/icons/checkbox_checked.svg?url";
@@ -247,9 +247,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
       return null;
     }
 
-    return (
-      safeParse<QuestionnaireData>(lastAppData?.getMyLastApplication?.questionnaireData)?.pi || null
-    );
+    return lastAppData?.getMyLastApplication?.questionnaireData?.pi || null;
   }, [lastAppData]);
 
   /**
