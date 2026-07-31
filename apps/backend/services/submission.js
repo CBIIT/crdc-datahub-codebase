@@ -2851,7 +2851,6 @@ class Submission {
                                 id: true,
                                 studyName: true,
                                 studyAbbreviation: true,
-                                applicationID: true,
                                 dbGaPID: true
                             }
                         },
@@ -3428,6 +3427,7 @@ class DataSubmission {
         this.dataCommons = dataCommons;
         this.modelVersion = modelVersion;
         this.studyID = approvedStudy?._id;
+        this.submissionRequestID = approvedStudy?.applicationID;
         this.dbGaPID = dbGaPID;
         this.status = NEW;
         this.history = [HistoryEventBuilder.createEvent(userInfo._id, NEW, null)];

@@ -2,7 +2,7 @@ const { Application, VALID_ORDER_BY_LIST_APPLICATIONS } = require('../../service
 const ApplicationDAO = require('../../dao/application');
 const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
 const ERROR = require('../../constants/error-constants');
-const { NEW, APPROVED, IN_PROGRESS, INQUIRED, REOPENED, CANCELED, REJECTED, DELETED, SUBMITTED, IN_REVIEW } = require('../../constants/application-constants');
+const { NEW, APPROVED, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, CANCELED, REJECTED, DELETED, SUBMITTED, IN_REVIEW } = require('../../constants/application-constants');
 const USER_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/user-constants');
 const { DEFAULT_GPA_NAME } = require('../../domain/pending-gpa');
 const { UserScope: RealUserScope } = require('../../domain/user-scope');
@@ -2906,7 +2906,7 @@ describe('Application', () => {
     });
 
     describe('resumeInquiredApplication', () => {
-        it('transitions owner application to In Progress', async () => {
+        it('transitions owner application to In Revision', async () => {
             const application = {
                 _id: 'app1',
                 status: INQUIRED,
@@ -2916,18 +2916,43 @@ describe('Application', () => {
             };
             app.getApplicationById = jest.fn()
                 .mockResolvedValueOnce(application)
-                .mockResolvedValueOnce({ ...application, status: IN_PROGRESS });
+                .mockResolvedValueOnce({ ...application, status: IN_REVISION });
             app.applicationDAO = { update: jest.fn().mockResolvedValue(true) };
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
             mockLogCollection.insert.mockResolvedValue();
 
             const result = await app.resumeInquiredApplication({ _id: 'app1' }, context);
 
-            expect(result.status).toBe(IN_PROGRESS);
+            expect(result.status).toBe(IN_REVISION);
             expect(app.applicationDAO.update).toHaveBeenCalledWith(expect.objectContaining({
                 _id: 'app1',
-                status: IN_PROGRESS
+                status: IN_REVISION
             }));
+        });
+
+        it('rejects when application is already In Revision', async () => {
+            const application = {
+                _id: 'app1',
+                status: IN_REVISION,
+                version: '2.0',
+                history: [{ status: IN_REVISION, reviewComment: 'already in revision' }],
+                applicant: { applicantID: 'user1' }
+            };
+
+            app.getApplicationById = jest.fn().mockResolvedValueOnce(application);
+            await expect(app.resumeInquiredApplication({ _id: 'app1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+        });
+
+        it('rejects invalid starting statuses such as Submitted', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: SUBMITTED,
+                applicant: { applicantID: 'user1' }
+            });
+
+            await expect(app.resumeInquiredApplication({ _id: 'app1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         });
 
         it('rejects non-owner', async () => {
