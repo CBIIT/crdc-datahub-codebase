@@ -289,6 +289,7 @@ const ERROR = {
     FAILED_CREATE_LOAD_SHEET: "An unknown error occurred while generating the dbGaP Loading Sheets. Please try again later.",
     USER_NOT_EXIST: "The user does not exist.",
     NOT_SUPPORTED_DATA_COMMONS_FOR_LOAD_SHEET: "The current data commons is not supported for generating dbGaP Loading Sheets.",
+    DCF_MANIFEST_NOT_AVAILABLE: "The DCF manifest for this submission is not yet available. Please try again shortly.",
     FAILED_DOWNLOAD_ALL_RELEASED_NODES: "Failed to download all released nodes",
     STUDY_NOT_EXIST: "The requested study does not exist.",
     INTERNAL_ERROR: "An internal error occurred, please ask the Admins to check the logs for more information",
