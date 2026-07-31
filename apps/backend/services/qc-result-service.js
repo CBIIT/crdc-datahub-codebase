@@ -8,11 +8,9 @@ const QCResultDAO = require("../dao/qcResult");
 const SubmissionDAO = require("../dao/submission");
 
 class QcResultService{
-    constructor(qcResultCollection, submissionCollection, authorizationService){
-        this.qcResultCollection = qcResultCollection;
-        this.submissionCollection = submissionCollection;
+    constructor(authorizationService){
         this.authorizationService = authorizationService;
-        this.qcResultDAO = new QCResultDAO(this.qcResultCollection);
+        this.qcResultDAO = new QCResultDAO();
         this.submissionDAO = new SubmissionDAO();
         this.dataRecordService = null;
     }
@@ -51,7 +49,7 @@ class QcResultService{
         let query = {
             submissionID: submissionID,
             validationType: isFileValidationQC
-                ? {in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE]}
+                ? {$in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE]}
                 : dataType
         };
         
@@ -60,7 +58,7 @@ class QcResultService{
             // If exclusiveIDs are provided, exclude them from deletion
             if (exclusiveIDs && exclusiveIDs.length > 0) {
                 query.submittedID = {
-                    notIn: exclusiveIDs
+                    $nin: exclusiveIDs
                 };
             }
             // If no exclusiveIDs, query will delete all (no submittedID filter)
@@ -68,7 +66,7 @@ class QcResultService{
             // Normal deletion: delete specific submittedIDs
             if (submittedIDs && submittedIDs.length > 0) {
                 query.submittedID = {
-                    in: submittedIDs
+                    $in: submittedIDs
                 };
             } else {
                 // No submittedIDs provided, nothing to delete
@@ -86,23 +84,24 @@ class QcResultService{
         }
     }
 
+    /**
+     * Find QC results for a submission that include a specific error code.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorCode Error code to match
+     * @returns {Promise<object[]>}
+     */
     async findBySubmissionErrorCodes(submissionID, errorCode) {
-        return this.qcResultDAO.findMany({
-            submissionID: submissionID, errors: {some: {code: errorCode}}},
-            {
-                select: {
-                    submittedID: true,
-                    submissionID: true
-            }
-        });
+        return this.qcResultDAO.findBySubmissionErrorCodes(submissionID, errorCode);
     }
 
+    /**
+     * Return submittedID and dataRecordID for QC results of a given type in a submission.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorType Node/error type to match
+     * @returns {Promise<object[]>}
+     */
     async getQCResultsErrors(submissionID, errorType) {
-        const result = await this.qcResultCollection.aggregate([
-            {"$match": { submissionID: submissionID, type: errorType}},
-            {"$project": {submittedID: 1, dataRecordID: 1}}
-        ]);
-        return result || [];
+        return this.qcResultDAO.getQCResultsErrors(submissionID, errorType);
     }
 
     async resetQCResultData(submissionID) {
