@@ -242,5 +242,59 @@ describe('ReleaseService DocumentDB $facet removals', () => {
             });
             expect(mockReleaseDAO.aggregate).not.toHaveBeenCalled();
         });
+
+        it('should not use $getField when sorting by a dotted orderBy', async () => {
+            mockReleaseDAO.aggregate
+                .mockResolvedValueOnce([{ 'study.study_id': 'S1' }])
+                .mockResolvedValueOnce([{ count: 1 }])
+                .mockResolvedValueOnce([{ allProperties: ['study.study_id'] }]);
+
+            await service.listReleasedDataRecords(
+                {
+                    studyID: 'study1',
+                    nodeType: 'study',
+                    first: 10,
+                    offset: 0,
+                    orderBy: 'study.study_id',
+                    sortDirection: 'asc',
+                    properties: [],
+                    dataCommonsDisplayName: 'CDS',
+                },
+                context
+            );
+
+            const pagePipeline = mockReleaseDAO.aggregate.mock.calls[0][0];
+            const pipelineJson = JSON.stringify(pagePipeline);
+            expect(pipelineJson).not.toContain('$getField');
+            expect(pipelineJson).toContain('$objectToArray');
+            expect(pipelineJson).toContain('$filter');
+        });
+
+        it('should not use $getField when projecting dotted properties', async () => {
+            mockReleaseDAO.aggregate
+                .mockResolvedValueOnce([{ title: 'Record A', 'study.study_id': 'S1' }])
+                .mockResolvedValueOnce([{ count: 1 }])
+                .mockResolvedValueOnce([{ allProperties: ['title', 'study.study_id'] }]);
+
+            await service.listReleasedDataRecords(
+                {
+                    studyID: 'study1',
+                    nodeType: 'study',
+                    first: 10,
+                    offset: 0,
+                    orderBy: 'title',
+                    sortDirection: 'asc',
+                    properties: ['title', 'study.study_id'],
+                    dataCommonsDisplayName: 'CDS',
+                },
+                context
+            );
+
+            const pagePipeline = mockReleaseDAO.aggregate.mock.calls[0][0];
+            const pipelineJson = JSON.stringify(pagePipeline);
+            expect(pipelineJson).not.toContain('$getField');
+            expect(pipelineJson).toContain('$objectToArray');
+            expect(pipelineJson).toContain('$filter');
+        });
     });
 });
