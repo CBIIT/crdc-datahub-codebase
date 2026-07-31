@@ -1945,7 +1945,7 @@ class Application {
             // Include previous owner in CC if ownership changed
             if (isOwnershipChanged && previousOwnerId) {
                 const previousOwner = (await this.userService.userCollection.find(previousOwnerId))?.pop();
-                if (previousOwner?.email && !CCEmails.includes(previousOwner.email) && previousOwner.email !== applicantInfo.email) {
+                if (previousOwner?.email && EMAIL_REGEX.test(previousOwner.email) && !CCEmails.includes(previousOwner.email) && previousOwner.email !== applicantInfo.email) {
                     CCEmails.push(previousOwner.email);
                 }
             }
