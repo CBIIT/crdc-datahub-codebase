@@ -30,7 +30,7 @@ import {
   GetApplicationFormVersionResp,
   GET_APPLICATION_FORM_VERSION,
 } from "@/graphql";
-import { Logger, preserveLockedFields } from "@/utils";
+import { Logger, preserveLockedFields, computeNextStatus } from "@/utils";
 
 import { useAuthContext } from "./AuthContext";
 import { useOrganizationListContext, Status as ProgramStatus } from "./OrganizationListContext";
@@ -219,11 +219,12 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       processedData?.pi?.lastName || ""
     }`.trim();
 
-    const newStatus: ApplicationStatus = processedData?.sections?.some(
-      (s) => s.status !== "Not Started"
-    )
-      ? "In Progress"
-      : "New";
+    const hasSectionActivity = processedData?.sections?.some((s) => s.status !== "Not Started");
+    const nextStatus = computeNextStatus({
+      currentStatus: state?.data?.status,
+      applicationId: state?.data?._id,
+      hasSectionActivity: !!hasSectionActivity,
+    });
 
     const newInstitutions = [...newState.data.newInstitutions];
     const { pi, primaryContact, additionalContacts } = newState.data.questionnaireData;
@@ -273,7 +274,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
             .map(({ id, name }) => ({ id, name })),
           GPAName: processedData?.study?.GPAName,
         },
-        status: newStatus,
+        status: nextStatus,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 
