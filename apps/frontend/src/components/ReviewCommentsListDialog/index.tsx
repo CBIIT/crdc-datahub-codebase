@@ -74,8 +74,8 @@ const StyledDialogContent = styled(DialogContent)({
 });
 
 const StyledEventRow = styled(Grid)({
-  padding: "10px 0",
-  borderBottom: "var(--border-bottom-width) solid #D7DEE6",
+  padding: "10px 40px",
+  borderBottom: "var(--border-bottom-width) solid #A5AEBB",
   alignItems: "center",
 });
 
@@ -163,9 +163,10 @@ const StyledViewButton = styled(Button, {
     prop !== "accentColor" && prop !== "buttonBorderColor" && prop !== "buttonHoverBackground",
 })<{ accentColor: string; buttonBorderColor: string; buttonHoverBackground: string }>(
   ({ accentColor, buttonBorderColor, buttonHoverBackground }) => ({
-    minWidth: "72px",
+    width: "63px",
     borderRadius: "9px",
     borderColor: buttonBorderColor,
+    background: "#fff",
     color: accentColor,
     fontFamily: "Nunito Sans",
     fontSize: "16px",
@@ -270,11 +271,10 @@ const ReviewCommentsListDialog = <T,>({
         {events.map((event, index) => (
           <StyledEventRow
             container
-            columnSpacing={3}
             key={`comment-event-${event.dateTime}`}
             data-testid={`comments-item-${index}`}
           >
-            <Grid xs={2}>
+            <Grid xs={3}>
               <DotContainer>
                 {index !== 0 && <TopConnector accentColor={accentColor} />}
                 <VerticalDot accentColor={accentColor} />
@@ -292,7 +292,7 @@ const ReviewCommentsListDialog = <T,>({
                 {FormatDate(event.dateTime, "h:mm A", "N/A")}
               </StyledEventCell>
             </Grid>
-            <Grid xs={4} sx={{ display: "flex", justifyContent: "center" }}>
+            <Grid xs={3} sx={{ display: "flex", justifyContent: "center" }}>
               <StyledViewButton
                 variant="outlined"
                 color="info"
