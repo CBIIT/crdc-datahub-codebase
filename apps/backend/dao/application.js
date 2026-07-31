@@ -4,7 +4,7 @@ const GenericDAO = require("./generic");
 const {convertIdFields, convertMongoFilterToPrismaFilter, handleDotNotation, toPrismaApplicationUpdateData, nullOrMissingMongoCondition} = require('./utils/orm-converter');
 
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
-const {NEW, IN_PROGRESS, INQUIRED, REOPENED, APPROVED} = require("../constants/application-constants");
+const {NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, APPROVED} = require("../constants/application-constants");
 const ERROR = require("../constants/error-constants");
 
 class ApplicationDAO extends GenericDAO {
@@ -244,7 +244,7 @@ class ApplicationDAO extends GenericDAO {
                         lt: subtractDaysFromNow(inactiveDays),
                     },
                     status: {
-                        in: [NEW, IN_PROGRESS, INQUIRED, REOPENED]
+                        in: [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED]
                     },
                     // Tracks whether the notification has already been sent
                     ...(inactiveFlagField ? {[inactiveFlagField]: {not: true}} : {})
