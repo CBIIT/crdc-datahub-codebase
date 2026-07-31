@@ -10,10 +10,12 @@ jest.mock("../../domain/user-scope");
 
 const mockVerifySession = require("../../verifier/user-info-verifier");
 const mockUserScope = require("../../domain/user-scope");
+const QCResultDAO = require("../../dao/qcResult");
 
 describe('QcResultService', () => {
     let qcResultService;
-    let mockAggregate;
+    let mockQcResultCollection;
+    let mockSubmissionCollection;
     let mockAuthorizationService;
     let mockContext;
     let mockUserInfo;
@@ -21,6 +23,17 @@ describe('QcResultService', () => {
     beforeEach(() => {
         // Reset all mocks
         jest.clearAllMocks();
+
+        // Setup mock collections
+        mockQcResultCollection = {
+            aggregate: jest.fn(),
+            deleteMany: jest.fn(),
+            findOne: jest.fn()
+        };
+
+        mockSubmissionCollection = {
+            findOne: jest.fn()
+        };
 
         mockAuthorizationService = {
             getPermissionScope: jest.fn()
@@ -58,8 +71,11 @@ describe('QcResultService', () => {
             { scope: "all", scopeValues: [] }
         ]);
 
-        qcResultService = new QcResultService(mockAuthorizationService);
-        mockAggregate = jest.spyOn(qcResultService.qcResultDAO, 'aggregate').mockResolvedValue([]);
+        qcResultService = new QcResultService(
+            mockQcResultCollection,
+            mockSubmissionCollection,
+            mockAuthorizationService
+        );
     });
 
     describe('submissionQCResultsAPI', () => {
@@ -144,7 +160,7 @@ describe('QcResultService', () => {
             const mockCountResult = [{ total: 2 }];
             const mockDataResult = [{ type: "Subject", errors: [{ code: "E001" }] }];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -168,7 +184,7 @@ describe('QcResultService', () => {
             const mockCountResult = [{ total: 1 }];
             const mockDataResult = [{ type: "Sample", warnings: [{ code: "W001" }] }];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -192,7 +208,7 @@ describe('QcResultService', () => {
             const mockCountResult = [{ total: 1 }];
             const mockDataResult = [{ type: "Subject", latestBatchID: "batch1" }];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -216,7 +232,7 @@ describe('QcResultService', () => {
             const mockCountResult = [{ total: 1 }];
             const mockDataResult = [{ type: "Subject" }];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -240,7 +256,7 @@ describe('QcResultService', () => {
             const mockCountResult = [{ total: 1 }];
             const mockDataResult = [{ type: "Subject", errors: [{ code: "E001" }] }];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -264,7 +280,7 @@ describe('QcResultService', () => {
             const mockCountResult = [{ total: 5 }];
             const mockDataResult = [{ type: "Subject" }, { type: "Sample" }];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -288,7 +304,7 @@ describe('QcResultService', () => {
             const mockCountResult = [{ total: 1 }];
             const mockDataResult = [{ type: "Subject", count: NaN, score: NaN }];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -331,8 +347,8 @@ describe('QcResultService', () => {
 
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
-                validationType: { $in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] },
-                submittedID: { $in: ["file1.txt", "file2.txt", "file3.txt"] }
+                validationType: { in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] },
+                submittedID: { in: ["file1.txt", "file2.txt", "file3.txt"] }
             });
         });
 
@@ -419,7 +435,7 @@ describe('QcResultService', () => {
 
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
-                validationType: { $in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] }
+                validationType: { in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] }
             });
         });
 
@@ -437,8 +453,8 @@ describe('QcResultService', () => {
 
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
-                validationType: { $in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] },
-                submittedID: { $nin: ["file1.txt", "file2.txt"] }
+                validationType: { in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] },
+                submittedID: { notIn: ["file1.txt", "file2.txt"] }
             });
         });
 
@@ -492,7 +508,7 @@ describe('QcResultService', () => {
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
                 validationType: VALIDATION.TYPES.METADATA,
-                submittedID: { $in: ["case-1"] }
+                submittedID: { in: ["case-1"] }
             });
         });
 
@@ -509,8 +525,8 @@ describe('QcResultService', () => {
 
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
-                validationType: { $in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] },
-                submittedID: { $in: ["x.tsv"] }
+                validationType: { in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] },
+                submittedID: { in: ["x.tsv"] }
             });
         });
     });
@@ -521,8 +537,9 @@ describe('QcResultService', () => {
                 { submittedID: "file1.txt", submissionID: "test_submission_id" },
                 { submittedID: "file2.txt", submissionID: "test_submission_id" }
             ];
+            // Patch: mock the DAO method instead of aggregate to avoid Prisma error
             qcResultService.qcResultDAO = {
-                findBySubmissionErrorCodes: jest.fn().mockResolvedValue(mockResults)
+                findMany: jest.fn().mockResolvedValue(mockResults)
             };
 
             const result = await qcResultService.findBySubmissionErrorCodes(
@@ -531,15 +548,21 @@ describe('QcResultService', () => {
             );
 
             expect(result).toEqual(mockResults);
-            expect(qcResultService.qcResultDAO.findBySubmissionErrorCodes).toHaveBeenCalledWith(
-                "test_submission_id",
-                "E001"
+            expect(qcResultService.qcResultDAO.findMany).toHaveBeenCalledWith(
+                { submissionID: "test_submission_id", errors: { some: { code: "E001" } } },
+                {
+                    select: {
+                        submittedID: true,
+                        submissionID: true
+                    }
+                }
             );
         });
 
         it('should return empty array when no results found', async () => {
+            // Patch: mock the DAO method instead of aggregate to avoid Prisma error
             qcResultService.qcResultDAO = {
-                findBySubmissionErrorCodes: jest.fn().mockResolvedValue([])
+                findMany: jest.fn().mockResolvedValue([])
             };
 
             const result = await qcResultService.findBySubmissionErrorCodes(
@@ -548,9 +571,14 @@ describe('QcResultService', () => {
             );
 
             expect(result).toEqual([]);
-            expect(qcResultService.qcResultDAO.findBySubmissionErrorCodes).toHaveBeenCalledWith(
-                "test_submission_id",
-                "E001"
+            expect(qcResultService.qcResultDAO.findMany).toHaveBeenCalledWith(
+                { submissionID: "test_submission_id", errors: { some: { code: "E001" } } },
+                {
+                    select: {
+                        submittedID: true,
+                        submissionID: true
+                    }
+                }
             );
         });
     });
@@ -561,9 +589,7 @@ describe('QcResultService', () => {
                 { submittedID: "file1.txt", dataRecordID: "record1" },
                 { submittedID: "file2.txt", dataRecordID: "record2" }
             ];
-            qcResultService.qcResultDAO = {
-                getQCResultsErrors: jest.fn().mockResolvedValue(mockResults)
-            };
+            mockQcResultCollection.aggregate.mockResolvedValue(mockResults);
 
             const result = await qcResultService.getQCResultsErrors(
                 "test_submission_id",
@@ -571,10 +597,10 @@ describe('QcResultService', () => {
             );
 
             expect(result).toEqual(mockResults);
-            expect(qcResultService.qcResultDAO.getQCResultsErrors).toHaveBeenCalledWith(
-                "test_submission_id",
-                "Subject"
-            );
+            expect(mockQcResultCollection.aggregate).toHaveBeenCalledWith([
+                { "$match": { submissionID: "test_submission_id", type: "Subject" } },
+                { "$project": { submittedID: 1, dataRecordID: 1 } }
+            ]);
         });
     });
 
@@ -844,7 +870,7 @@ describe('QcResultService', () => {
                 { title: "Invalid format", severity: "Error", code: "E002", count: 2, property: "N/A", value: "N/A" }
             ];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -866,7 +892,7 @@ describe('QcResultService', () => {
             const mockCountResult = [{ total: 1 }];
             const mockDataResult = [{ title: "Optional field missing", severity: "Warning", code: "W001", count: 1, property: "N/A", value: "N/A" }];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -890,7 +916,7 @@ describe('QcResultService', () => {
                 { title: "Optional field missing", severity: "Warning", code: "W001", count: 1, property: "N/A", value: "N/A" }
             ];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -911,7 +937,7 @@ describe('QcResultService', () => {
             const mockCountResult = [{ total: 3 }];
             const mockDataResult = [{ title: "Missing required field", severity: "Error", code: "E001", count: 2, property: "N/A", value: "N/A" }];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -951,7 +977,7 @@ describe('QcResultService', () => {
                 }
             ];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -993,7 +1019,7 @@ describe('QcResultService', () => {
                 }
             ];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -1036,7 +1062,7 @@ describe('QcResultService', () => {
                 }
             ];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -1103,7 +1129,7 @@ describe('QcResultService', () => {
                 }
             ];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -1152,7 +1178,7 @@ describe('QcResultService', () => {
                 }
             ];
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult)
                 .mockResolvedValueOnce(mockDataResult);
 
@@ -1171,13 +1197,13 @@ describe('QcResultService', () => {
             expect(result.results[0].title).toBe("Missing required field");
         });
 
-        it('should convert total from null to 0 when aggregate returns null total', async () => {
+        it('should convert total from null to 0 when qcResultCollection.aggregate returns null total', async () => {
             // Mock the aggregate method to return a response with total: null
             // This simulates the scenario where the count pipeline returns null
             const mockCountResult = [{ total: null }]; // Count pipeline returns null total
             const mockDataResult = []; // Empty results array
             
-            mockAggregate
+            mockQcResultCollection.aggregate
                 .mockResolvedValueOnce(mockCountResult) // First call for count pipeline
                 .mockResolvedValueOnce(mockDataResult); // Second call for pagination pipeline
 
@@ -1194,7 +1220,7 @@ describe('QcResultService', () => {
             expect(result.total).toBe(0);
             expect(result.total).not.toBeNull();
             expect(result.results).toEqual([]);
-            expect(mockAggregate).toHaveBeenCalledTimes(2);
+            expect(mockQcResultCollection.aggregate).toHaveBeenCalledTimes(2);
         });
     });
 
