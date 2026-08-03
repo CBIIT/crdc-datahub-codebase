@@ -34,6 +34,7 @@ const {UtilityService} = require("./services/utility");
 const {QcResultService} = require("./services/qc-result-service");
 const {UserService} = require("./services/user");
 const {ConfigurationService} = require("./services/configurationService");
+const {AuthorizationService} = require("./services/authorization-service");
 const {EMAIL_NOTIFICATIONS} = require("./crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_CONSTANTS = require("./crdc-datahub-database-drivers/constants/user-constants");
 const ROLES = USER_CONSTANTS.USER.ROLES;
@@ -83,6 +84,7 @@ app.use("/api/graphql", graphqlRouter);
         const config = await configuration.updateConfig(dbConnector);
         const emailService = new EmailService(config.email_transport, config.emails_enabled);
         const configurationService = new ConfigurationService();
+        const authorizationService = new AuthorizationService(configurationService);
         const notificationsService = new NotifyUser(emailService, config.tier);
         const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
         const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
@@ -123,7 +125,7 @@ app.use("/api/graphql", graphqlRouter);
         
         const batchService = new BatchService(s3Service, config.sqs_loader_queue, awsService, config.prod_url, fetchDataModelInfo);
 
-        const qcResultsService = new QcResultService();
+        const qcResultsService = new QcResultService(authorizationService);
 
         const dataRecordCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_COLLECTION);
         const dataRecordArchiveCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_ARCHIVE_COLLECTION);

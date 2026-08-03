@@ -57,7 +57,7 @@ const qcResultSchema = new mongoose.Schema(
         },
         errors: {
             type: [errorSchema],
-            default: undefined,
+            default: [],
         },
         latestBatchID: {
             type: String,
@@ -97,7 +97,7 @@ const qcResultSchema = new mongoose.Schema(
         },
         warnings: {
             type: [errorSchema],
-            default: undefined,
+            default: [],
         },
     },
     {
