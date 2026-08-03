@@ -201,6 +201,8 @@ const results = await Model.aggregate([
 
 DocumentDB does not support `$getField`. When a document has a root key that literally contains a dot (e.g. `"study.study_id"` after flattening), use `$objectToArray` + `$filter` + `$arrayElemAt`:
 
+For the full sort / project / pagination strategy (DOT-safe keys, skip double-`$sort` with `MongoPagination`), see [documentdb-literal-dotted-keys.md](./documentdb-literal-dotted-keys.md).
+
 ```javascript
 // INCOMPATIBLE with DocumentDB
 { $getField: { field: "study.study_id", input: "$$ROOT" } }

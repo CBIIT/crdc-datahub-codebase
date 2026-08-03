@@ -275,7 +275,16 @@ class ReleaseService {
         const {studyID, nodeType, first, offset, orderBy, sortDirection, properties, dataCommonsDisplayName} = params;
         const originDataCommons = getDataCommonsOrigin(dataCommonsDisplayName) || dataCommonsDisplayName;
         const listConditions = this._listNodesConditions(nodeType, originDataCommons, userScope, studyID);
-        const paginationPipe = new MongoPagination(first, offset, orderBy, sortDirection);
+        // Don’t include custom sort in pagination — a second $sort would override DocumentDB-safe ordering.
+        const usesCustomSort = Boolean(
+            orderBy && (properties?.length > 0 || orderBy.includes("."))
+        );
+        const paginationPipe = new MongoPagination(
+            first,
+            offset,
+            usesCustomSort ? null : orderBy,
+            sortDirection
+        );
         //
         const [rootKeys, parentKeys] = [[], []];
         (params?.properties || []).forEach(field => {
@@ -863,14 +872,14 @@ class ReleaseService {
 
     /**
      * Build key-value pairs for DOT-safe projection/sort keys.
-     * Uses _literalFieldValue because DocumentDB does not support $getField.
+     * Dotted fields use _literalFieldValue (DocumentDB has no $getField); non-dotted use a direct path.
      * @param {string[]} properties Field names (may contain dots)
      * @returns {object[]}
      */
     _buildKvPairsDotSafe(properties) {
         return properties.map(field => ({
             k: this._dotToSafe(field),
-            v: this._literalFieldValue(field)
+            v: field.includes(".") ? this._literalFieldValue(field) : `$${field}`,
         }));
     }
 
