@@ -34,11 +34,11 @@ describe('ReleaseService DocumentDB $facet removals', () => {
             isDCScope: () => false,
         };
         service._getUserScope = jest.fn().mockResolvedValue(allScope);
-        MongoPagination.mockImplementation(() => ({
+        MongoPagination.mockImplementation((first, offset, orderBy) => ({
             getPaginationPipeline: jest.fn().mockReturnValue([
-                { $sort: { studyName: 1 } },
-                { $skip: 0 },
-                { $limit: 10 },
+                ...(orderBy ? [{ $sort: { [orderBy]: 1 } }] : []),
+                { $skip: offset || 0 },
+                { $limit: first },
             ]),
         }));
     });
@@ -241,6 +241,73 @@ describe('ReleaseService DocumentDB $facet removals', () => {
                 nodes: [],
             });
             expect(mockReleaseDAO.aggregate).not.toHaveBeenCalled();
+        });
+
+        it('should not use $getField when sorting by a dotted orderBy', async () => {
+            mockReleaseDAO.aggregate
+                .mockResolvedValueOnce([{ 'study.study_id': 'S1' }])
+                .mockResolvedValueOnce([{ count: 1 }])
+                .mockResolvedValueOnce([{ allProperties: ['study.study_id'] }]);
+
+            await service.listReleasedDataRecords(
+                {
+                    studyID: 'study1',
+                    nodeType: 'study',
+                    first: 10,
+                    offset: 0,
+                    orderBy: 'study.study_id',
+                    sortDirection: 'asc',
+                    properties: [],
+                    dataCommonsDisplayName: 'CDS',
+                },
+                context
+            );
+
+            expect(MongoPagination).toHaveBeenCalledWith(10, 0, null, 'asc');
+
+            const pagePipeline = mockReleaseDAO.aggregate.mock.calls[0][0];
+            const pipelineJson = JSON.stringify(pagePipeline);
+            expect(pipelineJson).not.toContain('$getField');
+            expect(pipelineJson).toContain('$objectToArray');
+            expect(pipelineJson).toContain('$filter');
+
+            const sortStages = pagePipeline.filter((stage) => stage.$sort);
+            expect(sortStages).toEqual([{ $sort: { _sortKey: 1 } }]);
+            expect(sortStages.some((stage) => Object.prototype.hasOwnProperty.call(stage.$sort, 'study.study_id'))).toBe(false);
+        });
+
+        it('should not use $getField when projecting dotted properties', async () => {
+            mockReleaseDAO.aggregate
+                .mockResolvedValueOnce([{ title: 'Record A', 'study.study_id': 'S1' }])
+                .mockResolvedValueOnce([{ count: 1 }])
+                .mockResolvedValueOnce([{ allProperties: ['title', 'study.study_id'] }]);
+
+            await service.listReleasedDataRecords(
+                {
+                    studyID: 'study1',
+                    nodeType: 'study',
+                    first: 10,
+                    offset: 0,
+                    orderBy: 'title',
+                    sortDirection: 'asc',
+                    properties: ['title', 'study.study_id'],
+                    dataCommonsDisplayName: 'CDS',
+                },
+                context
+            );
+
+            expect(MongoPagination).toHaveBeenCalledWith(10, 0, null, 'asc');
+
+            const pagePipeline = mockReleaseDAO.aggregate.mock.calls[0][0];
+            const pipelineJson = JSON.stringify(pagePipeline);
+            expect(pipelineJson).not.toContain('$getField');
+            expect(pipelineJson).toContain('$objectToArray');
+            expect(pipelineJson).toContain('$filter');
+            expect(pipelineJson).toContain('"$title"');
+
+            const sortStages = pagePipeline.filter((stage) => stage.$sort);
+            expect(sortStages).toEqual([{ $sort: { title: 1 } }]);
+            expect(sortStages.some((stage) => Object.prototype.hasOwnProperty.call(stage.$sort, 'study.study_id'))).toBe(false);
         });
     });
 });
