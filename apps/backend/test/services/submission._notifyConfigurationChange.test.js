@@ -24,7 +24,7 @@ describe('Submission._notifyConfigurationChange', () => {
             null, // submissionCollection
             null, // batchService
             null, // userService
-            { organizationCollection: null }, // organizationService
+            {}, // programService
             mockNotificationService, // notificationService
             null, // dataRecordService
             null, // fetchDataModelInfo

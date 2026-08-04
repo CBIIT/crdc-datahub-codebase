@@ -20,7 +20,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
     let service;
     let mockApprovedStudiesCollection;
     let mockUserCollection;
-    let mockOrganizationService;
+    let mockProgramService;
     let mockSubmissionCollection;
     let mockAuthorizationService;
     let mockNotificationsService;
@@ -42,11 +42,11 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
         mockUserCollection = {
             aggregate: jest.fn()
         };
-        mockOrganizationService = {
+        mockProgramService = {
             findByStudyID: jest.fn(),
             findOneByStudyID: jest.fn(),
-            getOrganizationByID: jest.fn(),
-            getOrganizationByName: jest.fn(),
+            getProgramByID: jest.fn(),
+            getProgramByName: jest.fn(),
             organizationCollection: {
                 aggregate: jest.fn()
             }
@@ -86,7 +86,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
         service = new ApprovedStudiesService(
             mockApprovedStudiesCollection,
             mockUserCollection,
-            mockOrganizationService,
+            mockProgramService,
             mockSubmissionCollection,
             mockAuthorizationService,
             mockNotificationsService,

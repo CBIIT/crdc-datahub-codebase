@@ -211,7 +211,7 @@ describe('Submission Service - getSubmission', () => {
             {}, // submissionCollection
             mockBatchService,
             mockUserService,
-            {}, // organizationService
+            {}, // programService
             mockNotifyUser,
             mockDataRecordService,
             jest.fn(), // fetchDataModelInfo
@@ -340,7 +340,7 @@ describe('Submission Service - getSubmission', () => {
                 }
             };
             mockSubmissionDAO.findFirst.mockResolvedValue(rawSubmission);
-            mockProgramDAO.findFirst.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
+            mockProgramDAO.findById.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
             submissionService._findByID = Submission.prototype._findByID.bind(submissionService);
             submissionService._getUserScope.mockResolvedValue(createMockUserScope(false, true));
             submissionService._getS3DirectorySize.mockResolvedValue({ size: 1024, formatted: '1 KB' });
@@ -2043,7 +2043,7 @@ describe('Submission Service - listSubmissions', () => {
             {}, // submissionCollection
             {}, // batchService
             {}, // userService
-            {}, // organizationService
+            {}, // programService
             {}, // notificationService
             {}, // dataRecordService
             jest.fn(), // fetchDataModelInfo

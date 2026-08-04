@@ -1,5 +1,5 @@
-const { Organization } = require('../../services/organization-service');
-const { ORGANIZATION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
+const { Program } = require('../../services/program-service');
+const { PROGRAM } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
 const {ERROR : SUBMODULE_ERROR}  = require('../../crdc-datahub-database-drivers/constants/error-constants');
 const ERROR = require('../../constants/error-constants');
 const {replaceErrorString} = require('../../utility/string-util');
@@ -22,8 +22,8 @@ const ApplicationDAO = require('../../dao/application');
 const ApprovedStudyDAO = require('../../dao/approvedStudy');
 
 
-describe('Organization.listPrograms', () => {
-  let organization;
+describe('Program.listPrograms', () => {
+  let program;
   let mockProgramDAO;
   let mockUserDAO;
   let mockSubmissionDAO;
@@ -41,9 +41,7 @@ describe('Organization.listPrograms', () => {
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
-    organization = new Organization(
-      {}, {}, {}, {}
-    );
+    program = new Program({}, {}, {});
     jest.clearAllMocks();
   });
 
@@ -55,12 +53,12 @@ describe('Organization.listPrograms', () => {
       offset: 0,
       orderBy: 'name',
       sortDirection: 'asc',
-      status: ORGANIZATION.STATUSES.ACTIVE
+      status: PROGRAM.STATUSES.ACTIVE
     };
     const mockPrograms = [{ _id: 'org1', name: 'Program 1' }];
     mockProgramDAO.listPrograms.mockResolvedValue({ total: 1, results: mockPrograms });
 
-    const result = await organization.listPrograms(params, context);
+    const result = await program.listPrograms(params, context);
     expect(result.total).toBe(1);
     expect(result.programs).toEqual(mockPrograms);
     expect(mockProgramDAO.listPrograms).toHaveBeenCalledWith(
@@ -68,7 +66,7 @@ describe('Organization.listPrograms', () => {
       0,
       'name',
       'asc',
-      { status: ORGANIZATION.STATUSES.ACTIVE }
+      { status: PROGRAM.STATUSES.ACTIVE }
     );
   });
 
@@ -80,7 +78,7 @@ describe('Organization.listPrograms', () => {
       sortDirection: 'asc',
       status: 'INVALID_STATUS'
     };
-    await expect(organization.listPrograms(params, context)).rejects.toThrow(
+    await expect(program.listPrograms(params, context)).rejects.toThrow(
       replaceErrorString(SUBMODULE_ERROR.INVALID_PROGRAM_STATUS, params.status)
     );
     expect(mockProgramDAO.listPrograms).not.toHaveBeenCalled();
@@ -95,13 +93,13 @@ describe('Organization.listPrograms', () => {
       status: 'aCtIvE'
     };
     mockProgramDAO.listPrograms.mockResolvedValue({ total: 0, results: [] });
-    await organization.listPrograms(params, context);
+    await program.listPrograms(params, context);
     expect(mockProgramDAO.listPrograms).toHaveBeenCalledWith(
       10,
       0,
       'name',
       'asc',
-      { status: ORGANIZATION.STATUSES.ACTIVE }
+      { status: PROGRAM.STATUSES.ACTIVE }
     );
   });
 
@@ -114,13 +112,13 @@ describe('Organization.listPrograms', () => {
       status: 'aLl'
     };
     mockProgramDAO.listPrograms.mockResolvedValue({ total: 0, results: [] });
-    await organization.listPrograms(params, context);
+    await program.listPrograms(params, context);
     expect(mockProgramDAO.listPrograms).toHaveBeenCalledWith(
       10,
       0,
       'name',
       'asc',
-      { status: { $in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE] } }
+      { status: { $in: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE] } }
     );
   });
 
@@ -132,13 +130,13 @@ describe('Organization.listPrograms', () => {
       sortDirection: 'asc'
     };
     mockProgramDAO.listPrograms.mockResolvedValue({ total: 0, results: [] });
-    await organization.listPrograms(params, context);
+    await program.listPrograms(params, context);
     expect(mockProgramDAO.listPrograms).toHaveBeenCalledWith(
       10,
       0,
       'name',
       'asc',
-      { status: { $in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE] } }
+      { status: { $in: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE] } }
     );
   });
 
@@ -148,15 +146,15 @@ describe('Organization.listPrograms', () => {
       offset: 0,
       orderBy: 'name',
       sortDirection: 'asc',
-      status: ORGANIZATION.STATUSES.ACTIVE
+      status: PROGRAM.STATUSES.ACTIVE
     };
     const badContext = { userInfo: {} };
-    await expect(organization.listPrograms(params, badContext)).rejects.toThrow(ERROR.NOT_LOGGED_IN);
+    await expect(program.listPrograms(params, badContext)).rejects.toThrow(ERROR.NOT_LOGGED_IN);
   });
 });
 
-describe('Organization.createOrganization', () => {
-  let organization;
+describe('Program.createProgram', () => {
+  let program;
   let mockProgramDAO;
   let mockUserDAO;
   let mockSubmissionDAO;
@@ -164,7 +162,7 @@ describe('Organization.createOrganization', () => {
   let mockApprovedStudyDAO;
 
   beforeEach(() => {
-    mockProgramDAO = { getOrganizationByName: jest.fn(), getOrganizationByID: jest.fn(), create: jest.fn() };
+    mockProgramDAO = { getProgramByName: jest.fn(), getProgramByID: jest.fn(), create: jest.fn() };
     mockUserDAO = { findFirst: jest.fn() };
     mockSubmissionDAO = {};
     mockApplicationDAO = {};
@@ -174,11 +172,9 @@ describe('Organization.createOrganization', () => {
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
-    organization = new Organization(
-      {}, {}, {}, {}
-    );
+    program = new Program({}, {}, {});
     jest.clearAllMocks();
-    organization._checkRemovedStudies = jest.fn();
+    program._checkRemovedStudies = jest.fn();
   });
 
   it('should create a new organization successfully', async () => {
@@ -187,9 +183,9 @@ describe('Organization.createOrganization', () => {
       abbreviation: 'TST',
       description: 'desc',
     };
-    mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
+    mockProgramDAO.getProgramByName.mockResolvedValue(null);
     mockProgramDAO.create.mockResolvedValue({ _id: 'orgid', name: 'Test Org', abbreviation: 'TST', description: 'desc' });
-    const result = await organization.createOrganization(params);
+    const result = await program.createProgram(params);
     expect(result).toEqual({ _id: 'orgid', name: 'Test Org', abbreviation: 'TST', description: 'desc' });
     expect(mockProgramDAO.create).toHaveBeenCalled();
   });
@@ -200,8 +196,8 @@ describe('Organization.createOrganization', () => {
       abbreviation: 'TST',
       description: 'desc',
     };
-    mockProgramDAO.getOrganizationByName.mockResolvedValue({ _id: 'existing' });
-    await expect(organization.createOrganization(params)).rejects.toThrow('An organization with the same name already exists');
+    mockProgramDAO.getProgramByName.mockResolvedValue({ _id: 'existing' });
+    await expect(program.createProgram(params)).rejects.toThrow('An organization with the same name already exists');
   });
 
   it('should throw error if organization name is invalid', async () => {
@@ -210,7 +206,7 @@ describe('Organization.createOrganization', () => {
       abbreviation: 'TST',
       description: 'desc',
     };
-    await expect(organization.createOrganization(params)).rejects.toThrow('The organization name you provided is invalid');
+    await expect(program.createProgram(params)).rejects.toThrow('The organization name you provided is invalid');
   });
 
   it('should throw error if abbreviation is missing', async () => {
@@ -219,9 +215,9 @@ describe('Organization.createOrganization', () => {
       abbreviation: '',
       description: 'desc',
     };
-    mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
+    mockProgramDAO.getProgramByName.mockResolvedValue(null);
     mockProgramDAO.create.mockResolvedValue(undefined);
-    await expect(organization.createOrganization(params)).rejects.toThrow('Unknown error occurred while creating object');
+    await expect(program.createProgram(params)).rejects.toThrow('Unknown error occurred while creating object');
   });
 
   it('should throw error if conciergeID is invalid', async () => {
@@ -231,9 +227,9 @@ describe('Organization.createOrganization', () => {
       description: 'desc',
       conciergeID: 'user123'
     };
-    mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
+    mockProgramDAO.getProgramByName.mockResolvedValue(null);
     mockUserDAO.findFirst.mockResolvedValue(null);
-    await expect(organization.createOrganization(params)).rejects.toThrow('The role you are trying to assign is invalid');
+    await expect(program.createProgram(params)).rejects.toThrow('The role you are trying to assign is invalid');
   });
 
   it('should create organization with concierge info', async () => {
@@ -243,18 +239,18 @@ describe('Organization.createOrganization', () => {
       description: 'desc',
       conciergeID: 'user123'
     };
-    mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
+    mockProgramDAO.getProgramByName.mockResolvedValue(null);
     mockUserDAO.findFirst.mockResolvedValue({ _id: 'user123', firstName: 'Jane', lastName: 'Doe', email: 'jane@doe.com' });
     mockProgramDAO.create.mockResolvedValue({ _id: 'orgid', name: 'Test Org', abbreviation: 'TST', description: 'desc', conciergeID: 'user123', conciergeName: 'Jane Doe', conciergeEmail: 'jane@doe.com' });
-    const result = await organization.createOrganization(params);
+    const result = await program.createProgram(params);
     expect(result).toEqual({ _id: 'orgid', name: 'Test Org', abbreviation: 'TST', description: 'desc', conciergeID: 'user123', conciergeName: 'Jane Doe', conciergeEmail: 'jane@doe.com' });
     expect(mockUserDAO.findFirst).toHaveBeenCalled();
     expect(mockProgramDAO.create).toHaveBeenCalled();
   });
 });
 
-describe('Organization.getOrganizationAPI', () => {
-  let organization;
+describe('Program.getProgramAPI', () => {
+  let program;
   let mockProgramDAO;
   let mockUserDAO;
   let mockSubmissionDAO;
@@ -262,7 +258,7 @@ describe('Organization.getOrganizationAPI', () => {
   let mockApprovedStudyDAO;
 
   beforeEach(() => {
-    mockProgramDAO = { getOrganizationByID: jest.fn() };
+    mockProgramDAO = { getProgramByID: jest.fn() };
     mockUserDAO = {};
     mockSubmissionDAO = {};
     mockApplicationDAO = {};
@@ -272,9 +268,7 @@ describe('Organization.getOrganizationAPI', () => {
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
-    organization = new Organization(
-      {}, {}, {}, {}
-    );
+    program = new Program({}, {}, {});
     jest.clearAllMocks();
   });
 
@@ -283,10 +277,10 @@ describe('Organization.getOrganizationAPI', () => {
   it('should return the organization for a valid orgID', async () => {
     const params = { orgID: 'org123' };
     const mockOrg = { _id: 'org123', name: 'Test Org' };
-    mockProgramDAO.getOrganizationByID.mockResolvedValue(mockOrg);
-    const result = await organization.getOrganizationAPI(params, context);
+    mockProgramDAO.getProgramByID.mockResolvedValue(mockOrg);
+    const result = await program.getProgramAPI(params, context);
     expect(result).toEqual(mockOrg);
-    expect(mockProgramDAO.getOrganizationByID).toHaveBeenCalledWith('org123', true);
+    expect(mockProgramDAO.getProgramByID).toHaveBeenCalledWith('org123', true);
   });
 
   it('should request studies from DAO and preserve them in the response', async () => {
@@ -296,44 +290,44 @@ describe('Organization.getOrganizationAPI', () => {
       name: 'Test Org',
       studies: [{ _id: 's1', id: 's1', studyAbbreviation: 'TST', studyName: 'Trial' }],
     };
-    mockProgramDAO.getOrganizationByID.mockResolvedValue(mockOrg);
-    const result = await organization.getOrganizationAPI(params, context);
-    expect(mockProgramDAO.getOrganizationByID).toHaveBeenCalledWith('org123', true);
+    mockProgramDAO.getProgramByID.mockResolvedValue(mockOrg);
+    const result = await program.getProgramAPI(params, context);
+    expect(mockProgramDAO.getProgramByID).toHaveBeenCalledWith('org123', true);
     expect(result.studies).toEqual(mockOrg.studies);
   });
 
   it('should throw error if orgID is missing', async () => {
-    await expect(organization.getOrganizationAPI({}, context)).rejects.toThrow(ERROR.INVALID_ORG_ID);
+    await expect(program.getProgramAPI({}, context)).rejects.toThrow(ERROR.INVALID_ORG_ID);
   });
 
   it('should throw error if not logged in', async () => {
     const params = { orgID: 'org123' };
     const badContext = { userInfo: {} };
-    await expect(organization.getOrganizationAPI(params, badContext)).rejects.toThrow(ERROR.NOT_LOGGED_IN);
+    await expect(program.getProgramAPI(params, badContext)).rejects.toThrow(ERROR.NOT_LOGGED_IN);
   });
 });
 
-describe('Organization.getOrganizationByID', () => {
-  let organization;
+describe('Program.getProgramByID', () => {
+  let program;
   let mockProgramDAO;
 
   beforeEach(() => {
-    mockProgramDAO = { getOrganizationByID: jest.fn() };
+    mockProgramDAO = { getProgramByID: jest.fn() };
     ProgramDAO.mockImplementation(() => mockProgramDAO);
-    organization = new Organization({}, {}, {}, {});
+    program = new Program({}, {}, {});
     jest.clearAllMocks();
   });
 
   it('should throw when includeStudiesList is omitted', async () => {
-    await expect(organization.getOrganizationByID('org123')).rejects.toThrow(
+    await expect(program.getProgramByID('org123')).rejects.toThrow(
       SUBMODULE_ERROR.INVALID_INCLUDE_STUDIES_LIST_ARGUMENT
     );
-    expect(mockProgramDAO.getOrganizationByID).not.toHaveBeenCalled();
+    expect(mockProgramDAO.getProgramByID).not.toHaveBeenCalled();
   });
 });
 
-describe('Organization.editOrganization', () => {
-  let organization;
+describe('Program.editProgram', () => {
+  let program;
   let mockProgramDAO;
   let mockUserDAO;
   let mockSubmissionDAO;
@@ -342,8 +336,8 @@ describe('Organization.editOrganization', () => {
 
   beforeEach(() => {
     mockProgramDAO = { 
-      getOrganizationByID: jest.fn(), 
-      getOrganizationByName: jest.fn(),
+      getProgramByID: jest.fn(), 
+      getProgramByName: jest.fn(),
       updateMany: jest.fn() 
     };
     mockUserDAO = { findFirst: jest.fn(), updateUserOrg: jest.fn() };
@@ -357,20 +351,20 @@ describe('Organization.editOrganization', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     
-    organization = new Organization({}, {}, {}, {});
+    program = new Program({}, {}, {});
     jest.clearAllMocks();
   });
 
   it('should edit organization name successfully', async () => {
     const orgID = 'org-123';
     const params = { name: 'Updated Org' };
-    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: ORGANIZATION.STATUSES.ACTIVE };
+    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: PROGRAM.STATUSES.ACTIVE };
 
-    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
-    mockProgramDAO.getOrganizationByName.mockResolvedValue(null);
+    mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
+    mockProgramDAO.getProgramByName.mockResolvedValue(null);
     mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
 
-    const result = await organization.editOrganization(orgID, params);
+    const result = await program.editProgram(orgID, params);
 
     expect(result).toEqual({ ...currentOrg, name: 'Updated Org', updateAt: expect.any(Date) });
     expect(mockProgramDAO.updateMany).toHaveBeenCalled();
@@ -378,13 +372,13 @@ describe('Organization.editOrganization', () => {
     expect(mockApprovedStudyDAO.updateMany).not.toHaveBeenCalled();
   });
 
-  it(`should throw when setting status ${ORGANIZATION.STATUSES.INACTIVE} while program has assigned studies`, async () => {
+  it(`should throw when setting status ${PROGRAM.STATUSES.INACTIVE} while program has assigned studies`, async () => {
     const orgID = 'org-123';
     const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST' };
-    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
+    mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
     mockApprovedStudyDAO.count.mockResolvedValue(2);
 
-    await expect(organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.INACTIVE })).rejects.toThrow(
+    await expect(program.editProgram(orgID, { status: PROGRAM.STATUSES.INACTIVE })).rejects.toThrow(
       SUBMODULE_ERROR.PROGRAM_CANNOT_INACTIVATE_WITH_STUDIES
     );
     expect(mockProgramDAO.updateMany).not.toHaveBeenCalled();
@@ -396,35 +390,35 @@ describe('Organization.editOrganization', () => {
       _id: orgID,
       name: 'Test Org',
       abbreviation: 'TST',
-      status: ORGANIZATION.STATUSES.ACTIVE
+      status: PROGRAM.STATUSES.ACTIVE
     };
-    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
+    mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
     mockApprovedStudyDAO.count.mockResolvedValue(0);
     mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
-    mockProgramDAO.getOrganizationByName.mockResolvedValue({ _id: 'other-id', name: 'collision' });
+    mockProgramDAO.getProgramByName.mockResolvedValue({ _id: 'other-id', name: 'collision' });
 
-    const result = await organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.INACTIVE });
+    const result = await program.editProgram(orgID, { status: PROGRAM.STATUSES.INACTIVE });
 
-    expect(mockProgramDAO.getOrganizationByName).not.toHaveBeenCalled();
+    expect(mockProgramDAO.getProgramByName).not.toHaveBeenCalled();
     expect(mockProgramDAO.updateMany).toHaveBeenCalledWith(
-      { id: orgID },
-      expect.objectContaining({ status: ORGANIZATION.STATUSES.INACTIVE, updateAt: expect.any(Date) })
+      { _id: orgID },
+      expect.objectContaining({ status: PROGRAM.STATUSES.INACTIVE, updateAt: expect.any(Date) })
     );
-    expect(result.status).toBe(ORGANIZATION.STATUSES.INACTIVE);
+    expect(result.status).toBe(PROGRAM.STATUSES.INACTIVE);
   });
 
   it('should set status Active when explicitly requested', async () => {
     const orgID = 'org-123';
-    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: ORGANIZATION.STATUSES.INACTIVE };
-    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
+    const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: PROGRAM.STATUSES.INACTIVE };
+    mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
     mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
 
-    const result = await organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.ACTIVE });
+    const result = await program.editProgram(orgID, { status: PROGRAM.STATUSES.ACTIVE });
 
-    expect(result.status).toBe(ORGANIZATION.STATUSES.ACTIVE);
+    expect(result.status).toBe(PROGRAM.STATUSES.ACTIVE);
     expect(mockProgramDAO.updateMany).toHaveBeenCalledWith(
-      { id: orgID },
-      expect.objectContaining({ status: ORGANIZATION.STATUSES.ACTIVE, updateAt: expect.any(Date) })
+      { _id: orgID },
+      expect.objectContaining({ status: PROGRAM.STATUSES.ACTIVE, updateAt: expect.any(Date) })
     );
   });
 
@@ -435,11 +429,11 @@ describe('Organization.editOrganization', () => {
       name: 'NA',
       abbreviation: 'NA',
       readOnly: true,
-      status: ORGANIZATION.STATUSES.ACTIVE
+      status: PROGRAM.STATUSES.ACTIVE
     };
-    mockProgramDAO.getOrganizationByID.mockResolvedValue(currentOrg);
+    mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
 
-    await expect(organization.editOrganization(orgID, { status: ORGANIZATION.STATUSES.INACTIVE })).rejects.toThrow(
+    await expect(program.editProgram(orgID, { status: PROGRAM.STATUSES.INACTIVE })).rejects.toThrow(
       SUBMODULE_ERROR.CANNOT_UPDATE_READ_ONLY_PROGRAM
     );
     expect(mockProgramDAO.updateMany).not.toHaveBeenCalled();

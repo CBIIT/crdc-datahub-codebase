@@ -275,7 +275,16 @@ class ReleaseService {
         const {studyID, nodeType, first, offset, orderBy, sortDirection, properties, dataCommonsDisplayName} = params;
         const originDataCommons = getDataCommonsOrigin(dataCommonsDisplayName) || dataCommonsDisplayName;
         const listConditions = this._listNodesConditions(nodeType, originDataCommons, userScope, studyID);
-        const paginationPipe = new MongoPagination(first, offset, orderBy, sortDirection);
+        // Don’t include custom sort in pagination — a second $sort would override DocumentDB-safe ordering.
+        const usesCustomSort = Boolean(
+            orderBy && (properties?.length > 0 || orderBy.includes("."))
+        );
+        const paginationPipe = new MongoPagination(
+            first,
+            offset,
+            usesCustomSort ? null : orderBy,
+            sortDirection
+        );
         //
         const [rootKeys, parentKeys] = [[], []];
         (params?.properties || []).forEach(field => {
@@ -414,15 +423,10 @@ class ReleaseService {
                     },
                 ]
                 : []),
-            ...(orderBy?.includes(".") ?
+            ...(orderBy?.includes(".") && !(properties?.length > 0) ?
                 [{
                     $addFields: {
-                        _sortKey: {
-                            $getField: {
-                                field: orderBy,
-                                input: "$$ROOT",
-                            },
-                        },
+                        _sortKey: this._literalFieldValue(orderBy),
                     },
                 },
                     {
@@ -838,11 +842,44 @@ class ReleaseService {
         return field.replace(/\./g, "_DOT_");
     }
 
-    // Build key-value pairs for use with $getField, using DOT-safe keys
+    /**
+     * Read a root field by literal name (may contain dots).
+     * DocumentDB does not support $getField; use objectToArray + filter instead.
+     * @param {string} field Literal field name
+     * @param {string|object} [input="$$ROOT"] Document expression
+     * @returns {object} Aggregation expression
+     */
+    _literalFieldValue(field, input = "$$ROOT") {
+        return {
+            $arrayElemAt: [
+                {
+                    $map: {
+                        input: {
+                            $filter: {
+                                input: { $objectToArray: input },
+                                as: "kv",
+                                cond: { $eq: ["$$kv.k", field] },
+                            },
+                        },
+                        as: "m",
+                        in: "$$m.v",
+                    },
+                },
+                0,
+            ],
+        };
+    }
+
+    /**
+     * Build key-value pairs for DOT-safe projection/sort keys.
+     * Dotted fields use _literalFieldValue (DocumentDB has no $getField); non-dotted use a direct path.
+     * @param {string[]} properties Field names (may contain dots)
+     * @returns {object[]}
+     */
     _buildKvPairsDotSafe(properties) {
         return properties.map(field => ({
             k: this._dotToSafe(field),
-            v: { $getField: { field, input: "$$ROOT" } }
+            v: field.includes(".") ? this._literalFieldValue(field) : `$${field}`,
         }));
     }
 

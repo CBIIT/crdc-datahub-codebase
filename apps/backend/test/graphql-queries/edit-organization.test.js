@@ -1,10 +1,10 @@
-const {Organization} = require("../../services/organization-service");
+const {Program} = require("../../services/program-service");
 
 describe('Test Organization Service', () => {
     let organization;
 
     beforeAll(() => {
-        organization = new Organization();
+        organization = new Program();
     })
 
     test('Check for read-only violations', async () => {

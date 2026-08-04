@@ -3,7 +3,7 @@ const prisma = require('../../prisma');
 const { NEW, IN_PROGRESS, SUBMITTED, RELEASED, COMPLETED, ARCHIVED, REJECTED, WITHDRAWN, CANCELED, DELETED } = require('../../constants/submission-constants');
 const { COLLABORATOR_PERMISSIONS } = require('../../constants/submission-constants');
 const ERROR = require('../../constants/error-constants');
-const { ORGANIZATION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
+const { PROGRAM } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
 
 // Mock Prisma
 jest.mock('../../prisma', () => ({
@@ -12,11 +12,14 @@ jest.mock('../../prisma', () => ({
         findMany: jest.fn(),
         count: jest.fn(),
         aggregate: jest.fn()
-    },
-    program: {
-        findMany: jest.fn()
     }
 }));
+
+jest.mock('../../dao/program', () => {
+    return jest.fn().mockImplementation(() => ({
+        findMany: jest.fn()
+    }));
+});
 
 describe('SubmissionDAO', () => {
     let dao;
@@ -24,8 +27,8 @@ describe('SubmissionDAO', () => {
     let mockUserScope;
 
     beforeEach(() => {
-        dao = new SubmissionDAO();
         jest.clearAllMocks();
+        dao = new SubmissionDAO();
         
         // Setup default mock user info
         mockUserInfo = {
@@ -119,7 +122,6 @@ describe('SubmissionDAO', () => {
             // Reset mocks to ensure clean state between tests
             prisma.submission.findMany.mockReset();
             prisma.submission.count.mockReset();
-            prisma.program.findMany.mockReset();
             
             // Setup default Prisma mocks
             // findMany is called twice: main query and submitter names (statuses are now a constant)
@@ -136,7 +138,7 @@ describe('SubmissionDAO', () => {
                 return Promise.resolve(mockSubmissions);
             });
             prisma.submission.count.mockResolvedValue(1);
-            prisma.program.findMany.mockResolvedValue([
+            dao.programDAO.findMany.mockResolvedValue([
                 { id: 'org-1', name: 'Test Organization', abbreviation: 'TO' }
             ]);
         });
@@ -1234,19 +1236,12 @@ describe('SubmissionDAO', () => {
 
                 expect(result.organizations).toBeDefined();
                 // Organizations are now returned from all programs with Active/Inactive status, not filtered by submissions
-                expect(prisma.program.findMany).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        where: {
-                            status: {
-                                in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE]
-                            }
-                        },
-                        select: {
-                            id: true,
-                            name: true,
-                            abbreviation: true
+                expect(dao.programDAO.findMany).toHaveBeenCalledWith(
+                    {
+                        status: {
+                            $in: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE]
                         }
-                    })
+                    }
                 );
             });
 
@@ -1345,7 +1340,7 @@ describe('SubmissionDAO', () => {
                     { id: 'org-3', name: 'Organization 3', abbreviation: 'O3' }
                 ];
                 
-                prisma.program.findMany.mockResolvedValue(allOrganizations);
+                dao.programDAO.findMany.mockResolvedValue(allOrganizations);
 
                 // Test with different filter parameters
                 const paramsWithFilters = {
@@ -1363,19 +1358,15 @@ describe('SubmissionDAO', () => {
                 expect(resultWithoutFilters.organizations).toHaveLength(3);
                 
                 // Verify organizations query does NOT include submission filters
-                expect(prisma.program.findMany).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        where: {
-                            status: { in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE] }
-                        }
-                    })
+                expect(dao.programDAO.findMany).toHaveBeenCalledWith(
+                    {
+                        status: { $in: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE] }
+                    }
                 );
                 // Should NOT contain submission-specific filters
-                expect(prisma.program.findMany).not.toHaveBeenCalledWith(
+                expect(dao.programDAO.findMany).not.toHaveBeenCalledWith(
                     expect.objectContaining({
-                        where: expect.objectContaining({
-                            dataCommons: expect.anything()
-                        })
+                        dataCommons: expect.anything()
                     })
                 );
             });
