@@ -1,16 +1,26 @@
-const GenericDAO = require("./generic");
-const {MODEL_NAME} = require("../constants/db-constants");
+const MongooseGenericDAO = require("./mongoose-generic");
+const QcResultModel = require("../mongoose/models/qc-result");
 const {VALIDATION_STATUS} = require("../constants/submission-constants");
 const {getSortDirection} = require("../crdc-datahub-database-drivers/utility/mongodb-utility");
 const ISSUE_COUNT = "issueCount";
 const ALL_FLAG = "All";
-class QCResultDAO extends GenericDAO {
-    constructor(qcResultCollection) {
-        super(MODEL_NAME.QC_RESULT);
-        this.qcResultCollection = qcResultCollection;
+
+class QCResultDAO extends MongooseGenericDAO {
+    constructor() {
+        super(QcResultModel);
     }
 
-    // note: use MongoDB because Prisma has to fetch all matching documents into memory before grouping and paginating
+    /**
+     * Aggregate QC issues for a submission, grouped by issue type with distinct record counts.
+     * Uses split count + page pipelines (DocumentDB does not support $facet).
+     * @param {string} submissionID Submission ID
+     * @param {string} severity Severity filter (Error, Warning, or All)
+     * @param {number} first Page size
+     * @param {number} offset Page offset
+     * @param {string} orderBy Sort field
+     * @param {string} sortDirection Sort direction
+     * @returns {Promise<{total: number, results: object[]}>}
+     */
     async aggregatedSubmissionQCResults(submissionID, severity, first, offset, orderBy, sortDirection) {
         // Create lookup pipeline
         let basePipeline = [];
@@ -110,15 +120,29 @@ class QCResultDAO extends GenericDAO {
             });
         }
         // Run pipelines
-        const countPipelineResult = await this.qcResultCollection.aggregate(countPipeline);
+        const countPipelineResult = await this.aggregate(countPipeline);
         const totalRecords = countPipelineResult[0]?.total;
-        const paginatedPipelineResult = await this.qcResultCollection.aggregate(paginationPipeline);
+        const paginatedPipelineResult = await this.aggregate(paginationPipeline);
         return {
             total: totalRecords || 0,
             results: paginatedPipelineResult
         };
     }
 
+    /**
+     * List QC result rows for a submission with filters, issue counts, and pagination.
+     * Uses split count + page pipelines (DocumentDB does not support $facet).
+     * @param {string} submissionID Submission ID
+     * @param {string[]} nodeTypes Node type filters
+     * @param {string[]} batchIDs Batch ID filters (only the first is applied)
+     * @param {string} severities Severity filter (Error, Warning, or All)
+     * @param {string} issueCode Issue code filter
+     * @param {number} first Page size
+     * @param {number} offset Page offset
+     * @param {string} orderBy Sort field
+     * @param {string} sortDirection Sort direction
+     * @returns {Promise<{results: object[], total: number}>}
+     */
     async submissionQCResults(submissionID, nodeTypes, batchIDs, severities, issueCode, first, offset, orderBy, sortDirection){
         // Create lookup pipeline
         let pipeline = [];
@@ -218,7 +242,7 @@ class QCResultDAO extends GenericDAO {
         countPipeline.push({
             $count: "total"
         });
-        const countPipelineResult = await this.qcResultCollection.aggregate(countPipeline);
+        const countPipelineResult = await this.aggregate(countPipeline);
         const totalRecords = countPipelineResult[0]?.total;
         // Create paginated pipeline
         let pagedPipeline = [...pipeline];
@@ -243,12 +267,41 @@ class QCResultDAO extends GenericDAO {
                 $limit: first
             });
         }
-        const pagedPipelineResult = await this.qcResultCollection.aggregate(pagedPipeline);
+        const pagedPipelineResult = await this.aggregate(pagedPipeline);
         const dataRecords = replaceNaN(pagedPipelineResult, null);
         return {
             results: dataRecords || [],
             total: totalRecords || 0
         }
+    }
+
+    /**
+     * Find QC results for a submission that include a specific error code.
+     * Projects only submittedID and submissionID for callers that need IDs/counts.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorCode Error code to match in the errors array
+     * @returns {Promise<object[]>}
+     */
+    async findBySubmissionErrorCodes(submissionID, errorCode) {
+        const result = await this.model
+            .find({ submissionID, "errors.code": errorCode })
+            .select("submittedID submissionID")
+            .lean();
+        return result.map((item) => this._mapDoc(item));
+    }
+
+    /**
+     * Return submittedID and dataRecordID for QC results of a given type in a submission.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorType Node/error type to match
+     * @returns {Promise<object[]>}
+     */
+    async getQCResultsErrors(submissionID, errorType) {
+        const result = await this.aggregate([
+            {"$match": { submissionID: submissionID, type: errorType}},
+            {"$project": {submittedID: 1, dataRecordID: 1}}
+        ]);
+        return result || [];
     }
 }
 
@@ -280,4 +333,4 @@ function formatSeverityFilter(severity){
     return null;
 }
 
-module.exports = QCResultDAO
+module.exports = QCResultDAO;

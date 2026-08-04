@@ -12,7 +12,7 @@ const graphqlRouter = require("./routers/graphql-router");
 const {MongoDBCollection} = require("./crdc-datahub-database-drivers/mongodb-collection");
 const {DATABASE_NAME, APPLICATION_COLLECTION, USER_COLLECTION, LOG_COLLECTION, APPROVED_STUDIES_COLLECTION,
     ORGANIZATION_COLLECTION, SUBMISSIONS_COLLECTION, DATA_RECORDS_COLLECTION,
-    DATA_RECORDS_ARCHIVE_COLLECTION, QC_RESULTS_COLLECTION
+    DATA_RECORDS_ARCHIVE_COLLECTION
 } = require("./crdc-datahub-database-drivers/database-constants");
 const {Application} = require("./services/application");
 const {Submission} = require("./services/submission");
@@ -34,6 +34,7 @@ const {UtilityService} = require("./services/utility");
 const {QcResultService} = require("./services/qc-result-service");
 const {UserService} = require("./services/user");
 const {ConfigurationService} = require("./services/configurationService");
+const {AuthorizationService} = require("./services/authorization-service");
 const {EMAIL_NOTIFICATIONS} = require("./crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_CONSTANTS = require("./crdc-datahub-database-drivers/constants/user-constants");
 const ROLES = USER_CONSTANTS.USER.ROLES;
@@ -83,6 +84,7 @@ app.use("/api/graphql", graphqlRouter);
         const config = await configuration.updateConfig(dbConnector);
         const emailService = new EmailService(config.email_transport, config.emails_enabled);
         const configurationService = new ConfigurationService();
+        const authorizationService = new AuthorizationService(configurationService);
         const notificationsService = new NotifyUser(emailService, config.tier);
         const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
         const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
@@ -123,8 +125,7 @@ app.use("/api/graphql", graphqlRouter);
         
         const batchService = new BatchService(s3Service, config.sqs_loader_queue, awsService, config.prod_url, fetchDataModelInfo);
 
-        const qcResultCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, QC_RESULTS_COLLECTION);
-        const qcResultsService = new QcResultService(qcResultCollection, submissionCollection);
+        const qcResultsService = new QcResultService(authorizationService);
 
         const dataRecordCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_COLLECTION);
         const dataRecordArchiveCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_ARCHIVE_COLLECTION);

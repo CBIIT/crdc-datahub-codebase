@@ -10,8 +10,7 @@ const {MongoQueries} = require("../crdc-datahub-database-drivers/mongo-queries")
 const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLECTION, ORGANIZATION_COLLECTION, LOG_COLLECTION,
     APPROVED_STUDIES_COLLECTION,
     DATA_RECORDS_COLLECTION,
-    DATA_RECORDS_ARCHIVE_COLLECTION,
-    QC_RESULTS_COLLECTION
+    DATA_RECORDS_ARCHIVE_COLLECTION
 } = require("../crdc-datahub-database-drivers/database-constants");
 const {MongoDBCollection} = require("../crdc-datahub-database-drivers/mongodb-collection");
 const {DatabaseConnector} = require("../crdc-datahub-database-drivers/database-connector");
@@ -94,8 +93,7 @@ dbConnector.connect().then(async () => {
     const batchService = new BatchService(s3Service, config.sqs_loader_queue, awsService, config.prod_url, fetchDataModelInfo);
 
 
-    const qcResultCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, QC_RESULTS_COLLECTION);
-    const qcResultsService = new QcResultService(qcResultCollection, submissionCollection, authorizationService);
+    const qcResultsService = new QcResultService(authorizationService);
 
     const dataRecordCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_COLLECTION);
     const dataRecordArchiveCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_ARCHIVE_COLLECTION);
