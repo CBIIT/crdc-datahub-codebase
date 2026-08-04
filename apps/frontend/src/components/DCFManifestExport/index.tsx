@@ -88,8 +88,8 @@ const DCFManifestExport: FC<DCFManifestExportProps> = ({ disabled, ...rest }) =>
 
   return (
     <Tooltip
-      title="Download the latest generated DCF manifest for this submission."
-      aria-label="DCF Manifest Download Button Tooltip"
+      title="Download the latest DCF manifest for this data submission."
+      aria-label="DCF manifest button tooltip"
       data-testid="dcf-manifest-export-tooltip"
       arrow
     >

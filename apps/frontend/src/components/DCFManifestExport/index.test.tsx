@@ -315,3 +315,39 @@ describe("Basic Functionality", () => {
     openSpy.mockRestore();
   });
 });
+
+describe("Implementation Requirements", () => {
+  it("should render with the text 'DCF Manifest'", () => {
+    const { getByText } = render(<Button />, {
+      wrapper: ({ children }) => (
+        <MockParent submission={{ _id: "mock-text-check" }} mocks={[]}>
+          {children}
+        </MockParent>
+      ),
+    });
+
+    expect(getByText("DCF Manifest")).toBeInTheDocument();
+  });
+
+  it("should have the expected tooltip copy on hover", async () => {
+    const { getByTestId, findByRole } = render(<Button />, {
+      wrapper: ({ children }) => (
+        <MockParent submission={{ _id: "mock-tooltip-check" }} mocks={[]}>
+          {children}
+        </MockParent>
+      ),
+    });
+
+    const button = getByTestId("dcf-manifest-export-button");
+    userEvent.hover(button);
+
+    const tooltip = await findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Download the latest DCF manifest for this data submission.");
+
+    userEvent.unhover(button);
+
+    await waitFor(() => {
+      expect(tooltip).not.toBeInTheDocument();
+    });
+  });
+});
