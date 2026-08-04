@@ -63,7 +63,7 @@ const DCFManifestExport: FC<DCFManifestExportProps> = ({ disabled, ...rest }) =>
         throw new Error("Oops! The API did not return a download link.");
       }
 
-      window.open(data.downloadDCFManifest, "_blank", "noopener");
+      window.open(data.downloadDCFManifest, "_blank", "noopener,noreferrer");
     } catch (error) {
       Logger.error("Error downloading DCF manifest.", error);
       enqueueSnackbar(error?.message?.trim() || "Oops! Unable to download the DCF Manifest.", {

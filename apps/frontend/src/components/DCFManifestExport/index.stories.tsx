@@ -124,7 +124,7 @@ export const Disabled: Story = {
 export const Hidden: Story = {
   args: {
     ...meta.args,
-    submissionId: null,
+    submissionId: "",
   },
   parameters: {
     apolloClient: {

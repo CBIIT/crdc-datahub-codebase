@@ -308,7 +308,7 @@ describe("Basic Functionality", () => {
       expect(openSpy).toHaveBeenCalledWith(
         "https://example.com/dcf-manifest.tsv",
         "_blank",
-        "noopener"
+        "noopener,noreferrer"
       );
     });
 
