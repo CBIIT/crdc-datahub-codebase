@@ -672,7 +672,7 @@ class Application {
 
         if (newInstitutionNames.length > 0) {
             const existingInstitutions = await this.institionDAO.findMany({
-                name: { in: newInstitutionNames },
+                name: { $in: newInstitutionNames },
             });
             if (existingInstitutions.length > 0) {
                 const existingInstitutionNames = existingInstitutions.map(i => i?.name);

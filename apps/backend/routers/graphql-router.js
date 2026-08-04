@@ -10,7 +10,6 @@ const {MongoQueries} = require("../crdc-datahub-database-drivers/mongo-queries")
 const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLECTION, ORGANIZATION_COLLECTION, LOG_COLLECTION,
     APPROVED_STUDIES_COLLECTION,
     DATA_RECORDS_COLLECTION,
-    INSTITUTION_COLLECTION,
     DATA_RECORDS_ARCHIVE_COLLECTION,
     QC_RESULTS_COLLECTION
 } = require("../crdc-datahub-database-drivers/database-constants");
@@ -83,8 +82,7 @@ dbConnector.connect().then(async () => {
     const organizationService = new Organization(organizationCollection, userCollection, submissionCollection, applicationCollection);
     const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, {url: config.emails_url, contactEmail: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl});
 
-    const institutionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, INSTITUTION_COLLECTION, userCollection);
-    const institutionService = new InstitutionService(institutionCollection, authorizationService);
+    const institutionService = new InstitutionService(authorizationService);
     const userService = new UserService(userCollection, logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days, configurationService, institutionService, authorizationService);
     const s3Service = new S3Service();
     const awsService = new AWSService(configurationService);
