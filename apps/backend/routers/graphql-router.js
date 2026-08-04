@@ -280,6 +280,7 @@ dbConnector.connect().then(async () => {
             return await submissionService.requestPV({...params, ...sanitized}, context);
         },
         downloadDBGaPLoadSheet: submissionService.downloadDBGaPLoadSheet.bind(submissionService),
+        downloadDCFManifest: submissionService.downloadDCFManifest.bind(submissionService),
         getOMB: configurationService.getOMB.bind(configurationService),
         downloadAllReleasedNodes: releaseService.downloadAllReleasedNodes.bind(releaseService),
         getSubmissionSummary: submissionService.getSubmissionSummary.bind(submissionService),
