@@ -201,6 +201,7 @@ const ReviewCommentsListDialog = <T,>({
     maxWidth={false}
     data-testid="comments-dialog"
     TransitionProps={{ timeout: 0 }}
+    scroll="body"
   >
     <StyledCloseDialogButton
       onClick={onClose}
