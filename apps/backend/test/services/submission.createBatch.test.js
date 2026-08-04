@@ -62,7 +62,7 @@ describe('Submission Service - createBatch with Status Change to In Progress', (
         };
 
         // Create mock organization service
-        const mockOrganizationService = {
+        const mockProgramService = {
             organizationCollection: {}
         };
 
@@ -72,7 +72,7 @@ describe('Submission Service - createBatch with Status Change to In Progress', (
             null, // submissionCollection
             mockSubmissionDAO, // batchService (overridden below)
             null, // userService
-            mockOrganizationService, // organizationService
+            mockProgramService, // programService
             null, // notificationService
             null, // dataRecordService
             mockBatchService, // fetchDataModelInfo (batchService overridden below)

@@ -37,7 +37,7 @@ describe('Submission.getUploaderCLIConfigs', () => {
         };
 
         // Mock all required dependencies for Submission constructor
-        const mockOrganizationService = {
+        const mockProgramService = {
             organizationCollection: jest.fn()
         };
 
@@ -46,7 +46,7 @@ describe('Submission.getUploaderCLIConfigs', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            mockOrganizationService, // organizationService
+            mockProgramService, // programService
             jest.fn(), // notificationService
             jest.fn(), // dataRecordService
             mockFetchDataModelInfo, // fetchDataModelInfo

@@ -29,7 +29,7 @@ const {verifyToken} = require("../verifier/token-verifier");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {EMAIL_NOTIFICATIONS: EN} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
-const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
+const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const { isApprovedStudyActive, isAllStudy } = require("../utility/study-utility");
 const {getDataCommonsDisplayNamesForSubmission, getDataCommonsDisplayNamesForListSubmissions,
@@ -41,7 +41,6 @@ const {ORGANIZATION_COLLECTION, APPROVED_STUDIES_COLLECTION, USER_COLLECTION} = 
 const {zipFilesInDir} = require("../utility/io-util");
 const PendingPVDAO = require("../dao/pendingPV");
 const sanitizeHtml = require("sanitize-html");
-const {SORT: PRISMA_SORT} = require("../constants/db-constants");
 const prisma = require("../prisma");
 const ProgramDAO = require("../dao/program");
 const UserDAO = require("../dao/user");
@@ -72,7 +71,7 @@ Set.prototype.toArray = function() {
 
 class Submission {
     _NOT_ASSIGNED = "Not yet assigned";
-    constructor(logCollection, submissionCollection, batchService, userService, organizationService, notificationService,
+    constructor(logCollection, submissionCollection, batchService, userService, programService, notificationService,
                 dataRecordService, fetchDataModelInfo, awsService, metadataQueueName, s3Service, emailParams, dataCommonsList,
                 hiddenDataCommonsList, sqsLoaderQueue, qcResultsService, uploaderCLIConfigs, 
                 submissionBucketName, configurationService, uploadingMonitor, dataCommonsBucketMap, authorizationService, dataModelService, dataRecordsCollection) {
@@ -80,7 +79,7 @@ class Submission {
         this.submissionCollection = submissionCollection;
         this.batchService = batchService;
         this.userService = userService;
-        this.organizationService = organizationService;
+        this.programService = programService;
         this.notificationService = notificationService;
         this.dataRecordService = dataRecordService;
         this.dataRecordDAO = new DataRecordDAO(dataRecordsCollection)
@@ -100,7 +99,7 @@ class Submission {
         this.dataCommonsBucketMap = dataCommonsBucketMap;
         this.authorizationService = authorizationService;
         this.pendingPVDAO = new PendingPVDAO();
-        this.submissionDAO = new SubmissionDAO(this.submissionCollection, this.organizationService.organizationCollection);
+        this.submissionDAO = new SubmissionDAO(this.submissionCollection);
         this.dataModelService = dataModelService;
         this.programDAO = new ProgramDAO();
         this.userDAO = new UserDAO();
@@ -241,7 +240,7 @@ class Submission {
                 return this._getModelVersion(latestDataModel, params.dataCommons);
             })(),
             (async () => {
-                const program = await this.organizationService.findOneByStudyID(params?.studyID);
+                const program = await this.programService.findOneByStudyID(params?.studyID);
                 if (program) {
                     return program;
                 }
@@ -261,7 +260,7 @@ class Submission {
             throw new Error(ERROR.CREATE_SUBMISSION_NO_ASSOCIATED_PROGRAM);
         }
 
-        if (program?.status === ORGANIZATION.STATUSES.INACTIVE) {
+        if (program?.status === PROGRAM.STATUSES.INACTIVE) {
             throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
         }
 
@@ -740,7 +739,7 @@ class Submission {
         
         await Promise.all([
             this._createLogEntry(logData),
-            submissionActionNotification(userInfo, action, submission, this.userService, this.organizationService, this.notificationService, this.emailParams, this.dataCommonsBucketMap),
+            submissionActionNotification(userInfo, action, submission, this.userService, this.programService, this.notificationService, this.emailParams, this.dataCommonsBucketMap),
             this._archiveCancelSubmission(action, submissionID, submission?.bucketName, submission?.rootPath)
         ].concat(completePromise));
         return submission;
@@ -762,7 +761,7 @@ class Submission {
         const finalInactiveSubmissions = await this.submissionDAO.getInactiveSubmission(this.emailParams.finalRemindSubmissionDay - 1, FINAL_INACTIVE_REMINDER);
         if (finalInactiveSubmissions?.length > 0) {
             await Promise.all(finalInactiveSubmissions.map(async (aSubmission) => {
-                await sendEmails.finalRemindInactiveSubmission(this.emailParams, aSubmission, this.userService, this.organizationService, this.notificationService);
+                await sendEmails.finalRemindInactiveSubmission(this.emailParams, aSubmission, this.userService, this.programService, this.notificationService);
             }));
             const submissionIDs = finalInactiveSubmissions
                 .map(submission => submission._id);
@@ -809,7 +808,7 @@ class Submission {
                     const emailPromise = (async (pastDays) => {
                         // by default, final reminder 120 days
                         const expiredDays = this.emailParams.finalRemindSubmissionDay - pastDays;
-                        await sendEmails.remindInactiveSubmission(this.emailParams, aSubmission, this.userService, this.organizationService, this.notificationService, expiredDays, pastDays);
+                        await sendEmails.remindInactiveSubmission(this.emailParams, aSubmission, this.userService, this.programService, this.notificationService, expiredDays, pastDays);
                     })(pastDays);
                     emailPromises.push(emailPromise);
                     inactiveSubmissions.push([aSubmission?._id, pastDays]);
@@ -2882,19 +2881,7 @@ class Submission {
 
             // Fetch organization data if programID exists
             if (aSubmission?.programID) {
-                const org = await this.programDAO.findFirst(
-                    {id: aSubmission.programID},
-                    {
-                        orderBy: {name: PRISMA_SORT.DESC},
-                        take: 1,
-                        select: {
-                            id: true,
-                            name: true,
-                            abbreviation: true,
-                        }
-                    }
-                );
-                
+                const org = await this.programDAO.findById(aSubmission.programID);
                 // Transform organization to match GraphQL schema (map id to _id)
                 aSubmission.organization = formatNestedOrganization(org);
             }
@@ -3009,31 +2996,31 @@ String.prototype.format = function(placeholders) {
  * @param {*} action 
  * @param {*} aSubmission
  * @param {*} userService 
- * @param {*} organizationService
+ * @param {*} programService
  * @param {*} notificationService
  * @param {*} emailParams
  * @param {*} dataCommonsBucketMap
  */
-async function submissionActionNotification(userInfo, action, aSubmission, userService, organizationService, notificationService, emailParams, dataCommonsBucketMap) {
+async function submissionActionNotification(userInfo, action, aSubmission, userService, programService, notificationService, emailParams, dataCommonsBucketMap) {
     switch(action) {
         case ACTIONS.SUBMIT:
         case ACTIONS.ADMIN_SUBMIT:
-            await sendEmails.submitSubmission(userInfo, aSubmission, userService, organizationService, notificationService);
+            await sendEmails.submitSubmission(userInfo, aSubmission, userService, programService, notificationService);
             break;
         case ACTIONS.RELEASE:
             await sendEmails.releaseSubmission(emailParams, userInfo, aSubmission, userService, dataCommonsBucketMap, notificationService);
             break;
         case ACTIONS.WITHDRAW:
-            await sendEmails.withdrawSubmission(userInfo, aSubmission, userService, organizationService, notificationService);
+            await sendEmails.withdrawSubmission(userInfo, aSubmission, userService, programService, notificationService);
             break;
         case ACTIONS.REJECT:
-            await sendEmails.rejectSubmission(userInfo, aSubmission, userService, organizationService, notificationService);
+            await sendEmails.rejectSubmission(userInfo, aSubmission, userService, programService, notificationService);
             break;
         case ACTIONS.COMPLETE:
-            await sendEmails.completeSubmission(userInfo, aSubmission, userService, organizationService, notificationService);
+            await sendEmails.completeSubmission(userInfo, aSubmission, userService, programService, notificationService);
             break;
         case ACTIONS.CANCEL:
-            await sendEmails.cancelSubmission(userInfo, aSubmission, userService, organizationService, notificationService);
+            await sendEmails.cancelSubmission(userInfo, aSubmission, userService, programService, notificationService);
             break;
         case ACTIONS.ARCHIVE:
             //todo TBD send archived email
@@ -3045,7 +3032,7 @@ async function submissionActionNotification(userInfo, action, aSubmission, userS
 }
 
 const sendEmails = {
-    submitSubmission: async (userInfo, aSubmission, userService, organizationService, notificationService) => {
+    submitSubmission: async (userInfo, aSubmission, userService, programService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3073,7 +3060,7 @@ const sendEmails = {
             );
         }
     },
-    completeSubmission: async (userInfo, aSubmission, userService, organizationService, notificationsService) => {
+    completeSubmission: async (userInfo, aSubmission, userService, programService, notificationsService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3100,7 +3087,7 @@ const sendEmails = {
             });
         }
     },
-    cancelSubmission: async (userInfo, aSubmission, userService, organizationService, notificationService) => {
+    cancelSubmission: async (userInfo, aSubmission, userService, programService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3130,7 +3117,7 @@ const sendEmails = {
             });
         }
     },
-    withdrawSubmission: async (userInfo, aSubmission, userService, organizationService, notificationsService) => {
+    withdrawSubmission: async (userInfo, aSubmission, userService, programService, notificationsService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [DCPRoleUsers, BCCUsers, approvedStudy] = await Promise.all([
             userService.getDCPs(aSubmission?.dataCommons),
@@ -3195,7 +3182,7 @@ const sendEmails = {
             techSupportEmail: `${emailParams.techSupportEmail || NA}.`
         })
     },
-    rejectSubmission: async (userInfo, aSubmission, userService, organizationService, notificationService) => {
+    rejectSubmission: async (userInfo, aSubmission, userService, programService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3223,7 +3210,7 @@ const sendEmails = {
             });
         }
     },
-    remindInactiveSubmission: async (emailParams, aSubmission, userService, organizationService, notificationService, expiredDays, pastDays) => {
+    remindInactiveSubmission: async (emailParams, aSubmission, userService, programService, notificationService, expiredDays, pastDays) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3253,7 +3240,7 @@ const sendEmails = {
             logDaysDifference(pastDays, aSubmission?.accessedAt, aSubmission?._id);
         }
     },
-    finalRemindInactiveSubmission: async (emailParams, aSubmission, userService, organizationService, notificationService) => {
+    finalRemindInactiveSubmission: async (emailParams, aSubmission, userService, programService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
