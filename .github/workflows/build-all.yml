@@ -15,6 +15,11 @@ on:
         required: true
         type: boolean
         default: true
+      twistlock_scan:
+        description: "Run Twistlock Scan"
+        required: true
+        type: boolean
+        default: true
       trivy_scan:
         description: "Run Trivy Scan"
         required: true
