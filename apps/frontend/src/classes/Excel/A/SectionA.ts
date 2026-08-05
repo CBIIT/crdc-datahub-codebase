@@ -59,6 +59,7 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       "pi.ORCID": data?.pi?.ORCID || "",
       "pi.institution": data?.pi?.institution || "",
       "pi.address": data?.pi?.address || "",
+      "pi.receivesEmails": data?.pi?.receivesEmails ? "Yes" : "No",
       piAsPrimaryContact: data?.piAsPrimaryContact ? "Yes" : "No",
       "primaryContact.firstName": data?.primaryContact?.firstName || "",
       "primaryContact.lastName": data?.primaryContact?.lastName || "",
@@ -66,6 +67,7 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       "primaryContact.email": data?.primaryContact?.email || "",
       "primaryContact.institution": data?.primaryContact?.institution || "",
       "primaryContact.phone": data?.primaryContact?.phone || "",
+      "primaryContact.receivesEmails": "Yes",
     });
     rows.add(row);
 
@@ -77,6 +79,7 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
         "additionalContacts.email": contact.email || "",
         "additionalContacts.institution": contact.institution || "",
         "additionalContacts.phone": contact.phone || "",
+        "additionalContacts.receivesEmails": contact.receivesEmails ? "Yes" : "No",
       });
       rows.add(ws.getRow(idx + startRow));
     });
@@ -85,14 +88,14 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
   }
 
   protected async applyValidation(ctx: SectionCtxBase, ws: ExcelJS.Worksheet): Promise<void> {
-    const [A2, B2, C2, D2, E2, F2, G2, H2, I2, J2, K2, L2, M2, N2] = this.getRowCells(ws);
+    const [A2, B2, C2, D2, E2, F2, G2, H2, I2, J2, K2, L2, M2, N2, O2] = this.getRowCells(ws);
 
     ws.addConditionalFormatting({
-      ref: "I2:N2",
+      ref: "J2:P2",
       rules: [
         {
           type: "expression",
-          formulae: ['IF($H$2="Yes",TRUE,FALSE)'],
+          formulae: ['IF($I$2="Yes",TRUE,FALSE)'],
           style: {
             fill: {
               type: "pattern",
@@ -143,9 +146,15 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       showErrorMessage: false,
       formulae: [YesNoList],
     };
+    I2.dataValidation = {
+      type: "list",
+      allowBlank: false,
+      showErrorMessage: false,
+      formulae: [YesNoList],
+    };
 
     // Primary Contact
-    [I2, J2, K2].forEach((cell) => {
+    [J2, K2, L2].forEach((cell) => {
       const columnKey = ws.getColumn(cell.col).key;
       const cellLimit = DEFAULT_CHARACTER_LIMITS[columnKey as AKeys] ?? 0;
 
@@ -154,10 +163,10 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
         allowBlank: true,
         showErrorMessage: true,
         error: ErrorCatalog.get("max", { max: cellLimit }),
-        formulae: [IF(STR_EQ(H2, "Yes"), "TRUE", AND(REQUIRED(cell), TEXT_MAX(cell, cellLimit)))],
+        formulae: [IF(STR_EQ(I2, "Yes"), "TRUE", AND(REQUIRED(cell), TEXT_MAX(cell, cellLimit)))],
       };
     });
-    M2.dataValidation = {
+    N2.dataValidation = {
       type: "list",
       allowBlank: true,
       showErrorMessage: false,
@@ -170,19 +179,19 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
         ),
       ],
     };
-    N2.dataValidation = {
+    O2.dataValidation = {
       type: "custom",
       allowBlank: true,
       error: ErrorCatalog.get("phone"),
       showErrorMessage: true,
-      formulae: [PHONE(N2)],
+      formulae: [PHONE(O2)],
     };
-    L2.dataValidation = {
+    M2.dataValidation = {
       type: "custom",
       showErrorMessage: true,
       error: ErrorCatalog.get("email"),
       allowBlank: true,
-      formulae: [EMAIL(L2)],
+      formulae: [EMAIL(M2)],
     };
 
     // Additional Contacts
@@ -231,6 +240,14 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
         formulae: [PHONE(cell)],
       };
     });
+    this.forEachCellInColumn(ws, "additionalContacts.receivesEmails", (cell) => {
+      cell.dataValidation = {
+        type: "list",
+        allowBlank: true,
+        showErrorMessage: false,
+        formulae: [YesNoList],
+      };
+    });
   }
 
   public static mapValues(
@@ -259,6 +276,7 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       institution: piInstitution,
       institutionID: institutionMap.get(piInstitution) || "",
       address: data.get("pi.address")?.[0] as string,
+      receivesEmails: data.get("pi.receivesEmails")?.[0] === "Yes",
     };
 
     const piAsPrimaryContact = data.get("piAsPrimaryContact")?.[0] === "Yes";
@@ -273,6 +291,7 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       phone: toString(data.get("primaryContact.phone")?.[0])
         .trim()
         .slice(0, DEFAULT_CHARACTER_LIMITS["primaryContact.phone"]),
+      receivesEmails: true,
     };
 
     const additionalContactFirstNames = data.get("additionalContacts.firstName") || [];
@@ -281,13 +300,15 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
     const additionalContactEmails = data.get("additionalContacts.email") || [];
     const additionalContactInstitutions = data.get("additionalContacts.institution") || [];
     const additionalContactPhones = data.get("additionalContacts.phone") || [];
+    const additionalContactReceivesEmails = data.get("additionalContacts.receivesEmails") || [];
     const additionalContactsMax = Math.max(
       additionalContactFirstNames.length,
       additionalContactLastNames.length,
       additionalContactPositions.length,
       additionalContactEmails.length,
       additionalContactInstitutions.length,
-      additionalContactPhones.length
+      additionalContactPhones.length,
+      additionalContactReceivesEmails.length
     );
     const additionalContacts: Contact[] = [];
     Array.from({ length: additionalContactsMax }).forEach((_, i) => {
@@ -300,6 +321,7 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       const phone = toString(additionalContactPhones?.[i])
         .trim()
         .slice(0, DEFAULT_CHARACTER_LIMITS["additionalContacts.phone"]);
+      const receivesEmails = toString(additionalContactReceivesEmails?.[i]).trim() === "Yes";
 
       if (firstName || lastName || position || email || institution || phone) {
         additionalContacts.push({
@@ -310,6 +332,7 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
           institution,
           institutionID,
           phone,
+          receivesEmails,
         });
       }
     });

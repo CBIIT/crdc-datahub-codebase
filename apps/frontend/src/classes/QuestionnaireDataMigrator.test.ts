@@ -115,6 +115,7 @@ describe("run", () => {
       institution: "Missing ID",
       // Added via migration
       institutionID: mockInstitutions[0]._id,
+      receivesEmails: false,
     });
     expect(result.primaryContact.institutionID).toBe(data.primaryContact.institutionID); // Nothing changed
     expect(result.additionalContacts[0].institutionID).toBe(mockInstitutions[1]._id); // ID was added
