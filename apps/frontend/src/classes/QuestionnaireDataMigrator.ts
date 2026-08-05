@@ -59,6 +59,7 @@ export class QuestionnaireDataMigrator {
     await this._migrateGPA();
     await this._migrateRepositoryOtherDataTypes();
     await this._migrateInactiveProgram();
+    await this._migrateReceivesEmails();
 
     return this.data;
   }
@@ -292,5 +293,34 @@ export class QuestionnaireDataMigrator {
 
     // Remove outdated nciGPA fields
     this.data.study.funding.forEach((f) => unset(f, "nciGPA"));
+  }
+
+  /**
+   * Backfills the receivesEmails field on contacts.
+   */
+  private async _migrateReceivesEmails(): Promise<void> {
+    const { pi, primaryContact, additionalContacts } = this.data;
+
+    if (pi && typeof pi.receivesEmails !== "boolean") {
+      Logger.info("_migrateReceivesEmails: Backfilling Principal Investigator receivesEmails");
+      pi.receivesEmails = false;
+    }
+
+    if (primaryContact && typeof primaryContact.receivesEmails !== "boolean") {
+      Logger.info("_migrateReceivesEmails: Backfilling Primary Contact receivesEmails");
+      primaryContact.receivesEmails = true;
+    }
+
+    let acMigrated = false;
+    additionalContacts?.forEach((contact) => {
+      if (typeof contact.receivesEmails !== "boolean") {
+        contact.receivesEmails = false;
+        acMigrated = true;
+      }
+    });
+
+    if (acMigrated) {
+      Logger.info("_migrateReceivesEmails: Backfilling Additional Contacts receivesEmails");
+    }
   }
 }

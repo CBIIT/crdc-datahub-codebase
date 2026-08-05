@@ -1869,3 +1869,90 @@ describe("_migrateInactiveProgram", () => {
     expect(Logger.info).not.toHaveBeenCalled();
   });
 });
+
+describe("_migrateReceivesEmails", () => {
+  it("should backfill receivesEmails on contacts missing the field", async () => {
+    const pi = piFactory.build();
+    delete pi.receivesEmails;
+
+    const primaryContact = contactFactory.build();
+    delete primaryContact.receivesEmails;
+
+    const ac = contactFactory.build();
+    delete ac.receivesEmails;
+
+    const data = questionnaireDataFactory.build({
+      pi,
+      primaryContact,
+      additionalContacts: [ac],
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [],
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateReceivesEmails();
+    const result = migrator.getData();
+
+    expect(result.pi.receivesEmails).toBe(false);
+    expect(result.primaryContact.receivesEmails).toBe(true);
+    expect(result.additionalContacts[0].receivesEmails).toBe(false);
+    expect(Logger.info).toHaveBeenCalledWith(
+      "_migrateReceivesEmails: Backfilling Principal Investigator receivesEmails"
+    );
+    expect(Logger.info).toHaveBeenCalledWith(
+      "_migrateReceivesEmails: Backfilling Primary Contact receivesEmails"
+    );
+    expect(Logger.info).toHaveBeenCalledWith(
+      "_migrateReceivesEmails: Backfilling Additional Contacts receivesEmails"
+    );
+    expect(Logger.info).toHaveBeenCalledTimes(3);
+  });
+
+  it("should not overwrite existing receivesEmails values", async () => {
+    const data = questionnaireDataFactory.build({
+      pi: piFactory.build({ receivesEmails: true }),
+      primaryContact: contactFactory.build({ receivesEmails: true }),
+      additionalContacts: [contactFactory.build({ receivesEmails: true })],
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [],
+    });
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateReceivesEmails();
+    const result = migrator.getData();
+
+    expect(result.pi.receivesEmails).toBe(true);
+    expect(result.primaryContact.receivesEmails).toBe(true);
+    expect(result.additionalContacts[0].receivesEmails).toBe(true);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should handle null contacts gracefully", async () => {
+    const data = questionnaireDataFactory.build({
+      pi: null,
+      primaryContact: null,
+      additionalContacts: [],
+    });
+
+    const migrator = new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms: [],
+    });
+
+    // @ts-expect-error Calling private helper function
+    await expect(migrator._migrateReceivesEmails()).resolves.not.toThrow();
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+});
