@@ -37,6 +37,7 @@ export const InitialQuestionnaire: QuestionnaireData = {
     institution: "",
     institutionID: "",
     address: "",
+    receivesEmails: false,
   },
   piAsPrimaryContact: false,
   primaryContact: {
@@ -47,6 +48,7 @@ export const InitialQuestionnaire: QuestionnaireData = {
     position: "",
     institution: "",
     institutionID: "",
+    receivesEmails: true,
   },
   additionalContacts: [],
   program: {
