@@ -216,12 +216,24 @@ jobs:
       #max-parallel: 1
       matrix:
         include:
+          - name: authn
+            ecr_repo: crdc-hub-authn
           - name: backend
-            ecr_repo: crdc-gen-backend
+            ecr_repo: crdc-hub-backend
           - name: frontend
-            ecr_repo: crdc-gen-frontend
-          - name: interoperation
-            ecr_repo: crdc-gen-interoperation
+            ecr_repo: crdc-hub-frontend
+          - name: chatbot-backend
+            ecr_repo: crdc-hub-chatbot-be
+          - name: essential-validation
+            ecr_repo: crdc-hub-essentialvalidation
+          - name: export-validation
+            ecr_repo: crdc-hub-exportvalidation
+          - name: file-validation
+            ecr_repo: crdc-hub-filevalidation
+          - name: metadata-validation
+            ecr_repo: crdc-hub-metadatavalidation
+          - name: pv-puller
+            ecr_repo: crdc-hub-pvpuller
     outputs:
       backend_scan_result: ${{ steps.set_scan_output.outputs.scan_result }}
     steps:
@@ -231,7 +243,7 @@ jobs:
           cat /etc/os-release
           systemctl status docker  
           echo "IMAGE_NAME=${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ matrix.ecr_repo }}:${{ env.IMAGE_TAG }}" >> $GITHUB_ENV
-          - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ secrets.AWS_REGION }}
