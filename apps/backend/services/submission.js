@@ -739,7 +739,7 @@ class Submission {
         
         await Promise.all([
             this._createLogEntry(logData),
-            submissionActionNotification(userInfo, action, submission, this.userService, this.programService, this.notificationService, this.emailParams, this.dataCommonsBucketMap),
+            submissionActionNotification(userInfo, action, submission, this.userService, this.notificationService, this.emailParams, this.dataCommonsBucketMap),
             this._archiveCancelSubmission(action, submissionID, submission?.bucketName, submission?.rootPath)
         ].concat(completePromise));
         return submission;
@@ -761,7 +761,7 @@ class Submission {
         const finalInactiveSubmissions = await this.submissionDAO.getInactiveSubmission(this.emailParams.finalRemindSubmissionDay - 1, FINAL_INACTIVE_REMINDER);
         if (finalInactiveSubmissions?.length > 0) {
             await Promise.all(finalInactiveSubmissions.map(async (aSubmission) => {
-                await sendEmails.finalRemindInactiveSubmission(this.emailParams, aSubmission, this.userService, this.programService, this.notificationService);
+                await sendEmails.finalRemindInactiveSubmission(this.emailParams, aSubmission, this.userService, this.notificationService);
             }));
             const submissionIDs = finalInactiveSubmissions
                 .map(submission => submission._id);
@@ -808,7 +808,7 @@ class Submission {
                     const emailPromise = (async (pastDays) => {
                         // by default, final reminder 120 days
                         const expiredDays = this.emailParams.finalRemindSubmissionDay - pastDays;
-                        await sendEmails.remindInactiveSubmission(this.emailParams, aSubmission, this.userService, this.programService, this.notificationService, expiredDays, pastDays);
+                        await sendEmails.remindInactiveSubmission(this.emailParams, aSubmission, this.userService, this.notificationService, expiredDays, pastDays);
                     })(pastDays);
                     emailPromises.push(emailPromise);
                     inactiveSubmissions.push([aSubmission?._id, pastDays]);
@@ -2996,31 +2996,30 @@ String.prototype.format = function(placeholders) {
  * @param {*} action 
  * @param {*} aSubmission
  * @param {*} userService 
- * @param {*} programService
  * @param {*} notificationService
  * @param {*} emailParams
  * @param {*} dataCommonsBucketMap
  */
-async function submissionActionNotification(userInfo, action, aSubmission, userService, programService, notificationService, emailParams, dataCommonsBucketMap) {
+async function submissionActionNotification(userInfo, action, aSubmission, userService, notificationService, emailParams, dataCommonsBucketMap) {
     switch(action) {
         case ACTIONS.SUBMIT:
         case ACTIONS.ADMIN_SUBMIT:
-            await sendEmails.submitSubmission(userInfo, aSubmission, userService, programService, notificationService);
+            await sendEmails.submitSubmission(userInfo, aSubmission, userService, notificationService);
             break;
         case ACTIONS.RELEASE:
             await sendEmails.releaseSubmission(emailParams, userInfo, aSubmission, userService, dataCommonsBucketMap, notificationService);
             break;
         case ACTIONS.WITHDRAW:
-            await sendEmails.withdrawSubmission(userInfo, aSubmission, userService, programService, notificationService);
+            await sendEmails.withdrawSubmission(userInfo, aSubmission, userService, notificationService);
             break;
         case ACTIONS.REJECT:
-            await sendEmails.rejectSubmission(userInfo, aSubmission, userService, programService, notificationService);
+            await sendEmails.rejectSubmission(userInfo, aSubmission, userService, notificationService);
             break;
         case ACTIONS.COMPLETE:
-            await sendEmails.completeSubmission(userInfo, aSubmission, userService, programService, notificationService);
+            await sendEmails.completeSubmission(userInfo, aSubmission, userService, notificationService);
             break;
         case ACTIONS.CANCEL:
-            await sendEmails.cancelSubmission(userInfo, aSubmission, userService, programService, notificationService);
+            await sendEmails.cancelSubmission(userInfo, aSubmission, userService, notificationService);
             break;
         case ACTIONS.ARCHIVE:
             //todo TBD send archived email
@@ -3032,7 +3031,7 @@ async function submissionActionNotification(userInfo, action, aSubmission, userS
 }
 
 const sendEmails = {
-    submitSubmission: async (userInfo, aSubmission, userService, programService, notificationService) => {
+    submitSubmission: async (userInfo, aSubmission, userService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3060,7 +3059,7 @@ const sendEmails = {
             );
         }
     },
-    completeSubmission: async (userInfo, aSubmission, userService, programService, notificationsService) => {
+    completeSubmission: async (userInfo, aSubmission, userService, notificationsService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3087,7 +3086,7 @@ const sendEmails = {
             });
         }
     },
-    cancelSubmission: async (userInfo, aSubmission, userService, programService, notificationService) => {
+    cancelSubmission: async (userInfo, aSubmission, userService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3117,7 +3116,7 @@ const sendEmails = {
             });
         }
     },
-    withdrawSubmission: async (userInfo, aSubmission, userService, programService, notificationsService) => {
+    withdrawSubmission: async (userInfo, aSubmission, userService, notificationsService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [DCPRoleUsers, BCCUsers, approvedStudy] = await Promise.all([
             userService.getDCPs(aSubmission?.dataCommons),
@@ -3182,7 +3181,7 @@ const sendEmails = {
             techSupportEmail: `${emailParams.techSupportEmail || NA}.`
         })
     },
-    rejectSubmission: async (userInfo, aSubmission, userService, programService, notificationService) => {
+    rejectSubmission: async (userInfo, aSubmission, userService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3210,7 +3209,7 @@ const sendEmails = {
             });
         }
     },
-    remindInactiveSubmission: async (emailParams, aSubmission, userService, programService, notificationService, expiredDays, pastDays) => {
+    remindInactiveSubmission: async (emailParams, aSubmission, userService, notificationService, expiredDays, pastDays) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),
@@ -3240,7 +3239,7 @@ const sendEmails = {
             logDaysDifference(pastDays, aSubmission?.accessedAt, aSubmission?._id);
         }
     },
-    finalRemindInactiveSubmission: async (emailParams, aSubmission, userService, programService, notificationService) => {
+    finalRemindInactiveSubmission: async (emailParams, aSubmission, userService, notificationService) => {
         aSubmission = getDataCommonsDisplayNamesForSubmission(aSubmission);
         const [aSubmitter, BCCUsers, approvedStudy] = await Promise.all([
             userService.getUserByID(aSubmission?.submitterID),

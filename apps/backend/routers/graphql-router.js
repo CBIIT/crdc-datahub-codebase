@@ -82,7 +82,8 @@ dbConnector.connect().then(async () => {
     const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, submissionCollection, authorizationService, notificationsService, {url: config.emails_url, contactEmail: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl});
 
     const institutionService = new InstitutionService(authorizationService);
-    const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days, configurationService, institutionService, authorizationService);    const s3Service = new S3Service();
+    const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days, configurationService, institutionService, authorizationService);
+    const s3Service = new S3Service();
     const awsService = new AWSService(configurationService);
 
     const utilityService = new UtilityService();

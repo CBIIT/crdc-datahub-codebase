@@ -52,10 +52,7 @@ describe('ApprovedStudiesService', () => {
             findByStudyID: jest.fn(),
             findOneByStudyID: jest.fn(),
             getProgramByID: jest.fn(),
-            getProgramByName: jest.fn(),
-            organizationCollection: {
-                aggregate: jest.fn()
-            }
+            getProgramByName: jest.fn()
         };
         mockSubmissionCollection = {
             updateMany: jest.fn()

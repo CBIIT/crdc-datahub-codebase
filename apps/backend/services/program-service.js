@@ -214,7 +214,7 @@ class Program {
       updatedProgram, // only these fields will be changed
     );
 
-    if (!updateResult) {
+    if (typeof updateResult?.count !== 'number' || updateResult.count < 1) {
       throw new Error(ERROR.UPDATE_FAILED);
     }
 
@@ -222,17 +222,23 @@ class Program {
       const promises = [];
       if (updatedProgram.name) {
         promises.push(
-            this.userDAO.updateUserOrg(orgID, updatedProgram)
+          this.applicationDAO.updateApplicationOrg(orgID, updatedProgram)
         );
         promises.push(
-            this.applicationDAO.updateApplicationOrg(orgID, updatedProgram)
+            this.userDAO.updateUserOrg(orgID, updatedProgram)
         );
+        
       }
 
-      const [, updatedApplication] = await Promise.all(promises);
+      try {
+        // The result of updateUserOrg is not used so it is not extracted from the promise.all response
+        const [updatedApplication] = await Promise.all(promises);
 
-      if (updatedProgram.name && !updatedApplication?.acknowledged) {
-        console.error("Failed to update the organization name in submission requests");
+        if (updatedProgram.name && !updatedApplication?.acknowledged) {
+          console.error("Failed to update the organization name in submission requests");
+        }
+      } catch (error) {
+        console.error("Failed to update the organization name in users/applications", error);
       }
     }
 

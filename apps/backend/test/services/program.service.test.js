@@ -362,7 +362,7 @@ describe('Program.editProgram', () => {
 
     mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
     mockProgramDAO.getProgramByName.mockResolvedValue(null);
-    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+    mockProgramDAO.updateMany.mockResolvedValue({ count: 1 });
     mockUserDAO.updateUserOrg.mockResolvedValue({ count: 1 });
     mockApplicationDAO.updateApplicationOrg.mockResolvedValue({ acknowledged: true });
 
@@ -397,7 +397,7 @@ describe('Program.editProgram', () => {
     };
     mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
     mockApprovedStudyDAO.count.mockResolvedValue(0);
-    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+    mockProgramDAO.updateMany.mockResolvedValue({ count: 1 });
     mockProgramDAO.getProgramByName.mockResolvedValue({ _id: 'other-id', name: 'collision' });
 
     const result = await program.editProgram(orgID, { status: PROGRAM.STATUSES.INACTIVE });
@@ -414,7 +414,7 @@ describe('Program.editProgram', () => {
     const orgID = 'org-123';
     const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: PROGRAM.STATUSES.INACTIVE };
     mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
-    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+    mockProgramDAO.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await program.editProgram(orgID, { status: PROGRAM.STATUSES.ACTIVE });
 
