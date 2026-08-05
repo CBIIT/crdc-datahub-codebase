@@ -1,8 +1,9 @@
 import RemoveCircleIcon from "@mui/icons-material/RemoveCircle";
-import { Grid, styled } from "@mui/material";
+import { Checkbox, FormControlLabel, Grid, styled } from "@mui/material";
 import { FC, useCallback, useState } from "react";
 
 import useAggregatedInstitutions from "@/hooks/useAggregatedInstitutions";
+import useFormMode from "@/hooks/useFormMode";
 
 import { filterForNumbers, validateEmail, validateUTF8 } from "../../utils";
 import AddRemoveButton from "../AddRemoveButton";
@@ -10,6 +11,18 @@ import { Status as FormStatus, useFormContext } from "../Contexts/FormContext";
 
 import AutocompleteInput from "./AutocompleteInput";
 import TextInput from "./TextInput";
+
+const StyledFormControlLabel = styled(FormControlLabel)({
+  transform: "translateY(-15px)",
+  "& .MuiFormControlLabel-label": {
+    color: "#083A50",
+    fontWeight: "700",
+    userSelect: "none",
+  },
+  "& .MuiCheckbox-root:not(.Mui-disabled)": {
+    color: "#005EA2 !important",
+  },
+});
 
 const GridContainer = styled(Grid)({
   border: "0.5px solid #DCDCDC !important",
@@ -43,10 +56,21 @@ const AdditionalContact: FC<Props> = ({
 }: Props) => {
   const { status } = useFormContext();
   const { data: institutionList } = useAggregatedInstitutions();
-  const { firstName, lastName, email, phone, position, institution, institutionID } = contact;
+  const { readOnlyInputs } = useFormMode();
+  const {
+    firstName,
+    lastName,
+    email,
+    phone,
+    position,
+    institution,
+    institutionID,
+    receivesEmails,
+  } = contact;
 
   const [institutionName, setInstitutionName] = useState<string>(institution || "");
   const [institutionId, setInstitutionId] = useState<string>(institutionID || "");
+  const [receivesEmailsCheckbox, setReceivesEmailsCheckbox] = useState<boolean>(receivesEmails);
 
   const handleInputChange = useCallback(
     (value: string) => {
@@ -144,6 +168,31 @@ const AdditionalContact: FC<Props> = ({
           maxLength={25}
           readOnly={readOnly}
         />
+        <Grid item md={12}>
+          <StyledFormControlLabel
+            label="Receives all email communications"
+            data-testid={`additionalContacts-${index}-receives-emails`}
+            control={
+              <Checkbox
+                checked={receivesEmailsCheckbox}
+                onChange={() => setReceivesEmailsCheckbox((prev) => !prev)}
+                readOnly={readOnlyInputs}
+              />
+            }
+            disabled={readOnlyInputs}
+          />
+          <input
+            id={idPrefix.concat(`additionalContacts-${index}-receives-emails-checkbox`)}
+            style={{ display: "none" }}
+            type="checkbox"
+            name={`additionalContacts[${index}][receivesEmails]`}
+            data-type="boolean"
+            value={receivesEmailsCheckbox?.toString()}
+            aria-label="Receives all email communications"
+            checked
+            readOnly
+          />
+        </Grid>
       </Grid>
       <Grid item xs={12}>
         <AddRemoveButton
