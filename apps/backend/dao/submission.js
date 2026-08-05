@@ -11,16 +11,22 @@ const {formatNestedOrganization, formatNestedOrganizations} = require("../utilit
 const prisma = require("../prisma");
 const { isAllStudy } = require("../utility/study-utility");
 const {subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
-const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
+const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-constants");
+const ProgramDAO = require("./program");
 const ALL_FILTER = "All";
 const NA = "NA"
 const ROLES = USER_CONSTANTS.USER.ROLES;
 class SubmissionDAO extends GenericDAO {
+    /**
+     * @param {object} submissionCollection Native submission collection
+     * @param {object} [organizationCollection] Unused; retained for call-site compatibility
+     */
     constructor(submissionCollection, organizationCollection) {
         super(MODEL_NAME.SUBMISSION);
         this.submissionCollection = submissionCollection;
         this.organizationCollection = organizationCollection;
+        this.programDAO = new ProgramDAO();
     }
 
     async programLevelSubmissions(studyIDs) {
@@ -459,23 +465,15 @@ class SubmissionDAO extends GenericDAO {
     }
 
     /**
-     * Retrieves all organizations (programs) from the database.
-     * 
-     * @returns {Promise<Array<Object>>} Array of organization objects with id, name, and abbreviation
+     * Retrieves all organizations (programs) from the database via Mongoose ProgramDAO.
+     *
+     * @returns {Promise<Array<Object>>} Array of organization objects with _id, name, and abbreviation
      */
     async _getDistinctOrganizations() {
         try {
-            // The filter is included in case we need to filter by status in the future
-            const organizations = await prisma.program.findMany({
-                where: {
-                    status: {
-                        in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE]
-                    }
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    abbreviation: true
+            const organizations = await this.programDAO.findMany({
+                status: {
+                    $in: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE]
                 }
             });
 

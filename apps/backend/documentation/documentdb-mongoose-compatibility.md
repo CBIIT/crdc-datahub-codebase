@@ -42,6 +42,7 @@ When reviewing diffs that touch Mongoose connection setup, schemas, queries, agg
 2. **Aggregation** (`Model.aggregate`, `Query.prototype.pipeline`, aggregation plugins)
   - [ ] Pipeline must **not** use `$facet`, `$graphLookup`, `$unionWith`, `$bucketAuto`, `$setWindowFields`, `$planCacheStats`, `$listSessions`, or `$listLocalSessions`.
      [ ] Prefer `$lookup` (supported) over graph-style traversal.
+     [ ] Flag `$getField` (unsupported). For literal field names that contain dots, use `$objectToArray` + `$filter` + `$arrayElemAt` instead.
 3. **Transactions / sessions**
   - [ ] `startSession`, `withTransaction`, `session.startTransaction` must respect DocumentDB limits (1-minute transaction timeout, no cursors in a transaction, no creating collections inside a transaction, 32 MB transaction log limit).
      [ ] Do not rely on retryable commit/abort.
@@ -49,6 +50,7 @@ When reviewing diffs that touch Mongoose connection setup, schemas, queries, agg
   - [ ] `Model.watch()` / `collection.watch()` is supported on instance-based clusters with DocumentDB-specific limits — flag unbounded or Atlas-only assumptions.
 5. **Query operators**
   - [ ] Flag `$where` (unsupported).
+     [ ] Flag `$getField` (unsupported aggregation expression).
      [ ] Flag Atlas Search / Atlas Vector Search plugins; DocumentDB does not support `$vectorSearch` as an independent operator (use DocumentDB vector search via `$search` if needed).
 6. **Indexes / schema**
   - [ ] Flag hashed indexes, wildcard indexes, and `2d` (non-sphere) geospatial indexes — unsupported.
@@ -106,6 +108,7 @@ These Mongoose APIs map to MongoDB operations that DocumentDB 8.0 does **not** s
 | `Model.aggregate([{ $unionWith: ... }])`                             | `$unionWith`       | **No**                    | Multiple queries merged in application code, or `$lookup` / denormalization                     |
 | `Model.aggregate([{ $bucketAuto: ... }])`                            | `$bucketAuto`      | **No**                    | Precompute buckets, or use `$bucket` (supported on 8.0) with fixed boundaries                   |
 | `Model.aggregate([{ $setWindowFields: ... }])`                       | `$setWindowFields` | **No**                    | Application-side windowing, or `$group` / `$sort` patterns                                      |
+| Aggregation expression `$getField`                                   | `$getField`        | **No**                    | For literal keys (including dotted names): `$objectToArray` + `$filter` + `$arrayElemAt`        |
 | Query with `$where`                                                  | `$where`           | **No**                    | Express the predicate with `$expr`, `$regex`, or other supported operators                      |
 | Atlas Search plugins / `$searchMeta` (Atlas-only)                    | Atlas Search       | **No**                    | DocumentDB text index + `$text` (supported on 8.0), or external search                          |
 | Aggregate `$vectorSearch` as a top-level stage (MongoDB Atlas style) | `$vectorSearch`    | **Not as independent op** | DocumentDB vector search via `$search` (see AWS vector search docs)                             |
@@ -192,6 +195,37 @@ const results = await Model.aggregate([
   { $skip: skip },
   { $limit: limit },
 ]);
+```
+
+### Mongoose example — avoid `$getField` for literal dotted keys
+
+DocumentDB does not support `$getField`. When a document has a root key that literally contains a dot (e.g. `"study.study_id"` after flattening), use `$objectToArray` + `$filter` + `$arrayElemAt`:
+
+For the full sort / project / pagination strategy (DOT-safe keys, skip double-`$sort` with `MongoPagination`), see [documentdb-literal-dotted-keys.md](./documentdb-literal-dotted-keys.md).
+
+```javascript
+// INCOMPATIBLE with DocumentDB
+{ $getField: { field: "study.study_id", input: "$$ROOT" } }
+
+// COMPATIBLE pattern
+{
+  $arrayElemAt: [
+    {
+      $map: {
+        input: {
+          $filter: {
+            input: { $objectToArray: "$$ROOT" },
+            as: "kv",
+            cond: { $eq: ["$$kv.k", "study.study_id"] },
+          },
+        },
+        as: "m",
+        in: "$$m.v",
+      },
+    },
+    0,
+  ],
+}
 ```
 
 ---

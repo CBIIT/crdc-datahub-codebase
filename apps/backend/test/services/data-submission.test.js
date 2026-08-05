@@ -3,7 +3,7 @@ const { Submission } = require('../../services/submission');
 const {ValidationHandler} = require("../../utility/validation-handler");
 const {ROLE} = require("../../constants/permission-scope-constants");
 const {replaceErrorString} = require("../../utility/string-util");
-const {Organization} = require("../../services/organization-service");
+const {Program} = require("../../services/program-service");
 const {INTENTION, DATA_TYPE, IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN,
     NEW,
     COLLABORATOR_PERMISSIONS,
@@ -18,7 +18,7 @@ const {INTENTION, DATA_TYPE, IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRA
 const {getDataCommonsDisplayNamesForSubmission} = require("../../utility/data-commons-remapper");
 const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {USER, ROLES} = require("../../crdc-datahub-database-drivers/constants/user-constants"); // ← adjust path if needed
-const { ORGANIZATION } = require("../../crdc-datahub-database-drivers/constants/organization-constants");
+const { PROGRAM } = require("../../crdc-datahub-database-drivers/constants/organization-constants");
 
 // Mock Prisma
 jest.mock("../../prisma", () => {
@@ -71,13 +71,13 @@ describe('Submission.getPendingPVs', () => {
         
         // Mock organization service using Prisma
         const mockPrisma = require("../../prisma");
-        const organizationService = new Organization(mockPrisma.organization);
+        const programService = new Program({}, {});
 
         // Instantiate Submission with mocked submissionCollection
         service = new Submission(
             null,                   // logCollection
             mockSubmissionCollection, // submissionCollection
-            null, null, organizationService, null, // batchService, userService, organizationService, notificationService
+            null, null, programService, null, // batchService, userService, programService, notificationService
             null, null, null, null, // dataRecordService, fetchDataModelInfo, awsService, metadataQueueName
             null, null, [], [],    // s3Service, emailParams, dataCommonsList, hiddenDataCommonsList
             null, null, null,      // sqsLoaderQueue, qcResultsService, uploaderCLIConfigs
@@ -385,7 +385,7 @@ describe('Submission.getSubmission', () => {
         };
 
         // Mock all required dependencies for Submission constructor
-        const mockOrganizationService = {
+        const mockProgramService = {
             organizationCollection: jest.fn()
         };
 
@@ -394,7 +394,7 @@ describe('Submission.getSubmission', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             mockUserService, // userService
-            mockOrganizationService, // organizationService
+            mockProgramService, // programService
             jest.fn(), // notificationService
             mockDataRecordService, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -839,7 +839,7 @@ describe('Submission.getSubmission', () => {
 
 describe("Submission.createSubmission", () => {
     let submissionService;
-    let mockSubmissionDAO, mockUserService, mockOrganizationService;
+    let mockSubmissionDAO, mockUserService, mockProgramService;
     let mockContext, mockParams, mockApprovedStudy, mockProgram;
 
     beforeEach(() => {
@@ -851,7 +851,7 @@ describe("Submission.createSubmission", () => {
         mockUserService = {
             getUserByID: jest.fn(),
         };
-        mockOrganizationService = {
+        mockProgramService = {
             findOneByStudyID: jest.fn(),
         };
 
@@ -862,7 +862,7 @@ describe("Submission.createSubmission", () => {
             mockSubmissionDAO, // submissionCollection
             {}, // batchService
             mockUserService, // userService
-            mockOrganizationService, // organizationService
+            mockProgramService, // programService
             {}, // notificationService
             {}, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -939,8 +939,8 @@ describe("Submission.createSubmission", () => {
         // Mock _findApprovedStudies
         submissionService._findApprovedStudies = jest.fn().mockResolvedValue([mockApprovedStudy]);
 
-        // Mock organizationService.findOneByStudyID
-        mockOrganizationService.findOneByStudyID.mockResolvedValue(mockProgram);
+        // Mock programService.findOneByStudyID
+        mockProgramService.findOneByStudyID.mockResolvedValue(mockProgram);
 
         // Mock userService.getUserByID
         mockUserService.getUserByID.mockResolvedValue({ firstName: "Contact", lastName: "Person", email: "contact@person.com" });
@@ -1013,7 +1013,7 @@ describe("Submission.createSubmission", () => {
             isStudyScope: () => false,
             isDCScope: () => false
         });
-        mockOrganizationService.findOneByStudyID.mockResolvedValue({ ...mockProgram, status: ORGANIZATION.STATUSES.INACTIVE });
+        mockProgramService.findOneByStudyID.mockResolvedValue({ ...mockProgram, status: PROGRAM.STATUSES.INACTIVE });
 
         await expect(submissionService.createSubmission(mockParams, mockContext)).rejects.toThrow(
             ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM
@@ -1354,7 +1354,7 @@ describe("Submission.createSubmission", () => {
     it("should throw error if no associated program found", async () => {
         // Simulate valid intention and dataType to avoid intention/dataType errors
         submissionService._findApprovedStudies.mockResolvedValueOnce([mockApprovedStudy]);
-        mockOrganizationService.findOneByStudyID.mockResolvedValueOnce(null);
+        mockProgramService.findOneByStudyID.mockResolvedValueOnce(null);
         await expect(submissionService.createSubmission(mockParams, mockContext))
             .rejects
             .toThrow(ERROR.CREATE_SUBMISSION_NO_ASSOCIATED_PROGRAM);
@@ -1464,7 +1464,7 @@ describe('Submission._remindPrimaryContactEmail', () => {
             {}, // submissionCollection
             {}, // batchService
             mockUserService, // userService
-            {}, // organizationService
+            {}, // programService
             mockNotificationService, // notificationService
             {}, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -1593,7 +1593,7 @@ describe('Submission._sendEmailsDeletedSubmissions', () => {
             {}, // submissionCollection
             {}, // batchService
             mockUserService, // userService
-            {}, // organizationService
+            {}, // programService
             mockNotificationService, // notificationService
             {}, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -1738,7 +1738,7 @@ describe('Submission.editSubmissionCollaborators', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
             jest.fn(), // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -2159,7 +2159,7 @@ describe('Submission.submissionAction', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
             jest.fn(), // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -2434,7 +2434,7 @@ describe('Submission.validateSubmission', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
             mockDataRecordService, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -2618,7 +2618,7 @@ describe('Submission.updateSubmissionInfo', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
             jest.fn(), // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -2888,7 +2888,7 @@ describe('Submission.editSubmission', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
             jest.fn(), // dataRecordService
             jest.fn(), // fetchDataModelInfo

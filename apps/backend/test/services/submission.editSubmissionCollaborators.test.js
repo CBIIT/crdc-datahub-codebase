@@ -26,7 +26,7 @@ jest.mock('../../utility/data-commons-remapper', () => ({
 describe('Submission.editSubmissionCollaborators', () => {
     let submissionService;
     let mockSubmissionCollection, mockLogCollection, mockBatchService, mockUserService, 
-        mockOrganizationService, mockNotificationService, mockDataRecordService, 
+        mockProgramService, mockNotificationService, mockDataRecordService, 
         mockFetchDataModelInfo, mockAwsService, mockMetadataQueueName, mockS3Service, 
         mockEmailParams, mockDataCommonsList, mockHiddenDataCommonsList, 
         mockSqsLoaderQueue, mockQcResultsService, 
@@ -86,7 +86,7 @@ describe('Submission.editSubmissionCollaborators', () => {
         mockLogCollection = {};
         mockBatchService = {};
         mockUserService = {};
-        mockOrganizationService = {};
+        mockProgramService = {};
         mockNotificationService = {};
         mockDataRecordService = {};
         mockFetchDataModelInfo = jest.fn();
@@ -115,7 +115,7 @@ describe('Submission.editSubmissionCollaborators', () => {
             mockSubmissionCollection,
             mockBatchService,
             mockUserService,
-            mockOrganizationService,
+            mockProgramService,
             mockNotificationService,
             mockDataRecordService,
             mockFetchDataModelInfo,

@@ -1,6 +1,6 @@
 const {ERROR} = require("../crdc-datahub-database-drivers/constants/error-constants");
 const {USER} = require("../crdc-datahub-database-drivers/constants/user-constants");
-const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
+const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {getDataCommonsDisplayNamesForUserOrganization} = require("../utility/data-commons-remapper");
 const {replaceErrorString} = require("../utility/string-util");
@@ -10,18 +10,16 @@ const UserDAO = require("../dao/user");
 const ApplicationDAO = require("../dao/application");
 const ApprovedStudyDAO = require("../dao/approvedStudy");
 
-class Organization {
+class Program {
   _ALL = "All";
   _READ_ONLY_FIELDS = ["name", "abbreviation", "description", "status"];
 
   /**
-   * @param {object} organizationCollection Native org collection (also used by ProgramDAO)
    * @param {object} submissionCollection Native submission collection
    * @param {object} applicationCollection Native application collection
    */
-  constructor(organizationCollection, submissionCollection, applicationCollection) {
-    this.organizationCollection = organizationCollection;
-    this.programDAO = new ProgramDAO(organizationCollection);
+  constructor(submissionCollection, applicationCollection) {
+    this.programDAO = new ProgramDAO();
     this.approvedStudyDAO = new ApprovedStudyDAO();
     this.submissionDAO = new SubmissionDAO(submissionCollection);
     this.userDAO = new UserDAO();
@@ -29,13 +27,13 @@ class Organization {
   }
 
   /**
-   * Get Organization by ID API Interface.
+   * Get Program by ID API Interface (GraphQL: getOrganization).
    * @api
    * @param {{ orgID: string }} params Endpoint parameters
    * @param {{ cookie: Object, userInfo: Object }} context API request context
-   * @returns {Promise<Object | null>} The organization with the given `orgID` or null if not found
+   * @returns {Promise<Object | null>} The program with the given `orgID` or null if not found
    */
-  async getOrganizationAPI(params, context) {
+  async getProgramAPI(params, context) {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
       throw new Error(ERROR.NOT_LOGGED_IN);
     }
@@ -44,32 +42,32 @@ class Organization {
       throw new Error(ERROR.INVALID_ORG_ID);
     }
 
-    let userOrganization = await this.getOrganizationByID(params.orgID, true);
+    let userOrganization = await this.getProgramByID(params.orgID, true);
     return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
   }
 
   /**
-   * Get an organization by it's `_id`
+   * Get a program by its `_id`
    *
    * @async
-   * @param {string} id The UUID of the organization to search for
+   * @param {string} id The UUID of the program to search for
    * @param {boolean} includeStudiesList When true, loads related approved studies (e.g. getOrganization). Pass false when studies are not needed.
-   * @returns {Promise<Object | null>} The organization with the given `id` or null if not found
+   * @returns {Promise<Object | null>} The program with the given `id` or null if not found
    */
-  async getOrganizationByID(id, includeStudiesList) {
+  async getProgramByID(id, includeStudiesList) {
     if (typeof includeStudiesList !== 'boolean') {
       throw new Error(ERROR.INVALID_INCLUDE_STUDIES_LIST_ARGUMENT);
     }
     if (!id) {
       return null;
     }
-    return await this.programDAO.getOrganizationByID(id, includeStudiesList);
+    return await this.programDAO.getProgramByID(id, includeStudiesList);
   }
 
   /**
    * List Programs API Interface.
    *
-   * Any authenticated users can retrieve all organizations, no matter what role a user has or what organization a user is associated with.
+   * Any authenticated users can retrieve all programs, no matter what role a user has or what program a user is associated with.
    *
    * @api
    * @param { first: Integer, offset: Integer, orderBy: String, sortDirection: String, status: String } params Endpoint parameters
@@ -88,11 +86,11 @@ class Organization {
     const normalizedStatus = String(status).trim().toLowerCase();
     let statusCondition;
     if (normalizedStatus === this._ALL.toLowerCase()) {
-      statusCondition = {status: {$in: [ORGANIZATION.STATUSES.ACTIVE, ORGANIZATION.STATUSES.INACTIVE]}};
-    } else if (normalizedStatus === ORGANIZATION.STATUSES.ACTIVE.toLowerCase()) {
-      statusCondition = {status: ORGANIZATION.STATUSES.ACTIVE};
-    } else if (normalizedStatus === ORGANIZATION.STATUSES.INACTIVE.toLowerCase()) {
-      statusCondition = {status: ORGANIZATION.STATUSES.INACTIVE};
+      statusCondition = {status: {$in: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE]}};
+    } else if (normalizedStatus === PROGRAM.STATUSES.ACTIVE.toLowerCase()) {
+      statusCondition = {status: PROGRAM.STATUSES.ACTIVE};
+    } else if (normalizedStatus === PROGRAM.STATUSES.INACTIVE.toLowerCase()) {
+      statusCondition = {status: PROGRAM.STATUSES.INACTIVE};
     } else {
       throw new Error(
         replaceErrorString(ERROR.INVALID_PROGRAM_STATUS, String(params?.status ?? "").trim() || normalizedStatus)
@@ -109,13 +107,13 @@ class Organization {
   }
 
   /**
-   * Edit Organization API Interface.
+   * Edit Program API Interface (GraphQL: editOrganization).
    * @api
-   * @param {EditOrganizationInput} params Endpoint parameters
+   * @param {EditProgramInput} params Endpoint parameters
    * @param {{ cookie: Object, userInfo: Object }} context API request context
-   * @returns {Promise<Object>} The modified organization
+   * @returns {Promise<Object>} The modified program
    */
-  async editOrganizationAPI(params, context) {
+  async editProgramAPI(params, context) {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
       throw new Error(ERROR.NOT_LOGGED_IN);
     }
@@ -124,35 +122,35 @@ class Organization {
       throw new Error(ERROR.INVALID_ORG_ID);
     }
 
-    await this.editOrganization(params.orgID, params);
-    const userOrganization = await this.getOrganizationByID(params.orgID, true);
+    await this.editProgram(params.orgID, params);
+    const userOrganization = await this.getProgramByID(params.orgID, true);
     return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
   }
 
   /**
-   * Edit an organization by it's `_id` and a set of parameters
+   * Edit a program by its `_id` and a set of parameters
    *
    * @async
-   * @typedef {{ orgID: string, name: string, conciergeID: string, status: string }} EditOrganizationInput
-   * @throws {Error} If the organization is not found or the update fails
-   * @param {string} orgID The ID of the organization to edit
-   * @param {EditOrganizationInput} params The organization input
-   * @returns {Promise<Object>} The modified organization
+   * @typedef {{ orgID: string, name: string, conciergeID: string, status: string }} EditProgramInput
+   * @throws {Error} If the program is not found or the update fails
+   * @param {string} orgID The ID of the program to edit (GraphQL arg name)
+   * @param {EditProgramInput} params The program input
+   * @returns {Promise<Object>} The modified program
    */
-  async editOrganization(orgID, params) {
-    const currentOrg = await this.getOrganizationByID(orgID, false);
-    if (!currentOrg) {
+  async editProgram(orgID, params) {
+    const currentProgram = await this.getProgramByID(orgID, false);
+    if (!currentProgram) {
       throw new Error(ERROR.ORG_NOT_FOUND);
     }
-    if (this.checkForReadOnlyViolation(currentOrg, params)) {
+    if (this.checkForReadOnlyViolation(currentProgram, params)) {
       throw new Error(ERROR.CANNOT_UPDATE_READ_ONLY_PROGRAM);
     }
-    const updatedOrg = {updateAt: getCurrentTime()};
+    const updatedProgram = {updateAt: getCurrentTime()};
 
     const attemptingToSetInactive =
-      typeof params?.status === "string" && params.status === ORGANIZATION.STATUSES.INACTIVE;
+      typeof params?.status === "string" && params.status === PROGRAM.STATUSES.INACTIVE;
 
-    if (!currentOrg?.abbreviation && !params?.abbreviation?.trim()) {
+    if (!currentProgram?.abbreviation && !params?.abbreviation?.trim()) {
       throw new Error(ERROR.ORGANIZATION_INVALID_ABBREVIATION);
     }
 
@@ -167,19 +165,19 @@ class Organization {
       const trimmedName = params.name.trim();
       if (
         trimmedName &&
-        trimmedName.toLowerCase() !== currentOrg.name?.toLowerCase()
+        trimmedName.toLowerCase() !== currentProgram.name?.toLowerCase()
       ) {
-        const existingOrg = await this.getOrganizationByName(trimmedName);
+        const existingOrg = await this.getProgramByName(trimmedName);
         if (existingOrg) {
           throw new Error(ERROR.DUPLICATE_ORG_NAME);
         }
-        updatedOrg.name = trimmedName;
+        updatedProgram.name = trimmedName;
       }
     }
 
     const conciergeProvided = typeof params.conciergeID !== "undefined";
     // Only update the concierge if it is provided and different from the currently assigned concierge
-    if (conciergeProvided && !!params.conciergeID && params.conciergeID !== currentOrg.conciergeID) {
+    if (conciergeProvided && !!params.conciergeID && params.conciergeID !== currentProgram.conciergeID) {
       const conciergeUser = await this.userDAO.findFirst({
           _id: params.conciergeID,
           role: USER.ROLES.DATA_COMMONS_PERSONNEL,
@@ -189,56 +187,56 @@ class Organization {
       if (!conciergeUser) {
         throw new Error(ERROR.INVALID_ROLE_ASSIGNMENT);
       }
-      updatedOrg.conciergeID = params.conciergeID;
-      updatedOrg.conciergeName = `${conciergeUser.firstName} ${conciergeUser.lastName}`.trim();
-      updatedOrg.conciergeEmail = conciergeUser.email;
+      updatedProgram.conciergeID = params.conciergeID;
+      updatedProgram.conciergeName = `${conciergeUser.firstName} ${conciergeUser.lastName}`.trim();
+      updatedProgram.conciergeEmail = conciergeUser.email;
       // Only remove the concierge if it is purposely set to null and there is a currently assigned concierge
-    } else if (conciergeProvided && !params.conciergeID && !!currentOrg.conciergeID) {
-      updatedOrg.conciergeID = null;
-      updatedOrg.conciergeName = null;
-      updatedOrg.conciergeEmail = null;
+    } else if (conciergeProvided && !params.conciergeID && !!currentProgram.conciergeID) {
+      updatedProgram.conciergeID = null;
+      updatedProgram.conciergeName = null;
+      updatedProgram.conciergeEmail = null;
     }
 
-    if (params.status && Object.values(ORGANIZATION.STATUSES).includes(params.status)) {
-      updatedOrg.status = params.status;
+    if (params.status && Object.values(PROGRAM.STATUSES).includes(params.status)) {
+      updatedProgram.status = params.status;
     }
 
     if (params?.abbreviation?.trim()) {
-      updatedOrg.abbreviation = params.abbreviation.trim();
+      updatedProgram.abbreviation = params.abbreviation.trim();
     }
 
     if (params?.description?.trim() || params?.description?.trim() === "") {
-      updatedOrg.description = params.description.trim();
+      updatedProgram.description = params.description.trim();
     }
 
     const updateResult = await this.programDAO.updateMany(
-        {id: orgID},
-      updatedOrg, // only these fields will be changed
+        {_id: orgID},
+      updatedProgram, // only these fields will be changed
     );
 
     if (!updateResult) {
       throw new Error(ERROR.UPDATE_FAILED);
     }
 
-    if (updatedOrg.name || updatedOrg?.abbreviation) {
+    if (updatedProgram.name || updatedProgram?.abbreviation) {
       const promises = [];
-      if (updatedOrg.name) {
+      if (updatedProgram.name) {
         promises.push(
-            this.userDAO.updateUserOrg(orgID, updatedOrg)
+            this.userDAO.updateUserOrg(orgID, updatedProgram)
         );
         promises.push(
-            this.applicationDAO.updateApplicationOrg(orgID, updatedOrg)
+            this.applicationDAO.updateApplicationOrg(orgID, updatedProgram)
         );
       }
 
       const [, updatedApplication] = await Promise.all(promises);
 
-      if (updatedOrg.name && !updatedApplication?.acknowledged) {
+      if (updatedProgram.name && !updatedApplication?.acknowledged) {
         console.error("Failed to update the organization name in submission requests");
       }
     }
 
-    return { ...currentOrg, ...updatedOrg };
+    return { ...currentProgram, ...updatedProgram };
   }
 
 
@@ -265,25 +263,24 @@ class Organization {
   }
 
   /**
-   * Get an organization by it's name
+   * Get a program by its name
    *
    * @async
-   * @param {string} name The name of the organization to search for
-   * @param {boolean} [omitStudyLookup] Whether to omit the study lookup in the pipeline. Default is true
-   * @returns {Promise<Object | null>} The organization with the given `name` or null if not found
+   * @param {string} name The name of the program to search for
+   * @returns {Promise<Object | null>} The program with the given `name` or null if not found
    */
-  async getOrganizationByName(name) {
-    return await this.programDAO.getOrganizationByName(name);
+  async getProgramByName(name) {
+    return await this.programDAO.getProgramByName(name);
   }
 
   /**
-   * Create an Organization API Interface.
+   * Create a Program API Interface (GraphQL: createOrganization).
    * @api
-   * @param {CreateOrganizationInput} params Endpoint parameters
+   * @param {CreateProgramInput} params Endpoint parameters
    * @param {{ cookie: Object, userInfo: Object }} context API request context
-   * @returns {Promise<Object>} The created organization
+   * @returns {Promise<Object>} The created program
    */
-  async createOrganizationAPI(params, context) {
+  async createProgramAPI(params, context) {
     if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
       throw new Error(ERROR.NOT_LOGGED_IN);
     }
@@ -292,29 +289,29 @@ class Organization {
       throw new Error(ERROR.ORGANIZATION_INVALID_ABBREVIATION);
     }
 
-    const created = await this.createOrganization(params);
+    const created = await this.createProgram(params);
     const userOrganization =
-      (await this.getOrganizationByID(created?._id, true)) ?? created;
+      (await this.getProgramByID(created?._id, true)) ?? created;
     return getDataCommonsDisplayNamesForUserOrganization(userOrganization);
   }
 
   /**
-   * Create a new Organization
+   * Create a new Program
    *
    * @async
-   * @typedef {{ name: string, conciergeID?: string }} CreateOrganizationInput
-   * @throws {Error} If the organization name is already taken or the create action fails
-   * @param {CreateOrganizationInput} params The organization input
-   * @returns {Promise<Object>} The newly created organization
+   * @typedef {{ name: string, conciergeID?: string }} CreateProgramInput
+   * @throws {Error} If the program name is already taken or the create action fails
+   * @param {CreateProgramInput} params The program input
+   * @returns {Promise<Object>} The newly created program
    */
-  async createOrganization(params) {
+  async createProgram(params) {
     const newOrg = {
       abbreviation: params.abbreviation?.trim(),
       ...((params?.description || params?.description?.trim() === "") && {description: params.description.trim()})
     }
 
     if (!!params?.name?.trim()) {
-      const existingOrg = await this.getOrganizationByName(params.name);
+      const existingOrg = await this.getProgramByName(params.name);
       if (existingOrg) {
         throw new Error(ERROR.DUPLICATE_ORG_NAME);
       }
@@ -348,58 +345,52 @@ class Organization {
     return res;
   }
 
+  /**
+   * Upsert a program document by name.
+   * @param {string} programName
+   * @param {string} abbreviation
+   * @param {string} description
+   * @returns {Promise<object|null>}
+   */
   async upsertByProgramName(programName, abbreviation, description) {
     const newProgram = ProgramData.create(programName, "", "", "", abbreviation, description)
-    const res = await this.organizationCollection.findOneAndUpdate({name: programName}, newProgram, {
-      returnDocument: 'after',
-      upsert: true
-    });
-    if (!res?.value) {
+    const res = await this.programDAO.upsertByName(programName, newProgram);
+    if (!res) {
       console.error(`Failed to insert a new program: ${programName}`);
     }
-    return res.value;
+    return res;
   }
 
   /**
-   * Find One Organization by a program name.
+   * Find one program by name (case-insensitive).
    * @api
    * @param {string} programName
-   * @returns {Promise<Organization|null>} A single Organization or null if not found
+   * @returns {Promise<object|null>} A single program or null if not found
    */
   async findOneByProgramName(programName) {
-    const results = await this.organizationCollection.aggregate([{"$match": {
-      $expr: {
-          $eq: [
-            { $toLower: "$name" },
-            programName?.trim()?.toLowerCase()
-          ]
-      }
-    }}, {"$limit": 1}]);
-    return results?.length > 0 ? results[0] : null;
+    return await this.programDAO.findOneByProgramName(programName);
   }
 
   /**
-   * Find One Organization/Program by Study ID using the new programID reference model.
+   * Find one program by study ID using the programID reference on the approved study.
    * @api
    * @param {string} studyID
-   * @returns {Promise<Object|null>} The organization/program or null if not found
+   * @returns {Promise<Object|null>} The program or null if not found
    */
   async findOneByStudyID(studyID) {
-    // Get the approved study first to find its programID
     const approvedStudy = await this.approvedStudyDAO.findFirst({ _id: studyID?.trim() });
     if (!approvedStudy?.programID) {
       return null;
     }
-    
-    // Get the program by programID
-    return await this.getOrganizationByID(approvedStudy?.programID, false);
+
+    return await this.getProgramByID(approvedStudy?.programID, false);
   }
 
   /**
-   * Checks if the target organization/program has a read only flag set and if the update parameters violate the
-   * violate this read only protection.
-   * @param organization the target organization/program
-   * @param params the update parameters
+   * Checks if the target program has a read-only flag set and if the update parameters violate
+   * this read-only protection.
+   * @param {object} organization the target program
+   * @param {object} params the update parameters
    * @returns {*|boolean} true if a read only violation is detected
    */
   checkForReadOnlyViolation(organization, params) {
@@ -417,7 +408,7 @@ class Organization {
 class ProgramData {
   constructor(name, conciergeID, conciergeName, conciergeEmail, abbreviation, description) {
     this.name = name;
-    this.status = ORGANIZATION.STATUSES.ACTIVE;
+    this.status = PROGRAM.STATUSES.ACTIVE;
     this.conciergeID = conciergeID ? conciergeID : "";
     this.conciergeName = conciergeName ? conciergeName : "";
     this.conciergeEmail = conciergeEmail ? conciergeEmail : "";
@@ -437,5 +428,5 @@ class ProgramData {
 }
 
 module.exports = {
-  Organization
+  Program
 };

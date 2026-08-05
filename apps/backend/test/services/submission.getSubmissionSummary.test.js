@@ -9,7 +9,7 @@ describe('Submission.getSubmissionSummary', () => {
 
     beforeEach(() => {
         // Mock organization service with organizationCollection
-        const mockOrganizationService = {
+        const mockProgramService = {
             organizationCollection: {}
         };
 
@@ -19,7 +19,7 @@ describe('Submission.getSubmissionSummary', () => {
             {}, // submissionCollection
             {}, // batchService
             {}, // userService
-            mockOrganizationService, // organizationService
+            mockProgramService, // programService
             {}, // notificationService
             { retrieveDSSummary: jest.fn() }, // dataRecordService
             jest.fn(), // fetchDataModelInfo

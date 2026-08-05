@@ -23,7 +23,7 @@ const {replaceErrorString, escapeRegexLiteral} = require("../utility/string-util
 const NA_PROGRAM = "NA";
 const NA = "NA";
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
-const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
+const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const ProgramDAO = require("../dao/program");
 const UserDAO = require("../dao/user");
 const SubmissionDAO = require("../dao/submission");
@@ -38,18 +38,18 @@ class ApprovedStudiesService {
      * @param {object} approvedStudiesCollection Native Mongo collection retained as a temporary bridge for
      *   UserService (and callers via userService.approvedStudiesCollection). Not used by ApprovedStudyDAO
      *   (Mongoose); remove once those paths migrate to approvedStudyDAO.
-     * @param {object} organizationService Organization service (provides program collection for ProgramDAO)
+     * @param {object} programService Program service
      * @param {object} submissionCollection Native submission collection
      * @param {object} [authorizationService] Authorization service
      * @param {object} [notificationsService] Notifications service
      * @param {object} [emailParams] Email URL / contact params
      */
-    constructor(approvedStudiesCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
+    constructor(approvedStudiesCollection, programService, submissionCollection, authorizationService, notificationsService, emailParams) {
         // TEMPORARY: native-driver bridge for UserService until it uses approvedStudyDAO.
         this.approvedStudiesCollection = approvedStudiesCollection;
-        this.organizationService = organizationService;
+        this.programService = programService;
         this.authorizationService = authorizationService;
-        this.programDAO = new ProgramDAO(organizationService.organizationCollection);
+        this.programDAO = new ProgramDAO();
         this.userDAO = new UserDAO();
         this.submissionDAO = new SubmissionDAO(submissionCollection);
         this.notificationsService = notificationsService;
@@ -239,7 +239,7 @@ class ApprovedStudiesService {
         }
         // find program/organization by programID reference
         if (approvedStudy?.programID) {
-            approvedStudy.program = await this.organizationService.getOrganizationByID(approvedStudy.programID, true);
+            approvedStudy.program = await this.programService.getProgramByID(approvedStudy.programID, true);
         }
         // find primaryContact
         if (approvedStudy?.primaryContactID)
@@ -526,7 +526,7 @@ class ApprovedStudiesService {
 
         let programForGraphQL = program;
         if (program?._id) {
-            const programWithStudiesList = await this.organizationService.getOrganizationByID(program._id, true);
+            const programWithStudiesList = await this.programService.getProgramByID(program._id, true);
             if (programWithStudiesList) {
                 programForGraphQL = programWithStudiesList;
             }
@@ -693,18 +693,18 @@ class ApprovedStudiesService {
         let program = null;
          // verify the provided programID is valid
         if (programID){
-            program = await this.organizationService.getOrganizationByID(programID, false);
+            program = await this.programService.getProgramByID(programID, false);
         }
         // if the provided programID is not valid was not provided then use the NA program as a fallback
         if (!program){
-            program = await this.organizationService.getOrganizationByName(NA_PROGRAM);
+            program = await this.programService.getProgramByName(NA_PROGRAM);
         }
         // if the program is still not valid then throw an error, this should not happen
         if (!program){
             console.error("Unable to find a program with the provided programID then unable to find the NA program as a fallback. Please verify that the NA program has been properly initialized.");
             throw new Error(ERROR.STUDY_CREATION_FAILED);
         }
-        if (program?.status === ORGANIZATION.STATUSES.INACTIVE) {
+        if (program?.status === PROGRAM.STATUSES.INACTIVE) {
             throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
         }
         return program;

@@ -21,7 +21,7 @@ const mockEmailParams = {
   officialEmail: 'test@example.com',
   inactiveApplicationNotifyDays: [7, 15, 30]
 };
-const mockOrganizationService = {};
+const mockProgramService = {};
 const mockConfigurationService = {};
 
 describe('remindApplicationSubmission', () => {
@@ -61,7 +61,7 @@ describe('remindApplicationSubmission', () => {
       mockDbService,
       mockNotificationsService,
       mockEmailParams,
-      mockOrganizationService,
+      mockProgramService,
       null,
       mockConfigurationService,
       null

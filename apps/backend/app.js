@@ -12,7 +12,7 @@ const graphqlRouter = require("./routers/graphql-router");
 const {MongoDBCollection} = require("./crdc-datahub-database-drivers/mongodb-collection");
 const {DATABASE_NAME, APPLICATION_COLLECTION, LOG_COLLECTION, APPROVED_STUDIES_COLLECTION,
     ORGANIZATION_COLLECTION, SUBMISSIONS_COLLECTION, DATA_RECORDS_COLLECTION,
-    DATA_RECORDS_ARCHIVE_COLLECTION, QC_RESULTS_COLLECTION
+    DATA_RECORDS_ARCHIVE_COLLECTION
 } = require("./crdc-datahub-database-drivers/database-constants");
 const {Application} = require("./services/application");
 const {Submission} = require("./services/submission");
@@ -26,7 +26,7 @@ const {EmailService} = require("./services/email");
 const {NotifyUser} = require("./services/notify-user");
 const {extractAndJoinFields} = require("./utility/string-util");
 const {ApprovedStudiesService} = require("./services/approved-studies");
-const {Organization} = require("./services/organization-service");
+const {Program} = require("./services/program-service");
 const {LOGIN, REACTIVATE_USER} = require("./crdc-datahub-database-drivers/constants/event-constants");
 const {BatchService} = require("./services/batch-service");
 const {AWSService} = require("./services/aws-request");
@@ -34,6 +34,7 @@ const {UtilityService} = require("./services/utility");
 const {QcResultService} = require("./services/qc-result-service");
 const {UserService} = require("./services/user");
 const {ConfigurationService} = require("./services/configurationService");
+const {AuthorizationService} = require("./services/authorization-service");
 const {EMAIL_NOTIFICATIONS} = require("./crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_CONSTANTS = require("./crdc-datahub-database-drivers/constants/user-constants");
 const ROLES = USER_CONSTANTS.USER.ROLES;
@@ -83,6 +84,7 @@ app.use("/api/graphql", graphqlRouter);
         const config = await configuration.updateConfig(dbConnector);
         const emailService = new EmailService(config.email_transport, config.emails_enabled);
         const configurationService = new ConfigurationService();
+        const authorizationService = new AuthorizationService(configurationService);
         const notificationsService = new NotifyUser(emailService, config.tier);
         const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
         const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
@@ -107,9 +109,8 @@ app.use("/api/graphql", graphqlRouter);
         const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
         const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
         const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
-        const organizationService = new Organization(organizationCollection, submissionCollection, applicationCollection);
-        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, organizationService, submissionCollection);
-
+        const programService = new Program(submissionCollection, applicationCollection);
+        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, submissionCollection);
         const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
         const s3Service = new S3Service();
 
@@ -122,8 +123,7 @@ app.use("/api/graphql", graphqlRouter);
         
         const batchService = new BatchService(s3Service, config.sqs_loader_queue, awsService, config.prod_url, fetchDataModelInfo);
 
-        const qcResultCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, QC_RESULTS_COLLECTION);
-        const qcResultsService = new QcResultService(qcResultCollection, submissionCollection);
+        const qcResultsService = new QcResultService(authorizationService);
 
         const dataRecordCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_COLLECTION);
         const dataRecordArchiveCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_ARCHIVE_COLLECTION);
@@ -131,11 +131,11 @@ app.use("/api/graphql", graphqlRouter);
         qcResultsService.setDataRecordService(dataRecordService);
 
         const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
-            organizationService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
+            programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
             s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, 
             config.uploaderCLIConfigs, config.submission_bucket, configurationService);
 
-        const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, organizationService, null, configurationService, null);
+        const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, null, configurationService, null);
         
         
         cronJob.schedule(config.scheduledJobTime, async () => {

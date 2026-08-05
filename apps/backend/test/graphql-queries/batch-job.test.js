@@ -49,7 +49,7 @@ const {UserService} = require("../../services/user");
 jest.mock("../../services/notify-user");
 
 // Mock organization service
-const organizationService = {
+const programService = {
     findById: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
@@ -71,8 +71,7 @@ const dbService = {
 const emailService = new EmailService(config.email_transport, config.emails_enabled);
 const notificationsService = new NotifyUser(emailService, null);
 const userService = new UserService(logCollection, null, null, null, null, null, null, {}, null);
-
-const submissionService = new Submission(logCollection, submissionCollection, null, null, organizationService);
+const submissionService = new Submission(logCollection, submissionCollection, null, null, programService);
 const s3Service = new S3Service();
 
 // Mock AWS service and fetchDataModelInfo for consistent BatchService constructor

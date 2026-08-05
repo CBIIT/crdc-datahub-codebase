@@ -18,7 +18,7 @@ const mockEmailParams = {
     url: 'http://test.com',
     officialEmail: 'test@example.com'
 };
-const mockOrganizationService = {};
+const mockProgramService = {};
 const mockConfigurationService = {};
 const mockAuthorizationService = {};
 
@@ -66,7 +66,7 @@ describe('deleteInactiveApplications Error Handling', () => {
             mockDbService,
             mockNotificationsService,
             mockEmailParams,
-            mockOrganizationService,
+            mockProgramService,
             null,
             mockConfigurationService,
             null

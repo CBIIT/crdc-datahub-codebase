@@ -28,7 +28,7 @@ jest.mock('../../utility/study-utility', () => ({
 describe('Submission.listPotentialCollaborators', () => {
     let submissionService;
     let mockSubmissionCollection, mockLogCollection, mockBatchService, mockUserService, 
-        mockOrganizationService, mockNotificationService, mockDataRecordService, 
+        mockProgramService, mockNotificationService, mockDataRecordService, 
         mockFetchDataModelInfo, mockAwsService, mockMetadataQueueName, mockS3Service, 
         mockEmailParams, mockDataCommonsList, mockHiddenDataCommonsList, 
         mockSqsLoaderQueue, mockQcResultsService, 
@@ -138,7 +138,7 @@ describe('Submission.listPotentialCollaborators', () => {
         mockUserService = {
             getCollaboratorsByStudyID: jest.fn()
         };
-        mockOrganizationService = {};
+        mockProgramService = {};
         mockNotificationService = {};
         mockDataRecordService = {};
         mockFetchDataModelInfo = jest.fn();
@@ -171,7 +171,7 @@ describe('Submission.listPotentialCollaborators', () => {
             mockSubmissionCollection,
             mockBatchService,
             mockUserService,
-            mockOrganizationService,
+            mockProgramService,
             mockNotificationService,
             mockDataRecordService,
             mockFetchDataModelInfo,

@@ -53,10 +53,10 @@ const mockNotificationsService = {
     submitRequestReceivedNotification: jest.fn()
 };
 const mockEmailParams = { inactiveDays: 180, inactiveApplicationNotifyDays: [7, 30, 60], conditionalSubmissionContact: 'contact@email', url: 'http://test', submissionGuideURL: 'http://guide' };
-const mockOrganizationService = {
+const mockProgramService = {
     findOneByProgramName: jest.fn().mockResolvedValue(null),
     upsertByProgramName: jest.fn(),
-    getOrganizationByID: jest.fn(),
+    getProgramByID: jest.fn(),
     organizationCollection: { update: jest.fn() }
 };
 const mockInstitutionService = { addNewInstitutions: jest.fn() };
@@ -153,7 +153,7 @@ describe('Application', () => {
             mockDbService,
             mockNotificationsService,
             mockEmailParams,
-            mockOrganizationService,
+            mockProgramService,
             mockInstitutionService,
             mockConfigurationService,
             mockAuthorizationService
@@ -167,7 +167,7 @@ describe('Application', () => {
             mockDbService,
             mockNotificationsService,
             { inactiveDays: 180, inactiveApplicationNotifyDays: [7, 30], url: 'http://test', conditionalSubmissionContact: 'help@test.com' },
-            mockOrganizationService,
+            mockProgramService,
             mockInstitutionService,
             mockConfigurationService,
             mockAuthorizationService
@@ -1684,8 +1684,8 @@ describe('Application', () => {
             app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(existingStudy);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([{ _id: 'existing-study' }]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
@@ -1712,8 +1712,8 @@ describe('Application', () => {
             app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(null);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([existingStudy]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
@@ -1738,8 +1738,8 @@ describe('Application', () => {
             app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(existingStudy);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([{ _id: 'existing-study' }]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue({ _id: 'program1', name: 'Existing Program' });
+            mockProgramService.getProgramByID.mockResolvedValue(null);
+            mockProgramService.findOneByProgramName.mockResolvedValue({ _id: 'program1', name: 'Existing Program' });
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
@@ -1748,7 +1748,7 @@ describe('Application', () => {
             await app.approveApplication({ _id: 'revision-app', comment: 'Approved' }, context);
 
             expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).not.toHaveBeenCalled();
-            expect(mockOrganizationService.upsertByProgramName).not.toHaveBeenCalled();
+            expect(mockProgramService.upsertByProgramName).not.toHaveBeenCalled();
         });
 
         it('throws UPDATE_FAILED when DAO update returns falsy and does not call addNewInstitutions', async () => {
@@ -1760,8 +1760,8 @@ describe('Application', () => {
             };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('1.0');
             app.applicationDAO.update = jest.fn().mockResolvedValue(null);
 
@@ -1779,8 +1779,8 @@ describe('Application', () => {
                 questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
             };
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
@@ -1810,9 +1810,9 @@ describe('Application', () => {
             const mockNewProgram = { _id: 'new-program-1', name: 'Program One' };
 
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
-            mockOrganizationService.upsertByProgramName.mockResolvedValue(mockNewProgram);
+            mockProgramService.getProgramByID.mockResolvedValue(null);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.upsertByProgramName.mockResolvedValue(mockNewProgram);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
@@ -1823,7 +1823,7 @@ describe('Application', () => {
 
             await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
-            expect(mockOrganizationService.upsertByProgramName).toHaveBeenCalledWith(
+            expect(mockProgramService.upsertByProgramName).toHaveBeenCalledWith(
                 'Program One', 'PO', 'Program Description'
             );
             expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).toHaveBeenCalledWith(
@@ -1864,8 +1864,8 @@ describe('Application', () => {
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
 
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
             );
@@ -1916,8 +1916,8 @@ describe('Application', () => {
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
 
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
             );
@@ -1981,8 +1981,8 @@ describe('Application', () => {
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
 
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
             );
@@ -2046,9 +2046,9 @@ describe('Application', () => {
 
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
-            mockOrganizationService.upsertByProgramName.mockResolvedValue(mockNewProgram);
+            mockProgramService.getProgramByID.mockResolvedValue(null);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.upsertByProgramName.mockResolvedValue(mockNewProgram);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
@@ -2102,8 +2102,8 @@ describe('Application', () => {
                     pendingModelChange: false,
                     pendingImageDeIdentification: true
                 }]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.getApplicationById = jest.fn()
                 .mockResolvedValueOnce(mockApplication)
                 .mockResolvedValueOnce(approvedFromDb);
@@ -2133,8 +2133,8 @@ describe('Application', () => {
             const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
 
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
@@ -2145,7 +2145,7 @@ describe('Application', () => {
 
             await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
-            expect(mockOrganizationService.upsertByProgramName).not.toHaveBeenCalled();
+            expect(mockProgramService.upsertByProgramName).not.toHaveBeenCalled();
             expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).toHaveBeenCalledWith(
                 expect.objectContaining({
                     _id: 'app1',
@@ -2175,8 +2175,8 @@ describe('Application', () => {
 
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(null);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(mockDuplicateProgram);
+            mockProgramService.getProgramByID.mockResolvedValue(null);
+            mockProgramService.findOneByProgramName.mockResolvedValue(mockDuplicateProgram);
             global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
 
             await expect(app.approveApplication({ _id: 'app1', comment: 'Approved' }, context))
@@ -2196,8 +2196,8 @@ describe('Application', () => {
             const mockDuplicateProgram = { _id: 'duplicate1', name: 'Existing Program' };
 
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(mockDuplicateProgram);
+            mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
+            mockProgramService.findOneByProgramName.mockResolvedValue(mockDuplicateProgram);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
@@ -2262,8 +2262,8 @@ describe('Application', () => {
                     pendingImageDeIdentification: false,
                     dbGaPID: 'phs001234'
                 }]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: '' })
             );
@@ -2330,8 +2330,8 @@ describe('Application', () => {
                     pendingImageDeIdentification: false,
                     dbGaPID: 'phs001234'
                 }]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: '' })
             );
@@ -2370,8 +2370,8 @@ describe('Application', () => {
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
 
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue(mockExistingProgram);
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: 'Actual GPA' })
             );
@@ -2474,8 +2474,8 @@ describe('Application', () => {
             const mockQuestionnaire = { program: { _id: 'program1' } };
 
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
@@ -2512,8 +2512,8 @@ describe('Application', () => {
             };
 
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
