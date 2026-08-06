@@ -1,5 +1,6 @@
 const { UserService } = require('../../services/user');
 const ERROR = require('../../constants/error-constants');
+const { ERROR: SUBMODULE_ERROR } = require('../../crdc-datahub-database-drivers/constants/error-constants');
 
 jest.mock('../../utility/data-commons-remapper', () => ({
     getDataCommonsDisplayNamesForUser: jest.fn((u) => u),
@@ -11,7 +12,6 @@ describe('UserService.updateUserInfo — approved study status', () => {
     beforeEach(() => {
         const mockApprovedStudiesService = { approvedStudiesCollection: {} };
         userService = new UserService(
-            { findOneAndUpdate: jest.fn() },
             {},
             {},
             {},
@@ -25,6 +25,7 @@ describe('UserService.updateUserInfo — approved study status', () => {
             {},
             {}
         );
+        userService.userDAO = { update: jest.fn() };
         userService._findApprovedStudies = jest.fn();
         userService._notifyDeactivatedUser = jest.fn();
         userService._notifyUpdatedUser = jest.fn();
@@ -36,22 +37,20 @@ describe('UserService.updateUserInfo — approved study status', () => {
         userService._findApprovedStudies.mockResolvedValue([
             { _id: 's1', status: 'Inactive', studyName: 'X' },
         ]);
-        userService.userCollection.findOneAndUpdate = jest.fn();
+        userService.userDAO.update = jest.fn();
 
         await expect(
             userService.updateUserInfo({}, {}, 'uid', null, null, ['s1'])
         ).rejects.toThrow(ERROR.INACTIVE_APPROVED_STUDY_CANNOT_ASSIGN);
 
-        expect(userService.userCollection.findOneAndUpdate).not.toHaveBeenCalled();
+        expect(userService.userDAO.update).not.toHaveBeenCalled();
     });
 
     it('allows keeping an inactive study the user already had', async () => {
         userService._findApprovedStudies.mockResolvedValue([
             { _id: 's1', status: 'Inactive', studyName: 'X' },
         ]);
-        userService.userCollection.findOneAndUpdate = jest.fn().mockResolvedValue({
-            value: { _id: 'uid', studies: [{ _id: 's1' }] },
-        });
+        userService.userDAO.update = jest.fn().mockResolvedValue({ _id: 'uid', studies: [{ _id: 's1' }] });
 
         await userService.updateUserInfo(
             { studies: [{ _id: 's1' }] },
@@ -62,7 +61,7 @@ describe('UserService.updateUserInfo — approved study status', () => {
             ['s1']
         );
 
-        expect(userService.userCollection.findOneAndUpdate).toHaveBeenCalled();
+        expect(userService.userDAO.update).toHaveBeenCalled();
     });
 
     it('throws when adding a new inactive study while retaining a different inactive study', async () => {
@@ -70,7 +69,7 @@ describe('UserService.updateUserInfo — approved study status', () => {
             { _id: 's1', status: 'Inactive', studyName: 'A' },
             { _id: 's2', status: 'Inactive', studyName: 'B' },
         ]);
-        userService.userCollection.findOneAndUpdate = jest.fn();
+        userService.userDAO.update = jest.fn();
 
         await expect(
             userService.updateUserInfo(
@@ -83,25 +82,23 @@ describe('UserService.updateUserInfo — approved study status', () => {
             )
         ).rejects.toThrow(ERROR.INACTIVE_APPROVED_STUDY_CANNOT_ASSIGN);
 
-        expect(userService.userCollection.findOneAndUpdate).not.toHaveBeenCalled();
+        expect(userService.userDAO.update).not.toHaveBeenCalled();
     });
 
     it('does not throw for All studies shortcut', async () => {
         userService._findApprovedStudies.mockResolvedValue([{ _id: 'All', studyName: 'All' }]);
-        userService.userCollection.findOneAndUpdate = jest.fn().mockResolvedValue({
-            value: { _id: 'uid', studies: [{ _id: 'All' }] },
-        });
+        userService.userDAO.update = jest.fn().mockResolvedValue({ _id: 'uid', studies: [{ _id: 'All' }] });
 
         await userService.updateUserInfo({}, {}, 'uid', null, null, ['All']);
 
-        expect(userService.userCollection.findOneAndUpdate).toHaveBeenCalled();
+        expect(userService.userDAO.update).toHaveBeenCalled();
     });
 
     it('does not infer inactive retention from prior All — explicit list must not add inactive without prior explicit id', async () => {
         userService._findApprovedStudies.mockResolvedValue([
             { _id: 's1', status: 'Inactive', studyName: 'X' },
         ]);
-        userService.userCollection.findOneAndUpdate = jest.fn();
+        userService.userDAO.update = jest.fn();
 
         await expect(
             userService.updateUserInfo(
@@ -114,6 +111,15 @@ describe('UserService.updateUserInfo — approved study status', () => {
             )
         ).rejects.toThrow(ERROR.INACTIVE_APPROVED_STUDY_CANNOT_ASSIGN);
 
-        expect(userService.userCollection.findOneAndUpdate).not.toHaveBeenCalled();
+        expect(userService.userDAO.update).not.toHaveBeenCalled();
+    });
+
+    it('throws UPDATE_FAILED when userDAO.update rejects', async () => {
+        userService._findApprovedStudies.mockResolvedValue([]);
+        userService.userDAO.update = jest.fn().mockRejectedValue(new Error('Failed to update User'));
+
+        await expect(
+            userService.updateUserInfo({}, {}, 'uid', null, null, [])
+        ).rejects.toThrow(SUBMODULE_ERROR.UPDATE_FAILED);
     });
 });

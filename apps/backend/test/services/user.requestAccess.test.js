@@ -3,7 +3,7 @@ const ERROR = require('../../constants/error-constants');
 
 describe('UserService.requestAccess', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
 
     // Mocked dependencies and constants
@@ -21,7 +21,9 @@ describe('UserService.requestAccess', () => {
     const replaceErrorString = (err, str) => `${err}:${str}`;
 
     beforeEach(() => {
-        mockUserCollection = {};
+        mockUserDAO = {
+            getUsersByNotifications: jest.fn()
+        };
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {
@@ -40,9 +42,7 @@ describe('UserService.requestAccess', () => {
             getPermissionScope: jest.fn(),
         };
 
-        // Don't mock requestAccess since we want to test actual implementation
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
@@ -56,6 +56,7 @@ describe('UserService.requestAccess', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
 
         // Patch constants and helpers onto the instance
         userService._allEmailNotificationNamesSet = new Set([EN.USER_ACCOUNT.USER_REQUEST_ACCESS]);

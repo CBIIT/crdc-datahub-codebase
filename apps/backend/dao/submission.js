@@ -20,12 +20,10 @@ const ROLES = USER_CONSTANTS.USER.ROLES;
 class SubmissionDAO extends GenericDAO {
     /**
      * @param {object} submissionCollection Native submission collection
-     * @param {object} [organizationCollection] Unused; retained for call-site compatibility
      */
-    constructor(submissionCollection, organizationCollection) {
+    constructor(submissionCollection) {
         super(MODEL_NAME.SUBMISSION);
         this.submissionCollection = submissionCollection;
-        this.organizationCollection = organizationCollection;
         this.programDAO = new ProgramDAO();
     }
 

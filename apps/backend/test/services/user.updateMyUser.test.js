@@ -1,9 +1,10 @@
 const { UserService } = require('../../services/user');
 const { USER } = require('../../crdc-datahub-database-drivers/constants/user-constants');
+const { ERROR: SUBMODULE_ERROR } = require('../../crdc-datahub-database-drivers/constants/error-constants');
 
 describe('UserService.updateMyUser', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
 
     const mockUserInfo = {
@@ -35,9 +36,8 @@ describe('UserService.updateMyUser', () => {
     ];
 
     beforeEach(() => {
-        // Mock collections
-        mockUserCollection = {
-            find: jest.fn(),
+        mockUserDAO = {
+            findById: jest.fn(),
             update: jest.fn()
         };
 
@@ -65,9 +65,7 @@ describe('UserService.updateMyUser', () => {
         mockInstitutionService = {};
         mockAuthorizationService = {};
 
-        // Create service instance
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
@@ -81,70 +79,62 @@ describe('UserService.updateMyUser', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
 
-        // Mock utility functions
         global.getCurrentTime = jest.fn(() => new Date('2023-01-02T00:00:00Z'));
         global.getDataCommonsDisplayNamesForUser = jest.fn((user) => ({
             ...user,
             dataCommonsDisplayNames: user.dataCommons || []
         }));
 
-        // Mock the updateMyUser method to control its behavior
         userService.updateMyUser = jest.fn(async (params, context) => {
-            // Mock session validation
             if (!context?.userInfo?.email || !context?.userInfo?.IDP) {
                 throw new Error('A user must be logged in to call this API');
             }
 
-            // Mock user status validation
             if (context?.userInfo?.userStatus && context.userInfo.userStatus !== USER.STATUSES.ACTIVE) {
                 throw new Error('Invalid user status');
             }
 
-            // Mock userID validation
             if (!context.userInfo._id) {
                 throw new Error('there is no UserId in the session');
             }
 
-            // Mock user existence check
-            const user = await mockUserCollection.find(context.userInfo._id);
-            if (!user || !Array.isArray(user) || user.length < 1) {
+            const user = await mockUserDAO.findById(context.userInfo._id);
+            if (!user) {
                 throw new Error('User is not in the database');
             }
 
-            // Mock database update
-            const updateResult = await mockUserCollection.update({
+            const updateUser = {
                 _id: context.userInfo._id,
                 firstName: params.userInfo.firstName,
                 lastName: params.userInfo.lastName,
                 updateAt: global.getCurrentTime()
+            };
+
+            let updateResult;
+            try {
+                updateResult = await mockUserDAO.update(updateUser._id, updateUser);
+            } catch (error) {
+                throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
+            }
+
+            if (!updateResult) {
+                throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
+            }
+
+            const prevProfile = { firstName: user.firstName, lastName: user.lastName };
+            const newProfile = { firstName: params.userInfo.firstName, lastName: params.userInfo.lastName };
+            await mockLogCollection.insert({
+                userID: user._id,
+                userEmail: user.email,
+                userIDP: user.IDP,
+                prevProfile,
+                newProfile,
+                eventType: 'PROFILE_UPDATE'
             });
 
-            // Mock error handling for failed update
-            if (updateResult.matchedCount < 1) {
-                throw new Error('there is an error getting the result');
-            }
-
-            // Mock log creation if update was successful
-            if (updateResult?.matchedCount > 0) {
-                const prevProfile = { firstName: user[0].firstName, lastName: user[0].lastName };
-                const newProfile = { firstName: params.userInfo.firstName, lastName: params.userInfo.lastName };
-                await mockLogCollection.insert({
-                    userID: user[0]._id,
-                    userEmail: user[0].email,
-                    userIDP: user[0].IDP,
-                    prevProfile,
-                    newProfile,
-                    eventType: 'PROFILE_UPDATE'
-                });
-            }
-
-            // Mock dependent object updates if name changed
-            const updateUser = {
-                firstName: params.userInfo.firstName,
-                lastName: params.userInfo.lastName
-            };
-            if (updateUser.firstName !== user[0].firstName || updateUser.lastName !== user[0].lastName) {
+            if (updateUser.firstName !== user.firstName || updateUser.lastName !== user.lastName) {
                 mockSubmissionsCollection.updateMany(
                     { "submitterID": context.userInfo._id },
                     { "submitterName": `${updateUser.firstName} ${updateUser.lastName}` }
@@ -159,17 +149,15 @@ describe('UserService.updateMyUser', () => {
                 );
             }
 
-            // Mock context update
             context.userInfo = {
                 ...context.userInfo,
                 ...updateUser,
                 updateAt: global.getCurrentTime()
             };
 
-            // Mock studies enrichment
-            const userStudies = await userService._findApprovedStudies(user[0]?.studies);
+            const userStudies = await userService._findApprovedStudies(user?.studies);
             const result = {
-                ...user[0],
+                ...user,
                 firstName: params.userInfo.firstName,
                 lastName: params.userInfo.lastName,
                 updateAt: global.getCurrentTime(),
@@ -179,10 +167,8 @@ describe('UserService.updateMyUser', () => {
             return global.getDataCommonsDisplayNamesForUser(result);
         });
 
-        // Mock _findApprovedStudies method
         userService._findApprovedStudies = jest.fn().mockResolvedValue(mockApprovedStudies);
 
-        // Test context and params
         context = {
             userInfo: mockUserInfo
         };
@@ -201,21 +187,21 @@ describe('UserService.updateMyUser', () => {
 
     describe('Successful scenarios', () => {
         it('should successfully update user profile', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser, ...params.userInfo });
 
-            // Execute
             const result = await userService.updateMyUser(params, context);
 
-            // Verify
-            expect(mockUserCollection.find).toHaveBeenCalledWith(mockUserInfo._id);
-            expect(mockUserCollection.update).toHaveBeenCalledWith({
-                _id: mockUserInfo._id,
-                firstName: params.userInfo.firstName,
-                lastName: params.userInfo.lastName,
-                updateAt: global.getCurrentTime()
-            });
+            expect(mockUserDAO.findById).toHaveBeenCalledWith(mockUserInfo._id);
+            expect(mockUserDAO.update).toHaveBeenCalledWith(
+                mockUserInfo._id,
+                {
+                    _id: mockUserInfo._id,
+                    firstName: params.userInfo.firstName,
+                    lastName: params.userInfo.lastName,
+                    updateAt: global.getCurrentTime()
+                }
+            );
             expect(mockLogCollection.insert).toHaveBeenCalledWith({
                 userID: mockExistingUser._id,
                 userEmail: mockExistingUser.email,
@@ -234,14 +220,11 @@ describe('UserService.updateMyUser', () => {
         });
 
         it('should update dependent objects when name changes', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser, ...params.userInfo });
 
-            // Execute
             await userService.updateMyUser(params, context);
 
-            // Verify dependent object updates
             expect(mockSubmissionsCollection.updateMany).toHaveBeenCalledWith(
                 { "submitterID": mockUserInfo._id },
                 { "submitterName": `${params.userInfo.firstName} ${params.userInfo.lastName}` }
@@ -257,34 +240,28 @@ describe('UserService.updateMyUser', () => {
         });
 
         it('should not update dependent objects when name does not change', async () => {
-            // Setup
             const unchangedParams = {
                 userInfo: {
                     firstName: mockExistingUser.firstName,
                     lastName: mockExistingUser.lastName
                 }
             };
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser });
 
-            // Execute
             await userService.updateMyUser(unchangedParams, context);
 
-            // Verify dependent objects are not updated
             expect(mockSubmissionsCollection.updateMany).not.toHaveBeenCalled();
             expect(mockOrganizationCollection.updateMany).not.toHaveBeenCalled();
             expect(mockApplicationCollection.updateMany).not.toHaveBeenCalled();
         });
 
         it('should update context userInfo after successful update', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser, ...params.userInfo });
 
-            // Execute
             await userService.updateMyUser(params, context);
 
-            // Verify context is updated
             expect(context.userInfo).toEqual(expect.objectContaining({
                 firstName: params.userInfo.firstName,
                 lastName: params.userInfo.lastName,
@@ -295,16 +272,13 @@ describe('UserService.updateMyUser', () => {
 
     describe('Validation scenarios', () => {
         it('should throw error when user is not logged in', async () => {
-            // Setup
             const emptyContext = {};
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, emptyContext))
                 .rejects.toThrow('A user must be logged in to call this API');
         });
 
         it('should throw error when userInfo is missing email', async () => {
-            // Setup
             const contextWithoutEmail = {
                 userInfo: {
                     _id: 'test-user-id',
@@ -316,13 +290,11 @@ describe('UserService.updateMyUser', () => {
                 }
             };
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, contextWithoutEmail))
                 .rejects.toThrow('A user must be logged in to call this API');
         });
 
         it('should throw error when userInfo is missing IDP', async () => {
-            // Setup
             const contextWithoutIDP = {
                 userInfo: {
                     _id: 'test-user-id',
@@ -334,13 +306,11 @@ describe('UserService.updateMyUser', () => {
                 }
             };
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, contextWithoutIDP))
                 .rejects.toThrow('A user must be logged in to call this API');
         });
 
         it('should throw error when user status is invalid', async () => {
-            // Setup
             const contextWithInvalidStatus = {
                 userInfo: {
                     ...mockUserInfo,
@@ -348,31 +318,25 @@ describe('UserService.updateMyUser', () => {
                 }
             };
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, contextWithInvalidStatus))
                 .rejects.toThrow('Invalid user status');
         });
 
         it('should throw error when user is not found in database', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([]);
+            mockUserDAO.findById.mockResolvedValue(null);
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, context))
                 .rejects.toThrow('User is not in the database');
         });
 
         it('should throw error when user is not found in database (null result)', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue(null);
+            mockUserDAO.findById.mockResolvedValue(null);
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, context))
                 .rejects.toThrow('User is not in the database');
         });
 
         it('should throw error when userID is missing from session', async () => {
-            // Setup
             const contextWithoutUserID = {
                 userInfo: {
                     email: 'test@example.com',
@@ -384,71 +348,58 @@ describe('UserService.updateMyUser', () => {
                 }
             };
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, contextWithoutUserID))
                 .rejects.toThrow('there is no UserId in the session');
         });
     });
 
     describe('Database operation scenarios', () => {
-        it('should throw error when database update fails', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 0 });
+        it('should throw UPDATE_FAILED when database update rejects', async () => {
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockRejectedValue(new Error('Update operation failed'));
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, context))
-                .rejects.toThrow('there is an error getting the result');
+                .rejects.toThrow(SUBMODULE_ERROR.UPDATE_FAILED);
         });
 
         it('should not create log when database update fails', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 0 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockRejectedValue(new Error('Update operation failed'));
 
-            // Execute
             try {
                 await userService.updateMyUser(params, context);
             } catch (error) {
                 // Expected to throw
             }
 
-            // Verify log is not created
             expect(mockLogCollection.insert).not.toHaveBeenCalled();
         });
 
         it('should handle database find error', async () => {
-            // Setup
             const dbError = new Error('Database connection failed');
-            mockUserCollection.find.mockRejectedValue(dbError);
+            mockUserDAO.findById.mockRejectedValue(dbError);
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, context))
                 .rejects.toThrow('Database connection failed');
         });
 
-        it('should handle database update error', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
+        it('should throw UPDATE_FAILED when database update throws', async () => {
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
             const dbError = new Error('Update operation failed');
-            mockUserCollection.update.mockRejectedValue(dbError);
+            mockUserDAO.update.mockRejectedValue(dbError);
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, context))
-                .rejects.toThrow('Update operation failed');
+                .rejects.toThrow(SUBMODULE_ERROR.UPDATE_FAILED);
         });
     });
 
     describe('Logging scenarios', () => {
         it('should create log entry with correct profile information', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser, ...params.userInfo });
 
-            // Execute
             await userService.updateMyUser(params, context);
 
-            // Verify log entry
             expect(mockLogCollection.insert).toHaveBeenCalledWith({
                 userID: mockExistingUser._id,
                 userEmail: mockExistingUser.email,
@@ -460,12 +411,10 @@ describe('UserService.updateMyUser', () => {
         });
 
         it('should handle log insertion error gracefully', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser, ...params.userInfo });
             mockLogCollection.insert.mockRejectedValue(new Error('Log insertion failed'));
 
-            // Execute & Verify - should not throw error for log failure
             await expect(userService.updateMyUser(params, context))
                 .rejects.toThrow('Log insertion failed');
         });
@@ -473,143 +422,110 @@ describe('UserService.updateMyUser', () => {
 
     describe('Edge cases', () => {
         it('should handle empty params', async () => {
-            // Setup
             const emptyParams = {};
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser });
 
-            // Execute & Verify
             await expect(userService.updateMyUser(emptyParams, context))
                 .rejects.toThrow();
         });
 
         it('should handle null params', async () => {
-            // Setup
-            const nullParams = null;
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser });
 
-            // Execute & Verify
-            await expect(userService.updateMyUser(nullParams, context))
+            await expect(userService.updateMyUser(null, context))
                 .rejects.toThrow();
         });
 
         it('should handle undefined params', async () => {
-            // Setup
-            const undefinedParams = undefined;
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser });
 
-            // Execute & Verify
-            await expect(userService.updateMyUser(undefinedParams, context))
+            await expect(userService.updateMyUser(undefined, context))
                 .rejects.toThrow();
         });
 
         it('should handle empty context', async () => {
-            // Setup
             const emptyContext = {};
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, emptyContext))
                 .rejects.toThrow('A user must be logged in to call this API');
         });
 
         it('should handle null context', async () => {
-            // Setup
-            const nullContext = null;
-
-            // Execute & Verify
-            await expect(userService.updateMyUser(params, nullContext))
+            await expect(userService.updateMyUser(params, null))
                 .rejects.toThrow('A user must be logged in to call this API');
         });
 
         it('should handle undefined context', async () => {
-            // Setup
-            const undefinedContext = undefined;
-
-            // Execute & Verify
-            await expect(userService.updateMyUser(params, undefinedContext))
+            await expect(userService.updateMyUser(params, undefined))
                 .rejects.toThrow('A user must be logged in to call this API');
         });
 
         it('should handle user with no studies', async () => {
-            // Setup
             const userWithoutStudies = { ...mockExistingUser, studies: [] };
-            mockUserCollection.find.mockResolvedValue([userWithoutStudies]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(userWithoutStudies);
+            mockUserDAO.update.mockResolvedValue({ ...userWithoutStudies, ...params.userInfo });
 
-            // Execute
             await userService.updateMyUser(params, context);
 
-            // Verify studies enrichment is called with empty array
             expect(userService._findApprovedStudies).toHaveBeenCalledWith([]);
         });
 
         it('should handle user with null studies', async () => {
-            // Setup
             const userWithNullStudies = { ...mockExistingUser, studies: null };
-            mockUserCollection.find.mockResolvedValue([userWithNullStudies]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(userWithNullStudies);
+            mockUserDAO.update.mockResolvedValue({ ...userWithNullStudies, ...params.userInfo });
 
-            // Execute
             await userService.updateMyUser(params, context);
 
-            // Verify studies enrichment is called with null
             expect(userService._findApprovedStudies).toHaveBeenCalledWith(null);
         });
 
         it('should handle user with undefined studies', async () => {
-            // Setup
             const userWithUndefinedStudies = { ...mockExistingUser, studies: undefined };
-            mockUserCollection.find.mockResolvedValue([userWithUndefinedStudies]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(userWithUndefinedStudies);
+            mockUserDAO.update.mockResolvedValue({ ...userWithUndefinedStudies, ...params.userInfo });
 
-            // Execute
             await userService.updateMyUser(params, context);
 
-            // Verify studies enrichment is called with undefined
             expect(userService._findApprovedStudies).toHaveBeenCalledWith(undefined);
         });
     });
 
     describe('Integration scenarios', () => {
         it('should handle _findApprovedStudies error', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser, ...params.userInfo });
             const studiesError = new Error('Studies lookup failed');
             userService._findApprovedStudies.mockRejectedValue(studiesError);
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, context))
                 .rejects.toThrow('Studies lookup failed');
         });
 
         it('should handle getDataCommonsDisplayNamesForUser error', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
-            mockUserCollection.update.mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
+            mockUserDAO.update.mockResolvedValue({ ...mockExistingUser, ...params.userInfo });
             const displayError = new Error('Display names error');
             global.getDataCommonsDisplayNamesForUser.mockImplementation(() => {
                 throw displayError;
             });
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, context))
                 .rejects.toThrow('Display names error');
         });
 
         it('should handle getCurrentTime error', async () => {
-            // Setup
-            mockUserCollection.find.mockResolvedValue([mockExistingUser]);
+            mockUserDAO.findById.mockResolvedValue(mockExistingUser);
             const timeError = new Error('Time utility error');
             global.getCurrentTime.mockImplementation(() => {
                 throw timeError;
             });
 
-            // Execute & Verify
             await expect(userService.updateMyUser(params, context))
                 .rejects.toThrow('Time utility error');
         });
     });
-}); 
+});

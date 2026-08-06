@@ -15,15 +15,14 @@ class Program {
   _READ_ONLY_FIELDS = ["name", "abbreviation", "description", "status"];
 
   /**
-   * @param {object} userCollection Native user collection
    * @param {object} submissionCollection Native submission collection
    * @param {object} applicationCollection Native application collection
    */
-  constructor(userCollection, submissionCollection, applicationCollection) {
+  constructor(submissionCollection, applicationCollection) {
     this.programDAO = new ProgramDAO();
     this.approvedStudyDAO = new ApprovedStudyDAO();
     this.submissionDAO = new SubmissionDAO(submissionCollection);
-    this.userDAO = new UserDAO(userCollection);
+    this.userDAO = new UserDAO();
     this.applicationDAO = new ApplicationDAO(applicationCollection);
   }
 
@@ -180,7 +179,7 @@ class Program {
     // Only update the concierge if it is provided and different from the currently assigned concierge
     if (conciergeProvided && !!params.conciergeID && params.conciergeID !== currentProgram.conciergeID) {
       const conciergeUser = await this.userDAO.findFirst({
-          id: params.conciergeID, // assuming _id maps to Prisma's `id`
+          _id: params.conciergeID,
           role: USER.ROLES.DATA_COMMONS_PERSONNEL,
           userStatus: USER.STATUSES.ACTIVE,
       });
@@ -215,7 +214,7 @@ class Program {
       updatedProgram, // only these fields will be changed
     );
 
-    if (!updateResult) {
+    if (typeof updateResult?.count !== 'number' || updateResult.count < 1) {
       throw new Error(ERROR.UPDATE_FAILED);
     }
 
@@ -223,21 +222,23 @@ class Program {
       const promises = [];
       if (updatedProgram.name) {
         promises.push(
-            this.userDAO.updateUserOrg(orgID, updatedProgram)
+          this.applicationDAO.updateApplicationOrg(orgID, updatedProgram)
         );
         promises.push(
-            this.applicationDAO.updateApplicationOrg(orgID, updatedProgram)
+            this.userDAO.updateUserOrg(orgID, updatedProgram)
         );
+        
       }
 
-      const [updateUser, updatedApplication] = await Promise.all(promises);
+      try {
+        // The result of updateUserOrg is not used so it is not extracted from the promise.all response
+        const [updatedApplication] = await Promise.all(promises);
 
-      if (updatedProgram.name && !updateUser?.acknowledged) {
-        console.error("Failed to update the organization name in users");
-      }
-
-      if (updatedProgram.name && !updatedApplication?.acknowledged) {
-        console.error("Failed to update the organization name in submission requests");
+        if (updatedProgram.name && !updatedApplication?.acknowledged) {
+          console.error("Failed to update the organization name in submission requests");
+        }
+      } catch (error) {
+        console.error("Failed to update the organization name in users/applications", error);
       }
     }
 

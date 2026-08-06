@@ -59,7 +59,6 @@ const programService = {
 // Mock collections using Prisma models
 const mockPrisma = require("../../prisma");
 const applicationCollection = mockPrisma.application;
-const userCollection = mockPrisma.user;
 const logCollection = mockPrisma.log;
 const submissionCollection = mockPrisma.submission;
 const batchCollection = mockPrisma.batch;
@@ -71,8 +70,7 @@ const dbService = {
 
 const emailService = new EmailService(config.email_transport, config.emails_enabled);
 const notificationsService = new NotifyUser(emailService, null);
-const userService = new UserService(userCollection, null, null, null, null, null, null, null, programService);
-
+const userService = new UserService(logCollection, null, null, null, null, null, null, {}, null);
 const submissionService = new Submission(logCollection, submissionCollection, null, null, programService);
 const s3Service = new S3Service();
 

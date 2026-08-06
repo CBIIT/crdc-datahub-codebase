@@ -1778,20 +1778,17 @@ class Application {
             ?.map((a) => a?.applicantID) // Extract applicant IDs
             ?.filter(Boolean);
 
-        return await this.userService.userCollection.aggregate([{
-            "$match": {"_id": { "$in": applicantIDs }
-            }}]);
+        return await this.userService.findByIDs(applicantIDs);
     }
 
     async sendEmailAfterApproveApplication(context, application, comment, isDbGapMissing = false, isPendingModelChange, isPendingGPA = false, isPendingImageDeIdentification = false) {
         const res = await Promise.all([
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
-            this.userService.userCollection.find(application?.applicantID)
+            this.userService.findByID(application?.applicantID)
         ]);
 
-        const [toBCCUsers, applicant] = res;
-        const applicantInfo = applicant?.pop();
+        const [toBCCUsers, applicantInfo] = res;
         const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
         const toBCCEmails = getUserEmails(toBCCUsers)
             ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
@@ -1872,12 +1869,11 @@ class Application {
     }
 
     async _cancelApplicationEmailInfo(application) {
-        const [applicant, BCCUsers] = await Promise.all([
-            this.userService.userCollection.find(application?.applicantID),
+        const [applicantInfo, BCCUsers] = await Promise.all([
+            this.userService.findByID(application?.applicantID),
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CANCEL],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
         ]);
-        const applicantInfo = applicant?.pop();
 
         const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
         const toBCCEmails = getUserEmails(BCCUsers)
@@ -1922,15 +1918,23 @@ class Application {
 
     }
 
+    /**
+     * Sends the reopen notification email to the owner of a reopened submission request.
+     * Never throws; failures are logged so they cannot break the reopen workflow.
+     * @param {object} application Reopened application document
+     * @param {object} ownerUser Owner of the reopened application
+     * @param {string} previousOwnerId Owner of the source application before reopening
+     * @returns {Promise<void>}
+     */
     async _sendReopenApplicationEmail(application, ownerUser, previousOwnerId) {
         try {
             const isOwnershipChanged = ownerUser._id !== previousOwnerId && ownerUser.id !== previousOwnerId;
             const [ownerInfo, BCCUsers] = await Promise.all([
-                this.userService.userCollection.find(ownerUser._id ?? ownerUser.id),
+                this.userService.findByID(ownerUser._id ?? ownerUser.id),
                 this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REOPENED],
                     [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
             ]);
-            const applicantInfo = ownerInfo?.pop() ?? ownerUser;
+            const applicantInfo = ownerInfo ?? ownerUser;
 
             if (!applicantInfo?.email) {
                 console.error("Reopen submission request email notification does not have any recipient", `Application ID: ${application?._id}`);
@@ -1944,7 +1948,7 @@ class Application {
             const CCEmails = getCCEmails(applicantInfo?.email, application);
             // Include previous owner in CC if ownership changed
             if (isOwnershipChanged && previousOwnerId) {
-                const previousOwner = (await this.userService.userCollection.find(previousOwnerId))?.pop();
+                const previousOwner = await this.userService.findByID(previousOwnerId);
                 if (previousOwner?.email && EMAIL_REGEX.test(previousOwner.email) && !CCEmails.includes(previousOwner.email) && previousOwner.email !== applicantInfo.email) {
                     CCEmails.push(previousOwner.email);
                 }
@@ -1982,7 +1986,7 @@ class Application {
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const applicant = await this.userDAO.findFirst({id: application?.applicantID});
+            const applicant = await this.userDAO.findFirst({_id: application?.applicantID});
             const CCEmails = getCCEmails(applicant?.email, application);
             const toBCCEmails = getUserEmails(filteredBCCUsers)
                 ?.filter((email) => !CCEmails.includes(email));
@@ -2012,7 +2016,7 @@ class Application {
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const applicant = await this.userDAO.findFirst({id: application?.applicantID});
+            const applicant = await this.userDAO.findFirst({_id: application?.applicantID});
             const CCEmails = getCCEmails(applicant?.email, application);
             const filteredBCCUsers = BCCUsers.filter((u) => u?._id !== aSubmitter?._id);
             const toBCCEmails = getUserEmails(filteredBCCUsers)
@@ -2155,7 +2159,7 @@ const sendEmails = {
         }
     },
     submitApplication: async (notificationService, userService, emailParams, userInfo, application) => {
-        const applicantInfo = (await userService.userCollection.find(application?.applicant?.applicantID))?.pop();
+        const applicantInfo = await userService.findByID(application?.applicant?.applicantID);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_SUBMIT)) {
             const BCCUsers = await userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_SUBMIT],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]);
@@ -2198,10 +2202,9 @@ const sendEmails = {
         const res = await Promise.all([
             userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
-            userService.userCollection.find(application?.applicant?.applicantID)
+            userService.findByID(application?.applicant?.applicantID)
         ]);
-        const [toBCCUsers, applicant] = res;
-        const applicantInfo = (applicant)?.pop();
+        const [toBCCUsers, applicantInfo] = res;
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
             const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
             const toBCCEmails = getUserEmails(toBCCUsers)
@@ -2219,7 +2222,7 @@ const sendEmails = {
         }
     },
     rejectApplication: async(notificationService, userService, emailParams, application, reviewComments) => {
-        const applicantInfo = (await userService.userCollection.find(application?.applicant?.applicantID))?.pop();
+        const applicantInfo = await userService.findByID(application?.applicant?.applicantID);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
             const BCCUsers = await userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]);

@@ -71,7 +71,7 @@ describe('Submission.getPendingPVs', () => {
         
         // Mock organization service using Prisma
         const mockPrisma = require("../../prisma");
-        const programService = new Program({}, {}, {});
+        const programService = new Program({}, {});
 
         // Instantiate Submission with mocked submissionCollection
         service = new Submission(
@@ -1828,7 +1828,7 @@ describe('Submission.editSubmissionCollaborators', () => {
         const result = await submissionService.editSubmissionCollaborators(mockParams, mockContext);
 
         expect(submissionService._findByID).toHaveBeenCalledWith('sub1');
-        expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ id: 'user2' });
+        expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ _id: 'user2' });
         expect(submissionService._verifyStudyInUserStudies).toHaveBeenCalledWith(mockUser, 'study123');
         expect(mockSubmissionDAO.update).toHaveBeenCalledWith('sub1', {
             collaborators: [

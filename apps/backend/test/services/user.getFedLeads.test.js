@@ -3,7 +3,7 @@ const { USER } = require('../../crdc-datahub-database-drivers/constants/user-con
 
 describe('UserService.getFedLeads', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockFederalLeads = [
         {
@@ -60,8 +60,8 @@ describe('UserService.getFedLeads', () => {
 
     beforeEach(() => {
         // Mock all dependencies
-        mockUserCollection = {
-            aggregate: jest.fn()
+        mockUserDAO = {
+            findMany: jest.fn()
         };
         mockLogCollection = {};
         mockOrganizationCollection = {};
@@ -75,7 +75,6 @@ describe('UserService.getFedLeads', () => {
 
         // Initialize UserService with mocked dependencies
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
@@ -89,6 +88,7 @@ describe('UserService.getFedLeads', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
     });
 
     afterEach(() => {
@@ -98,57 +98,51 @@ describe('UserService.getFedLeads', () => {
     describe('successful scenarios', () => {
         it('should return federal leads when they exist', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockFederalLeads);
+            mockUserDAO.findMany.mockResolvedValue(mockFederalLeads);
 
             // Act
             const result = await userService.getFedLeads();
 
             // Assert
             expect(result).toEqual(mockFederalLeads);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.FEDERAL_LEAD,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.FEDERAL_LEAD,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should return empty array when no federal leads exist', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue([]);
+            mockUserDAO.findMany.mockResolvedValue([]);
 
             // Act
             const result = await userService.getFedLeads();
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.FEDERAL_LEAD,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.FEDERAL_LEAD,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should return single federal lead when only one exists', async () => {
             // Arrange
             const singleFederalLead = [mockFederalLeads[0]];
-            mockUserCollection.aggregate.mockResolvedValue(singleFederalLead);
+            mockUserDAO.findMany.mockResolvedValue(singleFederalLead);
 
             // Act
             const result = await userService.getFedLeads();
 
             // Assert
             expect(result).toEqual(singleFederalLead);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.FEDERAL_LEAD,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.FEDERAL_LEAD,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
     });
 
@@ -156,7 +150,7 @@ describe('UserService.getFedLeads', () => {
         it('should only return users with FEDERAL_LEAD role', async () => {
             // Arrange
             const mixedUsers = [...mockFederalLeads, mockNonFederalLeadUser];
-            mockUserCollection.aggregate.mockResolvedValue(mockFederalLeads);
+            mockUserDAO.findMany.mockResolvedValue(mockFederalLeads);
 
             // Act
             const result = await userService.getFedLeads();
@@ -164,18 +158,16 @@ describe('UserService.getFedLeads', () => {
             // Assert
             expect(result).toEqual(mockFederalLeads);
             expect(result.every(user => user.role === USER.ROLES.FEDERAL_LEAD)).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.FEDERAL_LEAD,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.FEDERAL_LEAD,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should only return users with ACTIVE status', async () => {
             // Arrange
             const mixedStatusUsers = [...mockFederalLeads, mockInactiveFederalLead];
-            mockUserCollection.aggregate.mockResolvedValue(mockFederalLeads);
+            mockUserDAO.findMany.mockResolvedValue(mockFederalLeads);
 
             // Act
             const result = await userService.getFedLeads();
@@ -183,17 +175,15 @@ describe('UserService.getFedLeads', () => {
             // Assert
             expect(result).toEqual(mockFederalLeads);
             expect(result.every(user => user.userStatus === USER.STATUSES.ACTIVE)).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.FEDERAL_LEAD,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.FEDERAL_LEAD,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should filter by both role and status correctly', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockFederalLeads);
+            mockUserDAO.findMany.mockResolvedValue(mockFederalLeads);
 
             // Act
             const result = await userService.getFedLeads();
@@ -204,12 +194,10 @@ describe('UserService.getFedLeads', () => {
                 user.role === USER.ROLES.FEDERAL_LEAD && 
                 user.userStatus === USER.STATUSES.ACTIVE
             )).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.FEDERAL_LEAD,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.FEDERAL_LEAD,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
     });
 
@@ -217,88 +205,84 @@ describe('UserService.getFedLeads', () => {
         it('should propagate database errors', async () => {
             // Arrange
             const dbError = new Error('Database connection failed');
-            mockUserCollection.aggregate.mockRejectedValue(dbError);
+            mockUserDAO.findMany.mockRejectedValue(dbError);
 
             // Act & Assert
             await expect(userService.getFedLeads()).rejects.toThrow('Database connection failed');
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should handle null result from database', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(null);
+            mockUserDAO.findMany.mockResolvedValue(null);
 
             // Act
             const result = await userService.getFedLeads();
 
             // Assert
             expect(result).toBeNull();
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should handle undefined result from database', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(undefined);
+            mockUserDAO.findMany.mockResolvedValue(undefined);
 
             // Act
             const result = await userService.getFedLeads();
 
             // Assert
             expect(result).toBeUndefined();
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
     });
 
     describe('query structure validation', () => {
-        it('should use correct MongoDB aggregation pipeline', async () => {
+        it('should use correct findMany query', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockFederalLeads);
+            mockUserDAO.findMany.mockResolvedValue(mockFederalLeads);
 
             // Act
             await userService.getFedLeads();
 
             // Assert
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    role: USER.ROLES.FEDERAL_LEAD,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                role: USER.ROLES.FEDERAL_LEAD,
+                userStatus: USER.STATUSES.ACTIVE
+            });
         });
 
         it('should use correct USER constants', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockFederalLeads);
+            mockUserDAO.findMany.mockResolvedValue(mockFederalLeads);
 
             // Act
             await userService.getFedLeads();
 
             // Assert
-            const expectedQuery = [{
-                "$match": {
-                    role: USER.ROLES.FEDERAL_LEAD,
-                    userStatus: USER.STATUSES.ACTIVE
-                }
-            }];
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith(expectedQuery);
+            const expectedQuery = {
+                role: USER.ROLES.FEDERAL_LEAD,
+                userStatus: USER.STATUSES.ACTIVE
+            };
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
     });
 
     describe('performance and behavior', () => {
-        it('should call aggregate only once per invocation', async () => {
+        it('should call findMany only once per invocation', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockFederalLeads);
+            mockUserDAO.findMany.mockResolvedValue(mockFederalLeads);
 
             // Act
             await userService.getFedLeads();
 
             // Assert
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should return the same result on multiple calls with same data', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockFederalLeads);
+            mockUserDAO.findMany.mockResolvedValue(mockFederalLeads);
 
             // Act
             const result1 = await userService.getFedLeads();
@@ -306,7 +290,7 @@ describe('UserService.getFedLeads', () => {
 
             // Assert
             expect(result1).toEqual(result2);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(2);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(2);
         });
     });
 }); 

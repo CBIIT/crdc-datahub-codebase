@@ -6,7 +6,7 @@ describe('UserService.isEligibleReopenOwner', () => {
     let userService;
 
     beforeEach(() => {
-        userService = new UserService({}, {}, {}, {}, {}, {}, 'email@test.com', 'http://test', {}, 180, {}, {}, {});
+        userService = new UserService({}, {}, {}, {}, {}, 'email@test.com', 'http://test', {}, 180, {}, {}, {});
     });
 
     const eligibleUser = {
@@ -59,7 +59,7 @@ describe('UserService._buildReopenListUsersMatch', () => {
     let userService;
 
     beforeEach(() => {
-        userService = new UserService({}, {}, {}, {}, {}, {}, 'email@test.com', 'http://test', {}, 180, {}, {}, {});
+        userService = new UserService({}, {}, {}, {}, {}, 'email@test.com', 'http://test', {}, 180, {}, {}, {});
     });
 
     it('filters to active User/Submitter with create permission', () => {

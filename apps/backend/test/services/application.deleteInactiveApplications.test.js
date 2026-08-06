@@ -6,10 +6,7 @@ const mockApplicationCollection = { find: jest.fn(), update: jest.fn(), delete: 
 const mockApprovedStudiesService = {};
 const mockUserService = {
     getUsersByNotifications: jest.fn(),
-    userCollection: { 
-        find: jest.fn(),
-        aggregate: jest.fn()
-    }
+    findByIDs: jest.fn()
 };
 const mockDbService = {};
 const mockNotificationsService = {
@@ -162,7 +159,7 @@ describe('deleteInactiveApplications Error Handling', () => {
                 .mockResolvedValueOnce(mockApplications) // default window
                 .mockResolvedValueOnce([]); // short window
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockUserService.findByIDs.mockResolvedValue([]);
             mockApplicationDAO.update.mockResolvedValue({});
 
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
@@ -194,7 +191,7 @@ describe('deleteInactiveApplications Error Handling', () => {
                 .mockResolvedValueOnce(mockApplications)
                 .mockResolvedValueOnce([]);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockUserService.findByIDs.mockResolvedValue([]);
             mockApplicationDAO.update.mockResolvedValue(true);
 
             await applicationService.deleteInactiveApplications();
@@ -218,7 +215,7 @@ describe('deleteInactiveApplications Error Handling', () => {
                 .mockResolvedValueOnce(mockApplications)
                 .mockResolvedValueOnce([]);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockUserService.findByIDs.mockResolvedValue([]);
             mockApplicationDAO.delete.mockResolvedValue({ _id: 'empty-app' });
 
             await applicationService.deleteInactiveApplications();
@@ -243,7 +240,7 @@ describe('deleteInactiveApplications Error Handling', () => {
                 .mockResolvedValueOnce(mockApplications)
                 .mockResolvedValueOnce([]);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockUserService.findByIDs.mockResolvedValue([]);
             mockApplicationDAO.delete.mockResolvedValue(null);
 
             await applicationService.deleteInactiveApplications();
@@ -280,7 +277,7 @@ describe('deleteInactiveApplications Error Handling', () => {
                 .mockResolvedValueOnce(mockApplications) // default window
                 .mockResolvedValueOnce([]); // short window
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockUserService.findByIDs.mockResolvedValue([]);
             
             // First update succeeds, second fails
             mockApplicationDAO.update
@@ -331,7 +328,7 @@ describe('deleteInactiveApplications Error Handling', () => {
                 .mockResolvedValueOnce(mockApplications) // default window
                 .mockResolvedValueOnce([]); // short window
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockUserService.findByIDs.mockResolvedValue([]);
             
             // First update succeeds, second fails
             mockApplicationDAO.update
@@ -383,7 +380,7 @@ describe('deleteInactiveApplications Error Handling', () => {
                 .mockResolvedValueOnce([]) // default window
                 .mockResolvedValueOnce(mockShortApps); // short window
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.aggregate.mockResolvedValue([
+            mockUserService.findByIDs.mockResolvedValue([
                 { _id: 'user2', notifications: ['submission_request:deleted'] }
             ]);
             mockApplicationDAO.delete.mockResolvedValue({});
@@ -448,7 +445,7 @@ describe('deleteInactiveApplications Error Handling', () => {
                 .mockResolvedValueOnce(mockDefaultApps) // default window
                 .mockResolvedValueOnce(mockShortApps); // short window
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.aggregate.mockResolvedValue([]);
+            mockUserService.findByIDs.mockResolvedValue([]);
             mockApplicationDAO.update.mockResolvedValue({});
             mockApplicationDAO.delete.mockResolvedValue({});
 

@@ -4,7 +4,7 @@ const { EMAIL_NOTIFICATIONS } = require('../../crdc-datahub-database-drivers/con
 
 describe('UserService.getAdminPBACUsers', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockAdminPBACUsers = [
         {
@@ -79,8 +79,8 @@ describe('UserService.getAdminPBACUsers', () => {
 
     beforeEach(() => {
         // Mock all dependencies
-        mockUserCollection = {
-            aggregate: jest.fn()
+        mockUserDAO = {
+            findMany: jest.fn()
         };
         mockLogCollection = {};
         mockOrganizationCollection = {};
@@ -94,7 +94,6 @@ describe('UserService.getAdminPBACUsers', () => {
 
         // Initialize UserService with mocked dependencies
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
@@ -108,6 +107,7 @@ describe('UserService.getAdminPBACUsers', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
     });
 
     afterEach(() => {
@@ -117,60 +117,54 @@ describe('UserService.getAdminPBACUsers', () => {
     describe('successful scenarios', () => {
         it('should return admin PBAC users when they exist', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             const result = await userService.getAdminPBACUsers();
 
             // Assert
             expect(result).toEqual(mockAdminPBACUsers);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            });
         });
 
         it('should return empty array when no admin PBAC users exist', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue([]);
+            mockUserDAO.findMany.mockResolvedValue([]);
 
             // Act
             const result = await userService.getAdminPBACUsers();
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            });
         });
 
         it('should return single admin PBAC user when only one exists', async () => {
             // Arrange
             const singleAdminPBAC = [mockAdminPBACUsers[0]];
-            mockUserCollection.aggregate.mockResolvedValue(singleAdminPBAC);
+            mockUserDAO.findMany.mockResolvedValue(singleAdminPBAC);
 
             // Act
             const result = await userService.getAdminPBACUsers();
 
             // Assert
             expect(result).toEqual(singleAdminPBAC);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            });
         });
     });
 
@@ -178,7 +172,7 @@ describe('UserService.getAdminPBACUsers', () => {
         it('should only return users with ADMIN role', async () => {
             // Arrange
             const mixedUsers = [...mockAdminPBACUsers, mockNonAdminUser];
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             const result = await userService.getAdminPBACUsers();
@@ -186,19 +180,17 @@ describe('UserService.getAdminPBACUsers', () => {
             // Assert
             expect(result).toEqual(mockAdminPBACUsers);
             expect(result.every(user => user.role === USER.ROLES.ADMIN)).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            });
         });
 
         it('should only return users with ACTIVE status', async () => {
             // Arrange
             const mixedStatusUsers = [...mockAdminPBACUsers, mockInactiveAdmin];
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             const result = await userService.getAdminPBACUsers();
@@ -206,19 +198,17 @@ describe('UserService.getAdminPBACUsers', () => {
             // Assert
             expect(result).toEqual(mockAdminPBACUsers);
             expect(result.every(user => user.userStatus === USER.STATUSES.ACTIVE)).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            });
         });
 
         it('should only return users with USER_INACTIVATED_ADMIN notification', async () => {
             // Arrange
             const mixedNotificationUsers = [...mockAdminPBACUsers, mockAdminWithoutNotification];
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             const result = await userService.getAdminPBACUsers();
@@ -228,18 +218,16 @@ describe('UserService.getAdminPBACUsers', () => {
             expect(result.every(user => 
                 user.notifications.includes(EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN)
             )).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            });
         });
 
         it('should filter by all three criteria correctly', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             const result = await userService.getAdminPBACUsers();
@@ -251,13 +239,11 @@ describe('UserService.getAdminPBACUsers', () => {
                 user.userStatus === USER.STATUSES.ACTIVE &&
                 user.notifications.includes(EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN)
             )).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            });
         });
     });
 
@@ -265,109 +251,103 @@ describe('UserService.getAdminPBACUsers', () => {
         it('should propagate database errors', async () => {
             // Arrange
             const dbError = new Error('Database connection failed');
-            mockUserCollection.aggregate.mockRejectedValue(dbError);
+            mockUserDAO.findMany.mockRejectedValue(dbError);
 
             // Act & Assert
             await expect(userService.getAdminPBACUsers()).rejects.toThrow('Database connection failed');
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should handle null result from database', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(null);
+            mockUserDAO.findMany.mockResolvedValue(null);
 
             // Act
             const result = await userService.getAdminPBACUsers();
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should handle undefined result from database', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(undefined);
+            mockUserDAO.findMany.mockResolvedValue(undefined);
 
             // Act
             const result = await userService.getAdminPBACUsers();
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
     });
 
     describe('query structure validation', () => {
-        it('should use correct MongoDB aggregation pipeline', async () => {
+        it('should use correct findMany query', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             await userService.getAdminPBACUsers();
 
             // Assert
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            });
         });
 
         it('should use correct USER constants', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             await userService.getAdminPBACUsers();
 
             // Assert
-            const expectedQuery = [{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }];
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith(expectedQuery);
+            const expectedQuery = {
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            };
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
 
         it('should use correct EMAIL_NOTIFICATIONS constant', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             await userService.getAdminPBACUsers();
 
             // Assert
-            const expectedQuery = [{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }];
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith(expectedQuery);
-            expect(expectedQuery[0].$match.notifications.$in[0]).toBe(EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN);
+            const expectedQuery = {
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            };
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
+            expect(expectedQuery.notifications.$in[0]).toBe(EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN);
         });
     });
 
     describe('performance and behavior', () => {
-        it('should call aggregate only once per invocation', async () => {
+        it('should call findMany only once per invocation', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             await userService.getAdminPBACUsers();
 
             // Assert
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should return the same result on multiple calls with same data', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             const result1 = await userService.getAdminPBACUsers();
@@ -375,7 +355,7 @@ describe('UserService.getAdminPBACUsers', () => {
 
             // Assert
             expect(result1).toEqual(result2);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(2);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(2);
         });
     });
 
@@ -388,7 +368,7 @@ describe('UserService.getAdminPBACUsers', () => {
                 userStatus: USER.STATUSES.ACTIVE,
                 notifications: [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]
             }];
-            mockUserCollection.aggregate.mockResolvedValue(minimalAdminPBAC);
+            mockUserDAO.findMany.mockResolvedValue(minimalAdminPBAC);
 
             // Act
             const result = await userService.getAdminPBACUsers();
@@ -429,7 +409,7 @@ describe('UserService.getAdminPBACUsers', () => {
                     timezone: 'UTC'
                 }
             }];
-            mockUserCollection.aggregate.mockResolvedValue(adminWithMultipleNotifications);
+            mockUserDAO.findMany.mockResolvedValue(adminWithMultipleNotifications);
 
             // Act
             const result = await userService.getAdminPBACUsers();
@@ -446,29 +426,27 @@ describe('UserService.getAdminPBACUsers', () => {
     describe('comparison with other user retrieval methods', () => {
         it('should use different query structure than getAdmin', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             await userService.getAdminPBACUsers();
 
             // Assert
-            const expectedQuery = [{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                    "$or": [{"role": USER.ROLES.ADMIN}]
-                }
-            }];
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith(expectedQuery);
+            const expectedQuery = {
+                "userStatus": USER.STATUSES.ACTIVE,
+                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
+                "$or": [{"role": USER.ROLES.ADMIN}]
+            };
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
             
             // Verify it's different from getAdmin query
-            expect(expectedQuery[0].$match).toHaveProperty('notifications');
-            expect(expectedQuery[0].$match).toHaveProperty('$or');
+            expect(expectedQuery).toHaveProperty('notifications');
+            expect(expectedQuery).toHaveProperty('$or');
         });
 
         it('should return array format consistent with other user retrieval methods', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             const result = await userService.getAdminPBACUsers();
@@ -486,7 +464,7 @@ describe('UserService.getAdminPBACUsers', () => {
     describe('PBAC-specific functionality', () => {
         it('should specifically target PBAC admin users', async () => {
             // Arrange
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             const result = await userService.getAdminPBACUsers();
@@ -502,7 +480,7 @@ describe('UserService.getAdminPBACUsers', () => {
         it('should exclude admin users without PBAC notification', async () => {
             // Arrange
             const allAdmins = [...mockAdminPBACUsers, mockAdminWithoutNotification];
-            mockUserCollection.aggregate.mockResolvedValue(mockAdminPBACUsers);
+            mockUserDAO.findMany.mockResolvedValue(mockAdminPBACUsers);
 
             // Act
             const result = await userService.getAdminPBACUsers();

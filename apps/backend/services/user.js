@@ -54,8 +54,7 @@ class UserService {
     _allEmailNotificationNamesSet = new Set([...Object.values(EN.SUBMISSION_REQUEST), ...Object.values(EN.DATA_SUBMISSION), ...Object.values(EN.USER_ACCOUNT)]);
     _NIH = "nih";
     _NOT_APPLICABLE = "NA";
-    constructor(userCollection, logCollection, organizationCollection, notificationsService, submissionsCollection, applicationCollection, officialEmail, appUrl, approvedStudiesService, inactiveUserDays, configurationService, institutionService, authorizationService) {
-        this.userCollection = userCollection;
+    constructor(logCollection, organizationCollection, notificationsService, submissionsCollection, applicationCollection, officialEmail, appUrl, approvedStudiesService, inactiveUserDays, configurationService, institutionService, authorizationService) {
         this.logCollection = logCollection;
         this.organizationCollection = organizationCollection;
         this.notificationsService = notificationsService;
@@ -69,7 +68,7 @@ class UserService {
         this.configurationService = configurationService;
         this.institutionService = institutionService;
         this.authorizationService = authorizationService;
-        this.userDAO = new UserDAO(userCollection);
+        this.userDAO = new UserDAO();
         this.approvedStudyDAO = new ApprovedStudyDAO();
         this.submissionDAO = new SubmissionDAO();
     }
@@ -106,7 +105,7 @@ class UserService {
         const userInfo = context?.userInfo;
 
         if (adminEmails.length === 0) {
-            console.error("The request access notification does not have any recipient");
+            console.error(ERROR.NO_ADMIN_USER);
             return ValidationHandler.handle(ERROR.NO_ADMIN_USER);
         }
 
@@ -127,16 +126,14 @@ class UserService {
     }
 
     /**
-     * Retrieves user documents from the userCollection for a Federal Lead role.
-     * @returns {Array} - An array of user documents.
+     * Retrieves active Federal Lead users.
+     * @returns {Promise<object[]>} An array of user documents
      */
     async getFedLeads() {
-        return await this.userCollection.aggregate([{
-            "$match": {
-                role: USER.ROLES.FEDERAL_LEAD,
-                userStatus: USER.STATUSES.ACTIVE
-            }
-        }]);
+        return await this.userDAO.findMany({
+            role: USER.ROLES.FEDERAL_LEAD,
+            userStatus: USER.STATUSES.ACTIVE
+        });
     }
 
 
@@ -165,9 +162,9 @@ class UserService {
             tokens: [accessToken],
             updateAt: sessionCurrentTime
         }
-        const updateResult = await this.userCollection.update(updateUser);
-
-        if (!updateResult?.matchedCount === 1) {
+        try {
+            await this.userDAO.update(updateUser._id, updateUser);
+        } catch (error) {
             throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
         }
 
@@ -178,8 +175,26 @@ class UserService {
     }
 
 
+    /**
+     * Find a user by ID without enriching studies.
+     * @param {string} userID User ID
+     * @returns {Promise<object|null>}
+     */
+    async findByID(userID) {
+        return await this.userDAO.findById(userID);
+    }
+
+    /**
+     * Find users by IDs without enriching studies.
+     * @param {string[]} userIDs User IDs
+     * @returns {Promise<object[]>}
+     */
+    async findByIDs(userIDs) {
+        return await this.userDAO.findManyByIds(userIDs);
+    }
+
     async getUserByID(userID) {
-        const result = await this.userDAO.findFirst({id: userID});
+        const result = await this.userDAO.findById(userID);
         if (result) {
             const studies = await this._findApprovedStudies(result.studies);
             return {
@@ -323,11 +338,8 @@ class UserService {
             _id: params.userID
         };
 
-        const result = await this.userCollection.aggregate([{
-            "$match": filters
-        }, {"$limit": 1}]);
-        if (result?.length === 1) {
-            const user = result[0];
+        const user = await this.userDAO.findFirst(filters);
+        if (user) {
             const roleScope = userScope.getRoleScope();
             if (user && !userScope.isAllScope() && roleScope && roleScope?.scopeValues?.length > 0) {
                 const roleSet = new Set(Object.values(ROLES));
@@ -373,7 +385,7 @@ class UserService {
             match = this._buildReopenListUsersMatch();
         }
 
-        const result = await this.userCollection.aggregate([{ "$match": match }]);
+        const result = await this.userDAO.findMany(match);
         if (!result?.length) {
             return [];
         }
@@ -424,27 +436,25 @@ class UserService {
     }
 
     async getAdmin() {
-        let result = await this.userCollection.aggregate([{
-            "$match": {
-                role: USER.ROLES.ADMIN,
-                userStatus: USER.STATUSES.ACTIVE
-            }
-        }]);
+        let result = await this.userDAO.findMany({
+            role: USER.ROLES.ADMIN,
+            userStatus: USER.STATUSES.ACTIVE
+        });
         return result || [];
     }
 
     async updateMyUser(params, context) {
         isLoggedInOrThrow(context);
         isValidUserStatus(context?.userInfo?.userStatus);
-        let sessionCurrentTime = getCurrentTime();
-        let user = await this.userCollection.find(context.userInfo._id);
-        if (!user || !Array.isArray(user) || user.length < 1) throw new Error("User is not in the database")
-
         if (!context.userInfo._id) {
-            let error = "there is no UserId in the session";
+            let error = "User ID is missing from the context user information";
             console.error(error)
             throw new Error(error)
         }
+        let sessionCurrentTime = getCurrentTime();
+        let user = await this.userDAO.findById(context.userInfo._id);
+        if (!user) throw new Error("User is not found in the database")
+
         const updateUser ={
             _id: context.userInfo._id,
             firstName: params.userInfo.firstName,
@@ -452,23 +462,20 @@ class UserService {
             fullName: formatName(params.userInfo),
             updateAt: sessionCurrentTime
         }
-        const updateResult = await this.userCollection.update(updateUser);
+        try {
+            await this.userDAO.update(updateUser._id, updateUser);
+        } catch (error) {
+            console.error("An error occurred while updating the User object: ", error);
+            throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
+        }
         // store user update log
-        if (updateResult?.matchedCount > 0) {
-            const prevUser = {firstName: user[0].firstName, lastName: user[0].lastName};
-            const newProfile = {firstName: params.userInfo.firstName, lastName: params.userInfo.lastName};
-            const log = UpdateProfileEvent.create(user[0]._id, user[0].email, user[0].IDP, prevUser, newProfile);
-            await this.logCollection.insert(log);
-        }
-        // error handling
-        if (updateResult.matchedCount < 1) {
-            let error = "there is an error getting the result";
-            console.error(error)
-            throw new Error(error)
-        }
+        const prevUser = {firstName: user.firstName, lastName: user.lastName};
+        const newProfile = {firstName: params.userInfo.firstName, lastName: params.userInfo.lastName};
+        const log = UpdateProfileEvent.create(user._id, user.email, user.IDP, prevUser, newProfile);
+        await this.logCollection.insert(log);
         // Update all dependent objects only if the User's Name has changed
         // NOTE: We're not waiting for these async updates to complete before returning the updated User
-        if (updateUser.firstName !== user[0].firstName || updateUser.lastName !== user[0].lastName) {
+        if (updateUser.firstName !== user.firstName || updateUser.lastName !== user.lastName) {
             this.organizationCollection.updateMany(
                 { "conciergeID": updateUser._id },
                 { "conciergeName": `${updateUser.firstName} ${updateUser.lastName}` }
@@ -479,9 +486,9 @@ class UserService {
             ...updateUser,
             updateAt: sessionCurrentTime
         }
-        const userStudies = await this._findApprovedStudies(user[0]?.studies);
+        const userStudies = await this._findApprovedStudies(user?.studies);
         const result = {
-            ...user[0],
+            ...user,
             firstName: params.userInfo.firstName,
             lastName: params.userInfo.lastName,
             updateAt: sessionCurrentTime,
@@ -502,8 +509,8 @@ class UserService {
             throw new Error(SUBMODULE_ERROR.INVALID_USERID);
         }
 
-        const user = await this.userCollection.aggregate([{ "$match": { _id: params.userID } }]);
-        if (!user || !Array.isArray(user) || user.length < 1 || user[0]?._id !== params.userID) {
+        const userDoc = await this.userDAO.findById(params.userID);
+        if (!userDoc || userDoc?._id !== params.userID) {
             throw new Error(SUBMODULE_ERROR.USER_NOT_FOUND);
         }
 
@@ -512,7 +519,7 @@ class UserService {
         const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
 
         if (roleScope?.scope && (
-            !filteredRoles?.includes(user[0]?.role) || // check current role
+            !filteredRoles?.includes(userDoc?.role) || // check current role
             (params?.role && !filteredRoles?.includes(params?.role)) || // limit changing another role
             roleScope?.scopeValues?.length === 0)) {
             throw new Error(ERROR.INVALID_ROLE_SCOPE_REQUEST);
@@ -527,10 +534,10 @@ class UserService {
             throw new Error(SUBMODULE_ERROR.APPROVED_STUDIES_REQUIRED);
         }
         // note: Submitter is newly assigned now or institution info is only being updated.
-        const isSubmitter = USER.ROLES.SUBMITTER === params.role || (!params.role && USER.ROLES.SUBMITTER === user.role);
+        const isSubmitter = USER.ROLES.SUBMITTER === params.role || (!params.role && USER.ROLES.SUBMITTER === userDoc.role);
         const aInstitution = isSubmitter && params?.institutionID ?
             await this.institutionService.getInstitutionByID(params?.institutionID) : null;
-        this._setInstitution(aInstitution, user[0]?.institution, isSubmitter, updatedUser, params?.institutionID);
+        this._setInstitution(aInstitution, userDoc?.institution, isSubmitter, updatedUser, params?.institutionID);
 
         const isValidUserStatus = Object.values(USER.STATUSES).includes(params.status);
         if (params.status) {
@@ -541,9 +548,9 @@ class UserService {
             }
         }
 
-        updatedUser.dataCommons = DataCommon.get(user[0]?.dataCommons, params?.dataCommons);
-        await this._setUserPermissions(user[0], params?.role, params?.permissions, params?.notifications, updatedUser, user);
-        updatedUser  = await this.updateUserInfo(user[0], updatedUser, params.userID, params.status, params.role, params?.studies);
+        updatedUser.dataCommons = DataCommon.get(userDoc?.dataCommons, params?.dataCommons);
+        await this._setUserPermissions(userDoc, params?.role, params?.permissions, params?.notifications, updatedUser, userDoc);
+        updatedUser  = await this.updateUserInfo(userDoc, updatedUser, params.userID, params.status, params.role, params?.studies);
 
         return getDataCommonsDisplayNamesForUser(updatedUser);
     }
@@ -611,19 +618,21 @@ class UserService {
         else
             updatedUser.studies = [];
 
-        const res = await this.userCollection.findOneAndUpdate({ _id: userID }, {...updatedUser, updateAt: getCurrentTime()}, {returnDocument: 'after'});
-        const userAfterUpdate = getDataCommonsDisplayNamesForUser(res.value);
-        if (userAfterUpdate) {
-            const promiseArray = [
-                await this._notifyDeactivatedUser(prevUser, status),
-                await this._notifyUpdatedUser(prevUser, userAfterUpdate, role),
-                await this._logAfterUserEdit(prevUser, userAfterUpdate),
-                await this._removePrimaryContact(prevUser, userAfterUpdate)
-            ];
-            await Promise.all(promiseArray);
-        } else {
+        let userAfterUpdate;
+        try {
+            userAfterUpdate = getDataCommonsDisplayNamesForUser(
+                await this.userDAO.update(userID, {...updatedUser, updateAt: getCurrentTime()})
+            );
+        } catch (error) {
             throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
         }
+
+        await Promise.all([
+            this._notifyDeactivatedUser(prevUser, status),
+            this._notifyUpdatedUser(prevUser, userAfterUpdate, role),
+            this._logAfterUserEdit(prevUser, userAfterUpdate),
+            this._removePrimaryContact(prevUser, userAfterUpdate)
+        ]);
 
         if (userAfterUpdate.studies) {
             userAfterUpdate.studies = validStudies; // return approved studies dynamically with all properties of studies
@@ -713,7 +722,7 @@ class UserService {
             "notifications": {"$in": [EN.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
             "$or": [{"role": USER.ROLES.ADMIN}]
         };
-        return await this.userCollection.aggregate([{"$match": orgOwnerOrAdminRole}]) || [];
+        return await this.userDAO.findMany(orgOwnerOrAdminRole) || [];
     }
 
     /**
@@ -726,9 +735,9 @@ class UserService {
     async disableInactiveUsers(inactiveUsers) {
         if (!inactiveUsers || inactiveUsers?.length === 0) return [];
         const query = {"$or": inactiveUsers, IDP: {$ne: this._NIH}};
-        const updated = await this.userCollection.updateMany(query, {userStatus: USER.STATUSES.INACTIVE, updateAt: getCurrentTime()});
-        if (updated?.modifiedCount && updated?.modifiedCount > 0) {
-            return await this.userCollection.aggregate([{"$match": query}]) || [];
+        const updated = await this.userDAO.updateMany(query, {userStatus: USER.STATUSES.INACTIVE, updateAt: getCurrentTime()});
+        if (updated?.count && updated?.count > 0) {
+            return await this.userDAO.findMany(query) || [];
         }
         return [];
     }
@@ -745,7 +754,7 @@ class UserService {
             "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
             ...(dataCommonsArr.includes("All") ? {} : { "dataCommons": {$in: dataCommonsArr} })
         };
-        return await this.userCollection.aggregate([{"$match": query}]);
+        return await this.userDAO.findMany(query);
     }
 
     isAdmin(role) {
@@ -855,7 +864,7 @@ class UserService {
                 [USER_FIELDS.FIRST_NAME]: 1,
             }
         });
-        return await this.userCollection.aggregate(pipeline);
+        return await this.userDAO.aggregate(pipeline);
     }
 
     _validateUserPermission(isUserRoleChange, userRole, inputPermissions, filteredValidPermissions, inputNotifications, accessControl) {
@@ -917,7 +926,7 @@ class UserService {
             "permissions": {"$in": [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:${SCOPES.OWN}`]},
             "$or": [{"studies": {"$in": [studyID, "All"]}}, {"studies._id": {"$in": [studyID, "All"]}}]
         }; // user's studies contains studyID
-        const users = await this.userCollection.aggregate([{"$match": query}]);
+        const users = await this.userDAO.findMany(query);
         for (const user of users) {
             user.studies = await this._findApprovedStudies(user.studies);
         }
@@ -932,18 +941,11 @@ class UserService {
      * @returns {Promise<Array>} - An array of user documents.
      */
     async getUsersByNotifications(notifications, roles = []) {
-        return await this.userCollection.aggregate([{"$match": {
-                "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {
-                    "$in": notifications
-                },
-                ...(roles?.length > 0 && { "role": { "$in": roles } })
-            }
-        }]);
+        return await this.userDAO.getUsersByNotifications(notifications, roles);
     }
 
     /**
-     * Fetches a list of users based on specified notifications, roles, and optional data commons using Prisma.
+     * Fetches a list of users based on specified notifications, roles, and optional data commons.
      *
      * @param {Array} notifications - An array of notification types.
      * @param {Array} roles - An array of user roles.
@@ -955,18 +957,16 @@ class UserService {
             const whereConditions = {
                 userStatus: USER.STATUSES.ACTIVE,
                 notifications: {
-                    hasSome: notifications
+                    $in: notifications
                 },
                 role: {
-                    in: roles
+                    $in: roles
                 }
             };
 
             // Add data commons filter if provided
             if (dataCommons) {
-                whereConditions.dataCommons = {
-                    has: dataCommons
-                };
+                whereConditions.dataCommons = dataCommons;
             }
 
             return await this.userDAO.findMany(whereConditions);
@@ -977,12 +977,13 @@ class UserService {
     }
 
     async updateUserInstitution(institutionID, institutionName, institutionStatus) {
-        const updateUsers = await this.userCollection.updateMany(
-            { "institution._id": institutionID, $or: [{"institution.name": { "$ne": institutionName }}, {"institution.status": { "$ne": institutionStatus }}]},
-            { "institution.name": institutionName, "institution.status": institutionStatus, updateAt: getCurrentTime() }
-        );
-        if (!updateUsers?.acknowledged) {
-            console.error(ERROR.FAILED_UPDATE_USER_INSTITUTION);
+        try {
+            await this.userDAO.updateMany(
+                { "institution._id": institutionID, $or: [{"institution.name": { "$ne": institutionName }}, {"institution.status": { "$ne": institutionStatus }}]},
+                { "institution.name": institutionName, "institution.status": institutionStatus, updateAt: getCurrentTime() }
+            );
+        } catch (error) {
+            console.error(ERROR.FAILED_UPDATE_USER_INSTITUTION, error);
         }
     }
 

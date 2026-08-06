@@ -10,7 +10,7 @@ const createSession = require("./crdc-datahub-database-drivers/session-middlewar
 const statusRouter = require("./routers/status-endpoints-router");
 const graphqlRouter = require("./routers/graphql-router");
 const {MongoDBCollection} = require("./crdc-datahub-database-drivers/mongodb-collection");
-const {DATABASE_NAME, APPLICATION_COLLECTION, USER_COLLECTION, LOG_COLLECTION, APPROVED_STUDIES_COLLECTION,
+const {DATABASE_NAME, APPLICATION_COLLECTION, LOG_COLLECTION, APPROVED_STUDIES_COLLECTION,
     ORGANIZATION_COLLECTION, SUBMISSIONS_COLLECTION,
     DATA_RECORDS_ARCHIVE_COLLECTION
 } = require("./crdc-datahub-database-drivers/database-constants");
@@ -87,7 +87,6 @@ app.use("/api/graphql", graphqlRouter);
         const authorizationService = new AuthorizationService(configurationService);
         const notificationsService = new NotifyUser(emailService, config.tier);
         const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
-        const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
         const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
         const emailParams = {
             url: config.emails_url,
@@ -110,10 +109,9 @@ app.use("/api/graphql", graphqlRouter);
         const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
         const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
         const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
-        const programService = new Program(userCollection, submissionCollection, applicationCollection);
-        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, userCollection, programService, submissionCollection);
-
-        const userService = new UserService(userCollection, logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
+        const programService = new Program(submissionCollection, applicationCollection);
+        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, submissionCollection);
+        const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
         const s3Service = new S3Service();
 
         const awsService = new AWSService(submissionCollection, userService, config.role_arn, config.presign_expiration);

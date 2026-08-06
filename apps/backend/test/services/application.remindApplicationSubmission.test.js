@@ -6,10 +6,8 @@ const mockApprovedStudiesService = {};
 const mockUserService = {
   getUsersByNotifications: jest.fn(),
   getUserByID: jest.fn(),
-  userCollection: {
-    find: jest.fn(),
-    aggregate: jest.fn()
-  }
+  findByID: jest.fn(),
+  findByIDs: jest.fn()
 };
 const mockDbService = {};
 const mockNotificationsService = {
@@ -135,7 +133,7 @@ describe('remindApplicationSubmission', () => {
         email: 'blank@example.com',
         notifications: ['submission_request:expiring']
       });
-      mockUserService.userCollection.find.mockResolvedValue([]);
+      mockUserService.findByID.mockResolvedValue(null);
       applicationService.userDAO.findFirst.mockResolvedValue(null);
 
       await applicationService.remindApplicationSubmission();
@@ -205,7 +203,7 @@ describe('remindApplicationSubmission', () => {
         email: 'test@example.com'
       });
 
-      mockUserService.userCollection.find.mockResolvedValue([]);
+      mockUserService.findByID.mockResolvedValue(null);
       applicationService.userDAO.findFirst.mockResolvedValue(null);
 
       await applicationService.remindApplicationSubmission();
@@ -250,7 +248,7 @@ describe('remindApplicationSubmission', () => {
       });
 
       mockUserService.getUsersByNotifications.mockResolvedValue([]);
-      mockUserService.userCollection.find.mockResolvedValue([{ id: 'user-tracked', email: 'test@example.com' }]);
+      mockUserService.findByID.mockResolvedValue({ id: 'user-tracked', email: 'test@example.com' });
       applicationService.userDAO.findFirst.mockResolvedValue({ id: 'user-tracked', email: 'test@example.com' });
 
       await applicationService.remindApplicationSubmission();
@@ -295,7 +293,7 @@ describe('remindApplicationSubmission', () => {
       });
 
       mockUserService.getUsersByNotifications.mockResolvedValue([]);
-      mockUserService.userCollection.find.mockResolvedValue([{ id: 'user-flag-test', email: 'flag@example.com' }]);
+      mockUserService.findByID.mockResolvedValue({ id: 'user-flag-test', email: 'flag@example.com' });
       applicationService.userDAO.findFirst.mockResolvedValue({ id: 'user-flag-test', email: 'flag@example.com' });
 
       await applicationService.remindApplicationSubmission();

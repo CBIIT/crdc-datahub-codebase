@@ -41,7 +41,7 @@ describe('Program.listPrograms', () => {
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
-    program = new Program({}, {}, {});
+    program = new Program({}, {});
     jest.clearAllMocks();
   });
 
@@ -172,7 +172,7 @@ describe('Program.createProgram', () => {
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
-    program = new Program({}, {}, {});
+    program = new Program({}, {});
     jest.clearAllMocks();
     program._checkRemovedStudies = jest.fn();
   });
@@ -268,7 +268,7 @@ describe('Program.getProgramAPI', () => {
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
-    program = new Program({}, {}, {});
+    program = new Program({}, {});
     jest.clearAllMocks();
   });
 
@@ -314,7 +314,7 @@ describe('Program.getProgramByID', () => {
   beforeEach(() => {
     mockProgramDAO = { getProgramByID: jest.fn() };
     ProgramDAO.mockImplementation(() => mockProgramDAO);
-    program = new Program({}, {}, {});
+    program = new Program({}, {});
     jest.clearAllMocks();
   });
 
@@ -351,7 +351,7 @@ describe('Program.editProgram', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     
-    program = new Program({}, {}, {});
+    program = new Program({}, {});
     jest.clearAllMocks();
   });
 
@@ -362,12 +362,15 @@ describe('Program.editProgram', () => {
 
     mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
     mockProgramDAO.getProgramByName.mockResolvedValue(null);
-    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+    mockProgramDAO.updateMany.mockResolvedValue({ count: 1 });
+    mockUserDAO.updateUserOrg.mockResolvedValue({ count: 1 });
+    mockApplicationDAO.updateApplicationOrg.mockResolvedValue({ acknowledged: true });
 
     const result = await program.editProgram(orgID, params);
 
     expect(result).toEqual({ ...currentOrg, name: 'Updated Org', updateAt: expect.any(Date) });
     expect(mockProgramDAO.updateMany).toHaveBeenCalled();
+    expect(mockUserDAO.updateUserOrg).toHaveBeenCalledWith(orgID, expect.objectContaining({ name: 'Updated Org' }));
     expect(mockApprovedStudyDAO.findMany).not.toHaveBeenCalled();
     expect(mockApprovedStudyDAO.updateMany).not.toHaveBeenCalled();
   });
@@ -394,7 +397,7 @@ describe('Program.editProgram', () => {
     };
     mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
     mockApprovedStudyDAO.count.mockResolvedValue(0);
-    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+    mockProgramDAO.updateMany.mockResolvedValue({ count: 1 });
     mockProgramDAO.getProgramByName.mockResolvedValue({ _id: 'other-id', name: 'collision' });
 
     const result = await program.editProgram(orgID, { status: PROGRAM.STATUSES.INACTIVE });
@@ -411,7 +414,7 @@ describe('Program.editProgram', () => {
     const orgID = 'org-123';
     const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: PROGRAM.STATUSES.INACTIVE };
     mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
-    mockProgramDAO.updateMany.mockResolvedValue({ acknowledged: true });
+    mockProgramDAO.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await program.editProgram(orgID, { status: PROGRAM.STATUSES.ACTIVE });
 

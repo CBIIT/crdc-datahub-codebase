@@ -31,7 +31,8 @@ const mockApprovedStudiesService = {
     updateReapprovedStudy: jest.fn(),
 };
 const mockUserService = {
-    userCollection: { find: jest.fn(), aggregate: jest.fn() },
+    findByID: jest.fn(),
+    findByIDs: jest.fn(),
     getUsersByNotifications: jest.fn(),
     getUserByID: jest.fn(),
     updateUserInfo: jest.fn(),
@@ -1943,10 +1944,10 @@ describe('Application', () => {
             mockLogCollection.insert.mockResolvedValue();
             global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.find.mockResolvedValueOnce([{
+            mockUserService.findByID.mockResolvedValueOnce({
                 email: 'submitter@test.com',
                 notifications: [reviewNotification]
-            }]);
+            });
 
             await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
@@ -1995,10 +1996,10 @@ describe('Application', () => {
             mockLogCollection.insert.mockResolvedValue();
             global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.find.mockResolvedValueOnce([{
+            mockUserService.findByID.mockResolvedValueOnce({
                 email: 'submitter@test.com',
                 notifications: [reviewNotification]
-            }]);
+            });
 
             await app.approveApplication({
                 _id: 'app1',
@@ -2060,10 +2061,10 @@ describe('Application', () => {
             mockLogCollection.insert.mockResolvedValue();
             global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.find.mockResolvedValueOnce([{
+            mockUserService.findByID.mockResolvedValueOnce({
                 email: 'submitter@test.com',
                 notifications: [reviewNotification]
-            }]);
+            });
 
             await app.approveApplication({
                 _id: 'app1',
@@ -2334,10 +2335,10 @@ describe('Application', () => {
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
             mockLogCollection.insert.mockResolvedValue();
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.find.mockResolvedValueOnce([{
+            mockUserService.findByID.mockResolvedValueOnce({
                 email: 'submitter@test.com',
                 notifications: [reviewNotification]
-            }]);
+            });
 
             const result = await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
 
@@ -2592,7 +2593,7 @@ describe('Application', () => {
             mockLogCollection.insert.mockResolvedValue();
             mockInstitutionService.addNewInstitutions.mockResolvedValue();
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
-            mockUserService.userCollection.find.mockResolvedValue([]);
+            mockUserService.findByID.mockResolvedValue(null);
             global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
 
             await app.approveApplication({ _id: 'app1', comment: 'Approved' }, context);
@@ -2720,11 +2721,11 @@ describe('Application', () => {
             app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('1.0');
             app.applicationDAO.update = jest.fn().mockResolvedValue({ acknowledged: true });
             mockUserService.getUsersByNotifications = jest.fn().mockResolvedValue([]);
-            mockUserService.userCollection.find = jest.fn().mockResolvedValue([{
+            mockUserService.findByID = jest.fn().mockResolvedValue({
                 _id: 'user-applicant-1',
                 email: 'submitter@test.com',
                 notifications: [reviewNotification]
-            }]);
+            });
             mockNotificationsService.inquireQuestionNotification = jest.fn().mockResolvedValue();
         });
 
@@ -2821,7 +2822,7 @@ describe('Application', () => {
 
         beforeEach(() => {
             app.applicationDAO.update = jest.fn().mockResolvedValue({ acknowledged: true });
-            mockUserService.userCollection.find = jest.fn().mockResolvedValue([]);
+            mockUserService.findByID = jest.fn().mockResolvedValue(null);
             mockUserService.getUsersByNotifications = jest.fn()
                 .mockResolvedValueOnce([{ email: 'federal@test.com' }])
                 .mockResolvedValueOnce([{ email: 'federal@test.com' }, { email: 'admin@test.com' }]);
@@ -3452,7 +3453,7 @@ describe('Application', () => {
         };
 
         beforeEach(() => {
-            mockUserService.userCollection.find.mockResolvedValue([ownerUser]);
+            mockUserService.findByID.mockResolvedValue(ownerUser);
             mockUserService.getUsersByNotifications.mockResolvedValue([
                 { _id: 'bcc-user', email: 'bcc@example.com' }
             ]);
@@ -3496,9 +3497,9 @@ describe('Application', () => {
 
         it('includes previous owner in CC when ownership changed', async () => {
             const previousOwner = { _id: 'prev-owner', email: 'prev@example.com' };
-            mockUserService.userCollection.find
-                .mockResolvedValueOnce([ownerUser])
-                .mockResolvedValueOnce([previousOwner]);
+            mockUserService.findByID
+                .mockResolvedValueOnce(ownerUser)
+                .mockResolvedValueOnce(previousOwner);
 
             await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'prev-owner');
 
@@ -3513,9 +3514,9 @@ describe('Application', () => {
 
         it('does not include previous owner in CC when their email matches the new owner', async () => {
             const previousOwner = { _id: 'prev-owner', email: 'jane@example.com' };
-            mockUserService.userCollection.find
-                .mockResolvedValueOnce([ownerUser])
-                .mockResolvedValueOnce([previousOwner]);
+            mockUserService.findByID
+                .mockResolvedValueOnce(ownerUser)
+                .mockResolvedValueOnce(previousOwner);
 
             await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'prev-owner');
 
@@ -3529,7 +3530,7 @@ describe('Application', () => {
         });
 
         it('returns early without sending email when applicant has no email', async () => {
-            mockUserService.userCollection.find.mockResolvedValue([{ ...ownerUser, email: null }]);
+            mockUserService.findByID.mockResolvedValue({ ...ownerUser, email: null });
             const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
             await app._sendReopenApplicationEmail(reopenedApplication, { ...ownerUser, email: null }, 'owner-1');
@@ -3540,7 +3541,7 @@ describe('Application', () => {
 
         it('returns early when applicant notifications do not include REQUEST_REOPENED', async () => {
             const ownerWithoutNotification = { ...ownerUser, notifications: ['other_notification'] };
-            mockUserService.userCollection.find.mockResolvedValue([ownerWithoutNotification]);
+            mockUserService.findByID.mockResolvedValue(ownerWithoutNotification);
 
             await app._sendReopenApplicationEmail(reopenedApplication, ownerWithoutNotification, 'owner-1');
 
