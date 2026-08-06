@@ -60,7 +60,7 @@ export const PERMISSION_MAP = {
       const { role } = user;
       const isFormOwner = application?.applicant?.applicantID === user?._id;
       const hasPermissionKey = Boolean(getUserPermissionKey(user, "submission_request:submit"));
-      const submitStatuses: ApplicationStatus[] = ["In Progress", "Inquired"];
+      const submitStatuses: ApplicationStatus[] = ["In Progress", "Inquired", "In Revision"];
 
       if (!submitStatuses?.includes(application?.status)) {
         return false;
@@ -88,6 +88,7 @@ export const PERMISSION_MAP = {
         New: ALL_ROLES,
         "In Progress": ALL_ROLES,
         Inquired: ALL_ROLES,
+        "In Revision": ALL_ROLES,
         Submitted: ["Admin", "Federal Lead", "Data Commons Personnel"],
         "In Review": ["Admin", "Federal Lead", "Data Commons Personnel"],
         Canceled: ALL_ROLES,

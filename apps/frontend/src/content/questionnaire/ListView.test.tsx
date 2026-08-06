@@ -24,6 +24,7 @@ const DEFAULT_NON_FEDERAL_STATUSES: ApplicationStatus[] = [
   "Submitted",
   "In Review",
   "Inquired",
+  "In Revision",
   "Reopened",
 ];
 
@@ -31,6 +32,7 @@ const DEFAULT_FEDERAL_LEAD_STATUSES: ApplicationStatus[] = [
   "Submitted",
   "In Review",
   "Inquired",
+  "In Revision",
   "Reopened",
 ];
 

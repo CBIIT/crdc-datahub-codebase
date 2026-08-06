@@ -372,7 +372,8 @@ describe('Submission.getSubmission', () => {
         };
 
         mockDataRecordService = {
-            countNodesBySubmissionID: jest.fn()
+            countNodesBySubmissionID: jest.fn(),
+            exportDCFManifest: jest.fn().mockResolvedValue({})
         };
 
         mockUserService = {
@@ -2161,7 +2162,7 @@ describe('Submission.submissionAction', () => {
             jest.fn(), // userService
             jest.fn(), // programService
             jest.fn(), // notificationService
-            jest.fn(), // dataRecordService
+            { exportDCFManifest: jest.fn().mockResolvedValue({}) }, // dataRecordService
             jest.fn(), // fetchDataModelInfo
             jest.fn(), // awsService
             jest.fn(), // metadataQueueName

@@ -714,6 +714,9 @@ class Submission {
         if (action === ACTIONS.RELEASE) {
             completePromise.push(this.dataRecordService.exportMetadata(submissionID));
         }
+        if (action === ACTIONS.SUBMIT || action === ACTIONS.ADMIN_SUBMIT) {
+            completePromise.push(this.dataRecordService.exportDCFManifest(submissionID));
+        }
         if (action === ACTIONS.REJECT && submission?.intention === INTENTION.DELETE && oldStatus === RELEASED) {
             //based on CRDCDH-2338 to send a restoring deleted data file SQS message so validator can execute the restoration.
             completePromise.push(this._sendCompleteMessage({type: RESTORE_DELETED_DATA_FILES, submissionID}, submissionID));
@@ -2813,6 +2816,29 @@ class Submission {
             }
         }
     }
+    async downloadDCFManifest(params, context) {
+        verifySession(context)
+            .verifyInitialized();
+        const { submissionID } = params;
+        const aSubmission = await this._findByID(submissionID);
+        if (!aSubmission) {
+            throw new Error(ERROR.SUBMISSION_NOT_EXIST);
+        }
+        const reviewScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.REVIEW, aSubmission);
+        if (reviewScope.isNoneScope()) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+        if (![SUBMITTED, RELEASED, COMPLETED].includes(aSubmission.status)) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+        const manifestKey = `${aSubmission.rootPath}/dcf_manifest.tsv`;
+        const listed = await this.s3Service.listFile(aSubmission.bucketName, manifestKey);
+        if (!listed?.Contents?.length) {
+            throw new Error(ERROR.DCF_MANIFEST_NOT_AVAILABLE);
+        }
+        return this.s3Service.createDownloadSignedURL(aSubmission.bucketName, aSubmission.rootPath, 'dcf_manifest.tsv', 'dcf_manifest.tsv');
+    }
+
     /**
      * Get submission summary
      * @param {*} params 
@@ -2849,7 +2875,6 @@ class Submission {
                                 id: true,
                                 studyName: true,
                                 studyAbbreviation: true,
-                                applicationID: true,
                                 dbGaPID: true
                             }
                         },
@@ -3413,6 +3438,7 @@ class DataSubmission {
         this.dataCommons = dataCommons;
         this.modelVersion = modelVersion;
         this.studyID = approvedStudy?._id;
+        this.submissionRequestID = approvedStudy?.applicationID;
         this.dbGaPID = dbGaPID;
         this.status = NEW;
         this.history = [HistoryEventBuilder.createEvent(userInfo._id, NEW, null)];

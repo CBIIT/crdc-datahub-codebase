@@ -150,6 +150,36 @@ class NotifyUser {
         });
     }
 
+    async reopenApplicationNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
+        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REOPEN_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        const secondMessage = replaceMessageVariables(this.email_constants.REOPEN_APPLICATION_SECOND_CONTENT, messageVariables);
+        const thirdMessage = replaceMessageVariables(this.email_constants.REOPEN_APPLICATION_THIRD_CONTENT, messageVariables);
+        const subject = this.email_constants.REOPEN_APPLICATION_SUBJECT;
+        return await this.send(async () => {
+            const res = await this.emailService.sendNotification(
+                this.email_constants.NOTIFICATION_SENDER,
+                isTierAdded(this.tier) ? `${this.tier} ${subject}` : subject,
+                await createEmailTemplate("notification-template-sr-reopen.html", {
+                    message,
+                    secondMessage,
+                    thirdMessage,
+                    firstName: templateParams.firstName,
+                    studyName: messageVariables.studyName,
+                    studyAbbreviation: messageVariables.studyAbbreviation,
+                    programName: messageVariables.programName,
+                    programAbbreviation: messageVariables.programAbbreviation,
+                    isOwnershipChanged: templateParams.isOwnershipChanged
+                }),
+                email,
+                CCEmails,
+                BCCsEmails
+            );
+            if (res?.accepted?.length === 0) {
+                console.error(`Failed to send Reopen Submission Request Email Notifications: ${email}`);
+            }
+        });
+    }
+
     async inquireQuestionNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
         const message = replaceMessageVariables(this.email_constants.INQUIRE_CONTENT, messageVariables);
         const secondMessage = replaceMessageVariables(this.email_constants.INQUIRE_SECOND_CONTENT, messageVariables);

@@ -1,4 +1,4 @@
-const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED, REOPENED} = require("../constants/application-constants");
+const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED, IN_REVISION, REOPENED} = require("../constants/application-constants");
 const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
 const {v4} = require('uuid')
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
@@ -62,7 +62,7 @@ class Application {
         this.institionDAO = new InstitutionDAO()
         this.applicationDAO = new ApplicationDAO(applicationCollection);
         this.userDAO = new UserDAO();
-        this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, REOPENED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
+        this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, IN_REVISION, REOPENED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
     }
 
     _normalizeApplicationStatus(status) {
@@ -449,9 +449,11 @@ class Application {
         const config = await this.configurationService.findByType("APPLICATION_FORM_VERSIONS"); //get version config dynamically
         const currentVersion = config?.current || "2.0";
         const newStatusVersion = config?.new || "3.0";
-        // auto upgrade version based on configuration if status is NEW, IN_PROGRESS, INQUIRED
-        // for status other than NEW, IN_PROGRESS, INQUIRED, keep original version if exists, else set current version.
-        return [NEW, IN_PROGRESS, INQUIRED, REOPENED].includes(status) ? newStatusVersion : (!version)? currentVersion : version;
+        // auto upgrade version based on configuration if status is NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED
+        // for status other than NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, keep original version if exists, else set current version.
+        return [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED].includes(status)
+            ? newStatusVersion
+            : (!version) ? currentVersion : version;
     }
 
     /**
@@ -623,6 +625,8 @@ class Application {
         let targetStatus = params?.status;
         if (prevStatus === REOPENED) {
             targetStatus = IN_PROGRESS;
+        } else if (prevStatus === IN_REVISION) {
+            targetStatus = IN_REVISION;
         } else if (!targetStatus || ![NEW, IN_PROGRESS].includes(targetStatus)) {
             throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         }
@@ -999,7 +1003,7 @@ class Application {
         applications = mappedApplications;
 
         // Sort statuses in display order
-        const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, REOPENED, APPROVED, REJECTED, CANCELED, DELETED];
+        const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, IN_REVISION, REOPENED, APPROVED, REJECTED, CANCELED, DELETED];
         const statuses = (statusesList || []).sort((a, b) => statusOrder.indexOf(a) - statusOrder.indexOf(b));
         // Return the results
         return {
@@ -1022,7 +1026,7 @@ class Application {
         }
 
         const application = await this.getApplicationById(params._id);
-        const validStatus = [IN_PROGRESS, INQUIRED]; //updated based on new requirement.
+        const validStatus = [IN_PROGRESS, INQUIRED, IN_REVISION]; // updated based on new requirement.
         verifyApplication(application)
             .notEmpty()
             .state(validStatus);
@@ -1064,13 +1068,17 @@ class Application {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
+        verifyApplication(application)
+            .notEmpty()
+            .state([INQUIRED]);
+
         application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
         if (application && application.status) {
             const reviewComment = this._getInProgressComment(application?.history);
-            const history = HistoryEventBuilder.createEvent(context.userInfo._id, IN_PROGRESS, reviewComment);
+            const history = HistoryEventBuilder.createEvent(context.userInfo._id, IN_REVISION, reviewComment);
             const updated = await this.applicationDAO.update({
                 _id: application._id,
-                status: IN_PROGRESS,
+                status: IN_REVISION,
                 updatedAt: history.dateTime,
                 version: application.version,
                 history: [...(application.history || []), history]
@@ -1078,7 +1086,7 @@ class Application {
             if (updated) {
                 const promises = [
                     await this.getApplicationById(applicationId),
-                    await this.logCollection.insert(UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, IN_PROGRESS))
+                    await this.logCollection.insert(UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, IN_REVISION))
                 ];
                 return await Promise.all(promises).then(function(results) {
                     return results[0];
@@ -1186,6 +1194,8 @@ class Application {
             ))
         ]);
 
+        await this._sendReopenApplicationEmail(insertedApp, ownerUser, sourceOwnerId);
+
         // Compile API response
         insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
         return await this._reformatRecordForApplicationResponse(insertedApp, ownerUser);
@@ -1270,13 +1280,13 @@ class Application {
         }
         const aApplication = await this.getApplicationById(document._id);
         const isApplicationOwned = userScope.isOwnScope() && userInfo?._id === aApplication?.applicant?.applicantID;
-        const validApplicationStatus = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, REOPENED];
+        const validApplicationStatus = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, IN_REVISION, REOPENED];
         if (!validApplicationStatus.includes(aApplication.status)) {
             throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         }
         aApplication.version = await this._getApplicationVersionByStatus(aApplication.status, aApplication?.version);
-        const powerUserCond = [NEW, IN_PROGRESS, INQUIRED, SUBMITTED, IN_REVIEW, REOPENED].includes(aApplication?.status);
-        const isValidCond = [NEW, IN_PROGRESS, INQUIRED, REOPENED].includes(aApplication?.status) && userInfo?._id === aApplication?.applicant?.applicantID;
+        const powerUserCond = [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, SUBMITTED, IN_REVIEW, REOPENED].includes(aApplication?.status);
+        const isValidCond = [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED].includes(aApplication?.status) && userInfo?._id === aApplication?.applicant?.applicantID;
         if ((userScope.isAllScope() && !powerUserCond) || (isApplicationOwned && !isValidCond)) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
@@ -1453,6 +1463,18 @@ class Application {
                     promises.push(this.userService.updateUserInfo(
                         applicant, updateUser, _id, applicant?.userStatus, applicant?.role, newStudiesIDs));
                 }
+            } else if (isRevisionReapproval && existingStudy && questionnaire) {
+                // Revision re-approval: refresh the existing approved study from the current application
+                // (and relink applicationID to this revision), without touching studyName, studyAbbreviation,
+                // or program-related fields.
+                promises.push(this.approvedStudiesService.updateReapprovedStudy(
+                    existingStudy,
+                    updated,
+                    questionnaire,
+                    document?.pendingModelChange,
+                    document?.pendingImageDeIdentification,
+                    isPendingGPA
+                ));
             }
             promises.push(this.logCollection.insert(
                 UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, APPROVED)
@@ -1894,6 +1916,52 @@ class Application {
             });
         }
 
+    }
+
+    async _sendReopenApplicationEmail(application, ownerUser, previousOwnerId) {
+        try {
+            const isOwnershipChanged = ownerUser._id !== previousOwnerId && ownerUser.id !== previousOwnerId;
+            const [ownerInfo, BCCUsers] = await Promise.all([
+                this.userService.userCollection.find(ownerUser._id ?? ownerUser.id),
+                this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REOPENED],
+                    [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
+            ]);
+            const applicantInfo = ownerInfo?.pop() ?? ownerUser;
+
+            if (!applicantInfo?.email) {
+                console.error("Reopen submission request email notification does not have any recipient", `Application ID: ${application?._id}`);
+                return;
+            }
+
+            if (!applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REOPENED)) {
+                return;
+            }
+
+            const CCEmails = getCCEmails(applicantInfo?.email, application);
+            // Include previous owner in CC if ownership changed
+            if (isOwnershipChanged && previousOwnerId) {
+                const previousOwner = (await this.userService.userCollection.find(previousOwnerId))?.pop();
+                if (previousOwner?.email && EMAIL_REGEX.test(previousOwner.email) && !CCEmails.includes(previousOwner.email) && previousOwner.email !== applicantInfo.email) {
+                    CCEmails.push(previousOwner.email);
+                }
+            }
+
+            const toBCCEmails = getUserEmails(BCCUsers)
+                ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
+
+            await this.notificationService.reopenApplicationNotification(applicantInfo.email, CCEmails, toBCCEmails, {
+                firstName: `${applicantInfo.firstName} ${applicantInfo.lastName || ""}`,
+                isOwnershipChanged
+            }, {
+                studyName: studyLabelForEmailBody(application),
+                studyAbbreviation: `${application?.studyAbbreviation?.trim() || "NA"}`,
+                programName: `${application?.programName?.trim() || "NA"}`,
+                programAbbreviation: `${application?.programAbbreviation?.trim() || "NA"}`,
+                contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
+            });
+        } catch (error) {
+            console.error(`Failed to send reopen application notification email for application ${application?._id}:`, error.message);
+        }
     }
 
     async _sendEmailFinalInactiveApplication(application, baseInactiveDays = this.emailParams.inactiveDays) {

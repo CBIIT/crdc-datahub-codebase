@@ -293,6 +293,11 @@ class DataRecordService {
         return await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.exportQueue, submissionID);
     }
 
+    async exportDCFManifest(submissionID) {
+        const msg = Message.createFileSubmissionMessage("Export DCF Manifest", submissionID);
+        return await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.exportQueue, submissionID);
+    }
+
     async deleteMetadataByFilter(filter){
         return await this.dataRecordsCollection.deleteMany(filter);
     }
