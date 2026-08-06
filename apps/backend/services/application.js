@@ -1918,15 +1918,23 @@ class Application {
 
     }
 
+    /**
+     * Sends the reopen notification email to the owner of a reopened submission request.
+     * Never throws; failures are logged so they cannot break the reopen workflow.
+     * @param {object} application Reopened application document
+     * @param {object} ownerUser Owner of the reopened application
+     * @param {string} previousOwnerId Owner of the source application before reopening
+     * @returns {Promise<void>}
+     */
     async _sendReopenApplicationEmail(application, ownerUser, previousOwnerId) {
         try {
             const isOwnershipChanged = ownerUser._id !== previousOwnerId && ownerUser.id !== previousOwnerId;
             const [ownerInfo, BCCUsers] = await Promise.all([
-                this.userService.userCollection.find(ownerUser._id ?? ownerUser.id),
+                this.userService.findByID(ownerUser._id ?? ownerUser.id),
                 this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REOPENED],
                     [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
             ]);
-            const applicantInfo = ownerInfo?.pop() ?? ownerUser;
+            const applicantInfo = ownerInfo ?? ownerUser;
 
             if (!applicantInfo?.email) {
                 console.error("Reopen submission request email notification does not have any recipient", `Application ID: ${application?._id}`);
@@ -1940,7 +1948,7 @@ class Application {
             const CCEmails = getCCEmails(applicantInfo?.email, application);
             // Include previous owner in CC if ownership changed
             if (isOwnershipChanged && previousOwnerId) {
-                const previousOwner = (await this.userService.userCollection.find(previousOwnerId))?.pop();
+                const previousOwner = await this.userService.findByID(previousOwnerId);
                 if (previousOwner?.email && EMAIL_REGEX.test(previousOwner.email) && !CCEmails.includes(previousOwner.email) && previousOwner.email !== applicantInfo.email) {
                     CCEmails.push(previousOwner.email);
                 }

@@ -3453,7 +3453,7 @@ describe('Application', () => {
         };
 
         beforeEach(() => {
-            mockUserService.userCollection.find.mockResolvedValue([ownerUser]);
+            mockUserService.findByID.mockResolvedValue(ownerUser);
             mockUserService.getUsersByNotifications.mockResolvedValue([
                 { _id: 'bcc-user', email: 'bcc@example.com' }
             ]);
@@ -3497,9 +3497,9 @@ describe('Application', () => {
 
         it('includes previous owner in CC when ownership changed', async () => {
             const previousOwner = { _id: 'prev-owner', email: 'prev@example.com' };
-            mockUserService.userCollection.find
-                .mockResolvedValueOnce([ownerUser])
-                .mockResolvedValueOnce([previousOwner]);
+            mockUserService.findByID
+                .mockResolvedValueOnce(ownerUser)
+                .mockResolvedValueOnce(previousOwner);
 
             await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'prev-owner');
 
@@ -3514,9 +3514,9 @@ describe('Application', () => {
 
         it('does not include previous owner in CC when their email matches the new owner', async () => {
             const previousOwner = { _id: 'prev-owner', email: 'jane@example.com' };
-            mockUserService.userCollection.find
-                .mockResolvedValueOnce([ownerUser])
-                .mockResolvedValueOnce([previousOwner]);
+            mockUserService.findByID
+                .mockResolvedValueOnce(ownerUser)
+                .mockResolvedValueOnce(previousOwner);
 
             await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'prev-owner');
 
@@ -3530,7 +3530,7 @@ describe('Application', () => {
         });
 
         it('returns early without sending email when applicant has no email', async () => {
-            mockUserService.userCollection.find.mockResolvedValue([{ ...ownerUser, email: null }]);
+            mockUserService.findByID.mockResolvedValue({ ...ownerUser, email: null });
             const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
             await app._sendReopenApplicationEmail(reopenedApplication, { ...ownerUser, email: null }, 'owner-1');
@@ -3541,7 +3541,7 @@ describe('Application', () => {
 
         it('returns early when applicant notifications do not include REQUEST_REOPENED', async () => {
             const ownerWithoutNotification = { ...ownerUser, notifications: ['other_notification'] };
-            mockUserService.userCollection.find.mockResolvedValue([ownerWithoutNotification]);
+            mockUserService.findByID.mockResolvedValue(ownerWithoutNotification);
 
             await app._sendReopenApplicationEmail(reopenedApplication, ownerWithoutNotification, 'owner-1');
 
