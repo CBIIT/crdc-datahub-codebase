@@ -396,6 +396,8 @@ describe('DataRecordService', () => {
         { _id: '1', data: 'test' }
       ]);
       expect(DataRecordModel.deleteMany).toHaveBeenCalledWith({ submissionID: 'submission-123' });
+      expect(mockDataRecordArchiveCollection.insertMany.mock.invocationCallOrder[0])
+        .toBeLessThan(DataRecordModel.deleteMany.mock.invocationCallOrder[0]);
     });
 
     test('should return null when no data found', async () => {
@@ -404,6 +406,17 @@ describe('DataRecordService', () => {
       const result = await dataRecordService.archiveMetadataByFilter({ submissionID: 'submission-123' });
 
       expect(result).toBeNull();
+    });
+
+    test('should not delete source records when archive insert fails', async () => {
+      DataRecordModel.aggregate.mockResolvedValue([{ _id: '1', data: 'test' }]);
+      mockDataRecordArchiveCollection.insertMany.mockRejectedValue(new Error('insert failed'));
+
+      await expect(
+        dataRecordService.archiveMetadataByFilter({ submissionID: 'submission-123' })
+      ).rejects.toThrow('insert failed');
+
+      expect(DataRecordModel.deleteMany).not.toHaveBeenCalled();
     });
   });
 

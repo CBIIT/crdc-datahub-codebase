@@ -314,10 +314,9 @@ class DataRecordService {
         const dataArray = await this.dataRecordDAO.aggregate([{"$match":filter}]);
         if (dataArray.length === 0) return null;
         const documentsToArchive = dataArray.map(({ id, ...doc }) => doc);
-        return await Promise.all([
-            this.dataRecordArchiveCollection.insertMany(documentsToArchive),
-            this.deleteMetadataByFilter(filter),
-        ]);
+        const insertResult = await this.dataRecordArchiveCollection.insertMany(documentsToArchive);
+        const deleteResult = await this.deleteMetadataByFilter(filter);
+        return [insertResult, deleteResult];
     }
 
     async submissionDataFiles(submissionID, s3FileNames) {
