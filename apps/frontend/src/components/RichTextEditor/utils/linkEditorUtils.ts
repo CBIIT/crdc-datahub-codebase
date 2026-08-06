@@ -47,6 +47,10 @@ const hasLinkAt = (editor: CustomEditor, at: Range): boolean => {
  * insertLink(editor, "Google", "https://google.com");
  */
 export const insertLink = (editor: CustomEditor, text: string, url: string): void => {
+  if (editor.selection && hasLinkAt(editor, editor.selection)) {
+    return;
+  }
+
   Transforms.insertNodes(editor, createLinkElement(url, [{ text }]), { select: true });
   Transforms.collapse(editor, { edge: "end" });
   Transforms.move(editor, { distance: 1, unit: "offset" });
