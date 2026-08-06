@@ -35,7 +35,7 @@ const PRESET_SR_APPROVAL_PENDING_HTML = {
     transformTags: {
         a: (tagName, attribs) => {
             const nextAttribs = {
-                rel: attribs.rel || 'noopener noreferrer'
+                rel: 'noopener noreferrer'
             };
             const href = attribs.href;
             if (href != null && String(href).trim() !== '') {
@@ -69,7 +69,7 @@ const PRESET_SR_REVIEW_COMMENT_HTML = {
     transformTags: {
         a: (tagName, attribs) => {
             const nextAttribs = {
-                rel: attribs.rel || 'noopener noreferrer'
+                rel: 'noopener noreferrer'
             };
             const href = attribs.href;
             if (href != null && String(href).trim() !== '') {

@@ -100,6 +100,12 @@ describe('PRESET_SR_APPROVAL_PENDING_HTML via sanitizeAllowlistedHtml', () => {
         expect(out).toContain('<strong>');
         expect(out).toContain('<em>');
     });
+
+    it('overrides a caller-supplied rel unconditionally', () => {
+        const out = sanitize('<a href="https://example.com" rel="opener">link</a>');
+        expect(out).not.toMatch(/rel="opener"/);
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
 });
 
 describe('PRESET_NOTIFICATION_TEXT_HTML via sanitizeAllowlistedHtml', () => {
@@ -249,5 +255,11 @@ describe('PRESET_SR_REVIEW_COMMENT_HTML via sanitizeAllowlistedHtml', () => {
         const out = sanitize('<img src="https://evil.com/x.png"><p>text</p>');
         expect(out).not.toMatch(/img/i);
         expect(out).toContain('text');
+    });
+
+    it('overrides a caller-supplied rel unconditionally', () => {
+        const out = sanitize('<a href="https://example.com" rel="opener">link</a>');
+        expect(out).not.toMatch(/rel="opener"/);
+        expect(out).toMatch(/rel="noopener noreferrer"/);
     });
 });
