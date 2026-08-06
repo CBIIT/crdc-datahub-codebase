@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body,
+      pre {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Dear {{ firstName }},</p>
+    <p>{{ message }}</p>
+    <p>{{ secondMessage }}</p>
+    <ul style="margin: 0.5em 0 1em 0; padding-left: 1.75em; list-style-type: disc">
+      <li style="margin: 0.25em 0">
+        <strong>Study: </strong><span>{{ studyName }} ({{ studyAbbreviation }})</span>
+      </li>
+      <li style="margin: 0.25em 0">
+        <strong>Program: </strong><span>{{ programName }} ({{ programAbbreviation }})</span>
+      </li>
+    </ul>
+    {{#if isOwnershipChanged}}
+    <p>
+      <strong>[Ownership Change]</strong><br>
+      You have been assigned as the new owner of this SRF and are responsible for completing and resubmitting it.
+    </p>
+    {{/if}}
+    <p>{{ thirdMessage }}</p>
+    <p>Sincerely,</p>
+    <p>CRDC Submission Portal</p>
+  </body>
+</html>

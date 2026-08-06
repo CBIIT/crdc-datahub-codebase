@@ -2,7 +2,7 @@ const { Application, VALID_ORDER_BY_LIST_APPLICATIONS } = require('../../service
 const ApplicationDAO = require('../../dao/application');
 const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
 const ERROR = require('../../constants/error-constants');
-const { NEW, APPROVED, IN_PROGRESS, INQUIRED, REOPENED, CANCELED, REJECTED, DELETED, SUBMITTED, IN_REVIEW } = require('../../constants/application-constants');
+const { NEW, APPROVED, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, CANCELED, REJECTED, DELETED, SUBMITTED, IN_REVIEW } = require('../../constants/application-constants');
 const USER_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/user-constants');
 const { DEFAULT_GPA_NAME } = require('../../domain/pending-gpa');
 const { UserScope: RealUserScope } = require('../../domain/user-scope');
@@ -28,6 +28,7 @@ const mockApprovedStudiesService = {
     findByApplicationID: jest.fn(),
     storeApprovedStudies: jest.fn(),
     saveApprovedStudyFromApplication: jest.fn(),
+    updateReapprovedStudy: jest.fn(),
 };
 const mockUserService = {
     userCollection: { find: jest.fn(), aggregate: jest.fn() },
@@ -40,6 +41,7 @@ const mockNotificationsService = {
     approveQuestionNotification: jest.fn(),
     cancelApplicationNotification: jest.fn(),
     restoreApplicationNotification: jest.fn(),
+    reopenApplicationNotification: jest.fn(),
     finalRemindApplicationsNotification: jest.fn(),
     remindApplicationsNotification: jest.fn(),
     multipleChangesApproveQuestionNotification: jest.fn(),
@@ -115,7 +117,8 @@ global.EMAIL_NOTIFICATIONS = {
         REQUEST_DELETE: 'REQUEST_DELETE',
         REQUEST_REVIEW: 'REQUEST_REVIEW',
         REQUEST_CANCEL: 'REQUEST_CANCEL',
-        REQUEST_EXPIRING: 'REQUEST_EXPIRING'
+        REQUEST_EXPIRING: 'REQUEST_EXPIRING',
+        REQUEST_REOPENED: 'REQUEST_REOPENED'
     }
 };
 global.ROLES = {
@@ -1645,6 +1648,7 @@ describe('Application', () => {
             app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue(null);
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(null);
             mockApprovedStudiesService.saveApprovedStudyFromApplication.mockResolvedValue({ _id: 'study1' });
+            mockApprovedStudiesService.updateReapprovedStudy.mockReset().mockResolvedValue({ _id: 'existing-study', applicationID: 'revision-app' });
         });
 
         it('throws error if duplicate approved study', async () => {
@@ -1670,7 +1674,7 @@ describe('Application', () => {
                 .rejects.toThrow(/duplicate/i);
         });
 
-        it('skips approved study create/update on revision re-approval', async () => {
+        it('skips approved study create on revision re-approval, but updates the existing study', async () => {
             const mockApplication = {
                 _id: 'revision-app',
                 status: IN_REVIEW,
@@ -1696,6 +1700,48 @@ describe('Application', () => {
             expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).not.toHaveBeenCalled();
             expect(app._findUsersByApplicantIDs).not.toHaveBeenCalled();
             expect(mockApprovedStudiesService.findByStudyName).toHaveBeenCalled();
+            expect(mockApprovedStudiesService.updateReapprovedStudy).toHaveBeenCalledWith(
+                existingStudy,
+                expect.objectContaining({ _id: 'revision-app' }),
+                expect.any(Object),
+                undefined,
+                undefined,
+                undefined
+            );
+        });
+
+        it('updates the existing study on revision re-approval even when already linked to the current application', async () => {
+            const mockApplication = {
+                _id: 'revision-app',
+                status: IN_REVIEW,
+                studyName: 'study1',
+                sequenceNumber: 2,
+                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+            };
+            // applicationID already points at the application being (re)approved, but other fields
+            // (e.g. dbGaPID, GPAName, controlledAccess) may still have changed and should be refreshed.
+            const existingStudy = { _id: 'existing-study', applicationID: 'revision-app', createdAt: '2020-01-01' };
+            app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
+            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
+            mockApprovedStudiesService.findByApplicationID.mockResolvedValue(existingStudy);
+            mockApprovedStudiesService.findByStudyName.mockResolvedValue([{ _id: 'existing-study' }]);
+            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
+            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+                Promise.resolve({ ...mockApplication, ...payload })
+            );
+            mockLogCollection.insert.mockResolvedValue();
+
+            await app.approveApplication({ _id: 'revision-app', comment: 'Approved' }, context);
+
+            expect(mockApprovedStudiesService.updateReapprovedStudy).toHaveBeenCalledWith(
+                existingStudy,
+                expect.objectContaining({ _id: 'revision-app' }),
+                expect.any(Object),
+                undefined,
+                undefined,
+                undefined
+            );
         });
 
         it('allows revision re-approval when predecessor is linked and study name already exists', async () => {
@@ -1721,6 +1767,14 @@ describe('Application', () => {
             await app.approveApplication({ _id: 'revision-app', comment: 'Approved' }, context);
 
             expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).not.toHaveBeenCalled();
+            expect(mockApprovedStudiesService.updateReapprovedStudy).toHaveBeenCalledWith(
+                existingStudy,
+                expect.objectContaining({ _id: 'revision-app' }),
+                expect.any(Object),
+                undefined,
+                undefined,
+                undefined
+            );
         });
 
         it('allows revision re-approval when program name already exists from initial approval', async () => {
@@ -1748,6 +1802,14 @@ describe('Application', () => {
 
             expect(mockApprovedStudiesService.saveApprovedStudyFromApplication).not.toHaveBeenCalled();
             expect(mockProgramService.upsertByProgramName).not.toHaveBeenCalled();
+            expect(mockApprovedStudiesService.updateReapprovedStudy).toHaveBeenCalledWith(
+                existingStudy,
+                expect.objectContaining({ _id: 'revision-app' }),
+                expect.any(Object),
+                undefined,
+                undefined,
+                expect.any(Boolean)
+            );
         });
 
         it('throws UPDATE_FAILED when DAO update returns falsy and does not call addNewInstitutions', async () => {
@@ -2846,7 +2908,7 @@ describe('Application', () => {
     });
 
     describe('resumeInquiredApplication', () => {
-        it('transitions owner application to In Progress', async () => {
+        it('transitions owner application to In Revision', async () => {
             const application = {
                 _id: 'app1',
                 status: INQUIRED,
@@ -2856,18 +2918,43 @@ describe('Application', () => {
             };
             app.getApplicationById = jest.fn()
                 .mockResolvedValueOnce(application)
-                .mockResolvedValueOnce({ ...application, status: IN_PROGRESS });
+                .mockResolvedValueOnce({ ...application, status: IN_REVISION });
             app.applicationDAO = { update: jest.fn().mockResolvedValue(true) };
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
             mockLogCollection.insert.mockResolvedValue();
 
             const result = await app.resumeInquiredApplication({ _id: 'app1' }, context);
 
-            expect(result.status).toBe(IN_PROGRESS);
+            expect(result.status).toBe(IN_REVISION);
             expect(app.applicationDAO.update).toHaveBeenCalledWith(expect.objectContaining({
                 _id: 'app1',
-                status: IN_PROGRESS
+                status: IN_REVISION
             }));
+        });
+
+        it('rejects when application is already In Revision', async () => {
+            const application = {
+                _id: 'app1',
+                status: IN_REVISION,
+                version: '2.0',
+                history: [{ status: IN_REVISION, reviewComment: 'already in revision' }],
+                applicant: { applicantID: 'user1' }
+            };
+
+            app.getApplicationById = jest.fn().mockResolvedValueOnce(application);
+            await expect(app.resumeInquiredApplication({ _id: 'app1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+        });
+
+        it('rejects invalid starting statuses such as Submitted', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                _id: 'app1',
+                status: SUBMITTED,
+                applicant: { applicantID: 'user1' }
+            });
+
+            await expect(app.resumeInquiredApplication({ _id: 'app1' }, context))
+                .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         });
 
         it('rejects non-owner', async () => {
@@ -3341,6 +3428,186 @@ describe('Application', () => {
                 { _id: 'approved-1', ownerId: 'user-no-create' },
                 context
             )).rejects.toThrow(ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE);
+        });
+    });
+
+    describe('_sendReopenApplicationEmail', () => {
+        const reopenedApplication = {
+            _id: 'reopen-app-1',
+            status: REOPENED,
+            studyName: 'Test Study',
+            studyAbbreviation: 'TS',
+            programName: 'Test Program',
+            programAbbreviation: 'TP',
+            questionnaireData: JSON.stringify({ primaryContact: { email: 'pc@test.com' }, pi: { email: 'pi@test.com' } }),
+        };
+
+        const ownerUser = {
+            _id: 'owner-1',
+            id: 'owner-1',
+            firstName: 'Jane',
+            lastName: 'Doe',
+            email: 'jane@example.com',
+            notifications: ['submission_request:reopened'],
+        };
+
+        beforeEach(() => {
+            mockUserService.userCollection.find.mockResolvedValue([ownerUser]);
+            mockUserService.getUsersByNotifications.mockResolvedValue([
+                { _id: 'bcc-user', email: 'bcc@example.com' }
+            ]);
+            mockNotificationsService.reopenApplicationNotification.mockResolvedValue();
+        });
+
+        it('sends reopen notification email to the owner', async () => {
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    firstName: 'Jane Doe',
+                    isOwnershipChanged: false,
+                }),
+                expect.objectContaining({
+                    studyName: 'Test Study',
+                    studyAbbreviation: 'TS',
+                    programName: 'Test Program',
+                    programAbbreviation: 'TP',
+                    contactEmail: `${mockEmailParams.conditionalSubmissionContact}.`,
+                })
+            );
+        });
+
+        it('sets isOwnershipChanged to true when owner differs from previous owner', async () => {
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'previous-owner-id');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.any(Array),
+                expect.any(Array),
+                expect.objectContaining({
+                    isOwnershipChanged: true,
+                }),
+                expect.any(Object)
+            );
+        });
+
+        it('includes previous owner in CC when ownership changed', async () => {
+            const previousOwner = { _id: 'prev-owner', email: 'prev@example.com' };
+            mockUserService.userCollection.find
+                .mockResolvedValueOnce([ownerUser])
+                .mockResolvedValueOnce([previousOwner]);
+
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'prev-owner');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.arrayContaining(['prev@example.com']),
+                expect.any(Array),
+                expect.objectContaining({ isOwnershipChanged: true }),
+                expect.any(Object)
+            );
+        });
+
+        it('does not include previous owner in CC when their email matches the new owner', async () => {
+            const previousOwner = { _id: 'prev-owner', email: 'jane@example.com' };
+            mockUserService.userCollection.find
+                .mockResolvedValueOnce([ownerUser])
+                .mockResolvedValueOnce([previousOwner]);
+
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'prev-owner');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.not.arrayContaining(['jane@example.com']),
+                expect.any(Array),
+                expect.any(Object),
+                expect.any(Object)
+            );
+        });
+
+        it('returns early without sending email when applicant has no email', async () => {
+            mockUserService.userCollection.find.mockResolvedValue([{ ...ownerUser, email: null }]);
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            await app._sendReopenApplicationEmail(reopenedApplication, { ...ownerUser, email: null }, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).not.toHaveBeenCalled();
+            consoleSpy.mockRestore();
+        });
+
+        it('returns early when applicant notifications do not include REQUEST_REOPENED', async () => {
+            const ownerWithoutNotification = { ...ownerUser, notifications: ['other_notification'] };
+            mockUserService.userCollection.find.mockResolvedValue([ownerWithoutNotification]);
+
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerWithoutNotification, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).not.toHaveBeenCalled();
+        });
+
+        it('uses "NA" for missing studyName via studyLabelForEmailBody', async () => {
+            const appNoStudy = { ...reopenedApplication, studyName: null };
+
+            await app._sendReopenApplicationEmail(appNoStudy, ownerUser, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(Array),
+                expect.any(Array),
+                expect.any(Object),
+                expect.objectContaining({
+                    studyName: 'NA',
+                })
+            );
+        });
+
+        it('uses "NA" for missing studyAbbreviation', async () => {
+            const appNoAbbrev = { ...reopenedApplication, studyAbbreviation: null };
+
+            await app._sendReopenApplicationEmail(appNoAbbrev, ownerUser, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(Array),
+                expect.any(Array),
+                expect.any(Object),
+                expect.objectContaining({
+                    studyAbbreviation: 'NA',
+                })
+            );
+        });
+
+        it('does not throw when notification service rejects', async () => {
+            mockNotificationsService.reopenApplicationNotification.mockRejectedValue(new Error('SMTP failure'));
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            await expect(app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'owner-1'))
+                .resolves.toBeUndefined();
+
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Failed to send reopen application notification email'),
+                'SMTP failure'
+            );
+            consoleSpy.mockRestore();
+        });
+
+        it('filters BCC emails to exclude CC and applicant emails', async () => {
+            mockUserService.getUsersByNotifications.mockResolvedValue([
+                { _id: 'bcc1', email: 'bcc1@example.com' },
+                { _id: 'bcc2', email: 'jane@example.com' },
+            ]);
+
+            await app._sendReopenApplicationEmail(reopenedApplication, ownerUser, 'owner-1');
+
+            expect(mockNotificationsService.reopenApplicationNotification).toHaveBeenCalledWith(
+                'jane@example.com',
+                expect.any(Array),
+                expect.not.arrayContaining(['jane@example.com']),
+                expect.any(Object),
+                expect.any(Object)
+            );
         });
     });
 

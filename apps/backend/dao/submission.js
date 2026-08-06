@@ -135,7 +135,6 @@ class SubmissionDAO extends GenericDAO {
                     id: true,
                     studyName: true,
                     studyAbbreviation: true,
-                    applicationID: true,
                     dbGaPID: true
                 }
             },
@@ -199,7 +198,6 @@ class SubmissionDAO extends GenericDAO {
                         _id: submission.study.id,
                         studyName: submission.study.studyName,
                         studyAbbreviation: submission.study.studyAbbreviation,
-                        applicationID: submission.study.applicationID,
                         dbGaPID: submission.study.dbGaPID
                     }
                     : null;
@@ -219,7 +217,6 @@ class SubmissionDAO extends GenericDAO {
                     submitterName: submission?.submitter?.fullName || "",
                     conciergeName: submission?.concierge?.fullName || "",
                     conciergeEmail: submission?.concierge?.email || "",
-                    submissionRequestID: submission?.study?.applicationID || null,
                     adminSubmitComment: this._isInternalUser(userInfo)
                         ? this._getLatestAdminSubmitComment(submission?.history)
                         : null,

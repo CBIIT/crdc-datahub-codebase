@@ -524,6 +524,7 @@ model Submission {
   studyAbbreviation        String?
   studyName                String?
   studyID                  String
+  submissionRequestID      String?
   submitterID              String
   conciergeID              String?
   statusDetail             String[]

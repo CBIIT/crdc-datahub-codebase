@@ -13,6 +13,7 @@ export const TOOLTIP_TEXT: {
     Approved: "The request form was reviewed and approved.",
     Rejected: "The request form was reviewed and rejected.",
     Inquired: "Additional information or clarification was requested from the submitter.",
+    "In Revision": "The request form was reopened for additional information from the submitter.",
     Reopened: "The approved request form was reopened for editing.",
     Canceled: "The request form was manually canceled and is no longer active.",
     Deleted:
