@@ -87,6 +87,7 @@ const ReviewFormDialog: FC<Props> = ({
   });
 
   const [plainTextLength, setPlainTextLength] = useState(0);
+  const [trimmedTextLength, setTrimmedTextLength] = useState(0);
 
   const editorRef = useRef<RichTextEditorHandle>(null);
 
@@ -116,6 +117,7 @@ const ReviewFormDialog: FC<Props> = ({
   const handleExited = useCallback(() => {
     reset();
     setPlainTextLength(0);
+    setTrimmedTextLength(0);
     editorRef.current?.reset();
   }, [reset]);
 
@@ -138,7 +140,7 @@ const ReviewFormDialog: FC<Props> = ({
           <LoadingButton
             data-testid="review-form-dialog-confirm-button"
             onClick={handleSubmit(handleOnSubmit)}
-            disabled={!plainTextLength || loading}
+            disabled={!trimmedTextLength || loading}
             loading={loading}
             {...confirmButtonProps}
           >
@@ -163,7 +165,10 @@ const ReviewFormDialog: FC<Props> = ({
           <RichTextEditor
             ref={editorRef}
             value={field.value}
-            onChange={field.onChange}
+            onChange={(value) => {
+              field.onChange(value);
+              setTrimmedTextLength(getPlainTextLength(value.trim()));
+            }}
             onTextLengthChange={setPlainTextLength}
             placeholder={`${reviewCommentLimitLabel} characters allowed`}
             disabled={loading}
