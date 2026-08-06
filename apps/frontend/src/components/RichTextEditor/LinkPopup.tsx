@@ -162,7 +162,10 @@ const LinkPopup = ({ popup }: Props): ReactElement => {
                 autoFocus
                 value={text}
                 onChange={(event) => popup.setText(event.target.value)}
-                inputProps={{ "data-testid": "rich-text-link-popup-text-input" }}
+                inputProps={{
+                  "data-testid": "rich-text-link-popup-text-input",
+                  "aria-label": "Text",
+                }}
               />
             </Box>
             <Box>
@@ -176,7 +179,10 @@ const LinkPopup = ({ popup }: Props): ReactElement => {
                 error={error !== ""}
                 onChange={(event) => popup.setUrl(event.target.value)}
                 onKeyDown={handleUrlKeyDown}
-                inputProps={{ "data-testid": "rich-text-link-popup-url-input" }}
+                inputProps={{
+                  "data-testid": "rich-text-link-popup-url-input",
+                  "aria-label": "Link",
+                }}
               />
               <StyledHelperText>{error ? "Please enter a valid URL" : " "}</StyledHelperText>
             </Box>
