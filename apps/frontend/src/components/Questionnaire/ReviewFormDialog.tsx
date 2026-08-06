@@ -106,6 +106,13 @@ const ReviewFormDialog: FC<Props> = ({
     onCancel?.();
   };
 
+  const handleOnClose = (_event: unknown, reason: string) => {
+    if (reason === "backdropClick") {
+      return;
+    }
+    handleOnCancel();
+  };
+
   const handleExited = useCallback(() => {
     reset();
     setPlainTextLength(0);
@@ -115,7 +122,7 @@ const ReviewFormDialog: FC<Props> = ({
   return (
     <StyledDialog
       open={open}
-      onClose={handleOnCancel}
+      onClose={handleOnClose}
       TransitionProps={{ onExited: handleExited }}
       title={header}
       scroll="body"
