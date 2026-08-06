@@ -42,8 +42,7 @@ describe('Submission._notifyConfigurationChange', () => {
             null, // uploadingMonitor
             null, // dataCommonsBucketMap
             null, // authorizationService
-            null, // dataModelService
-            null  // dataRecordsCollection
+            null // dataModelService
         );
 
         submissionService.userDAO = mockUserDAO;

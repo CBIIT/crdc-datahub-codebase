@@ -44,8 +44,7 @@ const DATA_SHEET = {
 };
 class DataRecordService {
     /**
-     * @param {object} dataRecordsCollection
-     * @param {object} dataRecordArchiveCollection
+     * @param {object} dataRecordArchiveCollection Archive collection (native MongoDBCollection)
      * @param {string} fileQueueName
      * @param {string} metadataQueueName
      * @param {object} awsService
@@ -54,8 +53,7 @@ class DataRecordService {
      * @param {string} exportQueue
      * @param {object} configurationService
      */
-    constructor(dataRecordsCollection, dataRecordArchiveCollection, fileQueueName, metadataQueueName, awsService, s3Service, qcResultsService, exportQueue, configurationService) {
-        this.dataRecordsCollection = dataRecordsCollection;
+    constructor(dataRecordArchiveCollection, fileQueueName, metadataQueueName, awsService, s3Service, qcResultsService, exportQueue, configurationService) {
         this.fileQueueName = fileQueueName;
         this.metadataQueueName = metadataQueueName;
         this.awsService = awsService;
@@ -64,7 +62,7 @@ class DataRecordService {
         this.qcResultsService = qcResultsService;
         this.exportQueue = exportQueue;
         this.configurationService = configurationService;
-        this.dataRecordDAO = new DataRecordDAO(this.dataRecordsCollection);
+        this.dataRecordDAO = new DataRecordDAO();
         this.releaseDAO = new ReleaseDAO();
 
     }
@@ -82,29 +80,33 @@ class DataRecordService {
             .replace(/\.\./g, '_');
     }
 
+    /**
+     * Builds submission validation stats including data-file orphan/missing counts.
+     * File records are loaded via a projected aggregate (s3FileInfo.status/fileName only).
+     * @param {object} aSubmission Submission document
+     * @returns {Promise<object>} Submission stats payload
+     */
     async submissionStats(aSubmission) {
         const validNodeStatus = [VALIDATION_STATUS.NEW, VALIDATION_STATUS.PASSED, VALIDATION_STATUS.WARNING, VALIDATION_STATUS.ERROR];
         const res = await Promise.all([
             this.dataRecordDAO.getStats(aSubmission?._id, validNodeStatus),
-            this.dataRecordDAO.findMany(
+            this.dataRecordDAO.aggregate([
                 {
-                    submissionID: aSubmission._id,
-                    s3FileInfo: {
-                        is: {
-                            status: { in: validNodeStatus }
-                        }
-                    }
+                    $match: {
+                        submissionID: aSubmission._id,
+                        's3FileInfo.status': { $in: validNodeStatus },
+                    },
                 },
                 {
-                    select: {
+                    $project: {
+                        _id: 0,
                         s3FileInfo: {
-                            select: {
-                                status: true,
-                                fileName: true
-                            }
-                        }
-                    }
-            }),
+                            status: '$s3FileInfo.status',
+                            fileName: '$s3FileInfo.fileName',
+                        },
+                    },
+                },
+            ]),
             // submission's root path should be matched, otherwise the other file node count return wrong
             this.s3Service.listFileInDir(aSubmission.bucketName, `${aSubmission.rootPath}/${FILE}/`),
             // search for the orphaned file errors
@@ -299,19 +301,22 @@ class DataRecordService {
     }
 
     async deleteMetadataByFilter(filter){
-        return await this.dataRecordsCollection.deleteMany(filter);
+        return await this.dataRecordDAO.deleteManyWithResult(filter);
     }
 
+    /**
+     * Copy matching dataRecords into the archive collection, then delete them from source.
+     * Strips the DAO-mapped `id` field so archived docs keep only `_id`.
+     * @param {object} filter Mongo filter for documents to archive
+     * @returns {Promise<*[]|null>} insert/delete results, or null when nothing matched
+     */
     async archiveMetadataByFilter(filter){
-        const dataArray = await this.dataRecordsCollection.aggregate([{"$match":filter}]);
-        if (dataArray.length === 0) return null
-        const promiseArray = [
-            await this.dataRecordArchiveCollection.insertMany(dataArray), // Insert documents into destination
-            await this.deleteMetadataByFilter(filter)      // Delete documents from source
-        ];
-        // Step 2: Execute all promises in parallel
-        return await Promise.all(promiseArray);
-        
+        const dataArray = await this.dataRecordDAO.aggregate([{"$match":filter}]);
+        if (dataArray.length === 0) return null;
+        const documentsToArchive = dataArray.map(({ id, ...doc }) => doc);
+        const insertResult = await this.dataRecordArchiveCollection.insertMany(documentsToArchive);
+        const deleteResult = await this.deleteMetadataByFilter(filter);
+        return [insertResult, deleteResult];
     }
 
     async submissionDataFiles(submissionID, s3FileNames) {
@@ -330,7 +335,7 @@ class DataRecordService {
                 status:  "$s3FileInfo.status",
             }
         });
-        return await this.dataRecordsCollection.aggregate(pipeline);
+        return await this.dataRecordDAO.aggregate(pipeline);
     }
 
     async nodeDetail(submissionID, nodeType, nodeID){
@@ -408,7 +413,7 @@ class DataRecordService {
         // get children
         const children = await this.dataRecordDAO.findMany({
             parents: {
-                some: {
+                $elemMatch: {
                     parentIDValue: nodeID,
                     parentType: nodeType
                 },
@@ -476,15 +481,11 @@ class DataRecordService {
             return []
         }
 
-        const rows = await this.dataRecordDAO.findMany(
-            { submissionID },
-            {select: { nodeType: true }},
-        );
-        return [...new Set(rows.map(r => r?.nodeType).filter(Boolean))];
+        return await this.dataRecordDAO.distinct("nodeType", { submissionID });
     }
     // This MongoDB schema is optimized for performance by reducing joins and leveraging document-based structure.
     async resetDataRecords(submissionID, status) {
-        return await this.dataRecordsCollection.updateMany(
+        return await this.dataRecordDAO.updateManyPipeline(
             { submissionID: submissionID },
             [{ $set: {
                 status: status,
@@ -494,7 +495,8 @@ class DataRecordService {
                         { $gt: ["$s3FileInfo.status", null] }, // only if exists
                         { $mergeObjects: ["$s3FileInfo", { status: status }] }, // override
                         "$s3FileInfo" // otherwise leave unchanged
-        ]}}}]);
+        ]}}}]
+        );
     }
 
     /**
@@ -516,7 +518,7 @@ class DataRecordService {
         if (fileNames != null) {
             filter["s3FileInfo.fileName"] = { $in: fileNames };
         }
-        return await this.dataRecordsCollection.updateMany(
+        return await this.dataRecordDAO.updateManyPipeline(
             filter,
             [{ $set: {
                 updatedAt: getCurrentTime(),
@@ -595,14 +597,7 @@ class DataRecordService {
     }
 
     async countNodesBySubmissionID(submissionID) {
-        // Get distinct nodeTypes for the submission to avoid counting duplicates
-        const distinctNodes = await this.dataRecordDAO.findMany({
-            submissionID: submissionID,
-        }, {
-            select: { nodeType: true }
-        });
-
-        return distinctNodes?.length || 0;
+        return await this.dataRecordDAO.count({ submissionID });
     }
     /**
      * public function to retrieve release record from release collection
@@ -726,7 +721,7 @@ class DataRecordService {
         const dbGaPDir = `dbGaP_${safeDbGaPID}_${aSubmission.name}_${getFormatDateStr(getCurrentTime())}`;
         const download_dir = path.join(tempFolder, dbGaPDir);
         // 1) create subject sample mapping sheet
-        const participants = await this.dataRecordsCollection.aggregate([{
+        const participants = await this.dataRecordDAO.aggregate([{
             $match: {
                 submissionID: aSubmission._id,
                 nodeType: "participant"
@@ -734,7 +729,7 @@ class DataRecordService {
         }]);
         if (!participants || participants.length === 0) throw new Error(ERRORS.PARTICIPANT_NOT_FOUND);
         // create subject sample mapping by sample nodes
-        const sampleNodes = await this.dataRecordsCollection.aggregate([{
+        const sampleNodes = await this.dataRecordDAO.aggregate([{
             $match: {
                 submissionID: aSubmission._id,
                 nodeType: "sample"
@@ -804,7 +799,7 @@ class DataRecordService {
         for (const sample of sampleNodes){
             const sampleID = sample.nodeID;
             const biosample_accession = sample.props?.biosample_accession? sample.props.biosample_accession: sample.nodeID;
-            const sampleFiles = await this.dataRecordsCollection.aggregate([{
+            const sampleFiles = await this.dataRecordDAO.aggregate([{
                 $match: {
                     submissionID: aSubmission._id,
                     nodeType: "file",
@@ -870,7 +865,7 @@ class DataRecordService {
      * @returns int
      */
     async _getAgeAtDiagnosisByParticipant(subjectID, submissionID){
-        const diagnosis = await this.dataRecordsCollection.aggregate([{
+        const diagnosis = await this.dataRecordDAO.aggregate([{
             $match: {
                 submissionID: submissionID,
                 nodeType: "diagnosis",
@@ -887,7 +882,7 @@ class DataRecordService {
      * @param {*} submissionID
      */
     async _getGenomicInfoByFile(fileID, submissionID){
-        const genomicInfos = await this.dataRecordsCollection.aggregate([{
+        const genomicInfos = await this.dataRecordDAO.aggregate([{
             $match: {
                 submissionID: submissionID,
                 nodeType: "genomic_info",
@@ -900,7 +895,7 @@ class DataRecordService {
 
     async _getCount(submissionID, status = null) {
         const query = (!status)? {submissionID: submissionID} : {submissionID: submissionID, status: status} ;
-        return await this.dataRecordsCollection.countDoc(query);
+        return await this.dataRecordDAO.count(query);
     }
 
     async _getDataRecordIds(submissionID, scope) {
@@ -908,7 +903,7 @@ class DataRecordService {
         const query = isNewScope
             ? { submissionID, status: VALIDATION_STATUS.NEW }
             : { submissionID };
-        const results = await this.dataRecordsCollection.aggregate([
+        const results = await this.dataRecordDAO.aggregate([
             { $match: query },
             { $project: { _id: 1 } }
         ]);
@@ -917,7 +912,7 @@ class DataRecordService {
 
     async _getFileNodes(submissionID, scope) {
         const isNewScope = scope?.toLowerCase() === VALIDATION.SCOPE.NEW.toLowerCase();
-        const fileNodes = await this.dataRecordsCollection.aggregate([{
+        const fileNodes = await this.dataRecordDAO.aggregate([{
             $match: {
                 s3FileInfo: { $exists: true, $ne: null},
                 submissionID: submissionID,

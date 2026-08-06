@@ -12,7 +12,7 @@ describe('DataRecordService.exportDCFManifest', () => {
     };
 
     dataRecordService = new DataRecordService(
-      {}, {}, 'file-queue', 'metadata-queue',
+      {}, 'file-queue', 'metadata-queue',
       mockAwsService, {}, {}, 'export-queue', null
     );
   });

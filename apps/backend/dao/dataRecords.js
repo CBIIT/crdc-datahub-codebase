@@ -1,9 +1,9 @@
-const GenericDAO = require("./generic");
-const {MODEL_NAME} = require("../constants/db-constants");
-const prisma = require("../prisma");
+const MongooseGenericDAO = require("./mongoose-generic");
+const DataRecordModel = require("../mongoose/models/data-record");
 const {VALIDATION_STATUS} = require("../constants/submission-constants");
 const {getSortDirection} = require("../crdc-datahub-database-drivers/utility/mongodb-utility");
 const {BATCH} = require("../crdc-datahub-database-drivers/constants/batch-constants");
+
 const NODE_VIEW = {
     submissionID: "$submissionID",
     nodeType: "$nodeType",
@@ -24,17 +24,36 @@ const NODE_VIEW = {
 const ERROR = "Error";
 const WARNING = "Warning";
 
+/**
+ * @param {object|null|undefined} query
+ * @returns {boolean}
+ */
 function isPlainDataViewMatchQuery(query) {
     return Boolean(query) && typeof query === 'object' && !Array.isArray(query);
 }
 
-class DataRecordDAO extends GenericDAO {
-    constructor(dataRecordsCollection) {
-        super(MODEL_NAME.DATA_RECORDS);
-        this.dataRecordsCollection = dataRecordsCollection;
+/**
+ * Mongoose-backed DAO for dataRecords.
+ * Custom aggregations use split count + results pipelines (DocumentDB does not support $facet).
+ */
+class DataRecordDAO extends MongooseGenericDAO {
+    constructor() {
+        super(DataRecordModel);
     }
 
-    // note: prisma can't sort by nested JSON paths like rawData.some|field
+    /**
+     * Paginated Data View nodes for a submission/node type.
+     * Uses split count + results pipelines (DocumentDB does not support $facet).
+     * Supports sorting by nested JSON paths (props.* / rawData.*) that Prisma could not express.
+     * @param {string} submissionID
+     * @param {string} nodeType
+     * @param {number} first Page size; -1 returns all rows and ignores offset
+     * @param {number} offset
+     * @param {string} orderBy
+     * @param {string} sortDirection
+     * @param {object|null} [query=null] Optional $match override
+     * @returns {Promise<{total: number, results: object[]}>}
+     */
     async getSubmissionNodes(submissionID, nodeType, first, offset, orderBy, sortDirection, query=null) {
         // Determine if rawData is needed for sorting
         // rawData is only needed when sorting by a nested field path (orderBy contains ".")
@@ -93,8 +112,8 @@ class DataRecordDAO extends GenericDAO {
 
         // Execute both queries in parallel
         const [countPipelineResult, resultsPipelineResult] = await Promise.all([
-            this.dataRecordsCollection.aggregate(countPipeline),
-            this.dataRecordsCollection.aggregate(resultsPipeline)
+            this.aggregate(countPipeline),
+            this.aggregate(resultsPipeline)
         ]);
 
         const totalRecords = countPipelineResult[0]?.total || 0;
@@ -141,7 +160,7 @@ class DataRecordDAO extends GenericDAO {
                 }
             }
         ];
-        const rows = await this.dataRecordsCollection.aggregate(pipeline);
+        const rows = await this.aggregate(pipeline);
         return (rows && rows[0] && rows[0].keys) || [];
     }
 
@@ -179,16 +198,45 @@ class DataRecordDAO extends GenericDAO {
                 },
             },
         ];
-        const rows = await this.dataRecordsCollection.aggregate(pipeline);
+        const rows = await this.aggregate(pipeline);
         return (rows && rows[0] && rows[0].keys) || [];
     }
 
+    /**
+     * Per-node-type validation status counts for a submission.
+     * @param {string} submissionID
+     * @param {string[]} validNodeStatus Status values to include
+     * @returns {Promise<{submissionID: string, stats: object[]}[]>}
+     */
     async getStats(submissionID, validNodeStatus) {
-        const rows = await prisma.dataRecord.groupBy({
-            by: ['submissionID', 'nodeType', 'status'],
-            where: { submissionID, status: { in: validNodeStatus } },
-            _count: { _all: true },
-        });
+        // Project group keys out of `_id` so MongooseGenericDAO._mapDoc does not stringify the compound key.
+        const rows = await this.aggregate([
+            {
+                $match: {
+                    submissionID,
+                    status: { $in: validNodeStatus },
+                },
+            },
+            {
+                $group: {
+                    _id: {
+                        submissionID: '$submissionID',
+                        nodeType: '$nodeType',
+                        status: '$status',
+                    },
+                    count: { $sum: 1 },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    submissionID: '$_id.submissionID',
+                    nodeType: '$_id.nodeType',
+                    status: '$_id.status',
+                    count: 1,
+                },
+            },
+        ]);
 
         const bySubmission = {};
 
@@ -202,7 +250,7 @@ class DataRecordDAO extends GenericDAO {
                 stats.push(node);
             }
 
-            const c = r._count._all || 0;
+            const c = r.count || 0;
             if (r.status === VALIDATION_STATUS.NEW) node.new += c;
             else if (r.status === VALIDATION_STATUS.PASSED) node.passed += c;
             else if (r.status === VALIDATION_STATUS.WARNING) node.warning += c;
@@ -214,7 +262,20 @@ class DataRecordDAO extends GenericDAO {
         return Object.entries(bySubmission).map(([id, stats]) => ({ submissionID: id, stats }));
     }
 
-    // note: use MongoDB because Prisma has to fetch all matching documents into memory before grouping and paginating
+    /**
+     * Cross-submission validation errors from additionalErrors, paginated.
+     * Uses split count + page pipelines (DocumentDB does not support $facet).
+     * @param {string} submissionID
+     * @param {string[]} nodeTypes
+     * @param {string[]} batchIDs
+     * @param {string} severities
+     * @param {number} first
+     * @param {number} offset
+     * @param {string} orderBy
+     * @param {string} sortDirection
+     * @param {string|null} [dataCommons=null]
+     * @returns {Promise<{results: object[], total: number}>}
+     */
     async submissionCrossValidationResults(submissionID, nodeTypes, batchIDs, severities, first, offset, orderBy, sortDirection, dataCommons = null){
         let dataRecordQCResultsPipeline = [];
         // Filter by submission ID
@@ -351,7 +412,7 @@ class DataRecordDAO extends GenericDAO {
         countPipeline.push({
             $count: "total"
         });
-        const countPipelineResult = await this.dataRecordsCollection.aggregate(countPipeline);
+        const countPipelineResult = await this.aggregate(countPipeline);
         const totalRecords = countPipelineResult[0]?.total;
 
         // Create page and sort steps
@@ -375,13 +436,61 @@ class DataRecordDAO extends GenericDAO {
             });
         }
         // Query page of results
-        const pagedPipelineResult = await this.dataRecordsCollection.aggregate(pagedPipeline);
+        const pagedPipelineResult = await this.aggregate(pagedPipeline);
         const dataRecords = this._replaceNaN(pagedPipelineResult, null);
         return {
             results: dataRecords || [],
             total: totalRecords || 0
         }
     }
+
+    /**
+     * Update many documents with an aggregation pipeline update (not $set-wrapped).
+     * Returns the native Mongoose UpdateResult (acknowledged, modifiedCount, matchedCount).
+     * @param {object} filter Mongo filter
+     * @param {object[]} updatePipeline Aggregation update pipeline stages
+     * @returns {Promise<object>}
+     */
+    async updateManyPipeline(filter, updatePipeline) {
+        const condition = this._requireFilter(filter, 'updateManyPipeline');
+        try {
+            return await this.model.updateMany(condition, updatePipeline);
+        } catch (error) {
+            console.error(`DataRecordDAO.updateManyPipeline failed:`, {
+                error: error.message,
+                filter: JSON.stringify(filter),
+                stack: error.stack
+            });
+            throw new Error(`Failed to update many ${this._modelName}`);
+        }
+    }
+
+    /**
+     * Delete many documents and return the native Mongoose delete result
+     * (acknowledged, deletedCount) expected by archive/delete callers.
+     * @param {object} filter Mongo filter
+     * @returns {Promise<object>}
+     */
+    async deleteManyWithResult(filter) {
+        const condition = this._requireFilter(filter, 'deleteManyWithResult');
+        try {
+            return await this.model.deleteMany(condition);
+        } catch (error) {
+            console.error(`DataRecordDAO.deleteManyWithResult failed:`, {
+                error: error.message,
+                filter: JSON.stringify(filter),
+                stack: error.stack
+            });
+            throw new Error(`Failed to delete many ${this._modelName}`);
+        }
+    }
+
+    /**
+     * Replace NaN numeric values in aggregate result objects.
+     * @param {object[]|*} results
+     * @param {*} replacement
+     * @returns {object[]|*}
+     */
     _replaceNaN(results, replacement){
         if (!Array.isArray(results)) return results;
         results?.map((result) => {
@@ -396,3 +505,4 @@ class DataRecordDAO extends GenericDAO {
 }
 
 module.exports = DataRecordDAO
+

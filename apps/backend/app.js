@@ -11,7 +11,7 @@ const statusRouter = require("./routers/status-endpoints-router");
 const graphqlRouter = require("./routers/graphql-router");
 const {MongoDBCollection} = require("./crdc-datahub-database-drivers/mongodb-collection");
 const {DATABASE_NAME, APPLICATION_COLLECTION, LOG_COLLECTION, APPROVED_STUDIES_COLLECTION,
-    ORGANIZATION_COLLECTION, SUBMISSIONS_COLLECTION, DATA_RECORDS_COLLECTION,
+    ORGANIZATION_COLLECTION, SUBMISSIONS_COLLECTION,
     DATA_RECORDS_ARCHIVE_COLLECTION
 } = require("./crdc-datahub-database-drivers/database-constants");
 const {Application} = require("./services/application");
@@ -125,9 +125,8 @@ app.use("/api/graphql", graphqlRouter);
 
         const qcResultsService = new QcResultService(authorizationService);
 
-        const dataRecordCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_COLLECTION);
         const dataRecordArchiveCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_ARCHIVE_COLLECTION);
-        const dataRecordService = new DataRecordService(dataRecordCollection, dataRecordArchiveCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
+        const dataRecordService = new DataRecordService(dataRecordArchiveCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
         qcResultsService.setDataRecordService(dataRecordService);
 
         const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
