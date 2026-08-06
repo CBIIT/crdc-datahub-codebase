@@ -1,3 +1,4 @@
+import InsertLinkIcon from "@mui/icons-material/InsertLink";
 import RedoIcon from "@mui/icons-material/Redo";
 import UndoIcon from "@mui/icons-material/Undo";
 import { Box, styled } from "@mui/material";
@@ -28,7 +29,11 @@ const ToolbarDivider = styled(Box)({
   margin: "0 4px",
 });
 
-const Toolbar = (): ReactElement => {
+type Props = {
+  onInsertLink: (anchorElement: HTMLElement) => void;
+};
+
+const Toolbar = ({ onInsertLink }: Props): ReactElement => {
   const editor = useSlate();
 
   const handleMarkMouseDown = (format: MarkFormat) => (e: MouseEvent) => {
@@ -39,6 +44,11 @@ const Toolbar = (): ReactElement => {
   const handleBlockMouseDown = (format: BlockFormat) => (e: MouseEvent) => {
     e.preventDefault();
     toggleBlock(editor, format);
+  };
+
+  const handleInsertLinkMouseDown = (e: MouseEvent) => {
+    e.preventDefault();
+    onInsertLink(e.currentTarget as HTMLElement);
   };
 
   const handleUndo = (e: MouseEvent) => {
@@ -75,6 +85,12 @@ const Toolbar = (): ReactElement => {
           onMouseDown={handleBlockMouseDown(format)}
         />
       ))}
+      <ToolbarButton
+        label="Insert link"
+        tooltip="Insert link"
+        icon={InsertLinkIcon}
+        onMouseDown={handleInsertLinkMouseDown}
+      />
       <ToolbarDivider />
       <ToolbarButton
         label="Undo"

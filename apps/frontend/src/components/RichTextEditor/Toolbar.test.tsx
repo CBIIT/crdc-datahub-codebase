@@ -29,6 +29,8 @@ vi.mock("../../config/EditorConfig", async (importOriginal) => {
 
 const initialValue: Descendant[] = [{ type: "paragraph", children: [{ text: "" }] }];
 
+const mockOnInsertLink = vi.fn();
+
 const TestParent: FC<{ children: ReactNode }> = ({ children }) => {
   const editor = withHistory(withReact(createEditor()));
 
@@ -45,7 +47,9 @@ describe("Accessibility", () => {
   });
 
   it("should not have any accessibility violations", async () => {
-    const { container } = render(<Toolbar />, { wrapper: TestParent });
+    const { container } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -57,13 +61,17 @@ describe("Basic Functionality", () => {
   });
 
   it("should render without crashing", () => {
-    const { getByTestId } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByTestId } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(getByTestId("rich-text-editor-toolbar")).toBeInTheDocument();
   });
 
   it("should render all mark buttons", () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(getByRole("button", { name: "Bold (Ctrl+B)" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Italic (Ctrl+I)" })).toBeInTheDocument();
@@ -71,27 +79,35 @@ describe("Basic Functionality", () => {
   });
 
   it("should render all block buttons", () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(getByRole("button", { name: "Bullet List" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Numbered List" })).toBeInTheDocument();
   });
 
   it("should render undo and redo buttons", () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(getByRole("button", { name: "Undo" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Redo" })).toBeInTheDocument();
   });
 
   it("should disable undo when there is no history", () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(getByRole("button", { name: "Undo" })).toBeDisabled();
   });
 
   it("should disable redo when there is no redo history", () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(getByRole("button", { name: "Redo" })).toBeDisabled();
   });
@@ -103,7 +119,9 @@ describe("Implementation Requirements", () => {
   });
 
   it("should call toggleMark with 'bold' when the bold button is clicked", async () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     userEvent.click(getByRole("button", { name: "Bold (Ctrl+B)" }));
 
@@ -111,7 +129,9 @@ describe("Implementation Requirements", () => {
   });
 
   it("should call toggleMark with 'italic' when the italic button is clicked", async () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     userEvent.click(getByRole("button", { name: "Italic (Ctrl+I)" }));
 
@@ -119,7 +139,9 @@ describe("Implementation Requirements", () => {
   });
 
   it("should call toggleMark with 'underline' when the underline button is clicked", async () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     userEvent.click(getByRole("button", { name: "Underline (Ctrl+U)" }));
 
@@ -127,7 +149,9 @@ describe("Implementation Requirements", () => {
   });
 
   it("should call toggleBlock with 'bulleted-list' when the bullet list button is clicked", async () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     userEvent.click(getByRole("button", { name: "Bullet List" }));
 
@@ -135,7 +159,9 @@ describe("Implementation Requirements", () => {
   });
 
   it("should call toggleBlock with 'numbered-list' when the numbered list button is clicked", async () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     userEvent.click(getByRole("button", { name: "Numbered List" }));
 
@@ -143,31 +169,31 @@ describe("Implementation Requirements", () => {
   });
 
   it("should check if the bold mark is active", () => {
-    render(<Toolbar />, { wrapper: TestParent });
+    render(<Toolbar onInsertLink={mockOnInsertLink} />, { wrapper: TestParent });
 
     expect(isMarkActive).toHaveBeenCalledWith(expect.anything(), "bold");
   });
 
   it("should check if the italic mark is active", () => {
-    render(<Toolbar />, { wrapper: TestParent });
+    render(<Toolbar onInsertLink={mockOnInsertLink} />, { wrapper: TestParent });
 
     expect(isMarkActive).toHaveBeenCalledWith(expect.anything(), "italic");
   });
 
   it("should check if the underline mark is active", () => {
-    render(<Toolbar />, { wrapper: TestParent });
+    render(<Toolbar onInsertLink={mockOnInsertLink} />, { wrapper: TestParent });
 
     expect(isMarkActive).toHaveBeenCalledWith(expect.anything(), "underline");
   });
 
   it("should check if the bulleted-list block is active", () => {
-    render(<Toolbar />, { wrapper: TestParent });
+    render(<Toolbar onInsertLink={mockOnInsertLink} />, { wrapper: TestParent });
 
     expect(isBlockActive).toHaveBeenCalledWith(expect.anything(), "bulleted-list");
   });
 
   it("should check if the numbered-list block is active", () => {
-    render(<Toolbar />, { wrapper: TestParent });
+    render(<Toolbar onInsertLink={mockOnInsertLink} />, { wrapper: TestParent });
 
     expect(isBlockActive).toHaveBeenCalledWith(expect.anything(), "numbered-list");
   });
@@ -178,7 +204,9 @@ describe("Implementation Requirements", () => {
       .spyOn(EditorConfig, "MARK_DEFINITIONS", "get")
       .mockReturnValue([{ ...first, enabled: false }, ...rest]);
 
-    const { queryByRole, getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { queryByRole, getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(queryByRole("button", { name: "Bold (Ctrl+B)" })).not.toBeInTheDocument();
     expect(getByRole("button", { name: "Italic (Ctrl+I)" })).toBeInTheDocument();
@@ -193,7 +221,9 @@ describe("Implementation Requirements", () => {
       .spyOn(EditorConfig, "BLOCK_DEFINITIONS", "get")
       .mockReturnValue([{ ...first, enabled: false }, ...rest]);
 
-    const { queryByRole, getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { queryByRole, getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(queryByRole("button", { name: "Bullet List" })).not.toBeInTheDocument();
     expect(getByRole("button", { name: "Numbered List" })).toBeInTheDocument();
@@ -202,12 +232,32 @@ describe("Implementation Requirements", () => {
   });
 
   it("should show buttons when enabled is true", () => {
-    const { getByRole } = render(<Toolbar />, { wrapper: TestParent });
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
 
     expect(getByRole("button", { name: "Bold (Ctrl+B)" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Italic (Ctrl+I)" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Underline (Ctrl+U)" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Bullet List" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Numbered List" })).toBeInTheDocument();
+  });
+
+  it("should render the insert link button", () => {
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
+
+    expect(getByRole("button", { name: "Insert link" })).toBeInTheDocument();
+  });
+
+  it("should call onInsertLink when the insert link button is clicked", () => {
+    const { getByRole } = render(<Toolbar onInsertLink={mockOnInsertLink} />, {
+      wrapper: TestParent,
+    });
+
+    userEvent.click(getByRole("button", { name: "Insert link" }));
+
+    expect(mockOnInsertLink).toHaveBeenCalledTimes(1);
   });
 });
