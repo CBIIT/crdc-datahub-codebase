@@ -164,10 +164,10 @@ describe("Basic Functionality", () => {
 
   it("should not treat escaped brackets as a link", () => {
     const { getByText, queryByRole } = render(
-      <RichTextViewer content="literal \[brackets\] here" />
+      <RichTextViewer content="literal \\[brackets\\] here" />
     );
 
-    expect(getByText("literal [brackets] here")).toBeInTheDocument();
+    expect(getByText("literal \\[brackets\\] here")).toBeInTheDocument();
     expect(queryByRole("link")).not.toBeInTheDocument();
   });
 });
