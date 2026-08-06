@@ -67,9 +67,16 @@ export const updateLink = (
   text: string,
   url: string
 ): void => {
+  const [linkNode] = Editor.node(editor, linkPath);
+  const existingText = Node.string(linkNode);
+  const children: CustomText[] =
+    existingText === text && isLinkElement(linkNode)
+      ? (linkNode.children as CustomText[])
+      : [{ text }];
+
   Editor.withoutNormalizing(editor, () => {
     Transforms.removeNodes(editor, { at: linkPath });
-    Transforms.insertNodes(editor, createLinkElement(url, [{ text }]), {
+    Transforms.insertNodes(editor, createLinkElement(url, children), {
       at: linkPath,
       select: true,
     });
