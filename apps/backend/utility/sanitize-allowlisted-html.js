@@ -55,8 +55,34 @@ const PRESET_NOTIFICATION_TEXT_HTML = {
     allowedAttributes: {},
 };
 
+/** Preset: markdown-rendered SRF review comment HTML injected into decision emails. */
+const PRESET_SR_REVIEW_COMMENT_HTML = {
+    allowedTags: ['a', 'br', 'p', 'span', 'strong', 'b', 'em', 'i', 'ul', 'ol', 'li'],
+    allowedAttributes: {
+        a: ['href', 'rel']
+    },
+    allowedSchemes: ['http', 'https', 'mailto'],
+    allowedSchemesByTag: {
+        a: ['http', 'https', 'mailto']
+    },
+    allowProtocolRelative: false,
+    transformTags: {
+        a: (tagName, attribs) => {
+            const nextAttribs = {
+                rel: attribs.rel || 'noopener noreferrer'
+            };
+            const href = attribs.href;
+            if (href != null && String(href).trim() !== '') {
+                nextAttribs.href = href;
+            }
+            return { tagName, attribs: nextAttribs };
+        }
+    }
+};
+
 module.exports = {
     sanitizeAllowlistedHtml,
     PRESET_SR_APPROVAL_PENDING_HTML,
-    PRESET_NOTIFICATION_TEXT_HTML
+    PRESET_NOTIFICATION_TEXT_HTML,
+    PRESET_SR_REVIEW_COMMENT_HTML
 };
