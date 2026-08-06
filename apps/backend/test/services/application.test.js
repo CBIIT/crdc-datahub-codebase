@@ -1725,8 +1725,8 @@ describe('Application', () => {
             app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(existingStudy);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([{ _id: 'existing-study' }]);
-            mockOrganizationService.getOrganizationByID.mockResolvedValue({ _id: 'program1' });
-            mockOrganizationService.findOneByProgramName.mockResolvedValue(null);
+            mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
+            mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
