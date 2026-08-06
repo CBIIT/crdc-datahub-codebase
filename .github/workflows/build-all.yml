@@ -39,7 +39,7 @@ jobs:
       image_tag: ${{ steps.set_tag.outputs.image_tag }}
     steps:
       - name: Checkout Code Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
           submodules: recursive
@@ -130,7 +130,7 @@ jobs:
 
     steps:
       - name: Checkout Code Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
           submodules: true
@@ -400,31 +400,6 @@ jobs:
               out.write(summary + "\n")
           PYEOF
 
-      - name: Set scan result output
-        id: set_scan_output
-        if: always()
-        run: |
-          if [ -f "scan-${{ matrix.name }}.json" ]; then
-            SCAN_SUMMARY=$(cat "scan-${{ matrix.name }}.json" | tr -d '\n' | tr -d '\r')
-          else
-            SCAN_SUMMARY="Scan output file not found for ${{ matrix.name }}"
-          fi
-          {
-            echo "scan_result<<EOF"
-            echo "$SCAN_SUMMARY"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Upload scan results as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: twistlock-scan-${{ matrix.name }}
-          path: |
-            scan-${{ matrix.name }}.json
-            scan-output-${{ matrix.name }}.log
-            scan-table-${{ matrix.name }}.txt
-          retention-days: 2
 
   # ──────────────────────────────────────────────
   # Job 4: Slack notification (always runs)
