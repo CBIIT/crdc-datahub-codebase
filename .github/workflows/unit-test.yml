@@ -151,7 +151,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 check_run_id: checkRun.id,
-                conclusion: 'skipped',
+                conclusion: 'neutral',
                 status: 'completed',
                 output: {
                   title: 'Tests skipped',
@@ -260,7 +260,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 check_run_id: checkRun.id,
-                conclusion: 'skipped',
+                conclusion: 'neutral',
                 status: 'completed',
                 output: {
                   title: 'Tests skipped',
