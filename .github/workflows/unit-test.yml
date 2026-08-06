@@ -33,24 +33,28 @@ jobs:
             test-command: npm run test
             prisma: false
             node-version: "24"
+            filter-regex: "apps/authn|lib/db-driver"
 
           - name: backend
             context: apps/backend
             test-command: npm run test:ci
             prisma: true
             node-version: "24"
+            filter-regex: "apps/backend|lib/db-driver"
 
           - name: frontend
             context: apps/frontend
             test-command: npm run test:ci
             prisma: false
             node-version: "22"
+            filter-regex: "apps/frontend"
 
           - name: chatbot-backend
             context: apps/chatbot-backend
             test-command: npm run test
             prisma: false
             node-version: "24"
+            filter-regex: "apps/chatbot-backend"
 
     steps:
       - name: Checkout Code Repository
@@ -61,12 +65,38 @@ jobs:
           clean: true
           fetch-depth: 0
 
+      - name: Detect relevant changes
+        id: filter
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+            if [[ "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+              echo "changed=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+          if git diff --name-only "$BASE" "$HEAD" | grep -qE "^(${{ matrix.filter-regex }})/"; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up Node.js
+        if: steps.filter.outputs.changed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
 
       - name: Setup Cache
+        if: steps.filter.outputs.changed == 'true'
         uses: actions/cache@v4
         with:
           path: ./${{ matrix.context }}/node_modules
@@ -74,26 +104,29 @@ jobs:
           restore-keys: ${{ runner.os }}-${{ matrix.name }}-modules-
 
       - name: Copy db-driver subfolders
-        if: ${{ matrix.name == 'authn' || matrix.name == 'backend' }}
+        if: ${{ steps.filter.outputs.changed == 'true' && (matrix.name == 'authn' || matrix.name == 'backend') }}
         run: |
           cp -rL lib/db-driver/. ${{ matrix.context }}/tmp-crdc-datahub-database-drivers/
           rm -rf ${{ matrix.context }}/crdc-datahub-database-drivers
           mv ${{ matrix.context }}/tmp-crdc-datahub-database-drivers ${{ matrix.context }}/crdc-datahub-database-drivers
 
       - name: Install Dependencies
+        if: steps.filter.outputs.changed == 'true'
         working-directory: ${{ matrix.context }}
         run: npm install
 
       - name: Setup Prisma
-        if: ${{ matrix.prisma }}
+        if: ${{ steps.filter.outputs.changed == 'true' && matrix.prisma }}
         working-directory: ${{ matrix.context }}
         run: npx prisma generate
 
       - name: Run tests
+        if: steps.filter.outputs.changed == 'true'
         working-directory: ${{ matrix.context }}
         run: ${{ matrix.test-command }}
 
       - name: Coveralls GitHub Action
+        if: steps.filter.outputs.changed == 'true'
         uses: coverallsapp/github-action@v2
         with:
           flag-name: ${{ matrix.name }}
@@ -110,9 +143,11 @@ jobs:
         include:
           - name: validators
             context: apps/validator
+            filter-regex: "apps/validator|lib/bento-common"
 
           - name: cli-uploader
             context: apps/cli-uploader
+            filter-regex: "apps/cli-uploader|lib/bento-common"
 
     steps:
       - name: Checkout Code Repository
@@ -123,13 +158,39 @@ jobs:
           clean: true
           fetch-depth: 0
 
+      - name: Detect relevant changes
+        id: filter
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+            if [[ "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+              echo "changed=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+          if git diff --name-only "$BASE" "$HEAD" | grep -qE "^(${{ matrix.filter-regex }})/"; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up Python
+        if: steps.filter.outputs.changed == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
 
       - name: Install Python dependencies
+        if: steps.filter.outputs.changed == 'true'
         working-directory: ${{ matrix.context }}
         run: |
           python -m pip install --upgrade pip
@@ -137,17 +198,19 @@ jobs:
           pip install pytest-cov
 
       - name: Copy bento-common subfolders
-        if: ${{ matrix.name == 'validators' || matrix.name == 'cli-uploader' }}
+        if: ${{ steps.filter.outputs.changed == 'true'}}
         run: |
           cp -rL lib/bento-common/. ${{ matrix.context }}/src/tmp-bento/
           rm -rf ${{ matrix.context }}/src/bento
           mv ${{ matrix.context }}/src/tmp-bento ${{ matrix.context }}/src/bento
 
       - name: Run unit tests
+        if: steps.filter.outputs.changed == 'true'
         working-directory: ${{ matrix.context }}
         run: pytest --cov=src --cov-report=xml --cov-report=term-missing --ignore=src/bento
 
       - name: Coveralls GitHub Action
+        if: steps.filter.outputs.changed == 'true'
         uses: coverallsapp/github-action@v2
         with:
           flag-name: ${{ matrix.name }}
@@ -164,6 +227,7 @@ jobs:
         uses: coverallsapp/github-action@v2
         with:
           parallel-finished: true
+          carryforward: "authn,backend,frontend,chatbot-backend,validators,cli-uploader"
         continue-on-error: true
 
   # ──────────────────────────────────────────────
