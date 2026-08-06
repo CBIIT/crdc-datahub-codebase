@@ -90,7 +90,6 @@ describe('Submission.getPendingPVs', () => {
                     }
                 })
             }, // dataModelService
-            mockSubmissionCollection // dataRecordsCollection
         );
 
         // Mock dependencies

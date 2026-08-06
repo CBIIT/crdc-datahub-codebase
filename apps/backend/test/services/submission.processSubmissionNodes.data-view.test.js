@@ -68,7 +68,6 @@ function buildSubmissionService() {
     {},
     new Map(),
     {},
-    {},
     {}
   );
   return submissionService;

@@ -90,8 +90,7 @@ describe('Submission Service - createBatch with Status Change to In Progress', (
             null, // uploadingMonitor
             {}, // dataCommonsBucketMap
             mockAuthorizationService, // authorizationService
-            null, // dataModelService
-            null // dataRecordsCollection
+            null // dataModelService
         );
         
         // Override submissionDAO and batchService with our mocks after construction

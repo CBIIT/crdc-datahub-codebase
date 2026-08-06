@@ -229,8 +229,7 @@ describe('Submission Service - getSubmission', () => {
             {}, // uploadingMonitor
             {}, // dataCommonsBucketMap
             mockAuthorizationService,
-            mockDataModelService,
-            {} // dataRecordsCollection
+            mockDataModelService
         );
 
         // Set mock DAOs
@@ -2061,8 +2060,7 @@ describe('Submission Service - listSubmissions', () => {
             {}, // uploadingMonitor
             {}, // dataCommonsBucketMap
             {}, // authorizationService
-            {}, // dataModelService
-            {} // dataRecordsCollection
+            {} // dataModelService
         );
 
         // Override the submissionDAO with our mock

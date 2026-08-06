@@ -37,8 +37,7 @@ describe('Submission.getSubmissionSummary', () => {
             {}, // uploadingMonitor
             new Map(), // dataCommonsBucketMap
             {}, // authorizationService
-            {}, // dataModelService
-            {} // dataRecordsCollection
+            {} // dataModelService
         );
 
         // Mock dependencies
