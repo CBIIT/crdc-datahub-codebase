@@ -185,7 +185,7 @@ jobs:
             "$IMAGE_NAME"
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ secrets.AWS_REGION }}
           role-to-assume: ${{ secrets.AWS_BUILD_ROLE_TO_ASSUME }}
@@ -249,7 +249,7 @@ jobs:
           systemctl status docker  
           echo "IMAGE_NAME=${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ matrix.ecr_repo }}:${{ env.IMAGE_TAG }}" >> $GITHUB_ENV
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ secrets.AWS_REGION }}
           role-to-assume: ${{ secrets.AWS_BUILD_ROLE_TO_ASSUME }}
@@ -279,6 +279,13 @@ jobs:
           echo "Downloaded TwistCLI:"
           ls -lh "${TWISTLOCK_PATH}"
           "${TWISTLOCK_PATH}" --version
+
+          #docker image prune --all --force --filter "until=24h"
+          docker image prune --all --force
+
+          df -h
+          docker system df
+
       - name: Run Twistlock Scan
         id: twistlock_scan
         run: |
@@ -345,6 +352,10 @@ jobs:
                   data = json.load(f)
           except Exception as e:
               print(f"Could not read/parse {scan_file}: {e}")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+                  gh_out.write("critical_count=0\n")
+                  gh_out.write("high_count=0\n")
+                  gh_out.write("has_critical_or_high=false\n")
               sys.exit(0)
 
           results = data if isinstance(data, list) else data.get("results", [data])
@@ -398,16 +409,144 @@ jobs:
 
           with open(f"scan-table-{image_label}.txt", "w") as out:
               out.write(summary + "\n")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+              gh_out.write(f"critical_count={sev_counts['critical']}\n")
+              gh_out.write(f"high_count={sev_counts['high']}\n")
+              gh_out.write(f"medium_count={sev_counts['medium']}\n")
+              gh_out.write(f"low_count={sev_counts['low']}\n")
+              gh_out.write(f"has_critical_or_high={has_critical_or_high}\n")
+
           PYEOF
 
+      - name: Write scan result summary file
+        if: always()
+        run: |
+          cat > "result-${{ matrix.name }}.json" << EOF
+          {
+            "image": "${{ matrix.name }}",
+            "critical": ${{ steps.format_table.outputs.critical_count || 0 }},
+            "high": ${{ steps.format_table.outputs.high_count || 0 }},
+            "medium": ${{ steps.format_table.outputs.medium_count || 0 }},
+            "low": ${{ steps.format_table.outputs.low_count || 0 }},
+            "has_critical_or_high": "${{ steps.format_table.outputs.has_critical_or_high || 'false' }}"
+          }
+          EOF
+          cat "result-${{ matrix.name }}.json"
+
+      - name: Upload per-image result summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twistlock-result-${{ matrix.name }}
+          path: result-${{ matrix.name }}.json
+          retention-days: 2
+
+      - name: Set scan result output
+        id: set_scan_output
+        if: always()
+        run: |
+          if [ -f "scan-${{ matrix.name }}.json" ]; then
+            SCAN_SUMMARY=$(cat "scan-${{ matrix.name }}.json" | tr -d '\n' | tr -d '\r')
+          else
+            SCAN_SUMMARY="Scan output file not found for ${{ matrix.name }}"
+          fi
+          {
+            echo "scan_result<<EOF"
+            echo "$SCAN_SUMMARY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload scan results as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twistlock-scan-${{ matrix.name }}
+          path: |
+            scan-${{ matrix.name }}.json
+            scan-output-${{ matrix.name }}.log
+            scan-table-${{ matrix.name }}.txt
+          retention-days: 2
 
   # ──────────────────────────────────────────────
-  # Job 4: Slack notification (always runs)
+  # Job 4: Twistlock Scan Summary - combine results, fail on critical/high
+  # ──────────────────────────────────────────────
+  twistlock_summary:
+    name: Twistlock Scan Summary
+    runs-on: ubuntu-latest
+    needs: [twistlock_scan]
+    if: always() && needs.twistlock_scan.result != 'skipped'
+    steps:
+      - name: Download all per-image result summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: twistlock-result-*
+          path: results
+          merge-multiple: true
+
+      - name: Build combined summary and evaluate pass/fail
+        run: |
+          python3 - << 'PYEOF'
+          import glob
+          import json
+          import os
+
+          files = sorted(glob.glob("results/*.json"))
+          rows = []
+          any_fail = False
+
+          for fpath in files:
+              try:
+                  with open(fpath) as f:
+                      rows.append(json.load(f))
+              except Exception as e:
+                  print(f"Could not read {fpath}: {e}")
+
+          lines = []
+          lines.append("## \U0001F512 Twistlock Scan Results\n")
+          lines.append("| Image | Critical | High | Medium | Low | Status |")
+          lines.append("|---|---|---|---|---|---|")
+
+          for r in rows:
+              crit = r.get("critical", 0)
+              high = r.get("high", 0)
+              med = r.get("medium", 0)
+              low = r.get("low", 0)
+              failed = r.get("has_critical_or_high") == "true"
+              if failed:
+                  any_fail = True
+              status = "\u274C FAIL" if failed else "\u2705 PASS"
+              lines.append(f"| {r.get('image','?')} | {crit} | {high} | {med} | {low} | {status} |")
+
+          lines.append("")
+          if any_fail:
+              lines.append("\u274C **One or more images have CRITICAL or HIGH vulnerabilities.**")
+          else:
+              lines.append("\u2705 **No CRITICAL or HIGH vulnerabilities found across all images.**")
+
+          summary_md = "\n".join(lines)
+          print(summary_md)
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(summary_md + "\n")
+
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"ANY_CRITICAL_OR_HIGH={'true' if any_fail else 'false'}\n")
+          PYEOF
+
+      - name: Fail if any image has critical/high vulnerabilities
+        if: env.ANY_CRITICAL_OR_HIGH == 'true'
+        run: |
+          echo "Failing build: one or more images have CRITICAL or HIGH vulnerabilities."
+          exit 1        
+
+  # ──────────────────────────────────────────────
+  # Job 5: Slack notification (always runs)
   # ──────────────────────────────────────────────
   notify:
     name: Slack Notification
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, twistlock_scan, twistlock_summary]
     if: always()
     steps:
       - name: Slack Notification
