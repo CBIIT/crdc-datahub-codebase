@@ -33,6 +33,7 @@
     "http-errors": "^2.0.0",
     "js-yaml": "^4.2.0",
     "jsonwebtoken": "^9.0.2",
+    "marked": "^18.0.9",
     "mdf-reader": "^1.2.0",
     "mongodb": "^5.5.0",
     "mongoose": "9.8.0",

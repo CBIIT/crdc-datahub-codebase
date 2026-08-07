@@ -1,7 +1,8 @@
 const {
     sanitizeAllowlistedHtml,
     PRESET_SR_APPROVAL_PENDING_HTML,
-    PRESET_NOTIFICATION_TEXT_HTML
+    PRESET_NOTIFICATION_TEXT_HTML,
+    PRESET_SR_REVIEW_COMMENT_HTML
 } = require('../../utility/sanitize-allowlisted-html');
 
 describe('sanitizeAllowlistedHtml', () => {
@@ -99,6 +100,12 @@ describe('PRESET_SR_APPROVAL_PENDING_HTML via sanitizeAllowlistedHtml', () => {
         expect(out).toContain('<strong>');
         expect(out).toContain('<em>');
     });
+
+    it('overrides a caller-supplied rel unconditionally', () => {
+        const out = sanitize('<a href="https://example.com" rel="opener">link</a>');
+        expect(out).not.toMatch(/rel="opener"/);
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
 });
 
 describe('PRESET_NOTIFICATION_TEXT_HTML via sanitizeAllowlistedHtml', () => {
@@ -184,5 +191,75 @@ describe('PRESET_NOTIFICATION_TEXT_HTML via sanitizeAllowlistedHtml', () => {
         const out = sanitize(html);
         expect(out).not.toMatch(/<a[\s>]/);
         expect(out).toContain('<b>Fake Study</b>');
+    });
+});
+
+describe('PRESET_SR_REVIEW_COMMENT_HTML via sanitizeAllowlistedHtml', () => {
+    const sanitize = (html) => sanitizeAllowlistedHtml(html, PRESET_SR_REVIEW_COMMENT_HTML);
+
+    it('allows bold, italic, and list tags', () => {
+        const html = '<p><strong>bold</strong> and <em>italic</em></p><ul><li>item</li></ul>';
+        const out = sanitize(html);
+        expect(out).toContain('<strong>bold</strong>');
+        expect(out).toContain('<em>italic</em>');
+        expect(out).toContain('<ul>');
+        expect(out).toContain('<li>item</li>');
+    });
+
+    it('allows ordered lists', () => {
+        const html = '<ol><li>first</li><li>second</li></ol>';
+        const out = sanitize(html);
+        expect(out).toContain('<ol>');
+        expect(out).toContain('<li>first</li>');
+    });
+
+    it('allows https hyperlinks with forced rel', () => {
+        const html = '<a href="https://example.com">link</a>';
+        const out = sanitize(html);
+        expect(out).toContain('https://example.com');
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
+
+    it('omits href when anchor has no href', () => {
+        const out = sanitize('<a>plain</a>');
+        expect(out).not.toMatch(/href=/);
+        expect(out).toContain('plain');
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
+
+    it('strips javascript: URLs', () => {
+        const out = sanitize('<a href="javascript:alert(1)">bad</a>');
+        expect(out).not.toMatch(/javascript:/i);
+    });
+
+    it('strips heading tags', () => {
+        const out = sanitize('<h1>Heading</h1><h2>Sub</h2><p>text</p>');
+        expect(out).not.toMatch(/<h[1-6]/i);
+        expect(out).toContain('Heading');
+        expect(out).toContain('text');
+    });
+
+    it('strips script tags', () => {
+        const out = sanitize('<script>alert(1)</script><p>safe</p>');
+        expect(out).not.toMatch(/script/i);
+        expect(out).toContain('safe');
+    });
+
+    it('strips event handler attributes', () => {
+        const out = sanitize('<p onclick="alert(1)">text</p>');
+        expect(out).not.toMatch(/onclick/i);
+        expect(out).toContain('text');
+    });
+
+    it('strips img tags', () => {
+        const out = sanitize('<img src="https://evil.com/x.png"><p>text</p>');
+        expect(out).not.toMatch(/img/i);
+        expect(out).toContain('text');
+    });
+
+    it('overrides a caller-supplied rel unconditionally', () => {
+        const out = sanitize('<a href="https://example.com" rel="opener">link</a>');
+        expect(out).not.toMatch(/rel="opener"/);
+        expect(out).toMatch(/rel="noopener noreferrer"/);
     });
 });
