@@ -54,12 +54,12 @@ class UserService {
     _allEmailNotificationNamesSet = new Set([...Object.values(EN.SUBMISSION_REQUEST), ...Object.values(EN.DATA_SUBMISSION), ...Object.values(EN.USER_ACCOUNT)]);
     _NIH = "nih";
     _NOT_APPLICABLE = "NA";
-    constructor(logCollection, organizationCollection, notificationsService, submissionsCollection, applicationCollection, officialEmail, appUrl, approvedStudiesService, inactiveUserDays, configurationService, institutionService, authorizationService) {
+    constructor(logCollection, organizationCollection, notificationsService, submissionsCollection, submissionRequestCollection, officialEmail, appUrl, approvedStudiesService, inactiveUserDays, configurationService, institutionService, authorizationService) {
         this.logCollection = logCollection;
         this.organizationCollection = organizationCollection;
         this.notificationsService = notificationsService;
         this.submissionsCollection = submissionsCollection;
-        this.applicationCollection = applicationCollection;
+        this.submissionRequestCollection = submissionRequestCollection;
         this.officialEmail = officialEmail;
         this.appUrl = appUrl;
         this.approvedStudiesService = approvedStudiesService;

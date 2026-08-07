@@ -91,7 +91,7 @@ class NotifyUser {
         });
     }
 
-    async inactiveApplicationsNotification(email, CCEmails, BCCEmails, template_params, messageVariables) {
+    async inactiveSubmissionRequestsNotification(email, CCEmails, BCCEmails, template_params, messageVariables) {
         const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.INACTIVE_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.INACTIVE_APPLICATION_SUBJECT;
         return await this.send(async () => {
@@ -108,7 +108,7 @@ class NotifyUser {
         });
     }
 
-    async cancelApplicationNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
+    async cancelSubmissionRequestNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
         const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.CANCEL_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const subject = this.email_constants.CANCEL_APPLICATION_SUBJECT;
         return await this.send(async () => {
@@ -128,7 +128,7 @@ class NotifyUser {
         });
     }
 
-    async restoreApplicationNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
+    async restoreSubmissionRequestNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
         const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_SECOND_CONTENT, messageVariables);
         const thirdMessage = replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_THIRD_CONTENT, messageVariables);
@@ -150,7 +150,7 @@ class NotifyUser {
         });
     }
 
-    async reopenApplicationNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
+    async reopenSubmissionRequestNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
         const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REOPEN_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.REOPEN_APPLICATION_SECOND_CONTENT, messageVariables);
         const thirdMessage = replaceMessageVariables(this.email_constants.REOPEN_APPLICATION_THIRD_CONTENT, messageVariables);
@@ -477,7 +477,7 @@ class NotifyUser {
         });
     }
 
-    async remindApplicationsNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
+    async remindSubmissionRequestsNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
         const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_SECOND_CONTENT, messageVariables);
         const subject = replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_SUBJECT, messageVariables);
@@ -495,7 +495,7 @@ class NotifyUser {
         });
     }
 
-    async finalRemindApplicationsNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
+    async finalRemindSubmissionRequestsNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
         const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_SECOND_CONTENT, messageVariables);
         const thirdMessage = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_THIRD_CONTENT, messageVariables);

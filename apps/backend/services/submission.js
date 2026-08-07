@@ -138,15 +138,15 @@ class Submission {
         const isArray = Array.isArray(submissions);
         const submissionList = isArray ? submissions : [submissions];
         
-        // Collect unique applicationIDs that need ownership check
-        const applicationIDs = [...new Set(
+        // Collect unique submission request IDs that need ownership check
+        const submissionRequestIDs = [...new Set(
             submissionList
                 .map(s => s.submissionRequestID)
                 .filter(Boolean)
         )];
         
-        // If no applicationIDs, skip permission check and return early
-        if (applicationIDs.length === 0) {
+        // If no submission request IDs, skip permission check and return early
+        if (submissionRequestIDs.length === 0) {
             const enriched = submissionList.map(s => ({
                 ...s,
                 canViewSubmissionRequest: false
@@ -170,7 +170,7 @@ class Submission {
             return isArray ? enriched : enriched[0];
         }
         
-        // If ALL scope, set all with applicationID to true
+        // If ALL scope, set all with a submissionRequestID to true
         if (userScope.isAllScope()) {
             const enriched = submissionList.map(s => ({
                 ...s,
@@ -180,12 +180,12 @@ class Submission {
         }
         
         // OWN scope - batch load submission requests to check ownership
-        const applications = await this.submissionRequestDAO.findMany(
-            { _id: { $in: applicationIDs } }
+        const submissionRequests = await this.submissionRequestDAO.findMany(
+            { _id: { $in: submissionRequestIDs } }
         );
         
         const applicantMap = new Map(
-            applications.map(app => [app.id ?? app._id, app.applicantID])
+            submissionRequests.map(app => [app.id ?? app._id, app.applicantID])
         );
         
         const enriched = submissionList.map(s => ({

@@ -59,23 +59,23 @@ class ApprovedStudiesService {
     }
 
     /**
-     * Builds Approved Study fields from an application/questionnaire, excluding program-related
+     * Builds Approved Study fields from a submission request/questionnaire, excluding program-related
      * fields (programID, useProgramPC, primaryContactID) and fields that must not change once a study
      * is approved (studyName, studyAbbreviation, ORCID, PI), so it can be safely reused both for
      * creating a new study and for updating the remaining fields on an existing one.
      */
-    _buildUpdatableStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA) {
-        const controlledAccess = isTrue(application?.controlledAccess);
-        const resolvedGPAName = PendingGPA.resolveGPAName(application?.GPAName, controlledAccess);
+    _buildUpdatableStudyFieldsFromSubmissionRequest(submissionRequest, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA) {
+        const controlledAccess = isTrue(submissionRequest?.controlledAccess);
+        const resolvedGPAName = PendingGPA.resolveGPAName(submissionRequest?.GPAName, controlledAccess);
         const pendingGPA = PendingGPA.create(resolvedGPAName, isPendingGPA);
         const trimmedDbGaP = String(questionnaire?.study?.dbGaPPPHSNumber ?? "").trim();
         const baseDbGaP = trimmedDbGaP.match(/^phs\d{6}/i)?.[0]?.toLowerCase() ?? null;
 
         const fields = {
-            applicationID: application?._id ?? application?.id,
-            originalOrg: application?.organization?.name ?? null,
+            applicationID: submissionRequest?._id ?? submissionRequest?.id,
+            originalOrg: submissionRequest?.organization?.name ?? null,
             controlledAccess,
-            openAccess: isTrue(application?.openAccess),
+            openAccess: isTrue(submissionRequest?.openAccess),
             pendingModelChange: isTrue(pendingModelChange ?? true),
             pendingImageDeIdentification: isTrue(pendingImageDeIdentification),
             // Always set explicitly (null when absent) so the update path clears stale values instead of preserving them.
@@ -93,27 +93,27 @@ class ApprovedStudiesService {
         return { fields, pendingGPA };
     }
 
-    async _buildApprovedStudyFieldsFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
-        const { fields, pendingGPA } = this._buildUpdatableStudyFieldsFromApplication(
-            application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
+    async _buildApprovedStudyFieldsFromSubmissionRequest(submissionRequest, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
+        const { fields, pendingGPA } = this._buildUpdatableStudyFieldsFromSubmissionRequest(
+            submissionRequest, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
         );
         const program = await this._validateProgramID(existingProgram?._id || null);
-        const studyAbbreviation = defaultStudyAbbreviationToStudyName((application?.studyAbbreviation ?? "").trim(), application?.studyName);
+        const studyAbbreviation = defaultStudyAbbreviationToStudyName((submissionRequest?.studyAbbreviation ?? "").trim(), submissionRequest?.studyName);
 
-        fields.studyName = application?.studyName ?? null;
+        fields.studyName = submissionRequest?.studyName ?? null;
         fields.studyAbbreviation = studyAbbreviation;
         fields.useProgramPC = true;
         fields.primaryContactID = null;
         fields.programID = program?._id ?? null;
-        fields.ORCID = application?.ORCID ?? null;
-        fields.PI = application?.PI ?? null;
+        fields.ORCID = submissionRequest?.ORCID ?? null;
+        fields.PI = submissionRequest?.PI ?? null;
 
         return { fields, pendingGPA };
     }
 
-    async saveApprovedStudyFromApplication(application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram, existingStudy = null) {
-        const { fields, pendingGPA } = await this._buildApprovedStudyFieldsFromApplication(
-            application,
+    async saveApprovedStudyFromSubmissionRequest(submissionRequest, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram, existingStudy = null) {
+        const { fields, pendingGPA } = await this._buildApprovedStudyFieldsFromSubmissionRequest(
+            submissionRequest,
             questionnaire,
             pendingModelChange,
             pendingImageDeIdentification,
@@ -167,13 +167,13 @@ class ApprovedStudiesService {
         return res;
     }
 
-    async storeApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification) {
+    async storeApprovedStudies(submissionRequestID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification) {
         // Validate programID and fall back to NA program if needed
         const program = await this._validateProgramID(programID);
         const validatedProgramID = program?._id;
 
         const resolvedStudyAbbreviation = defaultStudyAbbreviationToStudyName(studyAbbreviation, studyName);
-        const approvedStudies = ApprovedStudies.createApprovedStudies(applicationID, studyName, resolvedStudyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, validatedProgramID, pendingImageDeIdentification);
+        const approvedStudies = ApprovedStudies.createApprovedStudies(submissionRequestID, studyName, resolvedStudyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, validatedProgramID, pendingImageDeIdentification);
         const res = await this.approvedStudyDAO.create(approvedStudies);
 
         if (!res) {
@@ -209,35 +209,35 @@ class ApprovedStudiesService {
     }
 
     /**
-     * Find an approved study linked to a submission request application ID.
-     * @param {string} applicationID
+     * Find an approved study linked to a submission request ID.
+     * @param {string} submissionRequestID
      * @returns {Promise<Object|null>}
      */
-    async findByApplicationID(applicationID) {
-        return await this.approvedStudyDAO.findByApplicationID(applicationID);
+    async findBySubmissionRequestID(submissionRequestID) {
+        return await this.approvedStudyDAO.findBySubmissionRequestID(submissionRequestID);
     }
 
     /**
-     * Update an existing approved study using data from the current application on revision re-approval
+     * Update an existing approved study using data from the current submission request on revision re-approval
      * (e.g. reopening then reapproving a Submission Request). Relinks applicationID to the current
-     * application and refreshes the remaining fields, but leaves studyName, studyAbbreviation, ORCID, PI,
+     * submission request and refreshes the remaining fields, but leaves studyName, studyAbbreviation, ORCID, PI,
      * and program-related fields (programID, useProgramPC, primaryContactID) untouched.
      * @param {Object} existingStudy The current approved study record to update
-     * @param {Object} application The current (reopened) application being approved
-     * @param {Object} questionnaire The application's parsed questionnaire data
+     * @param {Object} submissionRequest The current (reopened) submission request being approved
+     * @param {Object} questionnaire The submission request's parsed questionnaire data
      * @param {boolean} pendingModelChange
      * @param {boolean} pendingImageDeIdentification
      * @param {boolean} isPendingGPA
      * @returns {Promise<Object>} The updated approved study
      */
-    async updateReapprovedStudy(existingStudy, application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA) {
+    async updateReapprovedStudy(existingStudy, submissionRequest, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA) {
         const studyID = existingStudy?._id ?? existingStudy?.id;
         if (!studyID) {
             throw new Error(ERROR.APPROVED_STUDY_NOT_FOUND);
         }
 
-        const { fields } = this._buildUpdatableStudyFieldsFromApplication(
-            application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
+        const { fields } = this._buildUpdatableStudyFieldsFromSubmissionRequest(
+            submissionRequest, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
         );
 
         const updateStudy = {
@@ -613,16 +613,16 @@ class ApprovedStudiesService {
     async _notifyClearPendingState(updateStudy) {
         const errorMsg = replaceErrorString(ERROR.FAILED_TO_NOTIFY_CLEAR_PENDING_STATE, `studyID: ${updateStudy?._id}`);
         try{
-            const application = await this.submissionRequestDAO.findFirst({_id: updateStudy.applicationID});
-            if (!application || !application?._id) {
+            const submissionRequest = await this.submissionRequestDAO.findFirst({_id: updateStudy.applicationID});
+            if (!submissionRequest || !submissionRequest?._id) {
                 // internal error for the logs, this will not be displayed to the user
-                throw new Error("Unable to find application with ID: " + updateStudy.applicationID);
+                throw new Error("Unable to find submission request with ID: " + updateStudy.applicationID);
             }
 
-            const aSubmitter = await this.userDAO.findFirst({_id: application?.applicantID});
+            const aSubmitter = await this.userDAO.findFirst({_id: submissionRequest?.applicantID});
             if (!aSubmitter?._id) {
                 // internal error for the logs, this will not be displayed to the user
-                throw new Error("Unable to find submitter with ID: " + application?.applicantID);
+                throw new Error("Unable to find submitter with ID: " + submissionRequest?.applicantID);
             }
             const BCCUsers = await this.userDAO.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_CLEARED],
                 [USER.ROLES.DATA_COMMONS_PERSONNEL, USER.ROLES.FEDERAL_LEAD, USER.ROLES.ADMIN]);

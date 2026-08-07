@@ -16,9 +16,9 @@ class Program {
 
   /**
    * @param {object} submissionCollection Native submission collection
-   * @param {object} [_applicationCollection] Unused; retained for constructor signature compatibility
+   * @param {object} [_submissionRequestCollection] Unused; retained for constructor signature compatibility
    */
-  constructor(submissionCollection, _applicationCollection) {
+  constructor(submissionCollection, _submissionRequestCollection) {
     this.programDAO = new ProgramDAO();
     this.approvedStudyDAO = new ApprovedStudyDAO();
     this.submissionDAO = new SubmissionDAO(submissionCollection);
@@ -232,13 +232,13 @@ class Program {
 
       try {
         // The result of updateUserOrg is not used so it is not extracted from the promise.all response
-        const [updatedApplication] = await Promise.all(promises);
+        const [updatedSubmissionRequest] = await Promise.all(promises);
 
-        if (updatedProgram.name && !updatedApplication?.acknowledged) {
+        if (updatedProgram.name && !updatedSubmissionRequest?.acknowledged) {
           console.error("Failed to update the organization name in submission requests");
         }
       } catch (error) {
-        console.error("Failed to update the organization name in users/applications", error);
+        console.error("Failed to update the organization name in users/submissionRequests", error);
       }
     }
 
