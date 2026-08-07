@@ -1,6 +1,8 @@
 const fsp = require('fs/promises');
 const path = require('path');
 const handlebars = require('handlebars');
+const { marked } = require('marked');
+const { sanitizeAllowlistedHtml, PRESET_SR_REVIEW_COMMENT_HTML } = require('../utility/sanitize-allowlisted-html');
 
 // isArray is a helper function in this html template,
 handlebars.registerHelper('isArray', function(value) {
@@ -24,6 +26,15 @@ handlebars.registerHelper('nlToBr', function (text) {
     }
     const escaped = handlebars.Utils.escapeExpression(text);
     return new handlebars.SafeString(escaped.replace(/\n/g, '<br>'));
+});
+
+// markdownToHtml helper: parses markdown and sanitizes output for email injection
+handlebars.registerHelper('markdownToHtml', function (text) {
+    if (!text) {
+        return '';
+    }
+    const rawHtml = marked.parse(String(text), { breaks: true });
+    return new handlebars.SafeString(sanitizeAllowlistedHtml(rawHtml, PRESET_SR_REVIEW_COMMENT_HTML));
 });
 
 
