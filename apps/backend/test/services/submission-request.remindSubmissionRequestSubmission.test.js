@@ -1,7 +1,7 @@
-const { Application } = require('../../services/application');
+const { SubmissionRequest } = require("../../services/submission-request");
 
 const mockLogCollection = { insert: jest.fn() };
-const mockApplicationCollection = {};
+const mockSubmissionRequestCollection = {};
 const mockApprovedStudiesService = {};
 const mockUserService = {
   getUsersByNotifications: jest.fn(),
@@ -11,8 +11,8 @@ const mockUserService = {
 };
 const mockDbService = {};
 const mockNotificationsService = {
-  finalRemindApplicationsNotification: jest.fn(),
-  remindApplicationsNotification: jest.fn()
+  finalRemindSubmissionRequestsNotification: jest.fn(),
+  remindSubmissionRequestsNotification: jest.fn()
 };
 const mockEmailParams = {
   inactiveDays: 180,
@@ -24,8 +24,8 @@ const mockEmailParams = {
 const mockProgramService = {};
 const mockConfigurationService = {};
 
-describe('remindApplicationSubmission', () => {
-  let applicationService;
+describe('remindSubmissionRequestSubmission', () => {
+  let submissionRequestService;
   let mockSubmissionRequestDAO;
 
   beforeEach(() => {
@@ -53,9 +53,9 @@ describe('remindApplicationSubmission', () => {
       update: jest.fn()
     };
 
-    applicationService = new Application(
+    submissionRequestService = new SubmissionRequest(
       mockLogCollection,
-      mockApplicationCollection,
+      mockSubmissionRequestCollection,
       mockApprovedStudiesService,
       mockUserService,
       mockDbService,
@@ -67,8 +67,8 @@ describe('remindApplicationSubmission', () => {
       null
     );
 
-    applicationService.submissionRequestDAO = mockSubmissionRequestDAO;
-    applicationService.userDAO = { findFirst: jest.fn() };
+    submissionRequestService.submissionRequestDAO = mockSubmissionRequestDAO;
+    submissionRequestService.userDAO = { findFirst: jest.fn() };
   });
 
   afterEach(() => {
@@ -76,7 +76,7 @@ describe('remindApplicationSubmission', () => {
   });
 
   describe('Dual-window reminder logic', () => {
-    it('should fetch applications from both default and short windows', async () => {
+    it('should fetch submissionRequests from both default and short windows', async () => {
       // All empty - no reminders to send
       mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([]) // final default
@@ -89,7 +89,7 @@ describe('remindApplicationSubmission', () => {
         mockSubmissionRequestDAO.getInactiveSubmissionRequest.mockResolvedValueOnce([]);
       }
 
-      await applicationService.remindApplicationSubmission();
+      await submissionRequestService.remindSubmissionRequestSubmission();
 
       // Should have called getInactiveSubmissionRequest at least twice (final default + final short)
       const calls = mockSubmissionRequestDAO.getInactiveSubmissionRequest.mock.calls;
@@ -134,11 +134,11 @@ describe('remindApplicationSubmission', () => {
         notifications: ['submission_request:expiring']
       });
       mockUserService.findByID.mockResolvedValue(null);
-      applicationService.userDAO.findFirst.mockResolvedValue(null);
+      submissionRequestService.userDAO.findFirst.mockResolvedValue(null);
 
-      await applicationService.remindApplicationSubmission();
+      await submissionRequestService.remindSubmissionRequestSubmission();
 
-      expect(mockNotificationsService.remindApplicationsNotification).toHaveBeenCalledWith(
+      expect(mockNotificationsService.remindSubmissionRequestsNotification).toHaveBeenCalledWith(
         'blank@example.com',
         [],
         [],
@@ -204,9 +204,9 @@ describe('remindApplicationSubmission', () => {
       });
 
       mockUserService.findByID.mockResolvedValue(null);
-      applicationService.userDAO.findFirst.mockResolvedValue(null);
+      submissionRequestService.userDAO.findFirst.mockResolvedValue(null);
 
-      await applicationService.remindApplicationSubmission();
+      await submissionRequestService.remindSubmissionRequestSubmission();
 
       // getInactiveSubmissionRequest should have been called
       expect(mockSubmissionRequestDAO.getInactiveSubmissionRequest).toHaveBeenCalled();
@@ -249,9 +249,9 @@ describe('remindApplicationSubmission', () => {
 
       mockUserService.getUsersByNotifications.mockResolvedValue([]);
       mockUserService.findByID.mockResolvedValue({ id: 'user-tracked', email: 'test@example.com' });
-      applicationService.userDAO.findFirst.mockResolvedValue({ id: 'user-tracked', email: 'test@example.com' });
+      submissionRequestService.userDAO.findFirst.mockResolvedValue({ id: 'user-tracked', email: 'test@example.com' });
 
-      await applicationService.remindApplicationSubmission();
+      await submissionRequestService.remindSubmissionRequestSubmission();
 
       // Should have called update for the deduped app
       expect(mockSubmissionRequestDAO.update).toHaveBeenCalled();
@@ -294,9 +294,9 @@ describe('remindApplicationSubmission', () => {
 
       mockUserService.getUsersByNotifications.mockResolvedValue([]);
       mockUserService.findByID.mockResolvedValue({ id: 'user-flag-test', email: 'flag@example.com' });
-      applicationService.userDAO.findFirst.mockResolvedValue({ id: 'user-flag-test', email: 'flag@example.com' });
+      submissionRequestService.userDAO.findFirst.mockResolvedValue({ id: 'user-flag-test', email: 'flag@example.com' });
 
-      await applicationService.remindApplicationSubmission();
+      await submissionRequestService.remindSubmissionRequestSubmission();
 
       // Verify update was called with reminder flags
       expect(mockSubmissionRequestDAO.update).toHaveBeenCalledWith(
@@ -328,7 +328,7 @@ describe('remindApplicationSubmission', () => {
 
       mockSubmissionRequestDAO.update.mockResolvedValue({ matchedCount: 0 });
 
-      await applicationService.remindApplicationSubmission();
+      await submissionRequestService.remindSubmissionRequestSubmission();
 
       // Verify getInactiveSubmissionRequest was called exactly 7 times:
       // 2 final (default + short) + 5 interval (only 1 short query for 7 and 15, skipped for 30)

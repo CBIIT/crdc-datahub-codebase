@@ -1,9 +1,9 @@
-const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED, IN_REVISION, REOPENED} = require("../constants/application-constants");
+const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED, IN_REVISION, REOPENED} = require("../constants/submission-request-constants");
 const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
 const {v4} = require('uuid')
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {HistoryEventBuilder} = require("../domain/history-event");
-const {verifyApplication} = require("../verifier/application-verifier");
+const {verifySubmissionRequest} = require("../verifier/submission-request-verifier");
 const {verifySession} = require("../verifier/user-info-verifier");
 const ERROR = require("../constants/error-constants");
 const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-constants");
@@ -27,8 +27,8 @@ const {
 } = require("../utility/reopen-owner-utility");
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_INSTITUTION_NAME_LENGTH = 100;
-// Valid orderBy values for listApplications. "applicant.applicantName" is accepted and mapped to "applicant.fullName".
-const VALID_ORDER_BY_LIST_APPLICATIONS = [
+// Valid orderBy values for listSubmissionRequests. "applicant.applicantName" is accepted and mapped to "applicant.fullName".
+const VALID_ORDER_BY_LIST_SUBMISSION_REQUESTS = [
     "applicant.applicantName",
     "applicant.fullName",
     "programName",
@@ -42,13 +42,13 @@ const VALID_ORDER_BY_LIST_APPLICATIONS = [
 ];
 const TERMINAL_REVISION_STATUSES = Object.freeze([REJECTED, CANCELED, DELETED]);
 
-class Application {
+class SubmissionRequest {
     _DELETE_REVIEW_COMMENT="This Submission Request has been deleted by the system due to inactivity.";
     _ALL_FILTER="All";
     _FINAL_INACTIVE_REMINDER = "finalInactiveReminder";
     _INACTIVE_REMINDER = "inactiveReminder";
     _CRDC_TEAM = "the CRDC team";
-    constructor(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, institutionService, configurationService, authorizationService) {
+    constructor(logCollection, submissionRequestCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, institutionService, configurationService, authorizationService) {
         this.logCollection = logCollection;
         this.approvedStudiesService = approvedStudiesService;
         this.userService = userService;
@@ -61,27 +61,27 @@ class Application {
         this.institionDAO = new InstitutionDAO()
         this.submissionRequestDAO = new SubmissionRequestDAO();
         this.userDAO = new UserDAO();
-        this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, IN_REVISION, REOPENED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
+        this._VALID_LIST_SUBMISSION_REQUEST_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, IN_REVISION, REOPENED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
     }
 
-    _normalizeApplicationStatus(status) {
+    _normalizeSubmissionRequestStatus(status) {
         return String(status ?? "").trim().toLowerCase();
     }
 
-    _isApprovedApplication(application) {
-        return this._normalizeApplicationStatus(application?.status) === this._normalizeApplicationStatus(APPROVED);
+    _isApprovedSubmissionRequest(submissionRequest) {
+        return this._normalizeSubmissionRequestStatus(submissionRequest?.status) === this._normalizeSubmissionRequestStatus(APPROVED);
     }
 
     _isTerminalRevisionStatus(status) {
-        const normalized = this._normalizeApplicationStatus(status);
+        const normalized = this._normalizeSubmissionRequestStatus(status);
         return TERMINAL_REVISION_STATUSES.some(
-            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === normalized
+            (terminalStatus) => this._normalizeSubmissionRequestStatus(terminalStatus) === normalized
         );
     }
 
     /**
      * Loads status for the immediate revision successor (minimal DB read).
-     * @param {string} revisionID Successor application _id
+     * @param {string} revisionID Successor submissionRequest _id
      * @returns {Promise<{ status: string }|null>}
      */
     async _loadRevisionChainSuccessor(revisionID) {
@@ -95,12 +95,12 @@ class Application {
 
     /**
      * Returns true when the immediate revision successor has a non-terminal status.
-     * @param {object} application Application document that may have nextRevisionId
+     * @param {object} submissionRequest submission request document that may have nextRevisionId
      * @param {string|undefined|null} successorStatus Status of the direct successor, when known
      * @returns {boolean}
      */
-    _hasSuccessorWithNonTerminalStatus(application, successorStatus) {
-        const nextRevisionID = application?.nextRevisionId;
+    _hasSuccessorWithNonTerminalStatus(submissionRequest, successorStatus) {
+        const nextRevisionID = submissionRequest?.nextRevisionId;
         if (!nextRevisionID) {
             return false;
         }
@@ -113,55 +113,55 @@ class Application {
     /**
      * Loads the successor and delegates to _hasSuccessorWithNonTerminalStatus.
      * Valid chains are Approved → tail; only the direct successor is checked.
-     * @param {object} application Application document that may have nextRevisionId
+     * @param {object} submissionRequest submission request document that may have nextRevisionId
      * @returns {Promise<boolean>}
      */
-    async _hasActiveLaterRevisions(application) {
-        const nextRevisionID = application?.nextRevisionId;
+    async _hasActiveLaterRevisions(submissionRequest) {
+        const nextRevisionID = submissionRequest?.nextRevisionId;
         if (!nextRevisionID) {
             return false;
         }
         const successor = await this._loadRevisionChainSuccessor(nextRevisionID);
-        return this._hasSuccessorWithNonTerminalStatus(application, successor?.status);
+        return this._hasSuccessorWithNonTerminalStatus(submissionRequest, successor?.status);
     }
 
     /**
-     * True when an Approved parent SRF links to this application via nextRevisionId.
-     * @param {object} application Candidate application
+     * True when an Approved parent SRF links to this submissionRequest via nextRevisionId.
+     * @param {object} submissionRequest Candidate submissionRequest
      * @returns {Promise<boolean>}
      */
-    async _hasApprovedParentSRF(application) {
-        const applicationID = application?._id ?? application?.id;
-        if (!applicationID) {
+    async _hasApprovedParentSRF(submissionRequest) {
+        const submissionRequestID = submissionRequest?._id ?? submissionRequest?.id;
+        if (!submissionRequestID) {
             return false;
         }
-        const parent = await this.submissionRequestDAO.findApprovedParentSubmissionRequestByID(applicationID);
+        const parent = await this.submissionRequestDAO.findApprovedParentSubmissionRequestByID(submissionRequestID);
         return Boolean(parent);
     }
 
     /**
      * True when Approved and the immediate successor (if linked) is absent or terminal.
-     * Returns the existing boolean when already set on the application (response-only field).
-     * @param {object} application Application document
+     * Returns the existing boolean when already set on the submission request (response-only field).
+     * @param {object} submissionRequest submission request document
      * @returns {Promise<boolean>}
      */
-    async _computeCanBeReopened(application) {
-        if (typeof application?.canBeReopened === 'boolean') {
-            return application.canBeReopened;
+    async _computeCanBeReopened(submissionRequest) {
+        if (typeof submissionRequest?.canBeReopened === 'boolean') {
+            return submissionRequest.canBeReopened;
         }
-        if (!this._isApprovedApplication(application)) {
+        if (!this._isApprovedSubmissionRequest(submissionRequest)) {
             return false;
         }
-        return !(await this._hasActiveLaterRevisions(application));
+        return !(await this._hasActiveLaterRevisions(submissionRequest));
     }
 
     /**
      * True when history supports restore (prior state exists and latest entry is Canceled/Deleted).
-     * @param {object} application Application document
+     * @param {object} submissionRequest submission request document
      * @returns {boolean}
      */
-    _hasValidRestoreHistory(application) {
-        const history = application?.history;
+    _hasValidRestoreHistory(submissionRequest) {
+        const history = submissionRequest?.history;
         if ((history?.length ?? 0) < 2) {
             return false;
         }
@@ -170,31 +170,31 @@ class Application {
 
     /**
      * True when status is Canceled or Deleted and history supports restore.
-     * @param {object} application Application document
+     * @param {object} submissionRequest submission request document
      * @returns {boolean}
      */
-    _isRestoreCandidate(application) {
-        const status = this._normalizeApplicationStatus(application?.status);
+    _isRestoreCandidate(submissionRequest) {
+        const status = this._normalizeSubmissionRequestStatus(submissionRequest?.status);
         const isCanceledOrDeleted = [CANCELED, DELETED].some(
-            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === status
+            (terminalStatus) => this._normalizeSubmissionRequestStatus(terminalStatus) === status
         );
-        return isCanceledOrDeleted && this._hasValidRestoreHistory(application);
+        return isCanceledOrDeleted && this._hasValidRestoreHistory(submissionRequest);
     }
 
     /**
-     * True when restoreApplication would succeed for this application.
-     * @param {object} application Application document
-     * @param {boolean} hasApprovedParent Whether an Approved parent links to this application
+     * True when restoreSubmissionRequest would succeed for this submissionRequest.
+     * @param {object} submissionRequest submission request document
+     * @param {boolean} hasApprovedParent Whether an Approved parent links to this submissionRequest
      * @returns {boolean}
      */
-    _computeCanBeRestoredFromParentCheck(application, hasApprovedParent) {
-        if (typeof application?.canBeRestored === 'boolean') {
-            return application.canBeRestored;
+    _computeCanBeRestoredFromParentCheck(submissionRequest, hasApprovedParent) {
+        if (typeof submissionRequest?.canBeRestored === 'boolean') {
+            return submissionRequest.canBeRestored;
         }
-        if (!this._isRestoreCandidate(application)) {
+        if (!this._isRestoreCandidate(submissionRequest)) {
             return false;
         }
-        const sequenceNumber = application?.sequenceNumber ?? 1;
+        const sequenceNumber = submissionRequest?.sequenceNumber ?? 1;
         if (sequenceNumber === 1) {
             return true;
         }
@@ -203,58 +203,58 @@ class Application {
 
     /**
      * True when Approved and the immediate successor (if linked) is absent or terminal.
-     * @param {object} application Application document
+     * @param {object} submissionRequest submission request document
      * @param {Map<string, string>} successorStatusById Prefetched successor id → status map
      * @returns {boolean}
      */
-    _computeCanBeReopenedFromSuccessorStatus(application, successorStatusById) {
-        if (typeof application?.canBeReopened === 'boolean') {
-            return application.canBeReopened;
+    _computeCanBeReopenedFromSuccessorStatus(submissionRequest, successorStatusById) {
+        if (typeof submissionRequest?.canBeReopened === 'boolean') {
+            return submissionRequest.canBeReopened;
         }
-        if (!this._isApprovedApplication(application)) {
+        if (!this._isApprovedSubmissionRequest(submissionRequest)) {
             return false;
         }
-        const nextRevisionID = application?.nextRevisionId;
+        const nextRevisionID = submissionRequest?.nextRevisionId;
         const successorStatus = nextRevisionID ? successorStatusById.get(nextRevisionID) : undefined;
-        return !this._hasSuccessorWithNonTerminalStatus(application, successorStatus);
+        return !this._hasSuccessorWithNonTerminalStatus(submissionRequest, successorStatus);
     }
 
     /**
-     * True when restoreApplication would succeed for this application.
-     * Returns the existing boolean when already set on the application (response-only field).
-     * @param {object} application Application document
+     * True when restoreSubmissionRequest would succeed for this submissionRequest.
+     * Returns the existing boolean when already set on the submission request (response-only field).
+     * @param {object} submissionRequest submission request document
      * @returns {Promise<boolean>}
      */
-    async _computeCanBeRestored(application) {
-        if (typeof application?.canBeRestored === 'boolean') {
-            return application.canBeRestored;
+    async _computeCanBeRestored(submissionRequest) {
+        if (typeof submissionRequest?.canBeRestored === 'boolean') {
+            return submissionRequest.canBeRestored;
         }
-        if (!this._isRestoreCandidate(application)) {
+        if (!this._isRestoreCandidate(submissionRequest)) {
             return false;
         }
-        if ((application?.sequenceNumber ?? 1) === 1) {
+        if ((submissionRequest?.sequenceNumber ?? 1) === 1) {
             return true;
         }
-        const hasApprovedParent = await this._hasApprovedParentSRF(application);
-        return this._computeCanBeRestoredFromParentCheck(application, hasApprovedParent);
+        const hasApprovedParent = await this._hasApprovedParentSRF(submissionRequest);
+        return this._computeCanBeRestoredFromParentCheck(submissionRequest, hasApprovedParent);
     }
 
     /**
-     * Computes SRF state fields for an application API response (e.g. canBeReopened, canBeRestored).
-     * @param {object} application Application document
+     * Computes SRF state fields for a submission request API response (e.g. canBeReopened, canBeRestored).
+     * @param {object} submissionRequest submission request document
      * @returns {Promise<object|null>}
      */
-    async _computeSRFStateFields(application) {
-        if (!application) {
-            return application;
+    async _computeSRFStateFields(submissionRequest) {
+        if (!submissionRequest) {
+            return submissionRequest;
         }
         const [canBeReopened, canBeRestored] = await Promise.all([
-            this._computeCanBeReopened(application),
-            this._computeCanBeRestored(application),
+            this._computeCanBeReopened(submissionRequest),
+            this._computeCanBeRestored(submissionRequest),
         ]);
-        application.canBeReopened = canBeReopened;
-        application.canBeRestored = canBeRestored;
-        return application;
+        submissionRequest.canBeReopened = canBeReopened;
+        submissionRequest.canBeRestored = canBeRestored;
+        return submissionRequest;
     }
 
     /**
@@ -280,30 +280,30 @@ class Application {
 
     /**
      * Batch-prefetches revision-chain and approved-study data for a list page, then sets
-     * canBeReopened / canBeRestored on each application in memory.
-     * @param {object[]} applications Paginated application rows from listApplications
+     * canBeReopened / canBeRestored on each submissionRequest in memory.
+     * @param {object[]} submissionRequests Paginated submission request rows from listSubmissionRequests
      * @returns {Promise<{ studyByLowerName: Map<string, object> }>}
      */
-    async _batchComputeListApplicationFields(applications) {
+    async _batchComputeListSubmissionRequestFields(submissionRequests) {
         const studyByLowerName = new Map();
-        if (!applications?.length) {
+        if (!submissionRequests?.length) {
             return { studyByLowerName };
         }
 
         const successorIds = [...new Set(
-            applications
-                .filter((app) => this._isApprovedApplication(app) && app.nextRevisionId)
+            submissionRequests
+                .filter((app) => this._isApprovedSubmissionRequest(app) && app.nextRevisionId)
                 .map((app) => app.nextRevisionId)
         )];
 
-        const restoreCandidateIds = applications
+        const restoreCandidateIds = submissionRequests
             .filter((app) => this._isRestoreCandidate(app) && (app?.sequenceNumber ?? 1) > 1)
             .map((app) => app._id ?? app.id)
             .filter(Boolean);
 
         const studyNamesByLower = new Map();
-        for (const app of applications) {
-            if (!this._isApprovedApplication(app)) {
+        for (const app of submissionRequests) {
+            if (!this._isApprovedSubmissionRequest(app)) {
                 continue;
             }
             const name = app.studyName?.trim();
@@ -344,14 +344,14 @@ class Application {
             }
         }
 
-        for (const app of applications) {
+        for (const app of submissionRequests) {
             if (typeof app?.canBeReopened !== 'boolean') {
                 app.canBeReopened = this._computeCanBeReopenedFromSuccessorStatus(app, successorStatusById);
             }
             if (typeof app?.canBeRestored !== 'boolean') {
-                const applicationID = app._id ?? app.id;
-                const hasApprovedParent = applicationID
-                    ? approvedParentSuccessorIds.has(applicationID)
+                const submissionRequestID = app._id ?? app.id;
+                const hasApprovedParent = submissionRequestID
+                    ? approvedParentSuccessorIds.has(submissionRequestID)
                     : false;
                 app.canBeRestored = this._computeCanBeRestoredFromParentCheck(app, hasApprovedParent);
             }
@@ -362,16 +362,16 @@ class Application {
 
     /**
      * Clears inbound nextRevisionId links (revision chain link removal).
-     * @param {string} applicationId Successor application _id whose inbound links should be cleared
+     * @param {string} submissionRequestID Successor submissionRequest _id whose inbound links should be cleared
      */
-    async _pruneRevisionChainOnTerminal(applicationId) {
-        if (!applicationId) {
+    async _pruneRevisionChainOnTerminal(submissionRequestID) {
+        if (!submissionRequestID) {
             return;
         }
         try {
-            await this.submissionRequestDAO.clearNextRevisionIdPointingTo(applicationId);
+            await this.submissionRequestDAO.clearNextRevisionIdPointingTo(submissionRequestID);
         } catch (err) {
-            console.error('Failed to clear revision chain link for successor application:', applicationId, err);
+            console.error('Failed to clear revision chain link for successor submissionRequest:', submissionRequestID, err);
         }
     }
 
@@ -385,33 +385,33 @@ class Application {
     }
 
     /**
-     * True when the user may view this application.
+     * True when the user may view this submissionRequest.
      * Enforces submission_request:view scope rules: only all and own grant access.
      * @param {object} userScope Resolved UserScope for SUBMISSION_REQUEST.VIEW
      * @param {object} userInfo Session user
-     * @param {object} application Loaded application document
+     * @param {object} submissionRequest Loaded submission request document
      * @returns {boolean}
      */
-    _canViewApplication(userScope, userInfo, application) {
+    _canViewSubmissionRequest(userScope, userInfo, submissionRequest) {
         if (userScope.isAllScope()) {
             return true;
         }
         if (userScope.isOwnScope()) {
-            const ownerID = application?.applicant?.applicantID ?? application?.applicantID;
+            const ownerID = submissionRequest?.applicant?.applicantID ?? submissionRequest?.applicantID;
             return userInfo?._id === ownerID;
         }
         return false;
     }
 
     /**
-     * Returns a single application when the caller may view it (view:all, or view:own as applicant).
+     * Returns a single submissionRequest when the caller may view it (view:all, or view:own as applicant).
      * Non-all callers receive the same view error for missing and unauthorized records to avoid ID enumeration.
-     * @param {{ _id: string }} params Application _id
+     * @param {{ _id: string }} params Submission Request _id
      * @param {object} context Request context with userInfo
-     * @returns {Promise<object>} Hydrated application
-     * @throws {Error} When the application is missing or the caller cannot view it
+     * @returns {Promise<object>} Hydrated submissionRequest
+     * @throws {Error} When the submission request is missing or the caller cannot view it
      */
-    async getApplication(params, context) {
+    async getSubmissionRequest(params, context) {
         verifySession(context)
             .verifyInitialized();
 
@@ -421,30 +421,30 @@ class Application {
         );
         const userScope = UserScope.create(userScopesList);
 
-        // mask application not found error for non-all-scoped callers to avoid ID enumeration
-        let application;
+        // mask submissionRequest not found error for non-all-scoped callers to avoid ID enumeration
+        let submissionRequest;
         try {
-            application = await this.getApplicationById(params._id);
+            submissionRequest = await this.getSubmissionRequestById(params._id);
         } catch (error) {
-            if (!userScope.isAllScope() && error.message?.startsWith(ERROR.APPLICATION_NOT_FOUND)) {
+            if (!userScope.isAllScope() && error.message?.startsWith(ERROR.SUBMISSION_REQUEST_NOT_FOUND)) {
                 throw new Error(ERROR.INVALID_PERMISSION);
             }
             throw error;
         }
-        if (!this._canViewApplication(userScope, context.userInfo, application)) {
+        if (!this._canViewSubmissionRequest(userScope, context.userInfo, submissionRequest)) {
             throw new Error(ERROR.INVALID_PERMISSION);
         }
 
         // add logics to check if conditional approval
-        if (this._isApprovedApplication(application)) {
-            await this._checkConditionalApproval(application);
+        if (this._isApprovedSubmissionRequest(submissionRequest)) {
+            await this._checkConditionalApproval(submissionRequest);
         }
         // populate the version with auto upgrade based on configuration
-        application.version = await this._getApplicationVersionByStatus(application.status, application.version);
-        return application;
+        submissionRequest.version = await this._getSubmissionRequestVersionByStatus(submissionRequest.status, submissionRequest.version);
+        return submissionRequest;
     }
 
-    async _getApplicationVersionByStatus(status, version = null ) {
+    async _getSubmissionRequestVersionByStatus(status, version = null ) {
         const config = await this.configurationService.findByType("APPLICATION_FORM_VERSIONS"); //get version config dynamically
         const currentVersion = config?.current || "2.0";
         const newStatusVersion = config?.new || "3.0";
@@ -456,7 +456,7 @@ class Application {
     }
 
     /**
-     * Computes conditional / pendingConditions from the approved study for this application study name.
+     * Computes conditional / pendingConditions from the approved study for this submissionRequest study name.
      * @returns {Promise<{ conditional: boolean, pendingConditions: string[] }>}
      */
     async _computeConditionalApprovalFields(studyName) {
@@ -467,19 +467,19 @@ class Application {
         return this._resolveConditionalApprovalFields(studyArr[0]);
     }
 
-    async _checkConditionalApproval(application) {
-        const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(application.studyName);
-        application.conditional = conditional;
-        application.pendingConditions = pendingConditions;
+    async _checkConditionalApproval(submissionRequest) {
+        const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(submissionRequest.studyName);
+        submissionRequest.conditional = conditional;
+        submissionRequest.pendingConditions = pendingConditions;
     }
 
     /**
-     * Reformats a DB record into an application API response shape and computes response fields.
-     * @param {object} record Application document from the database
+     * Reformats a DB record into a submission request API response shape and computes response fields.
+     * @param {object} record submission request document from the database
      * @param {object} [ownerUser] Optional owner user for applicant fields
      * @returns {Promise<object|null>}
      */
-    async _reformatRecordForApplicationResponse(record, ownerUser) {
+    async _reformatRecordForSubmissionRequestResponse(record, ownerUser) {
         if (!record) {
             return record;
         }
@@ -503,35 +503,35 @@ class Application {
         return await this._computeSRFStateFields(hydrated);
     }
 
-    async getApplicationById(id) {
+    async getSubmissionRequestById(id) {
         const result = await this.submissionRequestDAO.findSubmissionRequestWithApplicantByID(id);
         if (!result) {
-            throw new Error(ERROR.APPLICATION_NOT_FOUND+id);
+            throw new Error(ERROR.SUBMISSION_REQUEST_NOT_FOUND+id);
         }
 
-        return await this._reformatRecordForApplicationResponse(result);
+        return await this._reformatRecordForSubmissionRequestResponse(result);
     }
     
-    async reviewApplication(params, context) {
+    async reviewSubmissionRequest(params, context) {
         await this.verifyReviewerPermission(context);
-        const application = await this.getApplication(params, context);
-        verifyApplication(application)
+        const submissionRequest = await this.getSubmissionRequest(params, context);
+        verifySubmissionRequest(submissionRequest)
             .notEmpty()
             .state([IN_REVIEW, SUBMITTED]);
-        if (application && application.status && application.status === SUBMITTED) {
+        if (submissionRequest && submissionRequest.status && submissionRequest.status === SUBMITTED) {
             // If Submitted status, change it to In Review
             const history = HistoryEventBuilder.createEvent(context.userInfo._id, IN_REVIEW, null);
             const updated = await this.submissionRequestDAO.update({
-                _id: application._id,
+                _id: submissionRequest._id,
                 status: IN_REVIEW,
                 updatedAt: history.dateTime,
-                history: [...(application.history || []), history]
+                history: [...(submissionRequest.history || []), history]
             });
             if (updated) {
                 const promises = [
-                    await this.getApplicationById(params._id),
+                    await this.getSubmissionRequestById(params._id),
                     this.logCollection.insert(
-                        UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, IN_REVIEW)
+                        UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, submissionRequest._id, submissionRequest.status, IN_REVIEW)
                     )
                 ];
                 return await Promise.all(promises).then(function(results) {
@@ -540,11 +540,11 @@ class Application {
             }
         }
         // populate the version with auto upgrade based on configuration
-        application.version  = await this._getApplicationVersionByStatus(application.status, application.version);
-        return await this._computeSRFStateFields(application) || null;
+        submissionRequest.version  = await this._getSubmissionRequestVersionByStatus(submissionRequest.status, submissionRequest.version);
+        return await this._computeSRFStateFields(submissionRequest) || null;
     }
 
-    async createApplication(application, userInfo, status = NEW) {
+    async createSubmissionRequest(submissionRequest, userInfo, status = NEW) {
         const timestamp = getCurrentTime();
 
         const history = [HistoryEventBuilder.createEvent(userInfo._id, NEW, null, timestamp)];
@@ -554,17 +554,17 @@ class Application {
             history.push(HistoryEventBuilder.createEvent(userInfo._id, IN_PROGRESS, null, eventTime));
         }
 
-        let newApplicationProperties = {
+        let newSubmissionRequestProperties = {
             _id: v4(undefined, undefined, undefined),
             status,
-            controlledAccess: application?.controlledAccess,
+            controlledAccess: submissionRequest?.controlledAccess,
             applicantID: userInfo._id,
             history,
             createdAt: timestamp,
             updatedAt: timestamp,
-            programAbbreviation: application?.programAbbreviation,
-            programDescription: application?.programDescription,
-            version: (application?.version)? application.version : await this._getApplicationVersionByStatus(status),
+            programAbbreviation: submissionRequest?.programAbbreviation,
+            programDescription: submissionRequest?.programDescription,
+            version: (submissionRequest?.version)? submissionRequest.version : await this._getSubmissionRequestVersionByStatus(status),
             inactiveReminder: false, // If deleted, it will set true
             inactiveReminder_7: false,
             inactiveReminder_15: false,
@@ -574,34 +574,34 @@ class Application {
         };
 
         if (userInfo?.organization?.orgID) {
-            newApplicationProperties.organization = {
+            newSubmissionRequestProperties.organization = {
                 _id: userInfo?.organization?.orgID,
                 name: userInfo?.organization?.orgName || ""
             }
         }
 
-        application = {
-            ...application,
-            ...newApplicationProperties
+        submissionRequest = {
+            ...submissionRequest,
+            ...newSubmissionRequestProperties
         };
-        const res = await this.submissionRequestDAO.insert(application);
-        if (res?.acknowledged) await this.logCollection.insert(CreateApplicationEvent.create(userInfo._id, userInfo.email, userInfo.IDP, application._id));
-        return await this._computeSRFStateFields(application);
+        const res = await this.submissionRequestDAO.insert(submissionRequest);
+        if (res?.acknowledged) await this.logCollection.insert(CreateApplicationEvent.create(userInfo._id, userInfo.email, userInfo.IDP, submissionRequest._id));
+        return await this._computeSRFStateFields(submissionRequest);
     }
 
     /**
-     * Provides API functionality to create or save an application.
+     * Provides API functionality to create or save a submission request.
      * 
-     * @note If no ID is provided in the application object, a new application will be created.
-     * @param {{ application: object, status: typeof NEW | typeof IN_PROGRESS }} params The request parameters containing the application input object
+     * @note If no ID is provided in the submission request object, a new submissionRequest will be created.
+     * @param {{ application: object, status: typeof NEW | typeof IN_PROGRESS }} params GraphQL params; `application` is the schema input field name for the SRF payload
      * @param {object} context The request context containing user information
-     * @returns {Promise<object>} The created or updated application object
+     * @returns {Promise<object>} The created or updated submission request object
      */
-    async saveApplication(params, context) {
+    async saveSubmissionRequest(params, context) {
         verifySession(context)
             .verifyInitialized()
-        let inputApplication = params.application;
-        const id = inputApplication?._id;
+        let inputSubmissionRequest = params.application;
+        const id = inputSubmissionRequest?._id;
         if (!id) {
             const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE);
             if (userScope.isNoneScope()) {
@@ -609,46 +609,46 @@ class Application {
             }
             const requestedStatus = params?.status ?? NEW;
             if (![NEW, IN_PROGRESS].includes(requestedStatus)) {
-                throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+                throw new Error(ERROR.VERIFY.INVALID_STATE_SUBMISSION_REQUEST);
             }
-            this._validateStudy(inputApplication);
-            return await this.createApplication(inputApplication, context.userInfo, requestedStatus);
+            this._validateStudy(inputSubmissionRequest);
+            return await this.createSubmissionRequest(inputSubmissionRequest, context.userInfo, requestedStatus);
         }
 
-        const storedApplication = await this.getApplicationById(id);
-        if (storedApplication?.applicant.applicantID !== context?.userInfo?._id) {
+        const storedSubmissionRequest = await this.getSubmissionRequestById(id);
+        if (storedSubmissionRequest?.applicant.applicantID !== context?.userInfo?._id) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        const prevStatus = storedApplication?.status;
+        const prevStatus = storedSubmissionRequest?.status;
         let targetStatus = params?.status;
         if (prevStatus === REOPENED) {
             targetStatus = IN_PROGRESS;
         } else if (prevStatus === IN_REVISION) {
             targetStatus = IN_REVISION;
         } else if (!targetStatus || ![NEW, IN_PROGRESS].includes(targetStatus)) {
-            throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+            throw new Error(ERROR.VERIFY.INVALID_STATE_SUBMISSION_REQUEST);
         }
 
-        let application = {...storedApplication, ...inputApplication, status: targetStatus };
+        let submissionRequest = {...storedSubmissionRequest, ...inputSubmissionRequest, status: targetStatus };
         // auto upgrade version based on configuration
-        application.version = await this._getApplicationVersionByStatus(application.status);
+        submissionRequest.version = await this._getSubmissionRequestVersionByStatus(submissionRequest.status);
 
-        this._validateStudy(inputApplication);
+        this._validateStudy(inputSubmissionRequest);
 
-        if (inputApplication?.newInstitutions?.length > 0) {
-            await this._validateNewInstitution(inputApplication?.newInstitutions);
+        if (inputSubmissionRequest?.newInstitutions?.length > 0) {
+            await this._validateNewInstitution(inputSubmissionRequest?.newInstitutions);
         }
 
-        application = await this._updateApplication(application, prevStatus, context?.userInfo?._id);
-        if (prevStatus !== application.status){
-            await logStateChange(this.logCollection, context.userInfo, application, prevStatus);
+        submissionRequest = await this._updateSubmissionRequest(submissionRequest, prevStatus, context?.userInfo?._id);
+        if (prevStatus !== submissionRequest.status){
+            await logStateChange(this.logCollection, context.userInfo, submissionRequest, prevStatus);
         }
-        return this.getApplicationById(application?._id);
+        return this.getSubmissionRequestById(submissionRequest?._id);
     }
 
-    _validateStudy(application) {
-        if (application?.studyAbbreviation && application.studyAbbreviation.length > STUDY_ABBREVIATION_MAX_LENGTH) {
+    _validateStudy(submissionRequest) {
+        if (submissionRequest?.studyAbbreviation && submissionRequest.studyAbbreviation.length > STUDY_ABBREVIATION_MAX_LENGTH) {
             throw new Error(replaceErrorString(ERROR.MAX_STUDY_ABBREVIATION_LENGTH, STUDY_ABBREVIATION_MAX_LENGTH));
         }
     }
@@ -694,9 +694,9 @@ class Application {
      * Used when starting a new submission to auto-fill PI data from the prior approval.
      * @param {object} params Request parameters (unused)
      * @param {object} context Request context with userInfo
-     * @returns {Promise<object|null>} Hydrated application or null when none exist
+     * @returns {Promise<object|null>} Hydrated submissionRequest or null when none exist
      */
-    async getMyLastApplication(params, context) {
+    async getMyLastSubmissionRequest(params, context) {
         verifySession(context)
             .verifyInitialized();
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.VIEW);
@@ -705,15 +705,15 @@ class Application {
         }
 
         const userID = context.userInfo._id;
-        const application = await this.submissionRequestDAO.findLatestApprovedByApplicantID(userID);
-        if (!application) {
+        const submissionRequest = await this.submissionRequestDAO.findLatestApprovedByApplicantID(userID);
+        if (!submissionRequest) {
             return null;
         }
-        const res = await this.getApplicationById(application._id);
-        if (this._isApprovedApplication(res)) {
+        const res = await this.getSubmissionRequestById(submissionRequest._id);
+        if (this._isApprovedSubmissionRequest(res)) {
             await this._checkConditionalApproval(res);
         }
-        res.version = await this._getApplicationVersionByStatus(IN_PROGRESS);
+        res.version = await this._getSubmissionRequestVersionByStatus(IN_PROGRESS);
         return res;
     }
 
@@ -729,50 +729,50 @@ class Application {
         return null;
     }
 
-    _validateListApplicationsParams(params) {
+    _validateListSubmissionRequestsParams(params) {
         // Validate statuses, case insensitive
-        const validStatusesLower = new Set(this._VALID_LIST_APPLICATION_STATUSES.map(s => String(s).toLowerCase()));
+        const validStatusesLower = new Set(this._VALID_LIST_SUBMISSION_REQUEST_STATUSES.map(s => String(s).toLowerCase()));
         const statusesParameter = params?.statuses;
         if (statusesParameter != null) {
             if (!Array.isArray(statusesParameter)) {
-                console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { statuses: statusesParameter });
-                throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
+                console.error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS, { statuses: statusesParameter });
+                throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS);
             }
             if (statusesParameter.length > 0) {
                 statusesParameter.forEach(status => {
                     const statusLower = (status != null ? String(status) : '').toLowerCase();
                     if (!validStatusesLower.has(statusLower)) {
-                        throw new Error(replaceErrorString(ERROR.APPLICATION_INVALID_STATUSES, `'${status}'`));
+                        throw new Error(replaceErrorString(ERROR.SUBMISSION_REQUEST_INVALID_STATUSES, `'${status}'`));
                     }
                 });
             }
         }
         // Validate orderBy parameter, case insensitive. Map legacy "applicant.applicantName" to "applicant.fullName".
-        const validOrderByValues = VALID_ORDER_BY_LIST_APPLICATIONS;
+        const validOrderByValues = VALID_ORDER_BY_LIST_SUBMISSION_REQUESTS;
         const orderByInput = (params?.orderBy ?? "").toString().trim();
         let orderBy = "createdAt";
         if (orderByInput) {
             const matchingKey = validOrderByValues.find((k) => k.toLowerCase() === orderByInput.toLowerCase());
             if (!matchingKey) {
                 const validOrderByValuesString = [...validOrderByValues].sort().join(", ");
-                console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { orderBy: orderByInput, validOrderByValues: validOrderByValuesString });
-                throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS + " Valid orderBy values: " + validOrderByValuesString);
+                console.error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS, { orderBy: orderByInput, validOrderByValues: validOrderByValuesString });
+                throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS + " Valid orderBy values: " + validOrderByValuesString);
             }
             orderBy = matchingKey === "applicant.applicantName" ? "applicant.fullName" : matchingKey;
         }
         // Validate sortDirection parameter, case insensitive
         const sortDirection = (params?.sortDirection || "DESC").toString().toUpperCase();
         if (sortDirection !== "ASC" && sortDirection !== "DESC") {
-            console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { sortDirection: params?.sortDirection });
-            throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
+            console.error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS, { sortDirection: params?.sortDirection });
+            throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS);
         }
         // Validate first parameter when provided: must be a positive integer or -1
         const first = params?.first;
         if (first !== undefined && first !== null) {
             const firstNum = Number(first);
             if (!Number.isInteger(firstNum) || (firstNum !== -1 && firstNum < 1)) {
-                console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { first: params?.first });
-                throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
+                console.error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS, { first: params?.first });
+                throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS);
             }
         }
         // Validate offset parameter when provided: must be a non-negative integer
@@ -780,8 +780,8 @@ class Application {
         if (offset !== undefined && offset !== null) {
             const offsetNum = Number(offset);
             if (!Number.isInteger(offsetNum) || offsetNum < 0) {
-                console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { offset: params?.offset });
-                throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
+                console.error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS, { offset: params?.offset });
+                throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_INVALID_PARAMS);
             }
         }
         // Return orderBy and sortDirection for pagination
@@ -793,17 +793,17 @@ class Application {
      * Computes canBeReopened and canBeRestored per row from revision-chain rules.
      * @param {object} params Filter, pagination, and sort parameters
      * @param {object} context Request context with userInfo
-     * @returns {Promise<object>} applications, total, programs, studies, and filter facets
+     * @returns {Promise<object>} submissionRequests, total, programs, studies, and filter facets
      */
-    async listApplications(params, context) {
-        // Verify that the user is authenticated and has the necessary permissions to list applications
+    async listSubmissionRequests(params, context) {
+        // Verify that the user is authenticated and has the necessary permissions to list submissionRequests
         verifySession(context)
             .verifyInitialized()
 
         // Get the user information from the context
         const userInfo = context?.userInfo;
 
-        // Only the all and own scopes are currently required for listing applications (per PBACDefaults_config: submission_request:view...).
+        // Only the all and own scopes are currently required for listing submissionRequests (per PBACDefaults_config: submission_request:view...).
         // All other scopes will return an empty list.
         const userScopesList = await this.authorizationService.getPermissionScope(userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.VIEW);
         const userScope = UserScope.create(userScopesList);
@@ -811,7 +811,7 @@ class Application {
             console.warn(ERROR.VERIFY.INVALID_PERMISSION + ": list submission requests");
             console.warn("Triggered by user: " + userInfo?._id);
             return {
-                applications: [],
+                submissionRequests: [],
                 total: 0,
                 programs: [],
                 studies: [],
@@ -821,8 +821,8 @@ class Application {
             };
         }
 
-        // Validate list applications parameters and map the orderBy / sortDirection for pagination
-        const { orderBy, sortDirection } = this._validateListApplicationsParams(params);
+        // Validate list submissionRequests parameters and map the orderBy / sortDirection for pagination
+        const { orderBy, sortDirection } = this._validateListSubmissionRequestsParams(params);
 
         // Build filter conditions:
         // Statuses filter: ignored if input is falsy, empty array, or contains "All" (case-insensitive).
@@ -831,7 +831,7 @@ class Application {
         const applyStatusesFilter = statusesParam != null && Array.isArray(statusesParam) && statusesParam.length > 0
             && !statusesParam.some((s) => typeof s === 'string' && s.toLowerCase() === 'all');
         // Map statuses to proper case (e.g. "New", "In Progress") since DB stores title case.
-        const statusLowerToCanonical = new Map(this._VALID_LIST_APPLICATION_STATUSES.map(s => [String(s).toLowerCase(), s]));
+        const statusLowerToCanonical = new Map(this._VALID_LIST_SUBMISSION_REQUEST_STATUSES.map(s => [String(s).toLowerCase(), s]));
         const statusesForQuery = applyStatusesFilter
             ? (statusesParam || []).map(s => statusLowerToCanonical.get((s != null ? String(s) : '').toLowerCase())).filter(Boolean).filter(s => s !== this._ALL_FILTER)
             : [];
@@ -870,20 +870,20 @@ class Application {
             limit: params?.first,
         };
 
-        // Query filtered and paginated application list
-        let applications;
+        // Query filtered and paginated submission request list
+        let submissionRequests;
         try {
-            applications = await this.submissionRequestDAO.findManyWithApplicant(
+            submissionRequests = await this.submissionRequestDAO.findManyWithApplicant(
                 { ...genericFilterConditions },
                 listOptions
             );
-            applications = applications ?? [];
+            submissionRequests = submissionRequests ?? [];
         } catch (err) {
-            console.error("List applications fetch error: application list", err);
-            throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching application list.");
+            console.error("List submission requests fetch error: submission request list", err);
+            throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_FETCH_FAILED + " Failed step: fetching submission request list.");
         }
 
-        // Query total application count
+        // Query total submission request count
         let totalCount;
         try {
             totalCount = await this.submissionRequestDAO.countWithApplicant(
@@ -891,8 +891,8 @@ class Application {
                 { applicantFullNameMatch }
             );
         } catch (err) {
-            console.error("List applications fetch error: application count", err);
-            throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching application count.");
+            console.error("List submission requests fetch error: submission request count", err);
+            throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_FETCH_FAILED + " Failed step: fetching submission request count.");
         }
 
         // When study filter uses OR, fetch studyName + studyAbbreviation once and derive both distinct lists in memory
@@ -904,8 +904,8 @@ class Application {
                     { applicantFullNameMatch }
                 );
             } catch (err) {
-                console.error("List applications fetch error: gathering distinct study values", err);
-                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: gathering distinct study values.");
+                console.error("List submission requests fetch error: gathering distinct study values", err);
+                throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_FETCH_FAILED + " Failed step: gathering distinct study values.");
             }
         }
 
@@ -914,8 +914,8 @@ class Application {
             try {
                 return await fn();
             } catch (err) {
-                console.error("List applications fetch error:", queryName, err);
-                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED);
+                console.error("List submission requests fetch error:", queryName, err);
+                throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_FETCH_FAILED);
             }
         };
         let programs, studies, studyAbbreviations, statusesList, submitterNames;
@@ -982,26 +982,26 @@ class Application {
             ]);
         } catch (err) {
             // If the error message includes the expected error message, it has already been logged and formatted and can be rethrown
-            if (err.message?.includes(ERROR.LIST_APPLICATIONS_FETCH_FAILED)) {
+            if (err.message?.includes(ERROR.LIST_SUBMISSION_REQUESTS_FETCH_FAILED)) {
                 throw err;
             }
             // Log the error, format it and rethrow
-            console.error(ERROR.LIST_APPLICATIONS_FETCH_FAILED, err);
-            throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Please see logs for more information.");
+            console.error(ERROR.LIST_SUBMISSION_REQUESTS_FETCH_FAILED, err);
+            throw new Error(ERROR.LIST_SUBMISSION_REQUESTS_FETCH_FAILED + " Please see logs for more information.");
         }
 
         // Batch-prefetch SRF state and approved-study data, then map to plain objects so GraphQL
         // always receives conditional / pendingConditions.
-        const { studyByLowerName } = await this._batchComputeListApplicationFields(applications);
-        const mappedApplications = [];
-        for (const app of applications) {
+        const { studyByLowerName } = await this._batchComputeListSubmissionRequestFields(submissionRequests);
+        const mappedSubmissionRequests = [];
+        for (const app of submissionRequests) {
             const applicant = {
                 applicantID: app?.applicant?.id || app?.applicant?._id || "",
                 applicantName: this._getUserDisplayName(app.applicant) || "",
                 applicantEmail: app?.applicant?.email || "",
             };
-            if (!this._isApprovedApplication(app)) {
-                mappedApplications.push({
+            if (!this._isApprovedSubmissionRequest(app)) {
+                mappedSubmissionRequests.push({
                     ...app,
                     applicant,
                     studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
@@ -1010,7 +1010,7 @@ class Application {
             }
             const study = studyByLowerName.get(app.studyName?.trim().toLowerCase());
             const { conditional, pendingConditions } = this._resolveConditionalApprovalFields(study);
-            mappedApplications.push({
+            mappedSubmissionRequests.push({
                 ...app,
                 applicant,
                 conditional,
@@ -1018,14 +1018,14 @@ class Application {
                 studyAbbreviation: defaultStudyAbbreviationToStudyName(app.studyAbbreviation, app.studyName),
             });
         }
-        applications = mappedApplications;
+        submissionRequests = mappedSubmissionRequests;
 
         // Sort statuses in display order
         const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, IN_REVISION, REOPENED, APPROVED, REJECTED, CANCELED, DELETED];
         const statuses = (statusesList || []).sort((a, b) => statusOrder.indexOf(a) - statusOrder.indexOf(b));
         // Return the results
         return {
-            applications,
+            submissionRequests,
             total: totalCount,
             programs: programs || [],
             studies: studies || [],
@@ -1035,7 +1035,7 @@ class Application {
         };
     }
 
-    async submitApplication(params, context) {
+    async submitSubmissionRequest(params, context) {
         verifySession(context)
             .verifyInitialized();
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.SUBMIT);
@@ -1043,30 +1043,30 @@ class Application {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        const application = await this.getApplicationById(params._id);
+        const submissionRequest = await this.getSubmissionRequestById(params._id);
         const validStatus = [IN_PROGRESS, INQUIRED, IN_REVISION]; // updated based on new requirement.
-        verifyApplication(application)
+        verifySubmissionRequest(submissionRequest)
             .notEmpty()
             .state(validStatus);
         // In Progress -> In Submitted
-        const history = application.history || [];
+        const history = submissionRequest.history || [];
         const historyEvent = HistoryEventBuilder.createEvent(context.userInfo._id, SUBMITTED, null);
         history.push(historyEvent)
-        const aApplication = {
-            _id: application._id,
+        const aSubmissionRequest = {
+            _id: submissionRequest._id,
             history: history,
             status: SUBMITTED,
             updatedAt: historyEvent.dateTime,
             submittedDate: historyEvent.dateTime
         };
-        const updated = await this.submissionRequestDAO.update(aApplication);
+        const updated = await this.submissionRequestDAO.update(aSubmissionRequest);
         if (!updated) throw new Error(ERROR.UPDATE_FAILED);
-        const logEvent = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, SUBMITTED);
+        const logEvent = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, submissionRequest._id, submissionRequest.status, SUBMITTED);
         await Promise.all([
             await this.logCollection.insert(logEvent),
-            await sendEmails.submitApplication(this.notificationService, this.userService, this.emailParams, context.userInfo, application)
+            await sendEmails.submitSubmissionRequest(this.notificationService, this.userService, this.emailParams, context.userInfo, submissionRequest)
         ]);
-        return await this.getApplicationById(application._id);
+        return await this.getSubmissionRequestById(submissionRequest._id);
     }
 
 
@@ -1077,45 +1077,45 @@ class Application {
         return isValidComment ? history?.at(-1)?.reviewComment : null;
     }
 
-    async resumeInquiredApplication(params, context) {
+    async resumeInquiredSubmissionRequest(params, context) {
         verifySession(context)
             .verifyInitialized();
-        const applicationId = params?._id ?? params?.id;
-        const application = await this.getApplicationById(applicationId);
-        if (context?.userInfo?._id !== application?.applicant?.applicantID) {
+        const submissionRequestID = params?._id ?? params?.id;
+        const submissionRequest = await this.getSubmissionRequestById(submissionRequestID);
+        if (context?.userInfo?._id !== submissionRequest?.applicant?.applicantID) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        verifyApplication(application)
+        verifySubmissionRequest(submissionRequest)
             .notEmpty()
             .state([INQUIRED]);
 
-        application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
-        if (application && application.status) {
-            const reviewComment = this._getInProgressComment(application?.history);
+        submissionRequest.version = await this._getSubmissionRequestVersionByStatus(submissionRequest.status, submissionRequest?.version);
+        if (submissionRequest && submissionRequest.status) {
+            const reviewComment = this._getInProgressComment(submissionRequest?.history);
             const history = HistoryEventBuilder.createEvent(context.userInfo._id, IN_REVISION, reviewComment);
             const updated = await this.submissionRequestDAO.update({
-                _id: application._id,
+                _id: submissionRequest._id,
                 status: IN_REVISION,
                 updatedAt: history.dateTime,
-                version: application.version,
-                history: [...(application.history || []), history]
+                version: submissionRequest.version,
+                history: [...(submissionRequest.history || []), history]
             });
             if (updated) {
                 const promises = [
-                    await this.getApplicationById(applicationId),
-                    await this.logCollection.insert(UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, IN_REVISION))
+                    await this.getSubmissionRequestById(submissionRequestID),
+                    await this.logCollection.insert(UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, submissionRequest._id, submissionRequest.status, IN_REVISION))
                 ];
                 return await Promise.all(promises).then(function(results) {
                     return results[0];
                 });
             }
         }
-        return await this._computeSRFStateFields(application);
+        return await this._computeSRFStateFields(submissionRequest);
     }
 
-    async reopenApplication(params, context) {
-        return this.resumeInquiredApplication(params, context);
+    async reopenSubmissionRequest(params, context) {
+        return this.resumeInquiredSubmissionRequest(params, context);
     }
 
     async reopenApprovedSubmissionRequest(params, context) {
@@ -1128,13 +1128,13 @@ class Application {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        const source = await this.getApplicationById(params._id);
-        verifyApplication(source)
+        const source = await this.getSubmissionRequestById(params._id);
+        verifySubmissionRequest(source)
             .notEmpty()
             .state([APPROVED]);
 
         if (!(await this._computeCanBeReopened(source))) {
-            throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+            throw new Error(ERROR.VERIFY.INVALID_STATE_SUBMISSION_REQUEST);
         }
 
         const replaceExistingLink = Boolean(source.nextRevisionId);
@@ -1160,12 +1160,12 @@ class Application {
             isAllScope ? params?.ownerId : null
         );
 
-        // Clone the application for reopen
+        // Clone the submission request for reopen
         const timestamp = getCurrentTime();
         const historyEvent = HistoryEventBuilder.createEvent(context.userInfo._id, REOPENED, null, timestamp);
-        const version = await this._getApplicationVersionByStatus(REOPENED);
+        const version = await this._getSubmissionRequestVersionByStatus(REOPENED);
         const sourceSequence = source?.sequenceNumber ?? 1;
-        const reopenedApplication = {
+        const reopenedSubmissionRequest = {
             // initialization fields 
             _id: v4(undefined, undefined, undefined),
             status: REOPENED,
@@ -1199,7 +1199,7 @@ class Application {
         };
         const insertedApp = await this.submissionRequestDAO.reopenApprovedRevision(
             source._id,
-            reopenedApplication,
+            reopenedSubmissionRequest,
             replaceExistingLink
         );
 
@@ -1212,11 +1212,11 @@ class Application {
             ))
         ]);
 
-        await this._sendReopenApplicationEmail(insertedApp, ownerUser, sourceOwnerId);
+        await this._sendReopenSubmissionRequestEmail(insertedApp, ownerUser, sourceOwnerId);
 
         // Compile API response
-        insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
-        return await this._reformatRecordForApplicationResponse(insertedApp, ownerUser);
+        insertedApp.version = await this._getSubmissionRequestVersionByStatus(insertedApp.status, insertedApp.version);
+        return await this._reformatRecordForSubmissionRequestResponse(insertedApp, ownerUser);
     }
 
     _logReopenOwnerValidationFailure(details, errorCode) {
@@ -1232,7 +1232,7 @@ class Application {
         if (!inputOwnerID) {
             if (!originalOwnerID) {
                 const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
-                this._logReopenOwnerValidationFailure({ applicationID: source._id }, error);
+                this._logReopenOwnerValidationFailure({ submissionRequestID: source._id }, error);
                 throw new Error(error);
             }
 
@@ -1288,7 +1288,7 @@ class Application {
         return userScope;
     }
 
-    async cancelApplication(document, context) {
+    async cancelSubmissionRequest(document, context) {
         verifySession(context)
             .verifyInitialized();
         const userInfo = context?.userInfo;
@@ -1296,54 +1296,54 @@ class Application {
         if (userScope.isNoneScope() || (!userScope.isOwnScope() && !userScope.isAllScope())) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        const aApplication = await this.getApplicationById(document._id);
-        const isApplicationOwned = userScope.isOwnScope() && userInfo?._id === aApplication?.applicant?.applicantID;
-        const validApplicationStatus = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, IN_REVISION, REOPENED];
-        if (!validApplicationStatus.includes(aApplication.status)) {
-            throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+        const aSubmissionRequest = await this.getSubmissionRequestById(document._id);
+        const isSubmissionRequestOwned = userScope.isOwnScope() && userInfo?._id === aSubmissionRequest?.applicant?.applicantID;
+        const validSubmissionRequestStatus = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, IN_REVISION, REOPENED];
+        if (!validSubmissionRequestStatus.includes(aSubmissionRequest.status)) {
+            throw new Error(ERROR.VERIFY.INVALID_STATE_SUBMISSION_REQUEST);
         }
-        aApplication.version = await this._getApplicationVersionByStatus(aApplication.status, aApplication?.version);
-        const powerUserCond = [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, SUBMITTED, IN_REVIEW, REOPENED].includes(aApplication?.status);
-        const isValidCond = [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED].includes(aApplication?.status) && userInfo?._id === aApplication?.applicant?.applicantID;
-        if ((userScope.isAllScope() && !powerUserCond) || (isApplicationOwned && !isValidCond)) {
+        aSubmissionRequest.version = await this._getSubmissionRequestVersionByStatus(aSubmissionRequest.status, aSubmissionRequest?.version);
+        const powerUserCond = [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, SUBMITTED, IN_REVIEW, REOPENED].includes(aSubmissionRequest?.status);
+        const isValidCond = [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED].includes(aSubmissionRequest?.status) && userInfo?._id === aSubmissionRequest?.applicant?.applicantID;
+        if ((userScope.isAllScope() && !powerUserCond) || (isSubmissionRequestOwned && !isValidCond)) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, CANCELED, document?.comment);
-        // If the application is empty, then delete the application and return the deleted application document.
+        // If the submission request is empty, then delete the submission request and return the deleted submission request document.
         let updated = null;
-        let deleteApplication = false;
-        let deletedApplicationDocument = null;
+        let deleteSubmissionRequest = false;
+        let deletedSubmissionRequestDocument = null;
         const utilityService = new UtilityService();
-        if (utilityService.isEmptyApplication(aApplication)) {
-            deletedApplicationDocument = await this.getApplicationById(document._id);
+        if (utilityService.isEmptySubmissionRequest(aSubmissionRequest)) {
+            deletedSubmissionRequestDocument = await this.getSubmissionRequestById(document._id);
             updated = await this.submissionRequestDAO.delete(document._id);
-            deleteApplication = true;
+            deleteSubmissionRequest = true;
         } else{
             updated = await this.submissionRequestDAO.update({
-                _id: aApplication._id,
+                _id: aSubmissionRequest._id,
                 status: CANCELED,
                 updatedAt: history.dateTime,
-                version: aApplication.version,
-                history: [...(aApplication?.history || []), history]
+                version: aSubmissionRequest.version,
+                history: [...(aSubmissionRequest?.history || []), history]
             });
         }
         if (updated) {
-            await this._sendCancelApplicationEmail(userInfo, aApplication);
+            await this._sendCancelSubmissionRequestEmail(userInfo, aSubmissionRequest);
         } else {
-            console.error(ERROR.FAILED_DELETE_APPLICATION, `${document._id}`);
-            throw new Error(ERROR.FAILED_DELETE_APPLICATION);
+            console.error(ERROR.FAILED_DELETE_SUBMISSION_REQUEST, `${document._id}`);
+            throw new Error(ERROR.FAILED_DELETE_SUBMISSION_REQUEST);
         }
-        if (deleteApplication) {
-            // If application is deleted, then return null
-            return deletedApplicationDocument;
+        if (deleteSubmissionRequest) {
+            // If submissionRequest is deleted, then return null
+            return deletedSubmissionRequestDocument;
         }else
-            return await this.getApplicationById(document._id);
+            return await this.getSubmissionRequestById(document._id);
         }
 
-    async restoreApplication(document, context) {
-        const aApplication = await this.getApplicationById(document._id);
-        verifyApplication(aApplication)
+    async restoreSubmissionRequest(document, context) {
+        const aSubmissionRequest = await this.getSubmissionRequestById(document._id);
+        verifySubmissionRequest(aSubmissionRequest)
             .notEmpty()
             .state([CANCELED, DELETED]);
 
@@ -1352,59 +1352,59 @@ class Application {
         if (userScope.isNoneScope() || (!userScope.isOwnScope() && !userScope.isAllScope())) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        const isApplicationOwned = userInfo?._id === aApplication?.applicant?.applicantID;
-        if (userScope.isOwnScope() && !isApplicationOwned) {
+        const isSubmissionRequestOwned = userInfo?._id === aSubmissionRequest?.applicant?.applicantID;
+        if (userScope.isOwnScope() && !isSubmissionRequestOwned) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        if (!this._hasValidRestoreHistory(aApplication)) {
-            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_STATE);
+        if (!this._hasValidRestoreHistory(aSubmissionRequest)) {
+            throw new Error(ERROR.INVALID_SUBMISSION_REQUEST_RESTORE_STATE);
         }
-        if (!(await this._computeCanBeRestored(aApplication))) {
-            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_NEWER_REVISION_EXISTS);
+        if (!(await this._computeCanBeRestored(aSubmissionRequest))) {
+            throw new Error(ERROR.INVALID_SUBMISSION_REQUEST_RESTORE_NEWER_REVISION_EXISTS);
         }
-        const prevStatus = aApplication?.history?.at(-2)?.status;
+        const prevStatus = aSubmissionRequest?.history?.at(-2)?.status;
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, prevStatus, document?.comment);
         const updated = await this.submissionRequestDAO.update({
-            _id: aApplication._id,
+            _id: aSubmissionRequest._id,
             status: prevStatus,
             updatedAt: history.dateTime,
-            history: [...(aApplication.history || []), history]
+            history: [...(aSubmissionRequest.history || []), history]
         });
 
         if (updated) {
-            await this._sendRestoreApplicationEmail(aApplication);
+            await this._sendRestoreSubmissionRequestEmail(aSubmissionRequest);
         } else {
-            console.error(ERROR.FAILED_RESTORE_APPLICATION, `${aApplication._id}`);
-            throw new Error(ERROR.FAILED_RESTORE_APPLICATION);
+            console.error(ERROR.FAILED_RESTORE_SUBMISSION_REQUEST, `${aSubmissionRequest._id}`);
+            throw new Error(ERROR.FAILED_RESTORE_SUBMISSION_REQUEST);
         }
-        return await this.getApplicationById(aApplication._id);
+        return await this.getSubmissionRequestById(aSubmissionRequest._id);
     }
 
-    async approveApplication(document, context) {
+    async approveSubmissionRequest(document, context) {
         await this.verifyReviewerPermission(context);
-        const application = await this.getApplicationById(document._id);
+        const submissionRequest = await this.getSubmissionRequestById(document._id);
         // In Reviewed -> Approved
-        verifyApplication(application)
+        verifySubmissionRequest(submissionRequest)
             .notEmpty()
             .state([IN_REVIEW, SUBMITTED]);
 
-        const questionnaire = getApplicationQuestionnaire(application);
-        const sequenceNumber = application?.sequenceNumber ?? 1;
+        const questionnaire = getSubmissionRequestQuestionnaire(submissionRequest);
+        const sequenceNumber = submissionRequest?.sequenceNumber ?? 1;
         const [predecessor, existingProgram, duplicatePrograms] = await Promise.all([
-            this.submissionRequestDAO.findApprovedParentSubmissionRequestByID(application._id),
+            this.submissionRequestDAO.findApprovedParentSubmissionRequestByID(submissionRequest._id),
             this.programService.getProgramByID(questionnaire?.program?._id, false),
-            this.programService.findOneByProgramName(application?.programName),
+            this.programService.findOneByProgramName(submissionRequest?.programName),
             (async () => {
-                application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
+                submissionRequest.version = await this._getSubmissionRequestVersionByStatus(submissionRequest.status, submissionRequest?.version);
             })()
         ]);
 
         const isRevisionReapproval = Boolean(predecessor && sequenceNumber > 1);
-        const duplicates = await this.approvedStudiesService.findByStudyName(application?.studyName);
+        const duplicates = await this.approvedStudiesService.findByStudyName(submissionRequest?.studyName);
         let existingStudy = null;
         if (isRevisionReapproval) {
-            existingStudy = await this.approvedStudiesService.findByApplicationID(
+            existingStudy = await this.approvedStudiesService.findBySubmissionRequestID(
                 predecessor._id ?? predecessor.id
             );
             // Revision re-approval: linked via nextRevisionId from an Approved parent.
@@ -1417,23 +1417,23 @@ class Application {
         const existingStudyID = existingStudy?._id ?? existingStudy?.id;
         const conflict = duplicates.find((dup) => (dup?._id ?? dup?.id) !== existingStudyID);
         if (conflict) {
-            throw new Error(replaceErrorString(ERROR.DUPLICATE_APPROVED_STUDY_NAME, `'${application?.studyName}'`));
+            throw new Error(replaceErrorString(ERROR.DUPLICATE_APPROVED_STUDY_NAME, `'${submissionRequest?.studyName}'`));
         }
 
         // Duplicate program protection on first approval only; revision re-approval does not upsert programs.
         if (!isRevisionReapproval && !(existingProgram?._id) && duplicatePrograms) {
-            throw new Error(replaceErrorString(ERROR.DUPLICATE_PROGRAM_NAME, `'${application?.programName}'`));
+            throw new Error(replaceErrorString(ERROR.DUPLICATE_PROGRAM_NAME, `'${submissionRequest?.programName}'`));
         }
 
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, APPROVED, document.comment);
         const updated = await this.submissionRequestDAO.update({
-            _id: application._id,
+            _id: submissionRequest._id,
             reviewComment: document.comment,
             wholeProgram: document.wholeProgram,
             status: APPROVED,
             updatedAt: history.dateTime,
-            version: application.version,
-            history: [...(application.history || []), history]
+            version: submissionRequest.version,
+            history: [...(submissionRequest.history || []), history]
         });
         if (!updated) {
             throw new Error(ERROR.UPDATE_FAILED);
@@ -1445,18 +1445,18 @@ class Application {
         const isPendingImageDeIdentification = isTrue(document?.pendingImageDeIdentification);
         let promises = [];
 
-        promises.push(this.institutionService.addNewInstitutions(application?.newInstitutions));
-        promises.push(this.sendEmailAfterApproveApplication(context, application, document?.comment, isDbGapMissing, isTrue(document?.pendingModelChange), isPendingGPA, isPendingImageDeIdentification));
+        promises.push(this.institutionService.addNewInstitutions(submissionRequest?.newInstitutions));
+        promises.push(this.sendEmailAfterApproveSubmissionRequest(context, submissionRequest, document?.comment, isDbGapMissing, isTrue(document?.pendingModelChange), isPendingGPA, isPendingImageDeIdentification));
         if (updated) {
-            promises.unshift(this.getApplicationById(document._id));
+            promises.unshift(this.getSubmissionRequestById(document._id));
             if (questionnaire && !isRevisionReapproval) {
-                const [name, abbreviation, description] = [application?.programName, application?.programAbbreviation, application?.programDescription];
+                const [name, abbreviation, description] = [submissionRequest?.programName, submissionRequest?.programAbbreviation, submissionRequest?.programDescription];
                 let program = existingProgram;
                 if (name?.trim()?.length > 0 && !existingProgram?._id) {
                     // Await program creation before creating approved study to avoid race condition
                     program = await this.programService.upsertByProgramName(name, abbreviation, description);
                 }
-                const newApprovedStudy = await this.approvedStudiesService.saveApprovedStudyFromApplication(
+                const newApprovedStudy = await this.approvedStudiesService.saveApprovedStudyFromSubmissionRequest(
                     updated,
                     questionnaire,
                     document?.pendingModelChange,
@@ -1466,7 +1466,7 @@ class Application {
                     null
                 );
                 // added approved studies into user collection
-                const applicants = await this._findUsersByApplicantIDs([application]);
+                const applicants = await this._findUsersByApplicantIDs([submissionRequest]);
                 if (applicants?.length > 0) {
                     const applicant = applicants[0];
                     const { _id, ...updateUser } = applicant;
@@ -1482,7 +1482,7 @@ class Application {
                         applicant, updateUser, _id, applicant?.userStatus, applicant?.role, newStudiesIDs));
                 }
             } else if (isRevisionReapproval && existingStudy && questionnaire) {
-                // Revision re-approval: refresh the existing approved study from the current application
+                // Revision re-approval: refresh the existing approved study from the current submissionRequest
                 // (and relink applicationID to this revision), without touching studyName, studyAbbreviation,
                 // or program-related fields.
                 promises.push(this.approvedStudiesService.updateReapprovedStudy(
@@ -1495,40 +1495,40 @@ class Application {
                 ));
             }
             promises.push(this.logCollection.insert(
-                UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, APPROVED)
+                UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, submissionRequest._id, submissionRequest.status, APPROVED)
             ));
         }
         const results = await Promise.all(promises);
-        const applicationResult = results[0];
-        if (this._isApprovedApplication(applicationResult)) {
-            await this._checkConditionalApproval(applicationResult);
+        const submissionRequestResult = results[0];
+        if (this._isApprovedSubmissionRequest(submissionRequestResult)) {
+            await this._checkConditionalApproval(submissionRequestResult);
         }
-        return applicationResult;
+        return submissionRequestResult;
     }
 
-    async rejectApplication(document, context) {
+    async rejectSubmissionRequest(document, context) {
         await this.verifyReviewerPermission(context);
-        const application = await this.getApplicationById(document._id);
+        const submissionRequest = await this.getSubmissionRequestById(document._id);
         // In Reviewed or Submitted -> Inquired
-        verifyApplication(application)
+        verifySubmissionRequest(submissionRequest)
             .notEmpty()
             .state([IN_REVIEW, SUBMITTED]);
-        application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
+        submissionRequest.version = await this._getSubmissionRequestVersionByStatus(submissionRequest.status, submissionRequest?.version);
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, REJECTED, document.comment);
         const updated = await this.submissionRequestDAO.update({
-            _id: application._id,
+            _id: submissionRequest._id,
             reviewComment: document.comment,
             status: REJECTED,
             updatedAt: history.dateTime,
-            version: application.version,
-            history: [...(application.history || []), history]
+            version: submissionRequest.version,
+            history: [...(submissionRequest.history || []), history]
         });
 
-        await sendEmails.rejectApplication(this.notificationService, this.userService, this.emailParams, application, document.comment);
+        await sendEmails.rejectSubmissionRequest(this.notificationService, this.userService, this.emailParams, submissionRequest, document.comment);
         if (updated) {
-            const log = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, REJECTED);
+            const log = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, submissionRequest._id, submissionRequest.status, REJECTED);
             const promises = [
-                await this.getApplicationById(document._id),
+                await this.getSubmissionRequestById(document._id),
                 this.logCollection.insert(log)
             ];
             return await Promise.all(promises).then(function(results) {
@@ -1538,29 +1538,29 @@ class Application {
         return null;
     }
 
-    async inquireApplication(document, context) {
+    async inquireSubmissionRequest(document, context) {
         await this.verifyReviewerPermission(context);
-        const application = await this.getApplicationById(document._id);
+        const submissionRequest = await this.getSubmissionRequestById(document._id);
         // In Reviewed or Submitted -> Inquired
-        verifyApplication(application)
+        verifySubmissionRequest(submissionRequest)
             .notEmpty()
             .state([IN_REVIEW, SUBMITTED]);
         // auto upgrade version
-        application.version = await this._getApplicationVersionByStatus(application.status, application.version);
+        submissionRequest.version = await this._getSubmissionRequestVersionByStatus(submissionRequest.status, submissionRequest.version);
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, INQUIRED, document.comment);
         const updated = await this.submissionRequestDAO.update({
-            _id: application._id,
+            _id: submissionRequest._id,
             reviewComment: document.comment,
             status: INQUIRED,
             updatedAt: history.dateTime,
-            version: application.version,
-            history: [...(application.history || []), history]
+            version: submissionRequest.version,
+            history: [...(submissionRequest.history || []), history]
         });
-        await sendEmails.inquireApplication(this.notificationService, this.userService, application, document?.comment);
+        await sendEmails.inquireSubmissionRequest(this.notificationService, this.userService, submissionRequest, document?.comment);
         if (updated) {
-            const log = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, INQUIRED);
+            const log = UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, submissionRequest._id, submissionRequest.status, INQUIRED);
             const promises = [
-                await this.getApplicationById(document._id),
+                await this.getSubmissionRequestById(document._id),
                 this.logCollection.insert(log)
             ];
             return await Promise.all(promises).then(function(results) {
@@ -1570,7 +1570,7 @@ class Application {
         return null;
     }
 
-    async deleteInactiveApplications() {
+    async deleteInactiveSubmissionRequests() {
         try {
             const utilityService = new UtilityService();
             // default retention window and new short window for blank 'New' SRFs
@@ -1587,25 +1587,25 @@ class Application {
             (defaultApps || []).forEach(a => appsMap.set(a._id, a));
             (shortApps || []).forEach(a => {
                 // Only consider truly blank SRFs in the 'New' status for the short window
-                if (a.status === NEW && utilityService.isEmptyApplication(a) && !appsMap.has(a._id)) {
+                if (a.status === NEW && utilityService.isEmptySubmissionRequest(a) && !appsMap.has(a._id)) {
                     // mark that this record should use the short window when sending emails
                     a._useShortWindow = true;
                     appsMap.set(a._id, a);
                 }
             });
 
-            const applications = Array.from(appsMap.values());
+            const submissionRequests = Array.from(appsMap.values());
 
-            // Handle undefined/null/empty applications gracefully
-            if (!applications?.length) {
-                console.log("No inactive applications found to delete");
+            // Handle undefined/null/empty submissionRequests gracefully
+            if (!submissionRequests?.length) {
+                console.log("No inactive submission requests found to delete");
                 return;
             }
 
-            console.log(`Found ${applications.length} inactive applications to process`);
+            console.log(`Found ${submissionRequests.length} inactive submission requests to process`);
 
             const [applicantUsers, BCCUsers] = await Promise.all([
-                this._findUsersByApplicantIDs(applications),
+                this._findUsersByApplicantIDs(submissionRequests),
                 this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DELETE],
                     [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]),
             ]);
@@ -1618,8 +1618,8 @@ class Application {
             const history = HistoryEventBuilder.createEvent("", DELETED, this._DELETE_REVIEW_COMMENT);
 
             // Use Promise.allSettled to handle partial failures gracefully
-            const updateResults = await Promise.allSettled(applications.map(async (app) => {
-                if (utilityService.isEmptyApplication(app) && app.status === NEW) {
+            const updateResults = await Promise.allSettled(submissionRequests.map(async (app) => {
+                if (utilityService.isEmptySubmissionRequest(app) && app.status === NEW) {
                     const deleted = await this.submissionRequestDAO.delete(app._id);
                     return deleted;
                 }
@@ -1638,27 +1638,27 @@ class Application {
             const failedUpdates = updateResults.filter(result => result.status === 'rejected').length;
 
             if (failedUpdates > 0) {
-                console.error(`Failed to update ${failedUpdates} applications:`, 
+                console.error(`Failed to update ${failedUpdates} submission requests:`, 
                     updateResults.filter(result => result.status === 'rejected').map(result => result.reason));
             }
 
             if (successfulUpdates > 0) {
-                console.log(`Successfully processed ${successfulUpdates} inactive applications`);
+                console.log(`Successfully processed ${successfulUpdates} inactive submission requests`);
 
-                // Filter applications to only include those that were successfully updated
-                const successfullyUpdatedApplications = applications.filter((app, index) => {
+                // Filter submissionRequests to only include those that were successfully updated
+                const successfullyUpdatedSubmissionRequests = submissionRequests.filter((app, index) => {
                     const updateResult = updateResults[index];
                     return updateResult && updateResult.status === 'fulfilled';
                 });
 
-                // Use Promise.allSettled for email notifications - only for successfully updated applications
-                const emailResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
+                // Use Promise.allSettled for email notifications - only for successfully updated submissionRequests
+                const emailResults = await Promise.allSettled(successfullyUpdatedSubmissionRequests.map(async (app) => {
                     if (permittedUserIDs.has(app?.applicantID)) {
                         const localEmailParams = {
                             ...this.emailParams,
                             inactiveDays: app._useShortWindow ? (this.emailParams.inactiveNewApplicationDays || shortDays) : this.emailParams.inactiveDays
                         };
-                        await sendEmails.inactiveApplications(this.notificationService, localEmailParams, app?.applicant?.applicantEmail, app?.applicant?.applicantName, app, getUserEmails(BCCUsers));
+                        await sendEmails.inactiveSubmissionRequests(this.notificationService, localEmailParams, app?.applicant?.applicantEmail, app?.applicant?.applicantName, app, getUserEmails(BCCUsers));
                     }
                 }));
 
@@ -1670,10 +1670,10 @@ class Application {
                         emailResults.filter(result => result.status === 'rejected').map(result => result.reason));
                 }
 
-                console.log(`Sent ${successfulEmails} email notifications for inactive applications`);
+                console.log(`Sent ${successfulEmails} email notifications for inactive submission requests`);
 
-                // Use Promise.allSettled for log insertions - only for successfully updated applications
-                const logResults = await Promise.allSettled(successfullyUpdatedApplications.map(async (app) => {
+                // Use Promise.allSettled for log insertions - only for successfully updated submission requests
+                const logResults = await Promise.allSettled(successfullyUpdatedSubmissionRequests.map(async (app) => {
                     this.logCollection.insert(UpdateApplicationStateEvent.createByApp(app._id, app.status, DELETED));
                 }));
 
@@ -1681,19 +1681,19 @@ class Application {
                 const failedLogs = logResults.filter(result => result.status === 'rejected').length;
 
                 if (failedLogs > 0) {
-                    console.error(`Failed to log ${failedLogs} application deletions:`, 
+                    console.error(`Failed to log ${failedLogs} submission request deletions:`, 
                         logResults.filter(result => result.status === 'rejected').map(result => result.reason));
                 }
 
-                console.log(`Logged ${successfulLogs} application deletions`);
+                console.log(`Logged ${successfulLogs} submission request deletions`);
             }
         } catch (error) {
-            console.error("Error in deleteInactiveApplications task:", error);
+            console.error("Error in deleteInactiveSubmissionRequests task:", error);
             throw error; // Re-throw to be caught by cron job handler
         }
     }
 
-    async remindApplicationSubmission() {
+    async remindSubmissionRequestSubmission() {
         // The system sends reminder emails for both the default window and the short-window for blank 'New' SRFs.
         const defaultDays = this.emailParams.inactiveDays;
         const shortDays = this.emailParams.inactiveNewApplicationDays || 30;
@@ -1706,32 +1706,32 @@ class Application {
 
         // Send final reminders for default window
         if (finalDefault?.length > 0) {
-            await Promise.all(finalDefault.map(async (aApplication) => {
-                await this._sendEmailFinalInactiveApplication(aApplication, defaultDays);
+            await Promise.all(finalDefault.map(async (aSubmissionRequest) => {
+                await this._sendEmailFinalInactiveSubmissionRequest(aSubmissionRequest, defaultDays);
             }));
-            const applicationIDs = finalDefault.map(application => application._id);
-            const query = {_id: {$in: applicationIDs}};
+            const submissionRequestIDs = finalDefault.map(submissionRequest => submissionRequest._id);
+            const query = {_id: {$in: submissionRequestIDs}};
             const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
             const updatedReminder = await this.submissionRequestDAO.updateMany(query, everyReminderDays);
             if (!updatedReminder?.matchedCount) {
-                console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
+                console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `submissionRequestIDs: ${submissionRequestIDs.join(', ')}`);
             }
         }
 
         // Send final reminders for short window, but only for blank 'New' SRFs
         if (finalShort?.length > 0) {
             const utilityService = new UtilityService();
-            const shortFinalToSend = finalShort.filter(a => a.status === NEW && utilityService.isEmptyApplication(a));
-            await Promise.all(shortFinalToSend.map(async (aApplication) => {
-                await this._sendEmailFinalInactiveApplication(aApplication, shortDays);
+            const shortFinalToSend = finalShort.filter(a => a.status === NEW && utilityService.isEmptySubmissionRequest(a));
+            await Promise.all(shortFinalToSend.map(async (aSubmissionRequest) => {
+                await this._sendEmailFinalInactiveSubmissionRequest(aSubmissionRequest, shortDays);
             }));
-            const applicationIDs = shortFinalToSend.map(application => application._id);
-            if (applicationIDs.length > 0) {
-                const query = {_id: {$in: applicationIDs}};
+            const submissionRequestIDs = shortFinalToSend.map(submissionRequest => submissionRequest._id);
+            if (submissionRequestIDs.length > 0) {
+                const query = {_id: {$in: submissionRequestIDs}};
                 const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
                 const updatedReminder = await this.submissionRequestDAO.updateMany(query, everyReminderDays);
                 if (!updatedReminder?.matchedCount) {
-                    console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
+                    console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `submissionRequestIDs: ${submissionRequestIDs.join(', ')}`);
                 }
             }
         }
@@ -1741,7 +1741,7 @@ class Application {
         for (const day of this.emailParams.inactiveApplicationNotifyDays) {
             const pastDefault = defaultDays - day;
             const appsDefault = await this.submissionRequestDAO.getInactiveSubmissionRequest(pastDefault, `${this._INACTIVE_REMINDER}_${day}`);
-            reminderEntries.push(...(appsDefault || []).map(a => ({ application: a, pastDays: pastDefault, baseDays: defaultDays })));
+            reminderEntries.push(...(appsDefault || []).map(a => ({ submissionRequest: a, pastDays: pastDefault, baseDays: defaultDays })));
 
             // Only query short window for intervals strictly less than shortDays to avoid zero/negative pastDays
             if (day < shortDays) {
@@ -1750,31 +1750,31 @@ class Application {
                 if (appsShort && appsShort.length > 0) {
                     const utilityService = new UtilityService();
                     // only include blank New SRFs from short-window
-                    reminderEntries.push(...appsShort.filter(a => a.status === NEW && utilityService.isEmptyApplication(a)).map(a => ({ application: a, pastDays: pastShort, baseDays: shortDays })));
+                    reminderEntries.push(...appsShort.filter(a => a.status === NEW && utilityService.isEmptySubmissionRequest(a)).map(a => ({ submissionRequest: a, pastDays: pastShort, baseDays: shortDays })));
                 }
             }
         }
 
         if (reminderEntries.length > 0) {
-            // Sort by pastDays descending (older first) and dedupe by application id
+            // Sort by pastDays descending (older first) and dedupe by submissionRequest id
             reminderEntries.sort((a, b) => b.pastDays - a.pastDays);
             const seen = new Set();
             const toSend = [];
             for (const entry of reminderEntries) {
-                if (!seen.has(entry.application._id)) {
-                    seen.add(entry.application._id);
+                if (!seen.has(entry.submissionRequest._id)) {
+                    seen.add(entry.submissionRequest._id);
                     toSend.push(entry);
                 }
             }
 
             // Send emails
             await Promise.all(toSend.map(async (entry) => {
-                await this._sendEmailInactiveApplication(entry.application, entry.pastDays, entry.baseDays);
+                await this._sendEmailInactiveSubmissionRequest(entry.submissionRequest, entry.pastDays, entry.baseDays);
             }));
 
             // Update reminder flags based on baseDays
             for (const entry of toSend) {
-                const applicationID = entry.application._id;
+                const submissionRequestID = entry.submissionRequest._id;
                 const pastDays = entry.pastDays;
                 const expiredDays = entry.baseDays - pastDays;
                 const submissionReminderDays = this.emailParams.inactiveApplicationNotifyDays;
@@ -1783,52 +1783,52 @@ class Application {
                     acc[`${this._INACTIVE_REMINDER}_${day}`] = true;
                     return acc;
                 }, {});
-                const updatedReminder = await this.submissionRequestDAO.update({_id: applicationID, ...reminderFilter});
+                const updatedReminder = await this.submissionRequestDAO.update({_id: submissionRequestID, ...reminderFilter});
                 if (!updatedReminder) {
-                    console.error("The email reminder flag intended to notify the inactive submission request is not being stored", applicationID);
+                    console.error("The email reminder flag intended to notify the inactive submission request is not being stored", submissionRequestID);
                 }
             }
         }
     }
 
-    async _findUsersByApplicantIDs(applications) {
-        const applicantIDs = applications
+    async _findUsersByApplicantIDs(submissionRequests) {
+        const applicantIDs = submissionRequests
             ?.map((a) => a?.applicantID) // Extract applicant IDs
             ?.filter(Boolean);
 
         return await this.userService.findByIDs(applicantIDs);
     }
 
-    async sendEmailAfterApproveApplication(context, application, comment, isDbGapMissing = false, isPendingModelChange, isPendingGPA = false, isPendingImageDeIdentification = false) {
+    async sendEmailAfterApproveSubmissionRequest(context, submissionRequest, comment, isDbGapMissing = false, isPendingModelChange, isPendingGPA = false, isPendingImageDeIdentification = false) {
         const res = await Promise.all([
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
-            this.userService.findByID(application?.applicantID)
+            this.userService.findByID(submissionRequest?.applicantID)
         ]);
 
         const [toBCCUsers, applicantInfo] = res;
-        const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
+        const CCEmails = getCCEmails(submissionRequest?.applicant?.applicantEmail, submissionRequest);
         const toBCCEmails = getUserEmails(toBCCUsers)
             ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
             const pendingTemplateParams = {
-                firstName: application?.applicant?.applicantName,
+                firstName: submissionRequest?.applicant?.applicantName,
                 contactEmail: this.emailParams?.conditionalSubmissionContact,
                 reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                study: setDefaultIfNoName(application?.studyName),
+                study: setDefaultIfNoName(submissionRequest?.studyName),
                 submissionGuideURL: this.emailParams?.submissionGuideURL
             };
 
             if (!isDbGapMissing && !isPendingModelChange && !isPendingGPA && !isPendingImageDeIdentification) {
-                await this.notificationService.approveQuestionNotification(application?.applicant?.applicantEmail,
+                await this.notificationService.approveQuestionNotification(submissionRequest?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
                     {
-                        firstName: application?.applicant?.applicantName,
+                        firstName: submissionRequest?.applicant?.applicantName,
                         reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A"
                     },
                     {
-                        study: studyLabelForEmailBody(application),
+                        study: studyLabelForEmailBody(submissionRequest),
                         contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
                     }
                 );
@@ -1837,7 +1837,7 @@ class Application {
 
             const pendingCount = [isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification].filter(Boolean).length;
             if (pendingCount > 1) {
-                await this.notificationService.multipleChangesApproveQuestionNotification(application?.applicant?.applicantEmail,
+                await this.notificationService.multipleChangesApproveQuestionNotification(submissionRequest?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
                     pendingTemplateParams,
@@ -1850,7 +1850,7 @@ class Application {
             }
 
             if (isDbGapMissing) {
-                await this.notificationService.dbGapMissingApproveQuestionNotification(application?.applicant?.applicantEmail,
+                await this.notificationService.dbGapMissingApproveQuestionNotification(submissionRequest?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
                     pendingTemplateParams
@@ -1859,7 +1859,7 @@ class Application {
             }
 
             if (isPendingModelChange) {
-                await this.notificationService.dataModelChangeApproveQuestionNotification(application?.applicant?.applicantEmail,
+                await this.notificationService.dataModelChangeApproveQuestionNotification(submissionRequest?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
                     pendingTemplateParams
@@ -1868,7 +1868,7 @@ class Application {
             }
 
             if (isPendingGPA) {
-                await this.notificationService.pendingGPANotification(application?.applicant?.applicantEmail,
+                await this.notificationService.pendingGPANotification(submissionRequest?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
                     pendingTemplateParams
@@ -1877,7 +1877,7 @@ class Application {
             }
 
             if (isPendingImageDeIdentification) {
-                await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(application?.applicant?.applicantEmail,
+                await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(submissionRequest?.applicant?.applicantEmail,
                     CCEmails,
                     toBCCEmails,
                     pendingTemplateParams
@@ -1886,50 +1886,50 @@ class Application {
         }
     }
 
-    async _cancelApplicationEmailInfo(application) {
+    async _cancelSubmissionRequestEmailInfo(submissionRequest) {
         const [applicantInfo, BCCUsers] = await Promise.all([
-            this.userService.findByID(application?.applicantID),
+            this.userService.findByID(submissionRequest?.applicantID),
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CANCEL],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
         ]);
 
-        const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
+        const CCEmails = getCCEmails(submissionRequest?.applicant?.applicantEmail, submissionRequest);
         const toBCCEmails = getUserEmails(BCCUsers)
             ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
 
         return [applicantInfo, CCEmails, toBCCEmails];
     }
 
-    async _sendCancelApplicationEmail(userCanceledBy, application) {
-        const [applicantInfo, CCEmails, BCCUserEmails] = await this._cancelApplicationEmailInfo(application);
+    async _sendCancelSubmissionRequestEmail(userCanceledBy, submissionRequest) {
+        const [applicantInfo, CCEmails, BCCUserEmails] = await this._cancelSubmissionRequestEmailInfo(submissionRequest);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CANCEL)) {
             if (!applicantInfo?.email) {
-                console.error("Cancel submission request email notification does not have any recipient", `Application ID: ${application?._id}`);
+                console.error("Cancel submission request email notification does not have any recipient", `Submission Request ID: ${submissionRequest?._id}`);
                 return;
             }
             const canceledByName = [ROLES.ADMIN, ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL].includes(userCanceledBy?.role) ? this._CRDC_TEAM: `${userCanceledBy.firstName} ${userCanceledBy.lastName || ""}`;
-            await this.notificationService.cancelApplicationNotification(applicantInfo?.email, CCEmails, BCCUserEmails, {
+            await this.notificationService.cancelSubmissionRequestNotification(applicantInfo?.email, CCEmails, BCCUserEmails, {
                 firstName: `${applicantInfo.firstName} ${applicantInfo.lastName || ""}`
             },{
-                studyName: `${application?.studyName?.trim() || "NA"},`,
+                studyName: `${submissionRequest?.studyName?.trim() || "NA"},`,
                 canceledNameBy: canceledByName,
                 contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
             });
         }
     }
 
-    async _sendRestoreApplicationEmail(application) {
-        const [applicantInfo, CCEmails, BCCUserEmails] = await this._cancelApplicationEmailInfo(application);
+    async _sendRestoreSubmissionRequestEmail(submissionRequest) {
+        const [applicantInfo, CCEmails, BCCUserEmails] = await this._cancelSubmissionRequestEmailInfo(submissionRequest);
         if (!applicantInfo?.email) {
-            console.error("Restore submission request email notification does not have any recipient", `Application ID: ${application?._id}`);
+            console.error("Restore submission request email notification does not have any recipient", `Submission Request ID: ${submissionRequest?._id}`);
             return;
         }
 
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CANCEL)) {
-            await this.notificationService.restoreApplicationNotification(applicantInfo?.email, CCEmails, BCCUserEmails,{
+            await this.notificationService.restoreSubmissionRequestNotification(applicantInfo?.email, CCEmails, BCCUserEmails,{
                 firstName: `${applicantInfo.firstName} ${applicantInfo.lastName || ""}`
             },{
-                studyName: `${application?.studyName?.trim() || "NA"},`,
+                studyName: `${submissionRequest?.studyName?.trim() || "NA"},`,
                 contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
             });
         }
@@ -1939,12 +1939,12 @@ class Application {
     /**
      * Sends the reopen notification email to the owner of a reopened submission request.
      * Never throws; failures are logged so they cannot break the reopen workflow.
-     * @param {object} application Reopened application document
-     * @param {object} ownerUser Owner of the reopened application
-     * @param {string} previousOwnerId Owner of the source application before reopening
+     * @param {object} submissionRequest Reopened submission request document
+     * @param {object} ownerUser Owner of the reopened submissionRequest
+     * @param {string} previousOwnerId Owner of the source submissionRequest before reopening
      * @returns {Promise<void>}
      */
-    async _sendReopenApplicationEmail(application, ownerUser, previousOwnerId) {
+    async _sendReopenSubmissionRequestEmail(submissionRequest, ownerUser, previousOwnerId) {
         try {
             const isOwnershipChanged = ownerUser._id !== previousOwnerId && ownerUser.id !== previousOwnerId;
             const [ownerInfo, BCCUsers] = await Promise.all([
@@ -1955,7 +1955,7 @@ class Application {
             const applicantInfo = ownerInfo ?? ownerUser;
 
             if (!applicantInfo?.email) {
-                console.error("Reopen submission request email notification does not have any recipient", `Application ID: ${application?._id}`);
+                console.error("Reopen submission request email notification does not have any recipient", `Submission Request ID: ${submissionRequest?._id}`);
                 return;
             }
 
@@ -1963,7 +1963,7 @@ class Application {
                 return;
             }
 
-            const CCEmails = getCCEmails(applicantInfo?.email, application);
+            const CCEmails = getCCEmails(applicantInfo?.email, submissionRequest);
             // Include previous owner in CC if ownership changed
             if (isOwnershipChanged && previousOwnerId) {
                 const previousOwner = await this.userService.findByID(previousOwnerId);
@@ -1975,81 +1975,81 @@ class Application {
             const toBCCEmails = getUserEmails(BCCUsers)
                 ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
 
-            await this.notificationService.reopenApplicationNotification(applicantInfo.email, CCEmails, toBCCEmails, {
+            await this.notificationService.reopenSubmissionRequestNotification(applicantInfo.email, CCEmails, toBCCEmails, {
                 firstName: `${applicantInfo.firstName} ${applicantInfo.lastName || ""}`,
                 isOwnershipChanged
             }, {
-                studyName: studyLabelForEmailBody(application),
-                studyAbbreviation: `${application?.studyAbbreviation?.trim() || "NA"}`,
-                programName: `${application?.programName?.trim() || "NA"}`,
-                programAbbreviation: `${application?.programAbbreviation?.trim() || "NA"}`,
+                studyName: studyLabelForEmailBody(submissionRequest),
+                studyAbbreviation: `${submissionRequest?.studyAbbreviation?.trim() || "NA"}`,
+                programName: `${submissionRequest?.programName?.trim() || "NA"}`,
+                programAbbreviation: `${submissionRequest?.programAbbreviation?.trim() || "NA"}`,
                 contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
             });
         } catch (error) {
-            console.error(`Failed to send reopen application notification email for application ${application?._id}:`, error.message);
+            console.error(`Failed to send reopen submissionRequest notification email for submission request ${submissionRequest?._id}:`, error.message);
         }
     }
 
-    async _sendEmailFinalInactiveApplication(application, baseInactiveDays = this.emailParams.inactiveDays) {
+    async _sendEmailFinalInactiveSubmissionRequest(submissionRequest, baseInactiveDays = this.emailParams.inactiveDays) {
         const [aSubmitter, BCCUsers] = await Promise.all([
-            this.userService.getUserByID(application?.applicantID),
+            this.userService.getUserByID(submissionRequest?.applicantID),
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
         ]);
 
         const filteredBCCUsers = BCCUsers.filter((u) => u?._id !== aSubmitter?._id);
         if (!aSubmitter?.email) {
-            console.log("The final inactive application reminder was not sent.", `Submission Request ID: ${application?._id}`);
+            console.log("The final inactive submissionRequest reminder was not sent.", `Submission Request ID: ${submissionRequest?._id}`);
             return;
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const applicant = await this.userDAO.findFirst({_id: application?.applicantID});
-            const CCEmails = getCCEmails(applicant?.email, application);
+            const applicant = await this.userDAO.findFirst({_id: submissionRequest?.applicantID});
+            const CCEmails = getCCEmails(applicant?.email, submissionRequest);
             const toBCCEmails = getUserEmails(filteredBCCUsers)
                 ?.filter((email) => !CCEmails.includes(email));
-            await this.notificationService.finalRemindApplicationsNotification(aSubmitter?.email,
+            await this.notificationService.finalRemindSubmissionRequestsNotification(aSubmitter?.email,
                 CCEmails,
                 toBCCEmails, {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
-                    studyName: studyLabelForEmailBody(application)
+                    studyName: studyLabelForEmailBody(submissionRequest)
                 },{
                     inactiveDays: baseInactiveDays,
                     url: this.emailParams.url
                 });
-            logDaysDifference(baseInactiveDays - 1, application?.updatedAt, application?._id);
+            logDaysDifference(baseInactiveDays - 1, submissionRequest?.updatedAt, submissionRequest?._id);
         }
     }
 
-    async _sendEmailInactiveApplication(application, interval, baseInactiveDays = this.emailParams.inactiveDays) {
+    async _sendEmailInactiveSubmissionRequest(submissionRequest, interval, baseInactiveDays = this.emailParams.inactiveDays) {
         const [aSubmitter, BCCUsers] = await Promise.all([
-            this.userService.getUserByID(application?.applicantID),
+            this.userService.getUserByID(submissionRequest?.applicantID),
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
         ]);
 
         if (!aSubmitter?.email) {
-            console.log("The inactive application reminder was not sent.", `${interval} days Submission Request ID: ${application?._id}`);
+            console.log("The inactive submissionRequest reminder was not sent.", `${interval} days Submission Request ID: ${submissionRequest?._id}`);
             return;
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const applicant = await this.userDAO.findFirst({_id: application?.applicantID});
-            const CCEmails = getCCEmails(applicant?.email, application);
+            const applicant = await this.userDAO.findFirst({_id: submissionRequest?.applicantID});
+            const CCEmails = getCCEmails(applicant?.email, submissionRequest);
             const filteredBCCUsers = BCCUsers.filter((u) => u?._id !== aSubmitter?._id);
             const toBCCEmails = getUserEmails(filteredBCCUsers)
                 ?.filter((email) => !CCEmails.includes(email));
-            await this.notificationService.remindApplicationsNotification(aSubmitter?.email,
+            await this.notificationService.remindSubmissionRequestsNotification(aSubmitter?.email,
                 CCEmails,
                 toBCCEmails, {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
-                    studyName: studyLabelForEmailBody(application)
+                    studyName: studyLabelForEmailBody(submissionRequest)
                 },{
                     remainDays: baseInactiveDays - interval,
                     inactiveDays: interval,
                     url: this.emailParams.url
                 });
-            logDaysDifference(interval, application?.updatedAt, application?._id);
+            logDaysDifference(interval, submissionRequest?.updatedAt, submissionRequest?._id);
         }
     }
 
@@ -2061,15 +2061,15 @@ class Application {
         }, {[`${this._FINAL_INACTIVE_REMINDER}`]: status});
     }
 
-    async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
-        // Only the application field (user input); do not substitute study name or questionnaire when missing
-        const studyAbbreviation = (aApplication?.studyAbbreviation ?? "").trim();
-        const controlledAccess = aApplication?.controlledAccess;
+    async _saveApprovedStudies(aSubmissionRequest, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
+        // Only the submission request field (user input); do not substitute study name or questionnaire when missing
+        const studyAbbreviation = (aSubmissionRequest?.studyAbbreviation ?? "").trim();
+        const controlledAccess = aSubmissionRequest?.controlledAccess;
         if (isUndefined(controlledAccess)) {
-            console.error(ERROR.APPLICATION_CONTROLLED_ACCESS_NOT_FOUND, ` id=${aApplication?._id}`);
+            console.error(ERROR.SUBMISSION_REQUEST_CONTROLLED_ACCESS_NOT_FOUND, ` id=${aSubmissionRequest?._id}`);
         }
-        const programName = aApplication?.programName ?? "NA";
-        const resolvedGPAName = PendingGPA.resolveGPAName(aApplication?.GPAName, isTrue(controlledAccess));
+        const programName = aSubmissionRequest?.programName ?? "NA";
+        const resolvedGPAName = PendingGPA.resolveGPAName(aSubmissionRequest?.GPAName, isTrue(controlledAccess));
         const pendingGPA = PendingGPA.create(resolvedGPAName, isPendingGPA);
         
         // Use the existing program ID from the questionnaire lookup
@@ -2084,8 +2084,8 @@ class Application {
         const useProgramPC = true;
         const primaryContactID = null;
         return await this.approvedStudiesService.storeApprovedStudies(
-            aApplication?._id, aApplication?.studyName, studyAbbreviation, baseDbGaP, aApplication?.organization?.name, controlledAccess, aApplication?.ORCID,
-            aApplication?.PI, aApplication?.openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification
+            aSubmissionRequest?._id, aSubmissionRequest?.studyName, studyAbbreviation, baseDbGaP, aSubmissionRequest?.organization?.name, controlledAccess, aSubmissionRequest?.ORCID,
+            aSubmissionRequest?.PI, aSubmissionRequest?.openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification
         );
     }
 
@@ -2098,28 +2098,28 @@ class Application {
         }
     }
 
-    async _updateApplication(application, prevStatus, userID) {
-        if (prevStatus !== application.status) {
-            application = {history: [], ...application};
-            const historyEvent = HistoryEventBuilder.createEvent(userID, application.status, null);
-            application.history.push(historyEvent);
+    async _updateSubmissionRequest(submissionRequest, prevStatus, userID) {
+        if (prevStatus !== submissionRequest.status) {
+            submissionRequest = {history: [], ...submissionRequest};
+            const historyEvent = HistoryEventBuilder.createEvent(userID, submissionRequest.status, null);
+            submissionRequest.history.push(historyEvent);
         }
-        // Save an email reminder when an inactive application is reactivated.
-        application.inactiveReminder = false;
-        application.updatedAt = getCurrentTime();
-        const {applicant, ...data} = application;
-        const updateResult = await this.submissionRequestDAO.update({_id: application?._id, ...data});
+        // Save an email reminder when an inactive submissionRequest is reactivated.
+        submissionRequest.inactiveReminder = false;
+        submissionRequest.updatedAt = getCurrentTime();
+        const {applicant, ...data} = submissionRequest;
+        const updateResult = await this.submissionRequestDAO.update({_id: submissionRequest?._id, ...data});
         if (!updateResult) {
-            throw new Error(ERROR.APPLICATION_NOT_FOUND + updateResult?._id);
+            throw new Error(ERROR.SUBMISSION_REQUEST_NOT_FOUND + updateResult?._id);
         }
         return updateResult;
     }
 }
 
-async function logStateChange(logCollection, userInfo, application, prevStatus) {
+async function logStateChange(logCollection, userInfo, submissionRequest, prevStatus) {
     await logCollection.insert(
         UpdateApplicationStateEvent.create(
-            userInfo?._id, userInfo?.email, userInfo?.IDP, application?._id, prevStatus, application?.status
+            userInfo?._id, userInfo?.email, userInfo?.IDP, submissionRequest?._id, prevStatus, submissionRequest?.status
         )
     );
 }
@@ -2134,15 +2134,15 @@ const setDefaultIfNoName = (str) => {
  * Resolves via `setDefaultIfNoName`. This maps empty or whitespace-only results
  * to the literal string `NA`, so callers and templates always get a non-empty value (e.g. blank
  * New submission requests). Inquire/PV Study Abbreviation lines use `defaultStudyAbbreviationToNA` separately.
- * @param {{ studyName?: string }} [application]
+ * @param {{ studyName?: string }} [submissionRequest]
  * @returns {string} Full study name, or `NA`
  */
-function studyLabelForEmailBody(application) {
-    return setDefaultIfNoName(application?.studyName);
+function studyLabelForEmailBody(submissionRequest) {
+    return setDefaultIfNoName(submissionRequest?.studyName);
 }
 
-const getCCEmails = (submitterEmail, application) => {
-    const questionnaire = getApplicationQuestionnaire(application);
+const getCCEmails = (submitterEmail, submissionRequest) => {
+    const questionnaire = getSubmissionRequestQuestionnaire(submissionRequest);
     if (!questionnaire || !submitterEmail) {
         return [];
     }
@@ -2152,13 +2152,13 @@ const getCCEmails = (submitterEmail, application) => {
 }
 
 const sendEmails = {
-    inactiveApplications: async (notificationService, emailParams, email, applicantName, application, BCCEmails) => {
+    inactiveSubmissionRequests: async (notificationService, emailParams, email, applicantName, submissionRequest, BCCEmails) => {
         try {
-            const studyLabel = studyLabelForEmailBody(application);
-            const CCEmails = getCCEmails(email, application);
+            const studyLabel = studyLabelForEmailBody(submissionRequest);
+            const CCEmails = getCCEmails(email, submissionRequest);
             const toBCCEmails = BCCEmails
                 ?.filter((BCCEmail) => !CCEmails.includes(BCCEmail) && BCCEmail !== email);
-            await notificationService.inactiveApplicationsNotification(email,
+            await notificationService.inactiveSubmissionRequestsNotification(email,
                 CCEmails,
                 toBCCEmails, {
                 firstName: applicantName,
@@ -2170,26 +2170,26 @@ const sendEmails = {
                 inactiveDays: emailParams.inactiveDays,
                 url: emailParams.url
             });
-            logDaysDifference(emailParams.inactiveDays, application?.updatedAt, application?._id);
+            logDaysDifference(emailParams.inactiveDays, submissionRequest?.updatedAt, submissionRequest?._id);
         } catch (error) {
-            console.error(`Failed to send inactive application notification email to ${email} for application ${application?._id}:`, error.message);
+            console.error(`Failed to send inactive submission request notification email to ${email} for submission request ${submissionRequest?._id}:`, error.message);
             throw error; // Re-throw to be handled by Promise.allSettled
         }
     },
-    submitApplication: async (notificationService, userService, emailParams, userInfo, application) => {
-        const applicantInfo = await userService.findByID(application?.applicant?.applicantID);
+    submitSubmissionRequest: async (notificationService, userService, emailParams, userInfo, submissionRequest) => {
+        const applicantInfo = await userService.findByID(submissionRequest?.applicant?.applicantID);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_SUBMIT)) {
             const BCCUsers = await userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_SUBMIT],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]);
-            const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
+            const CCEmails = getCCEmails(submissionRequest?.applicant?.applicantEmail, submissionRequest);
             const toBCCEmails = getUserEmails(BCCUsers)
                 ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
 
-            await notificationService.submitRequestReceivedNotification(application?.applicant?.applicantEmail,
+            await notificationService.submitRequestReceivedNotification(submissionRequest?.applicant?.applicantEmail,
                 CCEmails,
                 toBCCEmails,
                 {helpDesk: `${emailParams.conditionalSubmissionContact}.`},
-                {userName: application?.applicant?.applicantName}
+                {userName: submissionRequest?.applicant?.applicantName}
             );
         }
 
@@ -2197,7 +2197,7 @@ const sendEmails = {
             [ROLES.FEDERAL_LEAD]);
 
         if (!toUsers || toUsers?.length === 0) {
-            console.error("SR for Submit email notification does not have any recipient", `Application ID: ${application?._id}`);
+            console.error("SR for Submit email notification does not have any recipient", `Submission Request ID: ${submissionRequest?._id}`);
             return;
         }
         if (toUsers?.length > 0) {
@@ -2206,54 +2206,54 @@ const sendEmails = {
             const toEmails = getUserEmails(toUsers);
             const toBCCEmails = getUserEmails(BCCUsers)
                 ?.filter((email) => !toEmails?.includes(email));
-            const programName = application?.programName?.trim() || "NA";
+            const programName = submissionRequest?.programName?.trim() || "NA";
             await notificationService.submitQuestionNotification(getUserEmails(toUsers),
                 [],
                 toBCCEmails, {
-                pi: `${setDefaultIfNoName(application?.PI)}${programName === "NA" ? "." : `, and associated with the ${programName} program.`}`,
-                study: studyLabelForEmailBody(application),
+                pi: `${setDefaultIfNoName(submissionRequest?.PI)}${programName === "NA" ? "." : `, and associated with the ${programName} program.`}`,
+                study: studyLabelForEmailBody(submissionRequest),
                 url: emailParams.url
             });
         }
     },
-    inquireApplication: async (notificationService, userService, application, reviewComments) => {
+    inquireSubmissionRequest: async (notificationService, userService, submissionRequest, reviewComments) => {
         const res = await Promise.all([
             userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
-            userService.findByID(application?.applicant?.applicantID)
+            userService.findByID(submissionRequest?.applicant?.applicantID)
         ]);
         const [toBCCUsers, applicantInfo] = res;
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
-            const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
+            const CCEmails = getCCEmails(submissionRequest?.applicant?.applicantEmail, submissionRequest);
             const toBCCEmails = getUserEmails(toBCCUsers)
                 ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
-            const studyName = setDefaultIfNoName(application?.studyName);
-            const studyAbbreviation = defaultStudyAbbreviationToNA(application?.studyAbbreviation);
-            await notificationService.inquireQuestionNotification(application?.applicant?.applicantEmail,
+            const studyName = setDefaultIfNoName(submissionRequest?.studyName);
+            const studyAbbreviation = defaultStudyAbbreviationToNA(submissionRequest?.studyAbbreviation);
+            await notificationService.inquireQuestionNotification(submissionRequest?.applicant?.applicantEmail,
                 CCEmails,
                 toBCCEmails,{
-                firstName: application?.applicant?.applicantName,
+                firstName: submissionRequest?.applicant?.applicantName,
                 reviewComments,
                 studyName,
                 studyAbbreviation,
             }, {});
         }
     },
-    rejectApplication: async(notificationService, userService, emailParams, application, reviewComments) => {
-        const applicantInfo = await userService.findByID(application?.applicant?.applicantID);
+    rejectSubmissionRequest: async(notificationService, userService, emailParams, submissionRequest, reviewComments) => {
+        const applicantInfo = await userService.findByID(submissionRequest?.applicant?.applicantID);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
             const BCCUsers = await userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]);
-            const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
+            const CCEmails = getCCEmails(submissionRequest?.applicant?.applicantEmail, submissionRequest);
             const toBCCEmails = getUserEmails(BCCUsers)
                 ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
-            await notificationService.rejectQuestionNotification(application?.applicant?.applicantEmail,
+            await notificationService.rejectQuestionNotification(submissionRequest?.applicant?.applicantEmail,
                 CCEmails,
                 toBCCEmails, {
-                firstName: application?.applicant?.applicantName,
+                firstName: submissionRequest?.applicant?.applicantName,
                 reviewComments
             }, {
-                study: `${studyLabelForEmailBody(application)},`
+                study: `${studyLabelForEmailBody(submissionRequest)},`
             });
         }
     }
@@ -2266,26 +2266,26 @@ const getUserEmails = (users) => {
         ?.map((aUser)=> aUser.email);
 }
 
-const getApplicationQuestionnaire = (aApplication) => {
-    const questionnaire = parseJsonString(aApplication?.questionnaireData);
+const getSubmissionRequestQuestionnaire = (aSubmissionRequest) => {
+    const questionnaire = parseJsonString(aSubmissionRequest?.questionnaireData);
     if (!questionnaire) {
-        console.error(ERROR.FAILED_STORE_APPROVED_STUDIES + ` id=${aApplication?._id}`);
+        console.error(ERROR.FAILED_STORE_APPROVED_STUDIES + ` id=${aSubmissionRequest?._id}`);
         return null;
     }
     return questionnaire;
 }
 
-function logDaysDifference(inactiveDays, accessedAt, applicationID) {
+function logDaysDifference(inactiveDays, accessedAt, submissionRequestID) {
     const startedDate = accessedAt; // Ensure it's a Date object
     const endDate = getCurrentTime();
     const differenceMs = endDate - startedDate; // Difference in milliseconds
     const days = Math.floor(differenceMs / (1000 * 60 * 60 * 24));
     const hours = Math.floor((differenceMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((differenceMs % (1000 * 60 * 60)) / (1000 * 60));
-    console.log(`Application ID: ${applicationID}, Inactive Days: ${inactiveDays}, Last Accessed: ${startedDate}, Current Time: ${endDate}  Difference: ${days} days, ${hours} hours, ${minutes} minutes`);
+    console.log(`Submission Request ID: ${submissionRequestID}, Inactive Days: ${inactiveDays}, Last Accessed: ${startedDate}, Current Time: ${endDate}  Difference: ${days} days, ${hours} hours, ${minutes} minutes`);
 }
 
 module.exports = {
-    Application,
-    VALID_ORDER_BY_LIST_APPLICATIONS
+    SubmissionRequest,
+    VALID_ORDER_BY_LIST_SUBMISSION_REQUESTS
 };

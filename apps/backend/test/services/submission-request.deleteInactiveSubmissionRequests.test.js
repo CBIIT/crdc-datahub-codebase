@@ -1,8 +1,8 @@
-const { Application } = require('../../services/application');
+const { SubmissionRequest } = require("../../services/submission-request");
 
 // Mock dependencies
 const mockLogCollection = { insert: jest.fn() };
-const mockApplicationCollection = { find: jest.fn(), update: jest.fn(), delete: jest.fn() };
+const mockSubmissionRequestCollection = { find: jest.fn(), update: jest.fn(), delete: jest.fn() };
 const mockApprovedStudiesService = {};
 const mockUserService = {
     getUsersByNotifications: jest.fn(),
@@ -10,7 +10,7 @@ const mockUserService = {
 };
 const mockDbService = {};
 const mockNotificationsService = {
-    inactiveApplicationsNotification: jest.fn()
+    inactiveSubmissionRequestsNotification: jest.fn()
 };
 const mockEmailParams = {
     inactiveDays: 180,
@@ -22,8 +22,8 @@ const mockProgramService = {};
 const mockConfigurationService = {};
 const mockAuthorizationService = {};
 
-describe('deleteInactiveApplications Error Handling', () => {
-    let applicationService;
+describe('deleteInactiveSubmissionRequests Error Handling', () => {
+    let submissionRequestService;
     let mockSubmissionRequestDAO;
     let originalGlobals;
 
@@ -58,9 +58,9 @@ describe('deleteInactiveApplications Error Handling', () => {
             clearNextRevisionIdPointingTo: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
         };
         
-        applicationService = new Application(
+        submissionRequestService = new SubmissionRequest(
             mockLogCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             mockApprovedStudiesService,
             mockUserService,
             mockDbService,
@@ -73,7 +73,7 @@ describe('deleteInactiveApplications Error Handling', () => {
         );
         
         // Inject mock DAO
-        applicationService.submissionRequestDAO = mockSubmissionRequestDAO;
+        submissionRequestService.submissionRequestDAO = mockSubmissionRequestDAO;
     });
 
     afterEach(() => {
@@ -101,14 +101,14 @@ describe('deleteInactiveApplications Error Handling', () => {
             const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
             try {
-                await expect(applicationService.deleteInactiveApplications()).rejects.toThrow('Database connection failed');
-                expect(consoleSpy).toHaveBeenCalledWith('Error in deleteInactiveApplications task:', expect.any(Error));
+                await expect(submissionRequestService.deleteInactiveSubmissionRequests()).rejects.toThrow('Database connection failed');
+                expect(consoleSpy).toHaveBeenCalledWith('Error in deleteInactiveSubmissionRequests task:', expect.any(Error));
             } finally {
                 consoleSpy.mockRestore();
             }
         });
 
-        test('should handle no inactive applications gracefully', async () => {
+        test('should handle no inactive submission requests gracefully', async () => {
             mockSubmissionRequestDAO.getInactiveSubmissionRequest
                 .mockResolvedValueOnce([]) // default window
                 .mockResolvedValueOnce([]); // short window
@@ -116,16 +116,16 @@ describe('deleteInactiveApplications Error Handling', () => {
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
             try {
-                await applicationService.deleteInactiveApplications();
+                await submissionRequestService.deleteInactiveSubmissionRequests();
 
-                expect(consoleSpy).toHaveBeenCalledWith('No inactive applications found to delete');
+                expect(consoleSpy).toHaveBeenCalledWith('No inactive submission requests found to delete');
                 expect(mockSubmissionRequestDAO.update).not.toHaveBeenCalled();
             } finally {
                 consoleSpy.mockRestore();
             }
         });
 
-        test('should handle undefined applications array gracefully', async () => {
+        test('should handle undefined submission requests array gracefully', async () => {
             mockSubmissionRequestDAO.getInactiveSubmissionRequest
                 .mockResolvedValueOnce(undefined) // default window
                 .mockResolvedValueOnce(undefined); // short window
@@ -133,17 +133,17 @@ describe('deleteInactiveApplications Error Handling', () => {
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
             try {
-                await applicationService.deleteInactiveApplications();
+                await submissionRequestService.deleteInactiveSubmissionRequests();
 
-                expect(consoleSpy).toHaveBeenCalledWith('No inactive applications found to delete');
+                expect(consoleSpy).toHaveBeenCalledWith('No inactive submission requests found to delete');
                 expect(mockSubmissionRequestDAO.update).not.toHaveBeenCalled();
             } finally {
                 consoleSpy.mockRestore();
             }
         });
 
-        test('should log when applications are found', async () => {
-            const mockApplications = [
+        test('should log when submission requests are found', async () => {
+            const mockSubmissionRequests = [
                 {
                     _id: 'app1',
                     applicantID: 'user1',
@@ -156,7 +156,7 @@ describe('deleteInactiveApplications Error Handling', () => {
             ];
 
             mockSubmissionRequestDAO.getInactiveSubmissionRequest
-                .mockResolvedValueOnce(mockApplications) // default window
+                .mockResolvedValueOnce(mockSubmissionRequests) // default window
                 .mockResolvedValueOnce([]); // short window
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
             mockUserService.findByIDs.mockResolvedValue([]);
@@ -165,16 +165,16 @@ describe('deleteInactiveApplications Error Handling', () => {
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
             try {
-                await applicationService.deleteInactiveApplications();
+                await submissionRequestService.deleteInactiveSubmissionRequests();
 
-                expect(consoleSpy).toHaveBeenCalledWith('Found 1 inactive applications to process');
+                expect(consoleSpy).toHaveBeenCalledWith('Found 1 inactive submission requests to process');
             } finally {
                 consoleSpy.mockRestore();
             }
         });
 
-        test('does not prune revision chain when application is marked Deleted', async () => {
-            const mockApplications = [
+        test('does not prune revision chain when submissionRequest is marked Deleted', async () => {
+            const mockSubmissionRequests = [
                 {
                     _id: 'app1',
                     applicantID: 'user1',
@@ -188,19 +188,19 @@ describe('deleteInactiveApplications Error Handling', () => {
             ];
 
             mockSubmissionRequestDAO.getInactiveSubmissionRequest
-                .mockResolvedValueOnce(mockApplications)
+                .mockResolvedValueOnce(mockSubmissionRequests)
                 .mockResolvedValueOnce([]);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
             mockUserService.findByIDs.mockResolvedValue([]);
             mockSubmissionRequestDAO.update.mockResolvedValue(true);
 
-            await applicationService.deleteInactiveApplications();
+            await submissionRequestService.deleteInactiveSubmissionRequests();
 
             expect(mockSubmissionRequestDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
 
-        test('does not prune revision chain after hard-deleting empty New application', async () => {
-            const mockApplications = [
+        test('does not prune revision chain after hard-deleting empty New submissionRequest', async () => {
+            const mockSubmissionRequests = [
                 {
                     _id: 'empty-app',
                     applicantID: 'user1',
@@ -212,20 +212,20 @@ describe('deleteInactiveApplications Error Handling', () => {
             ];
 
             mockSubmissionRequestDAO.getInactiveSubmissionRequest
-                .mockResolvedValueOnce(mockApplications)
+                .mockResolvedValueOnce(mockSubmissionRequests)
                 .mockResolvedValueOnce([]);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
             mockUserService.findByIDs.mockResolvedValue([]);
             mockSubmissionRequestDAO.delete.mockResolvedValue({ _id: 'empty-app' });
 
-            await applicationService.deleteInactiveApplications();
+            await submissionRequestService.deleteInactiveSubmissionRequests();
 
             expect(mockSubmissionRequestDAO.delete).toHaveBeenCalledWith('empty-app');
             expect(mockSubmissionRequestDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
 
-        test('does not prune revision chain when empty New application delete fails', async () => {
-            const mockApplications = [
+        test('does not prune revision chain when empty New submissionRequest delete fails', async () => {
+            const mockSubmissionRequests = [
                 {
                     _id: 'empty-app',
                     applicantID: 'user1',
@@ -237,13 +237,13 @@ describe('deleteInactiveApplications Error Handling', () => {
             ];
 
             mockSubmissionRequestDAO.getInactiveSubmissionRequest
-                .mockResolvedValueOnce(mockApplications)
+                .mockResolvedValueOnce(mockSubmissionRequests)
                 .mockResolvedValueOnce([]);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
             mockUserService.findByIDs.mockResolvedValue([]);
             mockSubmissionRequestDAO.delete.mockResolvedValue(null);
 
-            await applicationService.deleteInactiveApplications();
+            await submissionRequestService.deleteInactiveSubmissionRequests();
 
             expect(mockSubmissionRequestDAO.delete).toHaveBeenCalledWith('empty-app');
             expect(mockSubmissionRequestDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
@@ -252,7 +252,7 @@ describe('deleteInactiveApplications Error Handling', () => {
 
     describe('Promise.allSettled Behavior', () => {
         test('should handle partial failures in batch operations', async () => {
-            const mockApplications = [
+            const mockSubmissionRequests = [
                 {
                     _id: 'app1',
                     applicantID: 'user1',
@@ -274,7 +274,7 @@ describe('deleteInactiveApplications Error Handling', () => {
             ];
 
             mockSubmissionRequestDAO.getInactiveSubmissionRequest
-                .mockResolvedValueOnce(mockApplications) // default window
+                .mockResolvedValueOnce(mockSubmissionRequests) // default window
                 .mockResolvedValueOnce([]); // short window
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
             mockUserService.findByIDs.mockResolvedValue([]);
@@ -288,22 +288,22 @@ describe('deleteInactiveApplications Error Handling', () => {
             const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
             try {
-                await applicationService.deleteInactiveApplications();
+                await submissionRequestService.deleteInactiveSubmissionRequests();
 
                 // Should log successful processing
-                expect(consoleSpy).toHaveBeenCalledWith('Found 2 inactive applications to process');
-                expect(consoleSpy).toHaveBeenCalledWith('Successfully processed 1 inactive applications');
+                expect(consoleSpy).toHaveBeenCalledWith('Found 2 inactive submission requests to process');
+                expect(consoleSpy).toHaveBeenCalledWith('Successfully processed 1 inactive submission requests');
                 
                 // Should log the failure
-                expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to update 1 applications:', expect.any(Array));
+                expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to update 1 submission requests:', expect.any(Array));
             } finally {
                 consoleSpy.mockRestore();
                 consoleErrorSpy.mockRestore();
             }
         });
 
-        test('should only send emails for successfully updated applications', async () => {
-            const mockApplications = [
+        test('should only send emails for successfully updated submission requests', async () => {
+            const mockSubmissionRequests = [
                 {
                     _id: 'app1',
                     applicantID: 'user1',
@@ -325,7 +325,7 @@ describe('deleteInactiveApplications Error Handling', () => {
             ];
 
             mockSubmissionRequestDAO.getInactiveSubmissionRequest
-                .mockResolvedValueOnce(mockApplications) // default window
+                .mockResolvedValueOnce(mockSubmissionRequests) // default window
                 .mockResolvedValueOnce([]); // short window
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
             mockUserService.findByIDs.mockResolvedValue([]);
@@ -339,24 +339,24 @@ describe('deleteInactiveApplications Error Handling', () => {
             const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
 
             try {
-                await applicationService.deleteInactiveApplications();
+                await submissionRequestService.deleteInactiveSubmissionRequests();
 
                 // Should log successful processing
-                expect(consoleSpy).toHaveBeenCalledWith('Found 2 inactive applications to process');
-                expect(consoleSpy).toHaveBeenCalledWith('Successfully processed 1 inactive applications');
+                expect(consoleSpy).toHaveBeenCalledWith('Found 2 inactive submission requests to process');
+                expect(consoleSpy).toHaveBeenCalledWith('Successfully processed 1 inactive submission requests');
                 
                 // Should log the failure
-                expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to update 1 applications:', expect.any(Array));
+                expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to update 1 submission requests:', expect.any(Array));
                 
                 // Verify that only 1 email notification was attempted (for the successful update)
-                expect(consoleSpy).toHaveBeenCalledWith('Sent 1 email notifications for inactive applications');
+                expect(consoleSpy).toHaveBeenCalledWith('Sent 1 email notifications for inactive submission requests');
             } finally {
                 consoleSpy.mockRestore();
                 consoleErrorSpy.mockRestore();
             }
         });
 
-        test('inactiveApplicationsNotification receives studyName and study NA for blank New SRF', async () => {
+        test('inactiveSubmissionRequestsNotification receives studyName and study NA for blank New SRF', async () => {
             const mockShortApps = [
                 {
                     _id: 'app2',
@@ -388,9 +388,9 @@ describe('deleteInactiveApplications Error Handling', () => {
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
             try {
-                await applicationService.deleteInactiveApplications();
+                await submissionRequestService.deleteInactiveSubmissionRequests();
 
-                expect(mockNotificationsService.inactiveApplicationsNotification).toHaveBeenCalledWith(
+                expect(mockNotificationsService.inactiveSubmissionRequestsNotification).toHaveBeenCalledWith(
                     'user2@test.com',
                     [],
                     [],
@@ -452,10 +452,10 @@ describe('deleteInactiveApplications Error Handling', () => {
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
             try {
-                await applicationService.deleteInactiveApplications();
+                await submissionRequestService.deleteInactiveSubmissionRequests();
 
                 // Should have 2 apps total (one from default, one blank from short)
-                expect(consoleSpy).toHaveBeenCalledWith('Found 2 inactive applications to process');
+                expect(consoleSpy).toHaveBeenCalledWith('Found 2 inactive submission requests to process');
                 // delete should be called for blank New SRF
                 expect(mockSubmissionRequestDAO.delete).toHaveBeenCalledWith('app2');
                 // update should be called for the default app
@@ -468,18 +468,18 @@ describe('deleteInactiveApplications Error Handling', () => {
 
     describe('Method Structure Validation', () => {
         test('should have try-catch wrapper', () => {
-            const methodString = applicationService.deleteInactiveApplications.toString();
+            const methodString = submissionRequestService.deleteInactiveSubmissionRequests.toString();
             expect(methodString).toContain('try {');
             expect(methodString).toContain('} catch (error) {');
         });
 
         test('should use Promise.allSettled for batch operations', () => {
-            const methodString = applicationService.deleteInactiveApplications.toString();
+            const methodString = submissionRequestService.deleteInactiveSubmissionRequests.toString();
             expect(methodString).toContain('Promise.allSettled');
         });
 
         test('should log error and re-throw', () => {
-            const methodString = applicationService.deleteInactiveApplications.toString();
+            const methodString = submissionRequestService.deleteInactiveSubmissionRequests.toString();
             expect(methodString).toContain('console.error');
             expect(methodString).toContain('throw error');
         });

@@ -1,5 +1,5 @@
 module.exports = Object.freeze({
-    // Application Status
+    // Submission Request Status
     NEW: 'New',
     IN_PROGRESS: 'In Progress',
     INQUIRED: 'Inquired',
