@@ -2,7 +2,7 @@ const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-
 const {SUBMITTED} = require("../constants/submission-constants");
 
 /**
- * Builds immutable history-event objects used for application/submission state timelines.
+ * Builds immutable history-event objects used for submission-request/submission state timelines.
  */
 class HistoryEventBuilder {
     /**

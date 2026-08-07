@@ -3,7 +3,7 @@ const SubmissionRequestModel = require("../mongoose/models/submission-request");
 const { USER_COLLECTION } = require("../crdc-datahub-database-drivers/database-constants");
 const { getCurrentTime, subtractDaysFromNow } = require("../crdc-datahub-database-drivers/utility/time-utility");
 const { getSortDirection } = require("../crdc-datahub-database-drivers/utility/mongodb-utility");
-const { NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, APPROVED } = require("../constants/application-constants");
+const { NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, APPROVED } = require("../constants/submission-request-constants");
 const ERROR = require("../constants/error-constants");
 
 /**
@@ -91,11 +91,11 @@ class SubmissionRequestDAO extends MongooseGenericDAO {
 
     /**
      * Insert an SRF document.
-     * @param {object} application SRF document (may use _id)
+     * @param {object} submissionRequest SRF document (may use _id)
      * @returns {Promise<{acknowledged: boolean, insertedId: string}>}
      */
-    async insert(application) {
-        const data = { ...application };
+    async insert(submissionRequest) {
+        const data = { ...submissionRequest };
         if (data.id && !data._id) {
             data._id = data.id;
         }
@@ -106,16 +106,16 @@ class SubmissionRequestDAO extends MongooseGenericDAO {
 
     /**
      * Update an SRF by id, stripping hydrated/computed fields.
-     * @param {object} application Update payload with _id or id
+     * @param {object} submissionRequest Update payload with _id or id
      * @returns {Promise<object>}
      */
-    async update(application) {
+    async update(submissionRequest) {
         // check if _id or id is present
-        if (!application._id && !application.id) {
+        if (!submissionRequest._id && !submissionRequest.id) {
             throw new Error('Submission request must have an _id or id');
         }
-        const updateData = toSubmissionRequestUpdateData(application);
-        return await super.update(application._id ?? application.id, updateData);
+        const updateData = toSubmissionRequestUpdateData(submissionRequest);
+        return await super.update(submissionRequest._id ?? submissionRequest.id, updateData);
     }
 
     /**
@@ -242,15 +242,15 @@ class SubmissionRequestDAO extends MongooseGenericDAO {
 
     /**
      * Clear nextRevisionId on any SRF pointing at the given successor (revision chain link removal).
-     * @param {string} applicationId Successor SRF _id whose inbound nextRevisionId link should be cleared
+     * @param {string} submissionRequestID Successor SRF _id whose inbound nextRevisionId link should be cleared
      * @returns {Promise<{matchedCount: number, modifiedCount: number, count: number, acknowledged: boolean}>}
      */
-    async clearNextRevisionIdPointingTo(applicationId) {
-        if (!applicationId) {
+    async clearNextRevisionIdPointingTo(submissionRequestID) {
+        if (!submissionRequestID) {
             return { matchedCount: 0, modifiedCount: 0, count: 0, acknowledged: true };
         }
         return await this.updateMany(
-            { nextRevisionId: applicationId },
+            { nextRevisionId: submissionRequestID },
             { nextRevisionId: null, updatedAt: getCurrentTime() }
         );
     }
@@ -258,12 +258,12 @@ class SubmissionRequestDAO extends MongooseGenericDAO {
     /**
      * Insert a reopened SRF and link the approved predecessor; compensate if insert fails.
      * @param {string} sourceId Approved SRF _id
-     * @param {object} newApp Full successor document (must include _id)
+     * @param {object} newSubmissionRequest Full successor document (must include _id)
      * @param {boolean} [replaceExistingLink=false] When true, overwrite an existing nextRevisionId on the source
      * @returns {Promise<object>} The inserted SRF document
      */
-    async reopenApprovedRevision(sourceId, newApp, replaceExistingLink = false) {
-        const timestamp = newApp.updatedAt ?? getCurrentTime();
+    async reopenApprovedRevision(sourceId, newSubmissionRequest, replaceExistingLink = false) {
+        const timestamp = newSubmissionRequest.updatedAt ?? getCurrentTime();
 
         let previousNextRevisionID = null;
         if (replaceExistingLink) {
@@ -279,20 +279,20 @@ class SubmissionRequestDAO extends MongooseGenericDAO {
             : { _id: sourceId, status: APPROVED, ...nullOrMissingMongoCondition('nextRevisionId') };
 
         const linkResult = await this.updateMany(linkWhere, {
-            nextRevisionId: newApp._id,
+            nextRevisionId: newSubmissionRequest._id,
             updatedAt: timestamp,
         });
 
         if (linkResult?.matchedCount !== 1) {
-            throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+            throw new Error(ERROR.VERIFY.INVALID_STATE_SUBMISSION_REQUEST);
         }
 
         try {
-            const insertResult = await this.insert(newApp);
+            const insertResult = await this.insert(newSubmissionRequest);
             if (!insertResult?.acknowledged) {
                 throw new Error(ERROR.UPDATE_FAILED);
             }
-            return { ...newApp };
+            return { ...newSubmissionRequest };
         } catch (error) {
             try {
                 await this.updateMany(

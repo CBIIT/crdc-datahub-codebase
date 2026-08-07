@@ -28,14 +28,14 @@ class UtilityService {
             });
         });
     }
-    isEmptyApplication(aApplication) {
-        // Whether or not to delete the application
+    isEmptySubmissionRequest(aSubmissionRequest) {
+        // Whether or not to delete the submissionRequest
         return (
-            !aApplication?.programName &&
-            !aApplication?.studyAbbreviation &&
-            !aApplication?.studyName &&
-            !aApplication?.programAbbreviation &&
-            !aApplication?.programDescription
+            !aSubmissionRequest?.programName &&
+            !aSubmissionRequest?.studyAbbreviation &&
+            !aSubmissionRequest?.studyName &&
+            !aSubmissionRequest?.programAbbreviation &&
+            !aSubmissionRequest?.programDescription
         );
     }
 }

@@ -14,7 +14,7 @@ function defaultStudyAbbreviationToStudyName(abbrev, fullName) {
  * Returns the trimmed study abbreviation, or the literal "NA" if the abbreviation is empty
  * (null, empty, or whitespace only).
  * Used for the Inquire SR template's Study Abbreviation line and PV request notifications only;
- * other emails use defaultStudyAbbreviationToStudyName with the application study name.
+ * other emails use defaultStudyAbbreviationToStudyName with the submission request study name.
  * @param {string} abbrev the study abbreviation
  * @returns {string} trimmed abbrev, or "NA" when there is no abbrev
  */

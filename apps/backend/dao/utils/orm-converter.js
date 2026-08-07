@@ -141,8 +141,9 @@ function handleDotNotation(query) {
 /**
  * Remove API-hydrated and computed fields before Prisma Application.update().
  * Relation FK applicantID must use applicant.connect on write, not scalar updates.
+ * @deprecated Prefer SubmissionRequestDAO / toSubmissionRequestUpdateData; Prisma Application path is legacy.
  */
-function toPrismaApplicationUpdateData(data) {
+function toPrismaSubmissionRequestUpdateData(data) {
     if (!data || typeof data !== 'object') {
         return data;
     }
@@ -181,6 +182,6 @@ module.exports = {
     tryConvertDate,
     handleDotNotation,
     mongoSortToPrismaOrderBy,
-    toPrismaApplicationUpdateData,
+    toPrismaSubmissionRequestUpdateData,
 
 };

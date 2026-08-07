@@ -68,15 +68,15 @@ class ApprovedStudyDAO extends MongooseGenericDAO {
     }
 
     /**
-     * Find an approved study linked to a submission request application ID.
-     * @param {string} applicationID
+     * Find an approved study linked to a submission request ID.
+     * @param {string} submissionRequestID
      * @returns {Promise<object|null>}
      */
-    async findByApplicationID(applicationID) {
-        if (!applicationID) {
+    async findBySubmissionRequestID(submissionRequestID) {
+        if (!submissionRequestID) {
             return null;
         }
-        return await this.findFirst({ applicationID });
+        return await this.findFirst({ applicationID: submissionRequestID });
     }
 
     /**
