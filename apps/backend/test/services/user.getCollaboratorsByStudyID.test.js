@@ -5,7 +5,7 @@ const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/c
 describe('UserService.getCollaboratorsByStudyID', () => {
     let userService;
     let mockUserDAO, mockLogCollection, mockOrganizationCollection, 
-        mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, 
+        mockNotificationsService, mockSubmissionsCollection, mockSubmissionRequestCollection, 
         mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays, 
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let studyID, submitterID;
@@ -61,7 +61,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         mockOrganizationCollection = {};
         mockNotificationsService = {};
         mockSubmissionsCollection = {};
-        mockApplicationCollection = {};
+        mockSubmissionRequestCollection = {};
         mockOfficialEmail = 'test@example.com';
         mockAppUrl = 'http://test.com';
         mockApprovedStudiesService = {};
@@ -76,7 +76,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             mockOrganizationCollection,
             mockNotificationsService,
             mockSubmissionsCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             mockOfficialEmail,
             mockAppUrl,
             mockApprovedStudiesService,

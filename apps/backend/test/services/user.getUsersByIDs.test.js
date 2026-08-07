@@ -30,7 +30,7 @@ describe('UserService.getUsersByIDs', () => {
             {}, // organizationCollection
             {}, // notificationsService
             {}, // submissionsCollection
-            {}, // applicationCollection
+            {}, // submissionRequestCollection
             '', // officialEmail
             '', // appUrl
             { approvedStudiesCollection: mockApprovedStudyDAO }, // approvedStudiesService

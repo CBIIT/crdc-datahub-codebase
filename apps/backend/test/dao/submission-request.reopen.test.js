@@ -8,7 +8,7 @@ jest.mock('../../mongoose/models/submission-request', () => ({
 
 const SubmissionRequestModel = require('../../mongoose/models/submission-request');
 const SubmissionRequestDAO = require('../../dao/submission-request');
-const { APPROVED } = require('../../constants/application-constants');
+const { APPROVED } = require('../../constants/submission-request-constants');
 const ERROR = require('../../constants/error-constants');
 
 /**
@@ -27,7 +27,7 @@ describe('SubmissionRequestDAO.reopenApprovedRevision', () => {
     let dao;
 
     const sourceId = 'approved-source-id';
-    const newApp = {
+    const newSubmissionRequest = {
         _id: 'new-revision-id',
         status: 'Reopened',
         sequenceNumber: 2,
@@ -45,7 +45,7 @@ describe('SubmissionRequestDAO.reopenApprovedRevision', () => {
         SubmissionRequestModel.updateMany.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
         dao.insert.mockResolvedValue({ acknowledged: true });
 
-        const result = await dao.reopenApprovedRevision(sourceId, newApp);
+        const result = await dao.reopenApprovedRevision(sourceId, newSubmissionRequest);
 
         expect(SubmissionRequestModel.updateMany).toHaveBeenCalledWith(
             {
@@ -58,13 +58,13 @@ describe('SubmissionRequestDAO.reopenApprovedRevision', () => {
             },
             {
                 $set: expect.objectContaining({
-                    nextRevisionId: newApp._id,
-                    updatedAt: newApp.updatedAt,
+                    nextRevisionId: newSubmissionRequest._id,
+                    updatedAt: newSubmissionRequest.updatedAt,
                 }),
             }
         );
-        expect(dao.insert).toHaveBeenCalledWith(newApp);
-        expect(result).toEqual(expect.objectContaining({ _id: newApp._id, status: 'Reopened' }));
+        expect(dao.insert).toHaveBeenCalledWith(newSubmissionRequest);
+        expect(result).toEqual(expect.objectContaining({ _id: newSubmissionRequest._id, status: 'Reopened' }));
     });
 
     it('replaces an existing nextRevisionId link when replaceExistingLink is true', async () => {
@@ -74,14 +74,14 @@ describe('SubmissionRequestDAO.reopenApprovedRevision', () => {
         SubmissionRequestModel.updateMany.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
         dao.insert.mockResolvedValue({ acknowledged: true });
 
-        await dao.reopenApprovedRevision(sourceId, newApp, true);
+        await dao.reopenApprovedRevision(sourceId, newSubmissionRequest, true);
 
         expect(SubmissionRequestModel.updateMany).toHaveBeenCalledWith(
             { _id: sourceId, status: APPROVED },
             {
                 $set: expect.objectContaining({
-                    nextRevisionId: newApp._id,
-                    updatedAt: newApp.updatedAt,
+                    nextRevisionId: newSubmissionRequest._id,
+                    updatedAt: newSubmissionRequest.updatedAt,
                 }),
             }
         );
@@ -90,8 +90,8 @@ describe('SubmissionRequestDAO.reopenApprovedRevision', () => {
     it('throws INVALID_STATE when source update matches zero documents', async () => {
         SubmissionRequestModel.updateMany.mockResolvedValue({ matchedCount: 0, modifiedCount: 0 });
 
-        await expect(dao.reopenApprovedRevision(sourceId, newApp))
-            .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+        await expect(dao.reopenApprovedRevision(sourceId, newSubmissionRequest))
+            .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_SUBMISSION_REQUEST);
 
         expect(dao.insert).not.toHaveBeenCalled();
     });
@@ -102,7 +102,7 @@ describe('SubmissionRequestDAO.reopenApprovedRevision', () => {
             .mockResolvedValueOnce({ matchedCount: 1, modifiedCount: 1 });
         dao.insert.mockRejectedValue(new Error('insert failed'));
 
-        await expect(dao.reopenApprovedRevision(sourceId, newApp)).rejects.toThrow('insert failed');
+        await expect(dao.reopenApprovedRevision(sourceId, newSubmissionRequest)).rejects.toThrow('insert failed');
 
         expect(SubmissionRequestModel.updateMany).toHaveBeenCalledTimes(2);
         expect(SubmissionRequestModel.updateMany).toHaveBeenLastCalledWith(
@@ -120,7 +120,7 @@ describe('SubmissionRequestDAO.reopenApprovedRevision', () => {
             .mockResolvedValueOnce({ matchedCount: 1, modifiedCount: 1 });
         dao.insert.mockRejectedValue(new Error('insert failed'));
 
-        await expect(dao.reopenApprovedRevision(sourceId, newApp, true)).rejects.toThrow('insert failed');
+        await expect(dao.reopenApprovedRevision(sourceId, newSubmissionRequest, true)).rejects.toThrow('insert failed');
 
         expect(SubmissionRequestModel.updateMany).toHaveBeenLastCalledWith(
             { _id: sourceId },
@@ -132,7 +132,7 @@ describe('SubmissionRequestDAO.reopenApprovedRevision', () => {
         SubmissionRequestModel.updateMany.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
         dao.insert.mockResolvedValue({ acknowledged: false });
 
-        await expect(dao.reopenApprovedRevision(sourceId, newApp))
+        await expect(dao.reopenApprovedRevision(sourceId, newSubmissionRequest))
             .rejects.toThrow(ERROR.UPDATE_FAILED);
     });
 });

@@ -6,7 +6,7 @@ const { ERROR } = require('../../constants/error-constants');
 describe('UserService.listActiveCuratorsAPI', () => {
     let userService;
     let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, 
-        mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, 
+        mockSubmissionsCollection, mockSubmissionRequestCollection, mockApprovedStudiesService, 
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
 
@@ -53,7 +53,7 @@ describe('UserService.listActiveCuratorsAPI', () => {
         mockOrganizationCollection = {};
         mockNotificationsService = {};
         mockSubmissionsCollection = {};
-        mockApplicationCollection = {};
+        mockSubmissionRequestCollection = {};
         mockApprovedStudiesService = {
             approvedStudiesCollection: {}
         };
@@ -68,7 +68,7 @@ describe('UserService.listActiveCuratorsAPI', () => {
             mockOrganizationCollection,
             mockNotificationsService,
             mockSubmissionsCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             'official@email.com',
             'http://app.url',
             mockApprovedStudiesService,

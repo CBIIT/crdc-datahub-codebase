@@ -4,7 +4,7 @@ const { ERROR: SUBMODULE_ERROR } = require('../../crdc-datahub-database-drivers/
 
 describe('UserService.updateMyUser', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockSubmissionRequestCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
 
     const mockUserInfo = {
@@ -53,7 +53,7 @@ describe('UserService.updateMyUser', () => {
             updateMany: jest.fn()
         };
 
-        mockApplicationCollection = {
+        mockSubmissionRequestCollection = {
             updateMany: jest.fn()
         };
 
@@ -70,7 +70,7 @@ describe('UserService.updateMyUser', () => {
             mockOrganizationCollection,
             mockNotificationsService,
             mockSubmissionsCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             'official@email.com',
             'http://app.url',
             mockApprovedStudiesService,
@@ -143,7 +143,7 @@ describe('UserService.updateMyUser', () => {
                     { "conciergeID": context.userInfo._id },
                     { "conciergeName": `${updateUser.firstName} ${updateUser.lastName}` }
                 );
-                mockApplicationCollection.updateMany(
+                mockSubmissionRequestCollection.updateMany(
                     { "applicant.applicantID": context.userInfo._id },
                     { "applicant.applicantName": `${updateUser.firstName} ${updateUser.lastName}` }
                 );
@@ -233,7 +233,7 @@ describe('UserService.updateMyUser', () => {
                 { "conciergeID": mockUserInfo._id },
                 { "conciergeName": `${params.userInfo.firstName} ${params.userInfo.lastName}` }
             );
-            expect(mockApplicationCollection.updateMany).toHaveBeenCalledWith(
+            expect(mockSubmissionRequestCollection.updateMany).toHaveBeenCalledWith(
                 { "applicant.applicantID": mockUserInfo._id },
                 { "applicant.applicantName": `${params.userInfo.firstName} ${params.userInfo.lastName}` }
             );
@@ -253,7 +253,7 @@ describe('UserService.updateMyUser', () => {
 
             expect(mockSubmissionsCollection.updateMany).not.toHaveBeenCalled();
             expect(mockOrganizationCollection.updateMany).not.toHaveBeenCalled();
-            expect(mockApplicationCollection.updateMany).not.toHaveBeenCalled();
+            expect(mockSubmissionRequestCollection.updateMany).not.toHaveBeenCalled();
         });
 
         it('should update context userInfo after successful update', async () => {

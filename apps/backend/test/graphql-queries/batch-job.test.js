@@ -1,4 +1,4 @@
-const {Application} = require("../../services/application");
+const {SubmissionRequest} = require("../../services/submission-request");
 const config = require("../../config");
 const {EmailService} = require("../../services/email");
 const {NotifyUser} = require("../../services/notify-user");
@@ -25,7 +25,7 @@ jest.mock("../../prisma", () => {
     };
 
     return {
-        application: mockPrismaModel,
+        submissionRequest: mockPrismaModel,
         user: mockPrismaModel,
         submission: mockPrismaModel,
         batch: mockPrismaModel,
@@ -58,7 +58,7 @@ const programService = {
 
 // Mock collections using Prisma models
 const mockPrisma = require("../../prisma");
-const applicationCollection = mockPrisma.application;
+const submissionRequestCollection = mockPrisma.submissionRequest;
 const logCollection = mockPrisma.log;
 const submissionCollection = mockPrisma.submission;
 const batchCollection = mockPrisma.batch;
@@ -87,7 +87,7 @@ const mockFetchDataModelInfo = jest.fn().mockResolvedValue({
 
 const batchService = new BatchService(s3Service, config.sqs_loader_queue, mockAwsService, config.prod_url, mockFetchDataModelInfo);
 const emailParams = {url: config.emails_url, officialEmail: config.official_email, inactiveDays: config.inactive_application_days, remindDay: config.remind_application_days};
-const dataInterface = new Application(logCollection, applicationCollection, null, submissionService, batchService, userService, dbService, notificationsService, emailParams, null, null, null, null);
+const dataInterface = new SubmissionRequest(logCollection, submissionRequestCollection, null, submissionService, batchService, userService, dbService, notificationsService, emailParams, null, null, null, null);
 
 describe('Batch Jobs test', () => {
 
@@ -95,18 +95,18 @@ describe('Batch Jobs test', () => {
         jest.clearAllMocks();
     });
 
-    test("deleteInactiveApplications no updated application", async () => {
+    test("deleteInactiveSubmissionRequests no updated submissionRequest", async () => {
         dbService.updateMany.mockReset();
         dbService.updateMany.mockResolvedValue({ modifiedCount: 0 });
-        await dataInterface.deleteInactiveApplications(30); // use a valid days value
+        await dataInterface.deleteInactiveSubmissionRequests(30); // use a valid days value
         expect(dbService.updateMany).toBeCalledTimes(0);
-        expect(notificationsService.inactiveApplicationsNotification).toBeCalledTimes(0);
+        expect(notificationsService.inactiveSubmissionRequestsNotification).toBeCalledTimes(0);
     });
 
-    test("deleteInactiveApplications undefined", async () => {
+    test("deleteInactiveSubmissionRequests undefined", async () => {
         dbService.updateMany.mockReset();
         dbService.updateMany.mockResolvedValue({ modifiedCount: 0 });
         // Patch: expect resolved value to be undefined (not rejected)
-        await expect(dataInterface.deleteInactiveApplications(30)).resolves.toBeUndefined();
+        await expect(dataInterface.deleteInactiveSubmissionRequests(30)).resolves.toBeUndefined();
     });
 });

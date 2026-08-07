@@ -9,7 +9,7 @@ jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
 
 describe('UserService.updateUserInstitution', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockSubmissionRequestCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockUsersWithInstitution = [
         {
@@ -67,7 +67,7 @@ describe('UserService.updateUserInstitution', () => {
         mockOrganizationCollection = {};
         mockNotificationsService = {};
         mockSubmissionsCollection = {};
-        mockApplicationCollection = {};
+        mockSubmissionRequestCollection = {};
         mockApprovedStudiesService = {};
         mockConfigurationService = {};
         mockInstitutionService = {};
@@ -78,7 +78,7 @@ describe('UserService.updateUserInstitution', () => {
             mockOrganizationCollection,
             mockNotificationsService,
             mockSubmissionsCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             'test@example.com',
             'http://test.com',
             mockApprovedStudiesService,

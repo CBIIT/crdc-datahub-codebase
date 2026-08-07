@@ -170,9 +170,9 @@ describe('NotifyUser', () => {
         });
     });
 
-    describe('reopenApplicationNotification', () => {
+    describe('reopenSubmissionRequestNotification', () => {
         it('uses notification-template-sr-reopen and passes study and program fields', async () => {
-            await notify.reopenApplicationNotification(
+            await notify.reopenSubmissionRequestNotification(
                 'owner@example.org',
                 ['cc@example.org'],
                 ['bcc@example.org'],
@@ -202,7 +202,7 @@ describe('NotifyUser', () => {
         });
 
         it('passes isOwnershipChanged true when ownership changed', async () => {
-            await notify.reopenApplicationNotification(
+            await notify.reopenSubmissionRequestNotification(
                 'owner@example.org',
                 [],
                 [],
@@ -227,7 +227,7 @@ describe('NotifyUser', () => {
         });
 
         it('passes through NA display values for study fields from the caller', async () => {
-            await notify.reopenApplicationNotification(
+            await notify.reopenSubmissionRequestNotification(
                 'a@a',
                 [],
                 [],
@@ -252,7 +252,7 @@ describe('NotifyUser', () => {
         });
 
         it('includes message content derived from email constants', async () => {
-            await notify.reopenApplicationNotification(
+            await notify.reopenSubmissionRequestNotification(
                 'owner@example.org',
                 [],
                 [],

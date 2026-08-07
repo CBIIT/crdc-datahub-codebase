@@ -12,7 +12,7 @@ jest.mock('../../verifier/user-info-verifier', () => ({
 describe('UserService.isUserPrimaryContact', () => {
     let userService;
     let mockUserDAO, mockLogCollection, mockOrganizationCollection, 
-        mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, 
+        mockNotificationsService, mockSubmissionsCollection, mockSubmissionRequestCollection, 
         mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays, 
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
@@ -68,7 +68,7 @@ describe('UserService.isUserPrimaryContact', () => {
         };
         mockNotificationsService = {};
         mockSubmissionsCollection = {};
-        mockApplicationCollection = {};
+        mockSubmissionRequestCollection = {};
         mockOfficialEmail = 'test@example.com';
         mockAppUrl = 'http://test.com';
         mockApprovedStudiesService = {
@@ -86,7 +86,7 @@ describe('UserService.isUserPrimaryContact', () => {
             mockOrganizationCollection,
             mockNotificationsService,
             mockSubmissionsCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             mockOfficialEmail,
             mockAppUrl,
             mockApprovedStudiesService,

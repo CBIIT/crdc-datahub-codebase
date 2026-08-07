@@ -1107,8 +1107,8 @@ describe('ApprovedStudiesService', () => {
         });
     });
 
-    describe('saveApprovedStudyFromApplication', () => {
-        const application = {
+    describe('saveApprovedStudyFromSubmissionRequest', () => {
+        const submissionRequest = {
             _id: 'app-123',
             studyName: 'Study One',
             studyAbbreviation: 'STUDY1',
@@ -1135,8 +1135,8 @@ describe('ApprovedStudiesService', () => {
         });
 
         it('should create a new approved study when no existing study is provided', async () => {
-            const result = await service.saveApprovedStudyFromApplication(
-                application,
+            const result = await service.saveApprovedStudyFromSubmissionRequest(
+                submissionRequest,
                 questionnaire,
                 false,
                 undefined,
@@ -1173,8 +1173,8 @@ describe('ApprovedStudiesService', () => {
             [''],
             ['   '],
         ])('defaults blank controlled-access GPA name to Not Provided (GPAName: %p)', async (GPAName) => {
-            await service.saveApprovedStudyFromApplication(
-                { ...application, GPAName },
+            await service.saveApprovedStudyFromSubmissionRequest(
+                { ...submissionRequest, GPAName },
                 questionnaire,
                 false,
                 undefined,
@@ -1212,8 +1212,8 @@ describe('ApprovedStudiesService', () => {
                 studyAbbreviation: 'OLD',
             };
 
-            const result = await service.saveApprovedStudyFromApplication(
-                application,
+            const result = await service.saveApprovedStudyFromSubmissionRequest(
+                submissionRequest,
                 questionnaire,
                 true,
                 true,
@@ -1242,7 +1242,7 @@ describe('ApprovedStudiesService', () => {
             expect(result).toEqual(expect.objectContaining({ _id: 'existing-study-id' }));
         });
 
-        it('should preserve study identity but sync other fields when application name differs', async () => {
+        it('should preserve study identity but sync other fields when submissionRequest name differs', async () => {
             const existingStudy = {
                 _id: 'existing-study-id',
                 id: 'existing-study-id',
@@ -1253,9 +1253,9 @@ describe('ApprovedStudiesService', () => {
                 ORCID: '0000-0000-0000-0000',
             };
 
-            await service.saveApprovedStudyFromApplication(
+            await service.saveApprovedStudyFromSubmissionRequest(
                 {
-                    ...application,
+                    ...submissionRequest,
                     studyName: 'Changed Study',
                     studyAbbreviation: 'CHG',
                     ORCID: '0000-0001',
@@ -1280,8 +1280,8 @@ describe('ApprovedStudiesService', () => {
         });
 
         it('should fall back to study name when studyAbbreviation is empty', async () => {
-            await service.saveApprovedStudyFromApplication(
-                { ...application, studyAbbreviation: '   ' },
+            await service.saveApprovedStudyFromSubmissionRequest(
+                { ...submissionRequest, studyAbbreviation: '   ' },
                 questionnaire,
                 false,
                 undefined,
@@ -1310,8 +1310,8 @@ describe('ApprovedStudiesService', () => {
         });
 
         it('should throw when updating a study without an id', async () => {
-            await expect(service.saveApprovedStudyFromApplication(
-                application,
+            await expect(service.saveApprovedStudyFromSubmissionRequest(
+                submissionRequest,
                 questionnaire,
                 false,
                 undefined,
@@ -1321,7 +1321,7 @@ describe('ApprovedStudiesService', () => {
             )).rejects.toThrow(ERROR.APPROVED_STUDY_NOT_FOUND);
         });
 
-        it('should clear stale dbGaPID, GPAName, and isPendingGPA on update when absent in the application', async () => {
+        it('should clear stale dbGaPID, GPAName, and isPendingGPA on update when absent in the submissionRequest', async () => {
             const existingStudy = {
                 _id: 'existing-study-id',
                 id: 'existing-study-id',
@@ -1333,8 +1333,8 @@ describe('ApprovedStudiesService', () => {
                 isPendingGPA: true,
             };
 
-            await service.saveApprovedStudyFromApplication(
-                { ...application, controlledAccess: false, GPAName: undefined },
+            await service.saveApprovedStudyFromSubmissionRequest(
+                { ...submissionRequest, controlledAccess: false, GPAName: undefined },
                 { study: { dbGaPPPHSNumber: null } },
                 false,
                 undefined,
@@ -1366,8 +1366,8 @@ describe('ApprovedStudiesService', () => {
         ])('should normalize dbGaPPPHSNumber %p to dbGaPID %p', async (input, expectedDbGaPID) => {
             ApprovedStudies.createApprovedStudies.mockClear();
 
-            await service.saveApprovedStudyFromApplication(
-                application,
+            await service.saveApprovedStudyFromSubmissionRequest(
+                submissionRequest,
                 { study: { dbGaPPPHSNumber: input } },
                 false,
                 undefined,
@@ -1398,8 +1398,8 @@ describe('ApprovedStudiesService', () => {
         it('should throw when approved study creation fails', async () => {
             service.approvedStudyDAO.create = jest.fn().mockResolvedValue(null);
 
-            await expect(service.saveApprovedStudyFromApplication(
-                application,
+            await expect(service.saveApprovedStudyFromSubmissionRequest(
+                submissionRequest,
                 questionnaire,
                 false,
                 undefined,
@@ -1415,7 +1415,7 @@ describe('ApprovedStudiesService', () => {
             _id: 'existing-study-id',
             id: 'existing-study-id',
             createdAt: '2020-01-01',
-            applicationID: 'old-application-id',
+            applicationID: 'old-submissionRequest-id',
             studyName: 'Existing Name',
             studyAbbreviation: 'EXIST',
             ORCID: '0000-0001',
@@ -1424,7 +1424,7 @@ describe('ApprovedStudiesService', () => {
             useProgramPC: false,
             primaryContactID: 'existing-contact-id',
         };
-        const application = {
+        const submissionRequest = {
             _id: 'revision-app',
             studyName: 'New Name From Application',
             studyAbbreviation: 'NEWNAME',
@@ -1445,10 +1445,10 @@ describe('ApprovedStudiesService', () => {
             };
         });
 
-        it('updates the refreshable fields from the current application', async () => {
+        it('updates the refreshable fields from the current submissionRequest', async () => {
             const result = await service.updateReapprovedStudy(
                 existingStudy,
-                application,
+                submissionRequest,
                 questionnaire,
                 true,
                 true,
@@ -1472,7 +1472,7 @@ describe('ApprovedStudiesService', () => {
         });
 
         it('does not update studyName, studyAbbreviation, ORCID, PI, or program-related fields', async () => {
-            await service.updateReapprovedStudy(existingStudy, application, questionnaire, true, true, false);
+            await service.updateReapprovedStudy(existingStudy, submissionRequest, questionnaire, true, true, false);
 
             const updatePayload = service.approvedStudyDAO.update.mock.calls[0][1];
             expect(updatePayload.studyName).toBe('Existing Name');
@@ -1485,7 +1485,7 @@ describe('ApprovedStudiesService', () => {
         });
 
         it('throws when the existing study has no id', async () => {
-            await expect(service.updateReapprovedStudy({}, application, questionnaire, true, true, false))
+            await expect(service.updateReapprovedStudy({}, submissionRequest, questionnaire, true, true, false))
                 .rejects.toThrow(ERROR.APPROVED_STUDY_NOT_FOUND);
             expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
         });
@@ -1493,7 +1493,7 @@ describe('ApprovedStudiesService', () => {
         it('throws when the DAO update fails', async () => {
             service.approvedStudyDAO.update = jest.fn().mockResolvedValue(null);
 
-            await expect(service.updateReapprovedStudy(existingStudy, application, questionnaire, true, true, false))
+            await expect(service.updateReapprovedStudy(existingStudy, submissionRequest, questionnaire, true, true, false))
                 .rejects.toThrow(ERROR.FAILED_APPROVED_STUDY_UPDATE);
         });
     });
@@ -1615,11 +1615,11 @@ describe('ApprovedStudiesService', () => {
             consoleSpy.mockRestore();
         });
 
-        it('should pass applicationID to createApprovedStudies when provided', async () => {
+        it('should pass submissionRequestID to createApprovedStudies when provided', async () => {
             const validProgramID = 'valid-program-id-123';
             const validProgram = { _id: validProgramID, name: 'Test Program' };
-            const applicationID = 'app-789';
-            const studyWithAppID = { ...fakeStudy, applicationID };
+            const submissionRequestID = 'app-789';
+            const studyWithAppID = { ...fakeStudy, submissionRequestID };
 
             mockProgramService.getProgramByID.mockResolvedValue(validProgram);
 
@@ -1630,18 +1630,18 @@ describe('ApprovedStudiesService', () => {
             };
 
             const result = await service.storeApprovedStudies(
-                applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess,
+                submissionRequestID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess,
                 useProgramPC, pendingModelChange, primaryContactID, null, validProgramID, undefined
             );
 
-            // Verify applicationID is passed as first argument
+            // Verify submissionRequestID is passed as first argument
             const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];
-            expect(callArgs[0]).toBe(applicationID);
+            expect(callArgs[0]).toBe(submissionRequestID);
 
             expect(result).toBe(studyWithAppID);
         });
 
-        it('should pass null applicationID to createApprovedStudies when not provided', async () => {
+        it('should pass null submissionRequestID to createApprovedStudies when not provided', async () => {
             const validProgramID = 'valid-program-id-123';
             const validProgram = { _id: validProgramID, name: 'Test Program' };
 
@@ -1658,7 +1658,7 @@ describe('ApprovedStudiesService', () => {
                 useProgramPC, pendingModelChange, primaryContactID, null, validProgramID, undefined
             );
 
-            // Verify applicationID is null as first argument
+            // Verify submissionRequestID is null as first argument
             const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];
             expect(callArgs[0]).toBeNull();
         });

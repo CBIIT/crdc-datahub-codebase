@@ -21,7 +21,7 @@ jest.mock('../../utility/data-commons-remapper', () => ({
 
 describe('UserService.listUsers', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockSubmissionRequestCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
 
     const mockUserInfo = {
@@ -153,7 +153,7 @@ describe('UserService.listUsers', () => {
         mockOrganizationCollection = {};
         mockNotificationsService = {};
         mockSubmissionsCollection = {};
-        mockApplicationCollection = {};
+        mockSubmissionRequestCollection = {};
         mockApprovedStudiesService = {
             approvedStudiesCollection: {}
         };
@@ -168,7 +168,7 @@ describe('UserService.listUsers', () => {
             mockOrganizationCollection,
             mockNotificationsService,
             mockSubmissionsCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             'official@email.com',
             'http://app.url',
             mockApprovedStudiesService,

@@ -4,7 +4,7 @@ const { EMAIL_NOTIFICATIONS } = require('../../crdc-datahub-database-drivers/con
 
 describe('UserService.getAdminPBACUsers', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockSubmissionRequestCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockAdminPBACUsers = [
         {
@@ -86,7 +86,7 @@ describe('UserService.getAdminPBACUsers', () => {
         mockOrganizationCollection = {};
         mockNotificationsService = {};
         mockSubmissionsCollection = {};
-        mockApplicationCollection = {};
+        mockSubmissionRequestCollection = {};
         mockApprovedStudiesService = {};
         mockConfigurationService = {};
         mockInstitutionService = {};
@@ -98,7 +98,7 @@ describe('UserService.getAdminPBACUsers', () => {
             mockOrganizationCollection,
             mockNotificationsService,
             mockSubmissionsCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             'test@example.com',
             'http://test.com',
             mockApprovedStudiesService,

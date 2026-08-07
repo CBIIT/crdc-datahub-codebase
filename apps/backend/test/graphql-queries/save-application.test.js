@@ -1,8 +1,8 @@
 const ERROR = require("../../constants/error-constants");
-const {Application} = require("../../services/application");
+const {SubmissionRequest} = require("../../services/submission-request");
 const {TEST_SESSION, TEST_APPLICATION} = require("../test-constants");
 const {v4} = require("uuid");
-const {IN_PROGRESS} = require("../../constants/application-constants");
+const {IN_PROGRESS} = require("../../constants/submission-request-constants");
 
 // Mock Prisma
 jest.mock("../../prisma", () => {
@@ -21,25 +21,25 @@ jest.mock("../../prisma", () => {
     };
 
     return {
-        application: mockPrismaModel,
+        submissionRequest: mockPrismaModel,
         log: mockPrismaModel
     };
 });
 
 // Mock collections using Prisma models
 const mockPrisma = require("../../prisma");
-const applicationCollection = mockPrisma.application;
+const submissionRequestCollection = mockPrisma.submissionRequest;
 const logCollection = mockPrisma.log;
-const dataInterface = new Application(logCollection, applicationCollection);
+const dataInterface = new SubmissionRequest(logCollection, submissionRequestCollection);
 
-describe('saveApplication API test', () => {
+describe('saveSubmissionRequest API test', () => {
 
     test("session validation failure", async () => {
         let session = {};
-        expect(dataInterface.saveApplication({}, session)).rejects.toThrow(ERROR.NOT_LOGGED_IN);
+        expect(dataInterface.saveSubmissionRequest({}, session)).rejects.toThrow(ERROR.NOT_LOGGED_IN);
         session = {
             userInfo: {}
         };
-        expect(dataInterface.saveApplication({}, session)).rejects.toThrow(ERROR.SESSION_NOT_INITIALIZED);
+        expect(dataInterface.saveSubmissionRequest({}, session)).rejects.toThrow(ERROR.SESSION_NOT_INITIALIZED);
     });
 });

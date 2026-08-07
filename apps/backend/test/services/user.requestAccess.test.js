@@ -3,7 +3,7 @@ const ERROR = require('../../constants/error-constants');
 
 describe('UserService.requestAccess', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockSubmissionRequestCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
 
     // Mocked dependencies and constants
@@ -30,7 +30,7 @@ describe('UserService.requestAccess', () => {
             requestUserAccessNotification: jest.fn(),
         };
         mockSubmissionsCollection = {};
-        mockApplicationCollection = {};
+        mockSubmissionRequestCollection = {};
         mockApprovedStudiesService = { 
             listApprovedStudies: jest.fn().mockResolvedValue([]),
             approvedStudiesCollection: {},
@@ -47,7 +47,7 @@ describe('UserService.requestAccess', () => {
             mockOrganizationCollection,
             mockNotificationsService,
             mockSubmissionsCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             'official@email.com',
             'http://app.url',
             mockApprovedStudiesService,

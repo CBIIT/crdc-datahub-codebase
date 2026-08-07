@@ -2,7 +2,7 @@ const {createHandler} = require("graphql-http/lib/use/express");
 const {assertValidSchema} = require("graphql");
 const configuration = require("../config");
 
-const {Application} = require("../services/application");
+const {SubmissionRequest} = require("../services/submission-request");
 const {Submission} = require("../services/submission");
 const {AWSService} = require("../services/aws-request");
 const {TooltipService} = require("../services/tooltip-service");
@@ -64,7 +64,7 @@ dbConnector.connect().then(async () => {
     // TEMPORARY (Prisma→DocumentDB migration): Mongoose may use DocumentDB while Prisma uses MongoDB.
     await connectMongoose(configuration.mongoose_connection_string, configuration.mongoose_tls_ca_file);
     const config = await configuration.updateConfig(dbConnector);
-    const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
+    const submissionRequestCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
     const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
     const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
     const emailService = new EmailService(config.email_transport, config.emails_enabled);
@@ -77,11 +77,11 @@ dbConnector.connect().then(async () => {
     const authorizationService = new AuthorizationService(configurationService);
     const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
     const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
-    const programService = new Program(submissionCollection, applicationCollection);
+    const programService = new Program(submissionCollection, submissionRequestCollection);
     const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, submissionCollection, authorizationService, notificationsService, {url: config.emails_url, contactEmail: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl});
 
     const institutionService = new InstitutionService(authorizationService);
-    const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days, configurationService, institutionService, authorizationService);
+    const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, submissionRequestCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days, configurationService, institutionService, authorizationService);
     const s3Service = new S3Service();
     const awsService = new AWSService(configurationService);
 
@@ -112,7 +112,7 @@ dbConnector.connect().then(async () => {
         programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
         s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
         config.submission_bucket, configurationService, uploadingMonitor, config.dataCommonsBucketMap, authorizationService, dataModelService);
-    const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, institutionService, configurationService, authorizationService);
+    const dataInterface = new SubmissionRequest(logCollection, submissionRequestCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, institutionService, configurationService, authorizationService);
 
     const dashboardService = new DashboardService(userService, awsService, configurationService, {sessionTimeout: config.dashboardSessionTimeout}, authorizationService);
     userInitializationService = new UserInitializationService(userCollection, organizationCollection, approvedStudiesCollection, configurationService);
@@ -121,49 +121,49 @@ dbConnector.connect().then(async () => {
     const releaseService = new Release(authorizationService, dataModelService, s3Service, config);
     root = {
         version: () => {return config.version},
-        saveApplication: dataInterface.saveApplication.bind(dataInterface),
-        getApplication: dataInterface.getApplication.bind(dataInterface),
-        reviewApplication: dataInterface.reviewApplication.bind(dataInterface),
-        getMyLastApplication: dataInterface.getMyLastApplication.bind(dataInterface),
-        listApplications: dataInterface.listApplications.bind(dataInterface),
-        submitApplication: dataInterface.submitApplication.bind(dataInterface),
+        saveApplication: dataInterface.saveSubmissionRequest.bind(dataInterface),
+        getApplication: dataInterface.getSubmissionRequest.bind(dataInterface),
+        reviewApplication: dataInterface.reviewSubmissionRequest.bind(dataInterface),
+        getMyLastApplication: dataInterface.getMyLastSubmissionRequest.bind(dataInterface),
+        listApplications: dataInterface.listSubmissionRequests.bind(dataInterface),
+        submitApplication: dataInterface.submitSubmissionRequest.bind(dataInterface),
         approveApplication:  async (params, context)=> {
             if (params?.comment?.length > CONSTRAINTS.APPROVE_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.APPROVE_COMMENT_MAX_LENGTH));
             }
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            return await dataInterface.approveApplication({...params, comment}, context);
+            return await dataInterface.approveSubmissionRequest({...params, comment}, context);
         },
         rejectApplication: async (params, context)=> {
             if (params?.comment?.length > CONSTRAINTS.REJECT_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.REJECT_COMMENT_MAX_LENGTH));
             }
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            return await dataInterface.rejectApplication({...params, comment}, context);
+            return await dataInterface.rejectSubmissionRequest({...params, comment}, context);
         },
         inquireApplication: async (params, context)=> {
             if (params?.comment?.length > CONSTRAINTS.INQUIRE_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.INQUIRE_COMMENT_MAX_LENGTH));
             }
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            return await dataInterface.inquireApplication({...params, comment}, context);
+            return await dataInterface.inquireSubmissionRequest({...params, comment}, context);
         },
-        resumeInquiredApplication: dataInterface.resumeInquiredApplication.bind(dataInterface),
+        resumeInquiredApplication: dataInterface.resumeInquiredSubmissionRequest.bind(dataInterface),
         reopenApprovedSubmissionRequest: dataInterface.reopenApprovedSubmissionRequest.bind(dataInterface),
-        reopenApplication: dataInterface.resumeInquiredApplication.bind(dataInterface),
+        reopenApplication: dataInterface.resumeInquiredSubmissionRequest.bind(dataInterface),
         cancelApplication: async (params, context)=> {
             if (params?.comment?.length > CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.CANCEL_COMMENT_MAX_LENGTH));
             }
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            return await dataInterface.cancelApplication({...params, comment}, context);
+            return await dataInterface.cancelSubmissionRequest({...params, comment}, context);
         },
         restoreApplication: async (params, context)=> {
             if (params?.comment?.length > CONSTRAINTS.RESTORE_COMMENT_MAX_LENGTH) {
                 throw new Error(replaceErrorString(ERROR.COMMENT_LIMIT, CONSTRAINTS.RESTORE_COMMENT_MAX_LENGTH));
             }
             const comment = sanitizeHtml(params?.comment, {allowedTags: [],allowedAttributes: {}})?.trim();
-            return await dataInterface.restoreApplication({...params, comment}, context);
+            return await dataInterface.restoreSubmissionRequest({...params, comment}, context);
         },
         listApprovedStudies: approvedStudiesService.listApprovedStudiesAPI.bind(approvedStudiesService),
         createApprovedStudy: approvedStudiesService.addApprovedStudyAPI.bind(approvedStudiesService),

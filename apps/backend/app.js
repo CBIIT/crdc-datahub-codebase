@@ -14,7 +14,7 @@ const {DATABASE_NAME, APPLICATION_COLLECTION, LOG_COLLECTION, APPROVED_STUDIES_C
     ORGANIZATION_COLLECTION, SUBMISSIONS_COLLECTION,
     DATA_RECORDS_ARCHIVE_COLLECTION
 } = require("./crdc-datahub-database-drivers/database-constants");
-const {Application} = require("./services/application");
+const {SubmissionRequest} = require("./services/submission-request");
 const {Submission} = require("./services/submission");
 const {DataRecordService} = require("./services/data-record-service");
 const {S3Service} = require("./services/s3-service");
@@ -86,7 +86,7 @@ app.use("/api/graphql", graphqlRouter);
         const configurationService = new ConfigurationService();
         const authorizationService = new AuthorizationService(configurationService);
         const notificationsService = new NotifyUser(emailService, config.tier);
-        const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
+        const submissionRequestCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
         const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
         const emailParams = {
             url: config.emails_url,
@@ -109,9 +109,9 @@ app.use("/api/graphql", graphqlRouter);
         const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
         const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
         const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
-        const programService = new Program(submissionCollection, applicationCollection);
+        const programService = new Program(submissionCollection, submissionRequestCollection);
         const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, submissionCollection);
-        const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
+        const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, submissionRequestCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
         const s3Service = new S3Service();
 
         const awsService = new AWSService(submissionCollection, userService, config.role_arn, config.presign_expiration);
@@ -134,7 +134,7 @@ app.use("/api/graphql", graphqlRouter);
             s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, 
             config.uploaderCLIConfigs, config.submission_bucket, configurationService);
 
-        const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, null, configurationService, null);
+        const dataInterface = new SubmissionRequest(logCollection, submissionRequestCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, null, configurationService, null);
         
         
         cronJob.schedule(config.scheduledJobTime, async () => {
@@ -149,10 +149,10 @@ app.use("/api/graphql", graphqlRouter);
             // Sequential tasks - all tasks run one after another
             const tasks = [
                 {
-                    name: "deleteInactiveApplications",
+                    name: "deleteInactiveSubmissionRequests",
                     description: "Delete inactive submission requests",
                     timeout: FIVE_MINUTE_TIMEOUT,
-                    fn: () => dataInterface.deleteInactiveApplications(),
+                    fn: () => dataInterface.deleteInactiveSubmissionRequests(),
                     dependencies: [] // No dependencies
                 },
                 {
@@ -170,11 +170,11 @@ app.use("/api/graphql", graphqlRouter);
                     dependencies: [] // No dependencies
                 },
                 {
-                    name: "remindApplicationSubmission", 
+                    name: "remindSubmissionRequestSubmission", 
                     description: "Send reminder email for inactive submission requests",
                     timeout: FIVE_MINUTE_TIMEOUT,
-                    fn: () => dataInterface.remindApplicationSubmission(),
-                    dependencies: ["deleteInactiveApplications"] // Don't remind about deleted applications
+                    fn: () => dataInterface.remindSubmissionRequestSubmission(),
+                    dependencies: ["deleteInactiveSubmissionRequests"] // Don't remind about deleted submission requests
                 },
                 {
                     name: "remindInactiveSubmission",

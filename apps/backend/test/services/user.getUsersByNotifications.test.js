@@ -3,7 +3,7 @@ const { USER } = require('../../crdc-datahub-database-drivers/constants/user-con
 
 describe('UserService.getUsersByNotifications', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockSubmissionRequestCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockUsersWithNotifications = [
         {
@@ -61,7 +61,7 @@ describe('UserService.getUsersByNotifications', () => {
         mockOrganizationCollection = {};
         mockNotificationsService = {};
         mockSubmissionsCollection = {};
-        mockApplicationCollection = {};
+        mockSubmissionRequestCollection = {};
         mockApprovedStudiesService = {};
         mockConfigurationService = {};
         mockInstitutionService = {};
@@ -72,7 +72,7 @@ describe('UserService.getUsersByNotifications', () => {
             mockOrganizationCollection,
             mockNotificationsService,
             mockSubmissionsCollection,
-            mockApplicationCollection,
+            mockSubmissionRequestCollection,
             'test@example.com',
             'http://test.com',
             mockApprovedStudiesService,
