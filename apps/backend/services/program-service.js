@@ -7,7 +7,7 @@ const {replaceErrorString} = require("../utility/string-util");
 const ProgramDAO = require("../dao/program");
 const SubmissionDAO = require("../dao/submission");
 const UserDAO = require("../dao/user");
-const ApplicationDAO = require("../dao/application");
+const SubmissionRequestDAO = require("../dao/submission-request");
 const ApprovedStudyDAO = require("../dao/approvedStudy");
 
 class Program {
@@ -16,14 +16,14 @@ class Program {
 
   /**
    * @param {object} submissionCollection Native submission collection
-   * @param {object} applicationCollection Native application collection
+   * @param {object} [_applicationCollection] Unused; retained for constructor signature compatibility
    */
-  constructor(submissionCollection, applicationCollection) {
+  constructor(submissionCollection, _applicationCollection) {
     this.programDAO = new ProgramDAO();
     this.approvedStudyDAO = new ApprovedStudyDAO();
     this.submissionDAO = new SubmissionDAO(submissionCollection);
     this.userDAO = new UserDAO();
-    this.applicationDAO = new ApplicationDAO(applicationCollection);
+    this.submissionRequestDAO = new SubmissionRequestDAO();
   }
 
   /**
@@ -222,7 +222,7 @@ class Program {
       const promises = [];
       if (updatedProgram.name) {
         promises.push(
-          this.applicationDAO.updateApplicationOrg(orgID, updatedProgram)
+          this.submissionRequestDAO.updateSubmissionRequestOrg(orgID, updatedProgram)
         );
         promises.push(
             this.userDAO.updateUserOrg(orgID, updatedProgram)

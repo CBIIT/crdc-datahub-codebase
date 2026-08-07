@@ -1,9 +1,9 @@
-const ApplicationDAO = require('../../dao/application');
-const GenericDAO = require('../../dao/generic');
-const { toPrismaApplicationUpdateData } = require('../../dao/utils/orm-converter');
+const SubmissionRequestDAO = require('../../dao/submission-request');
+const MongooseGenericDAO = require('../../dao/mongoose-generic');
+const { toSubmissionRequestUpdateData } = require('../../dao/submission-request');
 
-describe('toPrismaApplicationUpdateData', () => {
-    it('strips hydrated and computed fields', () => {
+describe('toSubmissionRequestUpdateData', () => {
+    it('strips hydrated and computed fields but keeps applicantID', () => {
         const input = {
             _id: 'app-1',
             id: 'app-1',
@@ -18,7 +18,8 @@ describe('toPrismaApplicationUpdateData', () => {
             studyName: 'Study',
         };
 
-        expect(toPrismaApplicationUpdateData(input)).toEqual({
+        expect(toSubmissionRequestUpdateData(input)).toEqual({
+            applicantID: 'user-1',
             status: 'In Progress',
             studyName: 'Study',
         });
@@ -35,7 +36,7 @@ describe('toPrismaApplicationUpdateData', () => {
             questionnaireData: '{}',
         };
 
-        expect(toPrismaApplicationUpdateData(input)).toEqual({
+        expect(toSubmissionRequestUpdateData(input)).toEqual({
             status: 'In Progress',
             history,
             nextRevisionId: 'rev-2',
@@ -45,20 +46,20 @@ describe('toPrismaApplicationUpdateData', () => {
     });
 });
 
-describe('ApplicationDAO.update', () => {
+describe('SubmissionRequestDAO.update', () => {
     let dao;
     let superUpdate;
 
     beforeEach(() => {
-        dao = new ApplicationDAO({});
-        superUpdate = jest.spyOn(GenericDAO.prototype, 'update').mockResolvedValue({ id: 'app-1', _id: 'app-1' });
+        dao = new SubmissionRequestDAO();
+        superUpdate = jest.spyOn(MongooseGenericDAO.prototype, 'update').mockResolvedValue({ id: 'app-1', _id: 'app-1' });
     });
 
     afterEach(() => {
         superUpdate.mockRestore();
     });
 
-    it('passes sanitized data to GenericDAO.update', async () => {
+    it('passes sanitized data to MongooseGenericDAO.update', async () => {
         const payload = {
             _id: '9d2037ab-351e-4429-8b83-08771bb4c0da',
             applicantID: 'aee27fd7-e064-4650-b856-ca58f26684e9',
@@ -80,6 +81,7 @@ describe('ApplicationDAO.update', () => {
         expect(superUpdate).toHaveBeenCalledWith(
             '9d2037ab-351e-4429-8b83-08771bb4c0da',
             {
+                applicantID: 'aee27fd7-e064-4650-b856-ca58f26684e9',
                 status: 'In Progress',
                 studyName: 'Reopen SRF Test',
                 history: payload.history,
@@ -94,7 +96,7 @@ describe('ApplicationDAO.update', () => {
     });
 
     it('throws when neither _id nor id is present', async () => {
-        await expect(dao.update({ status: 'New' })).rejects.toThrow('Application must have an _id or id');
+        await expect(dao.update({ status: 'New' })).rejects.toThrow('Submission request must have an _id or id');
         expect(superUpdate).not.toHaveBeenCalled();
     });
 });

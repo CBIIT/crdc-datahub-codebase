@@ -6,7 +6,7 @@ const {ApprovedStudiesService} = require("../../services/approved-studies");
 const {S3Service} = require("../../services/s3-service");
 const {BatchService} = require("../../services/batch-service");
 const {Submission} = require("../../services/submission");
-const ApplicationDAO = require("../../dao/application");
+const SubmissionRequestDAO = require("../../dao/submission-request");
 
 // Mock Prisma
 jest.mock("../../prisma", () => {
@@ -42,8 +42,8 @@ jest.mock("../../prisma", () => {
     };
 });
 
-jest.spyOn(ApplicationDAO.prototype, "aggregate").mockImplementation(() => []);
-jest.spyOn(ApplicationDAO.prototype, "updateMany").mockImplementation(() => ({ matchedCount: 0, modifiedCount: 0 }));
+jest.spyOn(SubmissionRequestDAO.prototype, "aggregate").mockImplementation(() => []);
+jest.spyOn(SubmissionRequestDAO.prototype, "updateMany").mockImplementation(() => ({ matchedCount: 0, modifiedCount: 0 }));
 
 const {UserService} = require("../../services/user");
 jest.mock("../../services/notify-user");

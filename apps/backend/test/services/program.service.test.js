@@ -12,13 +12,13 @@ jest.mock('../../utility/data-commons-remapper', () => ({
 jest.mock('../../dao/program');
 jest.mock('../../dao/user');
 jest.mock('../../dao/submission');
-jest.mock('../../dao/application');
+jest.mock('../../dao/submission-request');
 jest.mock('../../dao/approvedStudy');
 
 const ProgramDAO = require('../../dao/program');
 const UserDAO = require('../../dao/user');
 const SubmissionDAO = require('../../dao/submission');
-const ApplicationDAO = require('../../dao/application');
+const SubmissionRequestDAO = require('../../dao/submission-request');
 const ApprovedStudyDAO = require('../../dao/approvedStudy');
 
 
@@ -27,19 +27,19 @@ describe('Program.listPrograms', () => {
   let mockProgramDAO;
   let mockUserDAO;
   let mockSubmissionDAO;
-  let mockApplicationDAO;
+  let mockSubmissionRequestDAO;
   let mockApprovedStudyDAO;
 
   beforeEach(() => {
     mockProgramDAO = { listPrograms: jest.fn() };
     mockUserDAO = {};
     mockSubmissionDAO = {};
-    mockApplicationDAO = {};
+    mockSubmissionRequestDAO = {};
     mockApprovedStudyDAO = {};
     ProgramDAO.mockImplementation(() => mockProgramDAO);
     UserDAO.mockImplementation(() => mockUserDAO);
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
-    ApplicationDAO.mockImplementation(() => mockApplicationDAO);
+    SubmissionRequestDAO.mockImplementation(() => mockSubmissionRequestDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     program = new Program({}, {});
     jest.clearAllMocks();
@@ -158,19 +158,19 @@ describe('Program.createProgram', () => {
   let mockProgramDAO;
   let mockUserDAO;
   let mockSubmissionDAO;
-  let mockApplicationDAO;
+  let mockSubmissionRequestDAO;
   let mockApprovedStudyDAO;
 
   beforeEach(() => {
     mockProgramDAO = { getProgramByName: jest.fn(), getProgramByID: jest.fn(), create: jest.fn() };
     mockUserDAO = { findFirst: jest.fn() };
     mockSubmissionDAO = {};
-    mockApplicationDAO = {};
+    mockSubmissionRequestDAO = {};
     mockApprovedStudyDAO = { findMany: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn(), count: jest.fn() };
     ProgramDAO.mockImplementation(() => mockProgramDAO);
     UserDAO.mockImplementation(() => mockUserDAO);
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
-    ApplicationDAO.mockImplementation(() => mockApplicationDAO);
+    SubmissionRequestDAO.mockImplementation(() => mockSubmissionRequestDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     program = new Program({}, {});
     jest.clearAllMocks();
@@ -254,19 +254,19 @@ describe('Program.getProgramAPI', () => {
   let mockProgramDAO;
   let mockUserDAO;
   let mockSubmissionDAO;
-  let mockApplicationDAO;
+  let mockSubmissionRequestDAO;
   let mockApprovedStudyDAO;
 
   beforeEach(() => {
     mockProgramDAO = { getProgramByID: jest.fn() };
     mockUserDAO = {};
     mockSubmissionDAO = {};
-    mockApplicationDAO = {};
+    mockSubmissionRequestDAO = {};
     mockApprovedStudyDAO = {};
     ProgramDAO.mockImplementation(() => mockProgramDAO);
     UserDAO.mockImplementation(() => mockUserDAO);
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
-    ApplicationDAO.mockImplementation(() => mockApplicationDAO);
+    SubmissionRequestDAO.mockImplementation(() => mockSubmissionRequestDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     program = new Program({}, {});
     jest.clearAllMocks();
@@ -331,7 +331,7 @@ describe('Program.editProgram', () => {
   let mockProgramDAO;
   let mockUserDAO;
   let mockSubmissionDAO;
-  let mockApplicationDAO;
+  let mockSubmissionRequestDAO;
   let mockApprovedStudyDAO;
 
   beforeEach(() => {
@@ -342,13 +342,13 @@ describe('Program.editProgram', () => {
     };
     mockUserDAO = { findFirst: jest.fn(), updateUserOrg: jest.fn() };
     mockSubmissionDAO = {};
-    mockApplicationDAO = { updateApplicationOrg: jest.fn() };
+    mockSubmissionRequestDAO = { updateSubmissionRequestOrg: jest.fn() };
     mockApprovedStudyDAO = { findMany: jest.fn(), updateMany: jest.fn(), count: jest.fn() };
     
     ProgramDAO.mockImplementation(() => mockProgramDAO);
     UserDAO.mockImplementation(() => mockUserDAO);
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
-    ApplicationDAO.mockImplementation(() => mockApplicationDAO);
+    SubmissionRequestDAO.mockImplementation(() => mockSubmissionRequestDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     
     program = new Program({}, {});
@@ -364,7 +364,7 @@ describe('Program.editProgram', () => {
     mockProgramDAO.getProgramByName.mockResolvedValue(null);
     mockProgramDAO.updateMany.mockResolvedValue({ count: 1 });
     mockUserDAO.updateUserOrg.mockResolvedValue({ count: 1 });
-    mockApplicationDAO.updateApplicationOrg.mockResolvedValue({ acknowledged: true });
+    mockSubmissionRequestDAO.updateSubmissionRequestOrg.mockResolvedValue({ acknowledged: true });
 
     const result = await program.editProgram(orgID, params);
 

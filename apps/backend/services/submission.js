@@ -50,7 +50,7 @@ const DataRecordDAO = require("../dao/dataRecords");
 const PERMISSION_SCOPES = require("../constants/permission-scope-constants");
 const BatchDAO = require("../dao/batch");
 const FILE = "file";
-const ApplicationDAO = require("../dao/application");
+const SubmissionRequestDAO = require("../dao/submission-request");
 
 const DATA_MODEL_SEMANTICS = 'semantics';
 const DATA_MODEL_FILE_NODES = 'file-nodes';
@@ -106,7 +106,7 @@ class Submission {
         this.batchDAO = new BatchDAO();
         this.approvedStudyDAO = new ApprovedStudyDAO();
         this.validationDAO = new ValidationDAO();
-        this.applicationDAO = new ApplicationDAO();
+        this.submissionRequestDAO = new SubmissionRequestDAO();
     }
 
     /**
@@ -179,15 +179,13 @@ class Submission {
             return isArray ? enriched : enriched[0];
         }
         
-        // OWN scope - batch load applications to check ownership
-        const applications = await this.applicationDAO.findMany({
-            id: { in: applicationIDs }
-        }, {
-            select: { id: true, applicantID: true }
-        });
+        // OWN scope - batch load submission requests to check ownership
+        const applications = await this.submissionRequestDAO.findMany(
+            { _id: { $in: applicationIDs } }
+        );
         
         const applicantMap = new Map(
-            applications.map(app => [app.id, app.applicantID])
+            applications.map(app => [app.id ?? app._id, app.applicantID])
         );
         
         const enriched = submissionList.map(s => ({

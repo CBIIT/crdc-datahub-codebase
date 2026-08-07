@@ -27,7 +27,7 @@ const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organizati
 const ProgramDAO = require("../dao/program");
 const UserDAO = require("../dao/user");
 const SubmissionDAO = require("../dao/submission");
-const ApplicationDAO = require("../dao/application");
+const SubmissionRequestDAO = require("../dao/submission-request");
 const {PendingGPA} = require("../domain/pending-gpa");
 const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } = require("../utility/study-utility");
 const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev-helpers");
@@ -55,7 +55,7 @@ class ApprovedStudiesService {
         this.notificationsService = notificationsService;
         this.emailParams = emailParams;
         this.approvedStudyDAO = new ApprovedStudyDAO();
-        this.applicationDAO = new ApplicationDAO();
+        this.submissionRequestDAO = new SubmissionRequestDAO();
     }
 
     /**
@@ -613,7 +613,7 @@ class ApprovedStudiesService {
     async _notifyClearPendingState(updateStudy) {
         const errorMsg = replaceErrorString(ERROR.FAILED_TO_NOTIFY_CLEAR_PENDING_STATE, `studyID: ${updateStudy?._id}`);
         try{
-            const application = await this.applicationDAO.findFirst({id: updateStudy.applicationID});
+            const application = await this.submissionRequestDAO.findFirst({_id: updateStudy.applicationID});
             if (!application || !application?._id) {
                 // internal error for the logs, this will not be displayed to the user
                 throw new Error("Unable to find application with ID: " + updateStudy.applicationID);

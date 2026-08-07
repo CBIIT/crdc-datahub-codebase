@@ -26,7 +26,7 @@ const mockConfigurationService = {};
 
 describe('remindApplicationSubmission', () => {
   let applicationService;
-  let mockApplicationDAO;
+  let mockSubmissionRequestDAO;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -47,8 +47,8 @@ describe('remindApplicationSubmission', () => {
       ADMIN: 'ADMIN'
     };
 
-    mockApplicationDAO = {
-      getInactiveApplication: jest.fn(),
+    mockSubmissionRequestDAO = {
+      getInactiveSubmissionRequest: jest.fn(),
       updateMany: jest.fn(),
       update: jest.fn()
     };
@@ -67,7 +67,7 @@ describe('remindApplicationSubmission', () => {
       null
     );
 
-    applicationService.applicationDAO = mockApplicationDAO;
+    applicationService.submissionRequestDAO = mockSubmissionRequestDAO;
     applicationService.userDAO = { findFirst: jest.fn() };
   });
 
@@ -78,21 +78,21 @@ describe('remindApplicationSubmission', () => {
   describe('Dual-window reminder logic', () => {
     it('should fetch applications from both default and short windows', async () => {
       // All empty - no reminders to send
-      mockApplicationDAO.getInactiveApplication
+      mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([]) // final default
         .mockResolvedValueOnce([]); // final short
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockSubmissionRequestDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
 
       // No interval reminders
       for (let i = 0; i < 6; i++) {
-        mockApplicationDAO.getInactiveApplication.mockResolvedValueOnce([]);
+        mockSubmissionRequestDAO.getInactiveSubmissionRequest.mockResolvedValueOnce([]);
       }
 
       await applicationService.remindApplicationSubmission();
 
-      // Should have called getInactiveApplication at least twice (final default + final short)
-      const calls = mockApplicationDAO.getInactiveApplication.mock.calls;
+      // Should have called getInactiveSubmissionRequest at least twice (final default + final short)
+      const calls = mockSubmissionRequestDAO.getInactiveSubmissionRequest.mock.calls;
       expect(calls.length).toBeGreaterThanOrEqual(2);
       // First two calls should be for final reminders
       expect(calls[0][1]).toBe('finalInactiveReminder'); // default window
@@ -115,7 +115,7 @@ describe('remindApplicationSubmission', () => {
         updatedAt: new Date('2023-01-01')
       };
 
-      mockApplicationDAO.getInactiveApplication
+      mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([]) // final default
         .mockResolvedValueOnce([]) // final short
         .mockResolvedValueOnce([]) // day 7 default (180 - 7)
@@ -124,7 +124,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]) // day 15 short
         .mockResolvedValueOnce([]); // day 30 default
 
-      mockApplicationDAO.update.mockResolvedValue({ matchedCount: 1 });
+      mockSubmissionRequestDAO.update.mockResolvedValue({ matchedCount: 1 });
 
       mockUserService.getUsersByNotifications.mockResolvedValue([]);
       mockUserService.getUserByID.mockResolvedValue({
@@ -180,15 +180,15 @@ describe('remindApplicationSubmission', () => {
       };
 
       // Final reminders
-      mockApplicationDAO.getInactiveApplication
+      mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([mockRegularApp]) // final default - has study name
         .mockResolvedValueOnce([mockBlankNewApp, mockRegularApp]); // final short - both present
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockSubmissionRequestDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
 
       // No interval reminders
       for (let i = 0; i < 6; i++) {
-        mockApplicationDAO.getInactiveApplication.mockResolvedValueOnce([]);
+        mockSubmissionRequestDAO.getInactiveSubmissionRequest.mockResolvedValueOnce([]);
       }
 
       mockUserService.getUsersByNotifications.mockResolvedValue([
@@ -208,8 +208,8 @@ describe('remindApplicationSubmission', () => {
 
       await applicationService.remindApplicationSubmission();
 
-      // getInactiveApplication should have been called
-      expect(mockApplicationDAO.getInactiveApplication).toHaveBeenCalled();
+      // getInactiveSubmissionRequest should have been called
+      expect(mockSubmissionRequestDAO.getInactiveSubmissionRequest).toHaveBeenCalled();
     });
 
     it('should track and deduplicate reminders across intervals', async () => {
@@ -223,14 +223,14 @@ describe('remindApplicationSubmission', () => {
       };
 
       // Final reminders
-      mockApplicationDAO.getInactiveApplication
+      mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([]) // final default
         .mockResolvedValueOnce([]); // final short
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockSubmissionRequestDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
 
       // Same app appears in multiple intervals (simulating it's returning at different reminder intervals)
-      mockApplicationDAO.getInactiveApplication
+      mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([mockApp]) // 7 days default
         .mockResolvedValueOnce([]) // 7 days short
         .mockResolvedValueOnce([mockApp]) // 15 days default
@@ -238,7 +238,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([mockApp]) // 30 days default
         .mockResolvedValueOnce([]); // 30 days short
 
-      mockApplicationDAO.update.mockResolvedValue({ matchedCount: 1 });
+      mockSubmissionRequestDAO.update.mockResolvedValue({ matchedCount: 1 });
 
       mockUserService.getUserByID.mockResolvedValue({
         firstName: 'Test',
@@ -254,7 +254,7 @@ describe('remindApplicationSubmission', () => {
       await applicationService.remindApplicationSubmission();
 
       // Should have called update for the deduped app
-      expect(mockApplicationDAO.update).toHaveBeenCalled();
+      expect(mockSubmissionRequestDAO.update).toHaveBeenCalled();
     });
 
     it('should set reminder flags after sending emails', async () => {
@@ -268,14 +268,14 @@ describe('remindApplicationSubmission', () => {
       };
 
       // Final reminders
-      mockApplicationDAO.getInactiveApplication
+      mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([]) // final default
         .mockResolvedValueOnce([]); // final short
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockSubmissionRequestDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
 
       // 7-day interval has app
-      mockApplicationDAO.getInactiveApplication
+      mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([mockApp]) // 7 days default
         .mockResolvedValueOnce([]) // 7 days short
         .mockResolvedValueOnce([]) // 15 days default
@@ -283,7 +283,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]) // 30 days default
         .mockResolvedValueOnce([]); // 30 days short
 
-      mockApplicationDAO.update.mockResolvedValue({ matchedCount: 1 });
+      mockSubmissionRequestDAO.update.mockResolvedValue({ matchedCount: 1 });
 
       mockUserService.getUserByID.mockResolvedValue({
         firstName: 'Flag',
@@ -299,7 +299,7 @@ describe('remindApplicationSubmission', () => {
       await applicationService.remindApplicationSubmission();
 
       // Verify update was called with reminder flags
-      expect(mockApplicationDAO.update).toHaveBeenCalledWith(
+      expect(mockSubmissionRequestDAO.update).toHaveBeenCalledWith(
         expect.objectContaining({
           _id: 'app-flag-test'
         })
@@ -308,17 +308,17 @@ describe('remindApplicationSubmission', () => {
 
     it('should skip short window queries when day >= shortDays to prevent bulk matches', async () => {
       // Final reminders
-      mockApplicationDAO.getInactiveApplication
+      mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([]) // final default
         .mockResolvedValueOnce([]); // final short
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockSubmissionRequestDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
 
       // For interval reminders with [7, 15, 30] and shortDays=30:
       // day=7: query both (7 < 30) ✓
       // day=15: query both (15 < 30) ✓
-      // day=30: skip short (30 >= 30) ✗ prevents getInactiveApplication(0, ...)
-      mockApplicationDAO.getInactiveApplication
+      // day=30: skip short (30 >= 30) ✗ prevents getInactiveSubmissionRequest(0, ...)
+      mockSubmissionRequestDAO.getInactiveSubmissionRequest
         .mockResolvedValueOnce([]) // 7 days default
         .mockResolvedValueOnce([]) // 7 days short (should be called)
         .mockResolvedValueOnce([]) // 15 days default
@@ -326,20 +326,20 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]); // 30 days default
       // 30 days short should NOT be called
 
-      mockApplicationDAO.update.mockResolvedValue({ matchedCount: 0 });
+      mockSubmissionRequestDAO.update.mockResolvedValue({ matchedCount: 0 });
 
       await applicationService.remindApplicationSubmission();
 
-      // Verify getInactiveApplication was called exactly 7 times:
+      // Verify getInactiveSubmissionRequest was called exactly 7 times:
       // 2 final (default + short) + 5 interval (only 1 short query for 7 and 15, skipped for 30)
-      expect(mockApplicationDAO.getInactiveApplication).toHaveBeenCalledTimes(7);
+      expect(mockSubmissionRequestDAO.getInactiveSubmissionRequest).toHaveBeenCalledTimes(7);
 
       // Verify it was called for 7 days short
-      expect(mockApplicationDAO.getInactiveApplication).toHaveBeenCalledWith(23, 'inactiveReminder_7');
+      expect(mockSubmissionRequestDAO.getInactiveSubmissionRequest).toHaveBeenCalledWith(23, 'inactiveReminder_7');
       // Verify it was called for 15 days short
-      expect(mockApplicationDAO.getInactiveApplication).toHaveBeenCalledWith(15, 'inactiveReminder_15');
+      expect(mockSubmissionRequestDAO.getInactiveSubmissionRequest).toHaveBeenCalledWith(15, 'inactiveReminder_15');
       // Verify it was NOT called with 0 (which would match too many apps)
-      const allCalls = mockApplicationDAO.getInactiveApplication.mock.calls;
+      const allCalls = mockSubmissionRequestDAO.getInactiveSubmissionRequest.mock.calls;
       const zeroOrNegativeCalls = allCalls.filter(([days]) => days <= 0);
       expect(zeroOrNegativeCalls).toHaveLength(0);
     });

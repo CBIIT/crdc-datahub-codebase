@@ -1,5 +1,5 @@
 const { Application, VALID_ORDER_BY_LIST_APPLICATIONS } = require('../../services/application');
-const ApplicationDAO = require('../../dao/application');
+const SubmissionRequestDAO = require('../../dao/submission-request');
 const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
 const ERROR = require('../../constants/error-constants');
 const { NEW, APPROVED, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, CANCELED, REJECTED, DELETED, SUBMITTED, IN_REVIEW } = require('../../constants/application-constants');
@@ -9,8 +9,8 @@ const { UserScope: RealUserScope } = require('../../domain/user-scope');
 const SCOPES = require('../../constants/permission-scope-constants');
 const { STUDY_ABBREVIATION_MAX_LENGTH } = require('../../crdc-datahub-database-drivers/constants/approved-study-constants');
 
-// Mock ApplicationDAO
-jest.mock('../../dao/application');
+// Mock SubmissionRequestDAO
+jest.mock('../../dao/submission-request');
 
 // Mocks for dependencies
 const mockLogCollection = { insert: jest.fn() };
@@ -532,17 +532,17 @@ describe('Application', () => {
 
     describe('_hasActiveLaterRevisions', () => {
         beforeEach(() => {
-            app.applicationDAO.findApplicationStatusById = jest.fn();
+            app.submissionRequestDAO.findSubmissionRequestStatusByID = jest.fn();
         });
 
         it('returns false when there is no nextRevisionId', async () => {
             await expect(app._hasActiveLaterRevisions({ _id: 'seq1', status: APPROVED }))
                 .resolves.toBe(false);
-            expect(app.applicationDAO.findApplicationStatusById).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusByID).not.toHaveBeenCalled();
         });
 
         it('returns true when the immediate successor is non-terminal', async () => {
-            app.applicationDAO.findApplicationStatusById.mockResolvedValueOnce({ status: REOPENED });
+            app.submissionRequestDAO.findSubmissionRequestStatusByID.mockResolvedValueOnce({ status: REOPENED });
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
@@ -550,11 +550,11 @@ describe('Application', () => {
                 nextRevisionId: 'seq2',
             })).resolves.toBe(true);
 
-            expect(app.applicationDAO.findApplicationStatusById).toHaveBeenCalledWith('seq2');
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusByID).toHaveBeenCalledWith('seq2');
         });
 
         it('returns true when the immediate successor is Approved', async () => {
-            app.applicationDAO.findApplicationStatusById.mockResolvedValueOnce({ status: APPROVED });
+            app.submissionRequestDAO.findSubmissionRequestStatusByID.mockResolvedValueOnce({ status: APPROVED });
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
@@ -562,11 +562,11 @@ describe('Application', () => {
                 nextRevisionId: 'seq2',
             })).resolves.toBe(true);
 
-            expect(app.applicationDAO.findApplicationStatusById).toHaveBeenCalledTimes(1);
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusByID).toHaveBeenCalledTimes(1);
         });
 
         it('returns false when the immediate successor is terminal', async () => {
-            app.applicationDAO.findApplicationStatusById.mockResolvedValueOnce({ status: CANCELED });
+            app.submissionRequestDAO.findSubmissionRequestStatusByID.mockResolvedValueOnce({ status: CANCELED });
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
@@ -576,7 +576,7 @@ describe('Application', () => {
         });
 
         it('returns false when the immediate successor is terminal even if nextRevisionId is set', async () => {
-            app.applicationDAO.findApplicationStatusById.mockResolvedValueOnce({ status: CANCELED });
+            app.submissionRequestDAO.findSubmissionRequestStatusByID.mockResolvedValueOnce({ status: CANCELED });
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
@@ -584,12 +584,12 @@ describe('Application', () => {
                 nextRevisionId: 'seq2',
             })).resolves.toBe(false);
 
-            expect(app.applicationDAO.findApplicationStatusById).toHaveBeenCalledTimes(1);
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusByID).toHaveBeenCalledTimes(1);
         });
 
-        it('throws when findApplicationStatusById fails', async () => {
+        it('throws when findSubmissionRequestStatusByID fails', async () => {
             jest.spyOn(console, 'error').mockImplementation(() => {});
-            app.applicationDAO.findApplicationStatusById.mockRejectedValueOnce(new Error('not found'));
+            app.submissionRequestDAO.findSubmissionRequestStatusByID.mockRejectedValueOnce(new Error('not found'));
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
@@ -601,8 +601,8 @@ describe('Application', () => {
             console.error.mockRestore();
         });
 
-        it('returns false when findApplicationStatusById resolves null', async () => {
-            app.applicationDAO.findApplicationStatusById.mockResolvedValueOnce(null);
+        it('returns false when findSubmissionRequestStatusByID resolves null', async () => {
+            app.submissionRequestDAO.findSubmissionRequestStatusByID.mockResolvedValueOnce(null);
 
             await expect(app._hasActiveLaterRevisions({
                 _id: 'seq1',
@@ -614,11 +614,11 @@ describe('Application', () => {
 
     describe('_hasApprovedParentSRF', () => {
         beforeEach(() => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn();
         });
 
         it('returns true when an Approved parent links to this application', async () => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue({
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue({
                 _id: 'seq1',
                 status: APPROVED,
                 nextRevisionId: 'seq2',
@@ -626,11 +626,11 @@ describe('Application', () => {
 
             await expect(app._hasApprovedParentSRF({ _id: 'seq2', status: CANCELED }))
                 .resolves.toBe(true);
-            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).toHaveBeenCalledWith('seq2');
+            expect(app.submissionRequestDAO.findApprovedParentSubmissionRequestByID).toHaveBeenCalledWith('seq2');
         });
 
         it('returns false when no Approved parent links to this application', async () => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue(null);
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue(null);
 
             await expect(app._hasApprovedParentSRF({ _id: 'seq2', status: CANCELED }))
                 .resolves.toBe(false);
@@ -639,13 +639,13 @@ describe('Application', () => {
         it('returns false when application id is missing', async () => {
             await expect(app._hasApprovedParentSRF({ status: CANCELED }))
                 .resolves.toBe(false);
-            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
         });
     });
 
     describe('_computeCanBeReopened', () => {
         beforeEach(() => {
-            app.applicationDAO.findApplicationStatusById = jest.fn();
+            app.submissionRequestDAO.findSubmissionRequestStatusByID = jest.fn();
         });
 
         it('returns true for Approved with no nextRevisionId', async () => {
@@ -653,11 +653,11 @@ describe('Application', () => {
                 .resolves.toBe(true);
             await expect(app._computeCanBeReopened({ status: APPROVED }))
                 .resolves.toBe(true);
-            expect(app.applicationDAO.findApplicationStatusById).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusByID).not.toHaveBeenCalled();
         });
 
         it('returns false when an active successor exists', async () => {
-            app.applicationDAO.findApplicationStatusById.mockResolvedValueOnce({ status: REOPENED });
+            app.submissionRequestDAO.findSubmissionRequestStatusByID.mockResolvedValueOnce({ status: REOPENED });
 
             await expect(app._computeCanBeReopened({
                 status: APPROVED,
@@ -666,7 +666,7 @@ describe('Application', () => {
         });
 
         it('returns true when all successors are terminal', async () => {
-            app.applicationDAO.findApplicationStatusById.mockResolvedValueOnce({ status: CANCELED });
+            app.submissionRequestDAO.findSubmissionRequestStatusByID.mockResolvedValueOnce({ status: CANCELED });
 
             await expect(app._computeCanBeReopened({
                 status: APPROVED,
@@ -690,7 +690,7 @@ describe('Application', () => {
                 status: IN_PROGRESS,
                 canBeReopened: true,
             })).resolves.toBe(true);
-            expect(app.applicationDAO.findApplicationStatusById).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusByID).not.toHaveBeenCalled();
         });
     });
 
@@ -699,7 +699,7 @@ describe('Application', () => {
         const validDeletedHistory = [{ status: IN_PROGRESS }, { status: DELETED }];
 
         beforeEach(() => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn();
         });
 
         it('returns true for Canceled sequence 1 with valid history', async () => {
@@ -708,7 +708,7 @@ describe('Application', () => {
                 sequenceNumber: 1,
                 history: validCanceledHistory,
             })).resolves.toBe(true);
-            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
         });
 
         it('returns true for Deleted sequence 1 with valid history', async () => {
@@ -728,7 +728,7 @@ describe('Application', () => {
         });
 
         it('returns true for linked Canceled revision when parent is Approved', async () => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue({
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue({
                 _id: 'seq1',
                 status: APPROVED,
                 nextRevisionId: 'seq2',
@@ -743,7 +743,7 @@ describe('Application', () => {
         });
 
         it('returns false for orphaned Canceled revision with valid history', async () => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue(null);
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue(null);
 
             await expect(app._computeCanBeRestored({
                 _id: 'seq2',
@@ -775,14 +775,14 @@ describe('Application', () => {
                 sequenceNumber: 2,
                 canBeRestored: true,
             })).resolves.toBe(true);
-            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
         });
     });
 
     describe('_computeSRFStateFields', () => {
         beforeEach(() => {
-            app.applicationDAO.findApplicationStatusById = jest.fn();
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
+            app.submissionRequestDAO.findSubmissionRequestStatusByID = jest.fn();
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn();
         });
 
         it('sets canBeReopened and canBeRestored on the application object', async () => {
@@ -793,7 +793,7 @@ describe('Application', () => {
         });
 
         it('sets canBeRestored true for linked canceled revisions', async () => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue({
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID.mockResolvedValue({
                 _id: 'seq1',
                 status: APPROVED,
                 nextRevisionId: 'seq2',
@@ -816,8 +816,8 @@ describe('Application', () => {
 
     describe('_batchComputeListApplicationFields', () => {
         beforeEach(() => {
-            app.applicationDAO.findApplicationStatusesByIds = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findApprovedApplicationsByNextRevisionIds = jest.fn().mockResolvedValue([]);
+            app.submissionRequestDAO.findSubmissionRequestStatusesByIDs = jest.fn().mockResolvedValue([]);
+            app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs = jest.fn().mockResolvedValue([]);
             mockApprovedStudiesService.findByStudyNames.mockResolvedValue([]);
         });
 
@@ -825,8 +825,8 @@ describe('Application', () => {
             const result = await app._batchComputeListApplicationFields([]);
 
             expect(result.studyByLowerName).toEqual(new Map());
-            expect(app.applicationDAO.findApplicationStatusesByIds).not.toHaveBeenCalled();
-            expect(app.applicationDAO.findApprovedApplicationsByNextRevisionIds).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusesByIDs).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs).not.toHaveBeenCalled();
             expect(mockApprovedStudiesService.findByStudyNames).not.toHaveBeenCalled();
         });
 
@@ -836,17 +836,17 @@ describe('Application', () => {
                 { id: 'a1', status: APPROVED, nextRevisionId: 'successor-active', studyName: 'S1' },
                 { id: 'c2', status: CANCELED, sequenceNumber: 2, history: validCanceledHistory, studyName: 'S2' },
             ];
-            app.applicationDAO.findApplicationStatusesByIds.mockResolvedValue([
+            app.submissionRequestDAO.findSubmissionRequestStatusesByIDs.mockResolvedValue([
                 { id: 'successor-active', status: REOPENED },
             ]);
-            app.applicationDAO.findApprovedApplicationsByNextRevisionIds.mockResolvedValue([
+            app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs.mockResolvedValue([
                 { nextRevisionId: 'c2' },
             ]);
 
             await app._batchComputeListApplicationFields(rows);
 
-            expect(app.applicationDAO.findApplicationStatusesByIds).toHaveBeenCalledWith(['successor-active']);
-            expect(app.applicationDAO.findApprovedApplicationsByNextRevisionIds).toHaveBeenCalledWith(['c2']);
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusesByIDs).toHaveBeenCalledWith(['successor-active']);
+            expect(app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs).toHaveBeenCalledWith(['c2']);
             expect(rows[0].canBeReopened).toBe(false);
             expect(rows[1].canBeRestored).toBe(true);
         });
@@ -865,26 +865,26 @@ describe('Application', () => {
 
     describe('_pruneRevisionChainOnTerminal', () => {
         it('clears inbound nextRevisionId links via the DAO', async () => {
-            app.applicationDAO.clearNextRevisionIdPointingTo = jest.fn().mockResolvedValue({ modifiedCount: 1 });
+            app.submissionRequestDAO.clearNextRevisionIdPointingTo = jest.fn().mockResolvedValue({ modifiedCount: 1 });
 
             await app._pruneRevisionChainOnTerminal('terminal-app-id');
 
-            expect(app.applicationDAO.clearNextRevisionIdPointingTo).toHaveBeenCalledWith('terminal-app-id');
+            expect(app.submissionRequestDAO.clearNextRevisionIdPointingTo).toHaveBeenCalledWith('terminal-app-id');
         });
 
         it('does not call DAO when applicationId is falsy', async () => {
-            app.applicationDAO.clearNextRevisionIdPointingTo = jest.fn();
+            app.submissionRequestDAO.clearNextRevisionIdPointingTo = jest.fn();
 
             await app._pruneRevisionChainOnTerminal(null);
 
-            expect(app.applicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
     });
 
     describe('getApplicationById', () => {
-        it('returns result from applicationDAO', async () => {
-            app.applicationDAO = {
-                findApplicationWithApplicantById: jest.fn().mockResolvedValue({
+        it('returns result from submissionRequestDAO', async () => {
+            app.submissionRequestDAO = {
+                findSubmissionRequestWithApplicantByID: jest.fn().mockResolvedValue({
                     id: 'app1',
                     applicant: {
                         id: '',
@@ -905,12 +905,12 @@ describe('Application', () => {
                 canBeReopened: false,
                 canBeRestored: false,
             });
-            expect(app.applicationDAO.findApplicationWithApplicantById).toHaveBeenCalledWith('app1');
+            expect(app.submissionRequestDAO.findSubmissionRequestWithApplicantByID).toHaveBeenCalledWith('app1');
         });
 
         it('throws if not found', async () => {
-            app.applicationDAO = {
-                findApplicationWithApplicantById: jest.fn().mockResolvedValue(null)
+            app.submissionRequestDAO = {
+                findSubmissionRequestWithApplicantByID: jest.fn().mockResolvedValue(null)
             };
             await expect(app.getApplicationById('app1')).rejects.toThrow(ERROR.APPLICATION_NOT_FOUND + 'app1');
         });
@@ -918,8 +918,8 @@ describe('Application', () => {
 
     describe('createApplication', () => {
         it('creates and returns application', async () => {
-            // Patch: use applicationDAO mock to avoid Prisma call
-            app.applicationDAO = {
+            // Patch: use submissionRequestDAO mock to avoid Prisma call
+            app.submissionRequestDAO = {
                 insert: jest.fn().mockResolvedValue({ acknowledged: true }),
             };
             mockLogCollection.insert.mockResolvedValue();
@@ -927,12 +927,12 @@ describe('Application', () => {
             const application = { controlledAccess: true };
             const userInfo = context.userInfo;
             await expect(app.createApplication(application, userInfo)).resolves.toMatchObject({ controlledAccess: true });
-            expect(app.applicationDAO.insert).toHaveBeenCalled();
+            expect(app.submissionRequestDAO.insert).toHaveBeenCalled();
             expect(mockLogCollection.insert).toHaveBeenCalled();
         });
 
         it('defaults to New when no status is requested for new applications', async () => {
-            app.applicationDAO = {
+            app.submissionRequestDAO = {
                 insert: jest.fn().mockResolvedValue({ acknowledged: true }),
             };
             mockLogCollection.insert.mockResolvedValue();
@@ -946,11 +946,11 @@ describe('Application', () => {
             expect(result.status).toBe(NEW);
             expect(result.history).toHaveLength(1);
             expect(result.history[0]).toMatchObject({ userID: userInfo._id, status: NEW });
-            expect(app.applicationDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ status: NEW }));
+            expect(app.submissionRequestDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ status: NEW }));
         });
 
         it('adds a New event before In Progress when requested', async () => {
-            app.applicationDAO = {
+            app.submissionRequestDAO = {
                 insert: jest.fn().mockResolvedValue({ acknowledged: true }),
             };
             mockLogCollection.insert.mockResolvedValue();
@@ -966,11 +966,11 @@ describe('Application', () => {
             expect(result.history[0]).toMatchObject({ userID: userInfo._id, status: NEW });
             expect(result.history[1]).toMatchObject({ userID: userInfo._id, status: IN_PROGRESS });
             expect(new Date(result.history[0].dateTime).getTime()).toBeLessThan(new Date(result.history[1].dateTime).getTime());
-            expect(app.applicationDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ status: IN_PROGRESS }));
+            expect(app.submissionRequestDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ status: IN_PROGRESS }));
         });
 
         it('initializes sequenceNumber to 1', async () => {
-            app.applicationDAO = {
+            app.submissionRequestDAO = {
                 insert: jest.fn().mockResolvedValue({ acknowledged: true }),
             };
             mockLogCollection.insert.mockResolvedValue();
@@ -978,7 +978,7 @@ describe('Application', () => {
 
             await app.createApplication({}, context.userInfo);
 
-            expect(app.applicationDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ sequenceNumber: 1 }));
+            expect(app.submissionRequestDAO.insert).toHaveBeenCalledWith(expect.objectContaining({ sequenceNumber: 1 }));
         });
     });
 
@@ -1073,7 +1073,7 @@ describe('Application', () => {
         it('returns last approved application', async () => {
             userScopeMock.isNoneScope.mockReturnValue(false); // Ensure user has scope
             userScopeMock.isAllScope.mockReturnValue(true);   // Ensure user has all scope
-            app.applicationDAO = {
+            app.submissionRequestDAO = {
                 findLatestApprovedByApplicantID: jest.fn().mockResolvedValue({ _id: 'app1', status: APPROVED }),
             };
             jest.spyOn(app, 'getApplicationById').mockResolvedValue({
@@ -1084,7 +1084,7 @@ describe('Application', () => {
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
 
             const result = await app.getMyLastApplication({}, context);
-            expect(app.applicationDAO.findLatestApprovedByApplicantID).toHaveBeenCalledWith('user1');
+            expect(app.submissionRequestDAO.findLatestApprovedByApplicantID).toHaveBeenCalledWith('user1');
             expect(app.getApplicationById).toHaveBeenCalledWith('app1');
             expect(result).toMatchObject({ _id: 'app1', version: '3.0', institution: { id: 'inst1', _id: 'inst1' } });
         });
@@ -1093,7 +1093,7 @@ describe('Application', () => {
             userScopeMock.isNoneScope.mockReturnValue(false);
             userScopeMock.isAllScope.mockReturnValue(true);
             UserScope.create.mockReturnValue(userScopeMock);
-            app.applicationDAO = {
+            app.submissionRequestDAO = {
                 findLatestApprovedByApplicantID: jest.fn().mockResolvedValue({ _id: 'app1', status: APPROVED }),
             };
             jest.spyOn(app, 'getApplicationById').mockResolvedValue({
@@ -1124,7 +1124,7 @@ describe('Application', () => {
             userScopeMock.isNoneScope.mockReturnValue(false);
             userScopeMock.isAllScope.mockReturnValue(true);
             
-            app.applicationDAO = {
+            app.submissionRequestDAO = {
                 findLatestApprovedByApplicantID: jest.fn().mockResolvedValue(null),
             };
 
@@ -1135,7 +1135,7 @@ describe('Application', () => {
         it('returns the most recent approved application even when it has a successor revision', async () => {
             userScopeMock.isNoneScope.mockReturnValue(false);
             userScopeMock.isAllScope.mockReturnValue(true);
-            app.applicationDAO = {
+            app.submissionRequestDAO = {
                 findLatestApprovedByApplicantID: jest.fn().mockResolvedValue({
                     _id: 'seq1',
                     status: APPROVED,
@@ -1158,7 +1158,15 @@ describe('Application', () => {
     });
 
     describe('listApplications', () => {
+        const mockListDao = () => {
+            app.submissionRequestDAO.findManyWithApplicant = jest.fn().mockResolvedValue([]);
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
+            app.submissionRequestDAO.distinct = jest.fn().mockResolvedValue([]);
+            app.submissionRequestDAO.distinctApplicantFullNames = jest.fn().mockResolvedValue([]);
+        };
+
         beforeEach(() => {
+            mockListDao();
             userScopeMock.isAllScope = jest.fn(() => true);
             userScopeMock.isOwnScope = jest.fn(() => false);
             userScopeMock.isStudyScope = jest.fn(() => false);
@@ -1174,8 +1182,9 @@ describe('Application', () => {
 
         it('accepts each valid orderBy and resolves successfully', async () => {
             const findManyMock = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
             for (const orderBy of VALID_ORDER_BY_LIST_APPLICATIONS) {
                 await expect(app.listApplications({ orderBy }, context)).resolves.toBeDefined();
             }
@@ -1183,28 +1192,31 @@ describe('Application', () => {
 
         it('accepts valid orderBy case-insensitively', async () => {
             const findManyMock = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
             await expect(app.listApplications({ orderBy: 'CREATEDAT' }, context)).resolves.toBeDefined();
             await expect(app.listApplications({ orderBy: 'StudyName' }, context)).resolves.toBeDefined();
         });
 
         it('passes applicant.fullName as orderBy when orderBy is applicant.applicantName', async () => {
             const findManyMock = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
             await app.listApplications({ orderBy: 'applicant.applicantName' }, context);
             const findManyOptions = findManyMock.mock.calls[0][1];
-            expect(findManyOptions.orderBy).toEqual({ applicant: { fullName: 'desc' } });
+            expect(findManyOptions.orderBy).toBe('applicant.fullName');
+            expect(findManyOptions.sortDirection).toBe('DESC');
         });
 
         it('passes requested orderBy through for other valid values', async () => {
             const findManyMock = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
             await app.listApplications({ orderBy: 'createdAt', sortDirection: 'ASC' }, context);
             const findManyOptions = findManyMock.mock.calls[0][1];
-            expect(findManyOptions.orderBy).toEqual({ createdAt: 'asc' });
+            expect(findManyOptions.orderBy).toBe('createdAt');
+            expect(findManyOptions.sortDirection).toBe('ASC');
         });
 
         it('throws LIST_APPLICATIONS_INVALID_PARAMS for invalid sortDirection', async () => {
@@ -1214,8 +1226,9 @@ describe('Application', () => {
 
         it('returns applications and aggregations when findMany is mocked', async () => {
             const findManyMock = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
             const result = await app.listApplications({}, context);
             expect(result).toHaveProperty('applications');
             expect(result).toHaveProperty('total');
@@ -1245,8 +1258,9 @@ describe('Application', () => {
                 }
                 return Promise.resolve([]);
             });
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(1);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(1);
             const result = await app.listApplications({}, context);
             expect(result.applications[0].studyAbbreviation).toBe('My Full Study');
             expect(result.applications[0].studyName).toBe('My Full Study');
@@ -1267,19 +1281,20 @@ describe('Application', () => {
                 }
                 return Promise.resolve([]);
             });
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(4);
-            app.applicationDAO.findApplicationStatusesByIds = jest.fn().mockResolvedValue([
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(4);
+            app.submissionRequestDAO.findSubmissionRequestStatusesByIDs = jest.fn().mockResolvedValue([
                 { id: 'successor-active', status: REOPENED },
                 { id: 'successor-canceled', status: CANCELED },
             ]);
-            app.applicationDAO.findApprovedApplicationsByNextRevisionIds = jest.fn().mockResolvedValue([]);
+            app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs = jest.fn().mockResolvedValue([]);
             mockApprovedStudiesService.findByStudyNames.mockResolvedValue([]);
 
             const result = await app.listApplications({}, context);
 
-            expect(app.applicationDAO.findApplicationStatusesByIds).toHaveBeenCalledTimes(1);
-            expect(app.applicationDAO.findApplicationStatusesByIds).toHaveBeenCalledWith([
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusesByIDs).toHaveBeenCalledTimes(1);
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusesByIDs).toHaveBeenCalledWith([
                 'successor-active',
                 'successor-canceled',
             ]);
@@ -1301,13 +1316,13 @@ describe('Application', () => {
                 { id: 'd2', status: DELETED, sequenceNumber: 3, history: validDeletedHistory, studyName: 'S4', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
             ];
             let n = 0;
-            app.applicationDAO.findMany = jest.fn().mockImplementation(() => {
+            app.submissionRequestDAO.findManyWithApplicant = jest.fn().mockImplementation(() => {
                 n += 1;
                 return Promise.resolve(n === 1 ? rows : []);
             });
-            app.applicationDAO.count = jest.fn().mockResolvedValue(4);
-            app.applicationDAO.findApplicationStatusesByIds = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findApprovedApplicationsByNextRevisionIds = jest.fn().mockResolvedValue([
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(4);
+            app.submissionRequestDAO.findSubmissionRequestStatusesByIDs = jest.fn().mockResolvedValue([]);
+            app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs = jest.fn().mockResolvedValue([
                 { nextRevisionId: 'c2' },
                 { nextRevisionId: 'd2' },
             ]);
@@ -1315,8 +1330,8 @@ describe('Application', () => {
 
             const result = await app.listApplications({}, context);
 
-            expect(app.applicationDAO.findApprovedApplicationsByNextRevisionIds).toHaveBeenCalledTimes(1);
-            expect(app.applicationDAO.findApprovedApplicationsByNextRevisionIds).toHaveBeenCalledWith([
+            expect(app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs).toHaveBeenCalledTimes(1);
+            expect(app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs).toHaveBeenCalledWith([
                 'c2',
                 'd1',
                 'd2',
@@ -1333,13 +1348,13 @@ describe('Application', () => {
                 { id: 'a2', status: APPROVED, studyName: 'Beta Study', applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' } },
             ];
             let n = 0;
-            app.applicationDAO.findMany = jest.fn().mockImplementation(() => {
+            app.submissionRequestDAO.findManyWithApplicant = jest.fn().mockImplementation(() => {
                 n += 1;
                 return Promise.resolve(n === 1 ? rows : []);
             });
-            app.applicationDAO.count = jest.fn().mockResolvedValue(2);
-            app.applicationDAO.findApplicationStatusesByIds = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findApprovedApplicationsByNextRevisionIds = jest.fn().mockResolvedValue([]);
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(2);
+            app.submissionRequestDAO.findSubmissionRequestStatusesByIDs = jest.fn().mockResolvedValue([]);
+            app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs = jest.fn().mockResolvedValue([]);
             mockApprovedStudiesService.findByStudyNames.mockResolvedValue([
                 { _id: 'study-1', studyName: 'Alpha Study', pendingImageDeIdentification: true },
                 { _id: 'study-2', studyName: 'Beta Study', controlledAccess: true, dbGaPID: null },
@@ -1356,16 +1371,15 @@ describe('Application', () => {
         });
 
         it('skips batch revision lookups when the page is empty', async () => {
-            app.applicationDAO.findMany = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
-            app.applicationDAO.findApplicationStatusesByIds = jest.fn();
-            app.applicationDAO.findApprovedApplicationsByNextRevisionIds = jest.fn();
+            mockListDao();
+            app.submissionRequestDAO.findSubmissionRequestStatusesByIDs = jest.fn();
+            app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs = jest.fn();
             mockApprovedStudiesService.findByStudyNames = jest.fn();
 
             await app.listApplications({}, context);
 
-            expect(app.applicationDAO.findApplicationStatusesByIds).not.toHaveBeenCalled();
-            expect(app.applicationDAO.findApprovedApplicationsByNextRevisionIds).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findSubmissionRequestStatusesByIDs).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findApprovedSubmissionRequestsByNextRevisionIDs).not.toHaveBeenCalled();
             expect(mockApprovedStudiesService.findByStudyNames).not.toHaveBeenCalled();
         });
 
@@ -1410,8 +1424,7 @@ describe('Application', () => {
         });
 
         it('accepts valid statuses case-insensitively and returns successfully', async () => {
-            app.applicationDAO.findMany = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
             await expect(app.listApplications({ statuses: ['new', 'Approved'] }, context)).resolves.toBeDefined();
             const result = await app.listApplications({ statuses: ['new', 'Approved'] }, context);
             expect(result.applications).toEqual([]);
@@ -1420,33 +1433,36 @@ describe('Application', () => {
 
         it('passes filter without status to DAO when statuses is empty array', async () => {
             const findManyMock = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
             await app.listApplications({ statuses: [] }, context);
             const findManyFilter = findManyMock.mock.calls[0][0];
-            const countFilter = app.applicationDAO.count.mock.calls[0][0];
+            const countFilter = app.submissionRequestDAO.countWithApplicant.mock.calls[0][0];
             expect(findManyFilter).not.toHaveProperty('status');
             expect(countFilter).not.toHaveProperty('status');
         });
 
         it('passes filter without status to DAO when statuses contains All', async () => {
             const findManyMock = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
             await app.listApplications({ statuses: ['All'] }, context);
             const findManyFilter = findManyMock.mock.calls[0][0];
-            const countFilter = app.applicationDAO.count.mock.calls[0][0];
+            const countFilter = app.submissionRequestDAO.countWithApplicant.mock.calls[0][0];
             expect(findManyFilter).not.toHaveProperty('status');
             expect(countFilter).not.toHaveProperty('status');
         });
 
         it('passes filter without status to DAO when statuses contains All with other statuses', async () => {
             const findManyMock = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
             await app.listApplications({ statuses: ['All', 'Approved'] }, context);
             const findManyFilter = findManyMock.mock.calls[0][0];
-            const countFilter = app.applicationDAO.count.mock.calls[0][0];
+            const countFilter = app.submissionRequestDAO.countWithApplicant.mock.calls[0][0];
             expect(findManyFilter).not.toHaveProperty('status');
             expect(countFilter).not.toHaveProperty('status');
         });
@@ -1471,14 +1487,15 @@ describe('Application', () => {
             userScopeMock.isOwnScope.mockReturnValue(true);
             const ctx = { ...context, userInfo: { ...context.userInfo, _id: 'user-123' } };
             const findManyMock = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.findMany = findManyMock;
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
             await app.listApplications({}, ctx);
             const findManyCalls = findManyMock.mock.calls;
             expect(findManyCalls.length).toBeGreaterThan(0);
             const firstCallFilter = findManyCalls[0][0];
             expect(firstCallFilter).toEqual(expect.objectContaining({ applicantID: 'user-123' }));
-            const countCalls = app.applicationDAO.count.mock.calls;
+            const countCalls = app.submissionRequestDAO.countWithApplicant.mock.calls;
             expect(countCalls.length).toBe(1);
             expect(countCalls[0][0]).toEqual(expect.objectContaining({ applicantID: 'user-123' }));
         });
@@ -1497,58 +1514,54 @@ describe('Application', () => {
         });
 
         it('returns status as array not function', async () => {
-            app.applicationDAO.findMany = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
             const result = await app.listApplications({}, context);
             expect(Array.isArray(result.status)).toBe(true);
             expect(result.status).toEqual([]);
         });
 
         it('rejects with LIST_APPLICATIONS_FETCH_FAILED and application list step when findMany fails for list', async () => {
-            app.applicationDAO.findMany = jest.fn().mockRejectedValue(new Error('DB error'));
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.findManyWithApplicant = jest.fn().mockRejectedValue(new Error('DB error'));
             await expect(app.listApplications({}, context)).rejects.toThrow(ERROR.LIST_APPLICATIONS_FETCH_FAILED);
             await expect(app.listApplications({}, context)).rejects.toThrow(/fetching application list/);
         });
 
         it('rejects with LIST_APPLICATIONS_FETCH_FAILED and application count step when count fails', async () => {
-            app.applicationDAO.findMany = jest.fn().mockResolvedValue([]);
-            app.applicationDAO.count = jest.fn().mockRejectedValue(new Error('Count failed'));
+            mockListDao();
+            app.submissionRequestDAO.countWithApplicant = jest.fn().mockRejectedValue(new Error('Count failed'));
             await expect(app.listApplications({}, context)).rejects.toThrow(ERROR.LIST_APPLICATIONS_FETCH_FAILED);
             await expect(app.listApplications({}, context)).rejects.toThrow(/fetching application count/);
         });
 
         it('rejects with LIST_APPLICATIONS_FETCH_FAILED when a filter-option query fails', async () => {
-            let findManyCallCount = 0;
-            app.applicationDAO.findMany = jest.fn().mockImplementation(() => {
-                findManyCallCount++;
-                if (findManyCallCount === 1) return Promise.resolve([]);
-                if (findManyCallCount === 2) return Promise.resolve([]);
-                return Promise.reject(new Error('Filter query failed'));
-            });
-            app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+            mockListDao();
+            app.submissionRequestDAO.distinct = jest.fn().mockRejectedValue(new Error('Filter query failed'));
             await expect(app.listApplications({}, context)).rejects.toThrow(ERROR.LIST_APPLICATIONS_FETCH_FAILED);
         });
 
         describe('studyName filter (searches both studyName and studyAbbreviation)', () => {
-            it('passes OR condition when studyName is provided', async () => {
+            it('passes $or regex condition when studyName is provided', async () => {
                 const findManyMock = jest.fn().mockResolvedValue([]);
-                app.applicationDAO.findMany = findManyMock;
-                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                mockListDao();
+                app.submissionRequestDAO.findManyWithApplicant = findManyMock;
                 await app.listApplications({ studyName: 'UniqueName' }, context);
                 const filter = findManyMock.mock.calls[0][0];
-                expect(filter.OR).toBeDefined();
-                expect(Array.isArray(filter.OR)).toBe(true);
-                expect(filter.OR).toHaveLength(2);
-                expect(filter.OR[0]).toEqual({ studyName: { contains: 'UniqueName', mode: 'insensitive' } });
-                expect(filter.OR[1]).toEqual({ studyAbbreviation: { contains: 'UniqueName', mode: 'insensitive' } });
+                expect(filter.$or).toBeDefined();
+                expect(Array.isArray(filter.$or)).toBe(true);
+                expect(filter.$or).toHaveLength(2);
+                expect(filter.$or[0].studyName).toEqual(expect.any(RegExp));
+                expect(filter.$or[0].studyName.source).toBe('UniqueName');
+                expect(filter.$or[0].studyName.flags).toContain('i');
+                expect(filter.$or[1].studyAbbreviation).toEqual(expect.any(RegExp));
+                expect(filter.$or[1].studyAbbreviation.source).toBe('UniqueName');
             });
 
             it('returns applications matching study name when studyName filter is used', async () => {
                 const matchingApp = { id: 'app1', studyName: 'Cancer Study', studyAbbreviation: 'CS', status: NEW, applicant: { fullName: 'Alice' } };
                 const findManyMock = jest.fn().mockResolvedValue([matchingApp]);
-                app.applicationDAO.findMany = findManyMock;
-                app.applicationDAO.count = jest.fn().mockResolvedValue(1);
+                app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+                app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(1);
                 const result = await app.listApplications({ studyName: 'Cancer' }, context);
                 expect(result.applications.length).toBe(1);
                 expect(result.applications[0].studyName).toBe('Cancer Study');
@@ -1558,8 +1571,8 @@ describe('Application', () => {
             it('returns applications matching study abbreviation when studyName filter is used', async () => {
                 const matchingApp = { id: 'app2', studyName: 'Other Study', studyAbbreviation: 'BRF', status: NEW, applicant: { fullName: 'Bob' } };
                 const findManyMock = jest.fn().mockResolvedValue([matchingApp]);
-                app.applicationDAO.findMany = findManyMock;
-                app.applicationDAO.count = jest.fn().mockResolvedValue(1);
+                app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+                app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(1);
                 const result = await app.listApplications({ studyName: 'BRF' }, context);
                 expect(result.applications.length).toBe(1);
                 expect(result.applications[0].studyAbbreviation).toBe('BRF');
@@ -1568,40 +1581,41 @@ describe('Application', () => {
 
             it('studyName filter is case-insensitive', async () => {
                 const findManyMock = jest.fn().mockResolvedValue([]);
-                app.applicationDAO.findMany = findManyMock;
-                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+                app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
                 await app.listApplications({ studyName: 'aBc' }, context);
                 const filter = findManyMock.mock.calls[0][0];
-                expect(filter.OR[0].studyName).toEqual({ contains: 'aBc', mode: 'insensitive' });
-                expect(filter.OR[1].studyAbbreviation).toEqual({ contains: 'aBc', mode: 'insensitive' });
+                expect(filter.$or[0].studyName).toEqual(expect.any(RegExp));
+                expect(filter.$or[0].studyName.source).toBe('aBc');
+                expect(filter.$or[1].studyAbbreviation.source).toBe('aBc');
             });
 
             it('escapes regex metacharacters in studyName search term', async () => {
                 const findManyMock = jest.fn().mockResolvedValue([]);
-                app.applicationDAO.findMany = findManyMock;
-                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+                app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
                 await app.listApplications({ studyName: '***' }, context);
                 const filter = findManyMock.mock.calls[0][0];
-                expect(filter.OR[0].studyName).toEqual({ contains: '\\*\\*\\*', mode: 'insensitive' });
-                expect(filter.OR[1].studyAbbreviation).toEqual({ contains: '\\*\\*\\*', mode: 'insensitive' });
+                expect(filter.$or[0].studyName.source).toBe('\\*\\*\\*');
+                expect(filter.$or[1].studyAbbreviation.source).toBe('\\*\\*\\*');
             });
 
             it('does not add study filter when studyName is All', async () => {
                 const findManyMock = jest.fn().mockResolvedValue([]);
-                app.applicationDAO.findMany = findManyMock;
-                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+                app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
                 await app.listApplications({ studyName: 'All' }, context);
                 const filter = findManyMock.mock.calls[0][0];
-                expect(filter.OR).toBeUndefined();
+                expect(filter.$or).toBeUndefined();
             });
 
             it('does not add study filter when studyName is empty string', async () => {
                 const findManyMock = jest.fn().mockResolvedValue([]);
-                app.applicationDAO.findMany = findManyMock;
-                app.applicationDAO.count = jest.fn().mockResolvedValue(0);
+                app.submissionRequestDAO.findManyWithApplicant = findManyMock;
+                app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(0);
                 await app.listApplications({ studyName: '' }, context);
                 const filter = findManyMock.mock.calls[0][0];
-                expect(filter.OR).toBeUndefined();
+                expect(filter.$or).toBeUndefined();
             });
 
             it('returns distinct studies and studyAbbreviations when studyName filter is applied', async () => {
@@ -1609,23 +1623,13 @@ describe('Application', () => {
                     { id: 'app1', studyName: 'Study One', studyAbbreviation: 'S1', status: NEW, applicant: { fullName: 'A' } },
                     { id: 'app2', studyName: 'Study One', studyAbbreviation: 'S2', status: NEW, applicant: { fullName: 'B' } }
                 ];
-                const studyDistinctRows = [
-                    { studyName: 'Study One', studyAbbreviation: 'S1' },
-                    { studyName: 'Study One', studyAbbreviation: 'S2' }
-                ];
                 let callIndex = 0;
-                app.applicationDAO.findMany = jest.fn().mockImplementation((filter, options) => {
+                app.submissionRequestDAO.findManyWithApplicant = jest.fn().mockImplementation(() => {
                     callIndex++;
-                    if (callIndex === 1) return Promise.resolve(apps);
-                    if (callIndex === 2) {
-                        expect(filter.OR).toBeDefined();
-                        expect(options?.select?.studyName).toBe(true);
-                        expect(options?.select?.studyAbbreviation).toBe(true);
-                        return Promise.resolve(studyDistinctRows);
-                    }
-                    return Promise.resolve([]);
+                    // First call: page results; second: study facet rows for in-memory distinct
+                    return Promise.resolve(callIndex <= 2 ? apps : []);
                 });
-                app.applicationDAO.count = jest.fn().mockResolvedValue(2);
+                app.submissionRequestDAO.countWithApplicant = jest.fn().mockResolvedValue(2);
                 const result = await app.listApplications({ studyName: 'Study' }, context);
                 expect(result.studies).toEqual(['Study One']);
                 expect(result.studyAbbreviations).toEqual(expect.arrayContaining(['S1', 'S2']));
@@ -1646,7 +1650,7 @@ describe('Application', () => {
 
     describe('approveApplication', () => {
         beforeEach(() => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue(null);
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue(null);
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(null);
             mockApprovedStudiesService.saveApprovedStudyFromApplication.mockResolvedValue({ _id: 'study1' });
             mockApprovedStudiesService.updateReapprovedStudy.mockReset().mockResolvedValue({ _id: 'existing-study', applicationID: 'revision-app' });
@@ -1685,12 +1689,12 @@ describe('Application', () => {
             };
             const existingStudy = { _id: 'existing-study', applicationID: 'source-app', createdAt: '2020-01-01' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(existingStudy);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([{ _id: 'existing-study' }]);
             mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
@@ -1723,12 +1727,12 @@ describe('Application', () => {
             // (e.g. dbGaPID, GPAName, controlledAccess) may still have changed and should be refreshed.
             const existingStudy = { _id: 'existing-study', applicationID: 'revision-app', createdAt: '2020-01-01' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(existingStudy);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([{ _id: 'existing-study' }]);
             mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             mockLogCollection.insert.mockResolvedValue();
@@ -1755,12 +1759,12 @@ describe('Application', () => {
             };
             const existingStudy = { _id: 'other-study', applicationID: 'unrelated-source' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(null);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([existingStudy]);
             mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             mockLogCollection.insert.mockResolvedValue();
@@ -1789,12 +1793,12 @@ describe('Application', () => {
             };
             const existingStudy = { _id: 'existing-study', applicationID: 'source-app', createdAt: '2020-01-01' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({ _id: 'source-app' });
             mockApprovedStudiesService.findByApplicationID.mockResolvedValue(existingStudy);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([{ _id: 'existing-study' }]);
             mockProgramService.getProgramByID.mockResolvedValue(null);
             mockProgramService.findOneByProgramName.mockResolvedValue({ _id: 'program1', name: 'Existing Program' });
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             mockLogCollection.insert.mockResolvedValue();
@@ -1825,7 +1829,7 @@ describe('Application', () => {
             mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
             app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('1.0');
-            app.applicationDAO.update = jest.fn().mockResolvedValue(null);
+            app.submissionRequestDAO.update = jest.fn().mockResolvedValue(null);
 
             await expect(app.approveApplication({ _id: 'app1', comment: 'Approved' }, context))
                 .rejects.toThrow(ERROR.UPDATE_FAILED);
@@ -1843,7 +1847,7 @@ describe('Application', () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
@@ -1875,7 +1879,7 @@ describe('Application', () => {
             mockProgramService.getProgramByID.mockResolvedValue(null);
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
             mockProgramService.upsertByProgramName.mockResolvedValue(mockNewProgram);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
@@ -1928,7 +1932,7 @@ describe('Application', () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
             );
             const approvedFromDb = {
@@ -1980,7 +1984,7 @@ describe('Application', () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
             );
             const approvedFromDb = {
@@ -2045,7 +2049,7 @@ describe('Application', () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: 'GPA' })
             );
             const approvedFromDb = {
@@ -2111,7 +2115,7 @@ describe('Application', () => {
             mockProgramService.getProgramByID.mockResolvedValue(null);
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
             mockProgramService.upsertByProgramName.mockResolvedValue(mockNewProgram);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
@@ -2169,7 +2173,7 @@ describe('Application', () => {
             app.getApplicationById = jest.fn()
                 .mockResolvedValueOnce(mockApplication)
                 .mockResolvedValueOnce(approvedFromDb);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             app._findUsersByApplicantIDs = jest.fn().mockResolvedValue([]);
@@ -2197,7 +2201,7 @@ describe('Application', () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
@@ -2260,7 +2264,7 @@ describe('Application', () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
             mockProgramService.findOneByProgramName.mockResolvedValue(mockDuplicateProgram);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
@@ -2326,7 +2330,7 @@ describe('Application', () => {
                 }]);
             mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: '' })
             );
             app.getApplicationById = jest.fn()
@@ -2394,7 +2398,7 @@ describe('Application', () => {
                 }]);
             mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: '' })
             );
             app.getApplicationById = jest.fn()
@@ -2434,7 +2438,7 @@ describe('Application', () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue(mockExistingProgram);
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload, GPAName: 'Actual GPA' })
             );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
@@ -2538,7 +2542,7 @@ describe('Application', () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
@@ -2576,7 +2580,7 @@ describe('Application', () => {
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
             mockProgramService.findOneByProgramName.mockResolvedValue(null);
-            app.applicationDAO.update = jest.fn().mockImplementation((payload) =>
+            app.submissionRequestDAO.update = jest.fn().mockImplementation((payload) =>
                 Promise.resolve({ ...mockApplication, ...payload })
             );
             app.getApplicationById = jest.fn()
@@ -2719,7 +2723,7 @@ describe('Application', () => {
         beforeEach(() => {
             app.verifyReviewerPermission = jest.fn().mockResolvedValue();
             app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('1.0');
-            app.applicationDAO.update = jest.fn().mockResolvedValue({ acknowledged: true });
+            app.submissionRequestDAO.update = jest.fn().mockResolvedValue({ acknowledged: true });
             mockUserService.getUsersByNotifications = jest.fn().mockResolvedValue([]);
             mockUserService.findByID = jest.fn().mockResolvedValue({
                 _id: 'user-applicant-1',
@@ -2794,7 +2798,7 @@ describe('Application', () => {
 
             await app.inquireApplication({ _id: 'app1', comment: 'Please clarify' }, context);
 
-            expect(app.applicationDAO.update).toHaveBeenCalledWith(
+            expect(app.submissionRequestDAO.update).toHaveBeenCalledWith(
                 expect.objectContaining({ version: '3.0' })
             );
         });
@@ -2821,7 +2825,7 @@ describe('Application', () => {
         }
 
         beforeEach(() => {
-            app.applicationDAO.update = jest.fn().mockResolvedValue({ acknowledged: true });
+            app.submissionRequestDAO.update = jest.fn().mockResolvedValue({ acknowledged: true });
             mockUserService.findByID = jest.fn().mockResolvedValue(null);
             mockUserService.getUsersByNotifications = jest.fn()
                 .mockResolvedValueOnce([{ email: 'federal@test.com' }])
@@ -2895,7 +2899,7 @@ describe('Application', () => {
             app.getApplicationById = jest.fn()
                 .mockResolvedValueOnce(inProgressApp)
                 .mockResolvedValueOnce(submittedApp);
-            app.applicationDAO = { update: jest.fn().mockResolvedValue(true) };
+            app.submissionRequestDAO = { update: jest.fn().mockResolvedValue(true) };
             mockLogCollection.insert.mockResolvedValue();
 
             const result = await app.submitApplication({ _id: 'app1' }, context);
@@ -2920,14 +2924,14 @@ describe('Application', () => {
             app.getApplicationById = jest.fn()
                 .mockResolvedValueOnce(application)
                 .mockResolvedValueOnce({ ...application, status: IN_REVISION });
-            app.applicationDAO = { update: jest.fn().mockResolvedValue(true) };
+            app.submissionRequestDAO = { update: jest.fn().mockResolvedValue(true) };
             mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
             mockLogCollection.insert.mockResolvedValue();
 
             const result = await app.resumeInquiredApplication({ _id: 'app1' }, context);
 
             expect(result.status).toBe(IN_REVISION);
-            expect(app.applicationDAO.update).toHaveBeenCalledWith(expect.objectContaining({
+            expect(app.submissionRequestDAO.update).toHaveBeenCalledWith(expect.objectContaining({
                 _id: 'app1',
                 status: IN_REVISION
             }));
@@ -3010,8 +3014,8 @@ describe('Application', () => {
                     permissions: [createPermission],
                 }),
             };
-            app.applicationDAO = {
-                findApplicationStatusById: jest.fn(),
+            app.submissionRequestDAO = {
+                findSubmissionRequestStatusByID: jest.fn(),
                 reopenApprovedRevision: jest.fn().mockImplementation((_sourceId, doc) =>
                     Promise.resolve({ ...doc, version: '3.0' })
                 ),
@@ -3032,11 +3036,11 @@ describe('Application', () => {
                 submittedDate: null,
                 version: '3.0',
             };
-            app.applicationDAO.reopenApprovedRevision.mockResolvedValue(reopenedDoc);
+            app.submissionRequestDAO.reopenApprovedRevision.mockResolvedValue(reopenedDoc);
 
             const result = await app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context);
 
-            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+            expect(app.submissionRequestDAO.reopenApprovedRevision).toHaveBeenCalledWith(
                 'approved-1',
                 expect.objectContaining({
                     status: REOPENED,
@@ -3102,7 +3106,7 @@ describe('Application', () => {
                 context
             );
 
-            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+            expect(app.submissionRequestDAO.reopenApprovedRevision).toHaveBeenCalledWith(
                 'approved-1',
                 expect.objectContaining({ applicantID: 'new-owner' }),
                 false
@@ -3150,7 +3154,7 @@ describe('Application', () => {
                 context
             );
 
-            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+            expect(app.submissionRequestDAO.reopenApprovedRevision).toHaveBeenCalledWith(
                 'approved-1',
                 expect.objectContaining({ applicantID: 'user1' }),
                 false
@@ -3289,7 +3293,7 @@ describe('Application', () => {
 
         it('throws when reopenApprovedRevision reports invalid state', async () => {
             app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
-            app.applicationDAO = {
+            app.submissionRequestDAO = {
                 reopenApprovedRevision: jest.fn().mockRejectedValue(
                     new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION)
                 ),
@@ -3304,12 +3308,12 @@ describe('Application', () => {
                 ...approvedSource,
                 nextRevisionId: 'existing-successor',
             });
-            app.applicationDAO.findApplicationStatusById = jest.fn().mockResolvedValue({ status: REOPENED });
+            app.submissionRequestDAO.findSubmissionRequestStatusByID = jest.fn().mockResolvedValue({ status: REOPENED });
 
             await expect(app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context))
                 .rejects.toThrow(ERROR.VERIFY.INVALID_STATE_APPLICATION);
 
-            expect(app.applicationDAO.reopenApprovedRevision).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.reopenApprovedRevision).not.toHaveBeenCalled();
         });
 
         it('allows reopen over a terminal successor and replaces the existing link', async () => {
@@ -3317,8 +3321,8 @@ describe('Application', () => {
                 ...approvedSource,
                 nextRevisionId: 'canceled-successor',
             });
-            app.applicationDAO.findApplicationStatusById = jest.fn().mockResolvedValue({ status: CANCELED });
-            app.applicationDAO.reopenApprovedRevision.mockResolvedValue({
+            app.submissionRequestDAO.findSubmissionRequestStatusByID = jest.fn().mockResolvedValue({ status: CANCELED });
+            app.submissionRequestDAO.reopenApprovedRevision.mockResolvedValue({
                 _id: 'new-revision-id',
                 status: REOPENED,
                 sequenceNumber: 2,
@@ -3327,7 +3331,7 @@ describe('Application', () => {
 
             const result = await app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context);
 
-            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+            expect(app.submissionRequestDAO.reopenApprovedRevision).toHaveBeenCalledWith(
                 'approved-1',
                 expect.objectContaining({ status: REOPENED, sequenceNumber: 2 }),
                 true
@@ -3358,8 +3362,8 @@ describe('Application', () => {
             mockAuthorizationService.getPermissionScope.mockResolvedValue([{ scope: 'own', scopeValues: ['user1'] }]);
             UserScope.create.mockImplementation((scopes) => new (require('../../domain/user-scope').UserScope)(scopes));
             app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
-            app.applicationDAO = {
-                findApplicationStatusById: jest.fn(),
+            app.submissionRequestDAO = {
+                findSubmissionRequestStatusByID: jest.fn(),
                 reopenApprovedRevision: jest.fn().mockImplementation((_sourceId, doc) =>
                     Promise.resolve({ ...doc, version: '3.0' })
                 ),
@@ -3368,7 +3372,7 @@ describe('Application', () => {
 
             const result = await app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context);
 
-            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+            expect(app.submissionRequestDAO.reopenApprovedRevision).toHaveBeenCalledWith(
                 'approved-1',
                 expect.objectContaining({ applicantID: 'user1', status: REOPENED }),
                 false
@@ -3640,8 +3644,8 @@ describe('Application', () => {
         beforeEach(() => {
             app.verifyReviewerPermission = jest.fn().mockResolvedValue();
             app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('2.0');
-            app.applicationDAO.update = jest.fn().mockResolvedValue(true);
-            app.applicationDAO.clearNextRevisionIdPointingTo = jest.fn().mockResolvedValue({ modifiedCount: 1 });
+            app.submissionRequestDAO.update = jest.fn().mockResolvedValue(true);
+            app.submissionRequestDAO.clearNextRevisionIdPointingTo = jest.fn().mockResolvedValue({ modifiedCount: 1 });
             app.getApplicationById = jest.fn()
                 .mockResolvedValueOnce({ _id: 'app1', status: SUBMITTED, history: [], version: '2.0' })
                 .mockResolvedValueOnce({ _id: 'app1', status: REJECTED, history: [], version: '2.0' });
@@ -3650,7 +3654,7 @@ describe('Application', () => {
         it('does not prune revision chain after rejecting application', async () => {
             await app.rejectApplication({ _id: 'app1', comment: 'rejected' }, context);
 
-            expect(app.applicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
     });
 
@@ -3658,8 +3662,8 @@ describe('Application', () => {
         beforeEach(() => {
             app._sendCancelApplicationEmail = jest.fn().mockResolvedValue();
             app._getApplicationVersionByStatus = jest.fn().mockResolvedValue('3.0');
-            app.applicationDAO.update = jest.fn().mockResolvedValue({ _id: 'app-reopened' });
-            app.applicationDAO.clearNextRevisionIdPointingTo = jest.fn().mockResolvedValue({ modifiedCount: 1 });
+            app.submissionRequestDAO.update = jest.fn().mockResolvedValue({ _id: 'app-reopened' });
+            app.submissionRequestDAO.clearNextRevisionIdPointingTo = jest.fn().mockResolvedValue({ modifiedCount: 1 });
             app.getApplicationById = jest.fn().mockImplementation(async (id) => ({
                 _id: id,
                 status: CANCELED,
@@ -3682,7 +3686,7 @@ describe('Application', () => {
 
             await app.cancelApplication({ _id: 'app-reopened', comment: 'cancel' }, context);
 
-            expect(app.applicationDAO.update).toHaveBeenCalledWith(
+            expect(app.submissionRequestDAO.update).toHaveBeenCalledWith(
                 expect.objectContaining({ status: CANCELED })
             );
         });
@@ -3700,7 +3704,7 @@ describe('Application', () => {
 
             await app.cancelApplication({ _id: 'app-reopened', comment: 'cancel' }, context);
 
-            expect(app.applicationDAO.update).toHaveBeenCalledWith(
+            expect(app.submissionRequestDAO.update).toHaveBeenCalledWith(
                 expect.objectContaining({ status: CANCELED })
             );
         });
@@ -3717,7 +3721,7 @@ describe('Application', () => {
 
             await app.cancelApplication({ _id: 'app-reopened', comment: 'cancel' }, context);
 
-            expect(app.applicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
 
         it('does not prune revision chain after deleting empty application', async () => {
@@ -3736,18 +3740,18 @@ describe('Application', () => {
                     applicant: { applicantID: 'user1' },
                     history: [],
                 });
-            app.applicationDAO.clearNextRevisionIdPointingTo = jest.fn().mockImplementation(async () => {
+            app.submissionRequestDAO.clearNextRevisionIdPointingTo = jest.fn().mockImplementation(async () => {
                 callOrder.push('prune');
                 return { modifiedCount: 0 };
             });
-            app.applicationDAO.delete = jest.fn().mockImplementation(async () => {
+            app.submissionRequestDAO.delete = jest.fn().mockImplementation(async () => {
                 callOrder.push('delete');
                 return true;
             });
 
             await app.cancelApplication({ _id: 'empty-app', comment: 'cancel' }, context);
 
-            expect(app.applicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
             expect(callOrder).toEqual(['delete']);
         });
 
@@ -3759,12 +3763,12 @@ describe('Application', () => {
                 applicant: { applicantID: 'user1' },
                 history: [],
             });
-            app.applicationDAO.delete = jest.fn().mockResolvedValue(null);
+            app.submissionRequestDAO.delete = jest.fn().mockResolvedValue(null);
 
             await expect(app.cancelApplication({ _id: 'empty-app', comment: 'cancel' }, context))
                 .rejects.toThrow(ERROR.FAILED_DELETE_APPLICATION);
 
-            expect(app.applicationDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.clearNextRevisionIdPointingTo).not.toHaveBeenCalled();
         });
     });
 
@@ -3795,7 +3799,7 @@ describe('Application', () => {
                 applicant: { applicantID: 'user1' },
                 history: [{ status: REOPENED }, { status: CANCELED }],
             });
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue(null);
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue(null);
 
             await expect(app.restoreApplication({ _id: 'app2', comment: 'restore' }, context))
                 .rejects.toThrow(ERROR.INVALID_APPLICATION_RESTORE_NEWER_REVISION_EXISTS);
@@ -3810,15 +3814,15 @@ describe('Application', () => {
                 applicant: { applicantID: 'other-user' },
                 history: [{ status: REOPENED }, { status: CANCELED }],
             });
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn();
 
             await expect(app.restoreApplication({ _id: 'app2', comment: 'restore' }, context))
                 .rejects.toThrow(ERROR.VERIFY.INVALID_PERMISSION);
-            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
+            expect(app.submissionRequestDAO.findApprovedParentSubmissionRequestByID).not.toHaveBeenCalled();
         });
 
         it('restores canceled Reopened SRF back to Reopened', async () => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn().mockResolvedValue({
                 _id: 'approved-parent',
                 status: APPROVED,
                 nextRevisionId: 'app-reopened',
@@ -3837,12 +3841,12 @@ describe('Application', () => {
                     sequenceNumber: 2,
                     applicant: { applicantID: 'user1' },
                 });
-            app.applicationDAO.update = jest.fn().mockResolvedValue({ _id: 'app-reopened' });
+            app.submissionRequestDAO.update = jest.fn().mockResolvedValue({ _id: 'app-reopened' });
 
             await app.restoreApplication({ _id: 'app-reopened', comment: 'restore' }, context);
 
-            expect(app.applicationDAO.findApprovedParentSubmissionRequestByID).toHaveBeenCalledWith('app-reopened');
-            expect(app.applicationDAO.update).toHaveBeenCalledWith(
+            expect(app.submissionRequestDAO.findApprovedParentSubmissionRequestByID).toHaveBeenCalledWith('app-reopened');
+            expect(app.submissionRequestDAO.update).toHaveBeenCalledWith(
                 expect.objectContaining({ status: REOPENED })
             );
         });
@@ -3902,7 +3906,7 @@ describe('Application', () => {
 
     describe('_reformatRecordForApplicationResponse', () => {
         beforeEach(() => {
-            app.applicationDAO.findApplicationStatusById = jest.fn();
+            app.submissionRequestDAO.findSubmissionRequestStatusByID = jest.fn();
         });
 
         it('uses applicantName from nested applicant when fullName and name parts are missing', async () => {
@@ -3936,7 +3940,7 @@ describe('Application', () => {
         });
 
         it('sets canBeRestored true when record is Canceled sequence 1 with valid history', async () => {
-            app.applicationDAO.findApprovedParentSubmissionRequestByID = jest.fn();
+            app.submissionRequestDAO.findApprovedParentSubmissionRequestByID = jest.fn();
             const result = await app._reformatRecordForApplicationResponse({
                 id: 'app-1',
                 status: CANCELED,
