@@ -19,6 +19,7 @@ import { UserGuide } from "../../components/DataSubmissions/UserGuide";
 import ValidationControls from "../../components/DataSubmissions/ValidationControls";
 import ValidationStatistics from "../../components/DataSubmissions/ValidationStatistics";
 import DbGaPSheetExport from "../../components/DbGaPSheetExport";
+import DCFManifestExport from "../../components/DCFManifestExport";
 import { hasPermission } from "../../config/AuthPermissions";
 import { SUBMISSION_ACTION, SubmissionActionInput, SubmissionActionResp } from "../../graphql";
 import usePageTitle from "../../hooks/usePageTitle";
@@ -125,9 +126,11 @@ const StyledTabs = styled(Tabs)({
   },
 });
 
-const StyledSheetWrapper = styled("div")({
+const StyledSheetWrapper = styled(Stack)({
   position: "absolute",
   right: "40px",
+  marginBottom: "30px",
+  alignItems: "flex-end",
 });
 
 const StyledWrapper = styled("div")({
@@ -308,6 +311,7 @@ const DataSubmission: FC<Props> = ({ submissionId, tab = URLTabs.UPLOAD_ACTIVITY
                 />
               </StyledTabs>
               <StyledSheetWrapper>
+                <DCFManifestExport />
                 <DbGaPSheetExport disabled={data?.getSubmission?.status === "New"} />
               </StyledSheetWrapper>
             </StyledTabStack>

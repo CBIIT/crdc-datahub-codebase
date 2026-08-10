@@ -2,6 +2,7 @@ import type { Descendant, Element } from "slate";
 
 import type {
   FormattedText,
+  InlineNode,
   ListElement,
   ListFormat,
   ListItemElement,
@@ -53,14 +54,14 @@ export const createListElement = (format: ListFormat): ListElement => ({
 /**
  * Creates a Slate list item with an empty text node by default.
  *
- * @param {FormattedText[]} [children] - Optional children for the list item.
+ * @param {InlineNode[]} [children] - Optional children for the list item.
  * @returns {ListItemElement} A list item element node.
  *
  * @example
  * createListItem(); // { type: "list-item", children: [{ text: "" }] }
  */
 export const createListItem = (
-  children: FormattedText[] = [{ ...EMPTY_TEXT_NODE }]
+  children: InlineNode[] = [{ ...EMPTY_TEXT_NODE }]
 ): ListItemElement => ({
   type: "list-item",
   children,
@@ -78,14 +79,14 @@ export const createEmptyDocument = (): ParagraphElement[] => [
 /**
  * Ensures Slate element children always contain at least one text node.
  *
- * @param {FormattedText[]} children - The array of text nodes to normalize.
- * @returns {FormattedText[]} The original array if non-empty, or a single empty text node.
+ * @param {InlineNode[]} children - The array of inline nodes to normalize.
+ * @returns {InlineNode[]} The original array if non-empty, or a single empty text node.
  *
  * @example
  * normalizeTextChildren([]); // [{ text: "" }]
  * normalizeTextChildren([{ text: "hi" }]); // [{ text: "hi" }]
  */
-export const normalizeTextChildren = (children: FormattedText[]): FormattedText[] => {
+export const normalizeTextChildren = (children: InlineNode[]): InlineNode[] => {
   if (children.length > 0) {
     return children;
   }
