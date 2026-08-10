@@ -6,9 +6,10 @@ import type { BlockFormat, CustomEditor, CustomElement, ListFormat, MarkFormat }
 
 import { createListElement } from "./documentUtils";
 import { isListElement, isListFormat } from "./editorGuards";
+import { withLinks } from "./linkEditorUtils";
 
 /**
- * Adds React and history behavior to a base Slate editor.
+ * Adds React, history, and link behavior to a base Slate editor.
  *
  * @param {Editor} editor - The base Slate editor instance.
  * @returns {CustomEditor} The enhanced editor with React and history plugins.
@@ -17,7 +18,7 @@ import { isListElement, isListFormat } from "./editorGuards";
  * const editor = withCustomEditor(createEditor());
  */
 export const withCustomEditor = (editor: Editor): CustomEditor =>
-  withHistory(withReact(editor)) as CustomEditor;
+  withLinks(withHistory(withReact(editor)) as CustomEditor);
 
 /**
  * Checks whether the given inline mark is active on the current selection.

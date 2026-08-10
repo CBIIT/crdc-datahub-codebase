@@ -24,10 +24,8 @@
     </ul>
     <p>{{ secondMessage }}</p>
     {{#if reviewComments}}
-    <p>
-      <span>[Review Comments]:</span><br>
-      <span>{{nlToBr reviewComments}}</span>
-    </p>
+    <p><span>[Review Comments]:</span></p>
+    <div>{{{markdownToHtml reviewComments}}}</div>
     {{/if}}
     <p>{{ thirdMessage }}</p>
     <p>Sincerely,</p>
