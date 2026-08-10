@@ -190,6 +190,9 @@ export type {
 export { DOWNLOAD_DB_GAP_SHEET } from "./downloadDBGaPLoadSheet";
 export type { DownloadDbGaPSheetInput, DownloadDbGaPSheetResp } from "./downloadDBGaPLoadSheet";
 
+export { DOWNLOAD_DCF_MANIFEST } from "./downloadDCFManifest";
+export type { DownloadDCFManifestInput, DownloadDCFManifestResp } from "./downloadDCFManifest";
+
 export { GET_PENDING_PVS } from "./getPendingPVs";
 export type { GetPendingPVsInput, GetPendingPVsResponse } from "./getPendingPVs";
 
