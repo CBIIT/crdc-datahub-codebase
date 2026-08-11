@@ -303,7 +303,7 @@ export class QuestionnaireDataMigrator {
 
     if (pi && typeof pi.receivesEmails !== "boolean") {
       Logger.info("_migrateReceivesEmails: Backfilling Principal Investigator receivesEmails");
-      pi.receivesEmails = false;
+      pi.receivesEmails = this.data.piAsPrimaryContact === true;
     }
 
     if (primaryContact && typeof primaryContact.receivesEmails !== "boolean") {
