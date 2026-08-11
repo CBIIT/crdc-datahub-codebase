@@ -1,6 +1,6 @@
 import RemoveCircleIcon from "@mui/icons-material/RemoveCircle";
 import { Checkbox, FormControlLabel, Grid, styled } from "@mui/material";
-import { FC, useCallback, useState } from "react";
+import { FC, useCallback, useEffect, useState } from "react";
 
 import useAggregatedInstitutions from "@/hooks/useAggregatedInstitutions";
 import useFormMode from "@/hooks/useFormMode";
@@ -70,7 +70,13 @@ const AdditionalContact: FC<Props> = ({
 
   const [institutionName, setInstitutionName] = useState<string>(institution || "");
   const [institutionId, setInstitutionId] = useState<string>(institutionID || "");
-  const [receivesEmailsCheckbox, setReceivesEmailsCheckbox] = useState<boolean>(receivesEmails);
+  const [receivesEmailsCheckbox, setReceivesEmailsCheckbox] = useState<boolean>(
+    receivesEmails ?? false
+  );
+
+  useEffect(() => {
+    setReceivesEmailsCheckbox(receivesEmails ?? false);
+  }, [receivesEmails]);
 
   const handleInputChange = useCallback(
     (value: string) => {
