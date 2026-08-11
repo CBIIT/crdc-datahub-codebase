@@ -1,6 +1,8 @@
 export * from "./documentUtils";
 export * from "./editorGuards";
 export * from "./editorTransforms";
+export * from "./linkEditorUtils";
+export * from "./linkUrlUtils";
 
 export * from "./keyboard/keyboardHotkeyHandlers";
 export * from "./keyboard/keyboardListHandlers";

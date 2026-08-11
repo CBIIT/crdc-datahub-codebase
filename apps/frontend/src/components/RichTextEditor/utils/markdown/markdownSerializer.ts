@@ -2,8 +2,9 @@ import type { Descendant } from "slate";
 
 import { MARK_DEFINITIONS } from "@/config/EditorConfig";
 
-import type { FormattedText, TextMarks } from "../../types";
+import type { InlineNode, TextMarks } from "../../types";
 import { isElementNode, isTextNode } from "../documentUtils";
+import { isLinkElement } from "../editorGuards";
 
 import { parseMarkdownInline } from "./markdownInlineParser";
 import { ESCAPABLE_MARKDOWN_CHARACTERS, normalizeLineEndings, readListLine } from "./markdownUtils";
@@ -110,20 +111,55 @@ export const applyMarkdownMarks = (text: string, marks: TextMarks): string => {
 };
 
 /**
- * Serializes text children into a concatenated markdown string.
+ * Encodes parentheses so a URL cannot terminate the markdown link syntax early.
  *
- * @param {FormattedText[]} children - The text nodes to serialize.
+ * @param {string} url - The link URL.
+ * @returns {string} The URL with parentheses percent-encoded.
+ *
+ * @example
+ * encodeLinkUrl("https://g.co/a(1)"); // "https://g.co/a%281%29"
+ */
+const encodeLinkUrl = (url: string): string => url.split("(").join("%28").split(")").join("%29");
+
+/**
+ * Serializes a single inline node into its markdown representation.
+ *
+ * @param {InlineNode} node - The text or link node to serialize.
+ * @returns {string} The markdown output for the node.
+ *
+ * @example
+ * serializeInlineNode({ text: "world", bold: true }); // "**world**"
+ * serializeInlineNode({ type: "link", url: "https://g.co", children: [{ text: "g" }] }); // "[g](https://g.co)"
+ */
+const serializeInlineNode = (node: InlineNode): string => {
+  if (isLinkElement(node)) {
+    const linkText = node.children
+      .map(({ text, bold, italic, underline }) =>
+        applyMarkdownMarks(text, { bold, italic, underline })
+      )
+      .join("");
+
+    return `[${linkText}](${encodeLinkUrl(node.url)})`;
+  }
+
+  return applyMarkdownMarks(node.text, {
+    bold: node.bold,
+    italic: node.italic,
+    underline: node.underline,
+  });
+};
+
+/**
+ * Serializes inline children into a concatenated markdown string.
+ *
+ * @param {InlineNode[]} children - The inline nodes to serialize.
  * @returns {string} The concatenated markdown output.
  *
  * @example
- * serializeTextChildren([{ text: "hello " }, { text: "world", bold: true }]); // "hello **world**"
+ * serializeInlineChildren([{ text: "hello " }, { text: "world", bold: true }]); // "hello **world**"
  */
-const serializeTextChildren = (children: FormattedText[]): string =>
-  children
-    .map(({ text, bold, italic, underline }) =>
-      applyMarkdownMarks(text, { bold, italic, underline })
-    )
-    .join("");
+const serializeInlineChildren = (children: InlineNode[]): string =>
+  children.map(serializeInlineNode).join("");
 
 /**
  * Serializes a single top-level Slate node into its markdown representation.
@@ -144,16 +180,20 @@ const serializeMarkdownBlock = (node: Descendant): string => {
   }
 
   if (node.type === "paragraph") {
-    return serializeTextChildren(node.children);
+    return serializeInlineChildren(node.children);
+  }
+
+  if (node.type === "link") {
+    return serializeInlineNode(node);
   }
 
   if (node.type === "bulleted-list") {
-    return node.children.map((item) => `- ${serializeTextChildren(item.children)}`).join("\n");
+    return node.children.map((item) => `- ${serializeInlineChildren(item.children)}`).join("\n");
   }
 
   if (node.type === "numbered-list") {
     return node.children
-      .map((item, index) => `${index + 1}. ${serializeTextChildren(item.children)}`)
+      .map((item, index) => `${index + 1}. ${serializeInlineChildren(item.children)}`)
       .join("\n");
   }
 
@@ -170,7 +210,7 @@ const serializeMarkdownBlock = (node: Descendant): string => {
  * serializeToMarkdown([{ type: "paragraph", children: [{ text: "hello" }] }]); // "hello"
  */
 export const serializeToMarkdown = (nodes: Descendant[]): string =>
-  nodes.map(serializeMarkdownBlock).join("\n\n").trimEnd();
+  nodes.map(serializeMarkdownBlock).join("\n\n");
 
 /**
  * Gets the plain text content of a markdown line.
@@ -186,7 +226,13 @@ const getMarkdownLinePlainText = (line: string): string => {
   const inlineMarkdown = listLine ? listLine.content : line;
 
   return parseMarkdownInline(inlineMarkdown)
-    .map(({ text }) => text)
+    .map((node) => {
+      if (isLinkElement(node)) {
+        return node.children.map(({ text }) => text).join("");
+      }
+
+      return node.text;
+    })
     .join("");
 };
 
@@ -201,7 +247,7 @@ const getMarkdownLinePlainText = (line: string): string => {
  * getPlainTextLength("- item"); // 4
  */
 export const getPlainTextLength = (content: string): number => {
-  if (!content?.trim()) {
+  if (!content) {
     return 0;
   }
 
@@ -209,8 +255,7 @@ export const getPlainTextLength = (content: string): number => {
   const visibleText = normalizedContent
     .split("\n\n")
     .map((block) => block.split("\n").map(getMarkdownLinePlainText).join("\n"))
-    .join("\n")
-    .trim();
+    .join("\n");
 
   return visibleText.length;
 };
