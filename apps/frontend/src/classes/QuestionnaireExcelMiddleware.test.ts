@@ -314,7 +314,7 @@ describe("Serialization", () => {
       expect(sheet.getCell("E2").value).toEqual("1234-5678-9012-3456");
       expect(sheet.getCell("F2").value).toEqual("A Mock Institution");
       expect(sheet.getCell("G2").value).toEqual("123 Bunny Lane, Bunnyville, USA 20001");
-      expect(sheet.getCell("H2").value).toEqual("No");
+      expect(sheet.getCell("H2").value).toEqual(expect.objectContaining({ result: "No" }));
 
       // Primary Contact
       expect(sheet.getCell("I2").value).toEqual("No");
@@ -566,7 +566,7 @@ describe("Serialization", () => {
       expect(sheet.getCell("E2").value).toBeNull();
       expect(sheet.getCell("F2").value).toBeNull();
       expect(sheet.getCell("G2").value).toBeNull();
-      expect(sheet.getCell("H2").value).toEqual("No");
+      expect(sheet.getCell("H2").value).toEqual(expect.objectContaining({ result: "No" }));
 
       // Primary Contact
       expect(sheet.getCell("I2").value).toEqual("No");
@@ -2076,6 +2076,64 @@ describe("Parsing", () => {
 
     expect(result).toEqual(true);
     expect(output.primaryContact).toBeNull();
+  });
+
+  it("should force pi.receivesEmails to true when piAsPrimaryContact is true", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      pi: piFactory.build({ receivesEmails: false }),
+      piAsPrimaryContact: true,
+      primaryContact: null,
+      additionalContacts: null,
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionA();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    await middleware.parseSectionA();
+
+    // @ts-expect-error Private member
+    expect(middleware.data.pi.receivesEmails).toEqual(true);
+  });
+
+  it("should preserve pi.receivesEmails when piAsPrimaryContact is false", async () => {
+    const mockFormReceivesYes = questionnaireDataFactory.build({
+      pi: piFactory.build({ receivesEmails: true }),
+      piAsPrimaryContact: false,
+      primaryContact: contactFactory.build(),
+      additionalContacts: null,
+    });
+    const mockFormReceivesNo = questionnaireDataFactory.build({
+      pi: piFactory.build({ receivesEmails: false }),
+      piAsPrimaryContact: false,
+      primaryContact: contactFactory.build(),
+      additionalContacts: null,
+    });
+
+    const middlewareYes = new QuestionnaireExcelMiddleware(mockFormReceivesYes, {});
+    // @ts-expect-error Private member
+    await middlewareYes.serializeSectionA();
+    // @ts-expect-error Private member
+    middlewareYes.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+    // @ts-expect-error Private member
+    await middlewareYes.parseSectionA();
+    // @ts-expect-error Private member
+    expect(middlewareYes.data.pi.receivesEmails).toEqual(true);
+
+    const middlewareNo = new QuestionnaireExcelMiddleware(mockFormReceivesNo, {});
+    // @ts-expect-error Private member
+    await middlewareNo.serializeSectionA();
+    // @ts-expect-error Private member
+    middlewareNo.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+    // @ts-expect-error Private member
+    await middlewareNo.parseSectionA();
+    // @ts-expect-error Private member
+    expect(middlewareNo.data.pi.receivesEmails).toEqual(false);
   });
 
   it("should set the institutionID correctly", async () => {

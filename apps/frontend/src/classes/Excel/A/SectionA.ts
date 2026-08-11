@@ -59,7 +59,6 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       "pi.ORCID": data?.pi?.ORCID || "",
       "pi.institution": data?.pi?.institution || "",
       "pi.address": data?.pi?.address || "",
-      "pi.receivesEmails": data?.pi?.receivesEmails ? "Yes" : "No",
       piAsPrimaryContact: data?.piAsPrimaryContact ? "Yes" : "No",
       "primaryContact.firstName": data?.primaryContact?.firstName || "",
       "primaryContact.lastName": data?.primaryContact?.lastName || "",
@@ -70,6 +69,13 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       "primaryContact.receivesEmails": "Yes",
     });
     rows.add(row);
+
+    const piAsPrimaryContactCol = ws.getColumn("piAsPrimaryContact").letter;
+    const receivesEmailsDefault = data?.pi?.receivesEmails ? "Yes" : "No";
+    ws.getCell(`${ws.getColumn("pi.receivesEmails").letter}${startRow}`).value = {
+      formula: `IF($${piAsPrimaryContactCol}$${startRow}="Yes","Yes","${receivesEmailsDefault}")`,
+      result: data?.piAsPrimaryContact || data?.pi?.receivesEmails ? "Yes" : "No",
+    };
 
     data?.additionalContacts?.forEach((contact, idx) => {
       this.setRowValues(ws, idx + startRow, {
@@ -88,10 +94,12 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
   }
 
   protected async applyValidation(ctx: SectionCtxBase, ws: ExcelJS.Worksheet): Promise<void> {
-    const [A2, B2, C2, D2, E2, F2, G2, H2, I2, J2, K2, L2, M2, N2, O2] = this.getRowCells(ws);
+    const [A2, B2, C2, D2, E2, F2, G2, H2, I2, J2, K2, L2, M2, N2, O2, P2] = this.getRowCells(ws);
+
+    const piAsPrimaryContactRef = `$${ws.getColumn("piAsPrimaryContact").letter}$${I2.row}`;
 
     ws.addConditionalFormatting({
-      ref: "J2:P2",
+      ref: "J2:O2",
       rules: [
         {
           type: "expression",
@@ -104,6 +112,42 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
             },
           },
           priority: 1,
+        },
+      ],
+    });
+
+    ws.addConditionalFormatting({
+      ref: P2.address,
+      rules: [
+        {
+          type: "expression",
+          formulae: ["TRUE"],
+          style: {
+            fill: {
+              type: "pattern",
+              pattern: "solid",
+              bgColor: { argb: "000000" },
+            },
+          },
+          priority: 1,
+        },
+      ],
+    });
+
+    ws.addConditionalFormatting({
+      ref: H2.address,
+      rules: [
+        {
+          type: "expression",
+          formulae: [`${piAsPrimaryContactRef}="Yes"`],
+          style: {
+            fill: {
+              type: "pattern",
+              pattern: "solid",
+              bgColor: { argb: "000000" },
+            },
+          },
+          priority: 2,
         },
       ],
     });
@@ -194,6 +238,14 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       formulae: [EMAIL(M2)],
     };
 
+    P2.dataValidation = {
+      type: "list",
+      allowBlank: true,
+      showErrorMessage: true,
+      error: ErrorCatalog.get("invalidOperation"),
+      formulae: ['"Yes"'],
+    };
+
     // Additional Contacts
     this.forEachCellInColumn(ws, "additionalContacts.firstName", (cell) => {
       this.applyTextLengthValidation(
@@ -266,6 +318,8 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       });
     }
 
+    const piAsPrimaryContact = data.get("piAsPrimaryContact")?.[0] === "Yes";
+
     const piInstitution = (data.get("pi.institution")?.[0] as string)?.trim();
     const pi: PI = {
       firstName: data.get("pi.firstName")?.[0] as string,
@@ -276,10 +330,9 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
       institution: piInstitution,
       institutionID: institutionMap.get(piInstitution) || "",
       address: data.get("pi.address")?.[0] as string,
-      receivesEmails: data.get("pi.receivesEmails")?.[0] === "Yes",
+      receivesEmails: piAsPrimaryContact || data.get("pi.receivesEmails")?.[0] === "Yes",
     };
 
-    const piAsPrimaryContact = data.get("piAsPrimaryContact")?.[0] === "Yes";
     const pcInstitution = (data.get("primaryContact.institution")?.[0] as string)?.trim();
     const primaryContact: Contact = {
       firstName: data.get("primaryContact.firstName")?.[0] as string,
@@ -323,7 +376,7 @@ export class SectionA extends SectionBase<AKeys, SectionADeps> {
         .slice(0, DEFAULT_CHARACTER_LIMITS["additionalContacts.phone"]);
       const receivesEmails = toString(additionalContactReceivesEmails?.[i]).trim() === "Yes";
 
-      if (firstName || lastName || position || email || institution || phone) {
+      if (firstName || lastName || position || email || institution || phone || receivesEmails) {
         additionalContacts.push({
           firstName,
           lastName,

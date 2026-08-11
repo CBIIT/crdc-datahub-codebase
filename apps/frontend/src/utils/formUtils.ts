@@ -548,14 +548,19 @@ export const sectionHasData = (
 ): boolean => {
   switch (section) {
     case "A": {
-      const hasPIFields = some(values(data?.pi), (v) => typeof v === "string" && v.trim() !== "");
+      const hasPIFields =
+        some(values(data?.pi), (v) => typeof v === "string" && v.trim() !== "") ||
+        data?.pi?.receivesEmails === true;
       const hasEnteredPIFields = hasPIFields && !isEqual(data?.pi, contextualData?.pi);
       const hasPrimaryContactFields = some(
         values(data?.primaryContact),
         (v) => typeof v === "string" && v.trim() !== ""
       );
-      const hasAdditionalContactFields = some(data?.additionalContacts || [], (contact) =>
-        some(values(contact), (v) => typeof v === "string" && v.trim() !== "")
+      const hasAdditionalContactFields = some(
+        data?.additionalContacts || [],
+        (contact) =>
+          some(values(contact), (v) => typeof v === "string" && v.trim() !== "") ||
+          contact.receivesEmails === true
       );
       const sameAsPI = data?.piAsPrimaryContact === true;
 
