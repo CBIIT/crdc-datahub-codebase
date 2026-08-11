@@ -4,17 +4,7 @@ const handlebars = require('handlebars');
 const { marked } = require('marked');
 const { sanitizeAllowlistedHtml, PRESET_SR_REVIEW_COMMENT_HTML } = require('../utility/sanitize-allowlisted-html');
 
-function renderMarkdownWithPreservedSpacing(text) {
-    const markdownRenderer = new marked.Renderer();
-    markdownRenderer.space = (token) => {
-        const raw = typeof token === 'object' && token ? token.raw : '';
-        const newlineCount = (raw.match(/\n/g) || []).length;
-        return '<br>'.repeat(newlineCount);
-    };
-
-    const source = String(text).replace(/\r\n?/g, '\n');
-    return marked.parse(source, { breaks: true, renderer: markdownRenderer });
-}
+const BLANK_LINE_RUN_PATTERN = /\n{3,}/g;
 
 // isArray is a helper function in this html template,
 handlebars.registerHelper('isArray', function (value) {
@@ -45,7 +35,7 @@ handlebars.registerHelper('markdownToHtml', function (text) {
     if (!text) {
         return '';
     }
-    const rawHtml = renderMarkdownWithPreservedSpacing(text);
+    const rawHtml = renderMarkdown(text);
     return new handlebars.SafeString(sanitizeAllowlistedHtml(rawHtml, PRESET_SR_REVIEW_COMMENT_HTML));
 });
 
@@ -55,5 +45,24 @@ async function createEmailTemplate(templateName, params, basePath = 'resources/e
     const templateSource = await fsp.readFile(templatePath, "utf-8");
     return handlebars.compile(templateSource)(params);
 }
+
+/**
+ * A helper function to render markdown text to HTML.
+ *
+ * @param {string} text 
+ * @returns {string} Markdown content converted to a HTML string
+ */
+function renderMarkdown(text) {
+    const source = String(text).replace(/\r\n?/g, '\n');
+    const formattedSource = source.replace(BLANK_LINE_RUN_PATTERN, (lineBreaks) => {
+        const blankParagraphCount = Math.ceil((lineBreaks.length - 2) / 2);
+        const blankParagraphs = Array.from({ length: blankParagraphCount }, () => '<br />').join('\n\n');
+
+        return `\n\n${blankParagraphs}\n\n`;
+    });
+
+    return marked.parse(formattedSource, { async: false, breaks: true });
+}
+
 
 module.exports = { createEmailTemplate }
