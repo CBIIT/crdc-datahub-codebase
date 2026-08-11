@@ -23,8 +23,8 @@ module.exports = Object.freeze({
     RELEASED: 'Released',
     COMPLETED: 'Completed',
     ARCHIVED: 'Archived',
-    CANCELED:'Canceled',
-    REJECTED:'Rejected',
+    CANCELED: 'Canceled',
+    REJECTED: 'Rejected',
     WITHDRAWN: 'Withdrawn',
     DELETED: "Deleted",
     EXPORT: "Export metadata",
@@ -86,9 +86,9 @@ module.exports = Object.freeze({
     },
     CONSTRAINTS: {
         NAME_MAX_LENGTH: 25,
-        APPROVE_COMMENT_MAX_LENGTH: 10000,
-        REJECT_COMMENT_MAX_LENGTH: 10000,
-        INQUIRE_COMMENT_MAX_LENGTH: 10000,
+        APPROVE_COMMENT_MAX_LENGTH: 20000,
+        REJECT_COMMENT_MAX_LENGTH: 20000,
+        INQUIRE_COMMENT_MAX_LENGTH: 20000,
         CANCEL_COMMENT_MAX_LENGTH: 500,
         RESTORE_COMMENT_MAX_LENGTH: 500,
         REQUEST_PV_COMMENT_MAX_LENGTH: 500

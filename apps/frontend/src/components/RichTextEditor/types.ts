@@ -37,14 +37,22 @@ export type FormattedText = {
 
 export type CustomText = FormattedText;
 
+export type LinkElement = {
+  type: "link";
+  url: string;
+  children: CustomText[];
+};
+
+export type InlineNode = CustomText | LinkElement;
+
 export type ParagraphElement = {
   type: "paragraph";
-  children: CustomText[];
+  children: InlineNode[];
 };
 
 export type ListItemElement = {
   type: "list-item";
-  children: CustomText[];
+  children: InlineNode[];
 };
 
 export type BulletedListElement = {
@@ -59,7 +67,7 @@ export type NumberedListElement = {
 
 export type ListElement = BulletedListElement | NumberedListElement;
 
-export type CustomElement = ParagraphElement | ListElement | ListItemElement;
+export type CustomElement = ParagraphElement | ListElement | ListItemElement | LinkElement;
 
 export type CustomEditor = BaseEditor & ReactEditor & HistoryEditor;
 
