@@ -4,8 +4,20 @@ const handlebars = require('handlebars');
 const { marked } = require('marked');
 const { sanitizeAllowlistedHtml, PRESET_SR_REVIEW_COMMENT_HTML } = require('../utility/sanitize-allowlisted-html');
 
+function renderMarkdownWithPreservedSpacing(text) {
+    const markdownRenderer = new marked.Renderer();
+    markdownRenderer.space = (token) => {
+        const raw = typeof token === 'object' && token ? token.raw : '';
+        const newlineCount = (raw.match(/\n/g) || []).length;
+        return '<br>'.repeat(newlineCount);
+    };
+
+    const source = String(text).replace(/\r\n?/g, '\n');
+    return marked.parse(source, { breaks: true, renderer: markdownRenderer });
+}
+
 // isArray is a helper function in this html template,
-handlebars.registerHelper('isArray', function(value) {
+handlebars.registerHelper('isArray', function (value) {
     return Array.isArray(value);
 });
 
@@ -33,7 +45,7 @@ handlebars.registerHelper('markdownToHtml', function (text) {
     if (!text) {
         return '';
     }
-    const rawHtml = marked.parse(String(text), { breaks: true });
+    const rawHtml = renderMarkdownWithPreservedSpacing(text);
     return new handlebars.SafeString(sanitizeAllowlistedHtml(rawHtml, PRESET_SR_REVIEW_COMMENT_HTML));
 });
 
@@ -44,4 +56,4 @@ async function createEmailTemplate(templateName, params, basePath = 'resources/e
     return handlebars.compile(templateSource)(params);
 }
 
-module.exports = {createEmailTemplate}
+module.exports = { createEmailTemplate }
