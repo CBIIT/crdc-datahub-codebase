@@ -21,7 +21,7 @@ async function getNIHToken(code, redirectURi) {
             grant_type: "authorization_code",
             client_id: config.nih.CLIENT_ID,
             client_secret: config.nih.CLIENT_SECRET,
-            scope: "openid email profile federated_identities"
+            scope: "openid email profile"
         })
     });
     const jsonResponse = await response.json();
