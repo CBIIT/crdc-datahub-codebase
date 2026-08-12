@@ -1,4 +1,4 @@
-import { test } from './fixtures';
+import { test } from '../../fixtures';
 
 test('model navigator base', async ({ modelNavigatorPage }) => {
   await modelNavigatorPage.openGcModel();

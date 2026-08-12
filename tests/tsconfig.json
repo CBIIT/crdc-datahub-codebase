@@ -13,6 +13,6 @@
   },
   "include": [
     "playwright.config.ts",
-    "tests/**/*.ts"
+    "e2e/**/*.ts"
   ]
 }

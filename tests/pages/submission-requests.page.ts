@@ -21,14 +21,13 @@ export class SubmissionRequestsPage extends BasePage {
     await expect(this.pageTitle).toBeVisible();
   }
 
-  async clickCreateSrfButton(): Promise<void> {
+  async createSRF(): Promise<void> {
     await expect(this.createSrfButton).toBeVisible();
     await this.createSrfButton.click();
-  }
 
-  async confirmCreateSrf(): Promise<void> {
     await expect(this.createSrfConfirmButton).toBeVisible();
     await this.createSrfConfirmButton.click();
+
     await this.waitForUrlPath(/\/submission-request\/new(?:\?.*)?$/);
   }
 }

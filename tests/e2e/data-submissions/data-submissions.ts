@@ -1,4 +1,4 @@
-import { test } from './fixtures';
+import { test } from '../../fixtures';
 
 test('Upload data submission', async ({ dataSubmissionsPage }) => {
   const submissionName = `ta-${Date.now()}`;
