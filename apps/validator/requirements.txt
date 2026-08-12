@@ -4,6 +4,7 @@ requests
 tqdm
 requests_aws4auth
 pymongo
+python-dotenv
 python-dateutil
 pandas
 pytest>=9.0.3
