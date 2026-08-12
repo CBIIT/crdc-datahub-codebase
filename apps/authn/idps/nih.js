@@ -3,6 +3,7 @@ const client = {
     login: async (code, redirectingURL) => {
         const token = await getNIHToken(code, redirectingURL);
         const user = await nihUserInfo(token);
+        console.log("user", user);
         // use preferred_username to determine the identity provider
         const idp = getIDP(user?.preferred_username);
         // Leave as blank if no name exits
