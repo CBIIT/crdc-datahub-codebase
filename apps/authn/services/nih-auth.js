@@ -25,6 +25,7 @@ async function getNIHToken(code, redirectURi) {
         })
     });
     const jsonResponse = await response.json();
+    console.log("jsonResponse", jsonResponse);
     validateResponseOrThrow(response);
     return jsonResponse.access_token;
 }
