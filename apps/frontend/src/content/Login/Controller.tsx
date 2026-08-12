@@ -18,7 +18,7 @@ const LoginController = () => {
     client_id: env.VITE_NIH_CLIENT_ID,
     redirect_uri: env.VITE_NIH_REDIRECT_URL,
     response_type: "code",
-    scope: "openid email profile federated_identities",
+    scope: "openid email profile",
     prompt: "login",
   });
 
