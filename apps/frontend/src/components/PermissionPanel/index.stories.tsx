@@ -1,6 +1,6 @@
 import { MockedResponse } from "@apollo/client/testing";
 import type { Meta, StoryObj } from "@storybook/react";
-import { screen, userEvent, waitFor, within } from "@storybook/test";
+import { screen, userEvent, waitFor, within, expect } from "@storybook/test";
 import { FormProvider, useForm } from "react-hook-form";
 
 import {
@@ -26,7 +26,7 @@ const meta: Meta<typeof PermissionPanel> = {
     (Story, ctx) => {
       const methods = useForm<EditUserInput>({
         defaultValues: {
-          role: "Submitter",
+          role: (ctx.parameters?.formDefaultRole as UserRole) || "Submitter",
           permissions: [],
           notifications: [],
         },
@@ -190,6 +190,143 @@ const mockTooltips: MockedResponse<GetTooltipsResp, GetTooltipsInput> = {
   },
 };
 
+const mockNestedReadonly: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+  request: {
+    query: RETRIEVE_PBAC_DEFAULTS,
+  },
+  variableMatcher: () => true,
+  result: {
+    data: {
+      retrievePBACDefaults: [
+        {
+          role: "Submitter",
+          permissions: [],
+          notifications: [
+            {
+              _id: "submission_request:reviewed",
+              group: "Submission Request Emails",
+              name: "When review decision made",
+              inherited: [],
+              order: 3,
+              checked: true,
+              disabled: false,
+            },
+            {
+              _id: "submission_request:pending_cleared",
+              group: "Submission Request Emails",
+              name: "When conditionally approved",
+              inherited: [],
+              order: 4,
+              checked: true,
+              disabled: true,
+            },
+            {
+              _id: "submission_request:expiring",
+              group: "Submission Request Emails",
+              name: "Pending on dbGaPID",
+              inherited: [],
+              order: 4.1,
+              checked: true,
+              disabled: true,
+            },
+            {
+              _id: "submission_request:deleted",
+              group: "Submission Request Emails",
+              name: "Pending on model update",
+              inherited: [],
+              order: 4.2,
+              checked: true,
+              disabled: true,
+            },
+            {
+              _id: "submission_request:canceled",
+              group: "Submission Request Emails",
+              name: "Pending on image de-ID",
+              inherited: [],
+              order: 4.3,
+              checked: true,
+              disabled: true,
+            },
+            {
+              _id: "submission_request:submitted",
+              group: "Submission Request Emails",
+              name: "When Reopened",
+              inherited: [],
+              order: 5,
+              checked: false,
+              disabled: false,
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+const mockNestedEditable: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+  request: {
+    query: RETRIEVE_PBAC_DEFAULTS,
+  },
+  variableMatcher: () => true,
+  result: {
+    data: {
+      retrievePBACDefaults: [
+        {
+          role: "Federal Lead",
+          permissions: [],
+          notifications: [
+            {
+              _id: "submission_request:reviewed",
+              group: "Submission Request Emails",
+              name: "When review decision made",
+              inherited: [],
+              order: 3,
+              checked: false,
+              disabled: false,
+            },
+            {
+              _id: "submission_request:pending_cleared",
+              group: "Submission Request Emails",
+              name: "When conditionally approved",
+              inherited: [],
+              order: 4,
+              checked: false,
+              disabled: false,
+            },
+            {
+              _id: "submission_request:expiring",
+              group: "Submission Request Emails",
+              name: "Pending on dbGaPID",
+              inherited: [],
+              order: 4.1,
+              checked: false,
+              disabled: false,
+            },
+            {
+              _id: "submission_request:deleted",
+              group: "Submission Request Emails",
+              name: "Pending on model update",
+              inherited: [],
+              order: 4.2,
+              checked: false,
+              disabled: false,
+            },
+            {
+              _id: "submission_request:canceled",
+              group: "Submission Request Emails",
+              name: "Pending on image de-ID",
+              inherited: [],
+              order: 4.3,
+              checked: false,
+              disabled: false,
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 export const Default: Story = {
   parameters: {
     apolloClient: {
@@ -256,5 +393,84 @@ export const NoOptions: Story = {
     apolloClient: {
       mocks: [mockWithNoData],
     },
+  },
+};
+
+export const NestedOptions: Story = {
+  name: "Nested Options (Submitter Defaults)",
+  args: {
+    readOnly: false,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Submitter nested notification options with backend-driven default checked and disabled states.",
+      },
+    },
+    apolloClient: {
+      mocks: [mockNestedReadonly, mockTooltips],
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.click(
+      within(canvas.getByTestId("notifications-accordion")).getByRole("button")
+    );
+
+    await waitFor(() => {
+      expect(
+        canvas.getByTestId("notification-submission_request:pending_cleared")
+      ).toBeInTheDocument();
+    });
+  },
+};
+
+export const NestedOptionsEditable: Story = {
+  name: "Nested Options (Editable)",
+  args: {
+    readOnly: false,
+  },
+  parameters: {
+    formDefaultRole: "Federal Lead",
+    docs: {
+      description: {
+        story: "Internal role nested notification options in editable mode.",
+      },
+    },
+    apolloClient: {
+      mocks: [mockNestedEditable, mockTooltips],
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.click(
+      within(canvas.getByTestId("notifications-accordion")).getByRole("button")
+    );
+
+    await waitFor(() => {
+      expect(
+        canvas.getByTestId("notification-submission_request:pending_cleared")
+      ).toBeInTheDocument();
+    });
+
+    const parentCheckbox = within(
+      canvas.getByTestId("notification-submission_request:pending_cleared")
+    ).getByRole("checkbox", { hidden: true });
+
+    const childCheckbox = within(
+      canvas.getByTestId("notification-submission_request:canceled")
+    ).getByRole("checkbox", { hidden: true });
+
+    expect(parentCheckbox).toBeEnabled();
+    expect(childCheckbox).toBeEnabled();
+
+    await userEvent.click(parentCheckbox);
+
+    await waitFor(() => {
+      expect(childCheckbox).toBeChecked();
+    });
   },
 };
