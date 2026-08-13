@@ -5,7 +5,7 @@ const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/c
 describe('UserService.getCollaboratorsByStudyID', () => {
     let userService;
     let mockUserDAO, mockLogCollection, mockOrganizationCollection, 
-        mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, 
+        mockNotificationsService, mockApplicationCollection, 
         mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays, 
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let studyID, submitterID;
@@ -60,7 +60,6 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockOfficialEmail = 'test@example.com';
         mockAppUrl = 'http://test.com';
@@ -75,7 +74,6 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             mockOfficialEmail,
             mockAppUrl,
@@ -134,14 +132,11 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                _id: { "$ne": submitterID },
-                "role": USER.ROLES.SUBMITTER,
-                "userStatus": USER.STATUSES.ACTIVE,
-                "permissions": { "$in": [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:own`] },
-                "$or": [
-                    { "studies": { "$in": [studyID, "All"] } },
-                    { "studies._id": { "$in": [studyID, "All"] } }
-                ]
+                _id: { not: submitterID },
+                role: USER.ROLES.SUBMITTER,
+                userStatus: USER.STATUSES.ACTIVE,
+                permissions: [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:own`],
+                "studies._id": [studyID, "All"],
             });
         });
 
@@ -151,7 +146,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
             const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query._id["$ne"]).toBe(submitterID);
+            expect(query._id.not).toBe(submitterID);
         });
 
         it('should filter by SUBMITTER role', async () => {
@@ -178,19 +173,17 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
             const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query.permissions["$in"]).toContain(`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:own`);
+            expect(query.permissions).toContain(`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:own`);
         });
 
-        it('should filter by study access (both string and object formats)', async () => {
+        it('should filter by study access via studies._id', async () => {
             mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
 
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
             const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query["$or"]).toEqual([
-                { "studies": { "$in": [studyID, "All"] } },
-                { "studies._id": { "$in": [studyID, "All"] } }
-            ]);
+            expect(query["studies._id"]).toEqual([studyID, "All"]);
+            expect(query.OR).toBeUndefined();
         });
     });
 
@@ -367,8 +360,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             await userService.getCollaboratorsByStudyID(specialStudyID, submitterID);
 
             const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query["$or"][0].studies["$in"]).toContain(specialStudyID);
-            expect(query["$or"][1]["studies._id"]["$in"]).toContain(specialStudyID);
+            expect(query["studies._id"]).toContain(specialStudyID);
         });
 
         it('should handle special characters in submitterID', async () => {
@@ -378,7 +370,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             await userService.getCollaboratorsByStudyID(studyID, specialSubmitterID);
 
             const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query._id["$ne"]).toBe(specialSubmitterID);
+            expect(query._id.not).toBe(specialSubmitterID);
         });
     });
 

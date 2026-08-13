@@ -54,11 +54,10 @@ class UserService {
     _allEmailNotificationNamesSet = new Set([...Object.values(EN.SUBMISSION_REQUEST), ...Object.values(EN.DATA_SUBMISSION), ...Object.values(EN.USER_ACCOUNT)]);
     _NIH = "nih";
     _NOT_APPLICABLE = "NA";
-    constructor(logCollection, organizationCollection, notificationsService, submissionsCollection, applicationCollection, officialEmail, appUrl, approvedStudiesService, inactiveUserDays, configurationService, institutionService, authorizationService) {
+    constructor(logCollection, organizationCollection, notificationsService, applicationCollection, officialEmail, appUrl, approvedStudiesService, inactiveUserDays, configurationService, institutionService, authorizationService) {
         this.logCollection = logCollection;
         this.organizationCollection = organizationCollection;
         this.notificationsService = notificationsService;
-        this.submissionsCollection = submissionsCollection;
         this.applicationCollection = applicationCollection;
         this.officialEmail = officialEmail;
         this.appUrl = appUrl;
@@ -277,7 +276,7 @@ class UserService {
         }
 
         return await this.approvedStudyDAO.findMany({
-            _id: { $in: studiesIDs }
+            _id: studiesIDs
         });
     }
 
@@ -309,7 +308,7 @@ class UserService {
         if (uniqueIds.size > 0) {
             // Uses a single query to fetch the necessary study data
             const approvedStudies = await this.approvedStudyDAO.findMany({
-                _id: { $in: [...uniqueIds] },
+                _id: [...uniqueIds],
             });
             const studyById = new Map(approvedStudies.map((study) => [study._id, study]));
             // Populates the study data for the remaining users using the results from the single study query
@@ -372,7 +371,7 @@ class UserService {
             const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
             match = {
                 ...(!manageUserScope.isAllScope() ?
-                    { role: { $in: filteredRoles || [] } } : {})
+                    { role: filteredRoles || [] } : {})
             };
         } else {
             const reopenScope = await this._getUserScope(
@@ -399,9 +398,9 @@ class UserService {
 
     _buildReopenListUsersMatch() {
         return {
-            role: { $in: REOPEN_ASSIGNABLE_ROLES },
+            role: REOPEN_ASSIGNABLE_ROLES,
             userStatus: USER.STATUSES.ACTIVE,
-            permissions: { $in: getSubmissionRequestCreatePermissionVariants() },
+            permissions: getSubmissionRequestCreatePermissionVariants(),
         };
     }
 
@@ -719,8 +718,8 @@ class UserService {
     async getAdminPBACUsers() {
         const orgOwnerOrAdminRole = {
             "userStatus": USER.STATUSES.ACTIVE,
-            "notifications": {"$in": [EN.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-            "$or": [{"role": USER.ROLES.ADMIN}]
+            "notifications": [EN.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+            OR: [{"role": USER.ROLES.ADMIN}]
         };
         return await this.userDAO.findMany(orgOwnerOrAdminRole) || [];
     }
@@ -728,13 +727,13 @@ class UserService {
     /**
      * Disable users matching specific user conditions.
      *
-     * @param {Array} inactiveUsers - An array of user conditions for $or.
+     * @param {Array} inactiveUsers - An array of user conditions for OR.
      * @returns {Promise<Array>} - An array of user aggregation result.
      */
     // search by user's email and idp
     async disableInactiveUsers(inactiveUsers) {
         if (!inactiveUsers || inactiveUsers?.length === 0) return [];
-        const query = {"$or": inactiveUsers, IDP: {$ne: this._NIH}};
+        const query = {OR: inactiveUsers, IDP: { not: this._NIH }};
         const updated = await this.userDAO.updateMany(query, {userStatus: USER.STATUSES.INACTIVE, updateAt: getCurrentTime()});
         if (updated?.count && updated?.count > 0) {
             return await this.userDAO.findMany(query) || [];
@@ -752,7 +751,7 @@ class UserService {
         const query= {
             "userStatus": USER.STATUSES.ACTIVE,
             "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-            ...(dataCommonsArr.includes("All") ? {} : { "dataCommons": {$in: dataCommonsArr} })
+            ...(dataCommonsArr.includes("All") ? {} : { "dataCommons": dataCommonsArr })
         };
         return await this.userDAO.findMany(query);
     }
@@ -918,14 +917,23 @@ class UserService {
             }
         }
     } 
+    /**
+     * Active Submitters (excluding the submission owner) who can collaborate on a study.
+     * Matches users whose embedded studies include the study ID or "All".
+     * Queries `studies._id` only — User.studies is a Mongoose DocumentArray of `{_id}`, so
+     * `$in` on the parent `studies` path would cast string IDs as embedded docs and fail.
+     * @param {string} studyID Approved study ID
+     * @param {string} submitterID Submission owner user ID to exclude
+     * @returns {Promise<object[]>} Collaborator users with studies populated
+     */
     async getCollaboratorsByStudyID(studyID, submitterID) {
         const query = {
-            _id: {"$ne": submitterID},
-            "role": USER.ROLES.SUBMITTER,
-            "userStatus": USER.STATUSES.ACTIVE,
-            "permissions": {"$in": [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:${SCOPES.OWN}`]},
-            "$or": [{"studies": {"$in": [studyID, "All"]}}, {"studies._id": {"$in": [studyID, "All"]}}]
-        }; // user's studies contains studyID
+            _id: { not: submitterID },
+            role: USER.ROLES.SUBMITTER,
+            userStatus: USER.STATUSES.ACTIVE,
+            permissions: [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:${SCOPES.OWN}`],
+            "studies._id": [studyID, "All"],
+        };
         const users = await this.userDAO.findMany(query);
         for (const user of users) {
             user.studies = await this._findApprovedStudies(user.studies);
@@ -956,12 +964,8 @@ class UserService {
         try {
             const whereConditions = {
                 userStatus: USER.STATUSES.ACTIVE,
-                notifications: {
-                    $in: notifications
-                },
-                role: {
-                    $in: roles
-                }
+                notifications: notifications,
+                role: roles
             };
 
             // Add data commons filter if provided
@@ -979,7 +983,7 @@ class UserService {
     async updateUserInstitution(institutionID, institutionName, institutionStatus) {
         try {
             await this.userDAO.updateMany(
-                { "institution._id": institutionID, $or: [{"institution.name": { "$ne": institutionName }}, {"institution.status": { "$ne": institutionStatus }}]},
+                { "institution._id": institutionID, OR: [{"institution.name": { not: institutionName }}, {"institution.status": { not: institutionStatus }}]},
                 { "institution.name": institutionName, "institution.status": institutionStatus, updateAt: getCurrentTime() }
             );
         } catch (error) {
@@ -992,8 +996,8 @@ class UserService {
         const isRoleChange = prevUser.role === ROLES.DATA_COMMONS_PERSONNEL && prevUser.role !== newUser.role;
         if (isRoleChange) {
             const [updatedSubmission, updateProgram, updatedStudies] = await Promise.all([
-                this.submissionsCollection.updateMany(
-                    { conciergeID: (prevUser?._id || prevUser?.id), status: {$nin: [COMPLETED, CANCELED, DELETED]} },
+                this.submissionDAO.updateMany(
+                    { conciergeID: (prevUser?._id || prevUser?.id), status: { notIn: [COMPLETED, CANCELED, DELETED] } },
                     { conciergeID: "", updatedAt: getCurrentTime() }
                 ),
                 this.organizationCollection.updateMany(
@@ -1005,7 +1009,7 @@ class UserService {
                     { primaryContactID: null, updatedAt: getCurrentTime() }
                 )
             ]);
-            if (!updatedSubmission.acknowledged) {
+            if (typeof updatedSubmission?.count !== 'number') {
                 console.error("Failed to remove the data concierge in submissions");
             }
 

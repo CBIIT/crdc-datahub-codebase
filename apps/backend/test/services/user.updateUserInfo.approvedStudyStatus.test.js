@@ -16,7 +16,6 @@ describe('UserService.updateUserInfo — approved study status', () => {
             {},
             {},
             {},
-            {},
             'e@e.com',
             'http://x',
             mockApprovedStudiesService,

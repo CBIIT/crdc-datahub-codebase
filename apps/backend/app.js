@@ -109,9 +109,9 @@ app.use("/api/graphql", graphqlRouter);
         const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
         const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
         const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
-        const programService = new Program(submissionCollection, applicationCollection);
-        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, submissionCollection);
-        const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
+        const programService = new Program(applicationCollection);
+        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService);
+        const userService = new UserService(logCollection, organizationCollection, notificationsService, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
         const s3Service = new S3Service();
 
         const awsService = new AWSService(submissionCollection, userService, config.role_arn, config.presign_expiration);

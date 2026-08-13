@@ -9,7 +9,7 @@ jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
 
 describe('UserService.updateUserInstitution', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockUsersWithInstitution = [
         {
@@ -66,7 +66,6 @@ describe('UserService.updateUserInstitution', () => {
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockApprovedStudiesService = {};
         mockConfigurationService = {};
@@ -77,7 +76,6 @@ describe('UserService.updateUserInstitution', () => {
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             'test@example.com',
             'http://test.com',
@@ -106,9 +104,9 @@ describe('UserService.updateUserInstitution', () => {
             
             const expectedQuery = {
                 "institution._id": institutionID,
-                $or: [
-                    { "institution.name": { "$ne": institutionName } },
-                    { "institution.status": { "$ne": institutionStatus } }
+                OR: [
+                    { "institution.name": { not: institutionName } },
+                    { "institution.status": { not: institutionStatus } }
                 ]
             };
             
@@ -193,9 +191,9 @@ describe('UserService.updateUserInstitution', () => {
             // Assert
             const expectedQuery = {
                 "institution._id": institutionID,
-                $or: [
-                    { "institution.name": { "$ne": institutionName } },
-                    { "institution.status": { "$ne": institutionStatus } }
+                OR: [
+                    { "institution.name": { not: institutionName } },
+                    { "institution.status": { not: institutionStatus } }
                 ]
             };
             expect(mockUserDAO.updateMany).toHaveBeenCalledWith(expectedQuery, expect.any(Object));
@@ -546,9 +544,9 @@ describe('UserService.updateUserInstitution', () => {
             // Assert
             const expectedQuery = {
                 "institution._id": institutionID,
-                $or: [
-                    { "institution.name": { "$ne": institutionName } },
-                    { "institution.status": { "$ne": institutionStatus } }
+                OR: [
+                    { "institution.name": { not: institutionName } },
+                    { "institution.status": { not: institutionStatus } }
                 ]
             };
             expect(mockUserDAO.updateMany).toHaveBeenCalledWith(expectedQuery, expect.any(Object));

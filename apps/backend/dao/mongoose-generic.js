@@ -45,10 +45,13 @@ class MongooseGenericDAO {
 
     /**
      * @param {import('mongoose').Query} query
-     * @param {object} [option]
+     * @param {object} [option] Query options (projection, sort, skip, limit/take)
      * @returns {import('mongoose').Query}
      */
     _applyQueryOptions(query, option = {}) {
+        if (option.projection) {
+            query = query.select(option.projection);
+        }
         if (option.sort) {
             query = query.sort(option.sort);
         }
@@ -65,10 +68,117 @@ class MongooseGenericDAO {
     }
 
     /**
+     * Maps ORM-agnostic field operators to Mongoose operators.
+     * Services should use these names; DAO-internal code may still pass `$` operators.
+     */
+    static get _FIELD_OPERATOR_MAP() {
+        return {
+            not: '$ne',
+            notIn: '$nin',
+            in: '$in',
+            lt: '$lt',
+            lte: '$lte',
+            gt: '$gt',
+            gte: '$gte',
+            equals: '$eq',
+        };
+    }
+
+    /**
+     * Converts service-layer filter syntax to Mongoose filters:
+     * - plain arrays → `{ $in: array }`
+     * - field ops (`not`, `notIn`, `in`, `lt`, `lte`, `gt`, `gte`, `equals`) → `$ne`/`$nin`/…
+     * - top-level `OR`/`AND`/`NOT` → `$or`/`$and`/`$nor`
+     * Existing `$` operators are left unchanged. Recurses into logical clauses only;
+     * nested document values are passed through, so sub-field conditions need dotted paths.
+     * @param {object} filter Filter object from the service or DAO layer
+     * @returns {object}
+     */
+    _normalizeFilter(filter) {
+        if (!filter || typeof filter !== 'object' || Array.isArray(filter)) {
+            return filter;
+        }
+        const normalized = {};
+        for (const [key, value] of Object.entries(filter)) {
+            const logicalKey = this._logicalOperatorKey(key);
+            if (logicalKey) {
+                const clauses = Array.isArray(value) ? value : [value];
+                normalized[logicalKey] = clauses.map((clause) => this._normalizeFilter(clause));
+            } else if (Array.isArray(value) && !key.startsWith('$')) {
+                normalized[key] = { $in: value };
+            } else if (this._isPlainObject(value)) {
+                normalized[key] = this._normalizeFieldValue(value);
+            } else {
+                normalized[key] = value;
+            }
+        }
+        return normalized;
+    }
+
+    /**
+     * True for plain `{}` objects only (excludes Date, RegExp, ObjectId, Buffer, arrays).
+     * @param {*} value
+     * @returns {boolean}
+     */
+    _isPlainObject(value) {
+        return value != null
+            && typeof value === 'object'
+            && !Array.isArray(value)
+            && Object.getPrototypeOf(value) === Object.prototype;
+    }
+
+    /**
+     * @param {string} key Filter key
+     * @returns {string|null} Mongoose logical operator, or null when not logical
+     */
+    _logicalOperatorKey(key) {
+        if (key === 'OR' || key === '$or') {
+            return '$or';
+        }
+        if (key === 'AND' || key === '$and') {
+            return '$and';
+        }
+        if (key === 'NOT' || key === '$nor') {
+            return '$nor';
+        }
+        return null;
+    }
+
+    /**
+     * Converts ORM-agnostic field operator objects to Mongoose operators.
+     * Values without an operator key are returned untouched: Mongo treats an object whose
+     * first key is not `$`-prefixed as an exact document match, so normalizing inside it
+     * would produce a filter that silently matches nothing. Use dotted paths
+     * (`"institution.name"`) to constrain a sub-field.
+     * @param {object} value Field filter value
+     * @returns {object}
+     */
+    _normalizeFieldValue(value) {
+        const operatorMap = MongooseGenericDAO._FIELD_OPERATOR_MAP;
+        const keys = Object.keys(value);
+        const hasOrmOperator = keys.some((key) => operatorMap[key]);
+        if (!hasOrmOperator) {
+            return value;
+        }
+        const normalized = {};
+        for (const [key, nested] of Object.entries(value)) {
+            if (operatorMap[key]) {
+                normalized[operatorMap[key]] = nested;
+            } else if (key.startsWith('$')) {
+                normalized[key] = nested;
+            } else {
+                normalized[key] = nested;
+            }
+        }
+        return normalized;
+    }
+
+    /**
      * Requires an explicit filter object. Null/undefined are rejected so callers
      * cannot accidentally match or delete all documents (Mongoose 9 throws on null filters).
      * Explicit `{}` remains allowed when matching all documents is intentional.
-     * @param {object} filter Mongo filter
+     * Service-layer operators and plain arrays are normalized to Mongoose filters.
+     * @param {object} filter Filter object
      * @param {string} methodName Calling method name for the error message
      * @returns {object}
      * @throws {Error} When filter is null or undefined
@@ -79,7 +189,7 @@ class MongooseGenericDAO {
                 `MongooseGenericDAO.${methodName} requires a filter object for ${this._modelName}`
             );
         }
-        return filter;
+        return this._normalizeFilter(filter);
     }
 
     /**
@@ -166,7 +276,7 @@ class MongooseGenericDAO {
      * limit/take of 0 returns null without querying (Prisma empty-page semantics;
      * Mongoose limit(0) would otherwise mean unlimited).
      * @param {object} where Mongo filter
-     * @param {object} [option] Query options (sort, skip, limit/take)
+     * @param {object} [option] Query options (projection, sort, skip, limit/take)
      * @returns {Promise<object|null>}
      */
     async findFirst(where, option = {}) {
@@ -197,7 +307,7 @@ class MongooseGenericDAO {
      * limit/take of 0 returns [] without querying (Prisma empty-page semantics;
      * Mongoose limit(0) would otherwise mean unlimited).
      * @param {object} filter Mongo filter
-     * @param {object} [option] Query options (sort, skip, limit/take)
+     * @param {object} [option] Query options (projection, sort, skip, limit/take)
      * @returns {Promise<object[]>}
      */
     async findMany(filter, option = {}) {
@@ -346,8 +456,9 @@ class MongooseGenericDAO {
      * @returns {Promise<Array>}
      */
     async distinct(field, filter = {}) {
+        const normalizedFilter = this._normalizeFilter(filter);
         try {
-            return await this.model.distinct(field, filter);
+            return await this.model.distinct(field, normalizedFilter);
         } catch (error) {
             console.error(`MongooseGenericDAO.distinct failed for ${this._modelName}:`, {
                 error: error.message,

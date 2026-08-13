@@ -3,10 +3,10 @@
  */
 
 /**
- * Formats a nested organization object from Prisma format (with 'id' field) 
- * to GraphQL format (with '_id' field)
- * 
- * @param {Object} org - Organization object from Prisma with 'id' field
+ * Formats a nested organization object to GraphQL format (with '_id' field).
+ * Accepts either Prisma-style `id` or Mongoose-style `_id`.
+ *
+ * @param {Object} org - Organization object with `id` and/or `_id`
  * @returns {Object|null} - Organization object with '_id' field, or null if input is null/undefined
  */
 function formatNestedOrganization(org) {
@@ -15,16 +15,16 @@ function formatNestedOrganization(org) {
     }
     
     return {
-        _id: org.id,
+        _id: org._id || org.id,
         name: org.name,
         abbreviation: org.abbreviation
     };
 }
 
 /**
- * Formats an array of nested organization objects from Prisma format to GraphQL format
- * 
- * @param {Array} organizations - Array of organization objects from Prisma
+ * Formats an array of nested organization objects to GraphQL format.
+ *
+ * @param {Array} organizations - Array of organization objects
  * @returns {Array} - Array of organization objects with '_id' field
  */
 function formatNestedOrganizations(organizations) {

@@ -3,7 +3,7 @@ const { USER } = require('../../crdc-datahub-database-drivers/constants/user-con
 
 describe('UserService.getDCPs', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockDCPs = [
         {
@@ -66,7 +66,6 @@ describe('UserService.getDCPs', () => {
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockApprovedStudiesService = {};
         mockConfigurationService = {};
@@ -78,7 +77,6 @@ describe('UserService.getDCPs', () => {
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             'test@example.com',
             'http://test.com',
@@ -102,7 +100,7 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             
             mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
@@ -172,7 +170,7 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: [dataCommons] }
+                "dataCommons": [dataCommons]
             };
             
             mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
@@ -191,7 +189,7 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             
             mockUserDAO.findMany.mockResolvedValue(mockDCPs);
@@ -257,7 +255,7 @@ describe('UserService.getDCPs', () => {
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             });
         });
 
@@ -276,7 +274,7 @@ describe('UserService.getDCPs', () => {
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             });
         });
 
@@ -294,7 +292,7 @@ describe('UserService.getDCPs', () => {
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             });
         });
 
@@ -371,7 +369,7 @@ describe('UserService.getDCPs', () => {
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             });
         });
 
@@ -388,7 +386,7 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
@@ -431,7 +429,7 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             
             mockUserDAO.findMany.mockResolvedValue([]);
@@ -450,7 +448,7 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             
             mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
@@ -519,7 +517,7 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
             

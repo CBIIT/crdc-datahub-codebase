@@ -105,7 +105,7 @@ describe('QcResultService', () => {
                 total: 5
             });
             expect(mockVerifySession.verifySession).toHaveBeenCalledWith(mockContext);
-            expect(qcResultService.submissionDAO.findFirst).toHaveBeenCalledWith({ id: mockParams._id });
+            expect(qcResultService.submissionDAO.findFirst).toHaveBeenCalledWith({ _id: mockParams._id });
         });
 
         it('should throw error when submission not found', async () => {
@@ -331,8 +331,8 @@ describe('QcResultService', () => {
 
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
-                validationType: { $in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] },
-                submittedID: { $in: ["file1.txt", "file2.txt", "file3.txt"] }
+                validationType: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE],
+                submittedID: ["file1.txt", "file2.txt", "file3.txt"]
             });
         });
 
@@ -419,7 +419,7 @@ describe('QcResultService', () => {
 
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
-                validationType: { $in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] }
+                validationType: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE]
             });
         });
 
@@ -437,8 +437,8 @@ describe('QcResultService', () => {
 
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
-                validationType: { $in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] },
-                submittedID: { $nin: ["file1.txt", "file2.txt"] }
+                validationType: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE],
+                submittedID: { notIn: ["file1.txt", "file2.txt"] }
             });
         });
 
@@ -492,7 +492,7 @@ describe('QcResultService', () => {
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
                 validationType: VALIDATION.TYPES.METADATA,
-                submittedID: { $in: ["case-1"] }
+                submittedID: ["case-1"]
             });
         });
 
@@ -509,8 +509,8 @@ describe('QcResultService', () => {
 
             expect(qcResultService.qcResultDAO.deleteMany).toHaveBeenCalledWith({
                 submissionID: "test_submission_id",
-                validationType: { $in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE] },
-                submittedID: { $in: ["x.tsv"] }
+                validationType: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE],
+                submittedID: ["x.tsv"]
             });
         });
     });
@@ -634,7 +634,7 @@ describe('QcResultService', () => {
                     { title: "Invalid data format", severity: "Error", code: "E002", count: 1, property: "N/A", value: "N/A" }
                 ]
             });
-            expect(qcResultService.submissionDAO.findFirst).toHaveBeenCalledWith({ id: mockParams.submissionID });
+            expect(qcResultService.submissionDAO.findFirst).toHaveBeenCalledWith({ _id: mockParams.submissionID });
             expect(qcResultService.qcResultDAO.aggregatedSubmissionQCResults).toHaveBeenCalledWith(
                 mockParams.submissionID,
                 mockParams.severity,

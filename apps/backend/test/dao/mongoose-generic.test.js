@@ -127,6 +127,80 @@ describe('MongooseGenericDAO', () => {
         expect(model.find).toHaveBeenCalledWith({ foo: { $in: [1, 2] } });
     });
 
+    it('should wrap plain array field values with $in in findMany', async () => {
+        model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }]));
+        await dao.findMany({ foo: [1, 2], bar: 'x' });
+        expect(model.find).toHaveBeenCalledWith({ foo: { $in: [1, 2] }, bar: 'x' });
+    });
+
+    it('should convert ORM-agnostic field operators to Mongoose operators', async () => {
+        model.find.mockReturnValue(createLeanQuery([]));
+        await dao.findMany({
+            foo: { not: 1 },
+            status: { notIn: ['a', 'b'] },
+            age: { gte: 18, lt: 65 },
+            OR: [{ name: 'x' }, { role: ['admin'] }],
+        });
+        expect(model.find).toHaveBeenCalledWith({
+            foo: { $ne: 1 },
+            status: { $nin: ['a', 'b'] },
+            age: { $gte: 18, $lt: 65 },
+            $or: [{ name: 'x' }, { role: { $in: ['admin'] } }],
+        });
+    });
+
+    it('should leave Mongoose operator objects unchanged when normalizing filters', async () => {
+        model.find.mockReturnValue(createLeanQuery([]));
+        await dao.findMany({
+            foo: { $ne: 1 },
+            $or: [{ status: ['a', 'b'] }, { name: 'x' }],
+        });
+        expect(model.find).toHaveBeenCalledWith({
+            foo: { $ne: 1 },
+            $or: [{ status: { $in: ['a', 'b'] } }, { name: 'x' }],
+        });
+    });
+
+    it('should leave RegExp field values unchanged when normalizing filters', async () => {
+        model.find.mockReturnValue(createLeanQuery([]));
+        const namePattern = /test/i;
+        await dao.findMany({ name: namePattern, status: { not: 'deleted' } });
+        expect(model.find).toHaveBeenCalledWith({
+            name: namePattern,
+            status: { $ne: 'deleted' },
+        });
+    });
+
+    it('should pass nested document values through untouched', async () => {
+        // Mongo reads an object whose first key is not $-prefixed as an exact document
+        // match, so rewriting operators inside it would build a filter matching nothing.
+        model.find.mockReturnValue(createLeanQuery([]));
+        await dao.findMany({
+            institution: {
+                name: { not: 'Old Name' },
+                status: ['Active', 'Inactive'],
+            },
+        });
+        expect(model.find).toHaveBeenCalledWith({
+            institution: {
+                name: { not: 'Old Name' },
+                status: ['Active', 'Inactive'],
+            },
+        });
+    });
+
+    it('should normalize sub-field conditions expressed as dotted paths', async () => {
+        model.find.mockReturnValue(createLeanQuery([]));
+        await dao.findMany({
+            'institution.name': { not: 'Old Name' },
+            'institution.status': ['Active', 'Inactive'],
+        });
+        expect(model.find).toHaveBeenCalledWith({
+            'institution.name': { $ne: 'Old Name' },
+            'institution.status': { $in: ['Active', 'Inactive'] },
+        });
+    });
+
     it('should allow empty filter object in findMany', async () => {
         model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }]));
         const res = await dao.findMany({});

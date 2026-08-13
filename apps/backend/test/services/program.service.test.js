@@ -41,7 +41,7 @@ describe('Program.listPrograms', () => {
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
-    program = new Program({}, {});
+    program = new Program({});
     jest.clearAllMocks();
   });
 
@@ -118,7 +118,7 @@ describe('Program.listPrograms', () => {
       0,
       'name',
       'asc',
-      { status: { $in: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE] } }
+      { status: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE] }
     );
   });
 
@@ -136,7 +136,7 @@ describe('Program.listPrograms', () => {
       0,
       'name',
       'asc',
-      { status: { $in: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE] } }
+      { status: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE] }
     );
   });
 
@@ -172,7 +172,7 @@ describe('Program.createProgram', () => {
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
-    program = new Program({}, {});
+    program = new Program({});
     jest.clearAllMocks();
     program._checkRemovedStudies = jest.fn();
   });
@@ -268,7 +268,7 @@ describe('Program.getProgramAPI', () => {
     SubmissionDAO.mockImplementation(() => mockSubmissionDAO);
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
-    program = new Program({}, {});
+    program = new Program({});
     jest.clearAllMocks();
   });
 
@@ -314,7 +314,7 @@ describe('Program.getProgramByID', () => {
   beforeEach(() => {
     mockProgramDAO = { getProgramByID: jest.fn() };
     ProgramDAO.mockImplementation(() => mockProgramDAO);
-    program = new Program({}, {});
+    program = new Program({});
     jest.clearAllMocks();
   });
 
@@ -351,7 +351,7 @@ describe('Program.editProgram', () => {
     ApplicationDAO.mockImplementation(() => mockApplicationDAO);
     ApprovedStudyDAO.mockImplementation(() => mockApprovedStudyDAO);
     
-    program = new Program({}, {});
+    program = new Program({});
     jest.clearAllMocks();
   });
 
