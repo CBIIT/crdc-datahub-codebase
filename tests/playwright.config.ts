@@ -9,7 +9,23 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+    [
+      './reporters/release-report/index.ts',
+      {
+        product: 'CRDC Submission Portal',
+        outputDir: 'qa-release-report',
+        areaMap: {
+          'auth/': 'Authentication',
+          'data-submissions/': 'Data Submissions',
+          'model-navigator/': 'Model Navigator',
+          'submission-requests/': 'Submission Requests',
+        },
+      },
+    ],
+  ],
   use: {
     trace: 'on-first-retry',
     screenshot: 'on',
@@ -19,7 +35,7 @@ export default defineConfig({
     {
       name: 'setup',
       testMatch: /.*\.setup\.ts/,
-      retries: 3,
+      retries: 2,
     },
     {
       name: 'Chrome (Desktop)',
