@@ -1,3 +1,4 @@
+import os
 from urllib.parse import urlparse
 
 import boto3
@@ -6,23 +7,69 @@ from pymongo import MongoClient
 
 from ..common.constants import RELEASE_COLLECTION, STUDY_ID, DATA_FILE_LOCATION
 
+BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
+
 
 def get_study_data_files_from_db(client, db_name, studyID):
     db = client[db_name]
     data_collection = db[RELEASE_COLLECTION]
     query = {STUDY_ID: studyID, DATA_FILE_LOCATION: {"$exists": True, "$nin": [None, ""]}}
-    file = []
+    files = []
     for data in data_collection.find(query):
         location = data.get(DATA_FILE_LOCATION)
         props = data.get("props")
-        size = float(props.get("file_size")) if props else o
+        size = float(props.get("file_size")) if props else 0
         guid = data.get("nodeID")
-        file.append({
+        files.append({
             'GUID': guid,
             DATA_FILE_LOCATION: location,
             "file_size": size
         })
-    return file
+    return files
+
+def get_old_data_file_location(bucket_name, study_id, file_name):
+    return f"s3://{bucket_name}/{study_id}/{file_name}"
+
+
+def get_old_data_files_from_db(client, db_name):
+    db = client[db_name]
+    data_collection = db[RELEASE_COLLECTION]
+
+    pipeline = [
+        {
+            "$match": {
+            DATA_FILE_LOCATION: { "$exists": False },
+            "nodeType": "file"
+            }
+        },
+        { 
+            "$lookup": {
+                "as": "submissions",
+                "from": "submissions",
+                "foreignField": "_id",
+                "localField": "submissionID"
+            }
+        },
+        {
+            "$match": {
+                "submissions.dataType": "Metadata and Data Files"
+            }
+        }
+    ]
+    files = []
+    for data in data_collection.aggregate(pipeline):
+        props = data.get("props")
+        submission = data.get("submissions", [{}])[0]
+        study_id = submission.get("studyID")
+        location = get_old_data_file_location(BUCKET_NAME, study_id, props.get("file_name"))
+        size = float(props.get("file_size")) if props else 0
+        guid = data.get("nodeID")
+        files.append({
+            'GUID': guid,
+            DATA_FILE_LOCATION: location,
+            "file_size": size
+        })
+    return files
 
 
 def get_mongo_client(connection_str):
@@ -68,7 +115,6 @@ def write_results_to_file(succeeded_files, missing_files, wrong_size_files, stud
 if __name__ == "__main__":
     try:
         import argparse
-        import os
         from dotenv import load_dotenv
         load_dotenv()
         connection_str = os.environ.get("MONGO_CONNECTION_STRING")
@@ -76,12 +122,17 @@ if __name__ == "__main__":
 
         parser = argparse.ArgumentParser()
         parser.add_argument("studyID", help="Study ID to check file integrity for")
+        parser.add_argument("--old-format", help="Validate old format data files (without data_file_location field)", action="store_true")
         args = parser.parse_args()
         studyID = args.studyID
         print(f"Checking file integrity for study ID: {studyID}")
+        print(f"Checking {'old' if args.old_format else 'new'} format data files")
 
         client = get_mongo_client(connection_str)
-        files = get_study_data_files_from_db(client, db_name, studyID)
+        if args.old_format:
+            files = get_old_data_files_from_db(client, db_name)
+        else:
+            files = get_study_data_files_from_db(client, db_name, studyID)
         succeeded_files = []
         missing_files = []
         wrong_size_files = []
