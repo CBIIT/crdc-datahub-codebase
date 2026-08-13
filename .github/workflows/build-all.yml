@@ -430,7 +430,8 @@ jobs:
         run: |
           cat > "result-${{ matrix.name }}.json" << EOF
           {
-            "image": "${{ matrix.name }}",
+            "service": "${{ matrix.name }}",
+            "image": "${IMAGE_NAME}",
             "critical": ${{ steps.format_table.outputs.critical_count || 0 }},
             "high": ${{ steps.format_table.outputs.high_count || 0 }},
             "medium": ${{ steps.format_table.outputs.medium_count || 0 }},
@@ -510,8 +511,8 @@ jobs:
 
           lines = []
           lines.append("## \U0001F512 Twistlock Scan Results\n")
-          lines.append("| Image | Critical | High | Medium | Low | Status |")
-          lines.append("|---|---|---|---|---|---|")
+          lines.append("| Service | Image | Critical | High | Medium | Low | Status |")
+          lines.append("|---|---|---|---|---|---|---|")
 
           for r in rows:
               crit = r.get("critical", 0)
@@ -522,7 +523,7 @@ jobs:
               if failed:
                   any_fail = True
               status = "\u274C FAIL" if failed else "\u2705 PASS"
-              lines.append(f"| {r.get('image','?')} | {crit} | {high} | {med} | {low} | {status} |")
+              lines.append(f"| {r.get('service','?')} | {r.get('image','?')} | {crit} | {high} | {med} | {low} | {status} |")
 
           lines.append("")
           if any_fail:
