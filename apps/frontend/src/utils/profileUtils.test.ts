@@ -421,6 +421,49 @@ describe("PermissionPanel notification nesting utilities", () => {
     });
   });
 
+  it("should derive the parent state only from editable children the parent controls", () => {
+    const parent = buildNotification({ _id: "submission_request:reviewed", checked: false });
+    const children = [
+      buildNotification({
+        _id: "submission_request:pending_cleared",
+        checked: true,
+        disabled: false,
+      }),
+      buildNotification({
+        _id: "submission_request:expiring",
+        checked: false,
+        disabled: true,
+      }),
+    ];
+
+    // The disabled child is excluded, so a single checked editable child is fully checked.
+    expect(utils.getNestedCheckState(parent, children)).toEqual({
+      checked: true,
+      indeterminate: false,
+    });
+  });
+
+  it("should fall back to all children when every child is disabled", () => {
+    const parent = buildNotification({ _id: "submission_request:reviewed", checked: false });
+    const children = [
+      buildNotification({
+        _id: "submission_request:pending_cleared",
+        checked: true,
+        disabled: true,
+      }),
+      buildNotification({
+        _id: "submission_request:expiring",
+        checked: false,
+        disabled: true,
+      }),
+    ];
+
+    expect(utils.getNestedCheckState(parent, children)).toEqual({
+      checked: false,
+      indeterminate: true,
+    });
+  });
+
   it("should surface a child without a matching parent as a top-level row", () => {
     const orphan = buildNotification({ _id: "submission_request:pending_cleared", order: 4.1 });
 

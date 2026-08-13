@@ -105,11 +105,9 @@ export const nestNotificationOptions = (
 };
 
 /**
- * Derives the aggregate checkbox state for a parent notification from its children.
- *
- * Follows conventional tri-state behavior: fully checked when every child is
- * selected, indeterminate when only some are, and unchecked when none are. A
- * parent without children simply reflects its own checked state.
+ * Derives the tri-state checkbox state for a parent notification from its
+ * editable children, falling back to all children when every child is disabled.
+ * A parent without children reflects its own checked state.
  *
  * @param parent The parent notification option.
  * @param children The parent's nested child options.
@@ -123,11 +121,13 @@ export const getNestedCheckState = (
     return { checked: !!parent.checked, indeterminate: false };
   }
 
-  const selectedCount = children.filter((child) => child.checked).length;
+  const controllable = children.filter((child) => !child.disabled);
+  const source = controllable.length ? controllable : children;
+  const selectedCount = source.filter((child) => child.checked).length;
 
   return {
-    checked: selectedCount === children.length,
-    indeterminate: selectedCount > 0 && selectedCount < children.length,
+    checked: selectedCount === source.length,
+    indeterminate: selectedCount > 0 && selectedCount < source.length,
   };
 };
 

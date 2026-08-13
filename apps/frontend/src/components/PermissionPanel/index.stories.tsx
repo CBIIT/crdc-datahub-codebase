@@ -28,7 +28,7 @@ const meta: Meta<typeof PermissionPanel> = {
         defaultValues: {
           role: (ctx.parameters?.formDefaultRole as UserRole) || "Submitter",
           permissions: [],
-          notifications: [],
+          notifications: (ctx.parameters?.formDefaultNotifications as AuthNotifications[]) || [],
         },
       });
 
@@ -209,7 +209,7 @@ const mockNestedReadonly: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACD
               inherited: [],
               order: 3,
               checked: true,
-              disabled: false,
+              disabled: true,
             },
             {
               _id: "submission_request:pending_cleared",
@@ -254,7 +254,7 @@ const mockNestedReadonly: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACD
               inherited: [],
               order: 5,
               checked: false,
-              disabled: false,
+              disabled: true,
             },
           ],
         },
@@ -397,15 +397,22 @@ export const NoOptions: Story = {
 };
 
 export const NestedOptions: Story = {
-  name: "Nested Options (Submitter Defaults)",
+  name: "Nested Options (Disabled)",
   args: {
     readOnly: false,
   },
   parameters: {
+    formDefaultNotifications: [
+      "submission_request:reviewed",
+      "submission_request:pending_cleared",
+      "submission_request:expiring",
+      "submission_request:deleted",
+      "submission_request:canceled",
+    ],
     docs: {
       description: {
         story:
-          "Submitter nested notification options with backend-driven default checked and disabled states.",
+          "Nested notification options with backend-driven default checked and disabled states.",
       },
     },
     apolloClient: {
@@ -424,6 +431,24 @@ export const NestedOptions: Story = {
         canvas.getByTestId("notification-submission_request:pending_cleared")
       ).toBeInTheDocument();
     });
+
+    const reviewedCheckbox = within(
+      canvas.getByTestId("notification-submission_request:reviewed")
+    ).getByRole("checkbox", { hidden: true });
+
+    const canceledCheckbox = within(
+      canvas.getByTestId("notification-submission_request:canceled")
+    ).getByRole("checkbox", { hidden: true });
+
+    const submittedCheckbox = within(
+      canvas.getByTestId("notification-submission_request:submitted")
+    ).getByRole("checkbox", { hidden: true });
+
+    // Backend-driven default checked states are reflected from the seeded form.
+    expect(reviewedCheckbox).toBeChecked();
+    expect(canceledCheckbox).toBeChecked();
+    expect(canceledCheckbox).toBeDisabled();
+    expect(submittedCheckbox).not.toBeChecked();
   },
 };
 
