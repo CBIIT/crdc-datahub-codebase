@@ -131,6 +131,10 @@ export const contactSchema = z
      * @since 3.4.0
      */
     institutionID: z.union([z.uuidv4(), z.literal("")]).nullable(),
+    /**
+     * Indicates whether the contact will receive all email notifications.
+     */
+    receivesEmails: z.boolean().optional(),
   })
   .strict();
 

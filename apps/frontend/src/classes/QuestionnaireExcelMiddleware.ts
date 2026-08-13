@@ -37,7 +37,7 @@ import { SectionCtxBase } from "./Excel/SectionBase";
  * An internal template version identifier.
  * Increments from X.0 to X.9, then bumps to X+1.0. Do NOT use X.10 or above.
  */
-export const TEMPLATE_VERSION = "1.7";
+export const TEMPLATE_VERSION = "1.8";
 
 /**
  * The names of the HIDDEN sheets used in the Excel workbook.
