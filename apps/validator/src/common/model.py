@@ -1,8 +1,9 @@
 from common.constants import NODES_LABEL, RELATIONSHIPS, LIST_DELIMITER_PROP, DEF_MAIN_NODES, PROPERTY_NAMES, OMIT_DCF_PREFIX, COMPOSITION_KEY
 
 class DataModel:
-    def __init__(self, model):
+    def __init__(self, model, mdf_model = None):
         self.model = model
+        self.mdf_model = mdf_model
 
     # model connivent functions
     # """
