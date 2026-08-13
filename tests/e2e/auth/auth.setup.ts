@@ -38,6 +38,7 @@ test('authenticate and persist session', async ({ page }) => {
 
   await expect(page).toHaveURL(/hub-dev\.datacommons\.cancer\.gov/);
 
-  await page.waitForTimeout(1500);
+  await expect(page.locator("#navbar-dropdown-name")).toBeVisible();
+
   await page.context().storageState({ path: process.env.AUTH_STATE_PATH });
 });
