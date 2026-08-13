@@ -339,6 +339,7 @@ jobs:
 
 
       - name: Format scan results as table
+        id: format_table
         if: always()
         run: |
           python3 - "scan-${{ matrix.name }}.json" "${{ matrix.name }}" << 'PYEOF'
