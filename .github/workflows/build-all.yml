@@ -463,16 +463,16 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Upload scan results as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: twistlock-scan-${{ matrix.name }}
-          path: |
-            scan-${{ matrix.name }}.json
-            scan-output-${{ matrix.name }}.log
-            scan-table-${{ matrix.name }}.txt
-          retention-days: 2
+      #- name: Upload scan results as artifact
+        #if: always()
+        #uses: actions/upload-artifact@v4
+        #with:
+          #name: twistlock-scan-${{ matrix.name }}
+          #path: |
+            #scan-${{ matrix.name }}.json
+            #scan-output-${{ matrix.name }}.log
+            #scan-table-${{ matrix.name }}.txt
+          #retention-days: 2
 
   # ──────────────────────────────────────────────
   # Job 4: Twistlock Scan Summary - combine results, fail on critical/high
