@@ -343,16 +343,19 @@ jobs:
         run: |
           python3 - "scan-${{ matrix.name }}.json" "${{ matrix.name }}" << 'PYEOF'
           import json
+          import os
           import sys
 
           scan_file, image_label = sys.argv[1], sys.argv[2]
+          gh_output_path = os.environ["GITHUB_OUTPUT"]
 
           try:
               with open(scan_file) as f:
                   data = json.load(f)
           except Exception as e:
               print(f"Could not read/parse {scan_file}: {e}")
-              with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+              #with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+              with open(gh_output_path, "a") as gh_out:
                   gh_out.write("critical_count=0\n")
                   gh_out.write("high_count=0\n")
                   gh_out.write("has_critical_or_high=false\n")
@@ -535,7 +538,8 @@ jobs:
           PYEOF
 
       - name: Fail if any image has critical/high vulnerabilities
-        if: env.ANY_CRITICAL_OR_HIGH == 'true'
+        #if: env.ANY_CRITICAL_OR_HIGH == 'true'
+        if: needs.twistlock_scan.result == 'failure'
         run: |
           echo "Failing build: one or more images have CRITICAL or HIGH vulnerabilities."
           exit 1        
