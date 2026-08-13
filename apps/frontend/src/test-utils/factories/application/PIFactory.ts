@@ -12,6 +12,7 @@ export const basePI: PI = {
   institution: "",
   institutionID: "",
   address: "",
+  receivesEmails: false,
 };
 
 /**
