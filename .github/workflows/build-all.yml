@@ -413,7 +413,9 @@ jobs:
           with open(f"scan-table-{image_label}.txt", "w") as out:
               out.write(summary + "\n")
 
-          with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+          has_critical_or_high = "true" if (sev_counts["critical"] > 0 or sev_counts["high"] > 0) else "false"
+          #with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+          with open(gh_output_path, "a") as gh_out:
               gh_out.write(f"critical_count={sev_counts['critical']}\n")
               gh_out.write(f"high_count={sev_counts['high']}\n")
               gh_out.write(f"medium_count={sev_counts['medium']}\n")
