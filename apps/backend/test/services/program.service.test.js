@@ -359,12 +359,13 @@ describe('Program.editProgram', () => {
     const orgID = 'org-123';
     const params = { name: 'Updated Org' };
     const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST', status: PROGRAM.STATUSES.ACTIVE };
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
     mockProgramDAO.getProgramByName.mockResolvedValue(null);
     mockProgramDAO.updateMany.mockResolvedValue({ count: 1 });
     mockUserDAO.updateUserOrg.mockResolvedValue({ count: 1 });
-    mockApplicationDAO.updateApplicationOrg.mockResolvedValue({ acknowledged: true });
+    mockApplicationDAO.updateApplicationOrg.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
 
     const result = await program.editProgram(orgID, params);
 
@@ -373,6 +374,10 @@ describe('Program.editProgram', () => {
     expect(mockUserDAO.updateUserOrg).toHaveBeenCalledWith(orgID, expect.objectContaining({ name: 'Updated Org' }));
     expect(mockApprovedStudyDAO.findMany).not.toHaveBeenCalled();
     expect(mockApprovedStudyDAO.updateMany).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      'Failed to update the organization name in submission requests'
+    );
+    consoleErrorSpy.mockRestore();
   });
 
   it(`should throw when setting status ${PROGRAM.STATUSES.INACTIVE} while program has assigned studies`, async () => {

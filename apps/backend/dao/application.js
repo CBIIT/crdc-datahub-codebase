@@ -1,127 +1,235 @@
-const prisma = require("../prisma");
-const { MODEL_NAME, SORT} = require('../constants/db-constants');
-const GenericDAO = require("./generic");
-const {convertIdFields, convertMongoFilterToPrismaFilter, handleDotNotation, toPrismaApplicationUpdateData, nullOrMissingMongoCondition} = require('./utils/orm-converter');
-
+const MongooseGenericDAO = require("./mongoose-generic");
+const ApplicationModel = require("../mongoose/models/application");
+const {USER_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
+const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, APPROVED} = require("../constants/application-constants");
 const ERROR = require("../constants/error-constants");
+const {escapeRegexLiteral} = require("../utility/string-util");
 
-class ApplicationDAO extends GenericDAO {
-    constructor(applicationCollection) {
-        super(MODEL_NAME.APPLICATION);
-        this.applicationCollection = applicationCollection;
+const ALL_FILTER = "All";
+const FINAL_INACTIVE_REMINDER = "finalInactiveReminder";
+const INACTIVE_REMINDER_7 = "inactiveReminder_7";
+const INACTIVE_REMINDER_15 = "inactiveReminder_15";
+const INACTIVE_REMINDER_30 = "inactiveReminder_30";
+/** Known interval reminder fields by day offset (schema-defined names). */
+const INACTIVE_REMINDER_BY_DAY = {
+    7: INACTIVE_REMINDER_7,
+    15: INACTIVE_REMINDER_15,
+    30: INACTIVE_REMINDER_30,
+};
+
+/**
+ * Mongoose-backed DAO for application (submission request) documents.
+ */
+class ApplicationDAO extends MongooseGenericDAO {
+    constructor() {
+        super(ApplicationModel);
     }
 
     /**
-     * @param {object|null} row Prisma application row
-     * @returns {object|null}
+     * Strips hydrated/computed API fields before persisting an application update.
+     * @param {object} data Application update payload
+     * @returns {object}
      */
-    _mapApplicationRow(row) {
-        if (!row) {
-            return null;
+    _sanitizeApplicationUpdateData(data) {
+        if (!data || typeof data !== 'object') {
+            return data;
         }
-        return { ...row, _id: row.id };
+        const {
+            _id,
+            id,
+            applicant,
+            canBeReopened,
+            canBeRestored,
+            conditional,
+            pendingConditions,
+            institution,
+            ...updateData
+        } = data;
+        return updateData;
     }
 
-    // Prisma can't join _id in the object.
-    async updateApplicationOrg(orgID, updatedOrg){
-        return await this.applicationCollection.updateMany(
-            {"organization._id": orgID, "organization.name": {"$ne": updatedOrg.name}},
-            {"organization.name": updatedOrg.name, updatedAt: getCurrentTime()}
-        )
+    /**
+     * Builds reminder-flag update fields for inactive SRF notifications.
+     * Uses schema-defined field names only (not derived from day offsets).
+     * @param {boolean} status Flag value to set
+     * @returns {object}
+     */
+    _getEveryReminderUpdate(status) {
+        return {
+            [INACTIVE_REMINDER_7]: status,
+            [INACTIVE_REMINDER_15]: status,
+            [INACTIVE_REMINDER_30]: status,
+            [FINAL_INACTIVE_REMINDER]: status,
+        };
     }
 
+    /**
+     * Applicant $lookup stages shared by list and single-document applicant loads.
+     * @returns {object[]}
+     */
+    _applicantLookupPipeline() {
+        return [
+            {
+                $lookup: {
+                    from: USER_COLLECTION,
+                    localField: "applicantID",
+                    foreignField: "_id",
+                    as: "applicant",
+                },
+            },
+            {
+                $addFields: {
+                    applicant: {
+                        $let: {
+                            vars: {
+                                user: {$arrayElemAt: ["$applicant", 0]},
+                            },
+                            in: {
+                                $cond: [
+                                    {$ifNull: ["$$user", false]},
+                                    {
+                                        id: "$$user._id",
+                                        _id: "$$user._id",
+                                        firstName: "$$user.firstName",
+                                        lastName: "$$user.lastName",
+                                        fullName: "$$user.fullName",
+                                        email: "$$user.email",
+                                    },
+                                    null,
+                                ],
+                            },
+                        },
+                    },
+                },
+            },
+        ];
+    }
+
+    /**
+     * Bulk-update organization.name when the embedded org id matches and the name differs.
+     * @param {string} orgID Organization _id
+     * @param {object} updatedOrg Organization document with name
+     * @returns {Promise<{matchedCount: number, modifiedCount: number}>}
+     */
+    async updateApplicationOrg(orgID, updatedOrg) {
+        return await this.updateMany(
+            {
+                "organization._id": orgID,
+                "organization.name": {$ne: updatedOrg.name},
+            },
+            {
+                "organization.name": updatedOrg.name,
+                updatedAt: getCurrentTime(),
+            }
+        );
+    }
+
+    /**
+     * Insert an application document.
+     * @param {object} application Application document (may include _id)
+     * @returns {Promise<{acknowledged: boolean, insertedId: string}>}
+     */
     async insert(application) {
-        const createdData = convertIdFields(application);
-        const created = await this.create(createdData);
-        return { acknowledged: !!created, insertedId: created.id };
+        const created = await this.create(application);
+        return {acknowledged: !!created, insertedId: created?.id ?? created?._id};
     }
 
+    /**
+     * Update an application by document payload containing _id or id.
+     * @param {object} application Application fields to update
+     * @returns {Promise<object>}
+     */
     async update(application) {
-        // check if _id or id is present
-        if (!application._id && !application.id) {
+        if (!application?._id && !application?.id) {
             throw new Error('Application must have an _id or id');
         }
-        const prismaData = toPrismaApplicationUpdateData(application);
-        return await super.update(application._id ?? application.id, prismaData);
+        const updateData = this._sanitizeApplicationUpdateData(application);
+        return await super.update(application._id ?? application.id, updateData);
     }
 
+    /**
+     * Bulk update applications matching the filter.
+     * @param {object} filter Mongo filter
+     * @param {object|object[]} data Fields to `$set`, or an array of objects to merge
+     * @returns {Promise<{matchedCount: number, modifiedCount: number}>}
+     */
     async updateMany(filter, data) {
-        // Prisma expects a plain object for update, not MongoDB-style operators
         const updateDoc = Array.isArray(data)
             ? Object.assign({}, ...data)
             : data;
-
-        filter = convertMongoFilterToPrismaFilter(filter);
-        const result = await prisma.application.updateMany({
-            where: filter,
-            data: updateDoc
-        });
-        return { matchedCount: result.count, modifiedCount: result.count };
+        const normalizedFilter = this._requireFilter(filter, 'updateMany');
+        try {
+            const result = await this.model.updateMany(normalizedFilter, {$set: updateDoc});
+            return {
+                matchedCount: result.matchedCount,
+                modifiedCount: result.modifiedCount,
+            };
+        } catch (error) {
+            console.error(`ApplicationDAO.updateMany failed:`, {
+                error: error.message,
+                filterKeys: filter && typeof filter === 'object' ? Object.keys(filter) : null,
+                dataKeys: updateDoc && typeof updateDoc === 'object' ? Object.keys(updateDoc) : null,
+                stack: error.stack,
+            });
+            throw new Error(`Failed to update many ${this._modelName}`);
+        }
     }
-
 
     /**
      * Find the Approved parent SRF that links to this application via nextRevisionId.
-     * Only Approved rows receive nextRevisionId (set on reopen); this is the revision-chain parent lookup.
      * @param {string} id Successor application _id
-     * @returns {Promise<object|null>} Approved parent, or null when id is falsy or no match
+     * @returns {Promise<object|null>}
      */
     async findApprovedParentSubmissionRequestByID(id) {
         if (!id) {
             return null;
         }
-        const row = await prisma.application.findFirst({
-            where: { nextRevisionId: id, status: APPROVED },
-        });
-        return this._mapApplicationRow(row);
+        return await this.findFirst({nextRevisionId: id, status: APPROVED});
     }
 
     /**
      * Load status for a single application by id.
      * @param {string} id Application _id
-     * @returns {Promise<{ status: string }|null>}
+     * @returns {Promise<{status: string}|null>}
      */
     async findApplicationStatusById(id) {
         if (!id) {
             return null;
         }
-        return prisma.application.findFirst({
-            where: { id },
-            select: { status: true },
-        });
+        const row = await this.findFirst({_id: id}, {projection: {status: 1}});
+        return row ? {status: row.status} : null;
     }
 
     /**
      * Load id and status for applications matching the given ids.
      * @param {string[]} ids Application _ids
-     * @returns {Promise<object[]>} Rows with id/_id and status
+     * @returns {Promise<object[]>}
      */
     async findApplicationStatusesByIds(ids) {
         if (!ids?.length) {
             return [];
         }
-        const rows = await prisma.application.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, status: true },
-        });
-        return rows.map((row) => ({ ...row, _id: row.id }));
+        return await this.findMany(
+            {_id: ids},
+            {projection: {_id: 1, status: 1}}
+        );
     }
 
     /**
      * Find Approved applications whose nextRevisionId matches any of the given ids.
      * @param {string[]} nextRevisionIds Application _ids referenced by nextRevisionId
-     * @returns {Promise<object[]>} Rows with nextRevisionId
+     * @returns {Promise<object[]>}
      */
     async findApprovedApplicationsByNextRevisionIds(nextRevisionIds) {
         if (!nextRevisionIds?.length) {
             return [];
         }
-        return prisma.application.findMany({
-            where: { nextRevisionId: { in: nextRevisionIds }, status: APPROVED },
-            select: { nextRevisionId: true },
-        });
+        return await this.findMany(
+            {nextRevisionId: nextRevisionIds, status: APPROVED},
+            {projection: {nextRevisionId: 1}}
+        );
     }
 
     /**
@@ -133,21 +241,12 @@ class ApplicationDAO extends GenericDAO {
         if (!id) {
             return null;
         }
-        const row = await prisma.application.findFirst({
-            where: { id },
-            include: {
-                applicant: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        fullName: true,
-                        email: true,
-                    },
-                },
-            },
-        });
-        return this._mapApplicationRow(row);
+        const rows = await this.aggregate([
+            {$match: {_id: id}},
+            ...this._applicantLookupPipeline(),
+            {$limit: 1},
+        ]);
+        return rows?.[0] ?? null;
     }
 
     /**
@@ -159,31 +258,44 @@ class ApplicationDAO extends GenericDAO {
         if (!applicantID) {
             return null;
         }
-        const row = await prisma.application.findFirst({
-            where: { applicantID, status: APPROVED },
-            orderBy: { createdAt: 'desc' },
-        });
-        return this._mapApplicationRow(row);
+        return await this.findFirst(
+            {applicantID, status: APPROVED},
+            {sort: {createdAt: -1}}
+        );
     }
 
     /**
-     * Clear nextRevisionId on any application pointing at the given successor (revision chain link removal).
-     * @param {string} applicationId Successor application _id whose inbound nextRevisionId link should be cleared
-     * @returns {Promise<{ matchedCount: number, modifiedCount: number }>}
+     * Load applicant ownership fields for the given application ids.
+     * @param {string[]} applicationIDs Application _ids
+     * @returns {Promise<object[]>} Rows with id/_id and applicantID
+     */
+    async findApplicantIDsByApplicationIDs(applicationIDs) {
+        if (!applicationIDs?.length) {
+            return [];
+        }
+        return await this.findMany(
+            {_id: applicationIDs},
+            {projection: {_id: 1, applicantID: 1}}
+        );
+    }
+
+    /**
+     * Clear nextRevisionId on any application pointing at the given successor.
+     * @param {string} applicationId Successor application _id
+     * @returns {Promise<{matchedCount: number, modifiedCount: number}>}
      */
     async clearNextRevisionIdPointingTo(applicationId) {
         if (!applicationId) {
-            return { matchedCount: 0, modifiedCount: 0 };
+            return {matchedCount: 0, modifiedCount: 0};
         }
-        const result = await prisma.application.updateMany({
-            where: { nextRevisionId: applicationId },
-            data: { nextRevisionId: null, updatedAt: getCurrentTime() },
-        });
-        return { matchedCount: result.count, modifiedCount: result.count };
+        return await this.updateMany(
+            {nextRevisionId: applicationId},
+            {nextRevisionId: null, updatedAt: getCurrentTime()}
+        );
     }
 
     /**
-     * Insert a new reopened application and update the approved predecessor, rollback if the insert fails.
+     * Insert a new reopened application and update the approved predecessor; roll back the link if insert fails.
      * @param {string} sourceId Approved application _id
      * @param {object} newApp Full successor document (must include _id)
      * @param {boolean} [replaceExistingLink=false] When true, overwrite an existing nextRevisionId on the source
@@ -194,23 +306,30 @@ class ApplicationDAO extends GenericDAO {
 
         let previousNextRevisionID = null;
         if (replaceExistingLink) {
-            const source = await prisma.application.findFirst({
-                where: { id: sourceId },
-                select: { nextRevisionId: true },
-            });
+            const source = await this.findFirst(
+                {_id: sourceId},
+                {projection: {nextRevisionId: 1}}
+            );
             previousNextRevisionID = source?.nextRevisionId ?? null;
         }
 
-        const linkWhere = replaceExistingLink
-            ? { id: sourceId, status: APPROVED }
-            : { id: sourceId, status: APPROVED, ...nullOrMissingMongoCondition('nextRevisionId') };
+        const linkFilter = replaceExistingLink
+            ? {_id: sourceId, status: APPROVED}
+            : {
+                _id: sourceId,
+                status: APPROVED,
+                $or: [
+                    {nextRevisionId: null},
+                    {nextRevisionId: {$exists: false}},
+                ],
+            };
 
-        const linkResult = await prisma.application.updateMany({
-            where: convertMongoFilterToPrismaFilter(linkWhere),
-            data: { nextRevisionId: newApp._id, updatedAt: timestamp },
+        const linkResult = await this.updateMany(linkFilter, {
+            nextRevisionId: newApp._id,
+            updatedAt: timestamp,
         });
 
-        if (linkResult?.count !== 1) {
+        if (linkResult?.matchedCount !== 1) {
             throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         }
 
@@ -219,16 +338,16 @@ class ApplicationDAO extends GenericDAO {
             if (!insertResult?.acknowledged) {
                 throw new Error(ERROR.UPDATE_FAILED);
             }
-            return { ...newApp };
+            return {...newApp};
         } catch (error) {
             try {
-                await prisma.application.updateMany({
-                    where: { id: sourceId },
-                    data: {
+                await this.updateMany(
+                    {_id: sourceId},
+                    {
                         nextRevisionId: replaceExistingLink ? previousNextRevisionID : null,
                         updatedAt: getCurrentTime(),
-                    },
-                });
+                    }
+                );
             } catch (compensateError) {
                 console.error('Failed to compensate nextRevisionId after reopen insert failure:', compensateError);
             }
@@ -236,40 +355,268 @@ class ApplicationDAO extends GenericDAO {
         }
     }
 
+    /**
+     * Find stale in-progress SRFs for reminder/delete jobs, with applicant fields hydrated.
+     * @param {number} inactiveDays Inactivity threshold in days
+     * @param {string} [inactiveFlagField] Reminder flag that must not already be true
+     * @returns {Promise<object[]>}
+     */
     async getInactiveApplication(inactiveDays, inactiveFlagField) {
         try {
-            const applications = await prisma.application.findMany({
-                where: {
-                    updatedAt: {
-                        lt: subtractDaysFromNow(inactiveDays),
-                    },
-                    status: {
-                        in: [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED]
-                    },
-                    // Tracks whether the notification has already been sent
-                    ...(inactiveFlagField ? {[inactiveFlagField]: {not: true}} : {})
-                },
-                include: {
-                    applicant: true,
-                }
-            });
-            return applications.map(item => ({
+            const match = {
+                updatedAt: {$lt: subtractDaysFromNow(inactiveDays)},
+                status: {$in: [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED]},
+            };
+            if (inactiveFlagField) {
+                match[inactiveFlagField] = {$ne: true};
+            }
+            const applications = await this.aggregate([
+                {$match: match},
+                ...this._applicantLookupPipeline(),
+            ]);
+            return (applications || []).map((item) => ({
                 ...item,
-                ...(item.id ? { _id: item.id } : {}),
                 ...(item?.applicant ? {
                     applicant: {
-                        ...item?.applicant,
-                        applicantID: item?.applicant?.id || "",
-                        applicantName: item?.applicant?.fullName || "",
-                        applicantEmail: item?.applicant?.email || ""
-                    }
-                }
-                : {}),
+                        ...item.applicant,
+                        applicantID: item.applicant?.id || item.applicant?._id || "",
+                        applicantName: item.applicant?.fullName || "",
+                        applicantEmail: item.applicant?.email || "",
+                    },
+                } : {}),
             }));
         } catch (error) {
             console.error('Error getting getInactiveApplication:', error);
             return [];
         }
+    }
+
+    /**
+     * Mark final (and interval) reminder flags for the given application ids.
+     * @param {string[]} applicationIDs Application _ids
+     * @returns {Promise<{matchedCount: number, modifiedCount: number}>}
+     */
+    async markFinalRemindersSent(applicationIDs) {
+        if (!applicationIDs?.length) {
+            return {matchedCount: 0, modifiedCount: 0};
+        }
+        return await this.updateMany(
+            {_id: {$in: applicationIDs}},
+            this._getEveryReminderUpdate(true)
+        );
+    }
+
+    /**
+     * Mark interval reminder flags for a single application.
+     * Only schema-defined day fields (7, 15, 30) are updated.
+     * @param {string} applicationID Application _id
+     * @param {number[]} reminderDays Reminder day offsets to set true
+     * @returns {Promise<object>}
+     */
+    async markIntervalReminderSent(applicationID, reminderDays) {
+        const reminderFilter = (reminderDays || []).reduce((acc, day) => {
+            const field = INACTIVE_REMINDER_BY_DAY[day];
+            if (field) {
+                acc[field] = true;
+            }
+            return acc;
+        }, {});
+        return await this.update({_id: applicationID, ...reminderFilter});
+    }
+
+    /**
+     * Builds the Mongo match for listApplications from API inputs.
+     * Submitter-name matching is applied after applicant $lookup (see listApplicationsWithFacets).
+     * @param {object} params
+     * @param {string[]} [params.statuses] Canonical status values (empty = no status filter)
+     * @param {string|null} [params.programName]
+     * @param {string|null} [params.studyName]
+     * @param {string|null} [params.applicantID] Own-scope applicant filter
+     * @returns {{match: object, submitterName: string|null, hasStudyFilter: boolean}}
+     */
+    _buildListApplicationsMatch({statuses, programName, studyName, applicantID} = {}) {
+        const match = {};
+        if (statuses?.length) {
+            match.status = {$in: statuses};
+        }
+        if (programName != null && programName !== ALL_FILTER) {
+            match.programName = programName;
+        }
+        const studySearchTerm = studyName?.trim();
+        const hasStudyFilter = studySearchTerm?.length > 0 && studyName !== ALL_FILTER;
+        if (hasStudyFilter) {
+            const studySearchTermSanitized = escapeRegexLiteral(studySearchTerm);
+            const containsOption = {$regex: studySearchTermSanitized, $options: 'i'};
+            match.$or = [
+                {studyName: containsOption},
+                {studyAbbreviation: containsOption},
+            ];
+        }
+        if (applicantID) {
+            match.applicantID = applicantID;
+        }
+        return {match, hasStudyFilter};
+    }
+
+    /**
+     * Lists applications with applicant enrichment, pagination, and facet values.
+     * Uses separate count/facet queries (DocumentDB does not support $facet).
+     * @param {object} params
+     * @param {string[]} [params.statuses]
+     * @param {string|null} [params.programName]
+     * @param {string|null} [params.studyName]
+     * @param {string|null} [params.submitterName]
+     * @param {string|null} [params.applicantID]
+     * @param {number} [params.first]
+     * @param {number} [params.offset]
+     * @param {string} [params.orderBy]
+     * @param {string} [params.sortDirection]
+     * @returns {Promise<{applications: object[], total: number, programs: string[], studies: string[], studyAbbreviations: string[], status: string[], submitterNames: string[]}>}
+     */
+    async listApplicationsWithFacets({
+        statuses,
+        programName,
+        studyName,
+        submitterName,
+        applicantID,
+        first,
+        offset,
+        orderBy,
+        sortDirection,
+    } = {}) {
+        const {match, hasStudyFilter} = this._buildListApplicationsMatch({
+            statuses,
+            programName,
+            studyName,
+            applicantID,
+        });
+
+        const submitterFilter =
+            submitterName != null && submitterName !== ALL_FILTER
+                ? {
+                    "applicant.fullName": {
+                        $regex: escapeRegexLiteral(submitterName.trim()),
+                        $options: 'i',
+                    },
+                }
+                : null;
+
+        let sortField = orderBy || "createdAt";
+        if (sortField === "applicant.applicantName" || sortField === "applicant.fullName") {
+            sortField = "applicant.fullName";
+        }
+
+        const basePipeline = [
+            {$match: match},
+            ...this._applicantLookupPipeline(),
+            ...(submitterFilter ? [{$match: submitterFilter}] : []),
+        ];
+
+        const pagination = new MongoPagination(
+            first,
+            offset,
+            sortField,
+            sortDirection,
+            sortField === "applicant.fullName" || sortField === "programName" || sortField === "studyName"
+        );
+
+        const [applications, total, programs, studies, studyAbbreviations, statusList, submitterNames] =
+            await Promise.all([
+                this.aggregate(basePipeline.concat(pagination.getPaginationPipeline())),
+                this._countListApplications(basePipeline),
+                this._distinctListField(basePipeline, match, submitterFilter, "programName", "programName"),
+                this._distinctListField(basePipeline, match, submitterFilter, "studyName", "studyName", hasStudyFilter),
+                this._distinctListField(basePipeline, match, submitterFilter, "studyAbbreviation", null, hasStudyFilter),
+                this._distinctListField(basePipeline, match, submitterFilter, "status", "status"),
+                this._distinctSubmitterNames(match),
+            ]);
+
+        return {
+            applications: applications || [],
+            total,
+            programs: programs || [],
+            studies: studies || [],
+            studyAbbreviations: studyAbbreviations || [],
+            status: statusList || [],
+            submitterNames: submitterNames || [],
+        };
+    }
+
+    /**
+     * @param {object[]} basePipeline Match + applicant lookup (+ optional submitter match)
+     * @returns {Promise<number>}
+     */
+    async _countListApplications(basePipeline) {
+        const rows = await this.aggregate([
+            ...basePipeline,
+            {$count: "count"},
+        ]);
+        return rows?.[0]?.count ?? 0;
+    }
+
+    /**
+     * Distinct facet values for a field, omitting that field's filter when excludeMatchKey is set.
+     * When reuseBasePipeline is true (study filter active), distinct from the already-filtered pipeline.
+     * @param {object[]} basePipeline
+     * @param {object} match
+     * @param {object|null} submitterFilter
+     * @param {string} field
+     * @param {string|null} excludeMatchKey Match key to omit for this facet
+     * @param {boolean} [reuseBasePipeline=false]
+     * @returns {Promise<string[]>}
+     */
+    /**
+     * Distinct facet values for a field, omitting that field's filter when excludeMatchKey is set.
+     * When reuseBasePipeline is true (study filter active), distinct from the already-filtered pipeline.
+     * @param {object[]} basePipeline
+     * @param {object} match
+     * @param {object|null} submitterFilter
+     * @param {string} field
+     * @param {string|null} excludeMatchKey Match key to omit for this facet
+     * @param {boolean} [reuseBasePipeline=false]
+     * @returns {Promise<string[]>}
+     */
+    async _distinctListField(basePipeline, match, submitterFilter, field, excludeMatchKey, reuseBasePipeline = false) {
+        let pipeline;
+        if (reuseBasePipeline) {
+            pipeline = [...basePipeline];
+        } else {
+            const facetMatch = {...match};
+            if (excludeMatchKey) {
+                delete facetMatch[excludeMatchKey];
+            }
+            pipeline = [
+                {$match: facetMatch},
+                ...this._applicantLookupPipeline(),
+                ...(submitterFilter ? [{$match: submitterFilter}] : []),
+            ];
+        }
+
+        const rows = await this.aggregate([
+            ...pipeline,
+            {$group: {_id: `$${field}`}},
+            {$match: {_id: {$nin: [null, ""]}}},
+            {$sort: {_id: 1}},
+        ]);
+        return (rows || []).map((row) => row._id).filter(Boolean);
+    }
+
+    /**
+     * Distinct submitter full names for the listApplications facet (omits submitter name filter).
+     * @param {object} match Application match without submitter filter
+     * @returns {Promise<string[]>}
+     */
+    async _distinctSubmitterNames(match) {
+        const pipeline = [
+            {$match: match},
+            ...this._applicantLookupPipeline(),
+            {$group: {_id: "$applicantID", fullName: {$first: "$applicant.fullName"}}},
+            {$match: {fullName: {$nin: [null, ""]}}},
+            {$sort: {fullName: 1}},
+        ];
+        const rows = await this.aggregate(pipeline);
+        const names = (rows || []).map((row) => row.fullName).filter(Boolean);
+        return Array.from(new Set(names));
     }
 }
 

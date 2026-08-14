@@ -77,7 +77,7 @@ dbConnector.connect().then(async () => {
     const authorizationService = new AuthorizationService(configurationService);
     const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
     const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
-    const programService = new Program(submissionCollection, applicationCollection);
+    const programService = new Program(submissionCollection);
     const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, submissionCollection, authorizationService, notificationsService, {url: config.emails_url, contactEmail: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl});
 
     const institutionService = new InstitutionService(authorizationService);

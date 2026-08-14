@@ -180,14 +180,10 @@ class Submission {
         }
         
         // OWN scope - batch load applications to check ownership
-        const applications = await this.applicationDAO.findMany({
-            id: { in: applicationIDs }
-        }, {
-            select: { id: true, applicantID: true }
-        });
+        const applications = await this.applicationDAO.findApplicantIDsByApplicationIDs(applicationIDs);
         
         const applicantMap = new Map(
-            applications.map(app => [app.id, app.applicantID])
+            applications.map(app => [app.id ?? app._id, app.applicantID])
         );
         
         const enriched = submissionList.map(s => ({
