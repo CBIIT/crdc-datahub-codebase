@@ -87,6 +87,7 @@ export const RestoreCanceled: Story = {
     application: applicationFactory.build({
       _id: "mock-id",
       status: "Canceled",
+      canBeRestored: true,
       applicant: applicantFactory.build({
         applicantID: "applicant-123",
         applicantName: "",
@@ -114,6 +115,7 @@ export const RestoreDeleted: Story = {
     application: applicationFactory.build({
       _id: "mock-id",
       status: "Deleted",
+      canBeRestored: true,
       applicant: applicantFactory.build({
         applicantID: "applicant-123",
         applicantName: "",
@@ -138,6 +140,7 @@ export const RestoreDialog: Story = {
     application: applicationFactory.build({
       _id: "mock-id",
       status: "Canceled",
+      canBeRestored: true,
       applicant: applicantFactory.build({
         applicantID: "applicant-123",
         applicantName: "",

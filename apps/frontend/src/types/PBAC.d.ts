@@ -97,6 +97,8 @@ type PBACDefault<T = AuthNotifications | AuthPermissions> = {
   inherited: T[];
   /**
    * The sort order of the PBAC object within its group.
+   *
+   * Nested PBAC options will be demarcated by a sequentially ordered decimal value.
    */
   order: number;
   /**
