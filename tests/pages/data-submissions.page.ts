@@ -80,34 +80,26 @@ export class DataSubmissionsPage extends BasePage {
     await this.page.getByTestId(`study-option-${studyId}`).click();
   }
 
-  async createSubmission(submissionName: string, clickSubmissionLinkAfterCreate = true): Promise<void> {
+  async createSubmission(submissionName: string): Promise<Locator> {
     await this.submissionNameInputWrapper.getByRole('textbox').fill(submissionName);
     await this.createSubmissionButton.click();
 
-    if (clickSubmissionLinkAfterCreate) {
-      await this.page.getByRole('link', { name: submissionName, exact: true }).first().click();
-    }
+    return this.page.getByRole('link', { name: submissionName, exact: true }).first();
   }
 
-  async createDataSubmissionFlow(options: CreateDataSubmissionOptions): Promise<void> {
+  async createDataSubmissionFlow(options: CreateDataSubmissionOptions): Promise<Locator> {
     const {
       submissionName,
       studyId,
       dataCommons = 'CTDC',
       intention = 'New/Update',
       dataType = 'Metadata Only',
-      openFromHome = true,
-      clickSubmissionLinkAfterCreate = true,
     } = options;
-
-    if (openFromHome) {
-      await this.open();
-    }
 
     await this.openCreateDataSubmissionDialog(intention);
     await this.chooseDataType(dataType);
     await this.chooseDataCommonsAndStudy(dataCommons, studyId);
-    await this.createSubmission(submissionName, clickSubmissionLinkAfterCreate);
+    return await this.createSubmission(submissionName);
   }
 
   async uploadMetadataFiles(files: string[]): Promise<void> {
