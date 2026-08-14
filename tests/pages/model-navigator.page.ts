@@ -4,12 +4,10 @@ import { BasePage } from './base.page';
 
 export class ModelNavigatorPage extends BasePage {
   readonly modelNavigatorButton: Locator;
-  readonly tableViewTab: Locator;
 
   constructor(page: Page) {
     super(page);
     this.modelNavigatorButton = page.getByRole('button', { name: 'Model Navigator' });
-    this.tableViewTab = page.getByRole('tab', { name: 'Table View' });
   }
 
   async openModel(model: string): Promise<void> {
@@ -20,10 +18,10 @@ export class ModelNavigatorPage extends BasePage {
   }
 
   async switchToTableView(): Promise<void> {
-    await this.tableViewTab.click();
+    await this.page.getByRole('tab', { name: 'Table View' }).click();
   }
 
-  async expectOnModelNavigator(): Promise<void> {
-    await expect(this.page).toHaveURL(/\/model-navigator\/.+\/latest(?:\?.*)?$/);
+  async switchToVersionHistoryView(): Promise<void> {
+    await this.page.getByRole('tab', { name: 'Version History' }).click();
   }
 }
