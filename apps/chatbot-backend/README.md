@@ -1,7 +1,5 @@
 # Introduction
 
-Test changes
-
 This project provides the base implementation for a question-answering system using AWS Bedrock and a Knowledge Base (KB). It handles incoming questions, retrieves relevant context from the KB, and generates answers using the Converse API.
 
 Key features include:
