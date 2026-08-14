@@ -123,9 +123,9 @@ const applicationSchema = new mongoose.Schema(
         programDescription: {
             type: String,
         },
+        // Draft SRFs may persist empty strings for these form fields (Prisma allowed blanks).
         programName: {
             type: String,
-            required: true,
         },
         questionnaireData: {
             type: String,
@@ -140,11 +140,9 @@ const applicationSchema = new mongoose.Schema(
         },
         studyAbbreviation: {
             type: String,
-            required: true,
         },
         studyName: {
             type: String,
-            required: true,
         },
         submittedDate: {
             type: Date,

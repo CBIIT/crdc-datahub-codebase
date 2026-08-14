@@ -28,6 +28,45 @@ class ApplicationDAO extends MongooseGenericDAO {
     }
 
     /**
+     * Normalize GraphQL/frontend `{ id, name }` institutions to Mongo `{ _id, name }`.
+     * @param {object[]|undefined|null} institutions
+     * @returns {object[]|undefined|null}
+     */
+    _normalizeNewInstitutionsForWrite(institutions) {
+        if (!Array.isArray(institutions)) {
+            return institutions;
+        }
+        return institutions.map((entry) => ({
+            _id: entry?.id ?? entry?._id,
+            name: entry?.name,
+        }));
+    }
+
+    /**
+     * Normalize a document so nested newInstitutions expose GraphQL `id` from `_id`.
+     * @param {object|null} doc
+     * @returns {object|null}
+     */
+    _mapDoc(doc) {
+        const mapped = super._mapDoc(doc);
+        if (!mapped?.newInstitutions?.length) {
+            return mapped;
+        }
+        mapped.newInstitutions = mapped.newInstitutions.map((entry) => {
+            if (!entry || typeof entry !== 'object') {
+                return entry;
+            }
+            const institutionID = entry._id ?? entry.id;
+            if (institutionID === undefined || institutionID === null) {
+                return entry;
+            }
+            const id = typeof institutionID === 'string' ? institutionID : String(institutionID);
+            return {...entry, id, _id: id};
+        });
+        return mapped;
+    }
+
+    /**
      * Strips hydrated/computed API fields before persisting an application update.
      * @param {object} data Application update payload
      * @returns {object}
@@ -47,6 +86,9 @@ class ApplicationDAO extends MongooseGenericDAO {
             institution,
             ...updateData
         } = data;
+        if (updateData.newInstitutions !== undefined) {
+            updateData.newInstitutions = this._normalizeNewInstitutionsForWrite(updateData.newInstitutions);
+        }
         return updateData;
     }
 
@@ -132,7 +174,15 @@ class ApplicationDAO extends MongooseGenericDAO {
      * @returns {Promise<{acknowledged: boolean, insertedId: string}>}
      */
     async insert(application) {
-        const created = await this.create(application);
+        const payload = application && typeof application === 'object'
+            ? {
+                ...application,
+                ...(application.newInstitutions !== undefined
+                    ? {newInstitutions: this._normalizeNewInstitutionsForWrite(application.newInstitutions)}
+                    : {}),
+            }
+            : application;
+        const created = await this.create(payload);
         return {acknowledged: !!created, insertedId: created?.id ?? created?._id};
     }
 
@@ -556,19 +606,9 @@ class ApplicationDAO extends MongooseGenericDAO {
 
     /**
      * Distinct facet values for a field, omitting that field's filter when excludeMatchKey is set.
-     * When reuseBasePipeline is true (study filter active), distinct from the already-filtered pipeline.
-     * @param {object[]} basePipeline
-     * @param {object} match
-     * @param {object|null} submitterFilter
-     * @param {string} field
-     * @param {string|null} excludeMatchKey Match key to omit for this facet
-     * @param {boolean} [reuseBasePipeline=false]
-     * @returns {Promise<string[]>}
-     */
-    /**
-     * Distinct facet values for a field, omitting that field's filter when excludeMatchKey is set.
-     * When reuseBasePipeline is true (study filter active), distinct from the already-filtered pipeline.
-     * @param {object[]} basePipeline
+     * When reuseBasePipeline is true (study filter active), distinct from the already-filtered match.
+     * Applicant $lookup stages are included only when submitterFilter must be evaluated.
+     * @param {object[]} basePipeline Match + applicant lookup (+ optional submitter match)
      * @param {object} match
      * @param {object|null} submitterFilter
      * @param {string} field
@@ -579,17 +619,16 @@ class ApplicationDAO extends MongooseGenericDAO {
     async _distinctListField(basePipeline, match, submitterFilter, field, excludeMatchKey, reuseBasePipeline = false) {
         let pipeline;
         if (reuseBasePipeline) {
-            pipeline = [...basePipeline];
+            pipeline = submitterFilter ? [...basePipeline] : [{$match: match}];
         } else {
             const facetMatch = {...match};
             if (excludeMatchKey) {
                 delete facetMatch[excludeMatchKey];
             }
-            pipeline = [
-                {$match: facetMatch},
-                ...this._applicantLookupPipeline(),
-                ...(submitterFilter ? [{$match: submitterFilter}] : []),
-            ];
+            pipeline = [{$match: facetMatch}];
+            if (submitterFilter) {
+                pipeline.push(...this._applicantLookupPipeline(), {$match: submitterFilter});
+            }
         }
 
         const rows = await this.aggregate([

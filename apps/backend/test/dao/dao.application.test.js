@@ -132,6 +132,12 @@ describe('ApplicationDAO', () => {
     });
 
     describe('listApplicationsWithFacets', () => {
+        /**
+         * Aggregate call order: applications, count, programs, studies, studyAbbreviations, status, submitterNames.
+         * Field-facet pipelines are indices 2–5.
+         */
+        const fieldFacetCallIndexes = [2, 3, 4, 5];
+
         it('should aggregate with applicant lookup and without $facet', async () => {
             ApplicationModel.aggregate
                 .mockResolvedValueOnce([{_id: 'app1', programName: 'P1'}])
@@ -158,6 +164,94 @@ describe('ApplicationDAO', () => {
             expect(result.total).toBe(1);
             expect(result.programs).toEqual(['P1']);
             expect(result.submitterNames).toEqual(['Alice']);
+        });
+
+        it('should omit applicant $lookup from field-facet pipelines when submitterName is not set', async () => {
+            ApplicationModel.aggregate
+                .mockResolvedValueOnce([{_id: 'app1'}])
+                .mockResolvedValueOnce([{count: 1}])
+                .mockResolvedValueOnce([{_id: 'P1'}])
+                .mockResolvedValueOnce([{_id: 'Study'}])
+                .mockResolvedValueOnce([{_id: 'ST'}])
+                .mockResolvedValueOnce([{_id: 'New'}])
+                .mockResolvedValueOnce([{fullName: 'Alice'}]);
+
+            await dao.listApplicationsWithFacets({
+                statuses: ['New'],
+                first: 10,
+                offset: 0,
+            });
+
+            for (const index of fieldFacetCallIndexes) {
+                const pipeline = ApplicationModel.aggregate.mock.calls[index][0];
+                expect(pipeline.some((stage) => stage.$lookup)).toBe(false);
+            }
+        });
+
+        it('should include applicant $lookup in field-facet pipelines when submitterName is set', async () => {
+            ApplicationModel.aggregate
+                .mockResolvedValueOnce([{_id: 'app1'}])
+                .mockResolvedValueOnce([{count: 1}])
+                .mockResolvedValueOnce([{_id: 'P1'}])
+                .mockResolvedValueOnce([{_id: 'Study'}])
+                .mockResolvedValueOnce([{_id: 'ST'}])
+                .mockResolvedValueOnce([{_id: 'New'}])
+                .mockResolvedValueOnce([{fullName: 'Alice'}]);
+
+            await dao.listApplicationsWithFacets({
+                statuses: ['New'],
+                submitterName: 'Alice',
+                first: 10,
+                offset: 0,
+            });
+
+            for (const index of fieldFacetCallIndexes) {
+                const pipeline = ApplicationModel.aggregate.mock.calls[index][0];
+                expect(pipeline.some((stage) => stage.$lookup)).toBe(true);
+            }
+        });
+    });
+
+    describe('newInstitutions id round-trip', () => {
+        it('should normalize id to _id on insert', async () => {
+            ApplicationModel.create.mockResolvedValue({_id: 'app1'});
+            await dao.insert({
+                status: 'New',
+                newInstitutions: [{id: 'inst-1', name: 'X'}],
+            });
+            expect(ApplicationModel.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    newInstitutions: [{_id: 'inst-1', name: 'X'}],
+                })
+            );
+        });
+
+        it('should normalize id to _id on update', async () => {
+            ApplicationModel.findByIdAndUpdate.mockReturnValue(
+                createLeanQuery({_id: 'app1', newInstitutions: [{_id: 'inst-1', name: 'X'}]})
+            );
+            const result = await dao.update({
+                _id: 'app1',
+                newInstitutions: [{id: 'inst-1', name: 'X'}],
+            });
+            expect(ApplicationModel.findByIdAndUpdate).toHaveBeenCalledWith(
+                'app1',
+                {$set: {newInstitutions: [{_id: 'inst-1', name: 'X'}]}},
+                {new: true}
+            );
+            expect(result.newInstitutions).toEqual([{id: 'inst-1', _id: 'inst-1', name: 'X'}]);
+        });
+
+        it('should map nested newInstitutions _id to id on read', () => {
+            const result = dao._mapDoc({
+                _id: 'app1',
+                newInstitutions: [{_id: 'inst-1', name: 'X'}],
+            });
+            expect(result).toEqual({
+                id: 'app1',
+                _id: 'app1',
+                newInstitutions: [{id: 'inst-1', _id: 'inst-1', name: 'X'}],
+            });
         });
     });
 });
