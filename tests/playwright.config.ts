@@ -43,8 +43,17 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         storageState: process.env.AUTH_STATE_PATH,
       },
+      grepInvert: /@unauthenticated/,
       dependencies: ['setup'],
       testIgnore: /.*\.setup\.ts/
     },
+    {
+      name: "Chrome (Desktop)",
+      use: {
+        ...devices['Desktop Chrome'],
+      },
+      grep: /@unauthenticated/,
+      testIgnore: /.*\.setup\.ts/
+    }
   ]
 });
