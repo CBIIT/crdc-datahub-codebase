@@ -170,7 +170,7 @@ function renderSummaryPage(pdf: PdfBuilder, data: ReportData, options: ResolvedO
   pdf.heading('Where to find additional evidence');
   pdf.paragraph(
     `Retained artifacts for this run are stored alongside this document in the evidence/ directory, organised as evidence/<test-id>/<attempt>/<artifact>. The structured execution data used to generate this document is available as ${options.fileName}.json.` +
-      (data.run.pipeline === NOT_AVAILABLE ? '' : ` Pipeline artifacts are published by the ${data.run.pipeline} job.`)
+    (data.run.pipeline === NOT_AVAILABLE ? '' : ` Pipeline artifacts are published by the ${data.run.pipeline} job.`)
   );
 }
 
@@ -365,10 +365,9 @@ function renderExceptionsPage(pdf: PdfBuilder, data: ReportData): void {
 }
 
 function renderEvidence(pdf: PdfBuilder, scenario: Scenario, attempt: Attempt, options: ResolvedOptions, reportDir: string): void {
-  const showScreenshots = attempt.status !== 'Passed' || (options.includeSuccessEvidence && scenario.critical);
-  const screenshots = showScreenshots
-    ? attempt.evidence.filter((e) => e.type === 'screenshot' && e.path).slice(0, options.maxScreenshotsPerAttempt)
-    : [];
+  const screenshots = attempt.evidence
+    .filter((e) => e.type === 'screenshot' && e.path)
+    .slice(0, options.maxScreenshotsPerAttempt);
 
   for (const evidence of screenshots) {
     const embedded = pdf.image(path.join(reportDir, evidence.path!), [
@@ -449,10 +448,10 @@ function renderScenarioDetail(pdf: PdfBuilder, scenario: Scenario, options: Reso
           : []),
         ...(attempt.assertion
           ? [
-              { label: 'Assertion', value: attempt.assertion.message ?? NOT_AVAILABLE },
-              { label: 'Expected', value: attempt.assertion.expected ?? NOT_AVAILABLE },
-              { label: 'Observed', value: attempt.assertion.observed ?? NOT_AVAILABLE },
-            ]
+            { label: 'Assertion', value: attempt.assertion.message ?? NOT_AVAILABLE },
+            { label: 'Expected', value: attempt.assertion.expected ?? NOT_AVAILABLE },
+            { label: 'Observed', value: attempt.assertion.observed ?? NOT_AVAILABLE },
+          ]
           : []),
       ],
       0.28
@@ -481,7 +480,12 @@ function renderEvidencePages(pdf: PdfBuilder, data: ReportData, options: Resolve
   );
 
   const detailScenarios = data.scenarios.filter(
-    (s) => s.attempts.length > 0 && (s.status !== 'Passed' || s.critical || s.attempts.length > 1)
+    (s) =>
+      s.attempts.length > 0 &&
+      (s.status !== 'Passed' ||
+        s.critical ||
+        s.attempts.length > 1 ||
+        s.attempts.some((attempt) => attempt.evidence.some((evidence) => evidence.type === 'screenshot')))
   );
   const withoutExecution = data.scenarios.filter((s) => s.attempts.length === 0);
 
