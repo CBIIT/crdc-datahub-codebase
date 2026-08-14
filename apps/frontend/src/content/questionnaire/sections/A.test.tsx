@@ -1,5 +1,6 @@
 import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { fireEvent, within } from "@testing-library/react";
 import { createRef, FC, useMemo } from "react";
 import { MemoryRouter } from "react-router-dom";
 
@@ -9,6 +10,7 @@ import {
   Status as FormStatus,
 } from "@/components/Contexts/FormContext";
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
+import { contactFactory } from "@/factories/application/ContactFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { render } from "@/test-utils";
 
@@ -159,5 +161,119 @@ describe("FormSectionA sequence-based PI locking", () => {
     expect(container.querySelector("#section-a-pi-institution-address")).not.toHaveAttribute(
       "readonly"
     );
+  });
+});
+
+describe("Implementation Requirements", () => {
+  it("should render all 'Receives all email communications' checkboxes with correct defaults", () => {
+    const questionnaireData = questionnaireDataFactory.build({
+      additionalContacts: contactFactory.build(1, { receivesEmails: false }),
+    });
+
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({ questionnaireData }),
+    };
+
+    const { container } = render(<TestParent formCtxState={formCtxState} />);
+
+    const piCheckbox = container.querySelector(
+      "#section-a-pi-receives-emails-checkbox"
+    ) as HTMLInputElement;
+    expect(piCheckbox).toBeInTheDocument();
+    expect(piCheckbox.value).toBe("false");
+
+    const pcCheckbox = container.querySelector(
+      "#section-a-primary-contact-receives-emails-checkbox"
+    ) as HTMLInputElement;
+    expect(pcCheckbox).toBeInTheDocument();
+    expect(pcCheckbox.value).toBe("true");
+
+    const acCheckboxes = container.querySelectorAll(
+      "[id*='additionalContacts'][id*='receives-emails-checkbox']"
+    );
+    expect(acCheckboxes.length).toBe(1);
+    expect((acCheckboxes[0] as HTMLInputElement).value).toBe("false");
+  });
+
+  it("should render the Primary Contact 'Receives all email communications' checkbox always checked and not allow unchecking", () => {
+    const { container, getByTestId } = render(<TestParent />);
+
+    const pcHiddenCheckbox = container.querySelector(
+      "#section-a-primary-contact-receives-emails-checkbox"
+    ) as HTMLInputElement;
+    expect(pcHiddenCheckbox).toBeInTheDocument();
+    expect(pcHiddenCheckbox.value).toBe("true");
+
+    const pcEmailCheckbox = within(getByTestId("primary-contact-receives-emails")).getByRole(
+      "checkbox"
+    );
+
+    fireEvent.click(pcEmailCheckbox);
+
+    expect(pcHiddenCheckbox.value).toBe("true");
+  });
+
+  it("should disable the PI email checkbox when 'Same as Principal Investigator' is checked", () => {
+    const questionnaireData = questionnaireDataFactory.build({
+      piAsPrimaryContact: true,
+      primaryContact: null,
+    });
+
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({ questionnaireData }),
+    };
+
+    const { container, getByTestId } = render(<TestParent formCtxState={formCtxState} />);
+
+    const piCheckbox = container.querySelector(
+      "#section-a-pi-receives-emails-checkbox"
+    ) as HTMLInputElement;
+    expect(piCheckbox).toBeInTheDocument();
+    expect(piCheckbox.value).toBe("true");
+
+    const piEmailCheckbox = within(getByTestId("pi-receives-emails")).getByRole("checkbox");
+    expect(piEmailCheckbox).toBeDisabled();
+  });
+
+  it("should allow toggling the PI email checkbox when 'Same as PI' is not checked", () => {
+    const { container, getByTestId } = render(<TestParent />);
+
+    const piHiddenCheckbox = container.querySelector(
+      "#section-a-pi-receives-emails-checkbox"
+    ) as HTMLInputElement;
+    expect(piHiddenCheckbox.value).toBe("false");
+
+    const piEmailCheckbox = within(getByTestId("pi-receives-emails")).getByRole("checkbox");
+
+    fireEvent.click(piEmailCheckbox);
+
+    expect(piHiddenCheckbox.value).toBe("true");
+  });
+
+  it("should render a receivesEmails checkbox for each Additional Contact when multiple exist", () => {
+    const questionnaireData = questionnaireDataFactory.build({
+      additionalContacts: contactFactory.build(3, { receivesEmails: false }),
+    });
+
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({ questionnaireData }),
+    };
+
+    const { container } = render(<TestParent formCtxState={formCtxState} />);
+
+    const acCheckboxes = container.querySelectorAll(
+      "[id*='additionalContacts'][id*='receives-emails-checkbox']"
+    );
+    expect(acCheckboxes.length).toBe(3);
+    acCheckboxes.forEach((checkbox: HTMLInputElement) => {
+      expect(checkbox).toBeInTheDocument();
+      expect(checkbox.value).toBe("false");
+    });
   });
 });

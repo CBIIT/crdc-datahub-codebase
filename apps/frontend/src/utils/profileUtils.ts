@@ -54,6 +54,134 @@ export type ColumnizedPBACGroups<T = unknown> = {
 }[][];
 
 /**
+ * A parent notification option paired with its nested child options.
+ *
+ * @see {@link nestNotificationOptions}
+ */
+export type NotificationGroupNode = {
+  parent: PBACDefault<AuthNotifications>;
+  children: PBACDefault<AuthNotifications>[];
+};
+
+/**
+ * Determines whether a notification `order` denotes a nested child option.
+ *
+ * Child options use a decimal order (e.g. `4.1`) whose integer portion (`4`)
+ * references their parent's order.
+ */
+const isNestedOrder = (order: number): boolean =>
+  Number.isFinite(order) && !Number.isInteger(order);
+
+/**
+ * Groups a flat list of notification options into a one-level parent/child tree
+ * using their decimal `order` values.
+ *
+ * A child references its parent by the integer portion of its order (e.g. an
+ * option with order `4.1` nests under the option with order `4`). A child
+ * without a matching parent is surfaced as its own top-level row.
+ *
+ * @param options The flat notification options for a single group.
+ * @returns The notification options arranged as parent nodes with nested children.
+ */
+export const nestNotificationOptions = (
+  options: PBACDefault<AuthNotifications>[]
+): NotificationGroupNode[] => {
+  if (!options?.length) {
+    return [];
+  }
+
+  const parentOrders = new Set(options.filter((o) => !isNestedOrder(o.order)).map((o) => o.order));
+  const isChild = (option: PBACDefault<AuthNotifications>): boolean =>
+    isNestedOrder(option.order) && parentOrders.has(Math.floor(option.order));
+
+  return options
+    .filter((option) => !isChild(option))
+    .map((parent) => ({
+      parent,
+      children: options
+        .filter((option) => isChild(option) && Math.floor(option.order) === parent.order)
+        .sort((a, b) => a.order - b.order),
+    }));
+};
+
+/**
+ * Derives the tri-state checkbox state for a parent notification from its
+ * editable children, falling back to all children when every child is disabled.
+ * A parent without children reflects its own checked state.
+ *
+ * @param parent The parent notification option.
+ * @param children The parent's nested child options.
+ * @returns The `checked` and `indeterminate` flags for the parent checkbox.
+ */
+export const getNestedCheckState = (
+  parent: PBACDefault<AuthNotifications>,
+  children: PBACDefault<AuthNotifications>[]
+): { checked: boolean; indeterminate: boolean } => {
+  if (!children.length) {
+    return { checked: !!parent.checked, indeterminate: false };
+  }
+
+  const controllable = children.filter((child) => !child.disabled);
+  const source = controllable.length ? controllable : children;
+  const selectedCount = source.filter((child) => child.checked).length;
+
+  return {
+    checked: selectedCount === source.length,
+    indeterminate: selectedCount > 0 && selectedCount < source.length,
+  };
+};
+
+/**
+ * Computes the next notification selection after toggling a parent option,
+ * cascading the change to all of its editable (non-disabled) children.
+ *
+ * @param selected The currently-selected notification IDs.
+ * @param parent The parent notification being toggled.
+ * @param children The parent's nested child options.
+ * @param isChecked Whether the parent is currently fully checked.
+ * @returns The updated list of selected notification IDs.
+ */
+export const toggleParentNotification = (
+  selected: AuthNotifications[],
+  parent: PBACDefault<AuthNotifications>,
+  children: PBACDefault<AuthNotifications>[],
+  isChecked: boolean
+): AuthNotifications[] => {
+  const editableChildren = children.filter((child) => !child.disabled).map((child) => child._id);
+
+  if (isChecked) {
+    return selected.filter((id) => id !== parent._id && !editableChildren.includes(id));
+  }
+
+  return uniq([...selected, parent._id, ...editableChildren]);
+};
+
+/**
+ * Computes the next notification selection after toggling a child option,
+ * syncing the parent to reflect whether any sibling remains selected.
+ *
+ * @param selected The currently-selected notification IDs.
+ * @param parent The child's parent notification option.
+ * @param child The child notification being toggled.
+ * @param siblings All child options sharing the same parent.
+ * @returns The updated list of selected notification IDs.
+ */
+export const toggleChildNotification = (
+  selected: AuthNotifications[],
+  parent: PBACDefault<AuthNotifications>,
+  child: PBACDefault<AuthNotifications>,
+  siblings: PBACDefault<AuthNotifications>[]
+): AuthNotifications[] => {
+  const next = selected.includes(child._id)
+    ? selected.filter((id) => id !== child._id)
+    : [...selected, child._id];
+
+  const anySelected = siblings.some((sibling) => next.includes(sibling._id));
+
+  return anySelected ? uniq([...next, parent._id]) : next.filter((id) => id !== parent._id);
+};
+
+/**
  * A utility function to group an array of PBACDefaults into columns
  * based on the group name.
  *
