@@ -152,19 +152,19 @@ describe("serializeToMarkdown", () => {
     expect(utils.serializeToMarkdown(nodes)).toBe("first\n\nsecond");
   });
 
-  it("should skip empty paragraphs", () => {
+  it("should preserve trailing empty paragraphs", () => {
     const nodes: Descendant[] = [
       { type: "paragraph", children: [{ text: "hello" }] },
       { type: "paragraph", children: [{ text: "" }] },
     ];
 
-    expect(utils.serializeToMarkdown(nodes)).toBe("hello");
+    expect(utils.serializeToMarkdown(nodes)).toBe("hello\n\n");
   });
 
-  it("should trim trailing whitespace", () => {
+  it("should preserve trailing whitespace", () => {
     const nodes: Descendant[] = [{ type: "paragraph", children: [{ text: "hello   " }] }];
 
-    expect(utils.serializeToMarkdown(nodes)).not.toMatch(/\s$/);
+    expect(utils.serializeToMarkdown(nodes)).toBe("hello   ");
   });
 
   it("should escape special characters in plain text nodes", () => {
@@ -179,8 +179,8 @@ describe("getPlainTextLength", () => {
     expect(utils.getPlainTextLength("")).toBe(0);
   });
 
-  it("should return 0 for whitespace-only string", () => {
-    expect(utils.getPlainTextLength("   ")).toBe(0);
+  it("should count whitespace-only string", () => {
+    expect(utils.getPlainTextLength("   ")).toBe(3);
   });
 
   it("should return 0 for null-ish content", () => {

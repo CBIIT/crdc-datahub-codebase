@@ -84,6 +84,7 @@ const meta: Meta<typeof Button> = {
       _id: "mock-id",
       status: "Approved",
       nextRevisionId: null,
+      canBeReopened: true,
       studyAbbreviation: "TEST-STUDY",
       programName: "Test Program",
       programAbbreviation: "TP",

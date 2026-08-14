@@ -1096,6 +1096,7 @@ type Query {
     ): ListReleasedNodes
     getReleaseNodeTypes(studyID: String!, dataCommonsDisplayName: String!): ListNodeTypes
     downloadDBGaPLoadSheet(submissionID:String!):String #presigned url of s3
+    downloadDCFManifest(submissionID: String!): String
     getPendingPVs(submissionID: String!): [PendingPV]
     retrievePropsForNodeType(studyID: String!, dataCommonsDisplayName: String!, nodeType: String!): [nodeProp]
     downloadAllReleasedNodes(studyID: String!, dataCommonsDisplayName: String!): String #presigned url of s3

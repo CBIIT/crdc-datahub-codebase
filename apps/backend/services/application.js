@@ -1194,6 +1194,8 @@ class Application {
             ))
         ]);
 
+        await this._sendReopenApplicationEmail(insertedApp, ownerUser, sourceOwnerId);
+
         // Compile API response
         insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
         return await this._reformatRecordForApplicationResponse(insertedApp, ownerUser);
@@ -1918,6 +1920,52 @@ class Application {
             });
         }
 
+    }
+
+    async _sendReopenApplicationEmail(application, ownerUser, previousOwnerId) {
+        try {
+            const isOwnershipChanged = ownerUser._id !== previousOwnerId && ownerUser.id !== previousOwnerId;
+            const [ownerInfo, BCCUsers] = await Promise.all([
+                this.userService.userCollection.find(ownerUser._id ?? ownerUser.id),
+                this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REOPENED],
+                    [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
+            ]);
+            const applicantInfo = ownerInfo?.pop() ?? ownerUser;
+
+            if (!applicantInfo?.email) {
+                console.error("Reopen submission request email notification does not have any recipient", `Application ID: ${application?._id}`);
+                return;
+            }
+
+            if (!applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REOPENED)) {
+                return;
+            }
+
+            const CCEmails = getCCEmails(applicantInfo?.email, application);
+            // Include previous owner in CC if ownership changed
+            if (isOwnershipChanged && previousOwnerId) {
+                const previousOwner = (await this.userService.userCollection.find(previousOwnerId))?.pop();
+                if (previousOwner?.email && EMAIL_REGEX.test(previousOwner.email) && !CCEmails.includes(previousOwner.email) && previousOwner.email !== applicantInfo.email) {
+                    CCEmails.push(previousOwner.email);
+                }
+            }
+
+            const toBCCEmails = getUserEmails(BCCUsers)
+                ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
+
+            await this.notificationService.reopenApplicationNotification(applicantInfo.email, CCEmails, toBCCEmails, {
+                firstName: `${applicantInfo.firstName} ${applicantInfo.lastName || ""}`,
+                isOwnershipChanged
+            }, {
+                studyName: studyLabelForEmailBody(application),
+                studyAbbreviation: `${application?.studyAbbreviation?.trim() || "NA"}`,
+                programName: `${application?.programName?.trim() || "NA"}`,
+                programAbbreviation: `${application?.programAbbreviation?.trim() || "NA"}`,
+                contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
+            });
+        } catch (error) {
+            console.error(`Failed to send reopen application notification email for application ${application?._id}:`, error.message);
+        }
     }
 
     async _sendEmailFinalInactiveApplication(application, baseInactiveDays = this.emailParams.inactiveDays) {

@@ -10,8 +10,10 @@ import {
 } from "@mui/material";
 import { CSSProperties } from "react";
 
-import CloseIconSvg from "../../assets/icons/close_icon.svg?react";
-import { FormatDate } from "../../utils";
+import ChevronLeftSvg from "@/assets/icons/chevron_left.svg?react";
+import CloseIconSvg from "@/assets/icons/close_icon.svg?react";
+import { FormatDate } from "@/utils";
+
 import RichTextViewer from "../RichTextViewer";
 
 const StyledDialog = styled(Dialog, {
@@ -102,14 +104,27 @@ const StyledSubTitle = styled("p")({
 const StyledCloseButton = styled(Button)({
   minWidth: "137px",
   padding: "10px",
-  fontFamily: "'Nunito', 'Rubik', sans-serif",
   fontSize: "16px",
-  fontStyle: "normal",
   lineHeight: "24px",
   letterSpacing: "0.32px",
   textTransform: "none",
-  alignSelf: "center",
-  margin: "auto",
+  fontWeight: "500",
+});
+
+const StyledBackButton = styled(Button)({
+  minWidth: "137px",
+  padding: "10px",
+  fontSize: "16px",
+  lineHeight: "24px",
+  letterSpacing: "0.32px",
+  textTransform: "none",
+  fontWeight: "500",
+});
+
+const StyledDialogActions = styled(DialogActions)({
+  justifyContent: "center",
+  alignItems: "center",
+  gap: "8px",
 });
 
 /**
@@ -143,6 +158,7 @@ type Props<T, H> = {
   lastReview: HistoryBase<H>;
   preTitle: string;
   title?: string;
+  onBack?: () => void;
   onClose?: () => void;
 };
 
@@ -152,6 +168,7 @@ const ReviewCommentsDialog = <T, H>({
   lastReview,
   preTitle,
   title = "Review Comments",
+  onBack,
   onClose,
 }: Props<T, H>) => (
   <StyledDialog
@@ -167,6 +184,7 @@ const ReviewCommentsDialog = <T, H>({
         "data-testid": "review-comments-dialog-paper",
       } as ExtendedPaperProps
     }
+    TransitionProps={{ timeout: 0 }}
   >
     <StyledCloseDialogButton
       onClick={onClose}
@@ -191,7 +209,19 @@ const ReviewCommentsDialog = <T, H>({
     <StyledDialogContent>
       <RichTextViewer content={lastReview?.reviewComment ?? ""} />
     </StyledDialogContent>
-    <DialogActions>
+    <StyledDialogActions>
+      <StyledBackButton
+        id="back-review-comments-button"
+        onClick={onBack}
+        variant="contained"
+        color="info"
+        aria-label="Back to comments list"
+        data-testid="review-comments-dialog-back"
+        startIcon={<ChevronLeftSvg />}
+        sx={{ display: onBack ? "flex" : "none" }}
+      >
+        Back
+      </StyledBackButton>
       <StyledCloseButton
         id="close-review-comments-button"
         onClick={() => onClose?.()}
@@ -202,7 +232,7 @@ const ReviewCommentsDialog = <T, H>({
       >
         Close
       </StyledCloseButton>
-    </DialogActions>
+    </StyledDialogActions>
   </StyledDialog>
 );
 
