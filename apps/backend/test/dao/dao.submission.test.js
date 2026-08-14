@@ -327,6 +327,28 @@ describe('SubmissionDAO', () => {
                     $in: ['cds'],
                 });
             });
+
+            it('should return empty results when DC-scope dataCommons intersects to empty', async () => {
+                mockUserScope.isDCScope.mockReturnValue(true);
+                mockUserScope.isOwnScope.mockReturnValue(false);
+                mockUserInfo.dataCommons = ['cds', 'icdc'];
+
+                const result = await dao.listSubmissions(mockUserInfo, mockUserScope, {
+                    ...mockParams,
+                    dataCommons: 'gdc',
+                });
+
+                expect(result).toEqual({
+                    submissions: [],
+                    total: 0,
+                    dataCommons: [],
+                    submitterNames: [],
+                    organizations: [],
+                    statuses: [],
+                });
+                expect(SubmissionModel.aggregate).not.toHaveBeenCalled();
+                expect(SubmissionModel.countDocuments).not.toHaveBeenCalled();
+            });
         });
 
         describe('Search filters', () => {

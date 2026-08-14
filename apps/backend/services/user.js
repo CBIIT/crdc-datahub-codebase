@@ -919,26 +919,17 @@ class UserService {
     } 
     /**
      * Active Submitters (excluding the submission owner) who can collaborate on a study.
-     * Matches users whose embedded studies include the study ID or "All".
-     * Queries `studies._id` only — User.studies is a Mongoose DocumentArray of `{_id}`, so
-     * `$in` on the parent `studies` path would cast string IDs as embedded docs and fail.
+     * Populates each user's studies via approved-study lookup.
      * @param {string} studyID Approved study ID
      * @param {string} submitterID Submission owner user ID to exclude
      * @returns {Promise<object[]>} Collaborator users with studies populated
      */
     async getCollaboratorsByStudyID(studyID, submitterID) {
-        const query = {
-            _id: { not: submitterID },
-            role: USER.ROLES.SUBMITTER,
-            userStatus: USER.STATUSES.ACTIVE,
-            permissions: [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:${SCOPES.OWN}`],
-            "studies._id": [studyID, "All"],
-        };
-        const users = await this.userDAO.findMany(query);
+        const users = await this.userDAO.getCollaboratorsByStudyID(studyID, submitterID);
         for (const user of users) {
             user.studies = await this._findApprovedStudies(user.studies);
         }
-        return users
+        return users;
     }
 
     /**

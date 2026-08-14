@@ -483,6 +483,9 @@ class SubmissionDAO extends MongooseGenericDAO {
                 const intersection = existingValues.filter(value => value === newValue);
                 if (intersection.length > 0) {
                     baseConditions.dataCommons = { $in: intersection };
+                } else {
+                    // Requested commons is outside the user's DC scope — no matches
+                    return null;
                 }
             } else {
                 baseConditions.dataCommons = dataCommonsFilter.trim();

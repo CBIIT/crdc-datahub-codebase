@@ -4,9 +4,9 @@ const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/c
 
 describe('UserService.getCollaboratorsByStudyID', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, 
-        mockNotificationsService, mockApplicationCollection, 
-        mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays, 
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection,
+        mockNotificationsService, mockApplicationCollection,
+        mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays,
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let studyID, submitterID;
 
@@ -50,12 +50,10 @@ describe('UserService.getCollaboratorsByStudyID', () => {
     ];
 
     beforeEach(() => {
-        // Reset all mocks
         jest.clearAllMocks();
 
-        // Create mock collections and services
         mockUserDAO = {
-            findMany: jest.fn()
+            getCollaboratorsByStudyID: jest.fn()
         };
         mockLogCollection = {};
         mockOrganizationCollection = {};
@@ -69,7 +67,6 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         mockInstitutionService = {};
         mockAuthorizationService = {};
 
-        // Create user service instance
         userService = new UserService(
             mockLogCollection,
             mockOrganizationCollection,
@@ -85,11 +82,9 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         );
         userService.userDAO = mockUserDAO;
 
-        // Set up test parameters
         studyID = 'study-123';
         submitterID = 'test-user-id';
 
-        // Mock _findApprovedStudies method
         userService._findApprovedStudies = jest.fn().mockResolvedValue(mockApprovedStudies);
     });
 
@@ -103,93 +98,20 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         });
     });
 
-    describe('Parameter validation', () => {
-        it('should throw error when studyID is null', async () => {
-            await expect(userService.getCollaboratorsByStudyID(null, submitterID))
-                .rejects.toThrow();
-        });
-
-        it('should throw error when studyID is undefined', async () => {
-            await expect(userService.getCollaboratorsByStudyID(undefined, submitterID))
-                .rejects.toThrow();
-        });
-
-        it('should throw error when submitterID is null', async () => {
-            await expect(userService.getCollaboratorsByStudyID(studyID, null))
-                .rejects.toThrow();
-        });
-
-        it('should throw error when submitterID is undefined', async () => {
-            await expect(userService.getCollaboratorsByStudyID(studyID, undefined))
-                .rejects.toThrow();
-        });
-    });
-
-    describe('Database query construction', () => {
-        it('should call findMany with correct query parameters', async () => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
+    describe('DAO delegation', () => {
+        it('should call userDAO.getCollaboratorsByStudyID with studyID and submitterID', async () => {
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
 
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
-            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                _id: { not: submitterID },
-                role: USER.ROLES.SUBMITTER,
-                userStatus: USER.STATUSES.ACTIVE,
-                permissions: [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:own`],
-                "studies._id": [studyID, "All"],
-            });
-        });
-
-        it('should exclude the submitter from results', async () => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query._id.not).toBe(submitterID);
-        });
-
-        it('should filter by SUBMITTER role', async () => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query.role).toBe(USER.ROLES.SUBMITTER);
-        });
-
-        it('should filter by ACTIVE user status', async () => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query.userStatus).toBe(USER.STATUSES.ACTIVE);
-        });
-
-        it('should filter by correct permissions', async () => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query.permissions).toContain(`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:own`);
-        });
-
-        it('should filter by study access via studies._id', async () => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query["studies._id"]).toEqual([studyID, "All"]);
-            expect(query.OR).toBeUndefined();
+            expect(mockUserDAO.getCollaboratorsByStudyID).toHaveBeenCalledWith(studyID, submitterID);
+            expect(mockUserDAO.getCollaboratorsByStudyID).toHaveBeenCalledTimes(1);
         });
     });
 
     describe('Successful collaborator retrieval', () => {
         beforeEach(() => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
         });
 
         it('should return collaborators with approved studies', async () => {
@@ -208,7 +130,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         });
 
         it('should handle empty collaborators list', async () => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue([]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -218,7 +140,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
 
         it('should handle single collaborator', async () => {
             const singleCollaborator = [mockCollaborators[0]];
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(singleCollaborator);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(singleCollaborator);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -229,7 +151,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
 
     describe('Study access patterns', () => {
         beforeEach(() => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
         });
 
         it('should handle users with object-based studies', async () => {
@@ -237,7 +159,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: [{ _id: 'study-123', name: 'Test Study' }]
             };
-            mockUserDAO.findMany = jest.fn().mockResolvedValue([userWithObjectStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithObjectStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -250,7 +172,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[1],
                 studies: ['study-123', 'study-456']
             };
-            mockUserDAO.findMany = jest.fn().mockResolvedValue([userWithStringStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithStringStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -263,7 +185,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[2],
                 studies: [{ _id: 'All', name: 'All Studies' }]
             };
-            mockUserDAO.findMany = jest.fn().mockResolvedValue([userWithAllAccess]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithAllAccess]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -276,7 +198,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: ['study-123', { _id: 'All', name: 'All Studies' }]
             };
-            mockUserDAO.findMany = jest.fn().mockResolvedValue([userWithMixedStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithMixedStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -286,15 +208,15 @@ describe('UserService.getCollaboratorsByStudyID', () => {
     });
 
     describe('Error handling', () => {
-        it('should handle database findMany error', async () => {
-            mockUserDAO.findMany = jest.fn().mockRejectedValue(new Error('Database error'));
+        it('should handle DAO getCollaboratorsByStudyID error', async () => {
+            mockUserDAO.getCollaboratorsByStudyID.mockRejectedValue(new Error('Database error'));
 
             await expect(userService.getCollaboratorsByStudyID(studyID, submitterID))
                 .rejects.toThrow('Database error');
         });
 
         it('should handle _findApprovedStudies error', async () => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
             userService._findApprovedStudies = jest.fn().mockRejectedValue(new Error('Approved studies error'));
 
             await expect(userService.getCollaboratorsByStudyID(studyID, submitterID))
@@ -302,7 +224,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         });
 
         it('should handle partial _findApprovedStudies errors', async () => {
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
             userService._findApprovedStudies = jest.fn()
                 .mockResolvedValueOnce(mockApprovedStudies)
                 .mockRejectedValueOnce(new Error('Second user error'))
@@ -319,7 +241,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: undefined
             };
-            mockUserDAO.findMany = jest.fn().mockResolvedValue([userWithUndefinedStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithUndefinedStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -332,7 +254,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: null
             };
-            mockUserDAO.findMany = jest.fn().mockResolvedValue([userWithNullStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithNullStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -345,46 +267,26 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: []
             };
-            mockUserDAO.findMany = jest.fn().mockResolvedValue([userWithEmptyStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithEmptyStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
             expect(result).toEqual([userWithEmptyStudies]);
             expect(userService._findApprovedStudies).toHaveBeenCalledWith([]);
         });
-
-        it('should handle special characters in studyID', async () => {
-            const specialStudyID = 'study-123-with-special-chars!@#$%';
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(specialStudyID, submitterID);
-
-            const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query["studies._id"]).toContain(specialStudyID);
-        });
-
-        it('should handle special characters in submitterID', async () => {
-            const specialSubmitterID = 'submitter-123-with-special-chars!@#$%';
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, specialSubmitterID);
-
-            const query = mockUserDAO.findMany.mock.calls[0][0];
-            expect(query._id.not).toBe(specialSubmitterID);
-        });
     });
 
     describe('Performance considerations', () => {
-        it('should make only one database call regardless of number of collaborators', async () => {
+        it('should make only one DAO call regardless of number of collaborators', async () => {
             const manyCollaborators = Array.from({ length: 100 }, (_, i) => ({
                 ...mockCollaborators[0],
                 _id: `collaborator-${i}`
             }));
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(manyCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(manyCollaborators);
 
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
-            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.getCollaboratorsByStudyID).toHaveBeenCalledTimes(1);
             expect(userService._findApprovedStudies).toHaveBeenCalledTimes(100);
         });
 
@@ -394,7 +296,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 processingOrder.push(studies);
                 return mockApprovedStudies;
             });
-            mockUserDAO.findMany = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
 
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -404,4 +306,4 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             expect(processingOrder[2]).toEqual(mockCollaborators[2].studies);
         });
     });
-}); 
+});

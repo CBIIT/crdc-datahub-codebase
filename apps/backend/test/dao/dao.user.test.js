@@ -9,6 +9,8 @@ const UserDAO = require('../../dao/user');
 const UserModel = require('../../mongoose/models/user');
 const MongooseGenericDAO = require('../../dao/mongoose-generic');
 const {USER} = require('../../crdc-datahub-database-drivers/constants/user-constants');
+const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
+const SCOPES = require('../../constants/permission-scope-constants');
 
 /**
  * @param {*} resolvedValue
@@ -125,6 +127,57 @@ describe('UserDAO', () => {
                 }
             );
             expect(result).toEqual({count: 2});
+        });
+    });
+
+    describe('getCollaboratorsByStudyID', () => {
+        const studyID = 'study-123';
+        const submitterID = 'submitter-1';
+
+        it('should query active submitters with study or All access, excluding the owner', async () => {
+            UserModel.find.mockReturnValue(createLeanQuery([{_id: 'collab-1', studies: [{_id: studyID}]}]));
+
+            const result = await userDAO.getCollaboratorsByStudyID(studyID, submitterID);
+
+            expect(UserModel.find).toHaveBeenCalledWith({
+                _id: {$ne: submitterID},
+                role: USER.ROLES.SUBMITTER,
+                userStatus: USER.STATUSES.ACTIVE,
+                permissions: {$in: [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:${SCOPES.OWN}`]},
+                $or: [
+                    {'studies._id': {$in: [studyID, 'All']}},
+                    {
+                        $expr: {
+                            $gt: [
+                                {
+                                    $size: {
+                                        $filter: {
+                                            input: {$ifNull: ['$studies', []]},
+                                            as: 's',
+                                            cond: {
+                                                $and: [
+                                                    {$eq: [{$type: '$$s'}, 'string']},
+                                                    {$in: ['$$s', [studyID, 'All']]},
+                                                ],
+                                            },
+                                        },
+                                    },
+                                },
+                                0,
+                            ],
+                        },
+                    },
+                ],
+            });
+            expect(result).toEqual([{id: 'collab-1', _id: 'collab-1', studies: [{_id: studyID}]}]);
+        });
+
+        it('should return empty array when no collaborators match', async () => {
+            UserModel.find.mockReturnValue(createLeanQuery([]));
+
+            const result = await userDAO.getCollaboratorsByStudyID(studyID, submitterID);
+
+            expect(result).toEqual([]);
         });
     });
 });
