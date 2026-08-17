@@ -2,6 +2,8 @@ const MongooseGenericDAO = require("./mongoose-generic");
 const UserModel = require("../mongoose/models/user");
 const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {USER} = require("../crdc-datahub-database-drivers/constants/user-constants");
+const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
+const SCOPES = require("../constants/permission-scope-constants");
 
 /**
  * Mongoose-backed DAO for user documents.
@@ -64,6 +66,50 @@ class UserDAO extends MongooseGenericDAO {
 
         return await this.findMany({
             _id: {$in: userIDs},
+        });
+    }
+
+    /**
+     * Active Submitters (excluding the submission owner) who can collaborate on a study.
+     * Matches users whose studies include the study ID or "All" in either format:
+     * - Object DocumentArray: `{_id: studyID}` via `studies._id`
+     * - Legacy string array: `studies: [studyID]` via `$expr` (avoids Mongoose casting
+     *   string IDs as embedded docs when querying the DocumentArray path with `$in`)
+     * @param {string} studyID Approved study ID
+     * @param {string} submitterID Submission owner user ID to exclude
+     * @returns {Promise<object[]>} Matching collaborator user documents
+     */
+    async getCollaboratorsByStudyID(studyID, submitterID) {
+        const studyIDs = [studyID, "All"];
+        return await this.findMany({
+            _id: {$ne: submitterID},
+            role: USER.ROLES.SUBMITTER,
+            userStatus: USER.STATUSES.ACTIVE,
+            permissions: {$in: [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:${SCOPES.OWN}`]},
+            $or: [
+                {"studies._id": {$in: studyIDs}},
+                {
+                    $expr: {
+                        $gt: [
+                            {
+                                $size: {
+                                    $filter: {
+                                        input: {$ifNull: ["$studies", []]},
+                                        as: "s",
+                                        cond: {
+                                            $and: [
+                                                {$eq: [{$type: "$$s"}, "string"]},
+                                                {$in: ["$$s", studyIDs]},
+                                            ],
+                                        },
+                                    },
+                                },
+                            },
+                            0,
+                        ],
+                    },
+                },
+            ],
         });
     }
 }

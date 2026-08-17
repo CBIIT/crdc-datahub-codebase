@@ -77,11 +77,11 @@ dbConnector.connect().then(async () => {
     const authorizationService = new AuthorizationService(configurationService);
     const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
     const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
-    const programService = new Program(submissionCollection);
-    const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, submissionCollection, authorizationService, notificationsService, {url: config.emails_url, contactEmail: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl});
+    const programService = new Program();
+    const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, authorizationService, notificationsService, {url: config.emails_url, contactEmail: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl});
 
     const institutionService = new InstitutionService(authorizationService);
-    const userService = new UserService(logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days, configurationService, institutionService, authorizationService);
+    const userService = new UserService(logCollection, organizationCollection, notificationsService, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days, configurationService, institutionService, authorizationService);
     const s3Service = new S3Service();
     const awsService = new AWSService(configurationService);
 

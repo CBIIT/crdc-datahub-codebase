@@ -71,7 +71,7 @@ describe('Submission.getPendingPVs', () => {
         
         // Mock organization service using Prisma
         const mockPrisma = require("../../prisma");
-        const programService = new Program({}, {});
+        const programService = new Program({});
 
         // Instantiate Submission with mocked submissionCollection
         service = new Submission(
@@ -486,12 +486,9 @@ describe('Submission.getSubmission', () => {
         });
         expect(mockSubmissionDAO.findMany).toHaveBeenCalledWith({
             studyID: 'study1',
-            status: {
-                in: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN],
-            },
-            NOT: {
-                id: 'sub1',
-            },
+            dataCommons: undefined,
+            status: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN],
+            _id: { not: 'sub1' },
         });
         expect(mockDataRecordService.countNodesBySubmissionID).toHaveBeenCalledWith('sub1');
         expect(mockUserService.getUsersByIDs).toHaveBeenCalledWith(['user1', 'user2']);
@@ -1400,9 +1397,13 @@ describe("Submission.createSubmission", () => {
 
         const result = await submissionService.createSubmission(mockParams, mockContext);
 
-        // Verify that the DAO methods were called
+        // Verify that the DAO create was called with rootPath set from _id
         expect(mockSubmissionDAO.create).toHaveBeenCalled();
-        expect(mockSubmissionDAO.update).toHaveBeenCalled();
+        const createdPayload = mockSubmissionDAO.create.mock.calls[0][0];
+        expect(createdPayload._id).toBeDefined();
+        expect(createdPayload.rootPath).toBe(`submissions/${createdPayload._id}`);
+        expect(createdPayload.rootPath.trim().length).toBeGreaterThan(0);
+        expect(mockSubmissionDAO.update).not.toHaveBeenCalled();
 
         // Verify that the reminder email was sent
         expect(submissionService._remindPrimaryContactEmail).toHaveBeenCalled();
@@ -1428,7 +1429,7 @@ describe("Submission.createSubmission", () => {
         expect(result).toBeDefined();
         // The test is actually receiving a different object, so let's just verify the basic functionality
         expect(mockSubmissionDAO.create).toHaveBeenCalled();
-        expect(mockSubmissionDAO.update).toHaveBeenCalled();
+        expect(mockSubmissionDAO.update).not.toHaveBeenCalled();
     });
 
     it("should handle study with primary contact", async () => {

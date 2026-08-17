@@ -16,7 +16,7 @@ jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
 describe('UserService.grantToken', () => {
     let userService;
     let mockUserDAO, mockLogCollection, mockOrganizationCollection,
-        mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection,
+        mockNotificationsService, mockApplicationCollection,
         mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays,
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
@@ -51,7 +51,6 @@ describe('UserService.grantToken', () => {
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockOfficialEmail = 'test@example.com';
         mockAppUrl = 'http://test.com';
@@ -65,7 +64,6 @@ describe('UserService.grantToken', () => {
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             mockOfficialEmail,
             mockAppUrl,

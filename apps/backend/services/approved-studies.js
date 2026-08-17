@@ -39,19 +39,18 @@ class ApprovedStudiesService {
      *   UserService (and callers via userService.approvedStudiesCollection). Not used by ApprovedStudyDAO
      *   (Mongoose); remove once those paths migrate to approvedStudyDAO.
      * @param {object} programService Program service
-     * @param {object} submissionCollection Native submission collection
      * @param {object} [authorizationService] Authorization service
      * @param {object} [notificationsService] Notifications service
      * @param {object} [emailParams] Email URL / contact params
      */
-    constructor(approvedStudiesCollection, programService, submissionCollection, authorizationService, notificationsService, emailParams) {
+    constructor(approvedStudiesCollection, programService, authorizationService, notificationsService, emailParams) {
         // TEMPORARY: native-driver bridge for UserService until it uses approvedStudyDAO.
         this.approvedStudiesCollection = approvedStudiesCollection;
         this.programService = programService;
         this.authorizationService = authorizationService;
         this.programDAO = new ProgramDAO();
         this.userDAO = new UserDAO();
-        this.submissionDAO = new SubmissionDAO(submissionCollection);
+        this.submissionDAO = new SubmissionDAO();
         this.notificationsService = notificationsService;
         this.emailParams = emailParams;
         this.approvedStudyDAO = new ApprovedStudyDAO();
@@ -526,9 +525,7 @@ class ApprovedStudiesService {
         
         const updatedSubmissions = await this.submissionDAO.updateMany({
             studyID: updateStudy._id,
-            status: {
-                in: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED],
-            },
+            status: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED],
             conciergeID: { not: conciergeID }},{
             conciergeID: conciergeID,
             updatedAt: getCurrentTime()
@@ -545,11 +542,11 @@ class ApprovedStudiesService {
             
             const updatedSubmissionProgramIDs = await this.submissionDAO.updateMany({
                 studyID: updateStudy._id,
-                status: {
+                status: [
                     // Submission status must be in the list below otherwise it will not be updated
                     // Completed is the only excluded status right now
-                    in: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED],
-                },
+                    NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED
+                ],
                 programID: { not: newProgramID }
             }, {
                 programID: newProgramID,

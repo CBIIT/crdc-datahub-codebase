@@ -21,7 +21,7 @@ jest.mock('../../utility/data-commons-remapper', () => ({
 
 describe('UserService.listUsers', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
 
     const mockUserInfo = {
@@ -152,7 +152,6 @@ describe('UserService.listUsers', () => {
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockApprovedStudiesService = {
             approvedStudiesCollection: {}
@@ -167,7 +166,6 @@ describe('UserService.listUsers', () => {
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             'official@email.com',
             'http://app.url',
@@ -183,7 +181,7 @@ describe('UserService.listUsers', () => {
             verifyInitialized: jest.fn(),
         }));
         userService.approvedStudyDAO.findMany = jest.fn().mockImplementation(({ _id }) => {
-            const ids = _id?.$in || [];
+            const ids = Array.isArray(_id) ? _id : [];
             return Promise.resolve(ids.map((studyId) => ({
                 _id: studyId,
                 studyName: `Study ${studyId}`,
@@ -225,7 +223,7 @@ describe('UserService.listUsers', () => {
             );
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({});
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
-            expect(userService.approvedStudyDAO.findMany.mock.calls[0][0]._id.$in).toHaveLength(9);
+            expect(userService.approvedStudyDAO.findMany.mock.calls[0][0]._id).toHaveLength(9);
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(9);
             expect(result).toHaveLength(9);
         });
@@ -247,7 +245,7 @@ describe('UserService.listUsers', () => {
 
             // Verify
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [USER.ROLES.USER, USER.ROLES.SUBMITTER] }
+                role: [USER.ROLES.USER, USER.ROLES.SUBMITTER]
             });
             expect(result).toHaveLength(2);
         });
@@ -269,7 +267,7 @@ describe('UserService.listUsers', () => {
 
             // Verify
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [USER.ROLES.DATA_COMMONS_PERSONNEL] }
+                role: [USER.ROLES.DATA_COMMONS_PERSONNEL]
             });
             expect(result).toEqual([]);
         });
@@ -291,7 +289,7 @@ describe('UserService.listUsers', () => {
 
             // Verify
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [] }
+                role: []
             });
             expect(result).toEqual([]);
         });
@@ -311,7 +309,7 @@ describe('UserService.listUsers', () => {
 
             // Verify
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [] }
+                role: []
             });
             expect(result).toEqual([]);
         });
@@ -363,7 +361,7 @@ describe('UserService.listUsers', () => {
 
             // Verify
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [USER.ROLES.USER, USER.ROLES.SUBMITTER] }
+                role: [USER.ROLES.USER, USER.ROLES.SUBMITTER]
             });
             expect(result).toHaveLength(2);
         });
@@ -385,7 +383,7 @@ describe('UserService.listUsers', () => {
 
             // Verify
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [] }
+                role: []
             });
             expect(result).toEqual([]);
         });
@@ -410,7 +408,7 @@ describe('UserService.listUsers', () => {
 
             // Verify
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [USER.ROLES.ADMIN, USER.ROLES.ORG_OWNER] }
+                role: [USER.ROLES.ADMIN, USER.ROLES.ORG_OWNER]
             });
             expect(result).toHaveLength(2);
             expect(result.every(user => 
@@ -438,7 +436,7 @@ describe('UserService.listUsers', () => {
 
             // Verify
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [USER.ROLES.FEDERAL_LEAD, USER.ROLES.FEDERAL_MONITOR] }
+                role: [USER.ROLES.FEDERAL_LEAD, USER.ROLES.FEDERAL_MONITOR]
             });
             expect(result).toHaveLength(2);
             expect(result.every(user => 
@@ -466,7 +464,7 @@ describe('UserService.listUsers', () => {
 
             // Verify
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [USER.ROLES.DC_POC, USER.ROLES.DATA_COMMONS_PERSONNEL] }
+                role: [USER.ROLES.DC_POC, USER.ROLES.DATA_COMMONS_PERSONNEL]
             });
             expect(result).toHaveLength(2);
             expect(result.every(user => 
@@ -639,7 +637,7 @@ describe('UserService.listUsers', () => {
             const result = await userService.listUsers(params, context);
 
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
-                _id: { $in: ['study-user'] },
+                _id: ['study-user'],
             });
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledWith(
@@ -673,7 +671,7 @@ describe('UserService.listUsers', () => {
 
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
-                _id: { $in: ['study-shared'] },
+                _id: ['study-shared'],
             });
             expect(result[0].studies).toEqual([{
                 _id: 'study-shared',
@@ -729,7 +727,7 @@ describe('UserService.listUsers', () => {
 
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledWith({
-                _id: { $in: ['study-concrete'] },
+                _id: ['study-concrete'],
             });
             expect(result[0].studies).toEqual([{ _id: 'All', studyName: 'All' }]);
             expect(result[1].studies).toEqual([{
@@ -783,9 +781,9 @@ describe('UserService.listUsers', () => {
                 USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
             );
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: REOPEN_ASSIGNABLE_ROLES },
+                role: REOPEN_ASSIGNABLE_ROLES,
                 userStatus: USER.STATUSES.ACTIVE,
-                permissions: { $in: getSubmissionRequestCreatePermissionVariants() },
+                permissions: getSubmissionRequestCreatePermissionVariants(),
             });
             expect(userService.approvedStudyDAO.findMany).toHaveBeenCalledTimes(1);
             expect(getDataCommonsDisplayNamesForUser).toHaveBeenCalledTimes(1);
@@ -804,7 +802,7 @@ describe('UserService.listUsers', () => {
                 USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
             );
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
-                role: { $in: [USER.ROLES.FEDERAL_LEAD] },
+                role: [USER.ROLES.FEDERAL_LEAD],
             });
             expect(result).toHaveLength(1);
         });

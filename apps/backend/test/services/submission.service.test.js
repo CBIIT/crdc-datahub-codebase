@@ -329,16 +329,24 @@ describe('Submission Service - getSubmission', () => {
         });
 
         it('should return dbGaPID from submission.study.dbGaPID', async () => {
-            // Use real _findByID so its precedence logic runs; DAO returns raw submission with conflicting values
+            // Use real _findByID so its precedence logic runs; study is loaded via approvedStudyDAO
             const rawSubmission = {
                 ...mockSubmission,
                 dbGaPID: 'old',
-                study: {
-                    ...mockSubmission.study,
-                    dbGaPID: 'new'
-                }
             };
-            mockSubmissionDAO.findFirst.mockResolvedValue(rawSubmission);
+            delete rawSubmission.study;
+            mockSubmissionDAO.findById.mockResolvedValue(rawSubmission);
+            submissionService.approvedStudyDAO = {
+                findById: jest.fn().mockResolvedValue({
+                    _id: 'study-123',
+                    studyName: 'Test Study',
+                    studyAbbreviation: 'TS',
+                    dbGaPID: 'new',
+                }),
+            };
+            submissionService.userDAO = {
+                findById: jest.fn().mockResolvedValue(null),
+            };
             mockProgramDAO.findById.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
             submissionService._findByID = Submission.prototype._findByID.bind(submissionService);
             submissionService._getUserScope.mockResolvedValue(createMockUserScope(false, true));
@@ -460,8 +468,9 @@ describe('Submission Service - getSubmission', () => {
             // Verify
             expect(mockSubmissionDAO.findMany).toHaveBeenCalledWith({
                 studyID: 'study-123',
-                status: { in: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN] },
-                NOT: { id: 'sub-123' }
+                dataCommons: undefined,
+                status: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN],
+                _id: { not: 'sub-123' }
             });
             expect(result.otherSubmissions).toBeDefined();
             const parsedOtherSubs = JSON.parse(result.otherSubmissions);

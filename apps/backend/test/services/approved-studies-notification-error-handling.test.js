@@ -19,7 +19,7 @@ jest.mock('../../dao/application');
 describe('ApprovedStudiesService - Notification Error Handling', () => {
     let service;
     let mockApprovedStudiesCollection;
-    let mockProgramService;    let mockSubmissionCollection;
+    let mockProgramService;
     let mockAuthorizationService;
     let mockNotificationsService;
     let mockEmailParams;
@@ -42,9 +42,6 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             findOneByStudyID: jest.fn(),
             getProgramByID: jest.fn(),
             getProgramByName: jest.fn()
-        };
-        mockSubmissionCollection = {
-            updateMany: jest.fn()
         };
         mockAuthorizationService = {
             getPermissionScope: jest.fn()
@@ -78,7 +75,6 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
         service = new ApprovedStudiesService(
             mockApprovedStudiesCollection,
             mockProgramService,
-            mockSubmissionCollection,
             mockAuthorizationService,
             mockNotificationsService,
             mockEmailParams
@@ -245,7 +241,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                 expect(submissionUpdateSpy).toHaveBeenCalledWith(
                     {
                         studyID: 'study-id',
-                        status: { in: expect.any(Array) },
+                        status: expect.any(Array),
                         conciergeID: { not: 'contact-id' }
                     },
                     {
