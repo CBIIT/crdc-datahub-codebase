@@ -457,6 +457,11 @@ function renderScenarioDetail(pdf: PdfBuilder, scenario: Scenario, options: Reso
       0.28
     );
 
+
+    if (scenario.annotations.length) {
+      pdf.codeBlock(scenario.annotations.map(({ type, description }) => `${type}: ${String(description)}`).join("\n\n"));
+    }
+
     if (attempt.errorMessages.length) {
       pdf.codeBlock(attempt.errorMessages.join('\n\n'));
     }
