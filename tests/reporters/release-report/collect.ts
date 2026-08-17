@@ -429,13 +429,10 @@ export function buildReportData(input: CollectInput): ReportData {
     environment: [
       { label: 'Environment name', value: env('QA_ENVIRONMENT', 'TEST_ENV', 'ENVIRONMENT') },
       { label: 'Application URL', value: env('QA_BASE_URL', 'BASE_URL') },
-      { label: 'Frontend version', value: env('QA_FRONTEND_VERSION') },
-      { label: 'Backend version', value: env('QA_BACKEND_VERSION') },
       { label: 'API version', value: env('QA_API_VERSION') },
       { label: 'Data model version', value: env('QA_MODEL_VERSION') },
       { label: 'Browsers', value: browsersOf(config) },
       { label: 'Operating system', value: `${process.platform} ${process.arch}` },
-      { label: 'Node.js version', value: process.version },
       { label: 'Automation framework', value: `Playwright ${config.version}` },
       { label: 'CI pipeline', value: env('GITHUB_WORKFLOW', 'CI_JOB_NAME', 'QA_PIPELINE') },
       { label: 'CI job URL', value: env('QA_JOB_URL', 'BUILD_URL') },

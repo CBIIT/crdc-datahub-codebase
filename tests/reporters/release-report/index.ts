@@ -69,12 +69,10 @@ export default class QaReleaseReporter implements Reporter {
 
     try {
       await writePdf(data, this.options, this.reportDir, pdfPath);
-      // eslint-disable-next-line no-console
-      console.log(`\nQA Release Verification document: ${pdfPath}`);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(
-        `\nQA Release Verification document could not be written (${String(error)}).\nExecution data: ${jsonPath}`
+        `\nAn error occurred writing the verification document. ${String(error)}`
       );
     }
   }

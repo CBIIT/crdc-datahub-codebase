@@ -69,7 +69,7 @@ function renderSummaryPage(pdf: PdfBuilder, data: ReportData, options: ResolvedO
   pdf.heading('Release identification');
   pdf.keyValues([
     { label: 'Product', value: release.product },
-    { label: 'Release / version', value: release.version },
+    { label: 'Release version', value: release.version },
     { label: 'Release candidate', value: release.releaseCandidate },
     { label: 'Build identifier', value: release.build },
     { label: 'Source revision', value: release.commit },
@@ -589,9 +589,9 @@ export function writePdf(
   renderAppendix(pdf, data);
 
   pdf.finalize(
-    `QA Release Verification — ${data.release.product} · build ${data.release.build}`,
+    `QA Release Verification — ${data.release.product}`,
     `Report ${data.run.reportId}`,
-    'Automated test evidence record — not a release approval'
+    'Test automation execution report.'
   );
 
   return done;

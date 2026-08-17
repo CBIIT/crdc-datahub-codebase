@@ -54,6 +54,24 @@ export default defineConfig({
       },
       grep: /@unauthenticated/,
       testIgnore: /.*\.setup\.ts/
+    },
+    {
+      name: 'Safari (Desktop)',
+      use: {
+        ...devices['Desktop Safari'],
+        storageState: process.env.AUTH_STATE_PATH,
+      },
+      grepInvert: /@unauthenticated/,
+      dependencies: ['setup'],
+      testIgnore: /.*\.setup\.ts/
+    },
+    {
+      name: "Safari (Desktop)",
+      use: {
+        ...devices['Desktop Safari'],
+      },
+      grep: /@unauthenticated/,
+      testIgnore: /.*\.setup\.ts/
     }
   ]
 });

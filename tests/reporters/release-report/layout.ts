@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { VerificationState } from './model';
 
 export type Cell = {
   text: string;
@@ -206,7 +207,7 @@ export class PdfBuilder {
     this.doc.moveDown(0.3);
   }
 
-  stateBox(state: string, reasons: string[]): void {
+  stateBox(state: VerificationState, reasons: string[]): void {
     const heading = sanitize(state);
     const lines = reasons.map((reason) => sanitize(`•  ${reason}`));
     this.doc.font(FONT_BOLD).fontSize(SIZE.h1);

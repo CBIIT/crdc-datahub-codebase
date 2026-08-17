@@ -23,23 +23,13 @@ export type ResolvedOptions = Required<Omit<QaReportOptions, 'areaMap'>> & {
 
 export const DEFAULT_CRITICAL_TAGS = [
   '@critical',
-  '@critical-user-journey',
   '@smoke',
-  '@release-critical',
-  '@priority-1',
 ];
 
 export const DEFAULT_CATEGORY_TAGS = [
-  '@functional',
   '@regression',
   '@smoke',
-  '@api',
-  '@ui',
-  '@e2e',
-  '@integration',
   '@accessibility',
-  '@cross-browser',
-  '@data-validation',
 ];
 
 export function resolveOptions(options: QaReportOptions = {}): ResolvedOptions {
