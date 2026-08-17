@@ -10,7 +10,7 @@ const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-
 const {CreateApplicationEvent, UpdateApplicationStateEvent} = require("../crdc-datahub-database-drivers/domain/log-events");
 const ROLES = USER_CONSTANTS.USER.ROLES;
 const {parseJsonString, isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
-const {isUndefined, replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
+const {isUndefined, replaceErrorString} = require("../utility/string-util");
 const {defaultStudyAbbreviationToStudyName, defaultStudyAbbreviationToNA} = require("../utility/study-abbrev-helpers");
 const {EMAIL_NOTIFICATIONS} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
@@ -18,7 +18,6 @@ const {UserScope} = require("../domain/user-scope");
 const {UtilityService} = require("../services/utility");
 const InstitutionDAO = require("../dao/institution");
 const ApplicationDAO = require("../dao/application");
-const {PrismaPagination} = require("../crdc-datahub-database-drivers/domain/prisma-pagination");
 const UserDAO = require("../dao/user");
 const {formatName} = require("../utility/format-name");
 const {PendingGPA} = require("../domain/pending-gpa");
@@ -28,7 +27,7 @@ const {
 } = require("../utility/reopen-owner-utility");
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_INSTITUTION_NAME_LENGTH = 100;
-// Valid orderBy values for listApplications (Prisma field names). "applicant.applicantName" is accepted and mapped to "applicant.fullName".
+// Valid orderBy values for listApplications. "applicant.applicantName" is accepted and mapped to "applicant.fullName".
 const VALID_ORDER_BY_LIST_APPLICATIONS = [
     "applicant.applicantName",
     "applicant.fullName",
@@ -60,7 +59,7 @@ class Application {
         this.configurationService = configurationService;
         this.authorizationService = authorizationService;
         this.institionDAO = new InstitutionDAO()
-        this.applicationDAO = new ApplicationDAO(applicationCollection);
+        this.applicationDAO = new ApplicationDAO();
         this.userDAO = new UserDAO();
         this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, IN_REVISION, REOPENED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
     }
@@ -718,17 +717,6 @@ class Application {
         return res;
     }
 
-    _getApplicantNameQuery(submitterName) {
-        if (submitterName != null && submitterName !== this._ALL_FILTER) {
-            return {applicant: {
-                is: {
-                    fullName: {contains: escapeRegexLiteral(submitterName.trim()), mode: "insensitive"}
-                }
-            }}
-        }
-        return {};
-    }
-
     _validateListApplicationsParams(params) {
         // Validate statuses, case insensitive
         const validStatusesLower = new Set(this._VALID_LIST_APPLICATION_STATUSES.map(s => String(s).toLowerCase()));
@@ -747,10 +735,10 @@ class Application {
                 });
             }
         }
-        // Validate orderBy parameter, case insensitive. Map legacy "applicant.applicantName" to Prisma field "applicant.fullName".
+        // Validate orderBy parameter, case insensitive. Map legacy "applicant.applicantName" to "applicant.fullName".
         const validOrderByValues = VALID_ORDER_BY_LIST_APPLICATIONS;
         const orderByInput = (params?.orderBy ?? "").toString().trim();
-        let orderByPrisma = "createdAt";
+        let orderBy = "createdAt";
         if (orderByInput) {
             const matchingKey = validOrderByValues.find((k) => k.toLowerCase() === orderByInput.toLowerCase());
             if (!matchingKey) {
@@ -758,7 +746,7 @@ class Application {
                 console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { orderBy: orderByInput, validOrderByValues: validOrderByValuesString });
                 throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS + " Valid orderBy values: " + validOrderByValuesString);
             }
-            orderByPrisma = matchingKey === "applicant.applicantName" ? "applicant.fullName" : matchingKey;
+            orderBy = matchingKey === "applicant.applicantName" ? "applicant.fullName" : matchingKey;
         }
         // Validate sortDirection parameter, case insensitive
         const sortDirection = (params?.sortDirection || "DESC").toString().toUpperCase();
@@ -784,8 +772,7 @@ class Application {
                 throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
             }
         }
-        // Return orderBy and sortDirection for pagination
-        return { orderByPrisma, sortDirection };
+        return { orderBy, sortDirection };
     }
 
     /**
@@ -796,11 +783,9 @@ class Application {
      * @returns {Promise<object>} applications, total, programs, studies, and filter facets
      */
     async listApplications(params, context) {
-        // Verify that the user is authenticated and has the necessary permissions to list applications
         verifySession(context)
             .verifyInitialized()
 
-        // Get the user information from the context
         const userInfo = context?.userInfo;
 
         // Only the all and own scopes are currently required for listing applications (per PBACDefaults_config: submission_request:view...).
@@ -821,164 +806,50 @@ class Application {
             };
         }
 
-        // Validate list applications parameters and map the orderBy parameter to the Prisma field name
-        const { orderByPrisma, sortDirection } = this._validateListApplicationsParams(params);
+        const { orderBy, sortDirection } = this._validateListApplicationsParams(params);
 
-        // Build filter conditions:
         // Statuses filter: ignored if input is falsy, empty array, or contains "All" (case-insensitive).
-        // Normalize statuses to proper case (e.g. "New", "In Progress") for Prisma, since DB stores title case.
         const statusesParam = params?.statuses;
         const applyStatusesFilter = statusesParam != null && Array.isArray(statusesParam) && statusesParam.length > 0
             && !statusesParam.some((s) => typeof s === 'string' && s.toLowerCase() === 'all');
-        // Map statuses to proper case (e.g. "New", "In Progress") for Prisma, since DB stores title case.
         const statusLowerToCanonical = new Map(this._VALID_LIST_APPLICATION_STATUSES.map(s => [String(s).toLowerCase(), s]));
         const statusesForQuery = applyStatusesFilter
             ? (statusesParam || []).map(s => statusLowerToCanonical.get((s != null ? String(s) : '').toLowerCase())).filter(Boolean).filter(s => s !== this._ALL_FILTER)
             : [];
-        const statusCondition = statusesForQuery.length > 0 ? { status: { in: statusesForQuery } } : {};
-        // Submitter name filter
-        const submitterNameCondition = this._getApplicantNameQuery(params?.submitterName);
-        // Program name filter
-        const programNameCondition = (params.programName != null && params.programName !== this._ALL_FILTER) 
-            ? { programName: params.programName } 
-            : {};
-        // Study filter: search both studyName and studyAbbreviation (OR), case-insensitive partial match
-        const studySearchTerm = params.studyName?.trim();
-        const hasStudyFilter = studySearchTerm?.length > 0 && params.studyName !== this._ALL_FILTER;
-        let studyCondition = {};
-        if (hasStudyFilter) {
-            const studySearchTermSanitized = escapeRegexLiteral(studySearchTerm);
-            const containsOption = { contains: studySearchTermSanitized, mode: "insensitive" };
-            studyCondition = {
-                OR: [
-                    { studyName: containsOption },
-                    { studyAbbreviation: containsOption }
-                ]
-            };
-        }
-        // Assemble generic filter conditions, if scope is own, add applicantID filter
-        const baseConditions = { ...statusCondition, ...programNameCondition, ...studyCondition, ...submitterNameCondition };
-        const genericFilterConditions = userScope.isOwnScope()
-            ? { ...baseConditions, applicantID: userInfo?._id }
-            : baseConditions;
-        // Create pagination object
-        const pagination = new PrismaPagination(params?.first, params?.offset, orderByPrisma, sortDirection);
-        // Include query for applicant information
-        const includeQuery = {
-            include: {
-                applicant: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        fullName: true,
-                        email: true
-                    }
-                },
-            }
-        };
 
-        // Query filtered and paginated application list
-        let applications;
+        let listResult;
         try {
-            const filterConditions = { ...genericFilterConditions };
-            applications = await this.applicationDAO.findMany(filterConditions, { ...pagination.getPagination(), ...includeQuery });
-            applications = applications ?? [];
+            listResult = await this.applicationDAO.listApplicationsWithFacets({
+                statuses: statusesForQuery,
+                programName: params?.programName,
+                studyName: params?.studyName,
+                submitterName: params?.submitterName,
+                applicantID: userScope.isOwnScope() ? userInfo?._id : undefined,
+                first: params?.first,
+                offset: params?.offset,
+                orderBy,
+                sortDirection,
+            });
         } catch (err) {
-            console.error("List applications fetch error: application list", err);
-            throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching application list.");
-        }
-
-        // Query total application count
-        let totalCount;
-        try {
-            totalCount = await this.applicationDAO.count(genericFilterConditions);
-        } catch (err) {
-            console.error("List applications fetch error: application count", err);
-            throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching application count.");
-        }
-
-        // When study filter uses OR, fetch studyName + studyAbbreviation once and derive both distinct lists in memory
-        let studyFilterDistinctRows = null;
-        if (hasStudyFilter) {
-            try {
-                studyFilterDistinctRows = await this.applicationDAO.findMany(genericFilterConditions, {
-                    select: { studyName: true, studyAbbreviation: true }
-                });
-            } catch (err) {
-                console.error("List applications fetch error: gathering distinct study values", err);
-                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: gathering distinct study values.");
-            }
-        }
-
-        // Query distinct filter options in parallel (programs, studies, studyAbbreviations, statuses, submitter names)
-        const runQuery = async (queryName, fn) => {
-            try {
-                return await fn();
-            } catch (err) {
-                console.error("List applications fetch error:", queryName, err);
-                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED);
-            }
-        };
-        let programs, studies, studyAbbreviations, statusesList, submitterNames;
-        try {
-            [programs, studies, studyAbbreviations, statusesList, submitterNames] = await Promise.all([
-                runQuery("programs", async () => {
-                    const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.programName;
-                    const rows = await this.applicationDAO.findMany(filterConditions, { select: { programName: true }, distinct: ['programName'] });
-                    return (rows ?? []).map(item => item.programName).filter(Boolean);
-                }),
-                runQuery("studies", async () => {
-                    if (studyFilterDistinctRows !== null) {
-                        const names = (studyFilterDistinctRows ?? []).map(item => item.studyName).filter(Boolean);
-                        return Array.from(new Set(names));
-                    }
-                    const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.studyName;
-                    const rows = await this.applicationDAO.findMany(filterConditions, { select: { studyName: true }, distinct: ['studyName'] });
-                    return (rows ?? []).map(item => item.studyName).filter(Boolean);
-                }),
-                runQuery("study abbreviations", async () => {
-                    if (studyFilterDistinctRows !== null) {
-                        const abbreviations = (studyFilterDistinctRows ?? []).map(item => item.studyAbbreviation).filter(Boolean);
-                        return Array.from(new Set(abbreviations));
-                    }
-                    const filterConditions = { ...genericFilterConditions };
-                    const rows = await this.applicationDAO.findMany(filterConditions, { select: { studyAbbreviation: true }, distinct: ['studyAbbreviation'] });
-                    return (rows ?? []).map(item => item.studyAbbreviation).filter(Boolean);
-                }),
-                runQuery("statuses", async () => {
-                    const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.status;
-                    const rows = await this.applicationDAO.findMany(filterConditions, { select: { status: true }, distinct: ['status'] });
-                    return (rows ?? []).map(item => item.status).filter(Boolean);
-                }),
-                runQuery("submitter names", async () => {
-                    const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.applicant;
-                    const rows = await this.applicationDAO.findMany(filterConditions, { include: { applicant: { select: { fullName: true } } }, distinct: ['applicantID'] });
-                    const names = (rows ?? []).map(sub => sub?.applicant?.fullName).filter(Boolean).sort((a, b) => a.localeCompare(b));
-                    return Array.from(new Set(names));
-                }),
-            ]);
-        } catch (err) {
-            // If the error message includes the expected error message, it has already been logged and formatted and can be rethrown
-            if (err.message?.includes(ERROR.LIST_APPLICATIONS_FETCH_FAILED)) {
-                throw err;
-            }
-            // Log the error, format it and rethrow
             console.error(ERROR.LIST_APPLICATIONS_FETCH_FAILED, err);
             throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Please see logs for more information.");
         }
 
+        let applications = listResult?.applications ?? [];
+        const totalCount = listResult?.total ?? 0;
+        const programs = listResult?.programs ?? [];
+        const studies = listResult?.studies ?? [];
+        const studyAbbreviations = listResult?.studyAbbreviations ?? [];
+        const statusesList = listResult?.status ?? [];
+        const submitterNames = listResult?.submitterNames ?? [];
+
         // Batch-prefetch SRF state and approved-study data, then map to plain objects so GraphQL
-        // always receives conditional / pendingConditions (Prisma entities may drop ad-hoc properties).
+        // always receives conditional / pendingConditions.
         const { studyByLowerName } = await this._batchComputeListApplicationFields(applications);
         const mappedApplications = [];
         for (const app of applications) {
             const applicant = {
-                applicantID: app?.applicant?.id || "",
+                applicantID: app?.applicant?.id || app?.applicant?._id || "",
                 applicantName: this._getUserDisplayName(app.applicant) || "",
                 applicantEmail: app?.applicant?.email || "",
             };
@@ -1005,7 +876,6 @@ class Application {
         // Sort statuses in display order
         const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, IN_REVISION, REOPENED, APPROVED, REJECTED, CANCELED, DELETED];
         const statuses = (statusesList || []).sort((a, b) => statusOrder.indexOf(a) - statusOrder.indexOf(b));
-        // Return the results
         return {
             applications,
             total: totalCount,
@@ -1692,9 +1562,7 @@ class Application {
                 await this._sendEmailFinalInactiveApplication(aApplication, defaultDays);
             }));
             const applicationIDs = finalDefault.map(application => application._id);
-            const query = {_id: {$in: applicationIDs}};
-            const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
-            const updatedReminder = await this.applicationDAO.updateMany(query, everyReminderDays);
+            const updatedReminder = await this.applicationDAO.markFinalRemindersSent(applicationIDs);
             if (!updatedReminder?.matchedCount) {
                 console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
             }
@@ -1709,9 +1577,7 @@ class Application {
             }));
             const applicationIDs = shortFinalToSend.map(application => application._id);
             if (applicationIDs.length > 0) {
-                const query = {_id: {$in: applicationIDs}};
-                const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
-                const updatedReminder = await this.applicationDAO.updateMany(query, everyReminderDays);
+                const updatedReminder = await this.applicationDAO.markFinalRemindersSent(applicationIDs);
                 if (!updatedReminder?.matchedCount) {
                     console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
                 }
@@ -1761,11 +1627,7 @@ class Application {
                 const expiredDays = entry.baseDays - pastDays;
                 const submissionReminderDays = this.emailParams.inactiveApplicationNotifyDays;
                 const reminderDays = submissionReminderDays.filter((d) => expiredDays < d || expiredDays === d);
-                const reminderFilter = reminderDays.reduce((acc, day) => {
-                    acc[`${this._INACTIVE_REMINDER}_${day}`] = true;
-                    return acc;
-                }, {});
-                const updatedReminder = await this.applicationDAO.update({_id: applicationID, ...reminderFilter});
+                const updatedReminder = await this.applicationDAO.markIntervalReminderSent(applicationID, reminderDays);
                 if (!updatedReminder) {
                     console.error("The email reminder flag intended to notify the inactive submission request is not being stored", applicationID);
                 }
@@ -2033,14 +1895,6 @@ class Application {
                 });
             logDaysDifference(interval, application?.updatedAt, application?._id);
         }
-    }
-
-    // Generates a query for the status of all email notification reminder.
-    _getEveryReminderQuery(remindSubmissionDay, status) {
-        return remindSubmissionDay.reduce((acc, day) => {
-            acc[`${this._INACTIVE_REMINDER}_${day}`] = status;
-            return acc;
-        }, {[`${this._FINAL_INACTIVE_REMINDER}`]: status});
     }
 
     async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {

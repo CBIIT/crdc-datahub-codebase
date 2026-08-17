@@ -15,14 +15,14 @@ class Program {
   _READ_ONLY_FIELDS = ["name", "abbreviation", "description", "status"];
 
   /**
-   * @param {object} applicationCollection Native application collection
+   * Instantiates Program DAOs (Mongoose). Call-site collection args are ignored.
    */
-  constructor(applicationCollection) {
+  constructor() {
     this.programDAO = new ProgramDAO();
     this.approvedStudyDAO = new ApprovedStudyDAO();
     this.submissionDAO = new SubmissionDAO();
     this.userDAO = new UserDAO();
-    this.applicationDAO = new ApplicationDAO(applicationCollection);
+    this.applicationDAO = new ApplicationDAO();
   }
 
   /**
@@ -233,7 +233,7 @@ class Program {
         // The result of updateUserOrg is not used so it is not extracted from the promise.all response
         const [updatedApplication] = await Promise.all(promises);
 
-        if (updatedProgram.name && !updatedApplication?.acknowledged) {
+        if (updatedProgram.name && typeof updatedApplication?.matchedCount !== "number") {
           console.error("Failed to update the organization name in submission requests");
         }
       } catch (error) {

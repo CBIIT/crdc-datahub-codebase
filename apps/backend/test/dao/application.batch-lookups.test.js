@@ -1,19 +1,32 @@
-jest.mock('../../prisma', () => ({
-    application: {
-        findMany: jest.fn(),
-        findFirst: jest.fn(),
-    },
+jest.mock('../../mongoose/models/application', () => ({
+    modelName: 'Application',
+    find: jest.fn(),
+    findOne: jest.fn(),
+    aggregate: jest.fn(),
 }));
 
-const prisma = require('../../prisma');
+const ApplicationModel = require('../../mongoose/models/application');
 const ApplicationDAO = require('../../dao/application');
+const {USER_COLLECTION} = require('../../crdc-datahub-database-drivers/database-constants');
+
+/**
+ * @param {*} resolvedValue
+ * @returns {{ lean: jest.Mock, select: jest.Mock, sort: jest.Mock }}
+ */
+function createLeanQuery(resolvedValue) {
+    return {
+        lean: jest.fn().mockResolvedValue(resolvedValue),
+        select: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+    };
+}
 
 describe('ApplicationDAO batch application lookups', () => {
     let dao;
 
     beforeEach(() => {
         jest.clearAllMocks();
-        dao = new ApplicationDAO({});
+        dao = new ApplicationDAO();
     });
 
     describe('findApplicationStatusesByIds', () => {
@@ -21,21 +34,20 @@ describe('ApplicationDAO batch application lookups', () => {
             const result = await dao.findApplicationStatusesByIds([]);
 
             expect(result).toEqual([]);
-            expect(prisma.application.findMany).not.toHaveBeenCalled();
+            expect(ApplicationModel.find).not.toHaveBeenCalled();
         });
 
         it('loads application statuses in one query', async () => {
-            prisma.application.findMany.mockResolvedValue([
-                { id: 'successor-active', status: 'Reopened' },
-            ]);
+            ApplicationModel.find.mockReturnValue(createLeanQuery([
+                {_id: 'successor-active', status: 'Reopened'},
+            ]));
 
             const result = await dao.findApplicationStatusesByIds(['successor-active', 'successor-canceled']);
 
-            expect(prisma.application.findMany).toHaveBeenCalledWith({
-                where: { id: { in: ['successor-active', 'successor-canceled'] } },
-                select: { id: true, status: true },
+            expect(ApplicationModel.find).toHaveBeenCalledWith({
+                _id: {$in: ['successor-active', 'successor-canceled']},
             });
-            expect(result).toEqual([{ id: 'successor-active', status: 'Reopened', _id: 'successor-active' }]);
+            expect(result).toEqual([{id: 'successor-active', status: 'Reopened', _id: 'successor-active'}]);
         });
     });
 
@@ -44,41 +56,42 @@ describe('ApplicationDAO batch application lookups', () => {
             const result = await dao.findApprovedApplicationsByNextRevisionIds([]);
 
             expect(result).toEqual([]);
-            expect(prisma.application.findMany).not.toHaveBeenCalled();
+            expect(ApplicationModel.find).not.toHaveBeenCalled();
         });
 
         it('loads approved applications by nextRevisionId in one query', async () => {
-            prisma.application.findMany.mockResolvedValue([
-                { nextRevisionId: 'c2' },
-            ]);
+            ApplicationModel.find.mockReturnValue(createLeanQuery([
+                {nextRevisionId: 'c2'},
+            ]));
 
             const result = await dao.findApprovedApplicationsByNextRevisionIds(['c2', 'd2']);
 
-            expect(prisma.application.findMany).toHaveBeenCalledWith({
-                where: { nextRevisionId: { in: ['c2', 'd2'] }, status: 'Approved' },
-                select: { nextRevisionId: true },
+            expect(ApplicationModel.find).toHaveBeenCalledWith({
+                nextRevisionId: {$in: ['c2', 'd2']},
+                status: 'Approved',
             });
-            expect(result).toEqual([{ nextRevisionId: 'c2' }]);
+            expect(result).toEqual([{nextRevisionId: 'c2'}]);
         });
     });
 
     describe('findApprovedParentSubmissionRequestByID', () => {
         it('returns null when id is falsy', async () => {
             await expect(dao.findApprovedParentSubmissionRequestByID(null)).resolves.toBeNull();
-            expect(prisma.application.findFirst).not.toHaveBeenCalled();
+            expect(ApplicationModel.findOne).not.toHaveBeenCalled();
         });
 
         it('loads the Approved parent linking to the successor via nextRevisionId', async () => {
-            prisma.application.findFirst.mockResolvedValue({
-                id: 'parent-app',
+            ApplicationModel.findOne.mockReturnValue(createLeanQuery({
+                _id: 'parent-app',
                 status: 'Approved',
                 nextRevisionId: 'successor-app',
-            });
+            }));
 
             const result = await dao.findApprovedParentSubmissionRequestByID('successor-app');
 
-            expect(prisma.application.findFirst).toHaveBeenCalledWith({
-                where: { nextRevisionId: 'successor-app', status: 'Approved' },
+            expect(ApplicationModel.findOne).toHaveBeenCalledWith({
+                nextRevisionId: 'successor-app',
+                status: 'Approved',
             });
             expect(result).toEqual({
                 id: 'parent-app',
@@ -89,7 +102,7 @@ describe('ApplicationDAO batch application lookups', () => {
         });
 
         it('returns null when no Approved parent links to the successor', async () => {
-            prisma.application.findFirst.mockResolvedValue(null);
+            ApplicationModel.findOne.mockReturnValue(createLeanQuery(null));
 
             await expect(dao.findApprovedParentSubmissionRequestByID('orphan-app')).resolves.toBeNull();
         });
@@ -98,51 +111,40 @@ describe('ApplicationDAO batch application lookups', () => {
     describe('findApplicationStatusById', () => {
         it('returns null when id is falsy', async () => {
             await expect(dao.findApplicationStatusById(null)).resolves.toBeNull();
-            expect(prisma.application.findFirst).not.toHaveBeenCalled();
+            expect(ApplicationModel.findOne).not.toHaveBeenCalled();
         });
 
-        it('loads status with prisma findFirst', async () => {
-            prisma.application.findFirst.mockResolvedValue({ status: 'Reopened' });
+        it('loads status with findFirst projection', async () => {
+            ApplicationModel.findOne.mockReturnValue(createLeanQuery({status: 'Reopened'}));
 
             const result = await dao.findApplicationStatusById('successor-id');
 
-            expect(prisma.application.findFirst).toHaveBeenCalledWith({
-                where: { id: 'successor-id' },
-                select: { status: true },
-            });
-            expect(result).toEqual({ status: 'Reopened' });
+            expect(ApplicationModel.findOne).toHaveBeenCalledWith({_id: 'successor-id'});
+            expect(result).toEqual({status: 'Reopened'});
         });
     });
 
     describe('findApplicationWithApplicantById', () => {
         it('returns null when id is falsy', async () => {
             await expect(dao.findApplicationWithApplicantById(null)).resolves.toBeNull();
-            expect(prisma.application.findFirst).not.toHaveBeenCalled();
+            expect(ApplicationModel.aggregate).not.toHaveBeenCalled();
         });
 
-        it('loads application with applicant include', async () => {
-            prisma.application.findFirst.mockResolvedValue({
-                id: 'app1',
-                status: 'Approved',
-                applicant: { id: 'u1', fullName: 'Alice', email: 'a@a' },
-            });
+        it('loads application with applicant $lookup', async () => {
+            ApplicationModel.aggregate.mockResolvedValue([
+                {
+                    _id: 'app1',
+                    status: 'Approved',
+                    applicant: {id: 'u1', fullName: 'Alice', email: 'a@a'},
+                },
+            ]);
 
             const result = await dao.findApplicationWithApplicantById('app1');
 
-            expect(prisma.application.findFirst).toHaveBeenCalledWith({
-                where: { id: 'app1' },
-                include: {
-                    applicant: {
-                        select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
-                            fullName: true,
-                            email: true,
-                        },
-                    },
-                },
-            });
+            expect(ApplicationModel.aggregate).toHaveBeenCalled();
+            const pipeline = ApplicationModel.aggregate.mock.calls[0][0];
+            expect(pipeline[0]).toEqual({$match: {_id: 'app1'}});
+            expect(pipeline[1].$lookup.from).toBe(USER_COLLECTION);
             expect(result._id).toBe('app1');
         });
     });
@@ -150,19 +152,40 @@ describe('ApplicationDAO batch application lookups', () => {
     describe('findLatestApprovedByApplicantID', () => {
         it('returns null when applicantID is falsy', async () => {
             await expect(dao.findLatestApprovedByApplicantID(null)).resolves.toBeNull();
-            expect(prisma.application.findFirst).not.toHaveBeenCalled();
+            expect(ApplicationModel.findOne).not.toHaveBeenCalled();
         });
 
         it('loads the latest approved application for an applicant', async () => {
-            prisma.application.findFirst.mockResolvedValue({ id: 'app-latest', status: 'Approved' });
+            ApplicationModel.findOne.mockReturnValue(createLeanQuery({_id: 'app-latest', status: 'Approved'}));
 
             const result = await dao.findLatestApprovedByApplicantID('user1');
 
-            expect(prisma.application.findFirst).toHaveBeenCalledWith({
-                where: { applicantID: 'user1', status: 'Approved' },
-                orderBy: { createdAt: 'desc' },
+            expect(ApplicationModel.findOne).toHaveBeenCalledWith({
+                applicantID: 'user1',
+                status: 'Approved',
             });
-            expect(result).toEqual({ id: 'app-latest', status: 'Approved', _id: 'app-latest' });
+            expect(result).toEqual({id: 'app-latest', status: 'Approved', _id: 'app-latest'});
+        });
+    });
+
+    describe('findApplicantIDsByApplicationIDs', () => {
+        it('returns an empty array when ids is empty', async () => {
+            const result = await dao.findApplicantIDsByApplicationIDs([]);
+            expect(result).toEqual([]);
+            expect(ApplicationModel.find).not.toHaveBeenCalled();
+        });
+
+        it('loads applicantIDs for the given application ids', async () => {
+            ApplicationModel.find.mockReturnValue(createLeanQuery([
+                {_id: 'app1', applicantID: 'user1'},
+            ]));
+
+            const result = await dao.findApplicantIDsByApplicationIDs(['app1', 'app2']);
+
+            expect(ApplicationModel.find).toHaveBeenCalledWith({
+                _id: {$in: ['app1', 'app2']},
+            });
+            expect(result).toEqual([{id: 'app1', _id: 'app1', applicantID: 'user1'}]);
         });
     });
 });
