@@ -44,7 +44,7 @@ test.describe('Model Navigator', { tag: ["@unauthenticated"] }, () => {
 
     await modelNavigatorPage.switchToVersionHistoryView();
 
-    test.info().attach('version-history', { body: await modelNavigatorPage.page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    test.info().attach('version-history', { body: await modelNavigatorPage.page.screenshot(), contentType: 'image/png' });
   });
 });
 
