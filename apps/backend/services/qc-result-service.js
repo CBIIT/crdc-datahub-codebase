@@ -28,7 +28,7 @@ class QcResultService{
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
         // Check that the specified submissionID exists
-        const submission = await this.submissionDAO.findFirst({id: params._id});
+        const submission = await this.submissionDAO.findFirst({_id: params._id});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
@@ -49,7 +49,7 @@ class QcResultService{
         let query = {
             submissionID: submissionID,
             validationType: isFileValidationQC
-                ? {$in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE]}
+                ? [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE]
                 : dataType
         };
         
@@ -58,16 +58,14 @@ class QcResultService{
             // If exclusiveIDs are provided, exclude them from deletion
             if (exclusiveIDs && exclusiveIDs.length > 0) {
                 query.submittedID = {
-                    $nin: exclusiveIDs
+                    notIn: exclusiveIDs
                 };
             }
             // If no exclusiveIDs, query will delete all (no submittedID filter)
         } else {
             // Normal deletion: delete specific submittedIDs
             if (submittedIDs && submittedIDs.length > 0) {
-                query.submittedID = {
-                    $in: submittedIDs
-                };
+                query.submittedID = submittedIDs;
             } else {
                 // No submittedIDs provided, nothing to delete
                 return;
@@ -117,7 +115,7 @@ class QcResultService{
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
         // Check that the specified submissionID exists
-        const submission = await this.submissionDAO.findFirst({id: params.submissionID});
+        const submission = await this.submissionDAO.findFirst({_id: params.submissionID});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
@@ -133,7 +131,7 @@ class QcResultService{
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        const submission = await this.submissionDAO.findFirst({id: params.submissionID});
+        const submission = await this.submissionDAO.findFirst({_id: params.submissionID});
         if (!submission) {
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }

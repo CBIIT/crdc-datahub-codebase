@@ -35,7 +35,7 @@ jest.mock('../../crdc-datahub-database-drivers/domain/approved-studies', () => {
 describe('ApprovedStudiesService', () => {
     let service;
     let mockApprovedStudiesCollection;
-    let mockProgramService;    let mockSubmissionCollection;
+    let mockProgramService;
     let mockAuthorizationService;
     let mockApprovedStudyDAO;
 
@@ -54,9 +54,6 @@ describe('ApprovedStudiesService', () => {
             getProgramByID: jest.fn(),
             getProgramByName: jest.fn()
         };
-        mockSubmissionCollection = {
-            updateMany: jest.fn()
-        };
         mockAuthorizationService = {
             getPermissionScope: jest.fn()
         };
@@ -70,7 +67,6 @@ describe('ApprovedStudiesService', () => {
         service = new ApprovedStudiesService(
             mockApprovedStudiesCollection,
             mockProgramService,
-            mockSubmissionCollection,
             mockAuthorizationService
         );
         // Inject the mock DAO
@@ -669,9 +665,9 @@ describe('ApprovedStudiesService', () => {
                 const programIDUpdateCall = service.submissionDAO.updateMany.mock.calls[1];
                 expect(programIDUpdateCall[0]).toEqual({
                     studyID: 'study-id',
-                    status: {
-                        in: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED]
-                    },
+                    status: [
+                        NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED
+                    ],
                     programID: { not: newProgramID }
                 });
                 expect(programIDUpdateCall[1]).toEqual({
@@ -730,7 +726,7 @@ describe('ApprovedStudiesService', () => {
                 
                 // Verify status filter includes all valid statuses except COMPLETED
                 const programIDUpdateCall = service.submissionDAO.updateMany.mock.calls[1];
-                const statusList = programIDUpdateCall[0].status.in;
+                const statusList = programIDUpdateCall[0].status;
                 expect(statusList).toContain(NEW);
                 expect(statusList).toContain(IN_PROGRESS);
                 expect(statusList).toContain(SUBMITTED);

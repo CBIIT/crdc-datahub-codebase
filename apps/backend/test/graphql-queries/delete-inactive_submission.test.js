@@ -53,7 +53,7 @@ const userService = new User(userCollection);
 const submissionCollection = mockPrisma.submission;
 const dataRecordService = new DataRecordService({}, config.file_queue, config.metadata_queue, null);
 const s3Service = new S3Service();
-const programService = new Program({}, {});
+const programService = new Program({});
 const subInterface = new Submission(logCollection, submissionCollection, null, userService, programService, notificationsService, dataRecordService, "dev2", null, null, null, s3Service)
 
 describe('Submission service test', () => {

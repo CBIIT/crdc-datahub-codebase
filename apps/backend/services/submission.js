@@ -38,6 +38,7 @@ const {getDataCommonsDisplayNamesForSubmission, getDataCommonsDisplayNamesForLis
 const {formatNestedOrganization} = require("../utility/organization-transformer");
 const {UserScope} = require("../domain/user-scope");
 const {ORGANIZATION_COLLECTION, APPROVED_STUDIES_COLLECTION, USER_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
+const {v4} = require('uuid');
 const {zipFilesInDir} = require("../utility/io-util");
 const PendingPVDAO = require("../dao/pendingPV");
 const sanitizeHtml = require("sanitize-html");
@@ -99,7 +100,7 @@ class Submission {
         this.dataCommonsBucketMap = dataCommonsBucketMap;
         this.authorizationService = authorizationService;
         this.pendingPVDAO = new PendingPVDAO();
-        this.submissionDAO = new SubmissionDAO(this.submissionCollection);
+        this.submissionDAO = new SubmissionDAO();
         this.dataModelService = dataModelService;
         this.programDAO = new ProgramDAO();
         this.userDAO = new UserDAO();
@@ -200,6 +201,19 @@ class Submission {
         return isArray ? enriched : enriched[0];
     }
 
+    /**
+     * Creates a data submission for an approved study.
+     * Assigns `_id` and `rootPath` (`submissions/<id>`) before insert so Mongoose required validation passes.
+     * @param {object} params
+     * @param {string} params.studyID Approved study ID
+     * @param {string} params.dataCommons Data commons code
+     * @param {string} params.name Submission name
+     * @param {string} params.intention New/Update or Delete
+     * @param {string} params.dataType Metadata Only or Metadata and Data Files
+     * @param {object} context GraphQL context with session userInfo
+     * @returns {Promise<object>} Created submission document
+     * @throws {Error} On auth, validation, or insert failure
+     */
     async createSubmission(params, context) {
         verifySession(context)
             .verifyInitialized();
@@ -295,14 +309,9 @@ class Submission {
         if (!created) {
             throw new Error(ERROR.CREATE_SUBMISSION_INSERTION_ERROR);
         }
-
-        const res = await this.submissionDAO.update(created?.id, {rootPath: `${SUBMISSIONS}/${created?.id}`})
-        if (!res) {
-            throw new Error(ERROR.CREATE_SUBMISSION_INSERTION_ERROR);
-        }
-        const updateSubmission = await this._findByID(res?._id)
-        await this._remindPrimaryContactEmail(updateSubmission, approvedStudy, program);
-        return this._findByID(res?._id);
+        const createdSubmission = await this._findByID(created?._id || created?.id);
+        await this._remindPrimaryContactEmail(createdSubmission, approvedStudy, program);
+        return createdSubmission;
     }
     async _findApprovedStudies(studies) {
         if (!studies || studies.length === 0) return [];
@@ -313,7 +322,7 @@ class Submission {
             return study;
         }).filter(studyID => studyID !== null && studyID !== undefined); // Filter out null/undefined values
         return this.approvedStudyDAO.findMany({
-            _id: { $in: studiesIDs }
+            _id: studiesIDs
         });
     }
 
@@ -516,12 +525,8 @@ class Submission {
                     const submissions = await this.submissionDAO.findMany({
                         studyID: aSubmission.studyID,
                         dataCommons: aSubmission.dataCommons,
-                        status: {
-                            in: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN],
-                        },
-                        NOT: {
-                            id: params._id,
-                        },
+                        status: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN],
+                        _id: { not: params._id },
                     });
                     const otherSubmissions = {
                           [IN_PROGRESS]: [],
@@ -592,7 +597,7 @@ class Submission {
                             .filter(Boolean))
                     );
 
-                    const users = await this.userDAO.findMany({_id: {$in: collabIDs || []}});
+                    const users = await this.userDAO.findMany({_id: collabIDs || []});
                     const userById = new Map(users.map(u => [String(u?._id), u]));
                     aSubmission?.collaborators.forEach(collaborator => {
                         const user = userById.get(String(collaborator?.collaboratorID));
@@ -771,7 +776,7 @@ class Submission {
             // Disable all reminders to ensure no notifications are sent.
             const everyReminderDays = this._getEveryReminderQuery(this.emailParams.remindSubmissionDay, true);
             const updatedReminder = await this.submissionDAO.updateMany(
-                { id: { in: submissionIDs } }, 
+                { _id: submissionIDs },
                 everyReminderDays
             );
             if (!updatedReminder?.count || updatedReminder?.count === 0) {
@@ -845,9 +850,7 @@ class Submission {
             const submissions = await this.submissionDAO.findMany({
                 studyID: studyID,
                 dataCommons: dataCommons,
-                NOT: {
-                    id: submissionID
-                }
+                _id: { not: submissionID }
             });
             // Throw error if other submissions associated with the same study AND data commons
             // are some of them are in "Submitted" status if cross submission validation is not Passed.
@@ -2396,7 +2399,7 @@ class Submission {
         if (!aSubmission) {
             throw new Error(ERROR.SUBMISSION_NOT_EXIST);
         }
-        if(!aSubmission.rootPath)
+        if(!aSubmission.rootPath?.trim())
             throw new Error(`${ERROR.VERIFY.EMPTY_ROOT_PATH}, ${submissionID}!`);
 
         const isCollaborator = this._isCollaborator(userInfo, aSubmission)
@@ -2865,72 +2868,51 @@ class Submission {
 
     async _findByID(id) {
         try {
-            // Use a single Prisma query with includes to fetch submission and related data
-            const aSubmission = await this.submissionDAO.findFirst(
-                { id },
-                {
-                    include: { 
-                        study: {
-                            select: {
-                                id: true,
-                                studyName: true,
-                                studyAbbreviation: true,
-                                dbGaPID: true
-                            }
-                        },
-                        submitter: {
-                            select: {
-                                id: true,
-                                firstName: true,
-                                lastName: true,
-                                fullName: true,
-                                email: true
-                            }
-                        },
-                        concierge: {
-                            select: {
-                                id: true,
-                                firstName: true,
-                                lastName: true,
-                                fullName: true,
-                                email: true
-                            }
-                        },
-                    }
-                }
-            );
+            const aSubmission = await this.submissionDAO.findById(id);
 
             if (!aSubmission) {
                 return null;
             }
 
-            // Fetch organization data if programID exists
+            const [study, submitter, concierge] = await Promise.all([
+                aSubmission.studyID
+                    ? this.approvedStudyDAO.findById(aSubmission.studyID)
+                    : null,
+                aSubmission.submitterID
+                    ? this.userDAO.findById(aSubmission.submitterID)
+                    : null,
+                aSubmission.conciergeID
+                    ? this.userDAO.findById(aSubmission.conciergeID)
+                    : null,
+            ]);
+
             if (aSubmission?.programID) {
                 const org = await this.programDAO.findById(aSubmission.programID);
-                // Transform organization to match GraphQL schema (map id to _id)
                 aSubmission.organization = formatNestedOrganization(org);
             }
 
-            // Transform study data to match expected format
-            if (aSubmission?.study?.id) {
-                aSubmission.study._id = aSubmission.study.id;
-                // note: FE use the root level properties; studyName, studyAbbreviation
-                aSubmission.studyName = aSubmission.study.studyName;
-                aSubmission.studyAbbreviation = aSubmission.study.studyAbbreviation;
+            if (study) {
+                aSubmission.study = {
+                    _id: study._id || study.id,
+                    studyName: study.studyName,
+                    studyAbbreviation: study.studyAbbreviation,
+                    dbGaPID: study.dbGaPID,
+                };
+                aSubmission.studyName = study.studyName;
+                aSubmission.studyAbbreviation = study.studyAbbreviation;
             }
             // DEPRECATED: submission.dbGaPID will be removed; value is from submission.study.dbGaPID. Prefer submission.study.dbGaPID and convert callers.
             aSubmission.dbGaPID = aSubmission?.study?.dbGaPID ?? aSubmission?.dbGaPID;
 
-            // Transform submitter data to match expected format
-            if (aSubmission?.submitter?.id && aSubmission?.submitter?.firstName) {
-                // note: FE use the root level properties; submitterName
-                aSubmission.submitterName = aSubmission?.submitter?.fullName || "";
+            if (submitter) {
+                aSubmission.submitter = pickUserSummary(submitter);
+                aSubmission.submitterName = submitter?.fullName || "";
             }
 
-            if (aSubmission?.concierge?.id) {
-                // note: FE use the root level properties; conciergeName, conciergeEmail
-                aSubmission.conciergeName = aSubmission?.concierge?.fullName || "";
-                aSubmission.conciergeEmail = aSubmission?.concierge?.email || aSubmission.conciergeEmail;
+            if (concierge) {
+                aSubmission.concierge = pickUserSummary(concierge);
+                aSubmission.conciergeName = concierge?.fullName || "";
+                aSubmission.conciergeEmail = concierge?.email || aSubmission.conciergeEmail;
             }
             return aSubmission;
         } catch (error) {
@@ -2961,9 +2943,7 @@ class Submission {
         return await this.submissionDAO.findFirst({
             name: newName,
             studyID: studyID,
-            NOT: {
-                id: submissionID
-            }
+            _id: { not: submissionID }
         });
     }
 
@@ -3432,6 +3412,7 @@ class DataValidation {
 const SUBMISSIONS = "submissions";
 class DataSubmission {
     constructor(name, userInfo, dataCommons, dbGaPID, aProgram, modelVersion, intention, dataType, approvedStudy, submissionBucketName) {
+        this._id = v4();
         this.name = name;
         this.submitterID = userInfo._id;
         this.collaborators = [];
@@ -3446,7 +3427,7 @@ class DataSubmission {
             this.programID = aProgram?._id;
         }
         this.bucketName = submissionBucketName;
-        this.rootPath = "";
+        this.rootPath = `${SUBMISSIONS}/${this._id}`;
         this.conciergeID = this._getConciergeID(approvedStudy, aProgram);
         this.createdAt = this.updatedAt = getCurrentTime();
         // no metadata to be validated
@@ -3589,6 +3570,22 @@ const getEmailUserName = (userInfo) => {
     return formattedName;
 }
 
+
+/**
+ * Narrows a user document to the fields callers read off a submission's submitter/concierge,
+ * so whole user records are not attached to submissions that get logged or emailed.
+ * @param {object} user User document
+ * @returns {object} User summary with _id, firstName, lastName, fullName, and email
+ */
+function pickUserSummary(user) {
+    return {
+        _id: user?._id || user?.id,
+        firstName: user?.firstName,
+        lastName: user?.lastName,
+        fullName: user?.fullName,
+        email: user?.email,
+    };
+}
 
 function logDaysDifference(inactiveDays, accessedAt, submissionID) {
     const startedDate = accessedAt; // Ensure it's a Date object

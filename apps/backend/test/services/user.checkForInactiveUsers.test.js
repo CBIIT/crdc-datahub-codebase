@@ -10,7 +10,7 @@ jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
 
 describe('UserService.checkForInactiveUsers', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockInactiveUsers = [
         {
@@ -81,7 +81,6 @@ describe('UserService.checkForInactiveUsers', () => {
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockApprovedStudiesService = {};
         mockConfigurationService = {};
@@ -92,7 +91,6 @@ describe('UserService.checkForInactiveUsers', () => {
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             'test@example.com',
             'http://test.com',
@@ -657,7 +655,6 @@ describe('UserService.checkForInactiveUsers', () => {
                 mockLogCollection,
                 mockOrganizationCollection,
                 mockNotificationsService,
-                mockSubmissionsCollection,
                 mockApplicationCollection,
                 'test@example.com',
                 'http://test.com',

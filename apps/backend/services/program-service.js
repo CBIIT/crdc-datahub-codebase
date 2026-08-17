@@ -15,13 +15,12 @@ class Program {
   _READ_ONLY_FIELDS = ["name", "abbreviation", "description", "status"];
 
   /**
-   * @param {object} submissionCollection Native submission collection
    * @param {object} applicationCollection Native application collection
    */
-  constructor(submissionCollection, applicationCollection) {
+  constructor(applicationCollection) {
     this.programDAO = new ProgramDAO();
     this.approvedStudyDAO = new ApprovedStudyDAO();
-    this.submissionDAO = new SubmissionDAO(submissionCollection);
+    this.submissionDAO = new SubmissionDAO();
     this.userDAO = new UserDAO();
     this.applicationDAO = new ApplicationDAO(applicationCollection);
   }
@@ -86,7 +85,7 @@ class Program {
     const normalizedStatus = String(status).trim().toLowerCase();
     let statusCondition;
     if (normalizedStatus === this._ALL.toLowerCase()) {
-      statusCondition = {status: {$in: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE]}};
+      statusCondition = {status: [PROGRAM.STATUSES.ACTIVE, PROGRAM.STATUSES.INACTIVE]};
     } else if (normalizedStatus === PROGRAM.STATUSES.ACTIVE.toLowerCase()) {
       statusCondition = {status: PROGRAM.STATUSES.ACTIVE};
     } else if (normalizedStatus === PROGRAM.STATUSES.INACTIVE.toLowerCase()) {
@@ -254,7 +253,7 @@ class Program {
     if (submissionIDs?.length > 0) {
       const updateSubmission = await this.submissionDAO.updateMany(
           {
-            id: { in: submissionIDs }, // assuming `_id` maps to `id`
+            _id: submissionIDs,
             conciergeID: { not: conciergeID},
           },
           {

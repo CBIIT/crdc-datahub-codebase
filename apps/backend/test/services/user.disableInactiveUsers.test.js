@@ -9,7 +9,7 @@ const { USER } = require('../../crdc-datahub-database-drivers/constants/user-con
 
 describe('UserService.disableInactiveUsers', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockInactiveUsers = [
         {
@@ -50,7 +50,6 @@ describe('UserService.disableInactiveUsers', () => {
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockApprovedStudiesService = {};
         mockConfigurationService = {};
@@ -61,7 +60,6 @@ describe('UserService.disableInactiveUsers', () => {
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             'test@example.com',
             'http://test.com',
@@ -88,8 +86,8 @@ describe('UserService.disableInactiveUsers', () => {
                 { email: 'user2@example.com', IDP: 'microsoft' }
             ];
             const expectedQuery = {
-                "$or": inactiveUserConditions,
-                IDP: { $ne: 'nih' }
+                OR: inactiveUserConditions,
+                IDP: { not: 'nih' }
             };
             const expectedUpdate = {
                 userStatus: USER.STATUSES.INACTIVE,
@@ -186,14 +184,14 @@ describe('UserService.disableInactiveUsers', () => {
     });
 
     describe('query structure validation', () => {
-        it('should build correct query with $or and IDP exclusion', async () => {
+        it('should build correct query with OR and IDP exclusion', async () => {
             const inactiveUserConditions = [
                 { email: 'user1@example.com', IDP: 'google' },
                 { email: 'user2@example.com', IDP: 'microsoft' }
             ];
             const expectedQuery = {
-                "$or": inactiveUserConditions,
-                IDP: { $ne: 'nih' }
+                OR: inactiveUserConditions,
+                IDP: { not: 'nih' }
             };
 
             mockUserDAO.updateMany.mockResolvedValue({ count: 2 });
@@ -217,8 +215,8 @@ describe('UserService.disableInactiveUsers', () => {
             await userService.disableInactiveUsers(inactiveUserConditions);
 
             const expectedQuery = {
-                "$or": inactiveUserConditions,
-                IDP: { $ne: 'nih' }
+                OR: inactiveUserConditions,
+                IDP: { not: 'nih' }
             };
             expect(mockUserDAO.updateMany).toHaveBeenCalledWith(expectedQuery, expect.any(Object));
             expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
@@ -392,8 +390,8 @@ describe('UserService.disableInactiveUsers', () => {
 
             expect(result).toEqual(mockInactiveUsers);
             const expectedQuery = {
-                "$or": inactiveUserConditions,
-                IDP: { $ne: 'nih' }
+                OR: inactiveUserConditions,
+                IDP: { not: 'nih' }
             };
             expect(mockUserDAO.updateMany).toHaveBeenCalledWith(expectedQuery, expect.any(Object));
         });
@@ -411,8 +409,8 @@ describe('UserService.disableInactiveUsers', () => {
 
             expect(result).toEqual([]);
             const expectedQuery = {
-                "$or": inactiveUserConditions,
-                IDP: { $ne: 'nih' }
+                OR: inactiveUserConditions,
+                IDP: { not: 'nih' }
             };
             expect(mockUserDAO.updateMany).toHaveBeenCalledWith(expectedQuery, expect.any(Object));
         });
@@ -431,8 +429,8 @@ describe('UserService.disableInactiveUsers', () => {
 
             expect(result).toEqual([mockInactiveUsers[0], mockInactiveUsers[1]]);
             const expectedQuery = {
-                "$or": inactiveUserConditions,
-                IDP: { $ne: 'nih' }
+                OR: inactiveUserConditions,
+                IDP: { not: 'nih' }
             };
             expect(mockUserDAO.updateMany).toHaveBeenCalledWith(expectedQuery, expect.any(Object));
         });

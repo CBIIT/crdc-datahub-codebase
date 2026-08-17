@@ -4,7 +4,7 @@ const { EMAIL_NOTIFICATIONS } = require('../../crdc-datahub-database-drivers/con
 
 describe('UserService.getAdminPBACUsers', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockAdminPBACUsers = [
         {
@@ -85,7 +85,6 @@ describe('UserService.getAdminPBACUsers', () => {
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockApprovedStudiesService = {};
         mockConfigurationService = {};
@@ -97,7 +96,6 @@ describe('UserService.getAdminPBACUsers', () => {
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             'test@example.com',
             'http://test.com',
@@ -127,8 +125,8 @@ describe('UserService.getAdminPBACUsers', () => {
             expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             });
         });
 
@@ -144,8 +142,8 @@ describe('UserService.getAdminPBACUsers', () => {
             expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             });
         });
 
@@ -162,8 +160,8 @@ describe('UserService.getAdminPBACUsers', () => {
             expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             });
         });
     });
@@ -182,8 +180,8 @@ describe('UserService.getAdminPBACUsers', () => {
             expect(result.every(user => user.role === USER.ROLES.ADMIN)).toBe(true);
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             });
         });
 
@@ -200,8 +198,8 @@ describe('UserService.getAdminPBACUsers', () => {
             expect(result.every(user => user.userStatus === USER.STATUSES.ACTIVE)).toBe(true);
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             });
         });
 
@@ -220,8 +218,8 @@ describe('UserService.getAdminPBACUsers', () => {
             )).toBe(true);
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             });
         });
 
@@ -241,8 +239,8 @@ describe('UserService.getAdminPBACUsers', () => {
             )).toBe(true);
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             });
         });
     });
@@ -294,8 +292,8 @@ describe('UserService.getAdminPBACUsers', () => {
             // Assert
             expect(mockUserDAO.findMany).toHaveBeenCalledWith({
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             });
         });
 
@@ -309,8 +307,8 @@ describe('UserService.getAdminPBACUsers', () => {
             // Assert
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             };
             expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
@@ -325,11 +323,11 @@ describe('UserService.getAdminPBACUsers', () => {
             // Assert
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             };
             expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
-            expect(expectedQuery.notifications.$in[0]).toBe(EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN);
+            expect(expectedQuery.notifications[0]).toBe(EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN);
         });
     });
 
@@ -434,14 +432,14 @@ describe('UserService.getAdminPBACUsers', () => {
             // Assert
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
-                "notifications": {"$in": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN]},
-                "$or": [{"role": USER.ROLES.ADMIN}]
+                "notifications": [EMAIL_NOTIFICATIONS.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+                OR: [{"role": USER.ROLES.ADMIN}]
             };
             expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
             
             // Verify it's different from getAdmin query
             expect(expectedQuery).toHaveProperty('notifications');
-            expect(expectedQuery).toHaveProperty('$or');
+            expect(expectedQuery).toHaveProperty('OR');
         });
 
         it('should return array format consistent with other user retrieval methods', async () => {

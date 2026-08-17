@@ -102,10 +102,11 @@ class ProgramDAO extends MongooseGenericDAO {
      * @param {number} offset Skip count
      * @param {string} orderBy Sort field
      * @param {string} sortDirection Sort direction
-     * @param {object} [statusCondition={}] Mongo filter on program fields only (e.g. status); must not reference studies
+     * @param {object} [statusCondition={}] Filter on program fields only (e.g. status); must not reference studies
      * @returns {Promise<{total: number, results: object[]}>}
      */
     async listPrograms(first, offset, orderBy, sortDirection, statusCondition = {}) {
+        const filter = this._normalizeFilter(statusCondition);
         const pagination = new MongoPagination(first, offset, orderBy, sortDirection);
         const paginationPipeline = pagination.getPaginationPipeline();
         const resultsPipeline = [
@@ -117,7 +118,7 @@ class ProgramDAO extends MongooseGenericDAO {
                     as: "studies"
                 }
             },
-            { $match: statusCondition },
+            { $match: filter },
             ...paginationPipeline,
         ];
 
@@ -125,7 +126,7 @@ class ProgramDAO extends MongooseGenericDAO {
         // Safe while statusCondition is program-field-only. If filters ever include study fields,
         // count must use the same pre-pagination pipeline as results.
         const [total, results] = await Promise.all([
-            this.count(statusCondition),
+            this.count(filter),
             this.aggregate(resultsPipeline),
         ]);
 

@@ -6,7 +6,7 @@ describe('UserService.isEligibleReopenOwner', () => {
     let userService;
 
     beforeEach(() => {
-        userService = new UserService({}, {}, {}, {}, {}, 'email@test.com', 'http://test', {}, 180, {}, {}, {});
+        userService = new UserService({}, {}, {}, {}, 'email@test.com', 'http://test', {}, 180, {}, {}, {});
     });
 
     const eligibleUser = {
@@ -59,20 +59,18 @@ describe('UserService._buildReopenListUsersMatch', () => {
     let userService;
 
     beforeEach(() => {
-        userService = new UserService({}, {}, {}, {}, {}, 'email@test.com', 'http://test', {}, 180, {}, {}, {});
+        userService = new UserService({}, {}, {}, {}, 'email@test.com', 'http://test', {}, 180, {}, {}, {});
     });
 
     it('filters to active User/Submitter with create permission', () => {
         expect(userService._buildReopenListUsersMatch()).toEqual({
-            role: { $in: [USER.ROLES.USER, USER.ROLES.SUBMITTER] },
+            role: [USER.ROLES.USER, USER.ROLES.SUBMITTER],
             userStatus: USER.STATUSES.ACTIVE,
-            permissions: {
-                $in: [
-                    USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE,
-                    'submission_request:create:all',
-                    'submission_request:create:own',
-                ],
-            },
+            permissions: [
+                USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CREATE,
+                'submission_request:create:all',
+                'submission_request:create:own',
+            ],
         });
     });
 });

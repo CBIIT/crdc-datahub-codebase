@@ -6,7 +6,7 @@ const { ERROR } = require('../../constants/error-constants');
 describe('UserService.listActiveDCPsAPI', () => {
     let userService;
     let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, 
-        mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, 
+        mockApplicationCollection, mockApprovedStudiesService, 
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
 
@@ -52,7 +52,6 @@ describe('UserService.listActiveDCPsAPI', () => {
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockApprovedStudiesService = {
             approvedStudiesCollection: {}
@@ -67,7 +66,6 @@ describe('UserService.listActiveDCPsAPI', () => {
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             'official@email.com',
             'http://app.url',
