@@ -243,7 +243,7 @@ class DataLoader:
                     for iVal in val_list:
                         parents.append({"parentType": temp[0], "parentIDPropName": temp[1], "parentIDValue": iVal.strip()})
                 else:
-                    parents.append({"parentType": temp[0], "parentIDPropName": temp[1], "parentIDValue": val})
+                    parents.append({"parentType": temp[0], "parentIDPropName": temp[1], "parentIDValue": val.strip()})
                 rawData.update({relation.replace(".", "|"): val})
         return parents
     
