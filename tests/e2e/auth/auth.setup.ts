@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures';
 import * as OTPAuth from "otpauth";
 import dotenv from 'dotenv';
 
@@ -15,9 +15,9 @@ const generateOTP = (secret: string) => {
   return totp.generate();
 };
 
-test('authenticate and persist session', async ({ page }) => {
-  await page.goto('https://hub-dev.datacommons.cancer.gov/');
-  await page.getByRole('button', { name: 'Continue' }).click();
+test('authenticate and persist session', async ({ page, homePage }) => {
+  await homePage.goto();
+
   await page.getByRole('link', { name: 'Login' }).click();
 
   await page.getByRole('link', { name: 'Login.gov' }).click();
@@ -36,7 +36,7 @@ test('authenticate and persist session', async ({ page }) => {
   await page.waitForTimeout(1500);
   await page.getByRole('button', { name: 'Grant' }).click();
 
-  await expect(page).toHaveURL(/hub-dev\.datacommons\.cancer\.gov/);
+  await homePage.waitForUrlPath(/\/$/);
 
   await expect(page.locator("#navbar-dropdown-name")).toBeVisible();
 

@@ -2,8 +2,10 @@ import { test as base, ConsoleMessage } from '@playwright/test';
 import { DataSubmissionsPage } from './pages/data-submissions.page';
 import { ModelNavigatorPage } from './pages/model-navigator.page';
 import { SubmissionRequestsPage } from './pages/submission-requests.page';
+import { HomePage } from './pages/home-page';
 
 type E2EFixtures = {
+  homePage: HomePage;
   dataSubmissionsPage: DataSubmissionsPage;
   modelNavigatorPage: ModelNavigatorPage;
   submissionRequestsPage: SubmissionRequestsPage;
@@ -22,6 +24,9 @@ export const test = base.extend<E2EFixtures>({
     });
 
     await use(page);
+  },
+  homePage: async ({ page }, use) => {
+    await use(new HomePage(page));
   },
   dataSubmissionsPage: async ({ page }, use) => {
     await use(new DataSubmissionsPage(page));

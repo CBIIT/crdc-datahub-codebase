@@ -8,7 +8,11 @@ export abstract class BasePage {
   }
 
   protected get baseUrl(): string {
-    return process.env.BASE_URL || 'https://hub-dev.datacommons.cancer.gov';
+    if (!process.env.BASE_URL) {
+      throw new Error('BASE_URL environment variable is not defined');
+    }
+
+    return process.env.BASE_URL;
   }
 
   async navigate(path: string): Promise<void> {
