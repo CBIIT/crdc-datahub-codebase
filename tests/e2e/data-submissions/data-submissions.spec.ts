@@ -4,11 +4,11 @@ test.describe('Data Submissions', () => {
   test('should create a Data Submission successfully', async ({ dataSubmissionsPage }) => {
     await dataSubmissionsPage.open();
 
-    const submission = await dataSubmissionsPage.createDataSubmissionFlow({
+    const submission = await dataSubmissionsPage.createSubmission({
       submissionName: `ta-${Date.now()}`,
       dataType: 'Metadata Only',
       dataCommons: 'CTDC',
-      studyId: '2a0eecf4-60ba-4919-b469-972ab616aea9',
+      studyName: '0452-test', // TODO: Use tier-agnostic study selection
     });
 
     await submission.click();

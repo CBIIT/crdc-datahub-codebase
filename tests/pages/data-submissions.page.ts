@@ -7,8 +7,8 @@ export type DataSubmissionDataType = 'Metadata and Data Files' | 'Metadata Only'
 
 export type CreateDataSubmissionOptions = {
   submissionName: string;
-  studyId: string;
-  dataCommons?: string;
+  studyName: string;
+  dataCommons: string;
   intention?: DataSubmissionIntention;
   dataType?: DataSubmissionDataType;
   openFromHome?: boolean;
@@ -21,7 +21,7 @@ export class DataSubmissionsPage extends BasePage {
   readonly submissionTypeInput: Locator;
   readonly dataTypeInput: Locator;
   readonly dataCommonsInput: Locator;
-  readonly studyIdInput: Locator;
+  readonly studyInput: Locator;
   readonly submissionNameInputWrapper: Locator;
   readonly createSubmissionButton: Locator;
   readonly metadataFileSelectButton: Locator;
@@ -42,7 +42,7 @@ export class DataSubmissionsPage extends BasePage {
     this.submissionTypeInput = page.getByTestId('create-data-submission-dialog-submission-type-input');
     this.dataTypeInput = page.getByTestId('create-data-submission-dialog-data-type-input');
     this.dataCommonsInput = page.getByTestId('create-data-submission-dialog-data-commons-input');
-    this.studyIdInput = page.getByTestId('create-data-submission-dialog-study-id-input');
+    this.studyInput = page.getByTestId('create-data-submission-dialog-study-id-input');
     this.submissionNameInputWrapper = page.getByTestId('create-data-submission-dialog-submission-name-input');
     this.createSubmissionButton = page.getByTestId('create-data-submission-dialog-create-button');
     this.metadataFileSelectButton = page.getByTestId('metadata-upload-file-select-button');
@@ -68,38 +68,27 @@ export class DataSubmissionsPage extends BasePage {
     await this.submissionTypeInput.getByText(intention, { exact: true }).click();
   }
 
-  async chooseDataType(dataType: DataSubmissionDataType): Promise<void> {
-    await this.dataTypeInput.getByText(dataType, { exact: true }).click();
-  }
-
-  async chooseDataCommonsAndStudy(dataCommons: string, studyId: string): Promise<void> {
-    await this.dataCommonsInput.getByRole('button').click();
-    await this.dataCommonsInput.getByText(dataCommons, { exact: true }).click();
-
-    await this.studyIdInput.getByRole('button').click();
-    await this.page.getByTestId(`study-option-${studyId}`).click();
-  }
-
-  async createSubmission(submissionName: string): Promise<Locator> {
-    await this.submissionNameInputWrapper.getByRole('textbox').fill(submissionName);
-    await this.createSubmissionButton.click();
-
-    return this.page.getByRole('link', { name: submissionName, exact: true }).first();
-  }
-
-  async createDataSubmissionFlow(options: CreateDataSubmissionOptions): Promise<Locator> {
+  async createSubmission(options: CreateDataSubmissionOptions): Promise<Locator> {
     const {
       submissionName,
-      studyId,
-      dataCommons = 'CTDC',
+      studyName,
+      dataCommons,
       intention = 'New/Update',
       dataType = 'Metadata Only',
     } = options;
 
     await this.openCreateDataSubmissionDialog(intention);
-    await this.chooseDataType(dataType);
-    await this.chooseDataCommonsAndStudy(dataCommons, studyId);
-    return await this.createSubmission(submissionName);
+    await this.dataTypeInput.getByText(dataType, { exact: true }).click();
+
+    await this.dataCommonsInput.getByRole('button').click();
+    await this.dataCommonsInput.getByText(dataCommons, { exact: true }).click();
+
+    await this.studyInput.getByRole('button').click();
+    await this.studyInput.getByText(studyName, { exact: true }).click();
+    await this.submissionNameInputWrapper.getByRole('textbox').fill(submissionName);
+    await this.createSubmissionButton.click();
+
+    return this.page.getByRole('link', { name: submissionName, exact: true }).first();
   }
 
   async uploadMetadataFiles(files: string[]): Promise<void> {
