@@ -431,7 +431,7 @@ class MetaDataValidator:
             # call validate_relationship
             result_rel = self.validate_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
 
-            result_required_rel = self.validate_required_rel(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
+            result_required_rel = self.validate_required_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
 
             # concatenation of all errors
             errors = result_required.get(ERRORS, []) +  result_prop_value.get(ERRORS, []) + result_rel.get(ERRORS, []) + result_required_rel.get(ERRORS, [])
