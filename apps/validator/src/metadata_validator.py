@@ -746,14 +746,10 @@ class MetaDataValidator:
         for parent_node in data_record.get(PARENTS, []):
             parents[get_column_name_from_parent_obj(parent_node)] = parent_node[PARENT_ID_VAL]
         for required_column in required_relationship_columns:
-            if required_column not in parents.keys():
+            parent_id_value = parents.get(required_column)
+            if required_column not in parents.keys() or parent_id_value is None or parent_id_value == "":
                 result["result"] = STATUS_ERROR
-                result[ERRORS].append(f"missing required relationship column: {required_column}")
-            else:
-                parent_id_value = parents[required_column]
-                if parent_id_value is None or parent_id_value == "":
-                    result["result"] = STATUS_ERROR
-                    result[ERRORS].append(f"missing required relationship value for column: {required_column}")
+                result[ERRORS].append(create_error("M037", f'{msg_prefix}:  Required relationship "{required_column}" is empty.', required_column, ""))
 
         return result
 
