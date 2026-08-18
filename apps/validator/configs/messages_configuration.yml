@@ -183,7 +183,7 @@ Messages:
   M037:
     title: "Missing required relationship"
     severity: "Error"
-    message: '{}  Required relationship "{}" is empty.'
+    message: '{} Required relationship "{}" is empty.'
     description: "Empty value in a required relationship column"
 
   # data file validation message
