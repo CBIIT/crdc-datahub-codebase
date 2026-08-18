@@ -514,6 +514,17 @@ class EssentialValidator:
                 self.log.error(msg)
                 file_info[ERRORS].append(msg)
                 self.batch[ERRORS].append(msg)
+
+            # check missing required relationship 
+            required_relationships = self.model.get_node_req_rel_columns(type)
+            missed_rels = [ rel for rel in required_relationships if rel not in columns]
+            if len(missed_rels) > 0:
+                msg = f'“{file_info[FILE_NAME]}”: '
+                msg += f'Relationship columns {json.dumps(missed_rels)} are required.' if len(missed_rels) > 1 else f'Relationship column "{missed_rels[0]}" is required.'
+                self.log.error(msg)
+                file_info[ERRORS].append(msg)
+                self.batch[ERRORS].append(msg)
+
             # check relationship
             rel_props = [rel for rel in columns if "." in rel and not re.search('\.\d*$',rel)]
             rel_result, msgs = self.check_relationship(file_info, type, rel_props)
@@ -644,7 +655,7 @@ class EssentialValidator:
             return False, [f'“{file_info[FILE_NAME]}”: All relationship columns are missing. Please ensure at least one relationship column is included.']
         
         def_rel_nodes = [ key for key in def_rel.keys()]
-        rel_props_dic = {rel.split(".")[0]: rel.split(".")[1] for rel in rel_props}
+        rel_props_dic = {rel.split(".")[0].strip(): rel.split(".")[1].strip() for rel in rel_props}
         rel_props_dic_types = rel_props_dic.keys()
         
         # check if parent node is valid
