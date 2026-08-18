@@ -18,6 +18,8 @@ export class SubmissionRequestsPage extends BasePage {
     await this.navigate('/submission-requests');
 
     await this.waitForUrlPath(/\/submission-requests(?:\?.*)?$/);
+
+    await expect(this.page.getByRole('heading', { name: 'Submission Requests', exact: true })).toBeVisible();
   }
 
   async openCreateSRFModal(): Promise<void> {
