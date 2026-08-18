@@ -8,7 +8,7 @@ test('should complete a Data Submission successfully', async ({ page, dataSubmis
   const submission = await dataSubmissionsPage.createSubmission({
     submissionName,
     dataType: 'Metadata Only',
-    dataCommons: 'GC',
+    dataCommons: 'CTDC',
     studyName: '0452-test', // TODO: Use tier-agnostic study selection
   });
 
@@ -27,8 +27,12 @@ test('should complete a Data Submission successfully', async ({ page, dataSubmis
     path.join(__dirname, 'study.tsv'),
   ]);
   await page.getByTestId('metadata-upload-file-upload-button').click();
-
   await expect(page.getByTestId('metadata-upload-file-upload-button')).toHaveText('Uploading...');
+  await expect(page.getByTestId('metadata-upload-file-upload-button')).toHaveText('Upload', { timeout: 30_000 });
 
-  await expect(page.getByTestId('metadata-upload-file-upload-button')).toHaveText('Upload');
+  // Run validation
+  await expect(dataSubmissionsPage.validateButton).toBeEnabled({ timeout: 60_000 });
+  await dataSubmissionsPage.runAllValidationsRadio.check();
+  await dataSubmissionsPage.validateButton.click();
+  await expect(dataSubmissionsPage.validationStatusChip).toHaveText('VALIDATION COMPLETED', { timeout: 60_000 });
 });

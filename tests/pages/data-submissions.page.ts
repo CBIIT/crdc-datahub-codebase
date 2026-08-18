@@ -91,22 +91,6 @@ export class DataSubmissionsPage extends BasePage {
     return this.page.getByRole('link', { name: submissionName, exact: true }).first();
   }
 
-  async uploadMetadataFiles(files: string[]): Promise<void> {
-    await this.metadataFileSelectButton.click();
-    await this.metadataFileInput.setInputFiles(files);
-    await this.metadataUploadButton.click();
-    await expect(this.genericTableRow).toContainText('Uploaded');
-  }
-
-  async runValidationAndExpectCompleted(): Promise<void> {
-    await this.runAllValidationsRadio.check();
-    await this.validateButton.click();
-    await expect(this.page.locator('#notistack-snackbar')).toContainText(
-      'Validation process is starting; this may take some time. Please wait before initiating another validation.'
-    );
-    await expect(this.validationStatusChip).toContainText('VALIDATION COMPLETED');
-  }
-
   async adminSubmit(justification: string): Promise<void> {
     await this.adminSubmitButton.click();
     await this.adminJustificationInput.fill(justification);
