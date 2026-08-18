@@ -4,6 +4,7 @@ from common.model_reader import YamlModelParser
 from common.model import DataModel
 from common.constants import MODELS_DEFINITION_FILE, LIST_DELIMITER_PROP, DEF_MAIN_NODES, PROPERTY_NAMES, OMIT_DCF_PREFIX
 from common.utils import download_file_to_dict, get_exception_msg
+from common.mdf_reader import get_model_from_mdf_files
 
 YML_FILE_EXT = ".yml"
 DEF_MODEL_FILES = "model-files"
@@ -39,10 +40,11 @@ class ModelFactory:
         delimiter = v.get(LIST_DELIMITER_PROP)
         #process model files for the data common
         try:
+            mdf_model = get_model_from_mdf_files(file_names, handle=dc)
             model_reader = YamlModelParser(file_names, dc, delimiter, version)
             model_reader.model.update({DEF_FILE_NODES: v[DEF_SEMANTICS][DEF_FILE_NODES], DEF_MAIN_NODES: v[DEF_SEMANTICS][DEF_MAIN_NODES], 
                                        PROPERTY_NAMES: v[DEF_SEMANTICS][PROPERTY_NAMES], OMIT_DCF_PREFIX: v.get(OMIT_DCF_PREFIX, False)})
-            return model_reader.model
+            return model_reader.model, mdf_model
         except Exception as e:
             self.log.exception(e)
             msg = f"Failed to create data model: {data_common}/{version}!"
@@ -64,12 +66,12 @@ class ModelFactory:
         if not version:
             version = self.get_current_version_by_datacommon(data_common)
         try:
-            model = self.create_model(data_common, version)
+            model, mdf_model = self.create_model(data_common, version)
         except Exception as e:
             self.log.exception(e)
             msg = f"Failed to create data model: {data_common}/{version}!"
             self.log.exception(f"{msg} {get_exception_msg()}")
-        return DataModel(model) if model else None  
+        return DataModel(model, mdf_model) if model else None  
 
 def model_key(data_common, version):
     return f"{data_common}_{version}"

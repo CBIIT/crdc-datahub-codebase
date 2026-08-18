@@ -431,10 +431,12 @@ class MetaDataValidator:
             # call validate_relationship
             result_rel = self.validate_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
 
+            result_required_rel = self.validate_required_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
+
             # concatenation of all errors
-            errors = result_required.get(ERRORS, []) +  result_prop_value.get(ERRORS, []) + result_rel.get(ERRORS, [])
+            errors = result_required.get(ERRORS, []) +  result_prop_value.get(ERRORS, []) + result_rel.get(ERRORS, []) + result_required_rel.get(ERRORS, [])
             # concatenation of all warnings
-            warnings = result_required.get(WARNINGS, []) +  result_prop_value.get(WARNINGS, []) + result_rel.get(WARNINGS, [])
+            warnings = result_required.get(WARNINGS, []) +  result_prop_value.get(WARNINGS, []) + result_rel.get(WARNINGS, []) + result_required_rel.get(WARNINGS, [])
             #check if existed nodes in release collection
             if sub_intention and sub_intention in [SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE]:
                 exist_release = self.mongo_dao.search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
@@ -736,6 +738,21 @@ class MetaDataValidator:
             result["result"] = STATUS_PASSED
         return result
 
+    def validate_required_relationship(self, data_record, msg_prefix):
+        result = {"result": STATUS_PASSED, ERRORS: [], WARNINGS: []}
+        node_type = data_record.get(NODE_TYPE)
+        required_relationship_columns = self.model.get_node_req_rel_columns(node_type)
+        parents = {}
+        for parent_node in data_record.get(PARENTS, []):
+            parents[get_column_name_from_parent_obj(parent_node)] = parent_node[PARENT_ID_VAL]
+        for required_column in required_relationship_columns:
+            parent_id_value = parents.get(required_column)
+            if required_column not in parents.keys() or parent_id_value is None or parent_id_value == "":
+                result["result"] = STATUS_ERROR
+                result[ERRORS].append(create_error("M037", f'{msg_prefix}:  Required relationship "{required_column}" is empty.', required_column, ""))
+
+        return result
+
     def get_file_consent_code(self, parent_type, parent_id_value, consent_group_parents, visited=None):
         if visited is None:
             visited = set()
@@ -1020,3 +1037,6 @@ def create_new_qc_result(node, validation_type):
         QC_ORIGIN: QC_ORIGIN_METADATA_VALIDATE_SERVICE if validation_type == VALIDATION_TYPE_METADATA else QC_ORIGIN_FILE_VALIDATE_SERVICE
     }
     return qc_result
+
+def get_column_name_from_parent_obj(parent_obj):
+    return f'{parent_obj[PARENT_TYPE]}.{parent_obj[PARENT_ID_NAME]}'

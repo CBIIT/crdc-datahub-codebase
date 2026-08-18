@@ -8,3 +8,4 @@ python-dateutil
 pandas
 pytest>=9.0.3
 pip>=26.1.1
+bento-mdf>=0.13.2
