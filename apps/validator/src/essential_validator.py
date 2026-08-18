@@ -655,7 +655,7 @@ class EssentialValidator:
             return False, [f'“{file_info[FILE_NAME]}”: All relationship columns are missing. Please ensure at least one relationship column is included.']
         
         def_rel_nodes = [ key for key in def_rel.keys()]
-        rel_props_dic = {rel.split(".")[0]: rel.split(".")[1] for rel in rel_props}
+        rel_props_dic = {rel.split(".")[0].strip(): rel.split(".")[1].strip() for rel in rel_props}
         rel_props_dic_types = rel_props_dic.keys()
         
         # check if parent node is valid
