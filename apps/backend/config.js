@@ -71,7 +71,8 @@ function buildConnectionString(user, password, host, port, database, caFile) {
 }
 
 /**
- * Builds the shared MongoDB/DocumentDB connection URI from MONGO_DB_* variables.
+ * Builds the shared MongoDB/DocumentDB connection URI from MONGO_DB_* variables
+ * and DATABASE_NAME (falls back to crdc-datahub via database-constants).
  * Used by native drivers, sessions, and Mongoose.
  * @returns {string}
  */
@@ -81,7 +82,7 @@ function buildMongoConnectionString() {
         process.env.MONGO_DB_PASSWORD,
         process.env.MONGO_DB_HOST,
         process.env.MONGO_DB_PORT,
-        process.env.DATABASE_NAME,
+        DATABASE_NAME,
         process.env.MONGO_DB_CA_FILE,
     );
 }

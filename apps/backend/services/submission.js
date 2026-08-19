@@ -2172,7 +2172,7 @@ class Submission {
 
         // Log for the modifying submission
         if (updatedSubmission) {
-            await this.logCollection.insert(UpdateSubmissionConfEvent.create(
+            await this._createLogEntry(UpdateSubmissionConfEvent.create(
                 userInfo._id, userInfo.email, userInfo.IDP, updatedSubmission._id,
                 // model change
                 aSubmission?.modelVersion, updatedSubmission?.modelVersion,
