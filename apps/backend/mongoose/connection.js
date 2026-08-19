@@ -4,41 +4,18 @@ const mongoose = require('mongoose');
 let connectPromise = null;
 
 /**
- * Builds Mongoose connect options for DocumentDB compatibility.
- * Always disables retryable writes. When tlsCAFile is set, enables TLS.
- *
- * @param {string} [tlsCAFile] Path to the TLS CA bundle
- * @returns {object}
- */
-function getMongooseConnectOptions(tlsCAFile) {
-    const options = {
-        retryWrites: false,
-    };
-    // TEMPORARY (Prisma→DocumentDB migration): tlsCAFile may come from DOCUMENTDB_CA_FILE or MONGO_DB_CA_FILE.
-    if (tlsCAFile) {
-        options.tls = true;
-        options.tlsCAFile = tlsCAFile;
-    }
-    return options;
-}
-
-/**
- * Connect Mongoose to MongoDB/DocumentDB.
+ * Connect Mongoose using the shared MongoDB/DocumentDB URI.
  * Validates uri, short-circuits when already connected, and shares one in-flight
  * connect promise so concurrent callers are idempotent. On failure the cached
  * promise is cleared so a later call can retry.
- * Uses retryWrites: false for DocumentDB compatibility.
- * When tlsCAFile is provided, connects with tls=true and that CA bundle.
- *
- * TEMPORARY (Prisma→DocumentDB migration): `tlsCAFile` supports dual-datasource TLS selection.
- * See documentation/temporary-dual-datasources.md for reversal inventory.
+ * Uses retryWrites: false for DocumentDB compatibility. TLS/CA settings come
+ * from the URI when MONGO_DB_CA_FILE is set in config.
  *
  * @param {string} uri MongoDB or DocumentDB connection string
- * @param {string} [tlsCAFile] Path to the TLS CA bundle for the chosen datasource
  * @returns {Promise<typeof mongoose>}
  * @throws {Error} When uri is missing or empty
  */
-async function connectMongoose(uri, tlsCAFile) {
+async function connectMongoose(uri) {
     if (!uri || typeof uri !== 'string' || !uri.trim()) {
         throw new Error('MongoDB/DocumentDB connection URI is required');
     }
@@ -46,7 +23,7 @@ async function connectMongoose(uri, tlsCAFile) {
         return mongoose;
     }
     if (!connectPromise) {
-        connectPromise = mongoose.connect(uri, getMongooseConnectOptions(tlsCAFile))
+        connectPromise = mongoose.connect(uri, { retryWrites: false })
             .then(() => {
                 console.log('Connected to database via Mongoose');
                 return mongoose;
@@ -69,5 +46,4 @@ function getMongoose() {
 module.exports = {
     connectMongoose,
     getMongoose,
-    getMongooseConnectOptions,
 };

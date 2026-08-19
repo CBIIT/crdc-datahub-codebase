@@ -79,8 +79,7 @@ app.use("/api/graphql", graphqlRouter);
     const dbConnector = new DatabaseConnector(configuration.mongo_db_connection_string);
     const dbService = new MongoQueries(configuration.mongo_db_connection_string, DATABASE_NAME);
     dbConnector.connect().then( async () => {
-        // TEMPORARY (Prisma→DocumentDB migration): Mongoose may use DocumentDB while Prisma uses MongoDB.
-        await connectMongoose(configuration.mongoose_connection_string, configuration.mongoose_tls_ca_file);
+        await connectMongoose(configuration.mongo_db_connection_string);
         const config = await configuration.updateConfig(dbConnector);
         const emailService = new EmailService(config.email_transport, config.emails_enabled);
         const configurationService = new ConfigurationService();
