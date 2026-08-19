@@ -1,4 +1,4 @@
-# Build stage — npm is only required to install dependencies and run Prisma generate.
+# Build stage — npm is only required to install dependencies.
 FROM node:24.17.0-alpine3.24 AS builder
 WORKDIR /usr/src/app
 # Install dependencies first (cached unless package files change).
@@ -7,8 +7,8 @@ RUN npm ci
 # Copy application source after npm ci so the dependency layer stays cached on code changes.
 COPY --chown=node:node . .
 
-# Generate Prisma client, then remove devDependencies
-RUN npx prisma generate && npm prune --omit=dev
+# Remove devDependencies for the production image
+RUN npm prune --omit=dev
 
 # Run stage
 FROM node:24.17.0-alpine3.24 AS fnl_base_image

@@ -31,25 +31,21 @@ jobs:
           - name: authn
             context: apps/authn
             test-command: npm run test
-            prisma: false
             node-version: "24"
 
           - name: backend
             context: apps/backend
             test-command: npm run test:ci
-            prisma: true
             node-version: "24"
 
           - name: frontend
             context: apps/frontend
             test-command: npm run test:ci
-            prisma: false
             node-version: "22"
 
           - name: chatbot-backend
             context: apps/chatbot-backend
             test-command: npm run test
-            prisma: false
             node-version: "24"
 
     steps:
@@ -83,11 +79,6 @@ jobs:
       - name: Install Dependencies
         working-directory: ${{ matrix.context }}
         run: npm install
-
-      - name: Setup Prisma
-        if: ${{ matrix.prisma }}
-        working-directory: ${{ matrix.context }}
-        run: npx prisma generate
 
       - name: Run tests
         working-directory: ${{ matrix.context }}
