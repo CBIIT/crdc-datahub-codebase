@@ -33,11 +33,6 @@ jest.mock('../../verifier/user-info-verifier');
 jest.mock('../../verifier/submission-verifier');
 jest.mock('../../domain/history-event');
 jest.mock('../../domain/user-scope');
-jest.mock('../../prisma', () => ({
-    log: {
-        create: jest.fn()
-    }
-}));
 
 const SubmissionDAO = require('../../dao/submission');
 const ProgramDAO = require('../../dao/program');
@@ -206,8 +201,9 @@ describe('Submission Service - getSubmission', () => {
         };
 
         // Create submission service instance
+        const mockLogCollection = { insert: jest.fn().mockResolvedValue({ acknowledged: true }) };
         submissionService = new Submission(
-            {}, // logCollection
+            mockLogCollection, // logCollection
             {}, // submissionCollection
             mockBatchService,
             mockUserService,
@@ -1959,14 +1955,9 @@ describe('Submission Service - getSubmission', () => {
     });
 
     describe('_logDataRecord', () => {
-        let prisma;
-        
         beforeEach(() => {
             jest.clearAllMocks();
-            prisma = require('../../prisma');
-            // Use the existing mock from jest.mock, just reset and configure it
-            prisma.log.create.mockClear();
-            prisma.log.create.mockResolvedValue({ id: 'log-123' });
+            submissionService.logCollection.insert = jest.fn().mockResolvedValue({ acknowledged: true });
         });
 
         it('should handle array input', async () => {
@@ -1985,16 +1976,13 @@ describe('Submission Service - getSubmission', () => {
                 nodeIDs
             );
 
-            expect(prisma.log.create).toHaveBeenCalled();
-            const callArgs = prisma.log.create.mock.calls[0][0];
-            // Verify the call structure: prisma.log.create({ data: logData })
-            // The callArgs should be { data: { userID, userEmail, userName, eventType, submissionID, ... } }
+            expect(submissionService.logCollection.insert).toHaveBeenCalled();
+            const callArgs = submissionService.logCollection.insert.mock.calls[0][0];
             expect(callArgs).toBeDefined();
-            expect(callArgs).toHaveProperty('data');
-            expect(callArgs.data).toBeDefined();
-            expect(callArgs.data.submissionID).toBe('sub-123');
-            expect(callArgs.data.userID).toBe('user-123');
-            expect(callArgs.data.eventType).toBe('Delete_Data');
+            expect(callArgs.userID).toBe('user-123');
+            expect(callArgs.eventType).toBe('Delete_Data');
+            expect(callArgs.eventDetail.submissionID).toBe('sub-123');
+            expect(callArgs.submissionID).toBeUndefined();
         });
 
         it('should handle string input (deleteAll summary)', async () => {
@@ -2012,7 +2000,7 @@ describe('Submission Service - getSubmission', () => {
                 'deleteAll'
             );
 
-            expect(prisma.log.create).toHaveBeenCalled();
+            expect(submissionService.logCollection.insert).toHaveBeenCalled();
         });
     });
 });

@@ -42,7 +42,6 @@ const {v4} = require('uuid');
 const {zipFilesInDir} = require("../utility/io-util");
 const PendingPVDAO = require("../dao/pendingPV");
 const sanitizeHtml = require("sanitize-html");
-const prisma = require("../prisma");
 const ProgramDAO = require("../dao/program");
 const UserDAO = require("../dao/user");
 const ApprovedStudyDAO = require("../dao/approvedStudy");
@@ -452,12 +451,10 @@ class Submission {
                     );
                 }
             }
-            // Prepare update data for Prisma
             const updateData = this._prepareUpdateData({
                 ...(res?.type === VALIDATION.TYPES.DATA_FILE ? {fileValidationStatus: VALIDATION_STATUS.NEW} : {})
             });
-            
-            // Update submission using Prisma DAO instead of MongoDB collection
+
             const updatedSubmission = await this.submissionDAO.update(aSubmission._id, updateData);
             if (!updatedSubmission) {
                 throw new Error(ERROR.UPDATE_SUBMISSION_ERROR);
@@ -683,7 +680,6 @@ class Submission {
             submission.dataFileSize = dataFileSize;
         }
         
-        // Prepare update data for Prisma
         const updateData = this._prepareUpdateData({
             status: newStatus,
             history: events,
@@ -698,7 +694,6 @@ class Submission {
             updateData.dataFileSize = dataFileSize;
         }
         
-        // Update submission using Prisma DAO
         const updated = await this.submissionDAO.update(submission._id, updateData);
         if (!updated) {
             throw new Error(ERROR.UPDATE_SUBMISSION_ERROR);
@@ -725,24 +720,9 @@ class Submission {
 
         //log event and send notification
         const logEvent = SubmissionActionEvent.create(userInfo._id, userInfo.email, userInfo.IDP, submission._id, action, oldStatus, newStatus);
-        
-        // Create log entry using Prisma
-        const logData = {
-            userID: logEvent.userID,
-            userEmail: logEvent.userEmail,
-            userIDP: logEvent.userIDP,
-            userName: logEvent.userName,
-            eventType: logEvent.eventType,
-            submissionID: logEvent.submissionID,
-            action: logEvent.action,
-            prevState: logEvent.prevState,
-            newState: logEvent.newState,
-            timestamp: Date.now() / 1000,
-            localtime: new Date()
-        };
-        
+
         await Promise.all([
-            this._createLogEntry(logData),
+            this._createLogEntry(logEvent),
             submissionActionNotification(userInfo, action, submission, this.userService, this.notificationService, this.emailParams, this.dataCommonsBucketMap),
             this._archiveCancelSubmission(action, submissionID, submission?.bucketName, submission?.rootPath)
         ].concat(completePromise));
@@ -2050,7 +2030,7 @@ class Submission {
             } 
         }
         
-        // Check for duplicate submission names using Prisma instead of MongoDB aggregation
+        // Check for duplicate submission names
         const duplicateStudySubmission = await this._checkDuplicateSubmissionName(newName?.trim(), aSubmission?.studyID, aSubmission?.id);
 
         if (duplicateStudySubmission) {
@@ -2062,7 +2042,6 @@ class Submission {
             throw new Error(ERROR.FAILED_UPDATE_SUBMISSION_NAME);
         }
 
-        // Log for the modifying submission name using Prisma
         if (updated) {
             await this._createUpdateSubmissionNameLog(userInfo, updated._id, aSubmission?.name, newName);
         }
@@ -2412,23 +2391,7 @@ class Submission {
             // Handle both arrays and summary strings (for deleteAll operations)
             const logNodeIDs = Array.isArray(nodeIDs) ? nodeIDs : (typeof nodeIDs === 'string' ? [nodeIDs] : []);
             const logEvent = DeleteRecordEvent.create(userInfo._id, userInfo.email, userName, submissionID, nodeType, logNodeIDs);
-            
-            // Create log entry using Prisma
-            const logData = {
-                userID: logEvent.userID,
-                userEmail: logEvent.userEmail,
-                userIDP: logEvent.userIDP,
-                userName: logEvent.userName,
-                eventType: logEvent.eventType,
-                submissionID: logEvent.eventDetail?.submissionID,
-                timestamp: Date.now() / 1000,
-                localtime: new Date()
-            };
-            
-            const createdLog = await prisma.log.create({
-                data: logData
-            });
-            return createdLog;
+            return await this.logCollection.insert(logEvent);
         } catch (error) {
             console.error('Error creating log entry:', error);
             // Don't throw error for logging failures as it shouldn't break the main flow
@@ -2918,16 +2881,13 @@ class Submission {
     }
 
     /**
-     * Create a log entry using Prisma
+     * Create a log entry in the logs collection.
      * @param {Object} logData - The log data to create
-     * @returns {Promise<Object>} The created log entry
+     * @returns {Promise<Object|null>} The insert result, or null on failure
      */
     async _createLogEntry(logData) {
         try {
-            const createdLog = await prisma.log.create({
-                data: logData
-            });
-            return createdLog;
+            return await this.logCollection.insert(logData);
         } catch (error) {
             console.error('Error creating log entry:', error);
             // Don't throw error for logging failures as it shouldn't break the main flow
@@ -2948,23 +2908,7 @@ class Submission {
             const logEvent = UpdateSubmissionNameEvent.create(
                 userInfo._id, userInfo.email, userInfo.IDP, submissionID, oldName, newName
             );
-            
-            // Create log entry using Prisma
-            const logData = {
-                userID: logEvent.userID,
-                userEmail: logEvent.userEmail,
-                userIDP: logEvent.userIDP,
-                userName: logEvent.userName,
-                eventType: logEvent.eventType,
-                submissionID: logEvent.submissionID,
-                timestamp: Date.now() / 1000,
-                localtime: new Date()
-            };
-            
-            const createdLog = await prisma.log.create({
-                data: logData
-            });
-            return createdLog;
+            return await this.logCollection.insert(logEvent);
         } catch (error) {
             console.error('Error creating update submission name log entry:', error);
             // Don't throw error for logging failures as it shouldn't break the main flow
