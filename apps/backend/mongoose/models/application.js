@@ -86,7 +86,7 @@ const newInstitutionSchema = new mongoose.Schema(
 );
 
 /**
- * Mongoose schema for applications (submission request forms), matching the Prisma Application model.
+ * Mongoose schema for applications (submission request forms), for the Application collection.
  */
 const applicationSchema = new mongoose.Schema(
     {
@@ -123,7 +123,7 @@ const applicationSchema = new mongoose.Schema(
         programDescription: {
             type: String,
         },
-        // Draft SRFs may persist empty strings for these form fields (Prisma allowed blanks).
+        // Draft SRFs may persist empty strings for these form fields.
         programName: {
             type: String,
         },

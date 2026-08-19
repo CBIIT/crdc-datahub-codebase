@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { INSTITUTION_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Mongoose schema for institutions, matching the Prisma Institution model.
+ * Mongoose schema for institutions, for the Institution collection.
  */
 const institutionSchema = new mongoose.Schema(
     {

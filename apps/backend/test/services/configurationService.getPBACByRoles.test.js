@@ -41,7 +41,7 @@ describe('ConfigurationService.getPBACByRoles', () => {
         }));
     });
 
-    it('normalizes nested ids when Prisma-style id is present', async () => {
+    it('normalizes nested ids when id is present', async () => {
         service.configurationDAO.findByType.mockResolvedValue({
             type: 'PBAC',
             Defaults: [

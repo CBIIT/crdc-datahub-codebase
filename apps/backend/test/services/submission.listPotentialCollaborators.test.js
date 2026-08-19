@@ -192,7 +192,7 @@ describe('Submission.listPotentialCollaborators', () => {
             mockDataModelService
         );
 
-        // Override DAOs with mocks to prevent Prisma calls
+        // Override DAOs with mocks
         submissionService.pendingPVDAO = { findBySubmissionID: jest.fn(), insertOne: jest.fn() };
         submissionService.submissionDAO = { 
             update: jest.fn(), 

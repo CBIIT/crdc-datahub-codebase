@@ -183,8 +183,8 @@ class ApprovedStudiesService {
 
     /**
      * List Approved Studies by a studyName API.
-     * Case-insensitive match on studyName (Prisma Mongo `equals` + `mode: insensitive`).
-     * On MongoDB, Prisma implements that filter with a regex; `escapeRegexLiteral` keeps user input literal (e.g. `*`).
+     * Case-insensitive match on studyName via regex.
+     * `escapeRegexLiteral` keeps user input literal (e.g. `*`).
      * @api
      * @param {string} studyName
      * @returns {Promise<Object[]>} Empty array when no match; otherwise a one-element array with the first case-insensitive match and `_id`

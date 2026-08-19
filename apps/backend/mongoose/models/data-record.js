@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { DATA_RECORDS_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Embedded error/warning schema matching the Prisma Error type.
+ * Embedded error/warning schema for embedded Error fields.
  */
 const errorSchema = new mongoose.Schema(
     {
@@ -21,7 +21,7 @@ const errorSchema = new mongoose.Schema(
 );
 
 /**
- * Embedded additional/cross-validation error schema matching Prisma AdditionalError.
+ * Embedded additional/cross-validation error schema for embedded AdditionalError fields.
  */
 const additionalErrorSchema = new mongoose.Schema(
     {
@@ -33,7 +33,7 @@ const additionalErrorSchema = new mongoose.Schema(
 );
 
 /**
- * Embedded parent relationship schema matching Prisma Parent.
+ * Embedded parent relationship schema for embedded Parent fields.
  */
 const parentSchema = new mongoose.Schema(
     {
@@ -45,7 +45,7 @@ const parentSchema = new mongoose.Schema(
 );
 
 /**
- * Embedded S3 file info schema matching Prisma S3FileInfo.
+ * Embedded S3 file info schema for embedded S3FileInfo fields.
  */
 const s3FileInfoSchema = new mongoose.Schema(
     {
@@ -65,7 +65,7 @@ const s3FileInfoSchema = new mongoose.Schema(
 );
 
 /**
- * Mongoose schema for dataRecord, matching the Prisma DataRecord model.
+ * Mongoose schema for dataRecord, for the DataRecord collection.
  */
 const dataRecordSchema = new mongoose.Schema(
     {

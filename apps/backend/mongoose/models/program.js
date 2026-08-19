@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { ORGANIZATION_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Mongoose schema for programs, matching the Prisma Program model.
+ * Mongoose schema for programs, for the Program collection.
  * Stored in the historical `organization` Mongo collection.
  */
 const programSchema = new mongoose.Schema(

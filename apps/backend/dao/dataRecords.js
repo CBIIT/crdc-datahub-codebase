@@ -44,7 +44,7 @@ class DataRecordDAO extends MongooseGenericDAO {
     /**
      * Paginated Data View nodes for a submission/node type.
      * Uses split count + results pipelines (DocumentDB does not support $facet).
-     * Supports sorting by nested JSON paths (props.* / rawData.*) that Prisma could not express.
+     * Supports sorting by nested JSON paths (props.* / rawData.*).
      * @param {string} submissionID
      * @param {string} nodeType
      * @param {number} first Page size; -1 returns all rows and ignores offset

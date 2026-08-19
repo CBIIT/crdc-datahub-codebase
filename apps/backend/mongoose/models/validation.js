@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { VALIDATION_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Mongoose schema for validation, matching the Prisma Validation model.
+ * Mongoose schema for validation, for the Validation collection.
  */
 const validationSchema = new mongoose.Schema(
     {

@@ -2,14 +2,14 @@ const { formatNestedOrganization, formatNestedOrganizations } = require('../../u
 
 describe('Organization Transformer', () => {
     describe('formatNestedOrganization', () => {
-        it('should format a valid nested organization object from Prisma to GraphQL format', () => {
-            const prismaOrg = {
+        it('should format a valid nested organization object to GraphQL format', () => {
+            const org = {
                 id: 'org-123',
                 name: 'Test Organization',
                 abbreviation: 'TO'
             };
 
-            const result = formatNestedOrganization(prismaOrg);
+            const result = formatNestedOrganization(org);
 
             expect(result).toEqual({
                 _id: 'org-123',
@@ -19,13 +19,13 @@ describe('Organization Transformer', () => {
         });
 
         it('should handle organization with missing abbreviation', () => {
-            const prismaOrg = {
+            const org = {
                 id: 'org-123',
                 name: 'Test Organization'
                 // abbreviation is undefined
             };
 
-            const result = formatNestedOrganization(prismaOrg);
+            const result = formatNestedOrganization(org);
 
             expect(result).toEqual({
                 _id: 'org-123',
@@ -56,7 +56,7 @@ describe('Organization Transformer', () => {
 
     describe('formatNestedOrganizations', () => {
         it('should format an array of nested organization objects', () => {
-            const prismaOrgs = [
+            const orgs = [
                 {
                     id: 'org-1',
                     name: 'Organization 1',
@@ -69,7 +69,7 @@ describe('Organization Transformer', () => {
                 }
             ];
 
-            const result = formatNestedOrganizations(prismaOrgs);
+            const result = formatNestedOrganizations(orgs);
 
             expect(result).toEqual([
                 {
@@ -101,7 +101,7 @@ describe('Organization Transformer', () => {
         });
 
         it('should handle array with null/undefined organizations', () => {
-            const prismaOrgs = [
+            const orgs = [
                 {
                     id: 'org-1',
                     name: 'Organization 1',
@@ -116,7 +116,7 @@ describe('Organization Transformer', () => {
                 }
             ];
 
-            const result = formatNestedOrganizations(prismaOrgs);
+            const result = formatNestedOrganizations(orgs);
 
             expect(result).toEqual([
                 {

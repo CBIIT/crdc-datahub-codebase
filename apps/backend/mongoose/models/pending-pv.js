@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { PENDING_PVS_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Mongoose schema for pendingPvs, matching the Prisma PendingPVs model.
+ * Mongoose schema for pendingPvs, for the PendingPVs collection.
  */
 const pendingPVSchema = new mongoose.Schema(
     {
