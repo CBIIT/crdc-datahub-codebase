@@ -1,10 +1,12 @@
 from unittest.mock import MagicMock
 from common.model import DataModel
 from common.mdf_reader import get_model_from_mdf_files
-
+import json
+from common.model_reader import YamlModelParser
 from metadata_validator import MetaDataValidator
 from common.constants import DATA_COMMON_NAME, STUDY_ID, MODEL_VERSION
-
+from common.model_store import DEF_FILE_NODES, DEF_MAIN_NODES, PROPERTY_NAMES, OMIT_DCF_PREFIX, DEF_SEMANTICS
+    
 default_submission = {
     '_id': 'submission_id_1',
     DATA_COMMON_NAME: 'data_commons_1',
@@ -23,8 +25,16 @@ def create_mock_validator(test_submission=default_submission, test_study=default
 
     model_file = 'src/test/test_data/test_mdf.yml'
     mdf_model = get_model_from_mdf_files([model_file], handle="CRDC")
-    old_model = MagicMock()
-    old_model.get_nodes = MagicMock(return_value=['node1', 'node2'])
+    model_reader = YamlModelParser([model_file], 'CRDC', '|', '1.0.0')
+    with open('src/test/test_data/content.json', 'r') as f:
+        model_config = json.loads(f.read())["CRDC"]
+    old_model = model_reader.model
+    old_model.update({
+        DEF_FILE_NODES: model_config[DEF_SEMANTICS][DEF_FILE_NODES], 
+        DEF_MAIN_NODES: model_config[DEF_SEMANTICS][DEF_MAIN_NODES],
+        PROPERTY_NAMES: model_config[DEF_SEMANTICS][PROPERTY_NAMES], 
+        OMIT_DCF_PREFIX: model_config.get(OMIT_DCF_PREFIX, False)
+    })
 
 
     data_model = DataModel(old_model, mdf_model)
