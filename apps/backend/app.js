@@ -60,7 +60,7 @@ app.use(express.static(join(__dirname, 'public')));
 app.use("/", statusRouter);
 
 // create session
-app.use(createSession(configuration.session_secret, configuration.session_timeout, configuration.mongo_db_connection_string));
+app.use(createSession(configuration.session_secret, configuration.session_timeout, configuration.document_db_connection_string));
 
 // // authentication middleware
 // app.use(async (req, res, next) => {
@@ -76,10 +76,10 @@ app.use(createSession(configuration.session_secret, configuration.session_timeou
 app.use("/api/graphql", graphqlRouter);
 // Start the cron job. The frequency time read from the database
 (async () => {
-    const dbConnector = new DatabaseConnector(configuration.mongo_db_connection_string);
-    const dbService = new MongoQueries(configuration.mongo_db_connection_string, DATABASE_NAME);
+    const dbConnector = new DatabaseConnector(configuration.document_db_connection_string);
+    const dbService = new MongoQueries(configuration.document_db_connection_string, DATABASE_NAME);
     dbConnector.connect().then( async () => {
-        await connectMongoose(configuration.mongo_db_connection_string);
+        await connectMongoose(configuration.document_db_connection_string);
         const config = await configuration.updateConfig(dbConnector);
         const emailService = new EmailService(config.email_transport, config.emails_enabled);
         const configurationService = new ConfigurationService();

@@ -4,7 +4,7 @@ const {DatabaseConnector} = require("../crdc-datahub-database-drivers/database-c
 const {MongoDBCollection} = require("../crdc-datahub-database-drivers/mongodb-collection");
 const AuthenticationService = require("../services/authentication-service");
 const UserInitializationService = require("../services/user-initialization-service");
-const dbConnector = new DatabaseConnector(config.mongo_db_connection_string);
+const dbConnector = new DatabaseConnector(config.document_db_connection_string);
 
 
 let authenticationService, userInitializationService;

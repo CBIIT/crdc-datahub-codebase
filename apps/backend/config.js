@@ -1,4 +1,6 @@
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 const {readFile2Text} = require("./utility/io-util")
 const {ConfigurationService} = require("./services/configurationService");
 const {DATABASE_NAME, CONFIGURATION_COLLECTION} = require("./crdc-datahub-database-drivers/database-constants");
@@ -70,35 +72,49 @@ function buildConnectionString(user, password, host, port, database, caFile) {
     return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}?${params.toString()}`;
 }
 
+const DEFAULT_DOCUMENT_DB_CA_FILE = path.join(__dirname, 'resources/aws-documentdb-certificate/global-bundle.pem');
+const documentDbTlsEnabled = process.env.MONGO_DB_TLS
+    ? process.env.MONGO_DB_TLS.toLowerCase() === 'true'
+    : true;
+const documentDbCaFile = documentDbTlsEnabled
+    ? (process.env.MONGO_DB_CA_FILE || DEFAULT_DOCUMENT_DB_CA_FILE)
+    : null;
+
 /**
- * Builds the shared MongoDB/DocumentDB connection URI from MONGO_DB_* variables
- * and DATABASE_NAME (falls back to crdc-datahub via database-constants).
+ * Builds the shared DocumentDB connection URI from MONGO_DB_* environment
+ * variables and DATABASE_NAME (falls back to crdc-datahub via database-constants).
  * Used by native drivers, sessions, and Mongoose.
+ * TLS is on when MONGO_DB_TLS is unset or true. CA defaults to
+ * resources/aws-documentdb-certificate/global-bundle.pem when MONGO_DB_CA_FILE
+ * is unset. Throws on first URI access if TLS is on and the CA file is missing.
  * @returns {string}
+ * @throws {Error} When TLS is enabled and the CA file does not exist
  */
-function buildMongoConnectionString() {
+function buildDocumentDbConnectionString() {
+    if (documentDbTlsEnabled && !fs.existsSync(documentDbCaFile)) {
+        throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
+    }
     return buildConnectionString(
         process.env.MONGO_DB_USER,
         process.env.MONGO_DB_PASSWORD,
         process.env.MONGO_DB_HOST,
         process.env.MONGO_DB_PORT,
         DATABASE_NAME,
-        process.env.MONGO_DB_CA_FILE,
+        documentDbCaFile,
     );
 }
-
-const mongoDbConnectionString = buildMongoConnectionString();
 
 let config = {
     //info variables
     version: process.env.VERSION || 'Version not set',
     date: process.env.DATE || new Date(),
-    // MongoDB / DocumentDB (shared by native drivers and Mongoose)
-    mongo_db_user: process.env.MONGO_DB_USER,
-    mongo_db_password: process.env.MONGO_DB_PASSWORD,
-    mongo_db_host: process.env.MONGO_DB_HOST,
-    mongo_db_port: process.env.MONGO_DB_PORT,
-    mongo_db_ca_file: process.env.MONGO_DB_CA_FILE || null,
+    // DocumentDB (shared by native drivers and Mongoose). Env vars remain MONGO_DB_*.
+    document_db_user: process.env.MONGO_DB_USER,
+    document_db_password: process.env.MONGO_DB_PASSWORD,
+    document_db_host: process.env.MONGO_DB_HOST,
+    document_db_port: process.env.MONGO_DB_PORT,
+    document_db_tls: documentDbTlsEnabled,
+    document_db_ca_file: documentDbCaFile,
 
     //session
     session_secret: process.env.SESSION_SECRET,
@@ -208,7 +224,12 @@ let config = {
         };
     }
 }
-config.mongo_db_connection_string = mongoDbConnectionString;
+Object.defineProperty(config, 'document_db_connection_string', {
+    enumerable: true,
+    get() {
+        return buildDocumentDbConnectionString();
+    },
+});
 function parseHiddenModels(hiddenModels) {
     return hiddenModels.split(',')
         .filter(item => item?.trim().length > 0)

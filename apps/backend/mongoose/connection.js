@@ -9,7 +9,8 @@ let connectPromise = null;
  * connect promise so concurrent callers are idempotent. On failure the cached
  * promise is cleared so a later call can retry.
  * Uses retryWrites: false for DocumentDB compatibility. TLS/CA settings come
- * from the URI when MONGO_DB_CA_FILE is set in config.
+ * from the URI when MONGO_DB_TLS is enabled (default on) and the CA file
+ * exists (MONGO_DB_CA_FILE or resources/aws-documentdb-certificate/global-bundle.pem).
  *
  * @param {string} uri MongoDB or DocumentDB connection string
  * @returns {Promise<typeof mongoose>}
