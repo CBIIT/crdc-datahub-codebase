@@ -460,20 +460,22 @@ class MetaDataValidator:
                                                         NODE_ID, self.model.get_node_id(node_type)))
                 elif sub_intention == SUBMISSION_INTENTION_DELETE and not exist_release:
                     errors.append(create_error("M019", [msg_prefix, node_type, data_record[NODE_ID]], NODE_ID, self.model.get_node_id(node_type)))
+
             # if there are any errors set the result to "Error"
             if len(errors) > 0:
                 return STATUS_ERROR, errors, warnings
             # if there are no errors but warnings,  set the result to "Warning"
             if len(warnings) > 0:
                 return STATUS_WARNING, errors, warnings
+            #  if there are neither errors nor warnings, return default values
+            else:
+                return STATUS_PASSED, errors, warnings
         except Exception as e:
             self.log.exception(e)
             msg = f'Failed to validate dataRecords for the submission, {self.submission_id} at scope, {self.scope}!'
             self.log.exception(msg) 
             error = create_error("M020", [], "", "")
             return STATUS_ERROR,[error], None
-        #  if there are neither errors nor warnings, return default values
-        return STATUS_PASSED, errors, warnings
     
     def check_difference_in_props(self, new_node, exist_node):
         """
