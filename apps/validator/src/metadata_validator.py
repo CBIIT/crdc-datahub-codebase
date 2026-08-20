@@ -288,6 +288,7 @@ class MetaDataValidator:
         self.not_found_property = False
         self.study_name = None
         self.program_names = None
+        self.dbGaPID = None
 
     def _initialize_for_validation(self, submission, submission_id, scope):
         """Shared initialization for both batch and non-batch validation paths.
@@ -324,6 +325,7 @@ class MetaDataValidator:
             return FAILED, msg
 
         self.study_name = study.get("studyName")
+        self.dbGaPID = study.get("dbGaPID")
         self.program_names = self.mongo_dao.find_organization_name_by_study_id(study_id)
         return None
 
