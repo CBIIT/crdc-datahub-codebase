@@ -14,7 +14,7 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
     GENERATED_PROPS, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, NAME_PROP, \
-    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX
+    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX, STUDY_NAME
 from common.utils import current_datetime, get_exception_msg, create_error, get_uuid_str, has_permissive_value
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
@@ -426,19 +426,23 @@ class MetaDataValidator:
         # submission-level validation
         sub_intention = self.submission.get(SUBMISSION_INTENTION)
         try:
+            validation_results = []
             # call validate_required_props
-            result_required= self.validate_required_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix)
+            validation_results.append(self.validate_required_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix))
             # call validate_prop_value
-            result_prop_value = self.validate_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
+            validation_results.append(self.validate_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {})
             # call validate_relationship
-            result_rel = self.validate_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
+            validation_results.append(self.validate_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {})
 
-            result_required_rel = self.validate_required_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
+            validation_results.append(self.validate_required_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {})
 
-            # concatenation of all errors
-            errors = result_required.get(ERRORS, []) +  result_prop_value.get(ERRORS, []) + result_rel.get(ERRORS, []) + result_required_rel.get(ERRORS, [])
-            # concatenation of all warnings
-            warnings = result_required.get(WARNINGS, []) +  result_prop_value.get(WARNINGS, []) + result_rel.get(WARNINGS, []) + result_required_rel.get(WARNINGS, [])
+            errors = []
+            warnings = []
+
+            for result in validation_results:
+                errors += result.get(ERRORS, [])
+                warnings += result.get(WARNINGS, [])
+
             #check if existed nodes in release collection
             if sub_intention and sub_intention in [SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE]:
                 exist_release = self.mongo_dao.search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
@@ -567,7 +571,7 @@ class MetaDataValidator:
                                     else:
                                         data_record[PROPERTIES][data_key] = matched_val
                         elif entity_type == "Study":
-                            if data_key == self.model.get_configured_prop_name("studyName"):
+                            if data_key == self.model.get_configured_prop_name(STUDY_NAME):
                                 if data_value.lower() != self.study_name.lower():
                                     result[ERRORS].append(create_error("M029", [msg_prefix, self.study_name], data_key, data_value))
                                 else:
