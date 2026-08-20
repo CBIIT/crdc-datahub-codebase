@@ -41,6 +41,9 @@ const StyledFormControlLabel = styled(FormControlLabel)({
     fontWeight: "700",
     userSelect: "none",
   },
+  "& .MuiFormControlLabel-label.Mui-disabled": {
+    color: "rgba(0, 0, 0, 0.55)",
+  },
   "& .MuiCheckbox-root:not(.Mui-disabled)": {
     color: "#005EA2 !important",
   },
