@@ -22,9 +22,12 @@ default_study = {
 def create_mock_validator(test_submission=default_submission, test_study=default_study):
 
     model_file = 'src/test/test_data/test_mdf.yml'
-    model = get_model_from_mdf_files([model_file], handle="CRDC")
+    mdf_model = get_model_from_mdf_files([model_file], handle="CRDC")
+    old_model = MagicMock()
+    old_model.get_nodes = MagicMock(return_value=['node1', 'node2'])
 
-    data_model = DataModel({}, model)
+
+    data_model = DataModel(old_model, mdf_model)
 
     mock_mongo_dao = MagicMock()
     mock_mongo_dao.find_study_by_id = MagicMock(return_value=test_study)
