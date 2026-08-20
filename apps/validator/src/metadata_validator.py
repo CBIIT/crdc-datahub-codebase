@@ -427,14 +427,13 @@ class MetaDataValidator:
         sub_intention = self.submission.get(SUBMISSION_INTENTION)
         try:
             validation_results = []
-            # call validate_required_props
-            validation_results.append(self.validate_required_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix))
-            # call validate_prop_value
-            validation_results.append(self.validate_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {})
-            # call validate_relationship
-            validation_results.append(self.validate_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {})
-
-            validation_results.append(self.validate_required_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {})
+            if sub_intention == SUBMISSION_INTENTION_DELETE: 
+                validation_results.append(self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix))
+            else:
+                validation_results.append(self.validate_required_props(data_record, msg_prefix))
+                validation_results.append(self.validate_props(data_record, msg_prefix))
+                validation_results.append(self.validate_relationship(data_record, msg_prefix))
+                validation_results.append(self.validate_required_relationship(data_record, msg_prefix))
 
             errors = []
             warnings = []
