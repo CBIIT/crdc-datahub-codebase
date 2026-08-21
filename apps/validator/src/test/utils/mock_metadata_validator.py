@@ -17,8 +17,7 @@ default_submission = {
 default_study = {
     '_id': "study_id_1",
     'id': "study_id_1",
-    'studyName': "study_1",
-    'dbGaPID': "dbgap_id_1",
+    'studyName': "study_1"
 }
 
 def create_mock_validator(test_submission=default_submission, test_study=default_study):

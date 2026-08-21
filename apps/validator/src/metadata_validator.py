@@ -14,7 +14,7 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
     GENERATED_PROPS, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, NAME_PROP, \
-    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX, STUDY_NAME
+    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX, STUDY_NAME, DBGAPID
 from common.utils import current_datetime, get_exception_msg, create_error, get_uuid_str, has_permissive_value
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
@@ -434,6 +434,7 @@ class MetaDataValidator:
                 validation_results.append(self.validate_props(data_record, msg_prefix))
                 validation_results.append(self.validate_relationship(data_record, msg_prefix))
                 validation_results.append(self.validate_required_relationship(data_record, msg_prefix))
+                validation_results.append(self.validate_dbGaPID(data_record, msg_prefix))
 
             errors = []
             warnings = []
@@ -746,7 +747,7 @@ class MetaDataValidator:
         return result
 
     def validate_required_relationship(self, data_record, msg_prefix):
-        result = {"result": STATUS_PASSED, ERRORS: [], WARNINGS: []}
+        result = {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
         node_type = data_record.get(NODE_TYPE)
         required_relationship_columns = self.model.get_node_req_rel_columns(node_type)
         parents = {}
@@ -755,8 +756,26 @@ class MetaDataValidator:
         for required_column in required_relationship_columns:
             parent_id_value = parents.get(required_column)
             if required_column not in parents.keys() or parent_id_value is None or parent_id_value == "":
-                result["result"] = STATUS_ERROR
+                result[VALIDATION_RESULT] = STATUS_ERROR
                 result[ERRORS].append(create_error("M037", f'{msg_prefix}:  Required relationship "{required_column}" is empty.', required_column, ""))
+
+        return result
+
+    def validate_dbGaPID(self, data_record, msg_prefix):
+        result = {}
+        node_type = data_record.get(NODE_TYPE)
+        if self.model.get_entity_type(node_type) == "Study":
+            if not self.dbGaPID:
+                return {}
+            dbGaPID_prop_name = self.model.get_configured_prop_name(DBGAPID)
+            dbGaPID = data_record.get(PROPERTIES, {}).get(dbGaPID_prop_name)
+            if not dbGaPID:
+                return {}
+
+            if dbGaPID == self.dbGaPID:
+                return {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+            else:
+                return {VALIDATION_RESULT: STATUS_ERROR, ERRORS: [create_error("M038", [msg_prefix, self.dbGaPID], dbGaPID_prop_name, dbGaPID)], WARNINGS: []}
 
         return result
 
