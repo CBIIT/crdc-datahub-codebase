@@ -1,10 +1,22 @@
 const {getNIHToken, nihUserInfo, nihLogout, getIDP} = require("../services/nih-auth");
 const client = {
+    /**
+     * Completes NIH STS login and resolves NIH vs Login.gov from userinfo.
+     * @param {string} code OAuth authorization code
+     * @param {string} redirectingURL Redirect URI used in the authorize request
+     * @returns {Promise<{name: string, lastName: string, email: string, tokens: string, idp: string}>}
+     * @throws {Error} When token/userinfo handling or IDP resolution fails
+     */
     login: async (code, redirectingURL) => {
         const token = await getNIHToken(code, redirectingURL);
         const user = await nihUserInfo(token);
-        // use preferred_username to determine the identity provider
-        const idp = getIDP(user?.preferred_username);
+        let idp;
+        try {
+            idp = getIDP(user?.preferred_username);
+        } catch (e) {
+            console.error("NIH userinfo returned HTTP 200 but login failed to determine IDP:", user);
+            throw e;
+        }
         // Leave as blank if no name exits
         return {name: user.first_name ? user.first_name: '', lastName: user.last_name ? user.last_name: '', email: user.email, tokens: token, idp: idp};
     },
