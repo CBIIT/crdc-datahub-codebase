@@ -1,4 +1,4 @@
-from test.utils.mock_metadata_validator import create_mock_validator, default_study
+from test.utils.mock_metadata_validator import create_mock_validator, default_study, create_mock_data_model
 from common.constants import VALIDATION_RESULT, ERRORS, WARNINGS, STATUS_PASSED
 
 test_study = default_study.copy()
@@ -89,14 +89,14 @@ def test_dbgapid_set_to_empty_in_study():
         'dbGaPID': "",
     })
 
-    validator = create_mock_validator(test_study=test_study)
+    local_validator = create_mock_validator(test_study=test_study)
     data_record = {
         "nodeType": "study",
         "props": {
             "phs_accession": "wrong_dbgapid"
         }
     }
-    result = validator.validate_dbGaPID(data_record, "message prefix:")
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
     assert result == {}
 
 def test_dbgapid_set_to_none_in_study():
@@ -105,25 +105,40 @@ def test_dbgapid_set_to_none_in_study():
         'dbGaPID': None
     })
 
-    validator = create_mock_validator(test_study=test_study)
+    local_validator = create_mock_validator(test_study=test_study)
     data_record = {
         "nodeType": "study",
         "props": {
             "phs_accession": "wrong_dbgapid"
         }
     }
-    result = validator.validate_dbGaPID(data_record, "message prefix:")
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
     assert result == {}
 
 def test_dbgapid_doesnt_exist_in_study():
-    test_study = default_study.copy()
+    local_test_study = default_study.copy()
 
-    validator = create_mock_validator(test_study=test_study)
+    local_validator = create_mock_validator(test_study=local_test_study)
     data_record = {
         "nodeType": "study",
         "props": {
             "phs_accession": "wrong_dbgapid"
         }
     }
-    result = validator.validate_dbGaPID(data_record, "message prefix:")
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
     assert result == {}
+
+def test_dbgapid_not_configured_in_model():
+    model_config_file = 'src/test/test_data/content-no-dbGaPID.json'
+    data_model = create_mock_data_model(model_config_file=model_config_file)
+    local_validator = create_mock_validator(data_model=data_model, test_study=test_study)
+
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "wrong_dbgapid"
+        }
+    }
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
+    assert result == {}
+
