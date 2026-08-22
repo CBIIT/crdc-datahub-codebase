@@ -128,7 +128,6 @@ CROSS_SUBMISSION_VALIDATION_STATUS = "crossSubmissionStatus"
 MODEL_VERSION = "modelVersion"
 KEY = "key"
 LIST_DELIMITER_PROP = "list-delimiter"
-DEF_MAIN_NODES = "main-nodes"
 #s3 download directory
 S3_DOWNLOAD_DIR = "s3_download"
 ROOT_PATH = "rootPath"
@@ -165,7 +164,6 @@ STATUS_PRECEDENCE = {
 PRECEDENCE_TO_STATUS = {v: k for k, v in STATUS_PRECEDENCE.items()}
 ADDITION_ERRORS = "additionalErrors"
 STUDY_ABBREVIATION = "studyAbbreviation"
-LIST_DELIMITER_PROP = "list-delimiter"
 
 #dataRecords
 CRDC_ID = "CRDC_ID"
@@ -288,3 +286,10 @@ PROPERTY = "property"
 MODEL = "model"
 PROPERTY_PERMISSIBLE_VALUES = "PermissibleValues"
 PROPERTY_TERM = "Term"
+DEF_MODEL_FILES = "model-files"
+DEF_VERSION = "current-version"
+MODE_ID_FIELDS = "id_fields"
+DEF_SEMANTICS = "semantics"
+DEF_FILE_NODES = "file-nodes"
+DEF_MAIN_NODES = "main-nodes"
+DEF_FILE_NAME_FIELD = 'name-field'

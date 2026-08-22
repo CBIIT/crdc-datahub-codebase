@@ -1,10 +1,6 @@
-from common.model import DataModel
-from common.mdf_reader import get_model_from_mdf_files
+from test.utils.mock_metadata_validator import create_mock_data_model
 
-model_file = 'src/test/test_data/test_mdf.yml'
-model = get_model_from_mdf_files([model_file], handle="CRDC")
-
-data_model = DataModel({}, model)
+data_model = create_mock_data_model()
 
 def test_node_with_required_relationships():
     rels = data_model.get_node_req_rel_columns('file')
@@ -36,10 +32,41 @@ def test_get_participant_key_prop():
     assert key == 'participant_id'
 
 def test_edge_to_column_name():
-    edges = model.edges.values()
+    edges = data_model.get_edges()
     rel = None
     for edge in edges:
         if edge.handle == 'of_diagnosis':
             rel = edge
             break
     assert data_model.edge_to_column_name(rel) == 'diagnosis.diagnosis_id'
+
+def test_get_entity_type():
+    assert data_model.get_entity_type('study') == 'Study'
+    assert data_model.get_entity_type('file') == 'File'
+    assert data_model.get_entity_type('diagnosis') is None
+
+def test_get_main_nodes():
+    main_nodes = data_model.get_main_nodes()
+    assert isinstance(main_nodes, dict)
+    assert 'study' in main_nodes
+    assert 'diagnosis' not in main_nodes
+
+def test_configured_prop_name():
+    assert data_model.get_configured_prop_name('studyName') == 'study_name'
+    assert data_model.get_configured_prop_name('dbGaPID') == 'phs_accession'
+    assert data_model.get_configured_prop_name('file_id') is None
+
+def test_get_file_nodes():
+    file_nodes = data_model.get_file_nodes()
+    assert isinstance(file_nodes, dict)
+    assert 'file' in file_nodes
+    assert 'data_file' not in file_nodes
+
+def test_get_file_name():
+    assert data_model.get_file_name() == 'file_name'
+
+def test_get_list_delimiter():
+    assert data_model.get_list_delimiter() == '*'
+
+def test_get_omit_dcf_prefix():
+    assert data_model.get_omit_dcf_prefix() == True

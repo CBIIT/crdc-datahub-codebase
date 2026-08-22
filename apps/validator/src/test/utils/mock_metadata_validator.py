@@ -20,23 +20,9 @@ default_study = {
     'studyName': "study_1"
 }
 
-def create_mock_validator(test_submission=default_submission, test_study=default_study):
-
-    model_file = 'src/test/test_data/test_mdf.yml'
-    mdf_model = get_model_from_mdf_files([model_file], handle="CRDC")
-    model_reader = YamlModelParser([model_file], 'CRDC', '|', '1.0.0')
-    with open('src/test/test_data/content.json', 'r') as f:
-        model_config = json.loads(f.read())["CRDC"]
-    old_model = model_reader.model
-    old_model.update({
-        DEF_FILE_NODES: model_config[DEF_SEMANTICS][DEF_FILE_NODES], 
-        DEF_MAIN_NODES: model_config[DEF_SEMANTICS][DEF_MAIN_NODES],
-        PROPERTY_NAMES: model_config[DEF_SEMANTICS][PROPERTY_NAMES], 
-        OMIT_DCF_PREFIX: model_config.get(OMIT_DCF_PREFIX, False)
-    })
-
-
-    data_model = DataModel(old_model, mdf_model)
+def create_mock_validator(test_submission=default_submission, test_study=default_study, data_model=None):
+    if data_model is None:
+        data_model = create_mock_data_model()
 
     mock_mongo_dao = MagicMock()
     mock_mongo_dao.find_study_by_id = MagicMock(return_value=test_study)
@@ -46,3 +32,14 @@ def create_mock_validator(test_submission=default_submission, test_study=default
     validator._initialize_for_validation(test_submission, 'submission_id_1', 'all')
     
     return validator
+
+
+def create_mock_data_model(model_file: str='src/test/test_data/test_mdf.yml', model_config_file: str='src/test/test_data/content.json') -> DataModel:
+    mdf_model = get_model_from_mdf_files([model_file], handle="CRDC")
+    model_reader = YamlModelParser([model_file], 'CRDC', '|', '1.0.0')
+    with open(model_config_file, 'r') as f:
+        model_config = json.loads(f.read())["CRDC"]
+    old_model = model_reader.model
+
+    data_model = DataModel(old_model, mdf_model, model_config)
+    return data_model

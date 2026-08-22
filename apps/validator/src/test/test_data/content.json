@@ -1,5 +1,7 @@
 {
   "CRDC": {
+    "omit-DCF-prefix": true,
+    "list-delimiter": "*",
     "model-files": [
       "test_mdf.yml"
     ],

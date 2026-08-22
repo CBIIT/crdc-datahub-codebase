@@ -2,16 +2,12 @@ import os
 from bento.common.utils import get_logger
 from common.model_reader import YamlModelParser
 from common.model import DataModel
-from common.constants import MODELS_DEFINITION_FILE, LIST_DELIMITER_PROP, DEF_MAIN_NODES, PROPERTY_NAMES, OMIT_DCF_PREFIX
+from common.constants import MODELS_DEFINITION_FILE, LIST_DELIMITER_PROP, PROPERTY_NAMES, OMIT_DCF_PREFIX, DEF_MODEL_FILES, DEF_VERSION, DEF_SEMANTICS, DEF_FILE_NODES, DEF_MAIN_NODES
 from common.utils import download_file_to_dict, get_exception_msg
 from common.mdf_reader import get_model_from_mdf_files
 
 YML_FILE_EXT = ".yml"
-DEF_MODEL_FILES = "model-files"
-DEF_VERSION = "current-version"
-MODE_ID_FIELDS = "id_fields"
-DEF_SEMANTICS = "semantics"
-DEF_FILE_NODES = "file-nodes"
+
 class ModelFactory:
     
     def __init__(self, model_def_loc, tier):
@@ -42,8 +38,6 @@ class ModelFactory:
         try:
             mdf_model = get_model_from_mdf_files(file_names, handle=dc)
             model_reader = YamlModelParser(file_names, dc, delimiter, version)
-            model_reader.model.update({DEF_FILE_NODES: v[DEF_SEMANTICS][DEF_FILE_NODES], DEF_MAIN_NODES: v[DEF_SEMANTICS][DEF_MAIN_NODES], 
-                                       PROPERTY_NAMES: v[DEF_SEMANTICS][PROPERTY_NAMES], OMIT_DCF_PREFIX: v.get(OMIT_DCF_PREFIX, False)})
             return model_reader.model, mdf_model
         except Exception as e:
             self.log.exception(e)

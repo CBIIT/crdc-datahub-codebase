@@ -83,7 +83,7 @@ def test_dbgapid_none_in_data():
     assert result == {}
 
 
-def test_dbgapid_not_set_in_study():
+def test_dbgapid_set_to_empty_in_study():
     test_study = default_study.copy()
     test_study.update({
         'dbGaPID': "",
