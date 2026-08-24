@@ -58,7 +58,7 @@ const userOrganizationSchema = new mongoose.Schema(
 );
 
 /**
- * Mongoose schema for users, matching the Prisma User model plus historical organization.
+ * Mongoose schema for users, plus historical organization.
  */
 const userSchema = new mongoose.Schema(
     {

@@ -918,7 +918,7 @@ describe('Application', () => {
 
     describe('createApplication', () => {
         it('creates and returns application', async () => {
-            // Patch: use applicationDAO mock to avoid Prisma call
+            // Patch: use applicationDAO mock
             app.applicationDAO = {
                 insert: jest.fn().mockResolvedValue({ acknowledged: true }),
             };

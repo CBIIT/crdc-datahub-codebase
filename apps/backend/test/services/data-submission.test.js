@@ -20,36 +20,6 @@ const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/c
 const {USER, ROLES} = require("../../crdc-datahub-database-drivers/constants/user-constants"); // ← adjust path if needed
 const { PROGRAM } = require("../../crdc-datahub-database-drivers/constants/organization-constants");
 
-// Mock Prisma
-jest.mock("../../prisma", () => {
-    const mockPrismaModel = {
-        create: jest.fn(),
-        createMany: jest.fn(),
-        findUnique: jest.fn(),
-        findMany: jest.fn(),
-        findFirst: jest.fn(),
-        update: jest.fn(),
-        updateMany: jest.fn(),
-        deleteMany: jest.fn(),
-        delete: jest.fn(),
-        count: jest.fn(),
-        aggregate: jest.fn(),
-        name: 'MockModel'
-    };
-
-    return {
-        organization: mockPrismaModel,
-        submission: mockPrismaModel,
-        user: mockPrismaModel,
-        log: mockPrismaModel,
-        dataRecord: mockPrismaModel,
-        batch: mockPrismaModel,
-        qcResult: mockPrismaModel,
-        release: mockPrismaModel,
-        validation: mockPrismaModel
-    };
-});
-
 jest.mock('../../verifier/user-info-verifier', () => ({
     verifySession: jest.fn(() => ({
         verifyInitialized: jest.fn()
@@ -69,8 +39,6 @@ describe('Submission.getPendingPVs', () => {
             aggregate: mockAggregate
         };
         
-        // Mock organization service using Prisma
-        const mockPrisma = require("../../prisma");
         const programService = new Program({});
 
         // Instantiate Submission with mocked submissionCollection
@@ -2456,7 +2424,7 @@ describe('Submission.validateSubmission', () => {
             jest.fn() // dataModelService
         );
 
-        // Override DAOs with mocks to prevent Prisma calls
+        // Override DAOs with mocks
         submissionService.pendingPVDAO = { findBySubmissionID: jest.fn(), insertOne: jest.fn() };
         submissionService.submissionDAO = { update: jest.fn(), create: jest.fn(), findById: jest.fn() };
         submissionService.programDAO = { findById: jest.fn() };

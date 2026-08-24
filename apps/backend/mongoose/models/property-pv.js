@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { PROPERTY_PVS_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Mongoose schema for propertyPVs, matching the Prisma PropertyPVs model.
+ * Mongoose schema for propertyPVs, for the PropertyPVs collection.
  * BSON field PermissibleValues matches existing/validator-written documents.
  */
 const propertyPVSchema = new mongoose.Schema(

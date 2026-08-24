@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { APPROVED_STUDIES_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Mongoose schema for approvedStudies, matching the Prisma ApprovedStudy model.
+ * Mongoose schema for approvedStudies, for the ApprovedStudy collection.
  */
 const approvedStudySchema = new mongoose.Schema(
     {

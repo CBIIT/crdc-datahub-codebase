@@ -40,7 +40,7 @@ class ProgramDAO extends MongooseGenericDAO {
     }
 
     /**
-     * Exact name match after trim (case-sensitive), matching prior Prisma findFirst behavior.
+     * Exact name match after trim (case-sensitive).
      * Returns null without querying when name is null, undefined, or whitespace-only.
      * @param {string} name
      * @returns {Promise<object|null>}

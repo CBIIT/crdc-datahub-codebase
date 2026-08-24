@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { QC_RESULTS_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Embedded error/warning schema matching the Prisma Error type.
+ * Embedded error/warning schema for embedded Error fields.
  */
 const errorSchema = new mongoose.Schema(
     {
@@ -35,7 +35,7 @@ const errorSchema = new mongoose.Schema(
 );
 
 /**
- * Mongoose schema for qcResult, matching the Prisma QcResult model.
+ * Mongoose schema for qcResult, for the QcResult collection.
  */
 const qcResultSchema = new mongoose.Schema(
     {

@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { BATCH_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Embedded file schema matching the Prisma BatchFiles type.
+ * Embedded file schema for embedded BatchFiles fields.
  */
 const batchFileSchema = new mongoose.Schema(
     {
@@ -49,7 +49,7 @@ const batchFileSchema = new mongoose.Schema(
 );
 
 /**
- * Mongoose schema for batch, matching the Prisma Batch model.
+ * Mongoose schema for batch, for the Batch collection.
  */
 const batchSchema = new mongoose.Schema(
     {

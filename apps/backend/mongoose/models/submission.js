@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { SUBMISSIONS_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
- * Embedded error/warning schema matching the Prisma Error type.
+ * Embedded error/warning schema for embedded Error fields.
  */
 const errorSchema = new mongoose.Schema(
     {
@@ -21,7 +21,7 @@ const errorSchema = new mongoose.Schema(
 );
 
 /**
- * Embedded file error schema matching the Prisma FileError type.
+ * Embedded file error schema for embedded FileError fields.
  */
 const fileErrorSchema = new mongoose.Schema(
     {
@@ -45,7 +45,7 @@ const fileErrorSchema = new mongoose.Schema(
 );
 
 /**
- * Embedded collaborator schema matching the Prisma Collaborator type.
+ * Embedded collaborator schema for embedded Collaborator fields.
  */
 const collaboratorSchema = new mongoose.Schema(
     {
@@ -57,7 +57,7 @@ const collaboratorSchema = new mongoose.Schema(
 );
 
 /**
- * Embedded history event schema matching the Prisma History type.
+ * Embedded history event schema for embedded History fields.
  */
 const historySchema = new mongoose.Schema(
     {
@@ -72,7 +72,7 @@ const historySchema = new mongoose.Schema(
 );
 
 /**
- * Embedded data file size schema matching the Prisma DataFileSize type.
+ * Embedded data file size schema for embedded DataFileSize fields.
  */
 const dataFileSizeSchema = new mongoose.Schema(
     {
@@ -83,7 +83,7 @@ const dataFileSizeSchema = new mongoose.Schema(
 );
 
 /**
- * Mongoose schema for submission, matching the Prisma Submission model.
+ * Mongoose schema for submission, for the Submission collection.
  */
 const submissionSchema = new mongoose.Schema(
     {

@@ -15,7 +15,7 @@ const parentSchema = new mongoose.Schema(
 );
 
 /**
- * Mongoose schema for release, matching the Prisma Release model.
+ * Mongoose schema for release, for the Release collection.
  * Includes generatedProps (present in stored documents, used by download/props APIs).
  */
 const releaseSchema = new mongoose.Schema(

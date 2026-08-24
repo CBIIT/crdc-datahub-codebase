@@ -2,6 +2,7 @@
 .idea
 node_modules
 *.env
+resources/aws-documentdb-certificate/
 /logs/
 *.http
 **/.DS_Store

@@ -27,8 +27,8 @@ const {DashboardService} = require("../services/dashboardService");
 const UserInitializationService = require("../services/user-initialization-service");
 const {ConfigurationService} = require("../services/configurationService");
 const typeDefs = require("fs").readFileSync("resources/graphql/crdc-datahub.graphql", "utf8");
-const dbService = new MongoQueries(configuration.mongo_db_connection_string, DATABASE_NAME);
-const dbConnector = new DatabaseConnector(configuration.mongo_db_connection_string);
+const dbService = new MongoQueries(configuration.document_db_connection_string, DATABASE_NAME);
+const dbConnector = new DatabaseConnector(configuration.document_db_connection_string);
 const AuthenticationService = require("../services/authentication-service");
 const {apiAuthorization, extractAPINames, PUBLIC} = require("./api-authorization");
 const {QcResultService} = require("../services/qc-result-service");
@@ -61,8 +61,7 @@ const public_api_list = extractAPINames(schema, PUBLIC)
 let root;
 let authenticationService, userInitializationService;
 dbConnector.connect().then(async () => {
-    // TEMPORARY (Prisma→DocumentDB migration): Mongoose may use DocumentDB while Prisma uses MongoDB.
-    await connectMongoose(configuration.mongoose_connection_string, configuration.mongoose_tls_ca_file);
+    await connectMongoose(configuration.document_db_connection_string);
     const config = await configuration.updateConfig(dbConnector);
     const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
     const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);

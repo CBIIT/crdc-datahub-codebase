@@ -4,7 +4,7 @@ const { CONFIGURATION_COLLECTION } = require('../../crdc-datahub-database-driver
 
 /**
  * Nested schemas for PBAC defaults embedded in configuration documents.
- * Nested notification/permission IDs are stored as `_id` in MongoDB (Prisma `@map("_id")`).
+ * Nested notification/permission IDs are stored as `_id` in MongoDB.
  */
 const notificationSchema = new mongoose.Schema(
     {
@@ -49,7 +49,7 @@ const configurationTagSchema = new mongoose.Schema(
 );
 
 /**
- * Mongoose schema for configuration, matching the Prisma Configuration model.
+ * Mongoose schema for configuration, for the Configuration collection.
  * Documents are type-discriminated; most fields are optional per type.
  */
 const configurationSchema = new mongoose.Schema(
@@ -102,7 +102,7 @@ const configurationSchema = new mongoose.Schema(
         collection: CONFIGURATION_COLLECTION,
         timestamps: false,
         versionKey: false,
-        // Polymorphic type-discriminated docs; Prisma schema is incomplete vs real documents
+        // Polymorphic type-discriminated docs; schema may be incomplete vs real documents
         // (e.g. EMAIL_SMTP_*, INACTIVE_*_NOTIFY_DAYS). Keep undeclared paths on read/write.
         strict: false,
     }

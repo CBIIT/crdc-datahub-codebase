@@ -1,10 +1,10 @@
 /**
- * Utility functions for transforming organization data between Prisma and GraphQL formats
+ * Utility functions for transforming organization data for GraphQL responses.
  */
 
 /**
  * Formats a nested organization object to GraphQL format (with '_id' field).
- * Accepts either Prisma-style `id` or Mongoose-style `_id`.
+ * Accepts either `id` or Mongoose-style `_id`.
  *
  * @param {Object} org - Organization object with `id` and/or `_id`
  * @returns {Object|null} - Organization object with '_id' field, or null if input is null/undefined

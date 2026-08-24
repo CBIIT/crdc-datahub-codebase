@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const {makeDir, zipFilesInDir} = require("../utility/io-util");
 const BatchDAO = require("../dao/batch");
-const {PrismaPagination} = require("../crdc-datahub-database-drivers/domain/prisma-pagination");
+const {OffsetPagination} = require("../crdc-datahub-database-drivers/domain/offset-pagination");
 
 const LOAD_METADATA = "Load Metadata";
 const OMIT_DCF_PREFIX = 'omit-DCF-prefix';
@@ -154,7 +154,7 @@ class BatchService {
      */
     async listBatches(params) {
         const where = {submissionID: params.submissionID};
-        const pagination = new PrismaPagination(params?.first, params.offset, params.orderBy, params.sortDirection);
+        const pagination = new OffsetPagination(params?.first, params.offset, params.orderBy, params.sortDirection);
         const { orderBy, skip, take } = pagination.getPagination();
         const [batches, count] = await Promise.all([
             this.batchDAO.findMany(where, { sort: orderBy, skip, take }),

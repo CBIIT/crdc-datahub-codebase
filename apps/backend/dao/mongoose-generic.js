@@ -18,7 +18,7 @@ class MongooseGenericDAO {
 
     /**
      * Normalize a Mongoose document or lean object to include both id and _id as strings.
-     * Coerces ObjectId-like values so consumers get Prisma-like string IDs.
+     * Coerces ObjectId-like values so consumers get string IDs.
      * @param {object|null} doc
      * @returns {object|null}
      */
@@ -60,7 +60,7 @@ class MongooseGenericDAO {
         }
         const limit = this._resolveLimit(option);
         // Mongoose/MongoDB limit(0) means "no limit"; skip applying zero so callers
-        // that pass Prisma-style take: 0 do not get an unbounded query here.
+        // that pass take: 0 do not get an unbounded query here.
         if (limit !== undefined && limit !== 0) {
             query = query.limit(limit);
         }
@@ -273,7 +273,7 @@ class MongooseGenericDAO {
      * Find the first document matching the filter.
      * Requires an explicit filter object; null/undefined are rejected.
      * Pass `{}` to match any document intentionally.
-     * limit/take of 0 returns null without querying (Prisma empty-page semantics;
+     * limit/take of 0 returns null without querying (empty-page semantics;
      * Mongoose limit(0) would otherwise mean unlimited).
      * @param {object} where Mongo filter
      * @param {object} [option] Query options (projection, sort, skip, limit/take)
@@ -304,7 +304,7 @@ class MongooseGenericDAO {
      * Find multiple documents matching the filter.
      * Requires an explicit filter object; null/undefined are rejected.
      * Pass `{}` to match all documents intentionally.
-     * limit/take of 0 returns [] without querying (Prisma empty-page semantics;
+     * limit/take of 0 returns [] without querying (empty-page semantics;
      * Mongoose limit(0) would otherwise mean unlimited).
      * @param {object} filter Mongo filter
      * @param {object} [option] Query options (projection, sort, skip, limit/take)
