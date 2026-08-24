@@ -69,6 +69,7 @@ Nodes:
       - study_payments
       - adult_or_childhood_study
       - study_id
+      - phs_accession
   sample:
     Props:
       - sample_weight
@@ -236,9 +237,9 @@ PropDefinitions:
       value_type: number
       units:
         - kg
-#        - pattern: ^\\d+(mg|kg|g)$
-#          flavor: Perl
-#        - pattern: ^\\d+(lbs|stone)$
+  #        - pattern: ^\\d+(mg|kg|g)$
+  #          flavor: Perl
+  #        - pattern: ^\\d+(lbs|stone)$
   sample_length:
     Type:
       value_type: number
@@ -327,6 +328,8 @@ PropDefinitions:
   study_id:
     Type: string
     Key: true
+  phs_accession:
+    Type: string
   file_name:
     Type: string
   md5sum:

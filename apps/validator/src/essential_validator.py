@@ -526,7 +526,7 @@ class EssentialValidator:
                 self.batch[ERRORS].append(msg)
 
             # check relationship
-            rel_props = [rel for rel in columns if "." in rel and not re.search('\.\d*$',rel)]
+            rel_props = [rel for rel in columns if "." in rel and not re.search(r'\.\d*$',rel)]
             rel_result, msgs = self.check_relationship(file_info, type, rel_props)
             if not rel_result:
                 self.log.error(msgs)
