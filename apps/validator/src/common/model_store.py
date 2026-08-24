@@ -28,17 +28,17 @@ class ModelFactory:
     """
     def create_model(self, data_common, version):
         dc = data_common
-        v = self.models_def[dc]
+        model_config = self.models_def[dc]
         model_dir = os.path.join(self.model_def_dir, os.path.join(dc, version))
         #process model files for the data common
-        file_names = [os.path.join(model_dir, file) for file in v[DEF_MODEL_FILES]]
+        file_names = [os.path.join(model_dir, file) for file in model_config[DEF_MODEL_FILES]]
         # props_file_name = os.path.join(model_dir, v[DEF_MODEL_PROP_FILE])
-        delimiter = v.get(LIST_DELIMITER_PROP)
+        delimiter = model_config.get(LIST_DELIMITER_PROP)
         #process model files for the data common
         try:
             mdf_model = get_model_from_mdf_files(file_names, handle=dc)
             model_reader = YamlModelParser(file_names, dc, delimiter, version)
-            return model_reader.model, mdf_model
+            return DataModel(model_reader.model, mdf_model, model_config)
         except Exception as e:
             self.log.exception(e)
             msg = f"Failed to create data model: {data_common}/{version}!"
@@ -60,12 +60,11 @@ class ModelFactory:
         if not version:
             version = self.get_current_version_by_datacommon(data_common)
         try:
-            model, mdf_model = self.create_model(data_common, version)
+            return self.create_model(data_common, version)
         except Exception as e:
             self.log.exception(e)
             msg = f"Failed to create data model: {data_common}/{version}!"
             self.log.exception(f"{msg} {get_exception_msg()}")
-        return DataModel(model, mdf_model) if model else None  
 
 def model_key(data_common, version):
     return f"{data_common}_{version}"

@@ -71,13 +71,13 @@ class DataModel:
     get file nodes in the model
     """
     def get_file_nodes(self):
-        return self._get_symantics().get(DEF_FILE_NODES, {})
+        return self._get_semantics().get(DEF_FILE_NODES, {})
     
     """
     get main nodes in the model
     """
     def get_main_nodes(self):
-        return self._get_symantics().get(DEF_MAIN_NODES, {})
+        return self._get_semantics().get(DEF_MAIN_NODES, {})
 
     """
     get entity type of a given node in the model
@@ -87,24 +87,22 @@ class DataModel:
 
         # return self.model.get(DEF_MAIN_NODES, {}).get(node_type, None)
 
-    def _get_symantics(self):
+    def _get_semantics(self):
         return self.model_config.get(DEF_SEMANTICS, {})
     
     """
     get configured property names of a given node's property name in the model
     """
     def get_configured_prop_name(self, prop_name):
-        return self._get_symantics().get(PROPERTY_NAMES, {}).get(prop_name)
+        return self._get_semantics().get(PROPERTY_NAMES, {}).get(prop_name)
     
     """
     get file name property, pick first file node name if there are multiple file nodes
     """
     def get_file_name(self):
         file_nodes = self.get_file_nodes()
-        file_node_name_list = list(file_nodes.keys())
-        first_file_node = file_node_name_list[0]
-        file_node = self.get_file_nodes().get(first_file_node, {})
-        return file_node.get(DEF_FILE_NAME_FIELD)
+        first_file_node = next(iter(file_nodes.values()), {})
+        return first_file_node.get(DEF_FILE_NAME_FIELD)
     
     """
     get list delimiter
