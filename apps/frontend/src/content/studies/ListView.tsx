@@ -1,8 +1,9 @@
 import { useLazyQuery } from "@apollo/client";
 import { Alert, Box, Button, Container, Stack, styled, TableCell, TableHead } from "@mui/material";
-import { ElementType, useRef, useState } from "react";
+import { ElementType, useMemo, useRef, useState } from "react";
 import { Link, LinkProps, useLocation } from "react-router-dom";
 
+import ExportStudiesButton, { ExportStudiesButtonProps } from "@/components/ExportStudiesButton";
 import TooltipList from "@/components/SummaryList/TooltipList";
 
 import ApprovedStudyFilters, {
@@ -322,6 +323,28 @@ const ListView = () => {
     setTablePage(0);
   };
 
+  const exportScope: ExportStudiesButtonProps["scope"] = {
+    dbGaPID: filtersRef.current?.dbGaPID,
+    controlledAccess: filtersRef.current?.accessType,
+    study: filtersRef.current?.study,
+    programID: filtersRef.current?.programID,
+    statuses:
+      filtersRef.current?.status && filtersRef.current.status !== "All"
+        ? [filtersRef.current.status]
+        : [],
+    orderBy: tableRef.current?.tableParams?.orderBy,
+    sortDirection: tableRef.current?.tableParams?.sortDirection,
+  };
+
+  const Actions = useMemo<React.ReactNode>(
+    () => (
+      <Stack direction="row" alignItems="center" gap="8px" marginRight="37px">
+        <ExportStudiesButton scope={exportScope} disabled={!count} />
+      </Stack>
+    ),
+    [exportScope, count]
+  );
+
   return (
     <Box data-testid="list-studies-container">
       <Container maxWidth="xl">
@@ -357,9 +380,14 @@ const ListView = () => {
           disableUrlParams={false}
           defaultRowsPerPage={20}
           defaultOrder="asc"
+          position="both"
           setItemKey={(item, idx) => `${idx}_${item._id}`}
           onFetchData={handleFetchData}
           containerProps={{ sx: { marginBottom: "8px", borderColor: "#083A50" } }}
+          AdditionalActions={{
+            top: { after: Actions },
+            bottom: { after: Actions },
+          }}
           CustomTableHead={StyledTableHead}
           CustomTableHeaderCell={StyledHeaderCell}
           CustomTableBodyCell={StyledTableCell}
