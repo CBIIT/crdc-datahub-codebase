@@ -172,6 +172,32 @@ describe("NIH STS HTTP responses", () => {
             );
         });
 
+        test("logs and throws when HTTP 200 JSON is an empty object", async () => {
+            nodeFetch.mockResolvedValue(mockFetchResponse(200, "{}"));
+
+            await expect(getNIHToken(code, redirectUri)).rejects.toThrow(LOGIN_ERROR);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                "The token response could not be used: response body is an empty object"
+            );
+        });
+
+        test("escapes CR/LF in non-allowlisted field names without logging values", async () => {
+            const secret = "secret-injected-value";
+            nodeFetch.mockResolvedValue(mockFetchResponse(200, JSON.stringify({
+                "token_type\nERROR": secret,
+                "refresh_token\rWARN": "",
+            })));
+
+            await expect(getNIHToken(code, redirectUri)).rejects.toThrow(LOGIN_ERROR);
+            expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+            const logged = consoleErrorSpy.mock.calls[0][0];
+            expect(logged).toBe(
+                "The token response could not be used: fields with non-empty values: token_type\\nERROR; fields present but empty: refresh_token\\rWARN"
+            );
+            expect(logged).not.toMatch(/[\r\n]/);
+            expect(logged).not.toContain(secret);
+        });
+
         test("logs and throws when HTTP 200 JSON is null", async () => {
             nodeFetch.mockResolvedValue(mockFetchResponse(200, "null"));
 

@@ -38,7 +38,7 @@ const _isPresentButEmpty = (value) => {
 };
 
 /**
- * Replaces CR/LF so allowlisted values cannot inject extra log lines.
+ * Replaces CR/LF so field names and allowlisted values cannot inject extra log lines.
  * @param {string} value
  * @returns {string}
  */
@@ -48,7 +48,7 @@ const _escapeNewlines = (value) => value.replace(/\r/g, "\\r").replace(/\n/g, "\
  * Describes allowlisted string fields (with values) and other keys by emptiness (names only).
  * @param {*} body Parsed JSON body
  * @param {boolean} reportMissingAllowlist When true, emit "field is missing" for absent allowlist keys
- * @returns {string}
+ * @returns {string} Description, or "response body is an empty object" when an object has no parts to report
  */
 const describeSafeResponseFields = (body, reportMissingAllowlist) => {
     if (body === null) {
@@ -81,10 +81,13 @@ const describeSafeResponseFields = (body, reportMissingAllowlist) => {
     const nonEmptyOther = otherKeys.filter((key) => _isNonEmptyValue(body[key]));
     const emptyOther = otherKeys.filter((key) => _isPresentButEmpty(body[key]));
     if (nonEmptyOther.length > 0) {
-        parts.push(`fields with non-empty values: ${nonEmptyOther.join(", ")}`);
+        parts.push(`fields with non-empty values: ${nonEmptyOther.map(_escapeNewlines).join(", ")}`);
     }
     if (emptyOther.length > 0) {
-        parts.push(`fields present but empty: ${emptyOther.join(", ")}`);
+        parts.push(`fields present but empty: ${emptyOther.map(_escapeNewlines).join(", ")}`);
+    }
+    if (parts.length === 0) {
+        return "response body is an empty object";
     }
     return parts.join("; ");
 };
