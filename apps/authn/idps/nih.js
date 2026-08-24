@@ -1,4 +1,4 @@
-const {getNIHToken, nihUserInfo, nihLogout, getIDP} = require("../services/nih-auth");
+const {getNIHToken, nihUserInfo, nihLogout, getIDP, describeSafeResponseFields} = require("../services/nih-auth");
 const client = {
     /**
      * Completes NIH STS login and resolves NIH vs Login.gov from userinfo.
@@ -14,7 +14,7 @@ const client = {
         try {
             idp = getIDP(user?.preferred_username);
         } catch (e) {
-            console.error("NIH userinfo returned HTTP 200 but login failed to determine IDP:", user);
+            console.error(`NIH userinfo returned HTTP 200 but login failed to determine IDP: ${describeSafeResponseFields(user)}`);
             throw e;
         }
         // Leave as blank if no name exits

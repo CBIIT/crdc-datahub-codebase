@@ -5,8 +5,8 @@ const {LOGIN_ERROR} = require("../constants/errors");
 const loginGovRegex = new RegExp(/(?:.){1}(@login.gov){1}\b/i);
 const nihRegex = new RegExp(/(?:.){1}(@nih.gov){1}\b/i);
 
-const TOKEN_LIKE_FIELDS = ["access_token", "refresh_token", "id_token"];
 const OPTIONAL_TOKEN_FIELDS = ["refresh_token", "id_token"];
+const VALUE_ALLOWLIST_FIELDS = ["email", "preferred_username", "first_name", "last_name"];
 
 /**
  * True when value is a non-empty string after trimming.
@@ -16,28 +16,65 @@ const OPTIONAL_TOKEN_FIELDS = ["refresh_token", "id_token"];
 const _isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
 
 /**
- * Logs a 200 response body with token-like field values omitted.
- * @param {string} message Log prefix (include trailing punctuation and space)
- * @param {object|string} body Parsed JSON or raw text
- * @param {string} endpointName token or userinfo
+ * True when a field should be reported as present with a non-empty value (value itself is never logged).
+ * @param {*} value
+ * @returns {boolean}
  */
-const _logSanitizedSuccessBody = (message, body, endpointName) => {
-    if (body === null || typeof body !== "object" || Array.isArray(body)) {
-        console.error(`${message}${body}`);
-        return;
+const _isNonEmptyValue = (value) => {
+    if (value == null) {
+        return false;
     }
-    const logged = { ...body };
-    const omitted = [];
-    for (const field of TOKEN_LIKE_FIELDS) {
-        if (logged[field] != null) {
-            omitted.push(field);
-            delete logged[field];
+    if (typeof value === "string") {
+        return _isNonEmptyString(value);
+    }
+    return true;
+};
+
+/**
+ * Describes allowlisted string fields (with values) and other keys that have non-empty values (names only).
+ * @param {*} body Parsed JSON body
+ * @returns {string}
+ */
+const describeSafeResponseFields = (body) => {
+    if (body === null) {
+        return "response body is null";
+    }
+    if (Array.isArray(body)) {
+        return `response body is an array of length ${body.length}`;
+    }
+    if (typeof body !== "object") {
+        return `response body is ${typeof body}`;
+    }
+    const parts = [];
+    for (const field of VALUE_ALLOWLIST_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(body, field)) {
+            parts.push(`${field} is missing`);
+            continue;
+        }
+        const value = body[field];
+        if (_isNonEmptyString(value)) {
+            parts.push(`${field}=${value}`);
+        } else if (typeof value === "string") {
+            parts.push(`${field} is empty`);
+        } else {
+            parts.push(`${field} is not a string`);
         }
     }
-    console.error(`${message}${JSON.stringify(logged)}`);
-    if (omitted.length > 0) {
-        console.error(`The following fields were present in the ${endpointName} response but omitted from this log: ${omitted.join(", ")}`);
+    const nonEmptyOther = Object.keys(body).filter((key) => !VALUE_ALLOWLIST_FIELDS.includes(key) && _isNonEmptyValue(body[key]));
+    if (nonEmptyOther.length > 0) {
+        parts.push(`fields with non-empty values: ${nonEmptyOther.join(", ")}`);
     }
+    return parts.join("; ");
+};
+
+/**
+ * Logs parse failure metadata without the raw response body.
+ * @param {string} endpointName token or userinfo
+ * @param {string} raw Unparsed response text
+ */
+const _logParseFailure = (endpointName, raw) => {
+    const bodyLength = typeof raw === "string" ? raw.length : 0;
+    console.error(`An error occurred while parsing the ${endpointName} response: not JSON, bodyLength=${bodyLength}`);
 };
 
 /**
@@ -52,7 +89,7 @@ const _logInvalidOptionalTokenFields = (jsonResponse) => {
 };
 
 /**
- * Parses a NIH STS JSON response. Logs the body when HTTP 200 cannot be parsed as JSON.
+ * Parses a NIH STS JSON response. Logs endpoint and body length when HTTP 200 cannot be parsed as JSON.
  * @param {import("node-fetch").Response} response Fetch response
  * @param {string} endpointName token or userinfo
  * @returns {Promise<object>} Parsed JSON body
@@ -68,7 +105,7 @@ const _parseSuccessJsonOrThrow = async (response, endpointName) => {
     try {
         json = JSON.parse(raw);
     } catch (e) {
-        _logSanitizedSuccessBody(`An error occurred while parsing the ${endpointName} response: `, raw, endpointName);
+        _logParseFailure(endpointName, raw);
         throw new Error(LOGIN_ERROR);
     }
     return json;
@@ -98,7 +135,7 @@ async function getNIHToken(code, redirectURi) {
     });
     const jsonResponse = await _parseSuccessJsonOrThrow(response, "token");
     if (!_isNonEmptyString(jsonResponse?.access_token)) {
-        _logSanitizedSuccessBody("The token response could not be used: ", jsonResponse, "token");
+        console.error(`The token response could not be used: ${describeSafeResponseFields(jsonResponse)}`);
         throw new Error(LOGIN_ERROR);
     }
     _logInvalidOptionalTokenFields(jsonResponse);
@@ -172,5 +209,6 @@ module.exports = {
     nihUserInfo,
     getIDP,
     isLoginGovLogin,
-    isNIHLogin
+    isNIHLogin,
+    describeSafeResponseFields
 };

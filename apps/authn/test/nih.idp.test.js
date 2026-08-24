@@ -1,12 +1,16 @@
 const { NIH, LOGIN_GOV } = require('../constants/idp-constants');
 const { LOGIN_ERROR } = require('../constants/errors');
 
-jest.mock('../services/nih-auth', () => ({
-    getNIHToken: jest.fn(),
-    nihUserInfo: jest.fn(),
-    nihLogout: jest.fn(),
-    getIDP: jest.fn(),
-}));
+jest.mock('../services/nih-auth', () => {
+    const actual = jest.requireActual('../services/nih-auth');
+    return {
+        ...actual,
+        getNIHToken: jest.fn(),
+        nihUserInfo: jest.fn(),
+        nihLogout: jest.fn(),
+        getIDP: jest.fn(),
+    };
+});
 
 const {
     getNIHToken,
@@ -61,6 +65,7 @@ describe('NIH IDP client', () => {
                 email: 'user@login.gov',
                 first_name: 'Ada',
                 last_name: 'Lovelace',
+                sub: 'secret-subject',
             };
             nihUserInfo.mockResolvedValue(userinfo);
             getIDP.mockImplementation(() => {
@@ -69,9 +74,27 @@ describe('NIH IDP client', () => {
 
             await expect(nihClient.login(code, redirectingURL)).rejects.toThrow(LOGIN_ERROR);
             expect(getIDP).toHaveBeenCalledWith(undefined);
+            expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
             expect(consoleErrorSpy).toHaveBeenCalledWith(
-                'NIH userinfo returned HTTP 200 but login failed to determine IDP:',
-                userinfo
+                'NIH userinfo returned HTTP 200 but login failed to determine IDP: email=user@login.gov; preferred_username is missing; first_name=Ada; last_name=Lovelace; fields with non-empty values: sub'
+            );
+            expect(consoleErrorSpy.mock.calls.flat().join(' ')).not.toContain('secret-subject');
+        });
+
+        test('logs allowlisted userinfo strings when getIDP throws', async () => {
+            nihUserInfo.mockResolvedValue({
+                preferred_username: 'user@example.com',
+                email: 'user@login.gov',
+                first_name: 'Ada',
+                last_name: 'Lovelace',
+            });
+            getIDP.mockImplementation(() => {
+                throw new Error(LOGIN_ERROR);
+            });
+
+            await expect(nihClient.login(code, redirectingURL)).rejects.toThrow(LOGIN_ERROR);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                'NIH userinfo returned HTTP 200 but login failed to determine IDP: email=user@login.gov; preferred_username=user@example.com; first_name=Ada; last_name=Lovelace'
             );
         });
 

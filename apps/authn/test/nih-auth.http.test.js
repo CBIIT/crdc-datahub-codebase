@@ -56,17 +56,18 @@ describe("NIH STS HTTP responses", () => {
             });
         });
 
-        test("logs body and throws when HTTP 200 is not JSON", async () => {
+        test("logs body length and throws when HTTP 200 is not JSON", async () => {
             const body = "<html>not json</html>";
             nodeFetch.mockResolvedValue(mockFetchResponse(200, body));
 
             await expect(getNIHToken(code, redirectUri)).rejects.toThrow(LOGIN_ERROR);
             expect(consoleErrorSpy).toHaveBeenCalledWith(
-                `An error occurred while parsing the token response: ${body}`
+                `An error occurred while parsing the token response: not JSON, bodyLength=${body.length}`
             );
+            expect(consoleErrorSpy.mock.calls.flat().join(" ")).not.toContain(body);
         });
 
-        test("omits token fields from the log and throws when HTTP 200 JSON has no access_token", async () => {
+        test("logs field names without values and throws when HTTP 200 JSON has no access_token", async () => {
             nodeFetch.mockResolvedValue(mockFetchResponse(200, JSON.stringify({
                 token_type: "Bearer",
                 refresh_token: "secret-refresh",
@@ -75,11 +76,12 @@ describe("NIH STS HTTP responses", () => {
 
             await expect(getNIHToken(code, redirectUri)).rejects.toThrow(LOGIN_ERROR);
             expect(consoleErrorSpy).toHaveBeenCalledWith(
-                `The token response could not be used: ${JSON.stringify({ token_type: "Bearer" })}`
+                "The token response could not be used: email is missing; preferred_username is missing; first_name is missing; last_name is missing; fields with non-empty values: token_type, refresh_token, id_token"
             );
-            expect(consoleErrorSpy).toHaveBeenCalledWith(
-                "The following fields were present in the token response but omitted from this log: refresh_token, id_token"
-            );
+            const logged = consoleErrorSpy.mock.calls.flat().join(" ");
+            expect(logged).not.toContain("secret-refresh");
+            expect(logged).not.toContain("header.payload.signature");
+            expect(logged).not.toContain("Bearer");
         });
 
         test("logs and throws when HTTP 200 JSON has a non-string access_token", async () => {
@@ -89,11 +91,9 @@ describe("NIH STS HTTP responses", () => {
 
             await expect(getNIHToken(code, redirectUri)).rejects.toThrow(LOGIN_ERROR);
             expect(consoleErrorSpy).toHaveBeenCalledWith(
-                `The token response could not be used: ${JSON.stringify({})}`
+                "The token response could not be used: email is missing; preferred_username is missing; first_name is missing; last_name is missing; fields with non-empty values: access_token"
             );
-            expect(consoleErrorSpy).toHaveBeenCalledWith(
-                "The following fields were present in the token response but omitted from this log: access_token"
-            );
+            expect(consoleErrorSpy.mock.calls.flat().join(" ")).not.toContain("nested");
         });
 
         test("logs and throws when HTTP 200 JSON has a whitespace-only access_token", async () => {
@@ -103,10 +103,7 @@ describe("NIH STS HTTP responses", () => {
 
             await expect(getNIHToken(code, redirectUri)).rejects.toThrow(LOGIN_ERROR);
             expect(consoleErrorSpy).toHaveBeenCalledWith(
-                `The token response could not be used: ${JSON.stringify({})}`
-            );
-            expect(consoleErrorSpy).toHaveBeenCalledWith(
-                "The following fields were present in the token response but omitted from this log: access_token"
+                "The token response could not be used: email is missing; preferred_username is missing; first_name is missing; last_name is missing"
             );
         });
 
@@ -175,14 +172,14 @@ describe("NIH STS HTTP responses", () => {
             nodeFetch.mockResolvedValue(mockFetchResponse(200, "null"));
 
             await expect(getNIHToken(code, redirectUri)).rejects.toThrow(LOGIN_ERROR);
-            expect(consoleErrorSpy).toHaveBeenCalledWith("The token response could not be used: null");
+            expect(consoleErrorSpy).toHaveBeenCalledWith("The token response could not be used: response body is null");
         });
 
         test("logs and throws when HTTP 200 JSON is an array", async () => {
             nodeFetch.mockResolvedValue(mockFetchResponse(200, "[]"));
 
             await expect(getNIHToken(code, redirectUri)).rejects.toThrow(LOGIN_ERROR);
-            expect(consoleErrorSpy).toHaveBeenCalledWith(`The token response could not be used: ${[]}`);
+            expect(consoleErrorSpy).toHaveBeenCalledWith("The token response could not be used: response body is an array of length 0");
         });
 
         test("returns access_token on HTTP 200 without logging an error", async () => {
@@ -210,14 +207,15 @@ describe("NIH STS HTTP responses", () => {
     describe("nihUserInfo", () => {
         const accessToken = "access-token";
 
-        test("logs body and throws when HTTP 200 is not JSON", async () => {
-            const body = "not json";
+        test("logs body length and throws when HTTP 200 is not JSON", async () => {
+            const body = "<html>oops</html>";
             nodeFetch.mockResolvedValue(mockFetchResponse(200, body));
 
             await expect(nihUserInfo(accessToken)).rejects.toThrow(LOGIN_ERROR);
             expect(consoleErrorSpy).toHaveBeenCalledWith(
-                `An error occurred while parsing the userinfo response: ${body}`
+                `An error occurred while parsing the userinfo response: not JSON, bodyLength=${body.length}`
             );
+            expect(consoleErrorSpy.mock.calls.flat().join(" ")).not.toContain(body);
         });
 
         test("logs status and throws LOGIN_ERROR on HTTP 401 without logging the body", async () => {
