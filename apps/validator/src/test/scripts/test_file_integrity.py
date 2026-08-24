@@ -26,3 +26,6 @@ def test_get_old_data_file_location():
     expected_location = f"s3://{bucket_name}/{study_id}/{file_name}"
     location = file_integrity.get_old_data_file_location(bucket_name, study_id, file_name)
     assert location == expected_location
+
+def test_get_study_id_from_s3_url():
+    assert file_integrity.get_study_id_from_s3_url('s3://my-bucket/study-id-001/my-file.ext') == 'study-id-001'

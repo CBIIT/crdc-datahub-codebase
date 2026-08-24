@@ -1,11 +1,15 @@
+import csv
 import os
+import sys
 from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError
 from pymongo import MongoClient
 
-from ..common.constants import RELEASE_COLLECTION, STUDY_ID, DATA_FILE_LOCATION
+RELEASE_COLLECTION = "release"
+STUDY_ID = "studyID"
+DATA_FILE_LOCATION = "dataFileLocation"
 
 BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 
@@ -112,44 +116,88 @@ def write_results_to_file(succeeded_files, missing_files, wrong_size_files, stud
             for file in succeeded_files:
                 f.write(f"{file[0]}: {file[1]}\n")
 
-if __name__ == "__main__":
-    try:
-        import argparse
-        from dotenv import load_dotenv
-        load_dotenv()
-        connection_str = os.environ.get("MONGO_CONNECTION_STRING")
-        db_name = os.environ.get("MONGO_DB_NAME")
+def read_files_from_dcf_manifest(file_path):
+    if not file_path or not os.path.isfile(file_path):
+        print(f'{file_path} is not a file')
 
-        parser = argparse.ArgumentParser()
-        parser.add_argument("studyID", help="Study ID to check file integrity for")
-        parser.add_argument("--old-format", help="Validate old format data files (without data_file_location field)", action="store_true")
-        args = parser.parse_args()
-        studyID = args.studyID
-        print(f"Checking file integrity for study ID: {studyID}")
-        print(f"Checking {'old' if args.old_format else 'new'} format data files")
+    with open(file_path, "r") as f:
+        files = []
+        tsv_reader = csv.DictReader(f, delimiter="\t")
+        for row in tsv_reader:
+            files.append({
+                'GUID': row['guid'],
+                DATA_FILE_LOCATION: row['urls'],
+                "file_size": int(row['size'])
+            })
+        return files
 
-        client = get_mongo_client(connection_str)
-        if args.old_format:
-            files = get_old_data_files_from_db(client, db_name)
+def validate_files(files: list):
+    succeeded_files = []
+    missing_files = []
+    wrong_size_files = []
+    for file in files:
+        bucket_name, key = extrac_bucket_key_from_s3_url(file[DATA_FILE_LOCATION])
+        file_name = os.path.basename(key)
+        guid = file.get("GUID")
+        result = check_s3_file(bucket_name, key)
+        if (not result["exist"]):
+            missing_files.append((guid, file_name))
         else:
-            files = get_study_data_files_from_db(client, db_name, studyID)
-        succeeded_files = []
-        missing_files = []
-        wrong_size_files = []
-        for file in files:
-            bucket_name, key = extrac_bucket_key_from_s3_url(file[DATA_FILE_LOCATION])
-            file_name = os.path.basename(key)
-            guid = file.get("GUID")
-            result = check_s3_file(bucket_name, key)
-            if (not result["exist"]):
-                missing_files.append((guid, file_name))
+            if result.get("size") != file.get("file_size"):
+                wrong_size_files.append((guid, file_name))
+                print(
+                    f"Size mismatch for {file[DATA_FILE_LOCATION]}: Expected {file.get('file_size')}, Got {result.get('size')}")
             else:
-                if result.get("size") != file.get("file_size"):
-                    wrong_size_files.append((guid, file_name))
-                    print(f"Size mismatch for {file[DATA_FILE_LOCATION]}: Expected {file.get('file_size')}, Got {result.get('size')}")
-                else:
-                    succeeded_files.append((guid, file_name))
-            print(f"{key}, Exists: {result['exist']}, Size: {result.get('size')}")
-        write_results_to_file(succeeded_files, missing_files, wrong_size_files, studyID)
+                succeeded_files.append((guid, file_name))
+        print(f"{key}, Exists: {result['exist']}, Size: {result.get('size')}")
+
+    return succeeded_files, missing_files, wrong_size_files
+
+def main():
+    try:
+        study_id, files = get_studyid_files_list()
+
+        succeeded_files, missing_files, wrong_size_files = validate_files(files)
+        write_results_to_file(succeeded_files, missing_files, wrong_size_files, study_id)
     except Exception as e:
         print(f"An error occurred: {e}")
+
+def get_studyid_files_list():
+    import argparse
+    from dotenv import load_dotenv
+    load_dotenv()
+    connection_str = os.environ.get("MONGO_CONNECTION_STRING")
+    db_name = os.environ.get("MONGO_DB_NAME")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--study-id", help="Study ID to check file integrity for")
+    parser.add_argument("--old-format", help="Validate old format data files (without data_file_location field)",
+                        action="store_true")
+    parser.add_argument("--dcf-manifest", help="Validate DCF Manifest file")
+    args = parser.parse_args()
+
+    study_id = args.study_id
+    client = get_mongo_client(connection_str)
+    if args.dcf_manifest:
+        files = read_files_from_dcf_manifest(args.dcf_manifest)
+        if len(files) >= 0:
+            study_id = get_study_id_from_s3_url(files[0][DATA_FILE_LOCATION])
+    elif args.old_format:
+        files = get_old_data_files_from_db(client, db_name)
+    else:
+        files = get_study_data_files_from_db(client, db_name, study_id)
+
+    print(f"Checking file integrity for study ID: {study_id}")
+    print(f"Checking {'old' if args.old_format else 'new'} format data files")
+
+    return study_id, files
+
+def get_study_id_from_s3_url(s3_url):
+    if not s3_url.startswith("s3://"):
+        return None
+    parts = s3_url.split("/")
+    return parts[-2]
+
+
+if __name__ == "__main__":
+    main()
