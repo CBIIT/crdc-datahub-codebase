@@ -2,70 +2,11 @@ const nodeFetch = require("node-fetch");
 const config = require("../config");
 const {LOGIN_GOV, NIH} = require("../constants/idp-constants");
 const {LOGIN_ERROR} = require("../constants/errors");
+const {isNonEmptyString, describeSafeResponseFields} = require("../util/safe-response-log");
 const loginGovRegex = new RegExp(/(?:.){1}(@login.gov){1}\b/i);
 const nihRegex = new RegExp(/(?:.){1}(@nih.gov){1}\b/i);
 
 const OPTIONAL_TOKEN_FIELDS = ["refresh_token", "id_token"];
-const VALUE_ALLOWLIST_FIELDS = ["email", "preferred_username", "first_name", "last_name"];
-
-/**
- * True when value is a non-empty string after trimming.
- * @param {*} value
- * @returns {boolean}
- */
-const _isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
-
-/**
- * True when a field should be reported as present with a non-empty value (value itself is never logged).
- * @param {*} value
- * @returns {boolean}
- */
-const _isNonEmptyValue = (value) => {
-    if (value == null) {
-        return false;
-    }
-    if (typeof value === "string") {
-        return _isNonEmptyString(value);
-    }
-    return true;
-};
-
-/**
- * Describes allowlisted string fields (with values) and other keys that have non-empty values (names only).
- * @param {*} body Parsed JSON body
- * @returns {string}
- */
-const describeSafeResponseFields = (body) => {
-    if (body === null) {
-        return "response body is null";
-    }
-    if (Array.isArray(body)) {
-        return `response body is an array of length ${body.length}`;
-    }
-    if (typeof body !== "object") {
-        return `response body is ${typeof body}`;
-    }
-    const parts = [];
-    for (const field of VALUE_ALLOWLIST_FIELDS) {
-        if (!Object.prototype.hasOwnProperty.call(body, field)) {
-            parts.push(`${field} is missing`);
-            continue;
-        }
-        const value = body[field];
-        if (_isNonEmptyString(value)) {
-            parts.push(`${field}=${value}`);
-        } else if (typeof value === "string") {
-            parts.push(`${field} is empty`);
-        } else {
-            parts.push(`${field} is not a string`);
-        }
-    }
-    const nonEmptyOther = Object.keys(body).filter((key) => !VALUE_ALLOWLIST_FIELDS.includes(key) && _isNonEmptyValue(body[key]));
-    if (nonEmptyOther.length > 0) {
-        parts.push(`fields with non-empty values: ${nonEmptyOther.join(", ")}`);
-    }
-    return parts.join("; ");
-};
 
 /**
  * Logs parse failure metadata without the raw response body.
@@ -82,7 +23,7 @@ const _logParseFailure = (endpointName, raw) => {
  * @param {object} jsonResponse Parsed token endpoint JSON
  */
 const _logInvalidOptionalTokenFields = (jsonResponse) => {
-    const invalid = OPTIONAL_TOKEN_FIELDS.filter((field) => jsonResponse[field] != null && !_isNonEmptyString(jsonResponse[field]));
+    const invalid = OPTIONAL_TOKEN_FIELDS.filter((field) => jsonResponse[field] != null && !isNonEmptyString(jsonResponse[field]));
     if (invalid.length > 0) {
         console.error(`The following optional token fields were present but invalid: ${invalid.join(", ")}`);
     }
@@ -134,8 +75,8 @@ async function getNIHToken(code, redirectURi) {
         })
     });
     const jsonResponse = await _parseSuccessJsonOrThrow(response, "token");
-    if (!_isNonEmptyString(jsonResponse?.access_token)) {
-        console.error(`The token response could not be used: ${describeSafeResponseFields(jsonResponse)}`);
+    if (!isNonEmptyString(jsonResponse?.access_token)) {
+        console.error(`The token response could not be used: ${describeSafeResponseFields(jsonResponse, false)}`);
         throw new Error(LOGIN_ERROR);
     }
     _logInvalidOptionalTokenFields(jsonResponse);
@@ -191,7 +132,7 @@ const getIDP = (preferredUsername) => {
         console.warn("The preferred_username property from the login response is empty, assuming this is a LOGIN.GOV login");
         return LOGIN_GOV;
     }
-    console.warn(`The preferred_username property from the login response does not match one of the expected formats: ${preferredUsername}`);
+    console.warn("The preferred_username property from the login response does not match one of the expected formats");
     throw new Error(LOGIN_ERROR);
 }
 
@@ -209,6 +150,5 @@ module.exports = {
     nihUserInfo,
     getIDP,
     isLoginGovLogin,
-    isNIHLogin,
-    describeSafeResponseFields
+    isNIHLogin
 };
