@@ -81,12 +81,13 @@ const documentDbCaFile = documentDbTlsEnabled
     : null;
 
 /**
- * Builds the shared DocumentDB connection URI from MONGO_DB_* environment
- * variables and DATABASE_NAME (falls back to crdc-datahub via database-constants).
+ * Builds the shared DocumentDB connection URI from DOCDB_USER/PASSWORD/HOST/PORT
+ * and DATABASE_NAME (falls back to crdc-datahub via database-constants).
  * Used by native drivers, sessions, and Mongoose.
  * TLS is on when MONGO_DB_TLS is unset or true. CA defaults to
  * resources/aws-documentdb-certificate/global-bundle.pem when MONGO_DB_CA_FILE
  * is unset. Throws on first URI access if TLS is on and the CA file is missing.
+ * Startup migrations continue to use MONGO_DB_USER/PASSWORD/HOST/PORT.
  * @returns {string}
  * @throws {Error} When TLS is enabled and the CA file does not exist
  */
@@ -95,10 +96,10 @@ function buildDocumentDbConnectionString() {
         throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
     }
     return buildConnectionString(
-        process.env.MONGO_DB_USER,
-        process.env.MONGO_DB_PASSWORD,
-        process.env.MONGO_DB_HOST,
-        process.env.MONGO_DB_PORT,
+        process.env.DOCDB_USER,
+        process.env.DOCDB_PASSWORD,
+        process.env.DOCDB_HOST,
+        process.env.DOCDB_PORT,
         DATABASE_NAME,
         documentDbCaFile,
     );
@@ -108,11 +109,11 @@ let config = {
     //info variables
     version: process.env.VERSION || 'Version not set',
     date: process.env.DATE || new Date(),
-    // DocumentDB (shared by native drivers and Mongoose). Env vars remain MONGO_DB_*.
-    document_db_user: process.env.MONGO_DB_USER,
-    document_db_password: process.env.MONGO_DB_PASSWORD,
-    document_db_host: process.env.MONGO_DB_HOST,
-    document_db_port: process.env.MONGO_DB_PORT,
+    // DocumentDB (shared by native drivers and Mongoose). Host credentials use DOCDB_*.
+    document_db_user: process.env.DOCDB_USER,
+    document_db_password: process.env.DOCDB_PASSWORD,
+    document_db_host: process.env.DOCDB_HOST,
+    document_db_port: process.env.DOCDB_PORT,
     document_db_tls: documentDbTlsEnabled,
     document_db_ca_file: documentDbCaFile,
 

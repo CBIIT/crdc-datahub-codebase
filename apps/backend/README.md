@@ -32,10 +32,11 @@ Environment variables can either be set in the runtime environment or specified 
 
  - **VERSION** - The API version
  - **DATE** - The date that the API was built
- - **MONGO_DB_USER** - The MongoDB username for this API connection
- - **MONGO_DB_PASSWORD** - The MongoDB password for this API connection
- - **MONGO_DB_HOST** - The MongoDB deployment host address
- - **MONGO_DB_PORT** - The MongoDB connection port
+ - **DOCDB_USER** - The DocumentDB username for this API connection
+ - **DOCDB_PASSWORD** - The DocumentDB password for this API connection
+ - **DOCDB_HOST** - The DocumentDB deployment host address
+ - **DOCDB_PORT** - The DocumentDB connection port
+ - **MONGO_DB_USER** / **MONGO_DB_PASSWORD** / **MONGO_DB_HOST** / **MONGO_DB_PORT** - Used by startup and documentation migrations, not by the API runtime
  - **SESSION_SECRET** - A session secret key, this must match in all services that will share a session
  - **SESSION_TIMEOUT_SECONDS** - The number of seconds before a session created or updated by this service will expire
  - **EMAIL_SMTP_HOST**: email server hostname
