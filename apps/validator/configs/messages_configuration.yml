@@ -185,6 +185,11 @@ Messages:
     severity: "Error"
     message: '{} Required relationship "{}" is empty.'
     description: "Empty value in a required relationship column"
+  M038:
+   title: "dbGaPID mismatch"
+   severity: "Error"
+   message: "{} dbGaPID mismatch: dbGaPID doesn't match the pre-approved value - '{}'."
+   description: "dbGaPID doesn't match pre-approved value"
 
   # data file validation message
   F001:
