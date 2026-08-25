@@ -4,7 +4,8 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
-const MARKDOWN_ALLOWED_ELEMENTS = ["p", "br", "strong", "em", "u", "ul", "ol", "li"] as const;
+const MARKDOWN_ALLOWED_ELEMENTS = ["p", "br", "strong", "em", "u", "ul", "ol", "li", "a"] as const;
+const MARKDOWN_ATTRIBUTE_FREE_ELEMENTS = MARKDOWN_ALLOWED_ELEMENTS.filter((tag) => tag !== "a");
 
 const BLANK_LINE_RUN_PATTERN = /\n{3,}/g;
 const NON_BREAKING_SPACE = "\u00A0";
@@ -12,6 +13,7 @@ const TAB_SIZE = 2;
 
 const HORIZONTAL_RULE_CHARS = new Set(["-", "*", "_"]);
 const UNORDERED_LIST_MARKERS = new Set(["-", "*", "+"]);
+const LINK_PROTOCOLS = new Set(["http:", "https:"]);
 
 const StyledMarkdown = styled(ReactMarkdown)({
   lineHeight: "25px",
@@ -31,6 +33,11 @@ const StyledMarkdown = styled(ReactMarkdown)({
   "& li": {
     lineHeight: "25px",
     whiteSpace: "pre-wrap",
+  },
+
+  "& a": {
+    color: "#1976d2",
+    textDecoration: "underline",
   },
 });
 
@@ -139,14 +146,71 @@ const prepareMarkdownForViewer = (value: string): string => {
 };
 
 /**
- * Removed attributes from elements to avoid unsafe assignments.
+ * Reads a link destination, keeping only absolute http(s) URLs.
+ *
+ * @param {string} [href] - The raw href from the parsed markdown.
+ * @returns {string | null} The safe URL, or `null` when the href is missing or unsafe.
+ *
+ * @example
+ * readSafeHref("https://google.com"); // "https://google.com/"
+ * readSafeHref("javascript:alert(1)"); // null
  */
-const SANITIZED_COMPONENTS: Components = Object.fromEntries(
-  MARKDOWN_ALLOWED_ELEMENTS.map((tag) => [
-    tag,
-    ({ children }: { children?: ReactNode }) => createElement(tag, null, children),
-  ])
-) as Components;
+const readSafeHref = (href?: string): string | null => {
+  if (!href) {
+    return null;
+  }
+
+  let url: URL;
+
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+
+  if (!LINK_PROTOCOLS.has(url.protocol)) {
+    return null;
+  }
+
+  return url.href;
+};
+
+/**
+ * Renders a markdown link as a safe anchor that opens in a new tab, falling
+ * back to plain content when the destination is not a valid http(s) URL.
+ *
+ * @param {object} props - The renderer props.
+ * @param {ReactNode} [props.children] - The link content.
+ * @param {string} [props.href] - The link destination.
+ * @returns {ReactElement} The rendered link or its plain content.
+ */
+const renderLink = ({ children, href }: { children?: ReactNode; href?: string }): ReactElement => {
+  const safeHref = readSafeHref(href);
+
+  if (!safeHref) {
+    return children as ReactElement;
+  }
+
+  return (
+    <a href={safeHref} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  );
+};
+
+/**
+ * Removed attributes from elements to avoid unsafe assignments. Links keep a
+ * sanitized href through their dedicated renderer.
+ */
+const SANITIZED_COMPONENTS: Components = {
+  ...(Object.fromEntries(
+    MARKDOWN_ATTRIBUTE_FREE_ELEMENTS.map((tag) => [
+      tag,
+      ({ children }: { children?: ReactNode }) => createElement(tag, null, children),
+    ])
+  ) as Components),
+  a: renderLink,
+};
 
 type Props = {
   content: string;

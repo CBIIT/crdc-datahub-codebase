@@ -3,7 +3,7 @@ import type { ListFormat } from "../../types";
 /**
  * Markdown characters that are escaped/unescaped by this editor's inline markdown subset.
  */
-export const ESCAPABLE_MARKDOWN_CHARACTERS = new Set(["\\", "*", "_"]);
+export const ESCAPABLE_MARKDOWN_CHARACTERS = new Set(["\\", "*", "_", "[", "]"]);
 
 /**
  * Characters recognized as bulleted list markers.

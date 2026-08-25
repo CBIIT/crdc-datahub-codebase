@@ -1,9 +1,11 @@
 import { Box, styled } from "@mui/material";
-import type { ReactElement } from "react";
+import type { MouseEvent, ReactElement } from "react";
 import { forwardRef, useImperativeHandle } from "react";
 import { Editable, Slate } from "slate-react";
 
+import { useLinkPopup } from "./hooks/useLinkPopup";
 import { useRichTextEditor } from "./hooks/useRichTextEditor";
+import LinkPopup from "./LinkPopup";
 import Toolbar from "./Toolbar";
 
 const StyledEditorWrapper = styled(Box)({
@@ -91,24 +93,43 @@ const Controller = forwardRef<RichTextEditorHandle, Props>(
   ): ReactElement => {
     const { editor, initialValue, handleChange, handleKeyDown, renderElement, renderLeaf, reset } =
       useRichTextEditor({ value, onChange, onTextLengthChange });
+    const linkPopup = useLinkPopup(editor);
 
     useImperativeHandle(ref, () => ({ reset }), [reset]);
+
+    const handleEditorClick = (event: MouseEvent<HTMLDivElement>): void => {
+      if (disabled) {
+        return;
+      }
+
+      const anchorElement = (event.target as HTMLElement).closest?.("a");
+
+      if (!anchorElement) {
+        return;
+      }
+
+      event.preventDefault();
+      linkPopup.openFromLink(anchorElement);
+    };
 
     return (
       <StyledEditorWrapper data-testid={dataTestId}>
         <Slate editor={editor} initialValue={initialValue} onChange={handleChange}>
-          {!disabled ? <Toolbar /> : null}
+          {!disabled ? <Toolbar onInsertLink={linkPopup.openFromToolbar} /> : null}
 
           <StyledEditable
             renderElement={renderElement}
             renderLeaf={renderLeaf}
             onKeyDown={handleKeyDown}
+            onClick={handleEditorClick}
             placeholder={placeholder}
             readOnly={disabled}
             aria-label={ariaLabel}
             aria-multiline
           />
         </Slate>
+
+        <LinkPopup popup={linkPopup} />
       </StyledEditorWrapper>
     );
   }

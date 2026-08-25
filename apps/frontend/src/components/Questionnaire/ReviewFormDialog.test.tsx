@@ -227,4 +227,15 @@ describe("Implementation Requirements", () => {
       expect(within(getByTestId("review-comment")).getByRole("textbox")).toHaveValue("");
     });
   });
+
+  it("should not close when clicking the backdrop", async () => {
+    const mockOnCancel = vi.fn();
+
+    const { baseElement } = render(<ReviewFormDialog open header="Test" onCancel={mockOnCancel} />);
+
+    const backdrop = baseElement.querySelector(".MuiBackdrop-root");
+    userEvent.click(backdrop);
+
+    expect(mockOnCancel).not.toHaveBeenCalled();
+  });
 });

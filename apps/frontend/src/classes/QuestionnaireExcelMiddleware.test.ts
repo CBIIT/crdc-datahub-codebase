@@ -314,58 +314,67 @@ describe("Serialization", () => {
       expect(sheet.getCell("E2").value).toEqual("1234-5678-9012-3456");
       expect(sheet.getCell("F2").value).toEqual("A Mock Institution");
       expect(sheet.getCell("G2").value).toEqual("123 Bunny Lane, Bunnyville, USA 20001");
+      expect(sheet.getCell("H2").value).toEqual(expect.objectContaining({ result: "No" }));
 
       // Primary Contact
-      expect(sheet.getCell("H2").value).toEqual("No");
-      expect(sheet.getCell("I2").value).toEqual("Radish");
-      expect(sheet.getCell("J2").value).toEqual("Rabbit");
-      expect(sheet.getCell("K2").value).toEqual("Some Contact Position");
-      expect(sheet.getCell("L2").value).toEqual("radish.rabbit@example.com");
-      expect(sheet.getCell("M2").value).toEqual("Another Mock Institution");
-      expect(sheet.getCell("N2").value).toEqual("957-123-9393");
+      expect(sheet.getCell("I2").value).toEqual("No");
+      expect(sheet.getCell("J2").value).toEqual("Radish");
+      expect(sheet.getCell("K2").value).toEqual("Rabbit");
+      expect(sheet.getCell("L2").value).toEqual("Some Contact Position");
+      expect(sheet.getCell("M2").value).toEqual("radish.rabbit@example.com");
+      expect(sheet.getCell("N2").value).toEqual("Another Mock Institution");
+      expect(sheet.getCell("O2").value).toEqual("957-123-9393");
+      expect(sheet.getCell("P2").value).toEqual("Yes");
 
       // Additional Contacts x3
-      expect(sheet.getColumn("O").values).toEqual([
+      expect(sheet.getColumn("Q").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "Contact 1 First",
         "Contact 2 First",
         "Contact 3 First",
       ]);
-      expect(sheet.getColumn("P").values).toEqual([
+      expect(sheet.getColumn("R").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "Contact 1 Last",
         "Contact 2 Last",
         "Contact 3 Last",
       ]);
-      expect(sheet.getColumn("Q").values).toEqual([
+      expect(sheet.getColumn("S").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "Contact 1 Position",
         "Contact 2 Position",
         "Contact 3 Position",
       ]);
-      expect(sheet.getColumn("R").values).toEqual([
+      expect(sheet.getColumn("T").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "contact1@example.com",
         "contact2@example.com",
         "contact3@example.com",
       ]);
-      expect(sheet.getColumn("S").values).toEqual([
+      expect(sheet.getColumn("U").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "Contact 1 Institution",
         "Contact 2 Institution",
         "Contact 3 Institution",
       ]);
-      expect(sheet.getColumn("T").values).toEqual([
+      expect(sheet.getColumn("V").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "555-123-9000",
         "555-123-9001",
         "555-123-9002",
+      ]);
+      expect(sheet.getColumn("W").values).toEqual([
+        undefined, // 1-indexed
+        expect.any(String), // Header
+        "No",
+        "No",
+        "No",
       ]);
     });
 
@@ -427,13 +436,13 @@ describe("Serialization", () => {
       expect(wb.getWorksheet("PI and Contact")).toEqual(sheet);
 
       // Primary Contact
-      expect(sheet.getCell("H2").value).toEqual("No");
-      expect(sheet.getCell("I2").value).toEqual("Radish");
-      expect(sheet.getCell("J2").value).toEqual("Rabbit");
-      expect(sheet.getCell("K2").value).toEqual("Some Contact Position");
-      expect(sheet.getCell("L2").value).toEqual("radish.rabbit@example.com");
-      expect(sheet.getCell("M2").value).toEqual("Another Mock Institution");
-      expect(sheet.getCell("N2").value).toEqual("957-123-9393");
+      expect(sheet.getCell("I2").value).toEqual("No");
+      expect(sheet.getCell("J2").value).toEqual("Radish");
+      expect(sheet.getCell("K2").value).toEqual("Rabbit");
+      expect(sheet.getCell("L2").value).toEqual("Some Contact Position");
+      expect(sheet.getCell("M2").value).toEqual("radish.rabbit@example.com");
+      expect(sheet.getCell("N2").value).toEqual("Another Mock Institution");
+      expect(sheet.getCell("O2").value).toEqual("957-123-9393");
     });
 
     it("should generate SectionA sheet with partial data (only Additional Contacts)", async () => {
@@ -460,47 +469,54 @@ describe("Serialization", () => {
       expect(wb.getWorksheet("PI and Contact")).toEqual(sheet);
 
       // Additional Contacts x3
-      expect(sheet.getColumn("O").values).toEqual([
+      expect(sheet.getColumn("Q").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "Contact 1 First",
         "Contact 2 First",
         "Contact 3 First",
       ]);
-      expect(sheet.getColumn("P").values).toEqual([
+      expect(sheet.getColumn("R").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "Contact 1 Last",
         "Contact 2 Last",
         "Contact 3 Last",
       ]);
-      expect(sheet.getColumn("Q").values).toEqual([
+      expect(sheet.getColumn("S").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "Contact 1 Position",
         "Contact 2 Position",
         "Contact 3 Position",
       ]);
-      expect(sheet.getColumn("R").values).toEqual([
+      expect(sheet.getColumn("T").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "contact1@example.com",
         "contact2@example.com",
         "contact3@example.com",
       ]);
-      expect(sheet.getColumn("S").values).toEqual([
+      expect(sheet.getColumn("U").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "Contact 1 Institution",
         "Contact 2 Institution",
         "Contact 3 Institution",
       ]);
-      expect(sheet.getColumn("T").values).toEqual([
+      expect(sheet.getColumn("V").values).toEqual([
         undefined, // 1-indexed
         expect.any(String), // Header
         "555-123-9000",
         "555-123-9001",
         "555-123-9002",
+      ]);
+      expect(sheet.getColumn("W").values).toEqual([
+        undefined, // 1-indexed
+        expect.any(String), // Header
+        "No",
+        "No",
+        "No",
       ]);
     });
 
@@ -550,23 +566,32 @@ describe("Serialization", () => {
       expect(sheet.getCell("E2").value).toBeNull();
       expect(sheet.getCell("F2").value).toBeNull();
       expect(sheet.getCell("G2").value).toBeNull();
+      expect(sheet.getCell("H2").value).toEqual(expect.objectContaining({ result: "No" }));
 
       // Primary Contact
-      expect(sheet.getCell("H2").value).toEqual("No"); // Default value
-      expect(sheet.getCell("I2").value).toBeNull();
+      expect(sheet.getCell("I2").value).toEqual("No");
       expect(sheet.getCell("J2").value).toBeNull();
       expect(sheet.getCell("K2").value).toBeNull();
       expect(sheet.getCell("L2").value).toBeNull();
       expect(sheet.getCell("M2").value).toBeNull();
       expect(sheet.getCell("N2").value).toBeNull();
+      expect(sheet.getCell("O2").value).toBeNull();
+      expect(sheet.getCell("P2").value).toEqual("Yes");
 
       // Additional Contacts x3
-      expect(sheet.getColumn("O").values.length).toBe(2); // 1-indexed and header only
-      expect(sheet.getColumn("P").values.length).toBe(2);
-      expect(sheet.getColumn("Q").values.length).toBe(2);
+      expect(sheet.getColumn("Q").values.length).toBe(2); // 1-indexed and header only
       expect(sheet.getColumn("R").values.length).toBe(2);
       expect(sheet.getColumn("S").values.length).toBe(2);
       expect(sheet.getColumn("T").values.length).toBe(2);
+      expect(sheet.getColumn("U").values.length).toBe(2);
+      expect(sheet.getColumn("V").values.length).toBe(2);
+      expect(sheet.getColumn("W").values).toEqual([
+        undefined, // 1-indexed
+        expect.any(String), // Header
+        "No",
+        "No",
+        "No",
+      ]);
     });
 
     it("should generate SectionB sheet with all data", async () => {
@@ -1994,7 +2019,11 @@ describe("Parsing", () => {
 
     expect(result).toEqual(true);
     expect(output.pi).toEqual({ ...mockForm.pi, institutionID: "" });
-    expect(output.primaryContact).toEqual({ ...mockForm.primaryContact, institutionID: "" });
+    expect(output.primaryContact).toEqual({
+      ...mockForm.primaryContact,
+      institutionID: "",
+      receivesEmails: true,
+    });
     expect(output.additionalContacts).toEqual(
       mockForm.additionalContacts?.map((c) => ({ ...c, institutionID: "" }))
     );
@@ -2047,6 +2076,64 @@ describe("Parsing", () => {
 
     expect(result).toEqual(true);
     expect(output.primaryContact).toBeNull();
+  });
+
+  it("should force pi.receivesEmails to true when piAsPrimaryContact is true", async () => {
+    const mockForm = questionnaireDataFactory.build({
+      pi: piFactory.build({ receivesEmails: false }),
+      piAsPrimaryContact: true,
+      primaryContact: null,
+      additionalContacts: null,
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {});
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionA();
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    await middleware.parseSectionA();
+
+    // @ts-expect-error Private member
+    expect(middleware.data.pi.receivesEmails).toEqual(true);
+  });
+
+  it("should preserve pi.receivesEmails when piAsPrimaryContact is false", async () => {
+    const mockFormReceivesYes = questionnaireDataFactory.build({
+      pi: piFactory.build({ receivesEmails: true }),
+      piAsPrimaryContact: false,
+      primaryContact: contactFactory.build(),
+      additionalContacts: null,
+    });
+    const mockFormReceivesNo = questionnaireDataFactory.build({
+      pi: piFactory.build({ receivesEmails: false }),
+      piAsPrimaryContact: false,
+      primaryContact: contactFactory.build(),
+      additionalContacts: null,
+    });
+
+    const middlewareYes = new QuestionnaireExcelMiddleware(mockFormReceivesYes, {});
+    // @ts-expect-error Private member
+    await middlewareYes.serializeSectionA();
+    // @ts-expect-error Private member
+    middlewareYes.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+    // @ts-expect-error Private member
+    await middlewareYes.parseSectionA();
+    // @ts-expect-error Private member
+    expect(middlewareYes.data.pi.receivesEmails).toEqual(true);
+
+    const middlewareNo = new QuestionnaireExcelMiddleware(mockFormReceivesNo, {});
+    // @ts-expect-error Private member
+    await middlewareNo.serializeSectionA();
+    // @ts-expect-error Private member
+    middlewareNo.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+    // @ts-expect-error Private member
+    await middlewareNo.parseSectionA();
+    // @ts-expect-error Private member
+    expect(middlewareNo.data.pi.receivesEmails).toEqual(false);
   });
 
   it("should set the institutionID correctly", async () => {
