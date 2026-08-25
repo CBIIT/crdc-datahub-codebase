@@ -1073,4 +1073,4 @@ def get_core_dbGaPID(raw):
     if not raw or not isinstance(raw, str):
         return raw
 
-    return re.sub(r'\.v.*$', '', raw)
+    return re.sub(r'\.v.*$', '', raw).lower()

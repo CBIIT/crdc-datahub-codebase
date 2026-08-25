@@ -235,3 +235,19 @@ def test_dbgapid_only_v_p_different():
     }
     result = local_validator.validate_dbGaPID(data_record, "message prefix:")
     assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+
+def test_dbgapid_case_different_different():
+    test_study = default_study.copy()
+    test_study.update({
+        'dbGaPID': "phs000007.v1.p3",
+    })
+
+    local_validator = create_mock_validator(test_study=test_study)
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "PHs000007.v2.p1"
+        }
+    }
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
+    assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
