@@ -166,7 +166,7 @@ def test_dbgapid_v_multi_digit_present_in_data():
     data_record = {
         "nodeType": "study",
         "props": {
-            "phs_accession": "dbgap_id_1.v1"
+            "phs_accession": "dbgap_id_1.v123"
         }
     }
     result = validator.validate_dbGaPID(data_record, "message prefix")
@@ -246,7 +246,7 @@ def test_dbgapid_case_different_different():
     data_record = {
         "nodeType": "study",
         "props": {
-            "phs_accession": "PHs000007.v2.p1"
+            "phs_accession": "PHs000007.V2.P1"
         }
     }
     result = local_validator.validate_dbGaPID(data_record, "message prefix:")
