@@ -8,8 +8,8 @@ let server;
     port = readPort();
     app.set('port', port);
 
-    // Run startup migrations unless SKIP_STARTUP_MIGRATIONS is set (e.g. for tests or manual migration)
-    const skipMigrations = process.env.SKIP_STARTUP_MIGRATIONS?.toLowerCase() === 'true';
+    // TEMPORARY: hard-disable startup migrations for DocumentDB connection testing.
+    const skipMigrations = true;
     if (!skipMigrations) {
         try {
             const { orchestrateMigration } = require('../documentation/3-7-0/3-7-0-migration');
@@ -22,7 +22,7 @@ let server;
         }
     }
     else {
-        console.log('Startup migrations skipped. Environment variable SKIP_STARTUP_MIGRATIONS is set.');
+        console.log('Startup migrations skipped. TEMPORARY hard-disable for DocumentDB connection testing.');
     }
 
     // create and configure the server

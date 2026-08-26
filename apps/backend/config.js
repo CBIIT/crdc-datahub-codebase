@@ -79,10 +79,15 @@ const documentDbTlsEnabled = process.env.MONGO_DB_TLS
 const documentDbCaFile = documentDbTlsEnabled
     ? (process.env.MONGO_DB_CA_FILE || DEFAULT_DOCUMENT_DB_CA_FILE)
     : null;
+const documentDbUser = process.env.docdb_username;
+const documentDbPassword = process.env.docdb_password;
+const documentDbHost = process.env.docdb_endpoint;
+const documentDbPort = process.env.docdb_port;
 
 /**
- * Builds the shared DocumentDB connection URI from MONGO_DB_* environment
- * variables and DATABASE_NAME (falls back to crdc-datahub via database-constants).
+ * Builds the shared DocumentDB connection URI from docdb_* environment
+ * variables (docdb_endpoint, docdb_port, docdb_username, docdb_password)
+ * and DATABASE_NAME (falls back to crdc-datahub via database-constants).
  * Used by native drivers, sessions, and Mongoose.
  * TLS is on when MONGO_DB_TLS is unset or true. CA defaults to
  * resources/aws-documentdb-certificate/global-bundle.pem when MONGO_DB_CA_FILE
@@ -95,10 +100,10 @@ function buildDocumentDbConnectionString() {
         throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
     }
     return buildConnectionString(
-        process.env.MONGO_DB_USER,
-        process.env.MONGO_DB_PASSWORD,
-        process.env.MONGO_DB_HOST,
-        process.env.MONGO_DB_PORT,
+        documentDbUser,
+        documentDbPassword,
+        documentDbHost,
+        documentDbPort,
         DATABASE_NAME,
         documentDbCaFile,
     );
@@ -108,11 +113,11 @@ let config = {
     //info variables
     version: process.env.VERSION || 'Version not set',
     date: process.env.DATE || new Date(),
-    // DocumentDB (shared by native drivers and Mongoose). Env vars remain MONGO_DB_*.
-    document_db_user: process.env.MONGO_DB_USER,
-    document_db_password: process.env.MONGO_DB_PASSWORD,
-    document_db_host: process.env.MONGO_DB_HOST,
-    document_db_port: process.env.MONGO_DB_PORT,
+    // DocumentDB (shared by native drivers and Mongoose). Integration-test branch: docdb_* only.
+    document_db_user: documentDbUser,
+    document_db_password: documentDbPassword,
+    document_db_host: documentDbHost,
+    document_db_port: documentDbPort,
     document_db_tls: documentDbTlsEnabled,
     document_db_ca_file: documentDbCaFile,
 

@@ -50,93 +50,38 @@ describe('bin/www.js startup', () => {
         await flushPromises();
     }
 
-    describe('SKIP_STARTUP_MIGRATIONS parsing', () => {
-        it('should skip migrations when set to "true"', async () => {
+    describe('TEMPORARY hard-disable of startup migrations', () => {
+        it('should skip migrations when SKIP_STARTUP_MIGRATIONS is "true"', async () => {
             process.env.SKIP_STARTUP_MIGRATIONS = 'true';
             await requireWww();
             expect(mockOrchestrateMigration).not.toHaveBeenCalled();
         });
 
-        it('should skip migrations when set to "TRUE" (case insensitive)', async () => {
-            process.env.SKIP_STARTUP_MIGRATIONS = 'TRUE';
-            await requireWww();
-            expect(mockOrchestrateMigration).not.toHaveBeenCalled();
-        });
-
-        it('should skip migrations when set to "True" (mixed case)', async () => {
-            process.env.SKIP_STARTUP_MIGRATIONS = 'True';
-            await requireWww();
-            expect(mockOrchestrateMigration).not.toHaveBeenCalled();
-        });
-
-        it('should NOT skip migrations when set to "false"', async () => {
+        it('should skip migrations when SKIP_STARTUP_MIGRATIONS is "false"', async () => {
             process.env.SKIP_STARTUP_MIGRATIONS = 'false';
             await requireWww();
-            expect(mockOrchestrateMigration).toHaveBeenCalled();
+            expect(mockOrchestrateMigration).not.toHaveBeenCalled();
         });
 
-        it('should NOT skip migrations when set to an empty string', async () => {
-            process.env.SKIP_STARTUP_MIGRATIONS = '';
-            await requireWww();
-            expect(mockOrchestrateMigration).toHaveBeenCalled();
-        });
-
-        it('should NOT skip migrations when unset', async () => {
+        it('should skip migrations when SKIP_STARTUP_MIGRATIONS is unset', async () => {
             delete process.env.SKIP_STARTUP_MIGRATIONS;
             await requireWww();
-            expect(mockOrchestrateMigration).toHaveBeenCalled();
+            expect(mockOrchestrateMigration).not.toHaveBeenCalled();
+        });
+
+        it('should log that startup migrations were hard-disabled', async () => {
+            await requireWww();
+            expect(console.log).toHaveBeenCalledWith(
+                'Startup migrations skipped. TEMPORARY hard-disable for DocumentDB connection testing.'
+            );
         });
     });
 
-    describe('Non-blocking migration failure', () => {
-        beforeEach(() => {
-            delete process.env.SKIP_STARTUP_MIGRATIONS;
-        });
-
-        it('should start server when migration returns success: false', async () => {
-            mockOrchestrateMigration.mockResolvedValue({ success: false });
-
+    describe('Server starts while migrations are skipped', () => {
+        it('should start the server without running migrations', async () => {
             await requireWww();
 
-            expect(process.exit).not.toHaveBeenCalled();
-            expect(mockCreateServer).toHaveBeenCalled();
-        });
-
-        it('should log an error when migration returns success: false', async () => {
-            mockOrchestrateMigration.mockResolvedValue({ success: false });
-
-            await requireWww();
-
-            expect(console.error).toHaveBeenCalledWith(
-                'Some data migrations failed, please check the logs for details.'
-            );
-        });
-
-        it('should start server when migration throws an error', async () => {
-            mockOrchestrateMigration.mockRejectedValue(new Error('Migration crashed'));
-
-            await requireWww();
-
-            expect(process.exit).not.toHaveBeenCalled();
-            expect(mockCreateServer).toHaveBeenCalled();
-        });
-
-        it('should log an error when migration throws', async () => {
-            const migrationError = new Error('Migration crashed');
-            mockOrchestrateMigration.mockRejectedValue(migrationError);
-
-            await requireWww();
-
-            expect(console.error).toHaveBeenCalledWith(
-                'An error occurred during data migration:', migrationError
-            );
-        });
-
-        it('should start server normally when migration succeeds', async () => {
-            mockOrchestrateMigration.mockResolvedValue({ success: true });
-
-            await requireWww();
-
+            expect(mockOrchestrateMigration).not.toHaveBeenCalled();
             expect(process.exit).not.toHaveBeenCalled();
             expect(mockCreateServer).toHaveBeenCalled();
             expect(mockServer.listen).toHaveBeenCalled();

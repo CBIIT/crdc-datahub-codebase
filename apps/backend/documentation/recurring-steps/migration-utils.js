@@ -1,29 +1,28 @@
 /**
- * Shared MongoDB connection helpers for migration orchestrators.
+ * Shared MongoDB/DocumentDB connection helpers for migration orchestrators.
  */
-
-const { MongoClient } = require('mongodb');
 
 require('dotenv').config();
 
+const { MongoClient } = require('mongodb');
+const config = require('../../config');
+const { DATABASE_NAME } = require('../../crdc-datahub-database-drivers/database-constants');
+
+/**
+ * Opens a MongoClient using the shared DocumentDB URI from config
+ * (docdb_*, TLS, retryWrites=false, SCRAM-SHA-1).
+ * @returns {Promise<{client: import('mongodb').MongoClient, db: import('mongodb').Db, dbName: string, connectionString: string}>}
+ */
 async function createDatabaseConnection() {
-    const user = process.env.MONGO_DB_USER;
-    const password = process.env.MONGO_DB_PASSWORD;
-    const host = process.env.MONGO_DB_HOST || 'localhost';
-    const port = process.env.MONGO_DB_PORT || '27017';
-
-    let connectionString;
-    if (user && password) {
-        connectionString = `mongodb://${user}:${password}@${host}:${port}`;
-    } else {
-        connectionString = `mongodb://${host}:${port}`;
-    }
-
-    const client = new MongoClient(connectionString);
+    const uri = config.document_db_connection_string;
+    const client = new MongoClient(uri);
     await client.connect();
 
-    const dbName = process.env.MONGO_DB_NAME || process.env.DATABASE_NAME || 'crdc-datahub';
+    const dbName = DATABASE_NAME;
     const db = client.db(dbName);
+    const user = config.document_db_user;
+    const host = config.document_db_host;
+    const port = config.document_db_port;
 
     console.log(`📊 Connected to database: ${dbName}`);
 
@@ -35,6 +34,11 @@ async function createDatabaseConnection() {
     };
 }
 
+/**
+ * Closes a MongoClient opened by createDatabaseConnection.
+ * @param {import('mongodb').MongoClient} client
+ * @returns {Promise<void>}
+ */
 async function closeDatabaseConnection(client) {
     try {
         await client.close();

@@ -19,7 +19,17 @@ const { executeSyncPbacDefaults } = require('./sync-pbac-defaults-migration');
 const { executeBackfillApplicationSequenceNumber } = require('./backfill-application-sequence-number');
 const { executeBackfillSubmissionRequestID } = require('./backfill-submission-submission-request-id');
 
+/**
+ * Runs the 3.7.0 migration suite (PBAC sync and backfills).
+ * TEMPORARY: returns success without connecting or executing steps so
+ * DocumentDB connectivity can be tested independently.
+ * @returns {Promise<{success: boolean, skipped?: boolean, duration?: number, migrationsExecuted?: number, migrationsSuccessful?: number, results?: object[], error?: string}>}
+ */
 async function orchestrateMigration() {
+    // TEMPORARY: skip 3.7.0 migrations while testing DocumentDB connectivity.
+    console.log('3.7.0 migrations hard-disabled for DocumentDB connection testing.');
+    return { success: true, skipped: true };
+
     console.log('🚀 Starting 3.7.0 migrations execution...');
     console.log('============================================================');
 
