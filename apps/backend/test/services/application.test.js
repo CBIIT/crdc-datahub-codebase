@@ -2932,6 +2932,57 @@ describe('Application', () => {
             }));
         });
 
+        it('does not carry the Inquired review comment onto the In Revision event', async () => {
+            const application = {
+                _id: 'app1',
+                status: INQUIRED,
+                version: '2.0',
+                history: [{ status: INQUIRED, reviewComment: 'fix this' }],
+                applicant: { applicantID: 'user1' }
+            };
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(application)
+                .mockResolvedValueOnce({ ...application, status: IN_REVISION });
+            app.applicationDAO = { update: jest.fn().mockResolvedValue(true) };
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+            mockLogCollection.insert.mockResolvedValue();
+
+            await app.resumeInquiredApplication({ _id: 'app1' }, context);
+
+            const { history } = app.applicationDAO.update.mock.calls[0][0];
+            expect(history).toHaveLength(2);
+            expect(history[1].status).toBe(IN_REVISION);
+            expect(history[1].reviewComment).toBeUndefined();
+            expect(history[0].reviewComment).toBe('fix this');
+        });
+
+        it('does not carry a restore reason onto the In Revision event', async () => {
+            const application = {
+                _id: 'app1',
+                status: INQUIRED,
+                version: '2.0',
+                history: [
+                    { status: INQUIRED, reviewComment: 'fix this' },
+                    { status: CANCELED, reviewComment: 'cancelled by user' },
+                    { status: INQUIRED, reviewComment: 'restored by admin' }
+                ],
+                applicant: { applicantID: 'user1' }
+            };
+            app.getApplicationById = jest.fn()
+                .mockResolvedValueOnce(application)
+                .mockResolvedValueOnce({ ...application, status: IN_REVISION });
+            app.applicationDAO = { update: jest.fn().mockResolvedValue(true) };
+            mockConfigurationService.findByType.mockResolvedValue({ current: '2.0', new: '3.0' });
+            mockLogCollection.insert.mockResolvedValue();
+
+            await app.resumeInquiredApplication({ _id: 'app1' }, context);
+
+            const { history } = app.applicationDAO.update.mock.calls[0][0];
+            expect(history).toHaveLength(4);
+            expect(history[3].reviewComment).toBeUndefined();
+            expect(history[2].reviewComment).toBe('restored by admin');
+        });
+
         it('rejects when application is already In Revision', async () => {
             const application = {
                 _id: 'app1',
