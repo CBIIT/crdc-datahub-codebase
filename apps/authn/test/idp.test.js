@@ -82,7 +82,10 @@ describe('getIDP', () => {
 
     test('throws LOGIN_ERROR when preferred username format is unrecognized', () => {
         expect(() => getIDP('user@example.com')).toThrow(LOGIN_ERROR);
-        expect(consoleWarnSpy).toHaveBeenCalled();
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+            "The preferred_username property from the login response does not match one of the expected formats"
+        );
+        expect(consoleWarnSpy.mock.calls.flat().join(" ")).not.toContain("user@example.com");
         expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
 });
