@@ -91,11 +91,20 @@ const documentDbPort = process.env.docdb_port;
  * Used by native drivers, sessions, and Mongoose.
  * TLS is on when MONGO_DB_TLS is unset or true. CA defaults to
  * resources/aws-documentdb-certificate/global-bundle.pem when MONGO_DB_CA_FILE
- * is unset. Throws on first URI access if TLS is on and the CA file is missing.
+ * is unset. Throws on first URI access if TLS is on and the CA file is missing,
+ * or if any of the four docdb_* variables is unset or empty.
  * @returns {string}
- * @throws {Error} When TLS is enabled and the CA file does not exist
+ * @throws {Error} When a required docdb_* env var is missing, or when TLS is enabled and the CA file does not exist
  */
 function buildDocumentDbConnectionString() {
+    const missing = [];
+    if (!documentDbHost) missing.push('docdb_endpoint');
+    if (!documentDbPort) missing.push('docdb_port');
+    if (!documentDbUser) missing.push('docdb_username');
+    if (!documentDbPassword) missing.push('docdb_password');
+    if (missing.length > 0) {
+        throw new Error(`DocumentDB connection requires environment variables: ${missing.join(', ')}`);
+    }
     if (documentDbTlsEnabled && !fs.existsSync(documentDbCaFile)) {
         throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
     }
