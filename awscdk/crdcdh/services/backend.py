@@ -85,10 +85,11 @@ class backendService:
 
     secrets={
             "NEW_RELIC_LICENSE_KEY":ecs.Secret.from_secrets_manager(secretsmanager.Secret.from_secret_name_v2(self, "be_newrelic", secret_name='monitoring/newrelic'), 'api_key'),
-            "MONGO_DB_HOST":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_host'),
-            "MONGO_DB_PORT":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_port'),
-            "MONGO_DB_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_password'),
-            "MONGO_DB_USER":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_user'),
+            # TEMPORARY: backend connects to DocumentDB via docdb_* only (integration testing).
+            "docdb_endpoint":ecs.Secret.from_secrets_manager(self.secret, 'docdb_endpoint'),
+            "docdb_port":ecs.Secret.from_secrets_manager(self.secret, 'docdb_port'),
+            "docdb_username":ecs.Secret.from_secrets_manager(self.secret, 'docdb_username'),
+            "docdb_password":ecs.Secret.from_secrets_manager(self.secret, 'docdb_password'),
             "DATABASE_NAME":ecs.Secret.from_secrets_manager(self.secret, 'database_name'),
             "EMAIL_USER":ecs.Secret.from_secrets_manager(self.secret, 'email_user'),
             "EMAIL_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'email_password'),
