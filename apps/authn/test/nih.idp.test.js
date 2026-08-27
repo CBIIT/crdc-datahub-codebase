@@ -20,10 +20,16 @@ describe('NIH IDP client', () => {
     const code = 'auth-code';
     const redirectingURL = 'https://example.gov/callback';
     const token = 'access-token';
+    let consoleErrorSpy;
 
     beforeEach(() => {
         jest.clearAllMocks();
         getNIHToken.mockResolvedValue(token);
+        consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        consoleErrorSpy.mockRestore();
     });
 
     describe('login', () => {
@@ -51,7 +57,29 @@ describe('NIH IDP client', () => {
         });
 
         test('passes undefined to getIDP when preferred_username is missing', async () => {
+            const userinfo = {
+                email: 'user@login.gov',
+                first_name: 'Ada',
+                last_name: 'Lovelace',
+                sub: 'secret-subject',
+            };
+            nihUserInfo.mockResolvedValue(userinfo);
+            getIDP.mockImplementation(() => {
+                throw new Error(LOGIN_ERROR);
+            });
+
+            await expect(nihClient.login(code, redirectingURL)).rejects.toThrow(LOGIN_ERROR);
+            expect(getIDP).toHaveBeenCalledWith(undefined);
+            expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                'NIH userinfo returned HTTP 200 but login failed to determine IDP: email=user@login.gov; preferred_username is missing; first_name=Ada; last_name=Lovelace; fields with non-empty values: sub'
+            );
+            expect(consoleErrorSpy.mock.calls.flat().join(' ')).not.toContain('secret-subject');
+        });
+
+        test('logs allowlisted userinfo strings when getIDP throws', async () => {
             nihUserInfo.mockResolvedValue({
+                preferred_username: 'user@example.com',
                 email: 'user@login.gov',
                 first_name: 'Ada',
                 last_name: 'Lovelace',
@@ -61,7 +89,25 @@ describe('NIH IDP client', () => {
             });
 
             await expect(nihClient.login(code, redirectingURL)).rejects.toThrow(LOGIN_ERROR);
-            expect(getIDP).toHaveBeenCalledWith(undefined);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                'NIH userinfo returned HTTP 200 but login failed to determine IDP: email=user@login.gov; preferred_username=user@example.com; first_name=Ada; last_name=Lovelace'
+            );
+        });
+
+        test('escapes newlines in allowlisted userinfo values', async () => {
+            nihUserInfo.mockResolvedValue({
+                email: "user@login.gov\nERROR",
+                first_name: 'Ada',
+                last_name: 'Lovelace',
+            });
+            getIDP.mockImplementation(() => {
+                throw new Error(LOGIN_ERROR);
+            });
+
+            await expect(nihClient.login(code, redirectingURL)).rejects.toThrow(LOGIN_ERROR);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                'NIH userinfo returned HTTP 200 but login failed to determine IDP: email=user@login.gov\\nERROR; preferred_username is missing; first_name=Ada; last_name=Lovelace'
+            );
         });
 
         test('passes empty preferred_username through to getIDP', async () => {
