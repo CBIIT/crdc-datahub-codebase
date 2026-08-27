@@ -32,7 +32,6 @@ const StyledMarkdown = styled(ReactMarkdown)({
 
   "& li": {
     lineHeight: "25px",
-    whiteSpace: "pre-wrap",
   },
 
   "& a": {
