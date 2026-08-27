@@ -9,6 +9,7 @@ export type AKeys =
   | "pi.institution"
   | "pi.address"
   // | "pi.institutionID"
+  | "pi.receivesEmails"
   | "piAsPrimaryContact"
   | "primaryContact.firstName"
   | "primaryContact.lastName"
@@ -17,13 +18,15 @@ export type AKeys =
   | "primaryContact.institution"
   // | "primaryContact.institutionID"
   | "primaryContact.phone"
+  | "primaryContact.receivesEmails"
   | "additionalContacts.firstName"
   | "additionalContacts.lastName"
   | "additionalContacts.position"
   | "additionalContacts.email"
   | "additionalContacts.institution"
   // | "additionalContacts.institutionID"
-  | "additionalContacts.phone";
+  | "additionalContacts.phone"
+  | "additionalContacts.receivesEmails";
 
 export const COLUMNS: ColumnDef<AKeys>[] = [
   // Principal Investigator
@@ -69,6 +72,12 @@ export const COLUMNS: ColumnDef<AKeys>[] = [
     width: 35,
     protection: { locked: true },
   },
+  {
+    header: "Principal Investigator Receives all email communications",
+    key: "pi.receivesEmails",
+    width: 45,
+    protection: { locked: true },
+  },
   // Primary Contact
   {
     header: "Primary Contact Same as Principal Investigator",
@@ -112,6 +121,12 @@ export const COLUMNS: ColumnDef<AKeys>[] = [
     width: 30,
     protection: { locked: true },
   },
+  {
+    header: "Primary Contact Receives all email communications",
+    key: "primaryContact.receivesEmails",
+    width: 45,
+    protection: { locked: true },
+  },
   // Additional Contact(s)
   {
     header: "Additional Contact(s) First name",
@@ -149,6 +164,12 @@ export const COLUMNS: ColumnDef<AKeys>[] = [
     header: "Additional Contact(s) Phone number",
     key: "additionalContacts.phone",
     width: 30,
+    protection: { locked: true },
+  },
+  {
+    header: "Additional Contact(s) Receives all email communications",
+    key: "additionalContacts.receivesEmails",
+    width: 45,
     protection: { locked: true },
   },
 ];

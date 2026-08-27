@@ -236,14 +236,16 @@ class DataLoader:
         parents = []
         for relation in relation_fields:
             val = rawData.get(relation)
-            if val:
-                temp = relation.split('.')
+            # skip blank/whitespace-only values so they're treated as "not provided" instead of an invalid relationship
+            if val and val.strip():
+                temp = [part.strip() for part in relation.split('.')]
                 if "|" in val:
                     val_list = val.split("|")
                     for iVal in val_list:
-                        parents.append({"parentType": temp[0], "parentIDPropName": temp[1], "parentIDValue": iVal.strip()})
+                        if iVal.strip():
+                            parents.append({"parentType": temp[0], "parentIDPropName": temp[1], "parentIDValue": iVal.strip()})
                 else:
-                    parents.append({"parentType": temp[0], "parentIDPropName": temp[1], "parentIDValue": val})
+                    parents.append({"parentType": temp[0], "parentIDPropName": temp[1], "parentIDValue": val.strip()})
                 rawData.update({relation.replace(".", "|"): val})
         return parents
     

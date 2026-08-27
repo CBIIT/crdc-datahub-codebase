@@ -65,4 +65,46 @@ describe('markdownToHtml Handlebars helper', () => {
     expect(out).toContain('Please review the study.');
     expect(out).not.toContain('**');
   });
+
+  it('normalizes long blank-line runs to frontend-equivalent spacing', () => {
+    const out = render('{{{markdownToHtml val}}}', { val: 'Line one\n\n\n\nTwo full blank lines above this' });
+    expect(out).toContain('<p>Line one</p>');
+    expect(out).toMatch(/<br\s*\/?>\s*<p>Two full blank lines above this<\/p>/);
+    expect(out).toContain('<p>Two full blank lines above this</p>');
+  });
+
+  it('preserves mixed spacing and list structure in a realistic review comment', () => {
+    const val = [
+      'Line one',
+      '',
+      '',
+      '',
+      'Two blank lines above this',
+      '',
+      'Line break but no gap',
+      'Still same paragraph',
+      '',
+      '',
+      '- bullet directly under newline',
+      '- another bullet',
+      '',
+      'one empty line above'
+    ].join('\n');
+
+    const out = render('{{{markdownToHtml val}}}', { val });
+
+    expect(out).toContain('<p>Line one</p>');
+    expect(out).toMatch(/<br\s*\/?>\s*<p>Two blank lines above this<\/p>/);
+    expect(out).toMatch(/Line break but no gap<br\s*\/?>(\n)?Still same paragraph/);
+    expect(out).toContain('<ul>');
+    expect(out).toContain('<li>bullet directly under newline</li>');
+    expect(out).toContain('<li>another bullet</li>');
+    expect(out).toContain('<p>one empty line above</p>');
+  });
+
+  it('normalizes CRLF blank-line runs consistently with LF input', () => {
+    const out = render('{{{markdownToHtml val}}}', { val: 'Line one\r\n\r\n\r\n\r\nLine two' });
+    expect(out).toContain('<p>Line one</p>');
+    expect(out).toMatch(/<br\s*\/?>\s*<p>Line two<\/p>/);
+  });
 });

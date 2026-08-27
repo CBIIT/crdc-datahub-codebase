@@ -41,6 +41,9 @@ const StyledFormControlLabel = styled(FormControlLabel)({
     fontWeight: "700",
     userSelect: "none",
   },
+  "& .MuiFormControlLabel-label.Mui-disabled": {
+    color: "rgba(0, 0, 0, 0.55)",
+  },
   "& .MuiCheckbox-root:not(.Mui-disabled)": {
     color: "#005EA2 !important",
   },
@@ -70,6 +73,9 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   const [piAsPrimaryContact, setPiAsPrimaryContact] = useState<boolean>(
     data?.piAsPrimaryContact || false
   );
+  const [piReceivesEmails, setPIReceivesEmails] = useState<boolean>(
+    data?.pi?.receivesEmails || data?.piAsPrimaryContact || false
+  );
   const [additionalContacts, setAdditionalContacts] = useState<KeyedContact[]>(
     data.additionalContacts?.map(mapObjectWithKey) || []
   );
@@ -78,8 +84,12 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   const { getFormObjectRef } = refs;
 
   const togglePrimaryPI = () => {
-    setPiAsPrimaryContact(!piAsPrimaryContact);
+    const newValue = !piAsPrimaryContact;
+    setPiAsPrimaryContact(newValue);
     setPrimaryContact(cloneDeep(InitialQuestionnaire.primaryContact));
+    if (newValue) {
+      setPIReceivesEmails(true);
+    }
   };
 
   const getFormObject = (): FormObject | null => {
@@ -114,6 +124,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         phone: "",
         institution: "",
         institutionID: "",
+        receivesEmails: false,
       },
     ]);
   };
@@ -154,6 +165,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
 
   useEffect(() => {
     setPi(data?.pi);
+    setPIReceivesEmails(data?.pi?.receivesEmails || data?.piAsPrimaryContact || false);
   }, [data?.pi]);
 
   useEffect(() => {
@@ -161,7 +173,11 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   }, [data?.primaryContact]);
 
   useEffect(() => {
-    setPiAsPrimaryContact(data?.piAsPrimaryContact || false);
+    const piAsPrimaryContact = data?.piAsPrimaryContact || false;
+    setPiAsPrimaryContact(piAsPrimaryContact);
+    if (piAsPrimaryContact) {
+      setPIReceivesEmails(true);
+    }
   }, [data?.piAsPrimaryContact]);
 
   useEffect(() => {
@@ -281,6 +297,31 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           required
           readOnly={readOnlyInputs || isLockedField(applicationData, "pi.address")}
         />
+        <Grid item md={12}>
+          <StyledFormControlLabel
+            label="Receives all email communications"
+            data-testid="pi-receives-emails"
+            control={
+              <Checkbox
+                checked={piReceivesEmails}
+                onChange={() => !piAsPrimaryContact && setPIReceivesEmails((prev) => !prev)}
+                readOnly={readOnlyInputs || piAsPrimaryContact}
+              />
+            }
+            disabled={readOnlyInputs || piAsPrimaryContact}
+          />
+          <input
+            id="section-a-pi-receives-emails-checkbox"
+            style={{ display: "none" }}
+            type="checkbox"
+            name="pi[receivesEmails]"
+            data-type="boolean"
+            value={piReceivesEmails?.toString()}
+            aria-label="Receives all email communications"
+            checked
+            readOnly
+          />
+        </Grid>
       </SectionGroup>
 
       {/* Primary Contact */}
@@ -396,6 +437,25 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
               maxLength={25}
               readOnly={readOnlyInputs}
             />
+            <Grid item md={12}>
+              <StyledFormControlLabel
+                label="Receives all email communications"
+                data-testid="primary-contact-receives-emails"
+                control={<Checkbox checked readOnly />}
+                disabled
+              />
+              <input
+                id="section-a-primary-contact-receives-emails-checkbox"
+                style={{ display: "none" }}
+                type="checkbox"
+                name="primaryContact[receivesEmails]"
+                data-type="boolean"
+                value="true"
+                aria-label="Receives all email communications"
+                checked
+                readOnly
+              />
+            </Grid>
           </>
         )}
       </SectionGroup>

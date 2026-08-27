@@ -2195,6 +2195,103 @@ describe("Implementation Requirements", () => {
     ).toBeChecked();
   });
 
+  it("should support parent-child notification behavior from decimal order", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [],
+              notifications: [
+                {
+                  _id: "submission_request:reviewed",
+                  group: "Submission Request Emails",
+                  name: "When conditionally approved",
+                  inherited: [],
+                  order: 3,
+                  checked: false,
+                  disabled: false,
+                },
+                {
+                  _id: "submission_request:pending_cleared",
+                  group: "Submission Request Emails",
+                  name: "Pending on dbGaPID",
+                  inherited: [],
+                  order: 3.1,
+                  checked: false,
+                  disabled: false,
+                },
+                {
+                  _id: "submission_request:expiring",
+                  group: "Submission Request Emails",
+                  name: "Pending on model update",
+                  inherited: [],
+                  order: 3.2,
+                  checked: false,
+                  disabled: false,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const formValues: Partial<EditUserInput> = {
+      role: "Submitter",
+      permissions: [],
+      notifications: ["submission_request:pending_cleared"],
+    };
+
+    const mockWatcher = vi.fn().mockImplementation((field) => formValues[field] ?? "");
+
+    const mockSetValue = vi.fn().mockImplementation((field, value) => {
+      formValues[field] = value;
+    });
+
+    const { getByTestId, rerender } = render(<PermissionPanel readOnly={false} />, {
+      wrapper: ({ children }) => (
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
+        >
+          {children}
+        </MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("notification-submission_request:reviewed")).toBeInTheDocument();
+      expect(getByTestId("notification-submission_request:pending_cleared")).toBeInTheDocument();
+      expect(getByTestId("notification-submission_request:expiring")).toBeInTheDocument();
+    });
+
+    expect(
+      within(getByTestId("notification-submission_request:reviewed")).getByRole("checkbox", {
+        hidden: true,
+      })
+    ).toHaveAttribute("data-indeterminate", "true");
+
+    userEvent.click(
+      within(getByTestId("notification-submission_request:reviewed")).getByRole("checkbox", {
+        hidden: true,
+      })
+    );
+
+    rerender(<PermissionPanel />);
+
+    expect(
+      within(getByTestId("notification-submission_request:expiring")).getByRole("checkbox", {
+        hidden: true,
+      })
+    ).toBeChecked();
+  });
+
   it("should display tooltip on permission label when hovering", async () => {
     const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
       request: {
