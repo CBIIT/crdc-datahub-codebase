@@ -288,7 +288,7 @@ class EssentialValidator:
             self.bucket.download_file(key, download_file)
             if os.path.isfile(download_file):
                 df = pd.read_csv(download_file, sep=SEPARATOR_CHAR, header=0, dtype='str', encoding=UTF8_ENCODE, keep_default_na=False, na_values=[''])
-                self.df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if x.dtype == 'object' else x) # stripe white space.
+                self.df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if pd.api.types.is_string_dtype(x) else x) # stripe white space.  covers both legacy object dtype and pandas' newer str dtype
                 self.download_file_list.append(download_file)
             return True # if no exception
         except ClientError as ce:

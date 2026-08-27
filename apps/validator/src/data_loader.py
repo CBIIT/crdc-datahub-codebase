@@ -51,7 +51,7 @@ class DataLoader:
                 continue
             try:
                 df = pd.read_csv(file, sep=SEPARATOR_CHAR, header=0, dtype='str', encoding=UTF8_ENCODE,keep_default_na=False,na_values=[''])
-                df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if x.dtype == 'object' else x) # stripe white space.
+                df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if pd.api.types.is_string_dtype(x) else x) # stripe white space.  covers both legacy object dtype and pandas' newer str dtype
                 df = removeTailingEmptyColumnsAndRows(df)
                 df = df.replace({np.nan: None})  # replace Nan in dataframe with None
                 df = df.reset_index()  # make sure indexes pair with number of rows
