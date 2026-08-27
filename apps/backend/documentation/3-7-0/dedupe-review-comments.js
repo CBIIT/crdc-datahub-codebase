@@ -95,15 +95,8 @@ async function dedupeReviewComments(db, options = {}) {
         let scannedCount = 0;
         let applicationsUpdated = 0;
         let commentsRemoved = 0;
-        let operations = [];
-
-        const flush = async () => {
-            if (operations.length === 0) {
-                return;
-            }
-            await collection.bulkWrite(operations, { ordered: false });
-            operations = [];
-        };
+        let candidateApplications = 0;
+        let candidateComments = 0;
 
         while (await cursor.hasNext()) {
             const application = await cursor.next();
@@ -114,11 +107,10 @@ async function dedupeReviewComments(db, options = {}) {
                 continue;
             }
 
-            applicationsUpdated++;
-            commentsRemoved += indices.length;
-
             if (dryRun) {
                 console.log(`   • ${application._id}: would clear history index(es) ${indices.join(', ')}`);
+                candidateApplications++;
+                candidateComments += indices.length;
                 continue;
             }
 
@@ -131,23 +123,22 @@ async function dedupeReviewComments(db, options = {}) {
                 unset[`history.${index}.reviewComment`] = '';
             }
 
-            operations.push({ updateOne: { filter, update: { $unset: unset } } });
-            if (operations.length >= 500) {
-                await flush();
+            const result = await collection.updateOne(filter, { $unset: unset });
+            if (result.matchedCount === 1 && result.modifiedCount === 1) {
+                applicationsUpdated++;
+                commentsRemoved += indices.length;
             }
         }
 
-        await flush();
-
         console.log(
-            `   ✅ Scanned ${scannedCount}, ${dryRun ? 'would update' : 'updated'} ${applicationsUpdated} application(s), ${commentsRemoved} comment(s)`
+            `   ✅ Scanned ${scannedCount}, ${dryRun ? 'would update' : 'updated'} ${dryRun ? candidateApplications : applicationsUpdated} application(s), ${dryRun ? 'would remove' : 'removed'} ${dryRun ? candidateComments : commentsRemoved} comment(s)`
         );
         return {
             success: true,
-            message: `${dryRun ? 'Would remove' : 'Removed'} ${commentsRemoved} duplicated review comment(s) across ${applicationsUpdated} application(s)`,
+            message: `${dryRun ? 'Would remove' : 'Removed'} ${dryRun ? candidateComments : commentsRemoved} duplicated review comment(s) across ${dryRun ? candidateApplications : applicationsUpdated} application(s)`,
             scannedCount,
-            applicationsUpdated,
-            commentsRemoved,
+            applicationsUpdated: dryRun ? candidateApplications : applicationsUpdated,
+            commentsRemoved: dryRun ? candidateComments : commentsRemoved,
             dryRun
         };
     } catch (error) {

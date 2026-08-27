@@ -21,7 +21,7 @@ describe('dedupe-review-comments', () => {
 
         mockCollection = {
             find: jest.fn(),
-            bulkWrite: jest.fn().mockResolvedValue({})
+            updateOne: jest.fn().mockResolvedValue({ matchedCount: 1, modifiedCount: 1 })
         };
         mockDb = {
             collection: jest.fn(() => mockCollection)
@@ -138,20 +138,13 @@ describe('dedupe-review-comments', () => {
             const result = await dedupeReviewComments(mockDb);
 
             expect(mockDb.collection).toHaveBeenCalledWith('applications');
-            expect(mockCollection.bulkWrite).toHaveBeenCalledWith(
-                [
-                    {
-                        updateOne: {
-                            filter: {
-                                _id: 'app-1',
-                                'history.1.status': 'In Revision',
-                                'history.1.reviewComment': 'Please fix section B'
-                            },
-                            update: { $unset: { 'history.1.reviewComment': '' } }
-                        }
-                    }
-                ],
-                { ordered: false }
+            expect(mockCollection.updateOne).toHaveBeenCalledWith(
+                {
+                    _id: 'app-1',
+                    'history.1.status': 'In Revision',
+                    'history.1.reviewComment': 'Please fix section B'
+                },
+                { $unset: { 'history.1.reviewComment': '' } }
             );
             expect(result).toEqual(
                 expect.objectContaining({
@@ -179,9 +172,33 @@ describe('dedupe-review-comments', () => {
 
             const result = await dedupeReviewComments(mockDb);
 
-            expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
+            expect(mockCollection.updateOne).not.toHaveBeenCalled();
             expect(result.applicationsUpdated).toBe(0);
             expect(result.commentsRemoved).toBe(0);
+        });
+
+        it('does not count a guarded update that matches no document', async () => {
+            mockCollection.updateOne.mockResolvedValue({ matchedCount: 0, modifiedCount: 0 });
+            mockCollection.find.mockReturnValue(
+                makeCursor([
+                    {
+                        _id: 'app-1',
+                        history: [
+                            { status: 'Inquired', reviewComment: 'dup' },
+                            { status: 'In Revision', reviewComment: 'dup' }
+                        ]
+                    }
+                ])
+            );
+
+            const result = await dedupeReviewComments(mockDb);
+
+            expect(result).toEqual(expect.objectContaining({
+                success: true,
+                applicationsUpdated: 0,
+                commentsRemoved: 0,
+                dryRun: false
+            }));
         });
 
         it('reports without writing in dry run mode', async () => {
@@ -199,8 +216,13 @@ describe('dedupe-review-comments', () => {
 
             const result = await dedupeReviewComments(mockDb, { dryRun: true });
 
-            expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
-            expect(result).toEqual(expect.objectContaining({ success: true, commentsRemoved: 1, dryRun: true }));
+            expect(mockCollection.updateOne).not.toHaveBeenCalled();
+            expect(result).toEqual(expect.objectContaining({
+                success: true,
+                applicationsUpdated: 1,
+                commentsRemoved: 1,
+                dryRun: true
+            }));
         });
 
         it('returns a failure result when the query throws', async () => {
