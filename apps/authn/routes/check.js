@@ -4,7 +4,7 @@ const config = require('../config');
 const {DatabaseConnector} = require("../crdc-datahub-database-drivers/database-connector");
 const {MongoDBCollection} = require("../crdc-datahub-database-drivers/mongodb-collection");
 const {DATABASE_NAME, SESSION_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
-const dbConnector = new DatabaseConnector(config.mongo_db_connection_string);
+const dbConnector = new DatabaseConnector(config.document_db_connection_string);
 const {ttlSessions} = require('../services/ttl-query')
 const {MongoDBHealthCheck} = require("../crdc-datahub-database-drivers/mongo-health-check");
 const {ERROR} = require("../crdc-datahub-database-drivers/constants/error-constants");
@@ -47,7 +47,7 @@ router.get('/version', async function (req, res, next) {
         version: config.version,
         date: config.date
     };
-    if (!(await MongoDBHealthCheck(config.mongo_db_connection_string))) {
+    if (!(await MongoDBHealthCheck(config.document_db_connection_string))) {
         console.error("version API failed due to database connection");
         body.error = ERROR.MONGODB_HEALTH_CHECK_FAILED;
         res.status(503);

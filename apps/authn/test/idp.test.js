@@ -1,3 +1,10 @@
+process.env.DOCDB_TLS = 'false';
+process.env.docdb_endpoint = '127.0.0.1';
+process.env.docdb_port = '27017';
+process.env.docdb_username = 'test';
+process.env.docdb_password = 'test';
+process.env.docdb_db_name = 'crdc-datahub';
+
 const {isLoginGovLogin, isNIHLogin, getIDP} = require("../services/nih-auth");
 const {NIH, LOGIN_GOV} = require("../constants/idp-constants");
 const {LOGIN_ERROR} = require("../constants/errors");
