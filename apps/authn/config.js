@@ -10,9 +10,21 @@ if (process.env.docdb_db_name) {
 }
 
 const DEFAULT_DOCUMENT_DB_CA_FILE = path.join(__dirname, 'resources/aws-documentdb-certificate/global-bundle.pem');
-const documentDbTlsEnabled = process.env.DOCDB_TLS
-    ? process.env.DOCDB_TLS.toLowerCase() === 'true'
-    : true;
+const rawDocumentDbTls = process.env.DOCDB_TLS;
+const trimmedDocumentDbTls = rawDocumentDbTls == null ? '' : String(rawDocumentDbTls).trim();
+let documentDbTlsEnabled;
+if (!trimmedDocumentDbTls) {
+  documentDbTlsEnabled = true;
+} else {
+  const normalizedTls = trimmedDocumentDbTls.toLowerCase();
+  if (normalizedTls === 'true') {
+    documentDbTlsEnabled = true;
+  } else if (normalizedTls === 'false') {
+    documentDbTlsEnabled = false;
+  } else {
+    throw new Error(`DOCDB_TLS must be true or false, received: ${rawDocumentDbTls}`);
+  }
+}
 const documentDbCaFile = documentDbTlsEnabled
     ? (process.env.DOCDB_CA_FILE || DEFAULT_DOCUMENT_DB_CA_FILE)
     : null;
@@ -45,10 +57,11 @@ function buildConnectionString(user, password, host, port, database, caFile) {
 /**
  * Builds the DocumentDB connection URI from docdb_* environment variables.
  * Port defaults to 27017 when docdb_port is unset. TLS is on when DOCDB_TLS
- * is unset or true. CA defaults to
+ * is unset, whitespace-only, or true; false disables TLS. Other DOCDB_TLS
+ * values throw at module load. CA defaults to
  * resources/aws-documentdb-certificate/global-bundle.pem when DOCDB_CA_FILE
- * is unset. Throws on first URI access if required env vars are missing or
- * if TLS is on and the CA file is missing.
+ * is unset. Throws at module load if required env vars are missing or if TLS
+ * is on and the CA file is missing.
  * @returns {string}
  * @throws {Error} When required docdb_* environment variables are missing
  * @throws {Error} When TLS is enabled and the CA file does not exist
@@ -87,6 +100,7 @@ const config = {
   session_timeout: process.env.SESSION_TIMEOUT ? parseInt(process.env.SESSION_TIMEOUT) * 1000 : 1000 * 30 * 60,  // 30 minutes
   document_db_tls: documentDbTlsEnabled,
   document_db_ca_file: documentDbCaFile,
+  document_db_connection_string: buildDocumentDbConnectionString(),
   // NIH login settings
   nih: {
     CLIENT_ID: process.env.NIH_CLIENT_ID,
@@ -111,13 +125,6 @@ const config = {
     return url;
   }
 };
-
-Object.defineProperty(config, 'document_db_connection_string', {
-  enumerable: true,
-  get() {
-    return buildDocumentDbConnectionString();
-  },
-});
 
 if (!config.version) {
   config.version = 'Version not set'
