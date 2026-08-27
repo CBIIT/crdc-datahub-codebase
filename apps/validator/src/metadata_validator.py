@@ -324,8 +324,8 @@ class MetaDataValidator:
             self.log.error(msg)
             return FAILED, msg
 
-        self.study_name = study.get("studyName")
-        self.dbGaPID = study.get("dbGaPID")
+        self.study_name = study.get(STUDY_NAME)
+        self.dbGaPID = get_core_dbGaPID(study.get(DBGAPID, ""))
         self.program_names = self.mongo_dao.find_organization_name_by_study_id(study_id)
         return None
 
@@ -768,14 +768,15 @@ class MetaDataValidator:
             if not self.dbGaPID:
                 return {}
             dbGaPID_prop_name = self.model.get_configured_prop_name(DBGAPID)
-            dbGaPID = data_record.get(PROPERTIES, {}).get(dbGaPID_prop_name)
+            rawDbGaPID = data_record.get(PROPERTIES, {}).get(dbGaPID_prop_name, "")
+            dbGaPID = get_core_dbGaPID(rawDbGaPID)
             if not dbGaPID:
                 return {}
 
             if dbGaPID == self.dbGaPID:
                 return {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
             else:
-                return {VALIDATION_RESULT: STATUS_ERROR, ERRORS: [create_error("M038", [msg_prefix, self.dbGaPID], dbGaPID_prop_name, dbGaPID)], WARNINGS: []}
+                return {VALIDATION_RESULT: STATUS_ERROR, ERRORS: [create_error("M038", [msg_prefix, dbGaPID_prop_name, dbGaPID, self.dbGaPID], dbGaPID_prop_name, dbGaPID)], WARNINGS: []}
 
         return result
 
@@ -1066,3 +1067,10 @@ def create_new_qc_result(node, validation_type):
 
 def get_column_name_from_parent_obj(parent_obj):
     return f'{parent_obj[PARENT_TYPE]}.{parent_obj[PARENT_ID_NAME]}'
+
+
+def get_core_dbGaPID(raw):
+    if not raw or not isinstance(raw, str):
+        return raw
+
+    return re.sub(r'\.[vV].*$', '', raw).lower()

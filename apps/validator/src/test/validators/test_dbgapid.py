@@ -50,7 +50,7 @@ def test_invalid_dbgapid():
     assert error["offendingValue"] == "wrong_dbgapid"
     assert error['title'] == "dbGaPID mismatch"
     assert error["severity"] == "Error"
-    assert error['description'] == "message prefix: dbGaPID mismatch: dbGaPID doesn't match the pre-approved value - 'dbgap_id_1'."
+    assert error['description'] == "message prefix: phs_accession: 'wrong_dbgapid' doesn't match the pre-approved value - 'dbgap_id_1'."
 
 def test_dbgapid_not_in_data():
     data_record = {
@@ -142,3 +142,112 @@ def test_dbgapid_not_configured_in_model():
     result = local_validator.validate_dbGaPID(data_record, "message prefix:")
     assert result == {}
 
+def test_dbgapid_v_p_present_in_data():
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "dbgap_id_1.v1.p3"
+        }
+    }
+    result = validator.validate_dbGaPID(data_record, "message prefix")
+    assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+
+def test_dbgapid_v_present_in_data():
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "dbgap_id_1.v1"
+        }
+    }
+    result = validator.validate_dbGaPID(data_record, "message prefix")
+    assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+
+def test_dbgapid_v_multi_digit_present_in_data():
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "dbgap_id_1.v123"
+        }
+    }
+    result = validator.validate_dbGaPID(data_record, "message prefix")
+    assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+
+def test_dbgapid_v_p_present_in_study():
+    test_study = default_study.copy()
+    test_study.update({
+        'dbGaPID': "dbgap_id_1.v1.p3",
+    })
+
+    local_validator = create_mock_validator(test_study=test_study)
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "dbgap_id_1"
+        }
+    }
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
+    assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+
+def test_dbgapid_v_present_in_study():
+    test_study = default_study.copy()
+    test_study.update({
+        'dbGaPID': "dbgap_id_1.v1",
+    })
+
+    local_validator = create_mock_validator(test_study=test_study)
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "dbgap_id_1"
+        }
+    }
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
+    assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+
+def test_dbgapid_v_multi_digit_present_in_study():
+    test_study = default_study.copy()
+    test_study.update({
+        'dbGaPID': "dbgap_id_1.v112",
+    })
+
+    local_validator = create_mock_validator(test_study=test_study)
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "dbgap_id_1"
+        }
+    }
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
+    assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+
+def test_dbgapid_only_v_p_different():
+    test_study = default_study.copy()
+    test_study.update({
+        'dbGaPID': "dbgap_id_1.v1.p3",
+    })
+
+    local_validator = create_mock_validator(test_study=test_study)
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "dbgap_id_1.v2.p1"
+        }
+    }
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
+    assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+
+def test_dbgapid_case_different_different():
+    test_study = default_study.copy()
+    test_study.update({
+        'dbGaPID': "phs000007.v1.p3",
+    })
+
+    local_validator = create_mock_validator(test_study=test_study)
+    data_record = {
+        "nodeType": "study",
+        "props": {
+            "phs_accession": "PHs000007.V2.P1"
+        }
+    }
+    result = local_validator.validate_dbGaPID(data_record, "message prefix:")
+    assert result == {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
