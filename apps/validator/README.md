@@ -51,12 +51,15 @@ Environment settings:
     2-1 key: LOADER_QUEUE, for essential validation requests.
     2-2 key: FILE_QUEUE, for data file validation requests.
     2-3 key: METADATA_QUEUE, for metadata validation requests.
-3) Mongo database configurations:
-    3-1 key: MONGO_DB_HOST, Mongo DB server host.
-    3-2 key: MONGO_DB_PORT, Mongo DB server port
-    3-3 key: MONGO_DB_USER, Mongo DB server user ID.
-    3-4 key: MONGO_DB_PASSWORD, Mongo DB server user password.
-    3-5 key: DATABASE_NAME, Mongo database name.
+3) DocumentDB configurations (same docdb_* / DOCDB_* vars as AuthN):
+    3-1 key: docdb_endpoint, DocumentDB (or local Mongo) host.
+    3-2 key: docdb_port, optional. Defaults to 27017 when unset.
+    3-3 key: docdb_username, user ID.
+    3-4 key: docdb_password, password.
+    3-5 key: docdb_db_name, database name.
+    3-6 key: DOCDB_TLS, optional. TLS is enabled when unset. Set false for local MongoDB without TLS.
+    3-7 key: DOCDB_CA_FILE, optional CA override. When TLS is on and this is unset, defaults to resources/aws-documentdb-certificate/global-bundle.pem (downloaded in Docker images).
+    The connection URI always sets authSource=admin and retryWrites=false. When TLS is on it also sets tls=true, tlsCAFile, and authMechanism=SCRAM-SHA-1. Docker images always wget the AWS global CA bundle; a missing CA with TLS on fails startup.
 4) Settings in Configuration file and/or arguments:
     4-1 key: service-type  # possible value in ["essential", "file", "metadata"]
     4-2 key: key: models-loc, value: https://raw.githubusercontent.com/CBIIT/crdc-datahub-models/  #only required for service type of essential and metadata.
