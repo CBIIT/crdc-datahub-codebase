@@ -7,3 +7,4 @@ yaml/
 newrelic_agent.log
 .env
 coverage/
+resources/aws-documentdb-certificate/

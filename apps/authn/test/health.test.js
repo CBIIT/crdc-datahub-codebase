@@ -1,3 +1,10 @@
+process.env.DOCDB_TLS = 'false';
+process.env.docdb_endpoint = '127.0.0.1';
+process.env.docdb_port = '27017';
+process.env.docdb_username = 'test';
+process.env.docdb_password = 'test';
+process.env.docdb_db_name = 'crdc-datahub';
+
 const config = require("../config");
 const request = require('supertest');
 
