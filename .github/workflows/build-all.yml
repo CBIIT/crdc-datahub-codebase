@@ -540,8 +540,8 @@ jobs:
 
           lines = []
           lines.append("## \U0001F512 Twistlock Scan Results\n")
-          lines.append("| Service | Image | Critical | High | Medium | Low | Library | CVEs (Severity) | Installed Version | Status |")
-          lines.append("|---|---|---|---|---|---|---|---|---|---|")
+          lines.append("| Service | Critical | High | Medium | Low | Library | CVEs (Severity) | Installed Version | Status |")
+          lines.append("|---|---|---|---|---|---|---|---|---|")
 
           def format_finding_value(value, default="None"):
               text = str(value or default).replace("|", "\\|").replace("`", "'")
@@ -563,7 +563,7 @@ jobs:
               if failed:
                   any_fail = True
               status = "\u274C FAIL" if failed else "\u2705 PASS"
-              lines.append(f"| {r.get('service','?')} | {r.get('image','?')} | {crit} | {high} | {med} | {low} | {library_text} | {cve_text} | {installed_text} | {status} |")
+              lines.append(f"| {r.get('service','?')} | {crit} | {high} | {med} | {low} | {library_text} | {cve_text} | {installed_text} | {status} |")
 
           lines.append("")
           if any_fail:
