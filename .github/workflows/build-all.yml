@@ -270,7 +270,7 @@ jobs:
 
           TWISTLOCK_PATH="${RUNNER_TEMP}/twistcli"
 
-          curl --fail --silent --show-error --location --insecure -u "${{ secrets.TWISTLOCK_USERNAME }}:${{ secrets.TWISTLOCK_PASSWORD }}" --output "${TWISTLOCK_PATH}" "${TWISTLOCK_URL}/api/v1/util/twistcli"
+          curl --fail --silent --show-error --location -u "${{ secrets.TWISTLOCK_USERNAME }}:${{ secrets.TWISTLOCK_PASSWORD }}" --output "${TWISTLOCK_PATH}" "${TWISTLOCK_URL}/api/v1/util/twistcli"
           test -s "${TWISTLOCK_PATH}"
           chmod 0755 "${TWISTLOCK_PATH}"
 
@@ -359,6 +359,10 @@ jobs:
               with open(gh_output_path, "a") as gh_out:
                   gh_out.write("critical_count=0\n")
                   gh_out.write("high_count=0\n")
+                  gh_out.write("medium_count=0\n")
+                  gh_out.write("low_count=0\n")
+                  gh_out.write("cves_json=[]\n")
+                  gh_out.write("findings_json=[]\n")
                   gh_out.write("has_critical_or_high=false\n")
               sys.exit(0)
 
@@ -414,6 +418,27 @@ jobs:
           with open(f"scan-table-{image_label}.txt", "w") as out:
               out.write(summary + "\n")
 
+          cves = sorted({str(row["cve"]).strip() for row in rows if str(row["cve"]).strip()})
+          finding_values = sorted({
+              (
+                  str(row["package"]).strip(),
+                  str(row["cve"]).strip(),
+                  str(row["severity"]).strip(),
+                  str(row["installed"]).strip(),
+                  str(row["fixed"]).strip(),
+              )
+              for row in rows
+          })
+          findings = [
+              {
+                  "library": library,
+                  "cve": cve,
+                  "severity": severity,
+                  "installed": installed,
+                  "fixed": fixed,
+              }
+              for library, cve, severity, installed, fixed in finding_values
+          ]
           has_critical_or_high = "true" if (sev_counts["critical"] > 0 or sev_counts["high"] > 0) else "false"
           #with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
           with open(gh_output_path, "a") as gh_out:
@@ -421,6 +446,8 @@ jobs:
               gh_out.write(f"high_count={sev_counts['high']}\n")
               gh_out.write(f"medium_count={sev_counts['medium']}\n")
               gh_out.write(f"low_count={sev_counts['low']}\n")
+              gh_out.write(f"cves_json={json.dumps(cves)}\n")
+              gh_out.write(f"findings_json={json.dumps(findings)}\n")
               gh_out.write(f"has_critical_or_high={has_critical_or_high}\n")
 
           PYEOF
@@ -436,6 +463,8 @@ jobs:
             "high": ${{ steps.format_table.outputs.high_count || 0 }},
             "medium": ${{ steps.format_table.outputs.medium_count || 0 }},
             "low": ${{ steps.format_table.outputs.low_count || 0 }},
+            "cves": ${{ steps.format_table.outputs.cves_json || '[]' }},
+            "findings": ${{ steps.format_table.outputs.findings_json || '[]' }},
             "has_critical_or_high": "${{ steps.format_table.outputs.has_critical_or_high || 'false' }}"
           }
           EOF
@@ -511,19 +540,30 @@ jobs:
 
           lines = []
           lines.append("## \U0001F512 Twistlock Scan Results\n")
-          lines.append("| Service | Image | Critical | High | Medium | Low | Status |")
-          lines.append("|---|---|---|---|---|---|---|")
+          lines.append("| Service | Image | Critical | High | Medium | Low | Library | CVEs (Severity) | Installed Version | Status |")
+          lines.append("|---|---|---|---|---|---|---|---|---|---|")
+
+          def format_finding_value(value, default="None"):
+              text = str(value or default).replace("|", "\\|").replace("`", "'")
+              return f"`{text}`" if text != "None" else text
 
           for r in rows:
               crit = r.get("critical", 0)
               high = r.get("high", 0)
               med = r.get("medium", 0)
               low = r.get("low", 0)
+              findings = r.get("findings") or []
+              library_text = "<br>".join(format_finding_value(f.get("library")) for f in findings) if findings else "None"
+              cve_text = "<br>".join(
+                  format_finding_value(f"{f.get('cve') or 'Unknown'} ({f.get('severity') or 'UNKNOWN'})")
+                  for f in findings
+              ) if findings else "None"
+              installed_text = "<br>".join(format_finding_value(f.get("installed")) for f in findings) if findings else "None"
               failed = r.get("has_critical_or_high") == "true"
               if failed:
                   any_fail = True
               status = "\u274C FAIL" if failed else "\u2705 PASS"
-              lines.append(f"| {r.get('service','?')} | {r.get('image','?')} | {crit} | {high} | {med} | {low} | {status} |")
+              lines.append(f"| {r.get('service','?')} | {r.get('image','?')} | {crit} | {high} | {med} | {low} | {library_text} | {cve_text} | {installed_text} | {status} |")
 
           lines.append("")
           if any_fail:
@@ -542,8 +582,8 @@ jobs:
           PYEOF
 
       - name: Fail if any image has critical/high vulnerabilities
-        #if: env.ANY_CRITICAL_OR_HIGH == 'true'
-        if: needs.twistlock_scan.result == 'failure'
+        if: env.ANY_CRITICAL_OR_HIGH == 'true'
+        #if: needs.twistlock_scan.result == 'failure'
         run: |
           echo "Failing build: one or more images have CRITICAL or HIGH vulnerabilities."
           exit 1        
