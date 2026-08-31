@@ -1,5 +1,6 @@
 import argparse
 import os
+from urllib.parse import quote, urlencode
 import yaml
 from common.constants import MONGO_DB, SQS_NAME, DB, MODEL_FILE_DIR, SERVICE_TYPE_PV_PULLER,\
     LOADER_QUEUE, SERVICE_TYPE, SERVICE_TYPE_ESSENTIAL, SERVICE_TYPE_FILE, SERVICE_TYPE_METADATA, \
@@ -11,6 +12,107 @@ from bento.common.utils import get_logger
 from common.utils import clean_up_key_value, get_exception_msg, load_message_config
 from common.mongo_dao import MongoDao
 DM_BUCKET_NAME_ENV = "DM_BUCKET_NAME"
+DEFAULT_DOCUMENT_DB_CA_FILE = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "resources", "aws-documentdb-certificate", "global-bundle.pem"
+))
+
+
+def is_document_db_tls_enabled():
+    """
+    TLS is on when DOCDB_TLS is unset, whitespace-only, or true (case-insensitive).
+    false disables TLS. Other values raise ValueError.
+    @returns {bool}
+    @throws {ValueError} When DOCDB_TLS is set to a value other than true or false
+    """
+    raw = os.environ.get("DOCDB_TLS")
+    trimmed = "" if raw is None else str(raw).strip()
+    if not trimmed:
+        return True
+    normalized = trimmed.lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise ValueError(f"DOCDB_TLS must be true or false, received: {raw}")
+
+
+def get_document_db_ca_file(tls_enabled):
+    """
+    CA path when TLS is on: DOCDB_CA_FILE, or the default AWS DocumentDB global bundle.
+    @param {bool} tls_enabled Whether DocumentDB TLS is enabled
+    @returns {str|None}
+    """
+    if not tls_enabled:
+        return None
+    return os.environ.get("DOCDB_CA_FILE") or DEFAULT_DOCUMENT_DB_CA_FILE
+
+
+def _docdb_env(name, default=None):
+    """
+    Reads a DocumentDB environment variable, treating unset and whitespace as missing.
+    @param {str} name
+    @param {str} [default]
+    @returns {str|None}
+    """
+    value = os.environ.get(name)
+    if value is None or not str(value).strip():
+        return default
+    return value
+
+
+def build_connection_string(user, password, host, port, database, ca_file=None):
+    """
+    Builds a MongoDB-compatible connection URI for DocumentDB.
+    Encodes user, password, and database for reserved URI characters.
+    When ca_file is set, enables TLS and SCRAM-SHA-1. Always disables retryWrites.
+    @param {str} user
+    @param {str} password
+    @param {str} host
+    @param {str|int} port
+    @param {str} database
+    @param {str} [ca_file]
+    @returns {str}
+    """
+    params = {
+        "authSource": "admin",
+        "retryWrites": "false",
+    }
+    if ca_file:
+        params["tls"] = "true"
+        params["tlsCAFile"] = ca_file
+        params["authMechanism"] = "SCRAM-SHA-1"
+    query = urlencode(params, quote_via=quote)
+    return (
+        f"mongodb://{quote(str(user), safe='')}:{quote(str(password), safe='')}"
+        f"@{host}:{port}/{quote(str(database), safe='')}?{query}"
+    )
+
+
+def build_document_db_connection_string(user, password, host, port, database, tls_enabled=None, ca_file=None):
+    """
+    Builds the DocumentDB URI from connection fields and TLS/CA settings.
+    TLS defaults follow DOCDB_TLS / DOCDB_CA_FILE when tls_enabled or ca_file are omitted.
+    @param {str} user
+    @param {str} password
+    @param {str} host
+    @param {str|int} port
+    @param {str} database
+    @param {bool} [tls_enabled]
+    @param {str} [ca_file]
+    @returns {str}
+    @throws {FileNotFoundError} When TLS is enabled and the CA file does not exist
+    """
+    if tls_enabled is None:
+        tls_enabled = is_document_db_tls_enabled()
+    resolved_ca_file = ca_file if ca_file is not None else get_document_db_ca_file(tls_enabled)
+    if tls_enabled:
+        if not resolved_ca_file or not os.path.isfile(resolved_ca_file):
+            raise FileNotFoundError(
+                f"DocumentDB TLS is enabled but CA file was not found: {resolved_ca_file}"
+            )
+    else:
+        resolved_ca_file = None
+    return build_connection_string(user, password, host, port, database, resolved_ca_file)
 
 class Config():
     def __init__(self):
@@ -50,6 +152,10 @@ class Config():
                 self.data[key] = value
 
     def validate(self):
+        """
+        Validates YAML/CLI config and builds the DocumentDB connection URI.
+        @returns {bool} True when config is valid and the DAO is connected
+        """
         if len(self.data)== 0:
             return False
         self.data = clean_up_key_value(self.data)
@@ -58,19 +164,27 @@ class Config():
             self.log.critical(f'Service type is required and must be "essential", "file" or "metadata" or "export"!')
             return False
         
-        db_server = self.data.get("server", os.environ.get("MONGO_DB_HOST"))
-        db_port = self.data.get("port", os.environ.get("MONGO_DB_PORT"))
-        db_user_id = self.data.get("user", os.environ.get("MONGO_DB_USER"))
-        db_user_password = self.data.get("pwd", os.environ.get("MONGO_DB_PASSWORD"))
-        db_name= self.data.get("db", os.environ.get("DATABASE_NAME"))
-        if db_server is None or db_port is None or db_user_id is None or db_user_password is None \
+        db_server = self.data.get("server", _docdb_env("docdb_endpoint"))
+        db_port = self.data.get("port", _docdb_env("docdb_port", "27017"))
+        db_user_id = self.data.get("user", _docdb_env("docdb_username"))
+        db_user_password = self.data.get("pwd", _docdb_env("docdb_password"))
+        db_name= self.data.get("db", _docdb_env("docdb_db_name"))
+        if db_server is None or db_user_id is None or db_user_password is None \
             or db_name is None:
-            self.log.critical(f'Missing Mongo BD setting(s)!')
+            self.log.critical(
+                'Missing DocumentDB setting(s)! Required: docdb_endpoint, docdb_username, '
+                'docdb_password, docdb_db_name (docdb_port defaults to 27017).'
+            )
             return False
-        else:
+        try:
             self.data[DB] = db_name
-            self.data[MONGO_DB] = f"mongodb://{db_user_id}:{db_user_password}@{db_server}:{db_port}/?authMechanism=DEFAULT"
-            self.mongodb_dao =  MongoDao(self.data[MONGO_DB], db_name)
+            self.data[MONGO_DB] = build_document_db_connection_string(
+                db_user_id, db_user_password, db_server, db_port, db_name
+            )
+        except (FileNotFoundError, ValueError) as e:
+            self.log.critical(str(e))
+            return False
+        self.mongodb_dao = MongoDao(self.data[MONGO_DB], db_name)
         
         models_loc= self.data.get(MODEL_FILE_DIR)
         if models_loc is None and self.data[SERVICE_TYPE] not in [SERVICE_TYPE_FILE, SERVICE_TYPE_PV_PULLER]:

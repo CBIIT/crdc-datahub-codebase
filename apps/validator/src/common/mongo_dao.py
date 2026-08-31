@@ -21,8 +21,14 @@ MAX_SIZE = 10000
 
 class MongoDao:
     def __init__(self, connectionStr, db_name):
+      """
+      Opens a pymongo client. retryWrites=false is required for DocumentDB
+      (also set on the URI from config.py).
+      @param {str} connectionStr MongoDB-compatible URI
+      @param {str} db_name Database name
+      """
       self.log = get_logger("Mongo DAO")
-      self.client = MongoClient(connectionStr)
+      self.client = MongoClient(connectionStr, retryWrites=False)
       self.db_name = db_name
       self.s3_service = S3Service()
       self.props = {}
