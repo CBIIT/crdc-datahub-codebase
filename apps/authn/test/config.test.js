@@ -5,11 +5,11 @@ const path = require('path');
 const DOCDB_ENV_KEYS = [
     'DOCDB_TLS',
     'DOCDB_CA_FILE',
-    'docdb_endpoint',
-    'docdb_port',
-    'docdb_username',
-    'docdb_password',
-    'docdb_db_name',
+    'DOCDB_ENDPOINT',
+    'DOCDB_PORT',
+    'DOCDB_USERNAME',
+    'DOCDB_PASSWORD',
+    'DOCDB_DB_NAME',
 ];
 
 /**
@@ -24,10 +24,10 @@ function loadConfig() {
  * @param {string} [caFile]
  */
 function setRequiredDocdbEnv(caFile) {
-    process.env.docdb_endpoint = 'example.host';
-    process.env.docdb_username = 'user@name';
-    process.env.docdb_password = 'p@ss:word';
-    process.env.docdb_db_name = 'my-db';
+    process.env.DOCDB_ENDPOINT = 'example.host';
+    process.env.DOCDB_USERNAME = 'user@name';
+    process.env.DOCDB_PASSWORD = 'p@ss:word';
+    process.env.DOCDB_DB_NAME = 'my-db';
     if (caFile) {
         process.env.DOCDB_CA_FILE = caFile;
     }
@@ -74,11 +74,11 @@ describe('document_db_connection_string', () => {
         fs.writeFileSync(caFile, 'test-ca');
         try {
             process.env.DOCDB_TLS = 'true';
-            process.env.docdb_endpoint = 'docdb.example';
-            process.env.docdb_username = 'user';
-            process.env.docdb_password = 'secret';
-            process.env.docdb_db_name = 'crdc-datahub';
-            process.env.docdb_port = '27017';
+            process.env.DOCDB_ENDPOINT = 'docdb.example';
+            process.env.DOCDB_USERNAME = 'user';
+            process.env.DOCDB_PASSWORD = 'secret';
+            process.env.DOCDB_DB_NAME = 'crdc-datahub';
+            process.env.DOCDB_PORT = '27017';
             process.env.DOCDB_CA_FILE = caFile;
             const config = loadConfig();
 
@@ -95,18 +95,18 @@ describe('document_db_connection_string', () => {
     test('TLS on without CA file throws at load', () => {
         process.env.DOCDB_TLS = 'true';
         process.env.DOCDB_CA_FILE = path.join(os.tmpdir(), 'authn-docdb-ca-missing.pem');
-        process.env.docdb_endpoint = 'docdb.example';
-        process.env.docdb_username = 'user';
-        process.env.docdb_password = 'secret';
-        process.env.docdb_db_name = 'crdc-datahub';
+        process.env.DOCDB_ENDPOINT = 'docdb.example';
+        process.env.DOCDB_USERNAME = 'user';
+        process.env.DOCDB_PASSWORD = 'secret';
+        process.env.DOCDB_DB_NAME = 'crdc-datahub';
 
         expect(() => loadConfig()).toThrow(/CA file was not found/);
     });
 
-    test('missing required docdb_* variables throw at load listing the names', () => {
+    test('missing required DOCDB_* variables throw at load listing the names', () => {
         process.env.DOCDB_TLS = 'false';
         expect(() => loadConfig()).toThrow(
-            'DocumentDB connection is missing required environment variables: docdb_endpoint, docdb_username, docdb_password, docdb_db_name'
+            'DocumentDB connection is missing required environment variables: DOCDB_ENDPOINT, DOCDB_USERNAME, DOCDB_PASSWORD, DOCDB_DB_NAME'
         );
     });
 

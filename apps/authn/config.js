@@ -5,8 +5,8 @@ const {isCaseInsensitiveEqual} = require("./util/string-util");
 const {NIH} = require("./constants/idp-constants");
 dotenv.config();
 
-if (process.env.docdb_db_name) {
-  process.env.DATABASE_NAME = process.env.docdb_db_name;
+if (process.env.DOCDB_DB_NAME) {
+  process.env.DATABASE_NAME = process.env.DOCDB_DB_NAME;
 }
 
 const DEFAULT_DOCUMENT_DB_CA_FILE = path.join(__dirname, 'resources/aws-documentdb-certificate/global-bundle.pem');
@@ -55,23 +55,23 @@ function buildConnectionString(user, password, host, port, database, caFile) {
 }
 
 /**
- * Builds the DocumentDB connection URI from docdb_* environment variables.
- * Port defaults to 27017 when docdb_port is unset. TLS is on when DOCDB_TLS
+ * Builds the DocumentDB connection URI from DOCDB_* environment variables.
+ * Port defaults to 27017 when DOCDB_PORT is unset. TLS is on when DOCDB_TLS
  * is unset, whitespace-only, or true; false disables TLS. Other DOCDB_TLS
  * values throw at module load. CA defaults to
  * resources/aws-documentdb-certificate/global-bundle.pem when DOCDB_CA_FILE
  * is unset. Throws at module load if required env vars are missing or if TLS
  * is on and the CA file is missing.
  * @returns {string}
- * @throws {Error} When required docdb_* environment variables are missing
+ * @throws {Error} When required DOCDB_* environment variables are missing
  * @throws {Error} When TLS is enabled and the CA file does not exist
  */
 function buildDocumentDbConnectionString() {
   const required = {
-    docdb_endpoint: process.env.docdb_endpoint,
-    docdb_username: process.env.docdb_username,
-    docdb_password: process.env.docdb_password,
-    docdb_db_name: process.env.docdb_db_name,
+    DOCDB_ENDPOINT: process.env.DOCDB_ENDPOINT,
+    DOCDB_USERNAME: process.env.DOCDB_USERNAME,
+    DOCDB_PASSWORD: process.env.DOCDB_PASSWORD,
+    DOCDB_DB_NAME: process.env.DOCDB_DB_NAME,
   };
   const missing = Object.entries(required)
     .filter(([, value]) => !value || !String(value).trim())
@@ -83,11 +83,11 @@ function buildDocumentDbConnectionString() {
     throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
   }
   return buildConnectionString(
-    process.env.docdb_username,
-    process.env.docdb_password,
-    process.env.docdb_endpoint,
-    process.env.docdb_port || '27017',
-    process.env.docdb_db_name,
+    process.env.DOCDB_USERNAME,
+    process.env.DOCDB_PASSWORD,
+    process.env.DOCDB_ENDPOINT,
+    process.env.DOCDB_PORT || '27017',
+    process.env.DOCDB_DB_NAME,
     documentDbCaFile,
   );
 }

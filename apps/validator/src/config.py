@@ -164,16 +164,16 @@ class Config():
             self.log.critical(f'Service type is required and must be "essential", "file" or "metadata" or "export"!')
             return False
         
-        db_server = self.data.get("server", _docdb_env("docdb_endpoint"))
-        db_port = self.data.get("port", _docdb_env("docdb_port", "27017"))
-        db_user_id = self.data.get("user", _docdb_env("docdb_username"))
-        db_user_password = self.data.get("pwd", _docdb_env("docdb_password"))
-        db_name= self.data.get("db", _docdb_env("docdb_db_name"))
+        db_server = self.data.get("server", _docdb_env("DOCDB_ENDPOINT"))
+        db_port = self.data.get("port", _docdb_env("DOCDB_PORT", "27017"))
+        db_user_id = self.data.get("user", _docdb_env("DOCDB_USERNAME"))
+        db_user_password = self.data.get("pwd", _docdb_env("DOCDB_PASSWORD"))
+        db_name= self.data.get("db", _docdb_env("DOCDB_DB_NAME"))
         if db_server is None or db_user_id is None or db_user_password is None \
             or db_name is None:
             self.log.critical(
-                'Missing DocumentDB setting(s)! Required: docdb_endpoint, docdb_username, '
-                'docdb_password, docdb_db_name (docdb_port defaults to 27017).'
+                'Missing DocumentDB setting(s)! Required: DOCDB_ENDPOINT, DOCDB_USERNAME, '
+                'DOCDB_PASSWORD, DOCDB_DB_NAME (DOCDB_PORT defaults to 27017).'
             )
             return False
         try:
