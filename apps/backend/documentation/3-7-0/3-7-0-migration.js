@@ -8,6 +8,7 @@
  * - sync-pbac-defaults-migration.js: Sync PBAC defaults from JSON (recurring step)
  * - backfill-application-sequence-number.js: Backfill Application.sequenceNumber where missing
  * - backfill-submission-submission-request-id.js: Backfill Submission.submissionRequestID from study.applicationID
+ * - dedupe-review-comments.js: Clear review comments copied onto "In Revision" events (CRDCDH-3894)
  */
 
 const {
@@ -18,6 +19,7 @@ const {
 const { executeSyncPbacDefaults } = require('./sync-pbac-defaults-migration');
 const { executeBackfillApplicationSequenceNumber } = require('./backfill-application-sequence-number');
 const { executeBackfillSubmissionRequestID } = require('./backfill-submission-submission-request-id');
+const { executeDedupeReviewComments } = require('./dedupe-review-comments');
 
 async function orchestrateMigration() {
     console.log('🚀 Starting 3.7.0 migrations execution...');
@@ -46,6 +48,11 @@ async function orchestrateMigration() {
                 name: 'Backfill Submission.submissionRequestID',
                 file: 'backfill-submission-submission-request-id.js',
                 execute: () => executeBackfillSubmissionRequestID(db)
+            },
+            {
+                name: 'Remove duplicated "In Revision" review comments',
+                file: 'dedupe-review-comments.js',
+                execute: () => executeDedupeReviewComments(db)
             }
         ];
 
