@@ -51,12 +51,12 @@ Environment settings:
     2-1 key: LOADER_QUEUE, for essential validation requests.
     2-2 key: FILE_QUEUE, for data file validation requests.
     2-3 key: METADATA_QUEUE, for metadata validation requests.
-3) DocumentDB configurations (same docdb_* / DOCDB_* vars as AuthN):
-    3-1 key: docdb_endpoint, DocumentDB (or local Mongo) host.
-    3-2 key: docdb_port, optional. Defaults to 27017 when unset.
-    3-3 key: docdb_username, user ID.
-    3-4 key: docdb_password, password.
-    3-5 key: docdb_db_name, database name.
+3) DocumentDB configurations (same DOCDB_* vars as AuthN):
+    3-1 key: DOCDB_ENDPOINT, DocumentDB (or local Mongo) host.
+    3-2 key: DOCDB_PORT, optional. Defaults to 27017 when unset.
+    3-3 key: DOCDB_USERNAME, user ID.
+    3-4 key: DOCDB_PASSWORD, password.
+    3-5 key: DOCDB_DB_NAME, database name.
     3-6 key: DOCDB_TLS, optional. TLS is enabled when unset. Set false for local MongoDB without TLS.
     3-7 key: DOCDB_CA_FILE, optional CA override. When TLS is on and this is unset, defaults to resources/aws-documentdb-certificate/global-bundle.pem (downloaded in Docker images).
     The connection URI always sets authSource=admin and retryWrites=false. When TLS is on it also sets tls=true, tlsCAFile, and authMechanism=SCRAM-SHA-1. Docker images always wget the AWS global CA bundle; a missing CA with TLS on fails startup.

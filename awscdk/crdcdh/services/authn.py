@@ -60,6 +60,11 @@ class authnService:
 
     secrets={
             "NEW_RELIC_LICENSE_KEY":ecs.Secret.from_secrets_manager(secretsmanager.Secret.from_secret_name_v2(self, "authn_newrelic", secret_name='monitoring/newrelic'), 'api_key'),
+            "DOCDB_ENDPOINT":ecs.Secret.from_secrets_manager(self.secret, 'docdb_endpoint'),
+            "DOCDB_PORT":ecs.Secret.from_secrets_manager(self.secret, 'docdb_port'),
+            "DOCDB_USERNAME":ecs.Secret.from_secrets_manager(self.secret, 'docdb_username'),
+            "DOCDB_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'docdb_password'),
+            "DOCDB_DB_NAME":ecs.Secret.from_secrets_manager(self.secret, 'docdb_db_name'),
             "DATABASE_NAME":ecs.Secret.from_secrets_manager(self.secret, 'database_name'),
             "MONGO_DB_HOST":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_host'),
             "MONGO_DB_PORT":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_port'),
