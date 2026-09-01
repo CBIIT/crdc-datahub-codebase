@@ -1153,6 +1153,8 @@ describe("saveApp Tests", () => {
       expect(result.current.status).toEqual(FormStatus.LOADED);
     });
 
+    const persistedData = result.current.data;
+
     await act(async () => {
       const saveResp = await result.current.setData(questionnaireDataFactory.build());
       expect(saveResp.status).toEqual("failed");
@@ -1160,6 +1162,12 @@ describe("saveApp Tests", () => {
 
     expect(result.current.status).toEqual(FormStatus.ERROR);
     expect(result.current.error).toEqual("Test SaveApplication GraphQL error");
+
+    // The unsaved data must not become the baseline for the save
+    expect(result.current.data).toBe(persistedData);
+    expect(result.current.data.questionnaireData.sections).toEqual([
+      { name: "A", status: "In Progress" },
+    ]);
   });
 
   it("should skip the API call if opts.skipSave is set", async () => {

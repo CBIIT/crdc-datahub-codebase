@@ -313,11 +313,12 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       const errorMessage = errors?.[0]?.message || "An unknown GraphQL Error occurred";
 
       Logger.error("Unable to save application", errors);
-      setState({
-        ...newState,
+      // Keep the last persisted data to avoid save button disabling after failed save
+      setState((prevState) => ({
+        ...prevState,
         status: Status.ERROR,
         error: errorMessage,
-      });
+      }));
 
       return {
         status: "failed",
