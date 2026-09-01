@@ -475,6 +475,7 @@ jobs:
                   gh_out.write("low_count=0\n")
                   gh_out.write("cves_json=[]\n")
                   gh_out.write("findings_json=[]\n")
+                  gh_out.write("report_available=false\n")
                   gh_out.write("has_critical_or_high=false\n")
               sys.exit(0)
 
@@ -560,6 +561,7 @@ jobs:
               gh_out.write(f"low_count={sev_counts['low']}\n")
               gh_out.write(f"cves_json={json.dumps(cves)}\n")
               gh_out.write(f"findings_json={json.dumps(findings)}\n")
+              gh_out.write("report_available=true\n")
               gh_out.write(f"has_critical_or_high={has_critical_or_high}\n")
 
           PYEOF
@@ -577,7 +579,8 @@ jobs:
             "low": ${{ steps.format_table.outputs.low_count || 0 }},
             "cves": ${{ steps.format_table.outputs.cves_json || '[]' }},
             "findings": ${{ steps.format_table.outputs.findings_json || '[]' }},
-            "has_critical_or_high": "${{ steps.format_table.outputs.has_critical_or_high || 'false' }}"
+            "has_critical_or_high": "${{ steps.format_table.outputs.has_critical_or_high || 'false' }}",
+            "report_available": ${{ steps.format_table.outputs.report_available || 'false' }}
           }
           EOF
           cat "result-${{ matrix.name }}.json"
@@ -662,22 +665,29 @@ jobs:
               text = str(value or default).replace("|", "\\|").replace("`", "'")
               return f"`{text}`" if text != "None" else text
 
-          def result_failed(result):
-              value = result.get("has_critical_or_high", False)
+          def as_bool(value):
               return value is True or str(value).lower() == "true"
+
+          def result_failed(result):
+              return as_bool(result.get("has_critical_or_high", False))
+
+          def report_missing(result):
+              report_available = result.get("report_available")
+              return report_available is not None and not as_bool(report_available)
 
           def add_scan_section(lines, scanner, rows):
               lines.append(f"## \U0001F512 {scanner} Scan Results\n")
               if not rows:
                   lines.append(f"No {scanner} scan results were produced.\n")
-                  return False
+                  return False, False
 
               if scanner == "Trivy":
                   lines.append("Severity totals count unique CVE IDs; all affected packages remain listed below.\n")
 
               lines.append("| Service | Critical | High | Medium | Low | Library | CVEs (Severity) | Installed Version | Status |")
               lines.append("|---|---|---|---|---|---|---|---|---|")
-              scanner_failed = False
+              scanner_vulnerability_failed = False
+              scanner_report_missing = False
 
               for result in rows:
                   crit = result.get("critical", 0)
@@ -691,30 +701,42 @@ jobs:
                       for f in findings
                   ) if findings else "None"
                   installed_text = "<br>".join(format_finding_value(f.get("installed")) for f in findings) if findings else "None"
-                  failed = result_failed(result)
-                  if failed:
-                      scanner_failed = True
-                  status = "\u274C FAIL" if failed else "\u2705 PASS"
+                  vulnerability_failed = result_failed(result)
+                  missing_report = report_missing(result)
+
+                  if vulnerability_failed:
+                      scanner_vulnerability_failed = True
+
+                  if missing_report:
+                      scanner_report_missing = True
+                      status = "\u274C NO VULN REPORT"
+                  elif vulnerability_failed:
+                      status = "\u274C FAIL"
+                  else:
+                      status = "\u2705 PASS"
+
                   lines.append(f"| {result.get('service','?')} | {crit} | {high} | {med} | {low} | {library_text} | {cve_text} | {installed_text} | {status} |")
 
               lines.append("")
-              if scanner_failed:
+              if scanner_report_missing:
+                  lines.append(f"\u274C **No vulnerability reports were generated for one or more {scanner} scans.**\n")
+              elif scanner_vulnerability_failed:
                   lines.append(f"\u274C **{scanner} found CRITICAL or HIGH vulnerabilities.**\n")
               else:
                   lines.append(f"\u2705 **{scanner} found no CRITICAL or HIGH vulnerabilities.**\n")
-              return scanner_failed
+              return scanner_vulnerability_failed, scanner_report_missing
 
           trivy_rows = load_results("trivy-results/*.json")
           twistlock_rows = load_results("twistlock-results/*.json")
 
           lines = []
-          trivy_failed = add_scan_section(lines, "Trivy", trivy_rows)
-          twistlock_failed = add_scan_section(lines, "Twistlock", twistlock_rows)
-          any_fail = trivy_failed or twistlock_failed
+          trivy_vulnerabilities, trivy_missing = add_scan_section(lines, "Trivy", trivy_rows)
+          twistlock_vulnerabilities, twistlock_missing = add_scan_section(lines, "Twistlock", twistlock_rows)
+          any_fail = trivy_vulnerabilities or twistlock_vulnerabilities or trivy_missing or twistlock_missing
 
           lines.append("## Combined Security Scan Result\n")
           if any_fail:
-              lines.append("\u274C **Trivy or Twistlock found CRITICAL or HIGH vulnerabilities in one or more images.**")
+              lines.append("\u274C **A vulnerability report is missing, or Trivy/Twistlock found CRITICAL or HIGH vulnerabilities.**")
           else:
               lines.append("\u2705 **No CRITICAL or HIGH vulnerabilities were found by Trivy or Twistlock.**")
 
@@ -728,10 +750,10 @@ jobs:
               f.write(f"ANY_CRITICAL_OR_HIGH={'true' if any_fail else 'false'}\n")
           PYEOF
 
-      - name: Fail if Trivy or Twistlock found critical/high vulnerabilities
+      - name: Fail if vulnerability report is missing or critical/high vulnerabilities are found
         if: env.ANY_CRITICAL_OR_HIGH == 'true'
         run: |
-          echo "Failing build: Trivy or Twistlock found CRITICAL or HIGH vulnerabilities."
+          echo "Failing build: a vulnerability report is missing, or Trivy/Twistlock found CRITICAL or HIGH vulnerabilities."
           exit 1
 
   # ──────────────────────────────────────────────
