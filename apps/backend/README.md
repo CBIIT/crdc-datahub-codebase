@@ -22,7 +22,7 @@ This API is used to store and query data related to the CRDC DataHub pre-submiss
 ## Prerequisites
 
  - Node.js version >= 20.19.0 is installed on the runtime environment (required by Mongoose 9)
- - A MongoDB deployment is accessible, running, and a user has been created for this API
+ - A DocumentDB cluster is accessible, running, and a user has been created for this API
 
 ## Configuring Environment Variables
 
@@ -32,10 +32,13 @@ Environment variables can either be set in the runtime environment or specified 
 
  - **VERSION** - The API version
  - **DATE** - The date that the API was built
- - **MONGO_DB_USER** - The MongoDB username for this API connection
- - **MONGO_DB_PASSWORD** - The MongoDB password for this API connection
- - **MONGO_DB_HOST** - The MongoDB deployment host address
- - **MONGO_DB_PORT** - The MongoDB connection port
+ - **DOCDB_USERNAME** - The DocumentDB username for this API connection
+ - **DOCDB_PASSWORD** - The DocumentDB password for this API connection
+ - **DOCDB_ENDPOINT** - The DocumentDB cluster host address
+ - **DOCDB_PORT** - The DocumentDB connection port (defaults to 27017)
+ - **DOCDB_DB_NAME** - The DocumentDB database name (also sets `DATABASE_NAME`)
+ - **DOCDB_TLS** - TLS for DocumentDB; on when unset. Set `false` only for local non-TLS DocumentDB-compatible Mongo.
+ - **DOCDB_CA_FILE** - Optional CA path; defaults to `resources/aws-documentdb-certificate/global-bundle.pem`
  - **SESSION_SECRET** - A session secret key, this must match in all services that will share a session
  - **SESSION_TIMEOUT_SECONDS** - The number of seconds before a session created or updated by this service will expire
  - **EMAIL_SMTP_HOST**: email server hostname

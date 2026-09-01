@@ -13,6 +13,9 @@ let dataInterface;
 dbConnector.connect().then( async () => {
     const sessionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SESSION_COLLECTION);
     dataInterface = new ttlSessions(sessionCollection);
+}).catch((error) => {
+    console.error('AuthN session-ttl route initialization failed:', error);
+    process.exit(1);
 });
 
 router.get('/session-ttl',async function(req, res){

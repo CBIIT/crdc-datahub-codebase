@@ -38,7 +38,7 @@ When reviewing diffs that touch Mongoose connection setup, schemas, queries, agg
 1. **Connection**
   - [ ] `mongoose.connect` / connection URI includes `retryWrites=false` (or equivalent option). Retryable writes are **not** supported on DocumentDB.
      [ ] TLS is configured for DocumentDB (`tls=true`, `tlsCAFile` / CA bundle as required). DocumentDB 8.0 requires TLS 1.2+.
-     [ ] If auth fails with an unsupported mechanism under driver 7.x, set `authMechanism=SCRAM-SHA-1` on the shared `MONGO_DB_*` URI (applied automatically when `MONGO_DB_TLS` is enabled, which is the default, using `MONGO_DB_CA_FILE` or `resources/aws-documentdb-certificate/global-bundle.pem`).
+     [ ] If auth fails with an unsupported mechanism under driver 7.x, set `authMechanism=SCRAM-SHA-1` on the shared `DOCDB_*` URI (applied automatically when `DOCDB_TLS` is enabled, which is the default, using `DOCDB_CA_FILE` or `resources/aws-documentdb-certificate/global-bundle.pem`).
 2. **Aggregation** (`Model.aggregate`, `Query.prototype.pipeline`, aggregation plugins)
   - [ ] Pipeline must **not** use `$facet`, `$graphLookup`, `$unionWith`, `$bucketAuto`, `$setWindowFields`, `$planCacheStats`, `$listSessions`, or `$listLocalSessions`.
      [ ] Prefer `$lookup` (supported) over graph-style traversal.
@@ -75,7 +75,7 @@ Mongoose uses the MongoDB Node.js driver under the hood. DocumentDB connection r
 | TLS / SSL                                               | **Required** (TLS 1.2+) | Use `tls=true` and provide the Amazon DocumentDB CA bundle (`tlsCAFile` or equivalent)                                                 |
 | Replica set / discovery options                         | Partial                 | DocumentDB is MongoDB-compatible over the wire but is not a full MongoDB replica set; prefer DocumentDB-documented connection patterns |
 | `directConnection`                                      | Use with care           | Follow AWS DocumentDB connection guidance for your topology                                                                            |
-| Auth mechanisms beyond SCRAM                            | Limited                 | Stick to username/password SCRAM unless AWS docs confirm otherwise. Newer Node drivers may negotiate SCRAM-SHA-256; if DocumentDB rejects it, set `authMechanism=SCRAM-SHA-1` on the shared URI (config does this when `MONGO_DB_TLS` is enabled, default on, with `MONGO_DB_CA_FILE` or the default PEM in the Docker image) |
+| Auth mechanisms beyond SCRAM                            | Limited                 | Stick to username/password SCRAM unless AWS docs confirm otherwise. Newer Node drivers may negotiate SCRAM-SHA-256; if DocumentDB rejects it, set `authMechanism=SCRAM-SHA-1` on the shared URI (config does this when `DOCDB_TLS` is enabled, default on, with `DOCDB_CA_FILE` or the default PEM in the Docker image) |
 
 
 Example URI shape (also used in this repo’s DocumentDB restore docs):
@@ -84,7 +84,7 @@ Example URI shape (also used in this repo’s DocumentDB restore docs):
 mongodb://username:password@host:port/?tls=true&tlsCAFile=/path/to/global-bundle.pem&retryWrites=false&authMechanism=SCRAM-SHA-1
 ```
 
-**Driver note:** Mongoose 9.8.0 ships with MongoDB Node driver 7.5.x. The backend still declares top-level `mongodb@^5.5.0` for `connect-mongo` sessions and migration scripts. Do not assume a single driver version for all Mongo clients in this process. Native drivers and Mongoose share `config.document_db_connection_string` (from `MONGO_DB_*`).
+**Driver note:** Mongoose 9.8.0 ships with MongoDB Node driver 7.5.x. The backend still declares top-level `mongodb@^5.5.0` for `connect-mongo` sessions and migration scripts. Do not assume a single driver version for all Mongo clients in this process. Native drivers and Mongoose share `config.document_db_connection_string` (from `DOCDB_*`).
 ```javascript
 await mongoose.connect(configuration.document_db_connection_string, {
   // Prefer putting retryWrites=false in the URI; options reinforce intent

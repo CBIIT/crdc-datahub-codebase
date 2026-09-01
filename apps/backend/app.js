@@ -310,6 +310,9 @@ app.use("/api/graphql", graphqlRouter);
                 console.warn(`Skipped tasks:`, results.filter(r => r.status === 'skipped').map(r => `Task ${r.taskNumber} - ${r.name}: ${r.error}`));
             }
         });
+    }).catch((error) => {
+        console.error('Backend startup initialization failed:', error);
+        process.exit(1);
     });
 })();
 

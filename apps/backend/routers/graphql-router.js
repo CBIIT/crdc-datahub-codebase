@@ -269,6 +269,9 @@ dbConnector.connect().then(async () => {
         getSubmissionSummary: submissionService.getSubmissionSummary.bind(submissionService),
         retrievePVsByPropertyName: propertyPVService.retrievePVsByPropertyName.bind(propertyPVService),
     };
+}).catch((error) => {
+    console.error('GraphQL router initialization failed:', error);
+    process.exit(1);
 });
 
 async function getOrgUserScope(authorizationService, userInfo, permission) {

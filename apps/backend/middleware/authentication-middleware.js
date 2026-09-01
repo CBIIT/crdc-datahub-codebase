@@ -13,6 +13,9 @@ dbConnector.connect().then(async () => {
     const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
     authenticationService = new AuthenticationService(userCollection);
     userInitializationService = new UserInitializationService(userCollection, organizationCollection);
+}).catch((error) => {
+    console.error('Authentication middleware initialization failed:', error);
+    process.exit(1);
 });
 
 module.exports = async (req, res, next) => {

@@ -1,4 +1,7 @@
 require('dotenv').config();
+if (process.env.DOCDB_DB_NAME) {
+    process.env.DATABASE_NAME = process.env.DOCDB_DB_NAME;
+}
 const fs = require('fs');
 const path = require('path');
 const {readFile2Text} = require("./utility/io-util")
@@ -73,19 +76,31 @@ function buildConnectionString(user, password, host, port, database, caFile) {
 }
 
 const DEFAULT_DOCUMENT_DB_CA_FILE = path.join(__dirname, 'resources/aws-documentdb-certificate/global-bundle.pem');
-const documentDbTlsEnabled = process.env.MONGO_DB_TLS
-    ? process.env.MONGO_DB_TLS.toLowerCase() === 'true'
-    : true;
+const rawDocumentDbTls = process.env.DOCDB_TLS;
+const trimmedDocumentDbTls = rawDocumentDbTls == null ? '' : String(rawDocumentDbTls).trim();
+let documentDbTlsEnabled;
+if (!trimmedDocumentDbTls) {
+    documentDbTlsEnabled = true;
+} else {
+    const normalizedTls = trimmedDocumentDbTls.toLowerCase();
+    if (normalizedTls === 'true') {
+        documentDbTlsEnabled = true;
+    } else if (normalizedTls === 'false') {
+        documentDbTlsEnabled = false;
+    } else {
+        throw new Error(`DOCDB_TLS must be true or false, received: ${rawDocumentDbTls}`);
+    }
+}
 const documentDbCaFile = documentDbTlsEnabled
-    ? (process.env.MONGO_DB_CA_FILE || DEFAULT_DOCUMENT_DB_CA_FILE)
+    ? (process.env.DOCDB_CA_FILE || DEFAULT_DOCUMENT_DB_CA_FILE)
     : null;
 
 /**
- * Builds the shared DocumentDB connection URI from MONGO_DB_* environment
+ * Builds the shared DocumentDB connection URI from DOCDB_* environment
  * variables and DATABASE_NAME (falls back to crdc-datahub via database-constants).
  * Used by native drivers, sessions, and Mongoose.
- * TLS is on when MONGO_DB_TLS is unset or true. CA defaults to
- * resources/aws-documentdb-certificate/global-bundle.pem when MONGO_DB_CA_FILE
+ * TLS is on when DOCDB_TLS is unset or true. CA defaults to
+ * resources/aws-documentdb-certificate/global-bundle.pem when DOCDB_CA_FILE
  * is unset. Throws on first URI access if TLS is on and the CA file is missing.
  * @returns {string}
  * @throws {Error} When TLS is enabled and the CA file does not exist
@@ -95,10 +110,10 @@ function buildDocumentDbConnectionString() {
         throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
     }
     return buildConnectionString(
-        process.env.MONGO_DB_USER,
-        process.env.MONGO_DB_PASSWORD,
-        process.env.MONGO_DB_HOST,
-        process.env.MONGO_DB_PORT,
+        process.env.DOCDB_USERNAME,
+        process.env.DOCDB_PASSWORD,
+        process.env.DOCDB_ENDPOINT,
+        process.env.DOCDB_PORT || '27017',
         DATABASE_NAME,
         documentDbCaFile,
     );
@@ -108,11 +123,11 @@ let config = {
     //info variables
     version: process.env.VERSION || 'Version not set',
     date: process.env.DATE || new Date(),
-    // DocumentDB (shared by native drivers and Mongoose). Env vars remain MONGO_DB_*.
-    document_db_user: process.env.MONGO_DB_USER,
-    document_db_password: process.env.MONGO_DB_PASSWORD,
-    document_db_host: process.env.MONGO_DB_HOST,
-    document_db_port: process.env.MONGO_DB_PORT,
+    // DocumentDB (shared by native drivers and Mongoose)
+    document_db_user: process.env.DOCDB_USERNAME,
+    document_db_password: process.env.DOCDB_PASSWORD,
+    document_db_host: process.env.DOCDB_ENDPOINT,
+    document_db_port: process.env.DOCDB_PORT || '27017',
     document_db_tls: documentDbTlsEnabled,
     document_db_ca_file: documentDbCaFile,
 

@@ -16,6 +16,9 @@ dbConnector.connect().then(() => {
     logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
     const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
     userService = new User(userCollection, logCollection);
+}).catch((error) => {
+    console.error('AuthN login route initialization failed:', error);
+    process.exit(1);
 });
 
 /* Login */

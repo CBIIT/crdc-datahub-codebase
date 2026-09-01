@@ -63,11 +63,6 @@ class pvpullerService:
             "DOCDB_USERNAME":ecs.Secret.from_secrets_manager(self.secret, 'docdb_username'),
             "DOCDB_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'docdb_password'),
             "DOCDB_DB_NAME":ecs.Secret.from_secrets_manager(self.secret, 'docdb_db_name'),
-            "MONGO_DB_HOST":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_host'),
-            "MONGO_DB_PORT":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_port'),
-            "MONGO_DB_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_password'),
-            "MONGO_DB_USER":ecs.Secret.from_secrets_manager(self.secret, 'mongo_db_user'),
-            "DATABASE_NAME":ecs.Secret.from_secrets_manager(self.secret, 'database_name'),
         }   
     
     # create sqs

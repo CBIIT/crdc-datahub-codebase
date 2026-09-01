@@ -116,17 +116,19 @@ async function main() {
     }
 }
 
-process.on('unhandledRejection', (error) => {
-    console.error('❌ Unhandled rejection:', error.message);
-    process.exit(1);
-});
-
-process.on('SIGINT', () => {
-    console.log('\n🛑 Received SIGINT, shutting down gracefully...');
-    process.exit(0);
-});
-
+// Registered only for CLI runs. bin/www.js imports this module, and process-wide
+// handlers here would otherwise terminate the running server.
 if (require.main === module) {
+    process.on('unhandledRejection', (error) => {
+        console.error('❌ Unhandled rejection:', error.message);
+        process.exit(1);
+    });
+
+    process.on('SIGINT', () => {
+        console.log('\n🛑 Received SIGINT, shutting down gracefully...');
+        process.exit(0);
+    });
+
     main();
 }
 

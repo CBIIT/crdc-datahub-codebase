@@ -4,21 +4,21 @@ const mongoose = require('mongoose');
 let connectPromise = null;
 
 /**
- * Connect Mongoose using the shared MongoDB/DocumentDB URI.
+ * Connect Mongoose using the shared DocumentDB URI.
  * Validates uri, short-circuits when already connected, and shares one in-flight
  * connect promise so concurrent callers are idempotent. On failure the cached
  * promise is cleared so a later call can retry.
  * Uses retryWrites: false for DocumentDB compatibility. TLS/CA settings come
- * from the URI when MONGO_DB_TLS is enabled (default on) and the CA file
- * exists (MONGO_DB_CA_FILE or resources/aws-documentdb-certificate/global-bundle.pem).
+ * from the URI when DOCDB_TLS is enabled (default on) and the CA file
+ * exists (DOCDB_CA_FILE or resources/aws-documentdb-certificate/global-bundle.pem).
  *
- * @param {string} uri MongoDB or DocumentDB connection string
+ * @param {string} uri DocumentDB connection string
  * @returns {Promise<typeof mongoose>}
  * @throws {Error} When uri is missing or empty
  */
 async function connectMongoose(uri) {
     if (!uri || typeof uri !== 'string' || !uri.trim()) {
-        throw new Error('MongoDB/DocumentDB connection URI is required');
+        throw new Error('DocumentDB connection URI is required');
     }
     if (mongoose.connection.readyState === 1) {
         return mongoose;

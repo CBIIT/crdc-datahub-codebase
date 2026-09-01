@@ -40,7 +40,9 @@ DEDUPE_DRY_RUN=true npm run migrate:3.7.0
 
 ## Prerequisites
 
-Same as 3.6.0: MongoDB env vars in `.env` (`MONGO_DB_HOST`, `MONGO_DB_PORT`, etc.).
+Same as the backend service: `DOCDB_ENDPOINT`, `DOCDB_PORT`, `DOCDB_USERNAME`, `DOCDB_PASSWORD`, and `DOCDB_DB_NAME`. TLS is on unless `DOCDB_TLS=false`. When TLS is on, the CA file must exist (`DOCDB_CA_FILE` or `resources/aws-documentdb-certificate/global-bundle.pem`). The orchestrator uses `config.document_db_connection_string` (tls, tlsCAFile, authSource=admin, retryWrites=false).
+
+`DOCDB_USERNAME` and `DOCDB_PASSWORD` are required, including for local runs — credentials are always embedded in the URI. `DOCDB_DB_NAME` sets `DATABASE_NAME`.
 
 ## Note on 3.6.0
 
