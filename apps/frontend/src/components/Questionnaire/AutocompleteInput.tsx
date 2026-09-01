@@ -1,6 +1,7 @@
 import {
   Autocomplete,
   AutocompleteChangeReason,
+  AutocompleteInputChangeReason,
   AutocompleteProps,
   AutocompleteValue,
   FormControl,
@@ -13,6 +14,7 @@ import { ReactNode, SyntheticEvent, useEffect, useId, useRef, useState } from "r
 
 import DropdownArrowsIconSvg from "../../assets/icons/dropdown_arrows.svg?react";
 import { updateInputValidity } from "../../utils";
+import { useFormContext } from "../Contexts/FormContext";
 import Tooltip from "../Tooltip";
 
 const StyledFormControl = styled(FormControl)(() => ({
@@ -164,6 +166,7 @@ const AutocompleteInput = <T,>({
   ...rest
 }: Props<T>) => {
   const id = rest.id || useId();
+  const { notifyChange } = useFormContext();
 
   const [val, setVal] = useState<T>(value);
   const [error, setError] = useState<boolean>(false);
@@ -192,11 +195,20 @@ const AutocompleteInput = <T,>({
 
     processValue(newValue);
     setError(false);
+    notifyChange?.();
   };
 
-  const onInputChangeWrapper = (event: SyntheticEvent, newValue: string): void => {
+  const onInputChangeWrapper = (
+    event: SyntheticEvent,
+    newValue: string,
+    reason: AutocompleteInputChangeReason
+  ): void => {
     processValue(newValue as unknown as T);
     setError(false);
+
+    if (reason === "input") {
+      notifyChange?.();
+    }
   };
 
   useEffect(() => {

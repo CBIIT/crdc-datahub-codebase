@@ -6,6 +6,7 @@ import React, { FC, useEffect, useId, useRef, useState } from "react";
 
 import calendarIcon from "../../assets/icons/calendar.svg?url";
 import { updateInputValidity } from "../../utils";
+import { useFormContext } from "../Contexts/FormContext";
 import Tooltip from "../Tooltip";
 
 const CalendarIcon = styled("div")(() => ({
@@ -135,6 +136,7 @@ const DatePickerInput: FC<Props> = ({
   ...rest
 }) => {
   const id = inputID || useId();
+  const { notifyChange } = useFormContext();
 
   const [val, setVal] = useState<Dayjs>(dayjs(initialValue || null));
   const [error, setError] = useState(false);
@@ -174,6 +176,15 @@ const DatePickerInput: FC<Props> = ({
     processValue(newVal);
     setError(false);
   };
+
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
+    }
+    notifyChange?.();
+  }, [val, notifyChange]);
 
   useEffect(() => {
     const invalid = () => setError(true);
