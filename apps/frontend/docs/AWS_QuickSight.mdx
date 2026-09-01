@@ -198,3 +198,72 @@ aws quicksight create-dashboard --cli-input-json file://./CREATE_DASHBOARD_INPUT
 > ```bash
 > aws quicksight list-users --aws-account-id 7XXXXXXXXXX1 --namespace default
 > ```
+
+# Dataset Migration
+
+AWS QuickSight supports native migration of data sets via the CLI. Once you build a dataset, you can extract the 
+definition as JSON, which is used to modify and create in other tiers.
+
+To get started, extract the dataset definition:
+
+```bash
+aws quicksight describe-data-set --aws-account-id 7XXXXXXXXXX1 --data-set-id XXXX-XXXX-XXXX > filename.json
+```
+
+Example output:
+
+```json
+{
+    "Status": 200,
+    "DataSet": {
+        "Arn": "arn:aws:quicksight:XXXX",
+        "DataSetId": "XXXX-XXXX-XXXX",
+        "Name": "XXXX",
+        "CreatedTime": "2026-08-31T15:34:01.946000+00:00",
+        "LastUpdatedTime": "2026-09-01T15:20:35.215000+00:00",
+        "PhysicalTableMap": {
+            "...": "..."
+        },
+        "OutputColumns": [
+            {
+                "Name": "_id.1",
+                "Id": "submissio-_id-d7699a",
+                "Type": "STRING"
+            },
+            "...": "..."
+        ],
+        "ImportMode": "SPICE",
+        "ConsumedSpiceCapacityInBytes": 251266,
+        "...": "...",
+    },
+}
+```
+
+From this definition, we can build the expected input schema:
+
+```JSON
+{
+        "DataSetId": "dataset-uuid-here",
+        "Name": "dataset-name-here",
+        Permissions: {},
+        "PhysicalTableMap": {},
+        "ImportMode": "SPICE",
+        "DataPrepConfiguration": {},
+        "SemanticModelConfiguration": {}
+    }
+
+```
+
+The core properties are:
+
+- DataSetId – A identifier for the dataset (usually UUID)
+- Name – The display name of the dataset
+- Permissions – An array of principal and action definitions. Without this, the dataset won't be visible
+- PhysicalTableMap – A very detailed definition of how to build the dataset, including data sources, joins, etc
+- ImportMode – Leverage `SPICE` for dataset optimization
+
+With the revised dataset definition, we run the [CreateDataSet](https://docs.aws.amazon.com/quicksight/latest/developerguide/create-data-set.html) CLI command:
+
+```bash
+aws quicksight create-data-set --aws-account-id 7XXXXXXXXXX1 --cli-input-json file://./INPUT_DEFINITION.json
+```
