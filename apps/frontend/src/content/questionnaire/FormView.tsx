@@ -9,7 +9,7 @@ import {
   Stack,
   styled,
 } from "@mui/material";
-import { isEqual, cloneDeep } from "lodash";
+import { isEqual, cloneDeep, debounce } from "lodash";
 import { useSnackbar } from "notistack";
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useBlocker, Blocker, Navigate, useLocation } from "react-router-dom";
@@ -192,6 +192,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
     status,
     data,
     error,
+    changeSignal,
+    notifyChange,
     setData,
     submitData,
     approveForm,
@@ -213,6 +215,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const [pendingModelChange, setPendingModelChange] = useState<boolean>(false);
   const [pendingImageDeIdentification, setPendingImageDeIdentification] = useState<boolean>(false);
   const [allSectionsComplete, setAllSectionsComplete] = useState<boolean>(false);
+  const [isActiveSectionDirty, setIsActiveSectionDirty] = useState<boolean>(false);
 
   const sectionKeys = Object.keys(map);
   const sectionIndex = sectionKeys.indexOf(activeSection);
@@ -262,6 +265,11 @@ const FormView: FC<Props> = ({ section }: Props) => {
 
     return ref && (!data || !isEqual(data.questionnaireData, newData));
   };
+
+  const checkSectionDirty = useMemo(
+    () => debounce(() => setIsActiveSectionDirty(Boolean(isDirty())), 300),
+    [data, activeSection]
+  );
 
   const isAllSectionsComplete = (): boolean => {
     if (status === FormStatus.LOADING) {
@@ -688,6 +696,20 @@ const FormView: FC<Props> = ({ section }: Props) => {
   }, [status, data]);
 
   useEffect(() => {
+    setIsActiveSectionDirty(false);
+  }, [data, activeSection]);
+
+  useEffect(() => {
+    if (!changeSignal) {
+      return;
+    }
+
+    checkSectionDirty();
+  }, [changeSignal]);
+
+  useEffect(() => () => checkSectionDirty.cancel(), [checkSectionDirty]);
+
+  useEffect(() => {
     if (status !== FormStatus.LOADED && authStatus !== AuthStatus.LOADED) {
       return;
     }
@@ -749,7 +771,9 @@ const FormView: FC<Props> = ({ section }: Props) => {
           <StyledContent direction="column" spacing={5}>
             <StatusBar />
 
-            <Section section={activeSection} refs={refs} />
+            <div onInput={notifyChange} onChange={notifyChange}>
+              <Section section={activeSection} refs={refs} />
+            </div>
 
             <StyledControls direction="row" justifyContent="center" alignItems="center" spacing={2}>
               <StyledLoadingButton
@@ -779,15 +803,25 @@ const FormView: FC<Props> = ({ section }: Props) => {
                   </StyledExtendedLoadingButton>
                 )}
               {activeSection !== "REVIEW" && formMode === "Edit" && (
-                <StyledLoadingButton
-                  id="submission-form-save-button"
-                  variant="contained"
-                  color="success"
-                  loading={status === FormStatus.SAVING}
-                  onClick={saveForm}
+                <StyledTooltip
+                  title="No changes have been made. Please make edits to the form then click save."
+                  placement="top"
+                  arrow
+                  disableHoverListener={isActiveSectionDirty || status === FormStatus.SAVING}
                 >
-                  Save
-                </StyledLoadingButton>
+                  <span>
+                    <StyledLoadingButton
+                      id="submission-form-save-button"
+                      variant="contained"
+                      color="success"
+                      loading={status === FormStatus.SAVING}
+                      disabled={!isActiveSectionDirty || status === FormStatus.SAVING}
+                      onClick={saveForm}
+                    >
+                      Save
+                    </StyledLoadingButton>
+                  </span>
+                </StyledTooltip>
               )}
 
               <CancelApplicationButton onCancel={handleOnCancel} />

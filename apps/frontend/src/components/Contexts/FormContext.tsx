@@ -1,6 +1,14 @@
 import { useLazyQuery, useMutation } from "@apollo/client";
 import { merge, cloneDeep } from "lodash";
-import React, { FC, createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  FC,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { v4 } from "uuid";
 
 import { QuestionnaireDataMigrator } from "@/classes/QuestionnaireDataMigrator";
@@ -49,6 +57,8 @@ export type ContextState = {
   status: Status;
   data: Application;
   formRef: React.RefObject<HTMLFormElement>;
+  changeSignal?: number;
+  notifyChange?: () => void;
   submitData?: () => Promise<string | boolean>;
   reopenForm?: () => Promise<string | boolean>;
   approveForm?: (data: ApproveFormInput, wholeProgram: boolean) => Promise<SetDataReturnType>;
@@ -73,6 +83,7 @@ const initialState: ContextState = {
   status: Status.LOADING,
   data: null,
   formRef: React.createRef<HTMLFormElement>(),
+  changeSignal: 0,
   error: null,
 };
 
@@ -119,8 +130,11 @@ type ProviderProps = {
  */
 export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps) => {
   const [state, setState] = useState<ContextState>(initialState);
+  const [changeSignal, setChangeSignal] = useState<number>(0);
   const { user } = useAuthContext();
   const { activeOrganizations, status: programStatus } = useOrganizationListContext();
+
+  const notifyChange = useCallback(() => setChangeSignal((n) => n + 1), []);
 
   const [getInstitutions] = useLazyQuery<ListInstitutionsResp, ListInstitutionsInput>(
     LIST_INSTITUTIONS,
@@ -529,6 +543,8 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   const value = useMemo(
     () => ({
       ...state,
+      changeSignal,
+      notifyChange,
       setData,
       submitData,
       approveForm,
@@ -536,7 +552,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       rejectForm,
       reopenForm,
     }),
-    [state]
+    [state, changeSignal, notifyChange]
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;

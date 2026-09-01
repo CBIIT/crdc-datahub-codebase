@@ -1660,3 +1660,129 @@ describe("saveApp Tests", () => {
     );
   });
 });
+
+describe("notifyChange Tests", () => {
+  const getAppMock: MockedResponse<GetAppResp> = {
+    request: {
+      query: GET_APP,
+    },
+    variableMatcher: () => true,
+    result: {
+      data: {
+        getApplication: {
+          ...baseApplication,
+          questionnaireData: JSON.stringify(
+            questionnaireDataFactory.build({
+              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+            })
+          ),
+        },
+      },
+    },
+  };
+
+  it("should provide a notifyChange function and an initial changeSignal of 0", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    expect(typeof result.current.notifyChange).toEqual("function");
+    expect(result.current.changeSignal).toEqual(0);
+  });
+
+  it("should increment changeSignal each time notifyChange is called", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    act(() => {
+      result.current.notifyChange();
+    });
+
+    await waitFor(() => {
+      expect(result.current.changeSignal).toEqual(1);
+    });
+
+    act(() => {
+      result.current.notifyChange();
+      result.current.notifyChange();
+    });
+
+    await waitFor(() => {
+      expect(result.current.changeSignal).toEqual(3);
+    });
+  });
+
+  it("should keep a stable notifyChange identity across changeSignal updates", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    const initialNotifyChange = result.current.notifyChange;
+
+    act(() => {
+      result.current.notifyChange();
+    });
+
+    await waitFor(() => {
+      expect(result.current.changeSignal).toEqual(1);
+    });
+
+    expect(result.current.notifyChange).toBe(initialNotifyChange);
+  });
+
+  it("should not reset changeSignal when the form data changes", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    act(() => {
+      result.current.notifyChange();
+    });
+
+    await waitFor(() => {
+      expect(result.current.changeSignal).toEqual(1);
+    });
+
+    await act(async () => {
+      const saveResp = await result.current.setData(questionnaireDataFactory.build(), {
+        skipSave: true,
+      });
+      expect(saveResp.status).toEqual("success");
+    });
+
+    expect(result.current.changeSignal).toEqual(1);
+  });
+});
