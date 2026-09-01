@@ -192,8 +192,8 @@ const FormView: FC<Props> = ({ section }: Props) => {
     status,
     data,
     error,
-    changeSignal,
     notifyChange,
+    subscribeToChanges,
     setData,
     submitData,
     approveForm,
@@ -700,14 +700,13 @@ const FormView: FC<Props> = ({ section }: Props) => {
   }, [data, activeSection]);
 
   useEffect(() => {
-    if (!changeSignal) {
-      return;
-    }
+    const unsubscribe = subscribeToChanges?.(checkSectionDirty);
 
-    checkSectionDirty();
-  }, [changeSignal]);
-
-  useEffect(() => () => checkSectionDirty.cancel(), [checkSectionDirty]);
+    return () => {
+      unsubscribe?.();
+      checkSectionDirty.cancel();
+    };
+  }, [subscribeToChanges, checkSectionDirty]);
 
   useEffect(() => {
     if (status !== FormStatus.LOADED && authStatus !== AuthStatus.LOADED) {

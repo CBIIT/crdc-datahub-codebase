@@ -1,6 +1,6 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
-import { FC, useMemo, useState } from "react";
+import { FC, useMemo, useRef } from "react";
 import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
@@ -209,14 +209,20 @@ const TestParent: FC<ParentProps> = ({
   section = "REVIEW",
   initialEntries = [`/submission-request/test-app-id/${section}`],
 }) => {
-  const [changeSignal, setChangeSignal] = useState<number>(0);
+  const changeListeners = useRef<Set<() => void>>(new Set());
   const value = useMemo<FormContextState>(
     () => ({
       ...formCtxState,
-      changeSignal,
-      notifyChange: () => setChangeSignal((n) => n + 1),
+      notifyChange: () => changeListeners.current.forEach((listener) => listener()),
+      subscribeToChanges: (listener: () => void) => {
+        changeListeners.current.add(listener);
+
+        return () => {
+          changeListeners.current.delete(listener);
+        };
+      },
     }),
-    [formCtxState, changeSignal]
+    [formCtxState]
   );
 
   return (

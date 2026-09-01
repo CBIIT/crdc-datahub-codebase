@@ -7,6 +7,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { v4 } from "uuid";
@@ -57,8 +58,14 @@ export type ContextState = {
   status: Status;
   data: Application;
   formRef: React.RefObject<HTMLFormElement>;
-  changeSignal?: number;
+  /**
+   * Reports that a form field changed.
+   */
   notifyChange?: () => void;
+  /**
+   * Registers a listener for {@link notifyChange}. Returns an unsubscribe function.
+   */
+  subscribeToChanges?: (listener: () => void) => () => void;
   submitData?: () => Promise<string | boolean>;
   reopenForm?: () => Promise<string | boolean>;
   approveForm?: (data: ApproveFormInput, wholeProgram: boolean) => Promise<SetDataReturnType>;
@@ -83,7 +90,6 @@ const initialState: ContextState = {
   status: Status.LOADING,
   data: null,
   formRef: React.createRef<HTMLFormElement>(),
-  changeSignal: 0,
   error: null,
 };
 
@@ -130,11 +136,22 @@ type ProviderProps = {
  */
 export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps) => {
   const [state, setState] = useState<ContextState>(initialState);
-  const [changeSignal, setChangeSignal] = useState<number>(0);
   const { user } = useAuthContext();
   const { activeOrganizations, status: programStatus } = useOrganizationListContext();
 
-  const notifyChange = useCallback(() => setChangeSignal((n) => n + 1), []);
+  const changeListenersRef = useRef<Set<() => void>>(new Set());
+
+  const notifyChange = useCallback(() => {
+    changeListenersRef.current.forEach((listener) => listener());
+  }, []);
+
+  const subscribeToChanges = useCallback((listener: () => void) => {
+    changeListenersRef.current.add(listener);
+
+    return () => {
+      changeListenersRef.current.delete(listener);
+    };
+  }, []);
 
   const [getInstitutions] = useLazyQuery<ListInstitutionsResp, ListInstitutionsInput>(
     LIST_INSTITUTIONS,
@@ -543,8 +560,8 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   const value = useMemo(
     () => ({
       ...state,
-      changeSignal,
       notifyChange,
+      subscribeToChanges,
       setData,
       submitData,
       approveForm,
@@ -552,7 +569,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       rejectForm,
       reopenForm,
     }),
-    [state, changeSignal, notifyChange]
+    [state, notifyChange, subscribeToChanges]
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
