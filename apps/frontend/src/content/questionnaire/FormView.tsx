@@ -232,6 +232,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
   const bypassBlockerRef = useRef<boolean>(false);
   const previousIDRef = useRef<string | null>(null);
   const shouldShowToolTip = isSectionD && !allSectionsComplete;
+  const shouldShowSaveToolTip = !isActiveSectionDirty && status !== FormStatus.SAVING;
 
   const refs: FormSectionProps["refs"] = {
     getFormObjectRef: useRef<(() => FormObject) | null>(null),
@@ -803,12 +804,16 @@ const FormView: FC<Props> = ({ section }: Props) => {
                 )}
               {activeSection !== "REVIEW" && formMode === "Edit" && (
                 <StyledTooltip
-                  title="No changes have been made. Please make edits to the form then click save."
+                  title={
+                    shouldShowSaveToolTip
+                      ? "No changes have been made. Please make edits to the form then click save."
+                      : ""
+                  }
                   placement="top"
                   arrow
-                  disableHoverListener={isActiveSectionDirty || status === FormStatus.SAVING}
+                  disableHoverListener={!shouldShowSaveToolTip}
                 >
-                  <span>
+                  <span tabIndex={!isActiveSectionDirty && status !== FormStatus.SAVING ? 0 : -1}>
                     <StyledLoadingButton
                       id="submission-form-save-button"
                       variant="contained"
