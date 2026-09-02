@@ -5,6 +5,7 @@ tqdm
 requests_aws4auth
 pymongo
 python-dateutil
-pandas
-pytest>=9.0.3
+pandas~=3.0.5
+pytest~=9.0.3
 pip>=26.1.1
+bento-mdf~=0.13.2

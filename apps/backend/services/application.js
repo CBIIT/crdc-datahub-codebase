@@ -1052,13 +1052,6 @@ class Application {
     }
 
 
-    _getInProgressComment(history) {
-        const isValidComment = history?.length > 1 &&
-            ([CANCELED, DELETED].includes(history?.at(-2)?.status) // Restored Reason
-            || INQUIRED === history?.at(-1)?.status);
-        return isValidComment ? history?.at(-1)?.reviewComment : null;
-    }
-
     async resumeInquiredApplication(params, context) {
         verifySession(context)
             .verifyInitialized();
@@ -1074,8 +1067,7 @@ class Application {
 
         application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
         if (application && application.status) {
-            const reviewComment = this._getInProgressComment(application?.history);
-            const history = HistoryEventBuilder.createEvent(context.userInfo._id, IN_REVISION, reviewComment);
+            const history = HistoryEventBuilder.createEvent(context.userInfo._id, IN_REVISION, null);
             const updated = await this.applicationDAO.update({
                 _id: application._id,
                 status: IN_REVISION,

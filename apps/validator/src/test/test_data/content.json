@@ -1,0 +1,34 @@
+{
+  "CRDC": {
+    "omit-DCF-prefix": true,
+    "list-delimiter": "*",
+    "model-files": [
+      "test_mdf.yml"
+    ],
+    "semantics": {
+      "main-nodes": {
+        "study": "Study",
+        "participant": "Participant",
+        "sample": "Sample",
+        "file": "File"
+      },
+      "file-nodes": {
+        "file": {
+          "id-field": "file_id",
+          "name-field": "file_name",
+          "size-field": "file_size",
+          "md5-field": "md5sum"
+        }
+      },
+      "property-names": {
+        "programName": "program_name",
+        "studyName": "study_name",
+        "dbGaPID": "phs_accession"
+      }
+    },
+    "current-version": "1.0.0",
+    "versions": [
+      "1.0.0"
+    ]
+  }
+}

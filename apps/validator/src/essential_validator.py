@@ -288,7 +288,7 @@ class EssentialValidator:
             self.bucket.download_file(key, download_file)
             if os.path.isfile(download_file):
                 df = pd.read_csv(download_file, sep=SEPARATOR_CHAR, header=0, dtype='str', encoding=UTF8_ENCODE, keep_default_na=False, na_values=[''])
-                self.df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if x.dtype == 'object' else x) # stripe white space.
+                self.df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if pd.api.types.is_string_dtype(x) else x) # strip white space.  covers both legacy object dtype and pandas' newer str dtype
                 self.download_file_list.append(download_file)
             return True # if no exception
         except ClientError as ce:
@@ -514,8 +514,19 @@ class EssentialValidator:
                 self.log.error(msg)
                 file_info[ERRORS].append(msg)
                 self.batch[ERRORS].append(msg)
+
+            # check missing required relationship 
+            required_relationships = self.model.get_node_req_rel_columns(type)
+            missed_rels = [ rel for rel in required_relationships if rel not in columns]
+            if len(missed_rels) > 0:
+                msg = f'“{file_info[FILE_NAME]}”: '
+                msg += f'Relationship columns {json.dumps(missed_rels)} are required.' if len(missed_rels) > 1 else f'Relationship column "{missed_rels[0]}" is required.'
+                self.log.error(msg)
+                file_info[ERRORS].append(msg)
+                self.batch[ERRORS].append(msg)
+
             # check relationship
-            rel_props = [rel for rel in columns if "." in rel and not re.search('\.\d*$',rel)]
+            rel_props = [rel for rel in columns if "." in rel and not re.search(r'\.\d*$',rel)]
             rel_result, msgs = self.check_relationship(file_info, type, rel_props)
             if not rel_result:
                 self.log.error(msgs)
@@ -644,7 +655,7 @@ class EssentialValidator:
             return False, [f'“{file_info[FILE_NAME]}”: All relationship columns are missing. Please ensure at least one relationship column is included.']
         
         def_rel_nodes = [ key for key in def_rel.keys()]
-        rel_props_dic = {rel.split(".")[0]: rel.split(".")[1] for rel in rel_props}
+        rel_props_dic = {rel.split(".")[0].strip(): rel.split(".")[1].strip() for rel in rel_props}
         rel_props_dic_types = rel_props_dic.keys()
         
         # check if parent node is valid

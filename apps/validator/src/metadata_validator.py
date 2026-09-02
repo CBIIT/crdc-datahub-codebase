@@ -14,7 +14,7 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
     GENERATED_PROPS, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, NAME_PROP, \
-    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX
+    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX, STUDY_NAME, DBGAPID
 from common.utils import current_datetime, get_exception_msg, create_error, get_uuid_str, has_permissive_value
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
@@ -288,6 +288,7 @@ class MetaDataValidator:
         self.not_found_property = False
         self.study_name = None
         self.program_names = None
+        self.dbGaPID = None
 
     def _initialize_for_validation(self, submission, submission_id, scope):
         """Shared initialization for both batch and non-batch validation paths.
@@ -323,7 +324,8 @@ class MetaDataValidator:
             self.log.error(msg)
             return FAILED, msg
 
-        self.study_name = study.get("studyName")
+        self.study_name = study.get(STUDY_NAME)
+        self.dbGaPID = get_core_dbGaPID(study.get(DBGAPID, ""))
         self.program_names = self.mongo_dao.find_organization_name_by_study_id(study_id)
         return None
 
@@ -424,17 +426,23 @@ class MetaDataValidator:
         # submission-level validation
         sub_intention = self.submission.get(SUBMISSION_INTENTION)
         try:
-            # call validate_required_props
-            result_required= self.validate_required_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix)
-            # call validate_prop_value
-            result_prop_value = self.validate_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
-            # call validate_relationship
-            result_rel = self.validate_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
+            validation_results = []
+            if sub_intention == SUBMISSION_INTENTION_DELETE: 
+                validation_results.append(self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix))
+            else:
+                validation_results.append(self.validate_required_props(data_record, msg_prefix))
+                validation_results.append(self.validate_props(data_record, msg_prefix))
+                validation_results.append(self.validate_relationship(data_record, msg_prefix))
+                validation_results.append(self.validate_required_relationship(data_record, msg_prefix))
+                validation_results.append(self.validate_dbGaPID(data_record, msg_prefix))
 
-            # concatenation of all errors
-            errors = result_required.get(ERRORS, []) +  result_prop_value.get(ERRORS, []) + result_rel.get(ERRORS, [])
-            # concatenation of all warnings
-            warnings = result_required.get(WARNINGS, []) +  result_prop_value.get(WARNINGS, []) + result_rel.get(WARNINGS, [])
+            errors = []
+            warnings = []
+
+            for result in validation_results:
+                errors += result.get(ERRORS, [])
+                warnings += result.get(WARNINGS, [])
+
             #check if existed nodes in release collection
             if sub_intention and sub_intention in [SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE]:
                 exist_release = self.mongo_dao.search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
@@ -453,20 +461,22 @@ class MetaDataValidator:
                                                         NODE_ID, self.model.get_node_id(node_type)))
                 elif sub_intention == SUBMISSION_INTENTION_DELETE and not exist_release:
                     errors.append(create_error("M019", [msg_prefix, node_type, data_record[NODE_ID]], NODE_ID, self.model.get_node_id(node_type)))
+
             # if there are any errors set the result to "Error"
             if len(errors) > 0:
                 return STATUS_ERROR, errors, warnings
             # if there are no errors but warnings,  set the result to "Warning"
             if len(warnings) > 0:
                 return STATUS_WARNING, errors, warnings
+            #  if there are neither errors nor warnings, return default values
+            else:
+                return STATUS_PASSED, errors, warnings
         except Exception as e:
             self.log.exception(e)
             msg = f'Failed to validate dataRecords for the submission, {self.submission_id} at scope, {self.scope}!'
             self.log.exception(msg) 
             error = create_error("M020", [], "", "")
             return STATUS_ERROR,[error], None
-        #  if there are neither errors nor warnings, return default values
-        return STATUS_PASSED, errors, warnings
     
     def check_difference_in_props(self, new_node, exist_node):
         """
@@ -563,7 +573,7 @@ class MetaDataValidator:
                                     else:
                                         data_record[PROPERTIES][data_key] = matched_val
                         elif entity_type == "Study":
-                            if data_key == self.model.get_configured_prop_name("studyName"):
+                            if data_key == self.model.get_configured_prop_name(STUDY_NAME):
                                 if data_value.lower() != self.study_name.lower():
                                     result[ERRORS].append(create_error("M029", [msg_prefix, self.study_name], data_key, data_value))
                                 else:
@@ -734,6 +744,40 @@ class MetaDataValidator:
 
         if len(result[ERRORS]) == 0 and len(result[WARNINGS]) == 0:
             result["result"] = STATUS_PASSED
+        return result
+
+    def validate_required_relationship(self, data_record, msg_prefix):
+        result = {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+        node_type = data_record.get(NODE_TYPE)
+        required_relationship_columns = self.model.get_node_req_rel_columns(node_type)
+        parents = {}
+        for parent_node in data_record.get(PARENTS, []):
+            parents[get_column_name_from_parent_obj(parent_node)] = parent_node[PARENT_ID_VAL]
+        for required_column in required_relationship_columns:
+            parent_id_value = parents.get(required_column)
+            if required_column not in parents.keys() or parent_id_value is None or parent_id_value == "":
+                result[VALIDATION_RESULT] = STATUS_ERROR
+                result[ERRORS].append(create_error("M037", f'{msg_prefix}:  Required relationship "{required_column}" is empty.', required_column, ""))
+
+        return result
+
+    def validate_dbGaPID(self, data_record, msg_prefix):
+        result = {}
+        node_type = data_record.get(NODE_TYPE)
+        if self.model.get_entity_type(node_type) == "Study":
+            if not self.dbGaPID:
+                return {}
+            dbGaPID_prop_name = self.model.get_configured_prop_name(DBGAPID)
+            rawDbGaPID = data_record.get(PROPERTIES, {}).get(dbGaPID_prop_name, "")
+            dbGaPID = get_core_dbGaPID(rawDbGaPID)
+            if not dbGaPID:
+                return {}
+
+            if dbGaPID == self.dbGaPID:
+                return {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+            else:
+                return {VALIDATION_RESULT: STATUS_ERROR, ERRORS: [create_error("M038", [msg_prefix, dbGaPID_prop_name, dbGaPID, self.dbGaPID], dbGaPID_prop_name, dbGaPID)], WARNINGS: []}
+
         return result
 
     def get_file_consent_code(self, parent_type, parent_id_value, consent_group_parents, visited=None):
@@ -1020,3 +1064,13 @@ def create_new_qc_result(node, validation_type):
         QC_ORIGIN: QC_ORIGIN_METADATA_VALIDATE_SERVICE if validation_type == VALIDATION_TYPE_METADATA else QC_ORIGIN_FILE_VALIDATE_SERVICE
     }
     return qc_result
+
+def get_column_name_from_parent_obj(parent_obj):
+    return f'{parent_obj[PARENT_TYPE]}.{parent_obj[PARENT_ID_NAME]}'
+
+
+def get_core_dbGaPID(raw):
+    if not raw or not isinstance(raw, str):
+        return raw
+
+    return re.sub(r'\.[vV].*$', '', raw).lower()

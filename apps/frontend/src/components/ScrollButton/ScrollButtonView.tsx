@@ -1,7 +1,7 @@
 import { styled } from "@mui/material";
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, memo } from "react";
 
-import ArrowUp from "../../assets/icons/arrow_up.svg?url";
+import ArrowUp from "@/assets/icons/arrow_up.svg?url";
 
 const StyledScrollButton = styled("button")(({ theme }) => ({
   background: "#007bbd",
@@ -19,7 +19,6 @@ const StyledScrollButton = styled("button")(({ theme }) => ({
   textAlign: "center",
   padding: "36px 4px 0 18px",
   textDecoration: "none",
-  transition: "all 0.25s ease-out",
   zIndex: 999,
   cursor: "pointer",
   "&:active": {
@@ -53,7 +52,6 @@ const StyledText = styled("span")(({ theme }) => ({
 
 const ScrollButton = () => {
   const [scroll, setScroll] = useState<number>(0);
-  const clickToTopRef = useRef<HTMLButtonElement>(null);
 
   const updateScroll = () => {
     setScroll(window.scrollY);
@@ -66,11 +64,9 @@ const ScrollButton = () => {
 
   useEffect(() => {
     window.addEventListener("scroll", updateScroll);
-    clickToTopRef.current?.addEventListener("click", onClickScrollToTop);
 
     return () => {
       window.removeEventListener("scroll", updateScroll);
-      clickToTopRef.current?.removeEventListener("click", onClickScrollToTop);
     };
   }, []);
 
@@ -78,18 +74,10 @@ const ScrollButton = () => {
     <StyledScrollButton
       data-testid="scroll-top-button"
       type="button"
-      ref={clickToTopRef}
-      style={
-        scroll < 200
-          ? {
-              opacity: 0,
-              visibility: "hidden",
-            }
-          : {
-              visibility: "visible",
-              opacity: 1,
-            }
-      }
+      onClick={onClickScrollToTop}
+      style={{
+        visibility: scroll < 200 ? "hidden" : "visible",
+      }}
     >
       <StyledText>BACK TO TOP</StyledText>
     </StyledScrollButton>

@@ -1,5 +1,6 @@
 import os
 import re
+import yaml
 from bento.common.utils import get_logger, MULTIPLIER, DEFAULT_MULTIPLIER
 from common.constants import DATA_COMMON, VERSION, MODEL_SOURCE, NAME_PROP, DESC_PROP, ID_PROPERTY, VALUE_PROP, \
     VALUE_EXCLUSIVE, ALLOWED_VALUES, RELATION_LABEL, TYPE, NODE_LABEL, NODE_PROPERTIES, PROP_REQUIRED, MD5, \
@@ -71,7 +72,11 @@ class YamlModelParser:
                 self.log.info('Reading model file: {} ...'.format(aFile))
                 if aFile and '.' in aFile and aFile.split('.')[-1].lower() in ["yml", "yaml"]:
                     model_file_src.append(os.path.basename(aFile))
-                    schema = download_file_to_dict(aFile)
+                    if aFile.startswith('http'):
+                        schema = download_file_to_dict(aFile)
+                    else:
+                        with open(aFile, 'r') as f:
+                            schema = yaml.safe_load(f.read())
                     if schema:
                         self.schema.update(schema)
             except Exception as e:
