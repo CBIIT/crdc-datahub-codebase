@@ -36,9 +36,8 @@ const approvedStudySchema = new mongoose.Schema(
         programName: {
             type: String,
         },
-        programID: {
+            programID: {
             type: String,
-            index: true,
         },
         studyAbbreviation: {
             type: String,
