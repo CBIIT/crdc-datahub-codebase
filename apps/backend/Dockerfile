@@ -1,5 +1,5 @@
 # Build stage — npm is only required to install dependencies and run Prisma generate.
-FROM node:24.17.0-alpine3.24 AS builder
+FROM node:24.20.0-alpine3.24 AS builder
 WORKDIR /usr/src/app
 # Install dependencies first (cached unless package files change).
 COPY package*.json ./
@@ -11,7 +11,7 @@ COPY --chown=node:node . .
 RUN npx prisma generate && npm prune --omit=dev
 
 # Run stage
-FROM node:24.17.0-alpine3.24 AS fnl_base_image
+FROM node:24.20.0-alpine3.24 AS fnl_base_image
 ENV PORT=8080 \
     NODE_ENV=production
 WORKDIR /usr/src/app
