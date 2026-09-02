@@ -261,7 +261,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
           _id: newState?.data?._id === "new" ? undefined : newState?.data?._id,
           studyName: processedData?.study?.name,
           studyAbbreviation: processedData?.study?.abbreviation,
-          questionnaireData: JSON.stringify(processedData),
+          questionnaireData: processedData,
           controlledAccess: processedData?.accessTypes?.includes("Controlled Access") || false,
           openAccess: processedData?.accessTypes?.includes("Open Access") || false,
           ORCID: processedData?.pi?.ORCID,
@@ -501,9 +501,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       }
 
       const { getApplication } = d;
-      const questionnaireData: QuestionnaireData = JSON.parse(
-        getApplication?.questionnaireData || null
-      );
+      const questionnaireData = getApplication?.questionnaireData || null;
 
       const migrator = new QuestionnaireDataMigrator(questionnaireData, {
         getInstitutions,
