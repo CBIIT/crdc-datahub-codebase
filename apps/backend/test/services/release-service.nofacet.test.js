@@ -1,6 +1,8 @@
 const mockReleaseDAO = {
     aggregate: jest.fn(),
     distinct: jest.fn(),
+    listReleasedStudies: jest.fn(),
+    listReleasedStudyDataCommons: jest.fn(),
 };
 
 jest.mock('../../dao/release', () => jest.fn().mockImplementation(() => mockReleaseDAO));
@@ -44,37 +46,40 @@ describe('ReleaseService DocumentDB $facet removals', () => {
     });
 
     describe('listReleasedStudies', () => {
-        it('should call separate count and results aggregates without $facet', async () => {
-            const studies = [{ studyID: 'study1', studyName: 'Study A' }];
-            mockReleaseDAO.aggregate
-                .mockResolvedValueOnce(studies)
-                .mockResolvedValueOnce([{ count: 1 }]);
-            mockReleaseDAO.distinct.mockResolvedValue(['CDS']);
+        it('should list via DAO, sort per-study display names, and map dataCommons display names', async () => {
+            const studies = [{
+                studyID: 'study1',
+                studyName: 'Study A',
+                dataCommons: ['icdc', 'cds'],
+                dataCommonsDisplayNames: ['ICDC', 'CDS'],
+            }];
+            mockReleaseDAO.listReleasedStudies.mockResolvedValue({ studies, total: 1 });
+            mockReleaseDAO.listReleasedStudyDataCommons.mockResolvedValue(['CDS']);
 
             const result = await service.listReleasedStudies(
                 { first: 10, offset: 0, orderBy: 'studyName', sortDirection: 'asc' },
                 context
             );
 
-            expect(mockReleaseDAO.aggregate).toHaveBeenCalledTimes(2);
-            const [resultsPipeline, countPipeline] = mockReleaseDAO.aggregate.mock.calls.map(
-                ([pipeline]) => pipeline
-            );
-            expect(resultsPipeline.some((stage) => stage.$facet)).toBe(false);
-            expect(countPipeline.some((stage) => stage.$facet)).toBe(false);
-            expect(countPipeline[countPipeline.length - 1]).toEqual({ $count: 'count' });
+            expect(mockReleaseDAO.listReleasedStudies).toHaveBeenCalledTimes(1);
+            expect(mockReleaseDAO.listReleasedStudyDataCommons).toHaveBeenCalledTimes(1);
+            expect(mockReleaseDAO.distinct).not.toHaveBeenCalled();
+            expect(mockReleaseDAO.aggregate).not.toHaveBeenCalled();
             expect(result).toEqual({
-                studies,
+                studies: [{
+                    studyID: 'study1',
+                    studyName: 'Study A',
+                    dataCommons: ['cds', 'icdc'],
+                    dataCommonsDisplayNames: ['CDS', 'ICDC'],
+                }],
                 total: 1,
                 dataCommonsDisplayNames: ['CDS'],
             });
         });
 
-        it('should return empty studies with zero total when aggregates are empty', async () => {
-            mockReleaseDAO.aggregate
-                .mockResolvedValueOnce([])
-                .mockResolvedValueOnce([]);
-            mockReleaseDAO.distinct.mockResolvedValue([]);
+        it('should return empty studies with zero total when DAO results are empty', async () => {
+            mockReleaseDAO.listReleasedStudies.mockResolvedValue({ studies: [], total: 0 });
+            mockReleaseDAO.listReleasedStudyDataCommons.mockResolvedValue([]);
 
             const result = await service.listReleasedStudies(
                 { first: 10, offset: 0, orderBy: 'studyName', sortDirection: 'asc' },
@@ -101,7 +106,8 @@ describe('ReleaseService DocumentDB $facet removals', () => {
                 studies: [],
                 dataCommonsDisplayNames: [],
             });
-            expect(mockReleaseDAO.aggregate).not.toHaveBeenCalled();
+            expect(mockReleaseDAO.listReleasedStudies).not.toHaveBeenCalled();
+            expect(mockReleaseDAO.listReleasedStudyDataCommons).not.toHaveBeenCalled();
             expect(mockReleaseDAO.distinct).not.toHaveBeenCalled();
         });
     });

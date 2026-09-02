@@ -112,6 +112,32 @@ class UserDAO extends MongooseGenericDAO {
             ],
         });
     }
+
+    /**
+     * Counts Submitter-role users grouped by institution ID.
+     * Avoids embedding user documents on institution aggregations (DocumentDB 16MB BSON limit).
+     * @param {string[]} institutionIDs Institution IDs to count
+     * @returns {Promise<object[]>} Rows with `_id` (institution ID) and `submitterCount`
+     */
+    async countSubmittersByInstitutionIDs(institutionIDs) {
+        if (!institutionIDs || institutionIDs.length === 0) {
+            return [];
+        }
+        return await this.aggregate([
+            {
+                $match: {
+                    role: USER.ROLES.SUBMITTER,
+                    "institution._id": { $in: institutionIDs },
+                },
+            },
+            {
+                $group: {
+                    _id: "$institution._id",
+                    submitterCount: { $sum: 1 },
+                },
+            },
+        ]);
+    }
 }
 
 module.exports = UserDAO;

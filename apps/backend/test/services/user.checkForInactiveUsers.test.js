@@ -223,16 +223,24 @@ describe('UserService.checkForInactiveUsers', () => {
                 }
             });
 
-            // Stage 4: $set with $first and $sortArray
+            // Stage 4: $set with $reduce to pick the latest log event
             expect(pipeline[3]).toEqual({
                 $set: {
                     latest_log_event: {
-                        $first: {
-                            $sortArray: {
-                                input: '$log_events_array',
-                                sortBy: {
-                                    timestamp: -1
-                                }
+                        $reduce: {
+                            input: '$log_events_array',
+                            initialValue: null,
+                            in: {
+                                $cond: [
+                                    {
+                                        $or: [
+                                            { $eq: ['$$value', null] },
+                                            { $gt: ['$$this.timestamp', '$$value.timestamp'] }
+                                        ]
+                                    },
+                                    '$$this',
+                                    '$$value'
+                                ]
                             }
                         }
                     }

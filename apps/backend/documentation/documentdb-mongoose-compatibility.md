@@ -10,7 +10,7 @@ Reference for Mongoose ODM APIs and features that are incompatible with, or requ
 | Target engine | Amazon DocumentDB **8.0** (see `awscdk/crdcdh/app/documentdb.py`) |
 | ODM / driver  | **Mongoose 9.8.0** (nested MongoDB Node driver **7.5.x**)         |
 | Other drivers | Top-level `mongodb@5` remains for sessions (`connect-mongo`) and migration scripts — separate from Mongoose’s nested driver |
-| Last reviewed | 2026-07-21                                                        |
+| Last reviewed | 2026-09-02                                                        |
 
 
 
@@ -41,8 +41,9 @@ When reviewing diffs that touch Mongoose connection setup, schemas, queries, agg
      [ ] If auth fails with an unsupported mechanism under driver 7.x, set `authMechanism=SCRAM-SHA-1` on the shared `DOCDB_*` URI (applied automatically when `DOCDB_TLS` is enabled, which is the default, using `DOCDB_CA_FILE` or `resources/aws-documentdb-certificate/global-bundle.pem`).
 2. **Aggregation** (`Model.aggregate`, `Query.prototype.pipeline`, aggregation plugins)
   - [ ] Pipeline must **not** use `$facet`, `$graphLookup`, `$unionWith`, `$bucketAuto`, `$setWindowFields`, `$planCacheStats`, `$listSessions`, or `$listLocalSessions`.
-     [ ] Prefer `$lookup` (supported) over graph-style traversal.
+     [ ] Prefer equality `$lookup` (`localField` / `foreignField`) over graph-style traversal. Flag `$lookup` with `let` + `pipeline` + `$expr` (`$$` parent vars) — DocumentDB does **not** support correlated subqueries. Extra join predicates belong in a later `$filter` / `$addFields`.
      [ ] Flag `$getField` (unsupported). For literal field names that contain dots, use `$objectToArray` + `$filter` + `$arrayElemAt` instead.
+     [ ] Flag `$sortArray` outside `$project`. DocumentDB 8.0 allows `$sortArray` only in `$project` (Planner v3), not in `$set` / `$addFields`. See [AWS `$sortArray`](https://docs.aws.amazon.com/documentdb/latest/developerguide/sortArray.html) and the array-operators row in [Supported MongoDB APIs](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html).
 3. **Transactions / sessions**
   - [ ] `startSession`, `withTransaction`, `session.startTransaction` must respect DocumentDB limits (1-minute transaction timeout, no cursors in a transaction, no creating collections inside a transaction, 32 MB transaction log limit).
      [ ] Do not rely on retryable commit/abort.
@@ -104,6 +105,8 @@ These Mongoose APIs map to MongoDB operations that DocumentDB 8.0 does **not** s
 | Mongoose API / pattern                                               | Underlying MongoDB | DocDB 8.0                 | Alternative                                                                                     |
 | -------------------------------------------------------------------- | ------------------ | ------------------------- | ----------------------------------------------------------------------------------------------- |
 | `Model.aggregate([{ $facet: ... }])`                                 | `$facet` stage     | **No**                    | Run separate aggregations/queries (e.g. count + page), or reshape the pipeline without `$facet` |
+| `Model.aggregate([{ $lookup: { let, pipeline } }])`                  | Correlated `$lookup` | **No**                  | Equality `$lookup` (`localField` / `foreignField`), then `$filter` / `$addFields` on the parent pipeline. [AWS `$lookup` differences](https://docs.aws.amazon.com/documentdb/latest/devguide/functional-differences.html) |
+| `$sortArray` inside `$set` / `$addFields`                            | `$sortArray`       | **No** (except `$project`) | DocumentDB 8.0 supports `$sortArray` **only** in `$project` (Planner v3). Prefer `$sort` before `$group`, or `$reduce` to pick min/max. [AWS `$sortArray`](https://docs.aws.amazon.com/documentdb/latest/developerguide/sortArray.html); [API matrix](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html) |
 | `Model.aggregate([{ $graphLookup: ... }])`                           | `$graphLookup`     | **No**                    | Application-level traversal, recursive queries, or denormalized graph data                      |
 | `Model.aggregate([{ $unionWith: ... }])`                             | `$unionWith`       | **No**                    | Multiple queries merged in application code, or `$lookup` / denormalization                     |
 | `Model.aggregate([{ $bucketAuto: ... }])`                            | `$bucketAuto`      | **No**                    | Precompute buckets, or use `$bucket` (supported on 8.0) with fixed boundaries                   |
@@ -135,7 +138,7 @@ These are available on DocumentDB 8.0 but behave differently from MongoDB Atlas 
 | `startSession()` / `withTransaction()`                                | Multi-document transactions | See [Transactions and sessions](#transactions-and-sessions)                                                                                      |
 | `Model.watch()`                                                       | Change streams              | Supported on instance-based clusters; not on elastic clusters; observe DocumentDB change-stream limits                                           |
 | `$text` queries / text indexes on schema                              | `$text` + text index        | Supported on 8.0 (not elastic); ranking/`$meta` behavior may differ from MongoDB                                                                 |
-| `Model.aggregate` + `$lookup`                                         | `$lookup`                   | Supported — preferred join mechanism                                                                                                             |
+| `Model.aggregate` + `$lookup`                                         | `$lookup`                   | Equality joins and uncorrelated subqueries only — **not** correlated `let` + `pipeline` + `$expr` |
 | `Model.aggregate` + `$merge` / `$out`                                 | `$merge`, `$out`            | Supported on 8.0 instance clusters (not elastic)                                                                                                 |
 | GridFS via `mongoose.mongo.GridFSBucket`                              | GridFS                      | Supported on 8.0 instance clusters (not elastic)                                                                                                 |
 | Collation on queries / indexes                                        | Collation                   | Supported on 8.0 (not elastic); verify Planner v3 / DocumentDB collation docs                                                                    |
@@ -169,7 +172,9 @@ Mongoose aggregation is a thin wrapper over MongoDB aggregation pipelines. Compa
 
 ### Commonly used stages that **are** supported on 8.0
 
-`$match`, `$project`, `$addFields` / `$set`, `$unset`, `$group`, `$sort`, `$skip`, `$limit`, `$count`, `$unwind`, `$lookup`, `$replaceRoot` / `$replaceWith`, `$sample`, `$redact`, `$geoNear`, `$bucket`, `$merge`, `$out`, `$sortByCount` (8.0.1+).
+`$match`, `$project`, `$addFields` / `$set`, `$unset`, `$group`, `$sort`, `$skip`, `$limit`, `$count`, `$unwind`, `$lookup` (equality / uncorrelated only), `$replaceRoot` / `$replaceWith`, `$sample`, `$redact`, `$geoNear`, `$bucket`, `$merge`, `$out`, `$sortByCount` (8.0.1+).
+
+`$sortArray` is supported on 8.0 **only** inside `$project` (Planner v3). See [AWS `$sortArray`](https://docs.aws.amazon.com/documentdb/latest/developerguide/sortArray.html) and the array-operators row in [Supported MongoDB APIs](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html).
 
 Always verify new operators against the AWS matrix before merging.
 
@@ -195,6 +200,92 @@ const results = await Model.aggregate([
   { $skip: skip },
   { $limit: limit },
 ]);
+```
+
+### Mongoose example — avoid correlated `$lookup`
+
+DocumentDB supports equality `$lookup` and uncorrelated subqueries. It does **not** support correlated `$lookup` (`let` + `pipeline` + `$expr` with `$$` parent variables). See [Functional differences — `$lookup`](https://docs.aws.amazon.com/documentdb/latest/devguide/functional-differences.html).
+
+```javascript
+// INCOMPATIBLE with DocumentDB
+{
+  $lookup: {
+    from: "users",
+    let: { id: "$_id" },
+    pipeline: [
+      {
+        $match: {
+          $expr: {
+            $and: [
+              { $eq: ["$institution._id", "$$id"] },
+              { $eq: ["$role", "Submitter"] },
+            ],
+          },
+        },
+      },
+    ],
+    as: "submitters",
+  },
+}
+
+// COMPATIBLE pattern — paginate the parent collection, then $group counts on the child
+// (do not $lookup full child documents onto each parent; that can exceed the 16MB BSON limit).
+// Valid only when not sorting/paginating on the computed child count; listInstitution branches
+// to count-all-then-JS-sort when orderBy is submitterCount.
+await InstitutionModel.aggregate([
+  { $match: institutionFilters },
+  { $skip: offset },
+  { $limit: first },
+]);
+await UserModel.aggregate([
+  { $match: { role: "Submitter", "institution._id": { $in: institutionIDs } } },
+  { $group: { _id: "$institution._id", submitterCount: { $sum: 1 } } },
+]);
+// Merge submitterCount onto each institution in application code (missing key → 0).
+```
+
+### Mongoose example — avoid `$sortArray` outside `$project`
+
+```javascript
+// INCOMPATIBLE with DocumentDB ($set / $addFields)
+{
+  $set: {
+    latest: {
+      $first: {
+        $sortArray: { input: "$events", sortBy: { timestamp: -1 } },
+      },
+    },
+  },
+}
+
+// COMPATIBLE — $reduce to pick max/min
+{
+  $set: {
+    latest: {
+      $reduce: {
+        input: "$events",
+        initialValue: null,
+        in: {
+          $cond: [
+            {
+              $or: [
+                { $eq: ["$$value", null] },
+                { $gt: ["$$this.timestamp", "$$value.timestamp"] },
+              ],
+            },
+            "$$this",
+            "$$value",
+          ],
+        },
+      },
+    },
+  },
+}
+
+// COMPATIBLE — case-insensitive array order via $sort before $group $push
+{ $addFields: { nameLower: { $toLower: "$mappedDisplayName" } } },
+{ $sort: { nameLower: 1 } },
+{ $group: { _id: "$_id", names: { $push: "$mappedDisplayName" } } }
 ```
 
 ### Mongoose example — avoid `$getField` for literal dotted keys
