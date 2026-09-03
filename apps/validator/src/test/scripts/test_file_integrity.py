@@ -29,3 +29,8 @@ def test_get_old_data_file_location():
 
 def test_get_study_id_from_s3_url():
     assert file_integrity.get_study_id_from_s3_url('s3://my-bucket/study-id-001/my-file.ext') == 'study-id-001'
+
+def test_file_in_target_buckets():
+    target_buckets = ['bucket1', 'bucket2']
+    assert file_integrity.file_in_target_buckets('s3://bucket1/path/to/file.txt', target_buckets) is True
+    assert file_integrity.file_in_target_buckets('s3://bucket3/path/to/file.txt', target_buckets) is False

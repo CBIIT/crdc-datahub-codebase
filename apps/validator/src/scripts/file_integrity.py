@@ -7,6 +7,9 @@ import boto3
 from botocore.exceptions import ClientError
 from pymongo import MongoClient
 
+from dotenv import load_dotenv
+load_dotenv()
+
 RELEASE_COLLECTION = "release"
 STUDY_ID = "studyID"
 DATA_FILE_LOCATION = "dataFileLocation"
@@ -97,24 +100,38 @@ def check_s3_file(bucket_name, key):
         raise e
 
 def write_results_to_file(succeeded_files, missing_files, wrong_size_files, studyID):
-    if len(missing_files) != 0 or len(wrong_size_files) != 0:
-        with open(f"tmp/{studyID}_file_integrity_results_failed.txt", "w") as f:
-            f.write(f"Study ID: {studyID}\n")
-            f.write(f"Total Files Checked: {len(succeeded_files) + len(missing_files) + len(wrong_size_files)}\n")
-            f.write(f"\nMissing Files: {len(missing_files)}\n")
-            for file in missing_files:
-                f.write(f"{file[0]}: {file[1]}\n")
-            f.write(f"\nWrong Size Files: {len(wrong_size_files)}\n")
-            for file in wrong_size_files:
-                f.write(f"{file[0]}: {file[1]}\n")
+    total_files_checked = len(succeeded_files) + len(missing_files) + len(wrong_size_files)
+    total_files_failed = len(missing_files) + len(wrong_size_files)
+    headers = ["Study ID", "GUID", "File Name", "Location", "Status"]
+    curent_date_time_str = current_date_time_str()
+    if total_files_failed > 0:
+        with open(f"tmp/{curent_date_time_str}_{total_files_failed}_of_{total_files_checked}_file_failed.csv", "w") as f:
+            csv_writer = csv.writer(f)
+            csv_writer.writerow(headers)
+            csv_writer.writerows(missing_files)
+            csv_writer.writerows(wrong_size_files)
+            # f.write(f"Study ID: {studyID}\n")
+            # f.write(f"Total Files Checked: {total_files_checked}\n")
+            # f.write(f"\nMissing Files: {len(missing_files)}\n")
+            # for file in missing_files:
+            #     csv_writer.writerow([file[0], file[1], file[2], "Missing"])
+            # for file in wrong_size_files:
+            #     csv_writer.writerow([file[0], file[1], file[2], "Wrong Size"])
 
     if len(succeeded_files) != 0:
-        with open(f"tmp/{studyID}_file_integrity_results_succeeded.txt", "w") as f:
-            f.write(f"Study ID: {studyID}\n")
-            f.write(f"Total Files Checked: {len(succeeded_files) + len(missing_files) + len(wrong_size_files)}\n")
-            f.write(f"Succeeded Files: {len(succeeded_files)}\n")
-            for file in succeeded_files:
-                f.write(f"{file[0]}: {file[1]}\n")
+        with open(f"tmp/{curent_date_time_str}_{len(succeeded_files)}_of_{total_files_checked}_file_succeeded.csv", "w") as f:
+            csv_writer = csv.writer(f)
+            csv_writer.writerow(headers)
+            csv_writer.writerows(succeeded_files)
+            # f.write(f"Study ID: {studyID}\n")
+            # f.write(f"Total Files Checked: {total_files_checked}\n")
+            # f.write(f"Succeeded Files: {len(succeeded_files)}\n")
+            # for file in succeeded_files:
+            #     csv_writer.writerow([file[0], file[1], file[2], "Succeeded"])
+
+def current_date_time_str():
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 
 def read_files_from_dcf_manifest(file_path):
     if not file_path or not os.path.isfile(file_path):
@@ -124,12 +141,20 @@ def read_files_from_dcf_manifest(file_path):
         files = []
         tsv_reader = csv.DictReader(f, delimiter="\t")
         for row in tsv_reader:
-            files.append({
-                'GUID': row['guid'],
-                DATA_FILE_LOCATION: row['urls'],
-                "file_size": int(row['size'])
-            })
+            url = row['urls']
+            if file_in_target_buckets(url, [BUCKET_NAME]):
+                files.append({
+                    'GUID': row['guid'],
+                    DATA_FILE_LOCATION: url,
+                    "file_size": int(float(row['size']))
+                })
+            else:
+                print(f"Skipping file {url} as it is not in the target bucket {BUCKET_NAME}")
         return files
+
+def file_in_target_buckets(s3_url, target_buckets):
+    bucket_name, _ = extrac_bucket_key_from_s3_url(s3_url)
+    return bucket_name in target_buckets
 
 def validate_files(files: list):
     succeeded_files = []
@@ -139,16 +164,17 @@ def validate_files(files: list):
         bucket_name, key = extrac_bucket_key_from_s3_url(file[DATA_FILE_LOCATION])
         file_name = os.path.basename(key)
         guid = file.get("GUID")
+        study_id = get_study_id_from_s3_url(file[DATA_FILE_LOCATION])
         result = check_s3_file(bucket_name, key)
         if (not result["exist"]):
-            missing_files.append((guid, file_name))
+            missing_files.append((study_id, guid, file_name, key, "Missing"))
         else:
             if result.get("size") != file.get("file_size"):
-                wrong_size_files.append((guid, file_name))
+                wrong_size_files.append((study_id, guid, file_name, key, "Wrong Size"))
                 print(
                     f"Size mismatch for {file[DATA_FILE_LOCATION]}: Expected {file.get('file_size')}, Got {result.get('size')}")
             else:
-                succeeded_files.append((guid, file_name))
+                succeeded_files.append((study_id, guid, file_name, key, "Succeeded"))
         print(f"{key}, Exists: {result['exist']}, Size: {result.get('size')}")
 
     return succeeded_files, missing_files, wrong_size_files
@@ -164,8 +190,6 @@ def main():
 
 def get_studyid_files_list():
     import argparse
-    from dotenv import load_dotenv
-    load_dotenv()
     connection_str = os.environ.get("MONGO_CONNECTION_STRING")
     db_name = os.environ.get("MONGO_DB_NAME")
 
@@ -180,7 +204,7 @@ def get_studyid_files_list():
     client = get_mongo_client(connection_str)
     if args.dcf_manifest:
         files = read_files_from_dcf_manifest(args.dcf_manifest)
-        if len(files) >= 0:
+        if len(files) > 0:
             study_id = get_study_id_from_s3_url(files[0][DATA_FILE_LOCATION])
     elif args.old_format:
         files = get_old_data_files_from_db(client, db_name)
@@ -195,8 +219,11 @@ def get_studyid_files_list():
 def get_study_id_from_s3_url(s3_url):
     if not s3_url.startswith("s3://"):
         return None
-    parts = s3_url.split("/")
-    return parts[-2]
+    stripped = s3_url.replace('s3://', '')
+    parts = stripped.split("/")
+    if len(parts) < 2:
+        return None
+    return parts[1]
 
 
 if __name__ == "__main__":
