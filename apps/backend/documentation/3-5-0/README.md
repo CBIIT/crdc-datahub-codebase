@@ -1,6 +1,6 @@
-# 3.5.0 Migration Suite
+# 3.5.0 migrations (legacy)
 
-This directory contains migration scripts for version 3.5.0 of the CRDC Data Hub Backend.
+**Legacy (reference only).** These migrations already ran in prior releases. Do not execute them against current DocumentDB. Do not update them for new compatibility issues.
 
 ## Structure
 

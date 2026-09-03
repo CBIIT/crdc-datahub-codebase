@@ -37,7 +37,6 @@ const validationSchema = new mongoose.Schema(
         submissionID: {
             type: String,
             required: true,
-            index: true,
         },
         totalBatches: {
             type: Number,

@@ -1,5 +1,7 @@
 # 3.4.0 Migration Quick Reference
 
+**Legacy (reference only).** These migrations already ran in prior releases. Do not execute them against current DocumentDB. Do not update them for new compatibility issues.
+
 ## 🚀 Quick Start Checklist
 
 ### Pre-Migration

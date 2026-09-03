@@ -1,27 +1,30 @@
 const {INSTITUTION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
-const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-constants");
 const MongooseGenericDAO = require("./mongoose-generic");
 const InstitutionModel = require("../mongoose/models/institution");
-const {USER_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
+const UserDAO = require("./user");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {sanitizeMongoDBInput, escapeRegexLiteral} = require("../utility/string-util");
-
-const ROLES = USER_CONSTANTS.USER.ROLES;
+const {SORT} = require("../crdc-datahub-database-drivers/constants/mongodb-constants");
 
 /**
  * Mongoose-backed DAO for institution documents.
  */
 class InstitutionDAO extends MongooseGenericDAO {
     _NAME = "name";
+    _SUBMITTER_COUNT = "submitterCount";
     _ALL_FILTER = "All";
 
     constructor() {
         super(InstitutionModel);
+        this.userDAO = new UserDAO();
     }
 
     /**
      * Lists institutions with submitter counts and pagination.
      * Uses separate result and count aggregations (DocumentDB does not support $facet).
+     * Submitter counts come from a UserDAO $group (avoids $lookup of full user documents).
+     * When orderBy is submitterCount, counts are computed for all matches, then sorted and sliced in JS
+     * (stored submitterCount is not maintained and must not drive Mongo pagination).
      * @param {string} [name] Institution name filter (case-insensitive substring)
      * @param {number} [offset] Pagination offset
      * @param {number} [first] Page size
@@ -31,44 +34,45 @@ class InstitutionDAO extends MongooseGenericDAO {
      * @returns {Promise<{institutions: object[], total: number}>}
      */
     async listInstitution(name, offset, first, orderBy, sortDirection, status) {
-        const userJoin = {
-            "$lookup": {
-                from: USER_COLLECTION,
-                let : {id : "$_id"},
-                pipeline: [{
-                    $match: {
-                        $expr: {
-                            $and: [
-                                { $eq: ["$institution._id", "$$id"] },
-                                { $eq: ["$role", ROLES.SUBMITTER] }
-                            ]
-                        }
-                    }
-                }],
-                as: "submitters"}
-        };
-
-        const paginationPipe = new MongoPagination(first, offset, orderBy, sortDirection, orderBy === this._NAME);
-        const pipeline = [{"$match": this._listConditions(name, status)}, userJoin,
-            {
-                $project: {
-                    _id: 1,
-                    name: 1,
-                    status: 1,
-                    submitterCount: { $size: "$submitters" }
-                }
-            }];
+        const sortingBySubmitterCount = orderBy === this._SUBMITTER_COUNT;
+        const paginationPipe = new MongoPagination(
+            sortingBySubmitterCount ? -1 : first,
+            sortingBySubmitterCount ? 0 : offset,
+            sortingBySubmitterCount ? null : orderBy,
+            sortDirection,
+            orderBy === this._NAME
+        );
+        const pipeline = [{"$match": this._listConditions(name, status)}];
 
         const noPaginationPipeline = pipeline.concat(paginationPipe.getNoLimitPipeline());
-        const results = await Promise.all([
+        const [institutions, totalCountResult] = await Promise.all([
             this.aggregate(pipeline.concat(paginationPipe.getPaginationPipeline())),
             this.aggregate(noPaginationPipeline.concat([{ $group: { _id: "$_id" } }, { $count: "count" }]))
         ]);
 
-        return {
-            institutions: results[0] || [],
-            total: results[1]?.length > 0 ? results[1][0]?.count : 0
+        const page = institutions || [];
+        const total = totalCountResult?.length > 0 ? totalCountResult[0]?.count : 0;
+        if (page.length === 0) {
+            return { institutions: page, total };
         }
+
+        const counts = await this.userDAO.countSubmittersByInstitutionIDs(page.map((inst) => inst._id));
+        const countByID = new Map((counts || []).map((row) => [row._id, row.submitterCount]));
+        const withCounts = page.map((inst) => ({
+            ...inst,
+            submitterCount: countByID.get(inst._id) || 0,
+        }));
+        if (!sortingBySubmitterCount) {
+            return { institutions: withCounts, total };
+        }
+
+        const direction = sortDirection?.toLowerCase() === SORT.ASC ? 1 : -1;
+        withCounts.sort((a, b) => (a.submitterCount - b.submitterCount) * direction);
+        const start = offset || 0;
+        const sliced = Number.isInteger(first) && first === -1
+            ? withCounts.slice(start)
+            : withCounts.slice(start, start + first);
+        return { institutions: sliced, total };
     }
 
     /**
