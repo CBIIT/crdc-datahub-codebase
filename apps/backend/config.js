@@ -154,7 +154,7 @@ let config = {
             completed_submission_days: completedSubmissionDaysConf || (process.env.COMPLETED_RETENTION_DAYS || 30),
             dashboardSessionTimeout: dashboardSessionTimeoutConf || (process.env.DASHBOARD_SESSION_TIMEOUT || 3600), // 60 minutes by default
             inactiveSubmissionNotifyDays: inactiveSubmissionNotifyDaysConf || [7, 30, 60],
-            inactiveApplicationNotifyDays: inactiveApplicationNotifyDaysConf || [7, 15, 30], // 7, 15, 30 days by default
+            inactiveApplicationNotifyDays: inactiveApplicationNotifyDaysConf || [15, 30], // 15, 30 days by default
             conditionalSubmissionContact: submissionRequestEmailConf || "NCICRDC@mail.nih.gov",
             submissionGuideUrl: submissionGuideURLConf || "https://datacommons.cancer.gov/data-submission-instructions",
             scheduledJobTime: scheduledJobTime || "1 0 1 * * *"
