@@ -1,6 +1,6 @@
 import { MockedProvider, MockedResponse } from "@apollo/client/testing";
 import userEvent from "@testing-library/user-event";
-import { FC } from "react";
+import { FC, useMemo, useRef } from "react";
 import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
@@ -15,7 +15,7 @@ import {
   Status as FormStatus,
 } from "@/components/Contexts/FormContext";
 import { query as GET_LAST_APP } from "@/graphql/getMyLastApplication";
-import { render, waitFor, within } from "@/test-utils";
+import { fireEvent, render, waitFor, within } from "@/test-utils";
 import { applicationFactory } from "@/test-utils/factories/application/ApplicationFactory";
 import { authCtxStateFactory } from "@/test-utils/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/test-utils/factories/auth/UserFactory";
@@ -42,14 +42,28 @@ vi.mock("../../hooks/usePageTitle", () => ({
 
 let mockFormObject: FormObject | null = null;
 
-vi.mock("./sections", () => ({
-  default: ({ refs }: FormSectionProps) => {
-    if (refs?.getFormObjectRef) {
-      refs.getFormObjectRef.current = () => mockFormObject;
-    }
-    return <div data-testid="mock-section">Mock Section</div>;
-  },
-}));
+vi.mock("./sections", async () => {
+  const { useFormContext } = await vi.importActual<
+    typeof import("../../components/Contexts/FormContext")
+  >("../../components/Contexts/FormContext");
+
+  return {
+    default: ({ refs }: FormSectionProps) => {
+      const { notifyChange } = useFormContext();
+      if (refs?.getFormObjectRef) {
+        refs.getFormObjectRef.current = () => mockFormObject;
+      }
+      return (
+        <div data-testid="mock-section">
+          Mock Section
+          <button type="button" data-testid="mock-picker-change" onClick={() => notifyChange()}>
+            picker change
+          </button>
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("../../components/PageBanner", () => ({
   default: () => <div data-testid="mock-page-banner">Mock Banner</div>,
@@ -129,6 +143,31 @@ const baseFormCtxState: FormContextState = {
   rejectForm: vi.fn(),
 };
 
+const noChangesTooltip =
+  "No changes have been made. Please make edits to the form then click save.";
+
+const editFormState = (overrides: Partial<FormContextState> = {}): FormContextState => ({
+  ...baseFormCtxState,
+  data: applicationFactory.build({
+    ...baseFormCtxState.data,
+    status: "In Progress",
+    questionnaireData: { sections: completedSections } as QuestionnaireData,
+  }),
+  ...overrides,
+});
+
+const unchangedFormObject = (): FormObject => ({
+  ref: { current: document.createElement("form") },
+  data: { sections: completedSections } as QuestionnaireData,
+});
+
+const changedFormObject = (): FormObject => ({
+  ref: { current: document.createElement("form") },
+  data: {
+    sections: [{ name: "A", status: "In Progress" }],
+  } as QuestionnaireData,
+});
+
 const baseAuthCtxState: AuthContextState = authCtxStateFactory.build({
   status: AuthStatus.LOADED,
   isLoggedIn: true,
@@ -169,17 +208,35 @@ const TestParent: FC<ParentProps> = ({
   authCtxState = baseAuthCtxState,
   section = "REVIEW",
   initialEntries = [`/submission-request/test-app-id/${section}`],
-}) => (
-  <TestRouter initialEntries={initialEntries}>
-    <MockedProvider mocks={baseMocks}>
-      <AuthContext.Provider value={authCtxState}>
-        <FormContext.Provider value={formCtxState}>
-          <FormView section={section} />
-        </FormContext.Provider>
-      </AuthContext.Provider>
-    </MockedProvider>
-  </TestRouter>
-);
+}) => {
+  const changeListeners = useRef<Set<() => void>>(new Set());
+  const value = useMemo<FormContextState>(
+    () => ({
+      ...formCtxState,
+      notifyChange: () => changeListeners.current.forEach((listener) => listener()),
+      subscribeToChanges: (listener: () => void) => {
+        changeListeners.current.add(listener);
+
+        return () => {
+          changeListeners.current.delete(listener);
+        };
+      },
+    }),
+    [formCtxState]
+  );
+
+  return (
+    <TestRouter initialEntries={initialEntries}>
+      <MockedProvider mocks={baseMocks}>
+        <AuthContext.Provider value={authCtxState}>
+          <FormContext.Provider value={value}>
+            <FormView section={section} />
+          </FormContext.Provider>
+        </AuthContext.Provider>
+      </MockedProvider>
+    </TestRouter>
+  );
+};
 
 describe("Accessibility", () => {
   beforeEach(() => {
@@ -330,9 +387,15 @@ describe("Basic Functionality", () => {
       setData: setDataMock,
     };
 
-    const { getByText } = render(<TestParent section="A" formCtxState={formCtxState} />);
+    const { getByText, getByTestId } = render(
+      <TestParent section="A" formCtxState={formCtxState} />
+    );
 
-    userEvent.click(getByText("Save"));
+    const saveButton = getByText("Save").closest("button");
+    fireEvent.input(getByTestId("mock-section"));
+    await waitFor(() => expect(saveButton).toBeEnabled());
+
+    userEvent.click(saveButton);
 
     await waitFor(() => {
       expect(setDataMock).toHaveBeenCalled();
@@ -455,9 +518,15 @@ describe("Implementation Requirements", () => {
       setData: setDataMock,
     };
 
-    const { getByText } = render(<TestParent section="A" formCtxState={formCtxState} />);
+    const { getByText, getByTestId } = render(
+      <TestParent section="A" formCtxState={formCtxState} />
+    );
 
-    userEvent.click(getByText("Save"));
+    const saveButton = getByText("Save").closest("button");
+    fireEvent.input(getByTestId("mock-section"));
+    await waitFor(() => expect(saveButton).toBeEnabled());
+
+    userEvent.click(saveButton);
 
     await waitFor(() => {
       expect(setDataMock).toHaveBeenCalled();
@@ -497,9 +566,15 @@ describe("Implementation Requirements", () => {
       setData: setDataMock,
     };
 
-    const { getByText } = render(<TestParent section="A" formCtxState={formCtxState} />);
+    const { getByText, getByTestId } = render(
+      <TestParent section="A" formCtxState={formCtxState} />
+    );
 
-    userEvent.click(getByText("Save"));
+    const saveButton = getByText("Save").closest("button");
+    fireEvent.input(getByTestId("mock-section"));
+    await waitFor(() => expect(saveButton).toBeEnabled());
+
+    userEvent.click(saveButton);
 
     await waitFor(() => {
       expect(setDataMock).toHaveBeenCalled();
@@ -542,9 +617,15 @@ describe("Implementation Requirements", () => {
       setData: setDataMock,
     };
 
-    const { getByText } = render(<TestParent section="A" formCtxState={newFormState} />);
+    const { getByText, getByTestId } = render(
+      <TestParent section="A" formCtxState={newFormState} />
+    );
 
-    userEvent.click(getByText("Save"));
+    const saveButton = getByText("Save").closest("button");
+    fireEvent.input(getByTestId("mock-section"));
+    await waitFor(() => expect(saveButton).toBeEnabled());
+
+    userEvent.click(saveButton);
 
     await waitFor(() => {
       expect(setDataMock).toHaveBeenCalled();
@@ -554,5 +635,130 @@ describe("Implementation Requirements", () => {
       "The Principal Investigator and Contact section has been successfully saved.",
       { variant: "success" }
     );
+  });
+
+  it("should render a disabled Save button with the no-changes tooltip for a blank new SRF", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+    mockFormObject = null;
+
+    const newFormState = editFormState({
+      data: applicationFactory.build({
+        ...baseFormCtxState.data,
+        _id: "new",
+        status: "New",
+        questionnaireData: { sections: [] } as QuestionnaireData,
+      }),
+    });
+
+    const { getByText } = render(
+      <TestParent
+        section="A"
+        initialEntries={["/submission-request/new/A"]}
+        formCtxState={newFormState}
+      />
+    );
+
+    const saveButton = getByText("Save").closest("button");
+    await waitFor(() => expect(saveButton).toBeDisabled());
+
+    userEvent.hover(saveButton.parentElement);
+
+    await waitFor(() => {
+      expect(within(document.body).getByRole("tooltip")).toHaveTextContent(noChangesTooltip);
+    });
+  });
+
+  it("should render a disabled Save button with tooltip for an existing unchanged SRF", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+    mockFormObject = unchangedFormObject();
+
+    const { getByText } = render(<TestParent section="A" formCtxState={editFormState()} />);
+
+    const saveButton = getByText("Save").closest("button");
+    await waitFor(() => expect(saveButton).toBeDisabled());
+
+    userEvent.hover(saveButton.parentElement);
+
+    await waitFor(() => {
+      expect(within(document.body).getByRole("tooltip")).toHaveTextContent(noChangesTooltip);
+    });
+  });
+
+  it("should enable Save and hide the tooltip once the active section changes", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+    mockFormObject = unchangedFormObject();
+
+    const { getByText, getByTestId, queryByRole } = render(
+      <TestParent section="A" formCtxState={editFormState()} />
+    );
+
+    const saveButton = getByText("Save").closest("button");
+    await waitFor(() => expect(saveButton).toBeDisabled());
+
+    mockFormObject = changedFormObject();
+    fireEvent.input(getByTestId("mock-section"));
+
+    await waitFor(() => expect(saveButton).toBeEnabled());
+
+    userEvent.hover(saveButton.parentElement);
+    await waitFor(() => expect(queryByRole("tooltip")).not.toBeInTheDocument());
+  });
+
+  it("should enable Save for picker/table changes that do not emit bubbling DOM events", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+    mockFormObject = unchangedFormObject();
+
+    const { getByText, getByTestId } = render(
+      <TestParent section="C" formCtxState={editFormState()} />
+    );
+
+    const saveButton = getByText("Save").closest("button");
+    await waitFor(() => expect(saveButton).toBeDisabled());
+
+    mockFormObject = changedFormObject();
+    userEvent.click(getByTestId("mock-picker-change"));
+
+    await waitFor(() => expect(saveButton).toBeEnabled());
+  });
+
+  it("should disable Save again when the active section reverts to its last-saved state", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+    mockFormObject = unchangedFormObject();
+
+    const { getByText, getByTestId } = render(
+      <TestParent section="A" formCtxState={editFormState()} />
+    );
+
+    const saveButton = getByText("Save").closest("button");
+
+    mockFormObject = changedFormObject();
+    fireEvent.input(getByTestId("mock-section"));
+    await waitFor(() => expect(saveButton).toBeEnabled());
+
+    // Revert back to the last-saved state
+    mockFormObject = unchangedFormObject();
+    fireEvent.input(getByTestId("mock-section"));
+    await waitFor(() => expect(saveButton).toBeDisabled());
+
+    userEvent.hover(saveButton.parentElement);
+    await waitFor(() => {
+      expect(within(document.body).getByRole("tooltip")).toHaveTextContent(noChangesTooltip);
+    });
+  });
+
+  it("should show the loading state without a no-changes tooltip while a save is in flight", async () => {
+    mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
+    mockFormObject = changedFormObject();
+
+    const { getByText, queryByRole } = render(
+      <TestParent section="A" formCtxState={editFormState({ status: FormStatus.SAVING })} />
+    );
+
+    const saveButton = getByText("Save").closest("button");
+    await waitFor(() => expect(saveButton).toBeDisabled());
+    expect(within(saveButton).getByRole("progressbar")).toBeInTheDocument();
+
+    userEvent.hover(saveButton.parentElement);
+    await waitFor(() => expect(queryByRole("tooltip")).not.toBeInTheDocument());
   });
 });

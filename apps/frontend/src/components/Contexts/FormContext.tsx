@@ -1,6 +1,15 @@
 import { useLazyQuery, useMutation } from "@apollo/client";
 import { merge, cloneDeep } from "lodash";
-import React, { FC, createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  FC,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { v4 } from "uuid";
 
 import { QuestionnaireDataMigrator } from "@/classes/QuestionnaireDataMigrator";
@@ -49,6 +58,14 @@ export type ContextState = {
   status: Status;
   data: Application;
   formRef: React.RefObject<HTMLFormElement>;
+  /**
+   * Reports that a form field changed.
+   */
+  notifyChange?: () => void;
+  /**
+   * Registers a listener for {@link notifyChange}. Returns an unsubscribe function.
+   */
+  subscribeToChanges?: (listener: () => void) => () => void;
   submitData?: () => Promise<string | boolean>;
   reopenForm?: () => Promise<string | boolean>;
   approveForm?: (data: ApproveFormInput, wholeProgram: boolean) => Promise<SetDataReturnType>;
@@ -121,6 +138,20 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   const [state, setState] = useState<ContextState>(initialState);
   const { user } = useAuthContext();
   const { activeOrganizations, status: programStatus } = useOrganizationListContext();
+
+  const changeListenersRef = useRef<Set<() => void>>(new Set());
+
+  const notifyChange = useCallback(() => {
+    changeListenersRef.current.forEach((listener) => listener());
+  }, []);
+
+  const subscribeToChanges = useCallback((listener: () => void) => {
+    changeListenersRef.current.add(listener);
+
+    return () => {
+      changeListenersRef.current.delete(listener);
+    };
+  }, []);
 
   const [getInstitutions] = useLazyQuery<ListInstitutionsResp, ListInstitutionsInput>(
     LIST_INSTITUTIONS,
@@ -282,11 +313,12 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       const errorMessage = errors?.[0]?.message || "An unknown GraphQL Error occurred";
 
       Logger.error("Unable to save application", errors);
-      setState({
-        ...newState,
+      // Keep the last persisted data to avoid save button disabling after failed save
+      setState((prevState) => ({
+        ...prevState,
         status: Status.ERROR,
         error: errorMessage,
-      });
+      }));
 
       return {
         status: "failed",
@@ -529,6 +561,8 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   const value = useMemo(
     () => ({
       ...state,
+      notifyChange,
+      subscribeToChanges,
       setData,
       submitData,
       approveForm,
@@ -536,7 +570,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       rejectForm,
       reopenForm,
     }),
-    [state]
+    [state, notifyChange, subscribeToChanges]
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
