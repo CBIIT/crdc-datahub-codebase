@@ -2,6 +2,8 @@
  * Recurring step: create DocumentDB indexes declared in INDEXES.
  * Idempotent: skips an index when the same name and key pattern already exist.
  * createIndex throws (and this step fails) when the name exists with a different key pattern.
+ * Missing collections: logs an error, skips remaining indexes for that collection, continues
+ * other collections, and still returns success: false.
  *
  * Usage: Called by the current release migration orchestrator (e.g. 3.7.0)
  */
@@ -80,6 +82,8 @@ const INDEXES = [
 
 /**
  * Creates catalog indexes when missing; no-ops when name and keys already match.
+ * Missing catalog collections are skipped (remaining indexes for that collection too);
+ * other collections still get indexes, but the step returns success: false.
  * @param {import('mongodb').Db} db
  * @returns {Promise<{success: boolean, created: number, skipped: number, error?: string}>}
  */
@@ -87,9 +91,21 @@ async function ensureIndexes(db) {
     console.log('🔄 Ensuring DocumentDB indexes...');
     let created = 0;
     let skipped = 0;
+    const missingCollections = [];
 
     try {
+        const existingNames = new Set(
+            (await db.listCollections({}, { nameOnly: true }).toArray()).map((c) => c.name)
+        );
+
         for (const spec of INDEXES) {
+            if (!existingNames.has(spec.collection)) {
+                if (!missingCollections.includes(spec.collection)) {
+                    missingCollections.push(spec.collection);
+                    console.error(`❌ Collection ${spec.collection} does not exist; skipping its indexes`);
+                }
+                continue;
+            }
             const collection = db.collection(spec.collection);
             const existing = await collection.indexes();
             const match = existing.find((idx) => idx.name === spec.name);
@@ -101,6 +117,13 @@ async function ensureIndexes(db) {
             await collection.createIndex(spec.keys, { name: spec.name });
             created += 1;
             console.log(`   ✅ Created ${spec.collection}.${spec.name}`);
+        }
+
+        if (missingCollections.length > 0) {
+            const error = `Collection does not exist: ${missingCollections.join(', ')}`;
+            console.error('❌ Error ensuring indexes:', error);
+            console.log(`✅ Index ensure completed: ${created} created, ${skipped} skipped`);
+            return { success: false, created, skipped, error };
         }
 
         console.log(`✅ Index ensure completed: ${created} created, ${skipped} skipped`);
