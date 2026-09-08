@@ -86,6 +86,19 @@ describe('getCCEmails', () => {
         expect(result).toEqual(expect.arrayContaining(['contact1@test.com']));
     });
 
+    it('should accept questionnaire data as an object', () => {
+        const application = {
+            questionnaireData: {
+                additionalContacts: [
+                    { email: 'contact1@test.com', receivesEmails: true },
+                    { email: 'contact2@test.com', receivesEmails: false }
+                ]
+            }
+        };
+        const result = getCCEmails('submitter@test.com', application);
+        expect(result).toHaveLength(1);
+        expect(result).toEqual(expect.arrayContaining(['contact1@test.com']));
+    });
 
 
 });
