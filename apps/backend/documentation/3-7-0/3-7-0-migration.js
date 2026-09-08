@@ -9,6 +9,7 @@
  * - backfill-application-sequence-number.js: Backfill Application.sequenceNumber where missing
  * - backfill-submission-submission-request-id.js: Backfill Submission.submissionRequestID from study.applicationID
  * - dedupe-review-comments.js: Clear review comments copied onto "In Revision" events (CRDCDH-3894)
+ * - update-inactive-application-config.js: Set INACTIVE_APPLICATION_DAYS and INACTIVE_APPLICATION_NOTIFY_DAYS defaults
  */
 
 const {
@@ -17,6 +18,7 @@ const {
 } = require('../recurring-steps/migration-utils');
 
 const { executeSyncPbacDefaults } = require('./sync-pbac-defaults-migration');
+const { executeUpdateInactiveApplicationConfig } = require('./update-inactive-application-config');
 const { executeBackfillApplicationSequenceNumber } = require('./backfill-application-sequence-number');
 const { executeBackfillSubmissionRequestID } = require('./backfill-submission-submission-request-id');
 const { executeDedupeReviewComments } = require('./dedupe-review-comments');
@@ -38,6 +40,11 @@ async function orchestrateMigration() {
                 name: 'Sync PBAC defaults from JSON (recurring)',
                 file: 'sync-pbac-defaults-migration.js',
                 execute: () => executeSyncPbacDefaults(db)
+            },
+            {
+                name: 'Update inactive application configuration defaults',
+                file: 'update-inactive-application-config.js',
+                execute: () => executeUpdateInactiveApplicationConfig(db)
             },
             {
                 name: 'Backfill Application.sequenceNumber',
