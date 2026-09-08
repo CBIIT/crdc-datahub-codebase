@@ -2116,9 +2116,19 @@ const getCCEmails = (submitterEmail, application) => {
     if (!questionnaire || !submitterEmail) {
         return [];
     }
-    const CCEmailsSet = new Set([questionnaire?.primaryContact?.email, questionnaire?.pi?.email]
-        .filter((email) => email && email !== submitterEmail && EMAIL_REGEX.test(email)));
-    return Array.from(CCEmailsSet);
+
+    const emails = new Set();
+    // const persons = [...questionnaire?.additionalContacts, questionnaire?.pi, questionnaire?.primaryContact];
+    let contacts = [questionnaire?.pi, questionnaire?.primaryContact];
+    contacts.push(...questionnaire?.additionalContacts ?? []);
+
+    for (const contact of contacts) {
+        // purposely treating missing receivesEmails as true to maintain backwards compatibility with old data
+        if (contact?.receivesEmails !== false && contact?.email && contact?.email !== submitterEmail && EMAIL_REGEX.test(contact?.email)) {
+            emails.add(contact?.email);
+        }
+    }
+    return Array.from(emails);
 }
 
 const sendEmails = {
@@ -2258,5 +2268,6 @@ function logDaysDifference(inactiveDays, accessedAt, applicationID) {
 
 module.exports = {
     Application,
-    VALID_ORDER_BY_LIST_APPLICATIONS
+    VALID_ORDER_BY_LIST_APPLICATIONS,
+    getCCEmails
 };
