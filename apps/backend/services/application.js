@@ -2120,7 +2120,7 @@ const getCCEmails = (submitterEmail, application) => {
     const emails = new Set();
 
     // legacy data
-    if (questionnaire?.primaryContact?.receivesEmails === undefined) {
+    if (questionnaire?.pi?.receivesEmails === undefined) {
         let email = null;
         if (questionnaire?.piAsPrimaryContact) {
             email = questionnaire?.pi?.email 
