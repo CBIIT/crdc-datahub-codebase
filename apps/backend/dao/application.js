@@ -244,7 +244,7 @@ class ApplicationDAO extends GenericDAO {
                         lt: subtractDaysFromNow(inactiveDays),
                     },
                     status: {
-                        in: [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED]
+                        in: [NEW, IN_PROGRESS]
                     },
                     // Tracks whether the notification has already been sent
                     ...(inactiveFlagField ? {[inactiveFlagField]: {not: true}} : {})
