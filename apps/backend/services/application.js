@@ -2118,16 +2118,34 @@ const getCCEmails = (submitterEmail, application) => {
     }
 
     const emails = new Set();
-    // const persons = [...questionnaire?.additionalContacts, questionnaire?.pi, questionnaire?.primaryContact];
-    let contacts = [questionnaire?.pi, questionnaire?.primaryContact];
-    contacts.push(...questionnaire?.additionalContacts ?? []);
 
-    for (const contact of contacts) {
-        // purposely treating missing receivesEmails as true to maintain backwards compatibility with old data
-        if (contact?.receivesEmails !== false && contact?.email && contact?.email !== submitterEmail && EMAIL_REGEX.test(contact?.email)) {
-            emails.add(contact?.email);
+    // legacy data
+    if (questionnaire?.primaryContact?.receivesEmails === undefined) {
+        let email = null;
+        if (questionnaire?.piAsPrimaryContact) {
+            email = questionnaire?.pi?.email 
+        } else if (questionnaire?.primaryContact?.email) {
+            email = questionnaire?.primaryContact?.email;
+        }
+        if (email && email !== submitterEmail && EMAIL_REGEX.test(email)) {
+            emails.add(email);
+        }
+    } else { // new data
+        let contacts = [questionnaire?.pi];
+        if (questionnaire?.primaryContact) {
+            contacts.push(questionnaire?.primaryContact);
+        }
+        if (questionnaire?.additionalContacts && questionnaire?.additionalContacts?.length > 0) {
+            contacts.push(...questionnaire?.additionalContacts);
+        }
+
+        for (const contact of contacts) {
+            if (contact?.receivesEmails === true && contact?.email && contact?.email !== submitterEmail && EMAIL_REGEX.test(contact?.email)) {
+                emails.add(contact?.email);
+            }
         }
     }
+
     return Array.from(emails);
 }
 
