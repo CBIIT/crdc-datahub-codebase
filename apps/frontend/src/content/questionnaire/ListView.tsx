@@ -8,7 +8,7 @@ import ExportApplicationsButton, {
   ExportApplicationsButtonProps,
 } from "@/components/ExportApplicationsButton";
 import ExportTemplateButton from "@/components/ExportTemplateButton";
-import { EditStatuses, extractVersion, FormatDate, Logger } from "@/utils";
+import { EditStatuses, FormatDate, Logger } from "@/utils";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
 import BellIcon from "../../assets/icons/filled_bell_icon.svg?react";
@@ -161,9 +161,10 @@ const columns: Column<T>[] = [
     },
   },
   {
-    label: "Form Version",
-    renderValue: (a) => extractVersion(a.version) || "",
-    field: "version",
+    label: "SRF Version",
+    renderValue: (a) => a.sequenceNumber,
+    field: "sequenceNumber",
+    default: true,
   },
   {
     label: "Submitted Date",
@@ -319,7 +320,8 @@ const ListingView: FC = () => {
     try {
       setLoading(true);
 
-      const { programName, studyName, statuses, submitterName } = filtersRef.current;
+      const { programName, showAllVersions, studyName, statuses, submitterName } =
+        filtersRef.current;
 
       const { data: d, error } = await listApplications({
         variables: {
@@ -327,6 +329,7 @@ const ListingView: FC = () => {
           programName: programName || "All",
           studyName: studyName || undefined,
           statuses,
+          showAllVersions,
           first,
           offset,
           sortDirection,
