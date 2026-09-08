@@ -9,6 +9,24 @@
  * Usage: Called by the 3.7.0 migration orchestrator
  */
 
+import path from 'node:path';
+import { parseArgs } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+import { openDatedConsoleFileMirror } from '../utilities/logging.js';
+import { connectDatabaseFromEnv } from '../utilities/mongo.js';
+
+dotenv.config();
+
+const scriptPath = fileURLToPath(import.meta.url);
+
+const options = {
+    output: {
+        type: 'string'
+    }
+};
+
 const CONFIGURATION_COLLECTION = 'configuration';
 const CONFIG_TYPE = 'SCHEDULED_JOBS';
 const CONFIG_ID = '8e2d00f4-2ac6-4a0d-a453-733cc218b04f';
@@ -111,7 +129,36 @@ async function executeUpdateInactiveApplicationConfig(db) {
     }
 }
 
-module.exports = {
-    updateInactiveApplicationConfig,
-    executeUpdateInactiveApplicationConfig
-};
+async function main() {
+    const { values } = parseArgs({ options, allowPositionals: true });
+    const outputArg = values['output'];
+
+    let logPath;
+    let endConsoleFileMirror = null;
+    if (outputArg) {
+        const out = await openDatedConsoleFileMirror(outputArg);
+        endConsoleFileMirror = out.endConsoleFileMirror;
+        logPath = out.logPath;
+    }
+    if (logPath) {
+        console.log(`Log file: ${logPath}`);
+    }
+
+    const { client, db } = await connectDatabaseFromEnv();
+    try {
+        await executeUpdateInactiveApplicationConfig(db);
+    } finally {
+        await client.close();
+        if (endConsoleFileMirror) {
+            await endConsoleFileMirror();
+        }
+    }
+}
+
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(scriptPath);
+if (isMainModule) {
+    main().catch((err) => {
+        console.error('Fatal:', err);
+        process.exit(1);
+    });
+}
