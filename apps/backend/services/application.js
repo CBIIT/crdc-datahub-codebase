@@ -2248,10 +2248,17 @@ const getUserEmails = (users) => {
 }
 
 const getApplicationQuestionnaire = (aApplication) => {
-    const questionnaire = parseJsonString(aApplication?.questionnaireData);
+    if (typeof aApplication?.questionnaireData === 'string') {
+        const questionnaire = parseJsonString(aApplication?.questionnaireData);
+    } else if (typeof aApplication?.questionnaireData === 'object') {
+        const questionnaire = aApplication?.questionnaireData;
+    } else {
+        console.error('Invalid questionnaire data type', ` id=${aApplication?._id}`);
+        const questionnaire = null;
+    }
+
     if (!questionnaire) {
         console.error(ERROR.FAILED_STORE_APPROVED_STUDIES + ` id=${aApplication?._id}`);
-        return null;
     }
     return questionnaire;
 }
