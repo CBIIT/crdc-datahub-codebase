@@ -12,7 +12,10 @@ describe('getCCEmails', () => {
     });
 
     it('should return an empty array if submitter email is empty', () => {
-        const result = getCCEmails(null, { questionnaire: { primaryContact: { email: 'test@test.com' } } });
+        const application = buildApplication({
+            primaryContact: { email: 'test@test.com' } ,
+        });
+        const result = getCCEmails(null, application);
         expect(result).toEqual([]);
     });
 
@@ -46,7 +49,7 @@ describe('getCCEmails', () => {
     });
 
     it('should not return either pi nor contact email if they are the same as the submitter email', () => {
-        application = buildApplication({
+        const application = buildApplication({
             primaryContact: { email: 'pi@test.com' },
             pi: { email: 'pi@test.com' }
         });
