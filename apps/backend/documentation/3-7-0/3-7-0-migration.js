@@ -10,6 +10,7 @@
  * - backfill-application-sequence-number.js: Backfill Application.sequenceNumber where missing
  * - backfill-submission-submission-request-id.js: Backfill Submission.submissionRequestID from study.applicationID
  * - dedupe-review-comments.js: Clear review comments copied onto "In Revision" events (CRDCDH-3894)
+ * - update-inactive-application-config.js: Set INACTIVE_APPLICATION_DAYS and INACTIVE_APPLICATION_NOTIFY_DAYS defaults
  */
 
 const {

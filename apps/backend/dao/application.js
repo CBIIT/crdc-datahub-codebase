@@ -415,7 +415,7 @@ class ApplicationDAO extends MongooseGenericDAO {
         try {
             const match = {
                 updatedAt: {$lt: subtractDaysFromNow(inactiveDays)},
-                status: {$in: [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED]},
+                status: {$in: [NEW, IN_PROGRESS]},
             };
             if (inactiveFlagField) {
                 match[inactiveFlagField] = {$ne: true};
