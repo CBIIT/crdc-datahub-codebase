@@ -171,23 +171,6 @@ const dataRecordSchema = new mongoose.Schema(
     }
 );
 
-dataRecordSchema.index(
-    { submissionID: 1, nodeType: 1, nodeID: 1 },
-    { name: 'submissionID_nodeType_nodeID' }
-);
-dataRecordSchema.index(
-    { dataCommons: 1, nodeType: 1, nodeID: 1 },
-    { name: 'dataCommons_nodeType_nodeID' }
-);
-dataRecordSchema.index(
-    { submissionID: 1 },
-    { name: 'submissionID_index' }
-);
-dataRecordSchema.index(
-    { studyID: 1, entityType: 1, nodeID: 1 },
-    { name: 'studyID_entityType_nodeID' }
-);
-
 const DataRecordModel =
     mongoose.models.DataRecord || mongoose.model('DataRecord', dataRecordSchema);
 

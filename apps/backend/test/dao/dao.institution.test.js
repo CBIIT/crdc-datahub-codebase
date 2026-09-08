@@ -10,14 +10,15 @@ jest.mock('../../mongoose/models/institution', () => ({
     countDocuments: jest.fn(),
 }));
 jest.mock('../../crdc-datahub-database-drivers/domain/mongo-pagination');
+jest.mock('../../dao/user', () => jest.fn().mockImplementation(() => ({
+    countSubmittersByInstitutionIDs: jest.fn(),
+})));
 
 const InstitutionDAO = require('../../dao/institution');
 const InstitutionModel = require('../../mongoose/models/institution');
 const MongooseGenericDAO = require('../../dao/mongoose-generic');
 const { MongoPagination } = require('../../crdc-datahub-database-drivers/domain/mongo-pagination');
-const { USER_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
 const { INSTITUTION } = require('../../crdc-datahub-database-drivers/constants/organization-constants');
-const USER_CONSTANTS = require('../../crdc-datahub-database-drivers/constants/user-constants');
 
 /**
  * @param {*} resolvedValue
@@ -35,15 +36,15 @@ describe('InstitutionDAO', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         dao = new InstitutionDAO();
-        MongoPagination.mockImplementation(() => ({
+        MongoPagination.mockImplementation((first, offset, orderBy) => ({
             getPaginationPipeline: jest.fn().mockReturnValue([
-                { $sort: { name: 1 } },
-                { $skip: 0 },
-                { $limit: 10 },
+                ...(orderBy ? [{ $sort: { [orderBy]: 1 } }] : []),
+                ...(offset ? [{ $skip: offset }] : []),
+                ...(Number.isInteger(first) && first === -1 ? [] : [{ $limit: first }]),
             ]),
-            getNoLimitPipeline: jest.fn().mockReturnValue([
-                { $sort: { name: 1 } },
-            ]),
+            getNoLimitPipeline: jest.fn().mockReturnValue(
+                orderBy ? [{ $sort: { [orderBy]: 1 } }] : []
+            ),
         }));
     });
 
@@ -54,12 +55,16 @@ describe('InstitutionDAO', () => {
     });
 
     describe('listInstitution', () => {
-        it('should call aggregate without $facet and return institutions with id and _id', async () => {
+        it('should call aggregate without $facet or user $lookup and merge submitter counts', async () => {
             InstitutionModel.aggregate
                 .mockResolvedValueOnce([
-                    { _id: 'inst-1', name: 'Test U', status: INSTITUTION.STATUSES.ACTIVE, submitterCount: 2 },
+                    { _id: 'inst-1', name: 'Test U', status: INSTITUTION.STATUSES.ACTIVE },
+                    { _id: 'inst-2', name: 'Other U', status: INSTITUTION.STATUSES.ACTIVE },
                 ])
-                .mockResolvedValueOnce([{ count: 1 }]);
+                .mockResolvedValueOnce([{ count: 2 }]);
+            dao.userDAO.countSubmittersByInstitutionIDs.mockResolvedValue([
+                { _id: 'inst-1', submitterCount: 2 },
+            ]);
 
             const result = await dao.listInstitution(
                 null, 0, 10, 'name', 'asc', INSTITUTION.STATUSES.ACTIVE
@@ -70,13 +75,13 @@ describe('InstitutionDAO', () => {
             const countPipeline = InstitutionModel.aggregate.mock.calls[1][0];
             expect(resultsPipeline.some((stage) => stage.$facet)).toBe(false);
             expect(countPipeline.some((stage) => stage.$facet)).toBe(false);
+            expect(resultsPipeline.some((stage) => stage.$lookup)).toBe(false);
+            expect(countPipeline.some((stage) => stage.$lookup)).toBe(false);
             expect(resultsPipeline[0]).toEqual({
                 $match: { status: { $in: [INSTITUTION.STATUSES.ACTIVE] } },
             });
-            expect(resultsPipeline[1].$lookup.from).toBe(USER_COLLECTION);
-            expect(resultsPipeline[1].$lookup.pipeline[0].$match.$expr.$and[1]).toEqual({
-                $eq: ['$role', USER_CONSTANTS.USER.ROLES.SUBMITTER],
-            });
+            expect(MongoPagination).toHaveBeenCalledWith(10, 0, 'name', 'asc', true);
+            expect(dao.userDAO.countSubmittersByInstitutionIDs).toHaveBeenCalledWith(['inst-1', 'inst-2']);
             expect(result).toEqual({
                 institutions: [{
                     _id: 'inst-1',
@@ -84,8 +89,14 @@ describe('InstitutionDAO', () => {
                     name: 'Test U',
                     status: INSTITUTION.STATUSES.ACTIVE,
                     submitterCount: 2,
+                }, {
+                    _id: 'inst-2',
+                    id: 'inst-2',
+                    name: 'Other U',
+                    status: INSTITUTION.STATUSES.ACTIVE,
+                    submitterCount: 0,
                 }],
-                total: 1,
+                total: 2,
             });
         });
 
@@ -113,6 +124,41 @@ describe('InstitutionDAO', () => {
             );
 
             expect(result).toEqual({ institutions: [], total: 0 });
+            expect(dao.userDAO.countSubmittersByInstitutionIDs).not.toHaveBeenCalled();
+        });
+
+        it('should count all matches, sort by live submitterCount, then slice', async () => {
+            InstitutionModel.aggregate
+                .mockResolvedValueOnce([
+                    { _id: 'inst-1', name: 'A', status: INSTITUTION.STATUSES.ACTIVE },
+                    { _id: 'inst-2', name: 'B', status: INSTITUTION.STATUSES.ACTIVE },
+                    { _id: 'inst-3', name: 'C', status: INSTITUTION.STATUSES.ACTIVE },
+                ])
+                .mockResolvedValueOnce([{ count: 3 }]);
+            dao.userDAO.countSubmittersByInstitutionIDs.mockResolvedValue([
+                { _id: 'inst-1', submitterCount: 1 },
+                { _id: 'inst-2', submitterCount: 5 },
+                { _id: 'inst-3', submitterCount: 3 },
+            ]);
+
+            const result = await dao.listInstitution(
+                null, 1, 1, 'submitterCount', 'desc', INSTITUTION.STATUSES.ACTIVE
+            );
+
+            expect(MongoPagination).toHaveBeenCalledWith(-1, 0, null, 'desc', false);
+            expect(dao.userDAO.countSubmittersByInstitutionIDs).toHaveBeenCalledWith([
+                'inst-1', 'inst-2', 'inst-3',
+            ]);
+            expect(result).toEqual({
+                institutions: [{
+                    _id: 'inst-3',
+                    id: 'inst-3',
+                    name: 'C',
+                    status: INSTITUTION.STATUSES.ACTIVE,
+                    submitterCount: 3,
+                }],
+                total: 3,
+            });
         });
     });
 

@@ -1,5 +1,7 @@
 # 3.4.0 Migration Execution Guide
 
+**Legacy (reference only).** These migrations already ran in prior releases. Do not execute them against current DocumentDB. Do not update them for new compatibility issues.
+
 ## Overview
 This guide provides the complete execution order and procedures for the 3.4.0 release migrations. All migrations have been updated to be **idempotent** (safe to run multiple times without side effects).
 

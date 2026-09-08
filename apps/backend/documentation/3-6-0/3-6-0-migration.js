@@ -1,10 +1,10 @@
 /**
+ * LEGACY (reference only). Do not execute against current DocumentDB.
+ * Do not update for new compatibility issues.
+ *
  * 3.6.0 Migration Script
  * Node.js migration orchestrator that explicitly calls each migration file
  *
- * Usage: npm run migrate:3.6.0
- *         (or directly: node documentation/3-6-0/3-6-0-migration.js)
- * 
  * Migration files:
  * - create-property-pvs-collection.js: Create propertyPVs MongoDB collection if missing
  * - rename-application-id.js: Rename pendingApplicationID to applicationID in ApprovedStudies
