@@ -1225,7 +1225,9 @@ describe('QcResultService', () => {
                 expect(groupStages[1].$group.count).toEqual({ $sum: 1 });
             }
             expect(countPipeline[countPipeline.length - 1]).toEqual({ $count: "total" });
-            expect(pagePipeline.some((stage) => stage.$sort)).toBe(true);
+            const sortStage = pagePipeline.find((stage) => stage.$sort);
+            expect(sortStage.$sort).toMatchObject({ count: expect.any(Number), _id: 1 });
+            expect(pagePipeline[pagePipeline.length - 1]).toEqual({ $unset: "_id" });
             expect(JSON.stringify(countPipeline)).not.toMatch(/"\$facet"/);
             expect(JSON.stringify(pagePipeline)).not.toMatch(/"\$facet"/);
         });
@@ -1317,10 +1319,20 @@ describe('QcResultService', () => {
             const countPipeline = mockAggregate.mock.calls[0][0];
             const pagePipeline = mockAggregate.mock.calls[1][0];
             expect(countPipeline.some((stage) => stage.$skip || stage.$limit)).toBe(false);
+            expect(countPipeline.some((stage) => stage.$sort || stage.$unset)).toBe(false);
+            const skipIndex = pagePipeline.findIndex((stage) => stage.$skip);
+            const limitIndex = pagePipeline.findIndex((stage) => stage.$limit);
+            const sortIndex = pagePipeline.findIndex((stage) => stage.$sort);
+            const unsetIndex = pagePipeline.findIndex((stage) => stage.$unset === "_id");
             expect(pagePipeline).toEqual(expect.arrayContaining([
                 { $skip: 1 },
                 { $limit: 1 }
             ]));
+            expect(sortIndex).toBeGreaterThan(-1);
+            expect(sortIndex).toBeLessThan(skipIndex);
+            expect(skipIndex).toBeLessThan(limitIndex);
+            expect(limitIndex).toBeLessThan(unsetIndex);
+            expect(pagePipeline[pagePipeline.length - 1]).toEqual({ $unset: "_id" });
         });
     });
 

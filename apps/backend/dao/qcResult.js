@@ -12,6 +12,7 @@ class QCResultDAO extends MongooseGenericDAO {
 
     /**
      * Aggregate QC issues for a submission, grouped by issue type with distinct record counts.
+     * Page sort uses grouped `_id` as a unique tiebreaker so skip/limit is stable across requests.
      * @param {string} submissionID Submission ID
      * @param {string} severity Severity filter (Error, Warning, or All)
      * @param {number} first Page size
@@ -31,7 +32,6 @@ class QCResultDAO extends MongooseGenericDAO {
             ...basePipeline,
             {
                 $project: {
-                    _id: 0,
                     title: "$_id.title",
                     severity: "$_id.severity",
                     code: "$_id.code",
@@ -42,7 +42,8 @@ class QCResultDAO extends MongooseGenericDAO {
             },
             {
                 $sort: {
-                    [orderBy]: getSortDirection(sortDirection)
+                    [orderBy]: getSortDirection(sortDirection),
+                    _id: 1
                 }
             }
         ];
@@ -52,6 +53,7 @@ class QCResultDAO extends MongooseGenericDAO {
         if (first > 0) {
             paginationPipeline.push({ $limit: first });
         }
+        paginationPipeline.push({ $unset: "_id" });
         const [countPipelineResult, paginatedPipelineResult] = await Promise.all([
             this.aggregate(countPipeline),
             this.aggregate(paginationPipeline)
