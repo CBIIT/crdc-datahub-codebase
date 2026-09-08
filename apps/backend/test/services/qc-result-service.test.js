@@ -1196,6 +1196,132 @@ describe('QcResultService', () => {
             expect(result.results).toEqual([]);
             expect(mockAggregate).toHaveBeenCalledTimes(2);
         });
+
+        it('should use two-stage $group without $addToSet of dataRecordID', async () => {
+            mockAggregate
+                .mockResolvedValueOnce([{ total: 1 }])
+                .mockResolvedValueOnce([]);
+
+            await qcResultService.qcResultDAO.aggregatedSubmissionQCResults(
+                "test_submission_id",
+                "error",
+                10,
+                0,
+                "count",
+                "desc"
+            );
+
+            expect(mockAggregate).toHaveBeenCalledTimes(2);
+            expect(mockAggregate).toHaveBeenNthCalledWith(1, expect.any(Array));
+            expect(mockAggregate).toHaveBeenNthCalledWith(2, expect.any(Array));
+
+            const countPipeline = mockAggregate.mock.calls[0][0];
+            const pagePipeline = mockAggregate.mock.calls[1][0];
+            for (const pipeline of [countPipeline, pagePipeline]) {
+                expect(JSON.stringify(pipeline)).not.toMatch(/"\$addToSet"/);
+                const groupStages = pipeline.filter((stage) => stage.$group);
+                expect(groupStages).toHaveLength(2);
+                expect(groupStages[0].$group._id.dataRecordID).toBe("$dataRecordID");
+                expect(groupStages[1].$group.count).toEqual({ $sum: 1 });
+            }
+            expect(countPipeline[countPipeline.length - 1]).toEqual({ $count: "total" });
+            expect(pagePipeline.some((stage) => stage.$sort)).toBe(true);
+            expect(JSON.stringify(countPipeline)).not.toMatch(/"\$facet"/);
+            expect(JSON.stringify(pagePipeline)).not.toMatch(/"\$facet"/);
+        });
+
+        it('should unwind only errors when filtering by error severity', async () => {
+            mockAggregate
+                .mockResolvedValueOnce([{ total: 0 }])
+                .mockResolvedValueOnce([]);
+
+            await qcResultService.qcResultDAO.aggregatedSubmissionQCResults(
+                "test_submission_id",
+                "error",
+                10,
+                0,
+                "count",
+                "desc"
+            );
+
+            const pagePipeline = mockAggregate.mock.calls[1][0];
+            const unwindPaths = pagePipeline
+                .filter((stage) => stage.$unwind)
+                .map((stage) => stage.$unwind.path);
+            expect(unwindPaths).toEqual(["$errors"]);
+            const serialized = JSON.stringify(pagePipeline);
+            expect(serialized).not.toContain("$warnings");
+            expect(serialized).not.toContain("$issues");
+        });
+
+        it('should unwind only warnings when filtering by warning severity', async () => {
+            mockAggregate
+                .mockResolvedValueOnce([{ total: 0 }])
+                .mockResolvedValueOnce([]);
+
+            await qcResultService.qcResultDAO.aggregatedSubmissionQCResults(
+                "test_submission_id",
+                "warning",
+                10,
+                0,
+                "count",
+                "desc"
+            );
+
+            const pagePipeline = mockAggregate.mock.calls[1][0];
+            const unwindPaths = pagePipeline
+                .filter((stage) => stage.$unwind)
+                .map((stage) => stage.$unwind.path);
+            expect(unwindPaths).toEqual(["$warnings"]);
+            const serialized = JSON.stringify(pagePipeline);
+            expect(serialized).not.toContain("$errors");
+            expect(serialized).not.toContain("$issues");
+        });
+
+        it('should concat errors and warnings when severity is unfiltered', async () => {
+            mockAggregate
+                .mockResolvedValueOnce([{ total: 0 }])
+                .mockResolvedValueOnce([]);
+
+            await qcResultService.qcResultDAO.aggregatedSubmissionQCResults(
+                "test_submission_id",
+                null,
+                10,
+                0,
+                "count",
+                "desc"
+            );
+
+            const pagePipeline = mockAggregate.mock.calls[1][0];
+            const unwindPaths = pagePipeline
+                .filter((stage) => stage.$unwind)
+                .map((stage) => stage.$unwind.path);
+            expect(unwindPaths).toEqual(["$issues"]);
+            expect(JSON.stringify(pagePipeline)).toMatch(/"\$concatArrays"/);
+        });
+
+        it('should apply skip and limit on the page pipeline only', async () => {
+            mockAggregate
+                .mockResolvedValueOnce([{ total: 3 }])
+                .mockResolvedValueOnce([]);
+
+            await qcResultService.qcResultDAO.aggregatedSubmissionQCResults(
+                "test_submission_id",
+                "error",
+                1,
+                1,
+                "count",
+                "desc"
+            );
+
+            const countPipeline = mockAggregate.mock.calls[0][0];
+            const pagePipeline = mockAggregate.mock.calls[1][0];
+            expect(countPipeline.some((stage) => stage.$skip || stage.$limit)).toBe(false);
+            expect(pagePipeline).toEqual(expect.arrayContaining([
+                { $skip: 1 },
+                { $limit: 1 }
+            ]));
+        });
     });
 
     describe('_getUserScope', () => {
