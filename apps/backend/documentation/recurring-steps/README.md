@@ -8,6 +8,7 @@ Do not run these scripts standalone unless debugging; use the version orchestrat
 
 | File | Purpose |
 |------|---------|
+| `ensure-indexes.js` | Create DocumentDB indexes from a catalog when missing (`background: true`). Same name and keys is a no-op; same keys under a different name logs a warning and skips. Missing collections are logged and skipped (not created). Startup waits for this step, then listens even if some indexes failed. |
 | `sync-pbac-defaults.js` | Insert or overwrite PBAC defaults from `resources/json/PBACDefaults_config.json` into Mongo `configuration` when JSON version is higher |
 | `migration-utils.js` | Shared MongoDB connection helpers for orchestrators |
 
