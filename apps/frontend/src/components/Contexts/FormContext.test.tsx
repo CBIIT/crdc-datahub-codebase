@@ -3,6 +3,7 @@ import { GraphQLError } from "graphql";
 import React, { FC } from "react";
 
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
+import { piFactory } from "@/factories/application/PIFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
@@ -181,10 +182,12 @@ describe("FormContext > FormProvider Tests", () => {
               _id: "556ac14a-f247-42e8-8878-8468060fb49a",
               questionnaireData: questionnaireDataFactory.build({
                 sections: [{ name: "A", status: "In Progress" }],
-                pi: {
+                pi: piFactory.build({
+                  address: "Successfully Fetched Address",
+                  position: "Successfully Fetched Position",
                   firstName: "Successfully",
                   lastName: "Fetched",
-                },
+                }),
               }),
             },
           },
