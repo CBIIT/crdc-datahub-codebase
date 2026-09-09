@@ -122,7 +122,7 @@ let config = {
             ...config,
             inactive_user_days : inactiveUserDaysConf || (process.env.INACTIVE_USER_DAYS || 60),
             remind_application_days: remindApplicationDaysConf || (process.env.REMIND_APPLICATION_DAYS || 165),
-            inactive_application_days : inactiveApplicationDaysConf || (process.env.INACTIVE_APPLICATION_DAYS || 180),
+            inactive_application_days : inactiveApplicationDaysConf || (process.env.INACTIVE_APPLICATION_DAYS || 60),
             inactive_new_application_days : inactiveNewApplicationDaysConf || (process.env.INACTIVE_NEW_APPLICATION_DAYS || 30),
             // Email settings
             email_transport: getTransportConfig(emailSmtpHostConf, emailSmtpPortConf, emailSmtpUserConf, emailSmtpPasswordConf),
@@ -154,7 +154,7 @@ let config = {
             completed_submission_days: completedSubmissionDaysConf || (process.env.COMPLETED_RETENTION_DAYS || 30),
             dashboardSessionTimeout: dashboardSessionTimeoutConf || (process.env.DASHBOARD_SESSION_TIMEOUT || 3600), // 60 minutes by default
             inactiveSubmissionNotifyDays: inactiveSubmissionNotifyDaysConf || [7, 30, 60],
-            inactiveApplicationNotifyDays: inactiveApplicationNotifyDaysConf || [7, 15, 30], // 7, 15, 30 days by default
+            inactiveApplicationNotifyDays: inactiveApplicationNotifyDaysConf || [15, 30], // 15, 30 days by default
             conditionalSubmissionContact: submissionRequestEmailConf || "NCICRDC@mail.nih.gov",
             submissionGuideUrl: submissionGuideURLConf || "https://datacommons.cancer.gov/data-submission-instructions",
             scheduledJobTime: scheduledJobTime || "1 0 1 * * *"
