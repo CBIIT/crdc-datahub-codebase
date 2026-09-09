@@ -36,6 +36,7 @@ const VALID_ORDER_BY_LIST_APPLICATIONS = [
     "studyAbbreviation",
     "status",
     "version",
+    "sequenceNumber",
     "createdAt",
     "updatedAt",
     "submittedDate"
@@ -717,6 +718,12 @@ class Application {
         return res;
     }
 
+    /**
+     * Validates listApplications filter, pagination, sort, and showAllVersions.
+     * @param {object} params GraphQL listApplications arguments
+     * @returns {{orderBy: string, sortDirection: string, showAllVersions: boolean}}
+     * @throws {Error} LIST_APPLICATIONS_INVALID_PARAMS or APPLICATION_INVALID_STATUSES
+     */
     _validateListApplicationsParams(params) {
         // Validate statuses, case insensitive
         const validStatusesLower = new Set(this._VALID_LIST_APPLICATION_STATUSES.map(s => String(s).toLowerCase()));
@@ -772,13 +779,25 @@ class Application {
                 throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
             }
         }
-        return { orderBy, sortDirection };
+        // Validate showAllVersions: omitted/null defaults to false (latest-only). Must be boolean when provided.
+        const showAllVersionsParam = params?.showAllVersions;
+        let showAllVersions = false;
+        if (showAllVersionsParam !== undefined && showAllVersionsParam !== null) {
+            if (typeof showAllVersionsParam !== "boolean") {
+                console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { showAllVersions: showAllVersionsParam });
+                throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
+            }
+            showAllVersions = showAllVersionsParam;
+        }
+        return { orderBy, sortDirection, showAllVersions };
     }
 
     /**
      * Lists submission requests with filters, pagination, and facet values.
+     * When showAllVersions is false, only revision-chain tails (no nextRevisionId) are returned.
      * Computes canBeReopened and canBeRestored per row from revision-chain rules.
      * @param {object} params Filter, pagination, and sort parameters
+     * @param {boolean} [params.showAllVersions=false] When true, return every matching SRF; when false, only latest in each chain
      * @param {object} context Request context with userInfo
      * @returns {Promise<object>} applications, total, programs, studies, and filter facets
      */
@@ -806,7 +825,7 @@ class Application {
             };
         }
 
-        const { orderBy, sortDirection } = this._validateListApplicationsParams(params);
+        const { orderBy, sortDirection, showAllVersions } = this._validateListApplicationsParams(params);
 
         // Statuses filter: ignored if input is falsy, empty array, or contains "All" (case-insensitive).
         const statusesParam = params?.statuses;
@@ -829,6 +848,7 @@ class Application {
                 offset: params?.offset,
                 orderBy,
                 sortDirection,
+                showAllVersions,
             });
         } catch (err) {
             console.error(ERROR.LIST_APPLICATIONS_FETCH_FAILED, err);

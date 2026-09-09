@@ -1225,6 +1225,39 @@ describe('Application', () => {
                 .rejects.toThrow(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
         });
 
+        it('passes showAllVersions false to the DAO by default', async () => {
+            await app.listApplications({}, context);
+            expect(app.applicationDAO.listApplicationsWithFacets).toHaveBeenCalledWith(
+                expect.objectContaining({ showAllVersions: false })
+            );
+        });
+
+        it('passes showAllVersions false when the argument is null', async () => {
+            await app.listApplications({ showAllVersions: null }, context);
+            expect(app.applicationDAO.listApplicationsWithFacets).toHaveBeenCalledWith(
+                expect.objectContaining({ showAllVersions: false })
+            );
+        });
+
+        it('passes showAllVersions true to the DAO when requested', async () => {
+            await app.listApplications({ showAllVersions: true }, context);
+            expect(app.applicationDAO.listApplicationsWithFacets).toHaveBeenCalledWith(
+                expect.objectContaining({ showAllVersions: true })
+            );
+        });
+
+        it('throws LIST_APPLICATIONS_INVALID_PARAMS for non-boolean showAllVersions', async () => {
+            await expect(app.listApplications({ showAllVersions: 'true' }, context))
+                .rejects.toThrow(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
+        });
+
+        it('accepts orderBy sequenceNumber', async () => {
+            await app.listApplications({ orderBy: 'sequenceNumber', sortDirection: 'DESC' }, context);
+            expect(app.applicationDAO.listApplicationsWithFacets).toHaveBeenCalledWith(
+                expect.objectContaining({ orderBy: 'sequenceNumber', sortDirection: 'DESC' })
+            );
+        });
+
         it('returns applications and aggregations when DAO list is mocked', async () => {
             const result = await app.listApplications({}, context);
             expect(result).toHaveProperty('applications');
