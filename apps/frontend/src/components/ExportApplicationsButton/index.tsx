@@ -91,6 +91,7 @@ const ExportApplicationsButton: FC<ExportApplicationsButtonProps> = ({
         Program: application.programName || "N/A",
         Study: application.studyAbbreviation || "N/A",
         Status: application.status,
+        "SRF Version": application.sequenceNumber,
         "Form Version": application.version,
         "Submitted Date": FormatDate(application.submittedDate, "M/D/YYYY h:mm A"),
         "Last Updated Date": FormatDate(application.updatedAt, "M/D/YYYY h:mm A"),

@@ -2,7 +2,9 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import {
   Backdrop,
   Box,
+  Checkbox,
   FormControl,
+  FormControlLabel,
   Grid,
   IconButton,
   InputAdornment,
@@ -28,7 +30,7 @@ import { isStringLengthBetween } from "../../utils";
 
 export type FilterForm = Pick<
   ListApplicationsInput,
-  "programName" | "studyName" | "statuses" | "submitterName"
+  "programName" | "studyName" | "statuses" | "submitterName" | "showAllVersions"
 >;
 
 export type FilterProps = {
@@ -53,6 +55,15 @@ const StyledInlineLabel = styled("label")({
   fontSize: "16px",
   lineHeight: "16px",
   textAlign: "right",
+});
+
+const StyledShowAllVersions = styled(FormControlLabel)({
+  margin: "0 32px 0 0",
+  whiteSpace: "nowrap",
+  "& .MuiFormControlLabel-label": {
+    fontWeight: 700,
+    fontSize: "16px",
+  },
 });
 
 const StyledSelect = styled(StyledSelectFormComponent)({
@@ -103,6 +114,7 @@ type TouchedState = { [K in FilterFormKey]: boolean };
 
 const initialTouchedFields: TouchedState = {
   programName: false,
+  showAllVersions: false,
   statuses: false,
   studyName: false,
   submitterName: false,
@@ -128,6 +140,7 @@ export const FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED: ApplicationStatus[] = [
 
 export const getDefaultFilterValues = (role?: UserRole | null): FilterForm => ({
   programName: "All",
+  showAllVersions: false,
   studyName: "",
   statuses:
     role === "Federal Lead" ? FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED : DEFAULT_STATUSES_SELECTED,
@@ -145,6 +158,7 @@ const MIN_LENGTHS: { [K in keyof FilterForm]: number } = {
   studyName: 3,
   submitterName: 3,
   programName: 0,
+  showAllVersions: 0,
   statuses: 0,
 };
 
@@ -203,21 +217,26 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
     onChange: handleFormChange,
   });
 
-  const [programNameFilter, studyNameFilter, statusesFilter, submitterNameFilter] = watch([
-    "programName",
-    "studyName",
-    "statuses",
-    "submitterName",
-  ]);
+  const [
+    programNameFilter,
+    showAllVersionsFilter,
+    studyNameFilter,
+    statusesFilter,
+    submitterNameFilter,
+  ] = watch(["programName", "showAllVersions", "studyName", "statuses", "submitterName"]);
 
   useEffect(() => {
     const programName = searchParams.get("programName");
+    const showAllVersions = searchParams.get("showAllVersions") === "true";
     const studyName = searchParams.get("studyName");
     const statuses = searchParams.getAll("statuses");
     const submitterName = searchParams.get("submitterName");
 
     if (programName && programName !== getValues("programName")) {
       setValue("programName", programName);
+    }
+    if (showAllVersions !== getValues("showAllVersions")) {
+      setValue("showAllVersions", showAllVersions);
     }
     if (studyName && studyName !== getValues("studyName")) {
       setValue("studyName", studyName);
@@ -243,6 +262,12 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
       newSearchParams.set("programName", programNameFilter);
     } else {
       newSearchParams.delete("programName");
+    }
+
+    if (showAllVersionsFilter) {
+      newSearchParams.set("showAllVersions", "true");
+    } else {
+      newSearchParams.delete("showAllVersions");
     }
 
     if (statusesFilter && statusesFilter.length > 0) {
@@ -273,6 +298,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
     }
   }, [
     programNameFilter,
+    showAllVersionsFilter,
     studyNameFilter,
     statusesFilter,
     submitterNameFilter,
@@ -289,6 +315,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
   const handleResetFilters = () => {
     const newSearchParams = new URLSearchParams(searchParams);
     newSearchParams.delete("programName");
+    newSearchParams.delete("showAllVersions");
     newSearchParams.delete("studyName");
     newSearchParams.delete("statuses");
     newSearchParams.delete("submitterName");
@@ -306,6 +333,28 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
   return (
     <StyledContainer>
       <Stack direction="row" alignItems="center">
+        <Controller
+          name="showAllVersions"
+          control={control}
+          render={({ field }) => (
+            <StyledShowAllVersions
+              label="Show All Versions"
+              control={
+                <Checkbox
+                  {...field}
+                  checked={field.value}
+                  data-testid="show-all-versions-checkbox"
+                  onChange={(event) => {
+                    const showAllVersions = event.target.checked;
+                    field.onChange(showAllVersions);
+                    handleFilterChange("showAllVersions");
+                    handleFormChange({ ...getValues(), showAllVersions });
+                  }}
+                />
+              }
+            />
+          )}
+        />
         <Grid container>
           <Grid item xs={3}>
             <StyledFormControl>

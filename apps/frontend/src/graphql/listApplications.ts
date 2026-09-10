@@ -7,6 +7,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
     $studyName: String
     $statuses: [String]
     $submitterName: String
+    $showAllVersions: Boolean
     $first: Int
     $offset: Int
     $orderBy: String
@@ -17,6 +18,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
       studyName: $studyName
       statuses: $statuses
       submitterName: $submitterName
+      showAllVersions: $showAllVersions
       first: $first
       offset: $offset
       orderBy: $orderBy
@@ -40,6 +42,7 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         conditional
         pendingConditions
         version
+        sequenceNumber
         nextRevisionId
         canBeReopened
         canBeRestored
@@ -55,6 +58,7 @@ export type Input = {
   studyName: string;
   statuses: ApplicationStatus[];
   submitterName: string;
+  showAllVersions: boolean;
   first: number;
   offset: number;
   orderBy: string;

@@ -560,7 +560,7 @@ describe("ListView Component", () => {
     });
   });
 
-  it("uses Last Updated Date as the default sort key", async () => {
+  it("uses SRF Version as the default sort key", async () => {
     const variableMatcher = vi.fn().mockReturnValue(true);
 
     const listApplicationsMock: MockedResponse<ListApplicationsResp, ListApplicationsInput> = {
@@ -592,7 +592,7 @@ describe("ListView Component", () => {
 
     expect(variableMatcher).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderBy: "updatedAt",
+        orderBy: "sequenceNumber",
       })
     );
   });

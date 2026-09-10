@@ -201,6 +201,7 @@ describe("Basic Functionality", () => {
           scope={{
             orderBy: "createdAt",
             programName: "a program",
+            showAllVersions: true,
             sortDirection: "asc",
             statuses: ["Approved"],
             studyName: "study xyz",
@@ -217,6 +218,7 @@ describe("Basic Functionality", () => {
         expect.objectContaining({
           orderBy: "createdAt",
           programName: "a program",
+          showAllVersions: true,
           sortDirection: "asc",
           statuses: ["Approved"],
           studyName: "study xyz",
@@ -352,6 +354,8 @@ describe("Implementation Requirements", () => {
     });
 
     const csvContent = mockDownloadBlob.mock.calls[0][0];
+    expect(csvContent).toContain("SRF Version");
+    expect(csvContent).toContain("Form Version");
     expect(csvContent).toContain("- mock-pending-cond1");
     expect(csvContent).toContain("- mock-pending-cond2");
     expect(csvContent).toContain("- mock-pending-cond3");
