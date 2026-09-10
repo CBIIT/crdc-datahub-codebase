@@ -1736,10 +1736,8 @@ class Application {
         }
     }
 
-
-
     async _getApplicant(application) {
-        const applicants = await this.userService.userCollection.find(application?.applicantID);
+        const applicants = await this.userService.findByID(application?.applicantID);
         return applicants?.pop();
     }
 
