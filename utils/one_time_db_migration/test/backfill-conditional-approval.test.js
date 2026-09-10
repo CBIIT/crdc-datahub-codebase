@@ -4,7 +4,7 @@ import { test, afterEach } from 'node:test';
 import {
     removePendingClearedNotification,
     backfillConditionalApprovalNotifications,
-} from '../scripts/backfill-conditional-approval.js';
+} from '../scripts/backfill-conditional-approval-noficications.js';
 
 let restoreConsole = null;
 
