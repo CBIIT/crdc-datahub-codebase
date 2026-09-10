@@ -12,6 +12,7 @@ import React, { FC, useEffect, useState, useRef } from "react";
 import dropdownArrowsIcon from "../../assets/icons/dropdown_arrows.svg?url";
 import { fileTypeExtensions } from "../../config/FileTypeConfig";
 import useFormMode from "../../hooks/useFormMode";
+import { useFormContext } from "../Contexts/FormContext";
 
 const DropdownArrowsIcon = styled("div")(() => ({
   backgroundImage: `url("${dropdownArrowsIcon}")`,
@@ -134,6 +135,7 @@ const TableAutocompleteInput: FC<Props> = ({
   ...rest
 }) => {
   const { readOnlyInputs } = useFormMode();
+  const { notifyChange } = useFormContext();
 
   const [typeVal, setTypeVal] = useState(typeValue);
   const [extensionVal, setExtensionVal] = useState(extensionValue);
@@ -176,6 +178,7 @@ const TableAutocompleteInput: FC<Props> = ({
     }
 
     setTypeVal(v);
+    notifyChange?.();
   };
   const onExtensionValChangeWrapper = (e, v, r) => {
     setShowFileExtensionError(false);
@@ -190,6 +193,7 @@ const TableAutocompleteInput: FC<Props> = ({
     }
 
     setExtensionVal(v);
+    notifyChange?.();
   };
   const typeTextInputOnChange = (r) => {
     onTypeValChangeWrapper(null, r.target.value, null);

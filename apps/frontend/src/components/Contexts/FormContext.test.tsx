@@ -1153,6 +1153,8 @@ describe("saveApp Tests", () => {
       expect(result.current.status).toEqual(FormStatus.LOADED);
     });
 
+    const persistedData = result.current.data;
+
     await act(async () => {
       const saveResp = await result.current.setData(questionnaireDataFactory.build());
       expect(saveResp.status).toEqual("failed");
@@ -1160,6 +1162,12 @@ describe("saveApp Tests", () => {
 
     expect(result.current.status).toEqual(FormStatus.ERROR);
     expect(result.current.error).toEqual("Test SaveApplication GraphQL error");
+
+    // The unsaved data must not become the baseline for the save
+    expect(result.current.data).toBe(persistedData);
+    expect(result.current.data.questionnaireData.sections).toEqual([
+      { name: "A", status: "In Progress" },
+    ]);
   });
 
   it("should skip the API call if opts.skipSave is set", async () => {
@@ -1658,5 +1666,134 @@ describe("saveApp Tests", () => {
         }),
       })
     );
+  });
+});
+
+describe("notifyChange Tests", () => {
+  const getAppMock: MockedResponse<GetAppResp> = {
+    request: {
+      query: GET_APP,
+    },
+    variableMatcher: () => true,
+    result: {
+      data: {
+        getApplication: {
+          ...baseApplication,
+          questionnaireData: JSON.stringify(
+            questionnaireDataFactory.build({
+              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+            })
+          ),
+        },
+      },
+    },
+  };
+
+  it("should provide a notifyChange and subscribeToChanges function", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    expect(typeof result.current.notifyChange).toEqual("function");
+    expect(typeof result.current.subscribeToChanges).toEqual("function");
+  });
+
+  it("should call every subscriber when notifyChange is called", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    const firstListener = vi.fn();
+    const secondListener = vi.fn();
+
+    act(() => {
+      result.current.subscribeToChanges(firstListener);
+      result.current.subscribeToChanges(secondListener);
+      result.current.notifyChange();
+    });
+
+    expect(firstListener).toHaveBeenCalledTimes(1);
+    expect(secondListener).toHaveBeenCalledTimes(1);
+  });
+
+  it("should stop calling a subscriber after it unsubscribes", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    const listener = vi.fn();
+    let unsubscribe: () => void;
+
+    act(() => {
+      unsubscribe = result.current.subscribeToChanges(listener);
+      result.current.notifyChange();
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      unsubscribe();
+      result.current.notifyChange();
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("should not rerender consumers when notifyChange is called", async () => {
+    const renderSpy = vi.fn();
+
+    const { result } = renderHook(
+      () => {
+        renderSpy();
+        return useFormContext();
+      },
+      {
+        wrapper: ({ children }) => (
+          <TestParent mocks={[getAppMock]} appId="mock-app-id">
+            {children}
+          </TestParent>
+        ),
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    const { notifyChange, subscribeToChanges } = result.current;
+    const rendersBeforeNotify = renderSpy.mock.calls.length;
+
+    act(() => {
+      result.current.notifyChange();
+      result.current.notifyChange();
+    });
+
+    expect(renderSpy).toHaveBeenCalledTimes(rendersBeforeNotify);
+    expect(result.current.notifyChange).toBe(notifyChange);
+    expect(result.current.subscribeToChanges).toBe(subscribeToChanges);
   });
 });

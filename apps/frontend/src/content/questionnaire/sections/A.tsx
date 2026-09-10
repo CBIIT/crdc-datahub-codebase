@@ -60,7 +60,7 @@ const HiddenField = styled("input")({
  * @returns {JSX.Element}
  */
 const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSectionProps) => {
-  const { status, data: applicationData, formRef } = useFormContext();
+  const { status, data: applicationData, formRef, notifyChange } = useFormContext();
   const data = applicationData?.questionnaireData;
 
   const { data: institutionList } = useAggregatedInstitutions();
@@ -87,9 +87,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
     const newValue = !piAsPrimaryContact;
     setPiAsPrimaryContact(newValue);
     setPrimaryContact(cloneDeep(InitialQuestionnaire.primaryContact));
-    if (newValue) {
-      setPIReceivesEmails(true);
-    }
+    setPIReceivesEmails(newValue ? true : data?.pi?.receivesEmails || false);
   };
 
   const getFormObject = (): FormObject | null => {
@@ -127,10 +125,12 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         receivesEmails: false,
       },
     ]);
+    notifyChange?.();
   };
 
   const removeContact = (key: string) => {
     setAdditionalContacts((prev) => prev.filter((c) => c.key !== key));
+    notifyChange?.();
   };
 
   const handlePIInstitutionChange = (value: string) => {
