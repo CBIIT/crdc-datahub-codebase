@@ -198,6 +198,7 @@
             "_id": "submission_request:pending_dbgapid",
             "group": "Submission Request Emails",
             "name": "Pending on dbGaPID",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.1,
             "checked": false,
             "disabled": false
@@ -206,6 +207,7 @@
             "_id": "submission_request:pending_model_update",
             "group": "Submission Request Emails",
             "name": "Pending on model update",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.2,
             "checked": false,
             "disabled": false
@@ -214,6 +216,7 @@
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
             "name": "Pending on image de-identification",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.3,
             "checked": false,
             "disabled": false
@@ -568,6 +571,7 @@
             "_id": "submission_request:pending_dbgapid",
             "group": "Submission Request Emails",
             "name": "Pending on dbGaPID",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.1,
             "checked": false,
             "disabled": false
@@ -576,6 +580,7 @@
             "_id": "submission_request:pending_model_update",
             "group": "Submission Request Emails",
             "name": "Pending on model update",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.2,
             "checked": false,
             "disabled": false
@@ -584,6 +589,7 @@
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
             "name": "Pending on image de-identification",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.3,
             "checked": false,
             "disabled": false
@@ -937,6 +943,7 @@
             "_id": "submission_request:pending_dbgapid",
             "group": "Submission Request Emails",
             "name": "Pending on dbGaPID",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.1,
             "checked": false,
             "disabled": false
@@ -945,6 +952,7 @@
             "_id": "submission_request:pending_model_update",
             "group": "Submission Request Emails",
             "name": "Pending on model update",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.2,
             "checked": false,
             "disabled": false
@@ -953,6 +961,7 @@
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
             "name": "Pending on image de-identification",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.3,
             "checked": false,
             "disabled": false
@@ -1306,6 +1315,7 @@
             "_id": "submission_request:pending_dbgapid",
             "group": "Submission Request Emails",
             "name": "Pending on dbGaPID",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.1,
             "checked": true,
             "disabled": true
@@ -1314,6 +1324,7 @@
             "_id": "submission_request:pending_model_update",
             "group": "Submission Request Emails",
             "name": "Pending on model update",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.2,
             "checked": true,
             "disabled": true
@@ -1322,6 +1333,7 @@
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
             "name": "Pending on image de-identification",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.3,
             "checked": true,
             "disabled": true
@@ -1673,6 +1685,7 @@
             "_id": "submission_request:pending_dbgapid",
             "group": "Submission Request Emails",
             "name": "Pending on dbGaPID",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.1,
             "checked": true,
             "disabled": true
@@ -1681,6 +1694,7 @@
             "_id": "submission_request:pending_model_update",
             "group": "Submission Request Emails",
             "name": "Pending on model update",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.2,
             "checked": true,
             "disabled": true
@@ -1689,6 +1703,7 @@
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
             "name": "Pending on image de-identification",
+            "inherited": ["submission_request:conditionally_approved"],
             "order": 4.3,
             "checked": true,
             "disabled": true
