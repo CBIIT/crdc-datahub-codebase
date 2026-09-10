@@ -1667,7 +1667,8 @@ class Application {
 
     async _sendConditionallyApprovedEmail(application, comment, isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification) {
         const applicant = await this._getApplicant(application);
-        const [applicantEmail, cCEmails, notUsedEmails] = await this._getRecipientEmails(application, applicant, [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED]);
+        const applicantEmail = applicant?.email;
+        const cCEmails = getCCEmails(applicantEmail, application);
         const bCCUsers = await this._getUsersWithNotifications(requiredNotifications, INTERNAL_USERS_ROLES)
 
         const pendingTemplateParams = {
