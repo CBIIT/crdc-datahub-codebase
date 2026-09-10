@@ -45,7 +45,5 @@ export type GetAppInput = {
 };
 
 export type Response = {
-  getApplication: Omit<Application, "questionnaireData"> & {
-    questionnaireData: string; // Cast to QuestionnaireData
-  };
+  getApplication: Application;
 };
