@@ -42,6 +42,8 @@ const VALID_ORDER_BY_LIST_APPLICATIONS = [
 ];
 const TERMINAL_REVISION_STATUSES = Object.freeze([REJECTED, CANCELED, DELETED]);
 
+const INTERNAL_USERS_ROLES = Object.freeze([ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]);
+
 class Application {
     _DELETE_REVIEW_COMMENT="This Submission Request has been deleted by the system due to inactivity.";
     _ALL_FILTER="All";
@@ -1645,7 +1647,7 @@ class Application {
 
     async _sendFullApprovalEmail(application, comment) {
         const applicant = await this._getApplicant(application);
-        const [applicantEmail, cCEmails, bCCEmails] = this._getRecipientEmails(application, applicant, [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW]);
+        const [applicantEmail, cCEmails, bCCEmails] = await this._getRecipientEmails(application, applicant, [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW]);
 
         if (applicant?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
             await this.notificationService.approveQuestionNotification(applicantEmail,
@@ -1665,7 +1667,8 @@ class Application {
 
     async _sendConditionallyApprovedEmail(application, comment, isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification) {
         const applicant = await this._getApplicant(application);
-        const [applicantEmail, cCEmails, bCCEmails] = this._getRecipientEmails(application, applicant, [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED]);
+        const [applicantEmail, cCEmails, bCCEmails] = await this._getRecipientEmails(application, applicant, [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED]);
+        const bCCUsers = await this._getUsersWithNotifications(requiredNotifications, INTERNAL_USERS_ROLES)
 
         const pendingTemplateParams = {
             firstName: applicant?.firstName,
@@ -1730,15 +1733,18 @@ class Application {
         return applicants?.pop();
     }
 
-    _getRecipientEmails(application, applicant, requiredNotifications) {
-        const bCCUsers = await this.userService.getUsersByNotifications(requiredNotifications,
-                [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN])
+    async _getRecipientEmails(application, applicant, requiredNotifications) {
+        const bCCUsers = await this._getUsersWithNotifications(requiredNotifications, INTERNAL_USERS_ROLES)
 
         const applicantEmail = applicant?.email;
         const cCEmails = getCCEmails(applicantEmail, application);
         const bCCEmails = getUserEmails(bCCUsers)
             ?.filter((email) => !cCEmails.includes(email) && applicantEmail !== email);
         return [applicantEmail, cCEmails, bCCEmails];
+    }
+
+    async _getUsersWithNotifications(requiredNotifications, roles) {
+        const bCCUsers = await this.userService.getUsersByNotifications(requiredNotifications, roles)
     }
 
     async _cancelApplicationEmailInfo(application) {
