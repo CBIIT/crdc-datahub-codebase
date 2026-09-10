@@ -1639,10 +1639,13 @@ class Application {
         const res = await Promise.all([
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
-            this.userService.findByID(application?.applicantID)
+            this.userService.userCollection.find(application?.applicantID),
+            this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED],
+                [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
         ]);
 
-        const [toBCCUsers, applicantInfo] = res;
+        const [toBCCUsers, applicant, condApprBCCUsers] = res;
+        const applicantInfo = applicant?.pop();
         const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
         const toBCCEmails = getUserEmails(toBCCUsers)
             ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
