@@ -189,29 +189,33 @@ class ApplicationDAO extends MongooseGenericDAO {
     /**
      * Update an application by document payload containing _id or id.
      * @param {object} application Application fields to update
+     * @param {boolean} [timestamps=true] When false, Mongoose does not bump `updatedAt`
      * @returns {Promise<object>}
      */
-    async update(application) {
+    async update(application, timestamps = true) {
         if (!application?._id && !application?.id) {
             throw new Error('Application must have an _id or id');
         }
         const updateData = this._sanitizeApplicationUpdateData(application);
-        return await super.update(application._id ?? application.id, updateData);
+        return await super.update(application._id ?? application.id, updateData, timestamps);
     }
 
     /**
      * Bulk update applications matching the filter.
      * @param {object} filter Mongo filter
      * @param {object|object[]} data Fields to `$set`, or an array of objects to merge
+     * @param {boolean} [timestamps=true] When false, Mongoose does not bump `updatedAt`
      * @returns {Promise<{matchedCount: number, modifiedCount: number}>}
      */
-    async updateMany(filter, data) {
+    async updateMany(filter, data, timestamps = true) {
         const updateDoc = Array.isArray(data)
             ? Object.assign({}, ...data)
             : data;
         const normalizedFilter = this._requireFilter(filter, 'updateMany');
         try {
-            const result = await this.model.updateMany(normalizedFilter, {$set: updateDoc});
+            const result = timestamps === false
+                ? await this.model.updateMany(normalizedFilter, {$set: updateDoc}, {timestamps: false})
+                : await this.model.updateMany(normalizedFilter, {$set: updateDoc});
             return {
                 matchedCount: result.matchedCount,
                 modifiedCount: result.modifiedCount,
@@ -443,6 +447,7 @@ class ApplicationDAO extends MongooseGenericDAO {
 
     /**
      * Mark final (and interval) reminder flags for the given application ids.
+     * Disables Mongoose timestamps so `updatedAt` (the inactivity clock) is unchanged.
      * @param {string[]} applicationIDs Application _ids
      * @returns {Promise<{matchedCount: number, modifiedCount: number}>}
      */
@@ -452,16 +457,19 @@ class ApplicationDAO extends MongooseGenericDAO {
         }
         return await this.updateMany(
             {_id: {$in: applicationIDs}},
-            this._getEveryReminderUpdate(true)
+            this._getEveryReminderUpdate(true),
+            false
         );
     }
 
     /**
      * Mark interval reminder flags for a single application.
      * Only schema-defined day fields (7, 15, 30) are updated.
+     * Disables Mongoose timestamps so `updatedAt` (the inactivity clock) is unchanged.
+     * When `reminderDays` is empty or contains only unknown offsets, no write is issued.
      * @param {string} applicationID Application _id
      * @param {number[]} reminderDays Reminder day offsets to set true
-     * @returns {Promise<object>}
+     * @returns {Promise<object>} Updated application, or a mapped `{id, _id}` when there is nothing to set
      */
     async markIntervalReminderSent(applicationID, reminderDays) {
         const reminderFilter = (reminderDays || []).reduce((acc, day) => {
@@ -471,7 +479,10 @@ class ApplicationDAO extends MongooseGenericDAO {
             }
             return acc;
         }, {});
-        return await this.update({_id: applicationID, ...reminderFilter});
+        if (!Object.keys(reminderFilter).length) {
+            return this._mapDoc({_id: applicationID});
+        }
+        return await this.update({_id: applicationID, ...reminderFilter}, false);
     }
 
     /**

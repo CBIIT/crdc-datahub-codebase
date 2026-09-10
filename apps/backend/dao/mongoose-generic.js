@@ -335,15 +335,20 @@ class MongooseGenericDAO {
      * Update a single document by ID
      * @param {string} id Document ID
      * @param {object} data Fields to update
+     * @param {boolean} [timestamps=true] When false, Mongoose does not bump `updatedAt`
      * @returns {Promise<object>}
      */
-    async update(id, data) {
+    async update(id, data, timestamps = true) {
         try {
             if (!id) {
                 id = data._id || data.id;
             }
             const { _id, id: dataId, ...updateData } = data;
-            const res = await this.model.findByIdAndUpdate(id, { $set: updateData }, { new: true }).lean();
+            const options = { new: true };
+            if (timestamps === false) {
+                options.timestamps = false;
+            }
+            const res = await this.model.findByIdAndUpdate(id, { $set: updateData }, options).lean();
             if (!res) {
                 throw new Error(`Document not found`);
             }

@@ -106,14 +106,15 @@ describe('ApplicationDAO.update', () => {
                 status: 'In Progress',
                 studyName: 'Reopen SRF Test',
                 history: payload.history,
-            }
+            },
+            true
         );
     });
 
     it('uses id when _id is absent', async () => {
         await dao.update({id: 'app-by-id', status: 'Submitted'});
 
-        expect(superUpdate).toHaveBeenCalledWith('app-by-id', {status: 'Submitted'});
+        expect(superUpdate).toHaveBeenCalledWith('app-by-id', {status: 'Submitted'}, true);
     });
 
     it('throws when neither _id nor id is present', async () => {
