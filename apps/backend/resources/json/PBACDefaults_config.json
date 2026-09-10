@@ -213,7 +213,7 @@
           {
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
-            "name": "Pending on image deidentification",
+            "name": "Pending on image de-identification",
             "order": 4.3,
             "checked": false,
             "disabled": false
@@ -583,7 +583,7 @@
           {
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
-            "name": "Pending on image deidentification",
+            "name": "Pending on image de-identification",
             "order": 4.3,
             "checked": false,
             "disabled": false
@@ -952,7 +952,7 @@
           {
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
-            "name": "Pending on image deidentification",
+            "name": "Pending on image de-identification",
             "order": 4.3,
             "checked": false,
             "disabled": false
@@ -1321,7 +1321,7 @@
           {
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
-            "name": "Pending on image deidentification",
+            "name": "Pending on image de-identification",
             "order": 4.3,
             "checked": true,
             "disabled": true
@@ -1688,7 +1688,7 @@
           {
             "_id": "submission_request:pending_image_deidentification",
             "group": "Submission Request Emails",
-            "name": "Pending on image deidentification",
+            "name": "Pending on image de-identification",
             "order": 4.3,
             "checked": true,
             "disabled": true
