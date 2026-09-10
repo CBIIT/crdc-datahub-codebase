@@ -4,9 +4,9 @@ const USER_PERMISSION_CONSTANTS = require('../../crdc-datahub-database-drivers/c
 
 describe('UserService.getCollaboratorsByStudyID', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, 
-        mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, 
-        mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays, 
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection,
+        mockNotificationsService, mockApplicationCollection,
+        mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays,
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let studyID, submitterID;
 
@@ -50,17 +50,14 @@ describe('UserService.getCollaboratorsByStudyID', () => {
     ];
 
     beforeEach(() => {
-        // Reset all mocks
         jest.clearAllMocks();
 
-        // Create mock collections and services
-        mockUserCollection = {
-            aggregate: jest.fn()
+        mockUserDAO = {
+            getCollaboratorsByStudyID: jest.fn()
         };
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockOfficialEmail = 'test@example.com';
         mockAppUrl = 'http://test.com';
@@ -70,13 +67,10 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         mockInstitutionService = {};
         mockAuthorizationService = {};
 
-        // Create user service instance
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             mockOfficialEmail,
             mockAppUrl,
@@ -86,12 +80,11 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
 
-        // Set up test parameters
         studyID = 'study-123';
         submitterID = 'test-user-id';
 
-        // Mock _findApprovedStudies method
         userService._findApprovedStudies = jest.fn().mockResolvedValue(mockApprovedStudies);
     });
 
@@ -105,102 +98,20 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         });
     });
 
-    describe('Parameter validation', () => {
-        it('should throw error when studyID is null', async () => {
-            await expect(userService.getCollaboratorsByStudyID(null, submitterID))
-                .rejects.toThrow();
-        });
-
-        it('should throw error when studyID is undefined', async () => {
-            await expect(userService.getCollaboratorsByStudyID(undefined, submitterID))
-                .rejects.toThrow();
-        });
-
-        it('should throw error when submitterID is null', async () => {
-            await expect(userService.getCollaboratorsByStudyID(studyID, null))
-                .rejects.toThrow();
-        });
-
-        it('should throw error when submitterID is undefined', async () => {
-            await expect(userService.getCollaboratorsByStudyID(studyID, undefined))
-                .rejects.toThrow();
-        });
-    });
-
-    describe('Database query construction', () => {
-        it('should call aggregate with correct query parameters', async () => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
+    describe('DAO delegation', () => {
+        it('should call userDAO.getCollaboratorsByStudyID with studyID and submitterID', async () => {
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
 
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([
-                {
-                    "$match": {
-                        _id: { "$ne": submitterID },
-                        "role": USER.ROLES.SUBMITTER,
-                        "userStatus": USER.STATUSES.ACTIVE,
-                        "permissions": { "$in": [`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:own`] },
-                        "$or": [
-                            { "studies": { "$in": [studyID, "All"] } },
-                            { "studies._id": { "$in": [studyID, "All"] } }
-                        ]
-                    }
-                }
-            ]);
-        });
-
-        it('should exclude the submitter from results', async () => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserCollection.aggregate.mock.calls[0][0][0]["$match"];
-            expect(query._id["$ne"]).toBe(submitterID);
-        });
-
-        it('should filter by SUBMITTER role', async () => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserCollection.aggregate.mock.calls[0][0][0]["$match"];
-            expect(query.role).toBe(USER.ROLES.SUBMITTER);
-        });
-
-        it('should filter by ACTIVE user status', async () => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserCollection.aggregate.mock.calls[0][0][0]["$match"];
-            expect(query.userStatus).toBe(USER.STATUSES.ACTIVE);
-        });
-
-        it('should filter by correct permissions', async () => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserCollection.aggregate.mock.calls[0][0][0]["$match"];
-            expect(query.permissions["$in"]).toContain(`${USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE}:own`);
-        });
-
-        it('should filter by study access (both string and object formats)', async () => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, submitterID);
-
-            const query = mockUserCollection.aggregate.mock.calls[0][0][0]["$match"];
-            expect(query["$or"]).toEqual([
-                { "studies": { "$in": [studyID, "All"] } },
-                { "studies._id": { "$in": [studyID, "All"] } }
-            ]);
+            expect(mockUserDAO.getCollaboratorsByStudyID).toHaveBeenCalledWith(studyID, submitterID);
+            expect(mockUserDAO.getCollaboratorsByStudyID).toHaveBeenCalledTimes(1);
         });
     });
 
     describe('Successful collaborator retrieval', () => {
         beforeEach(() => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
         });
 
         it('should return collaborators with approved studies', async () => {
@@ -219,7 +130,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         });
 
         it('should handle empty collaborators list', async () => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue([]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -229,7 +140,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
 
         it('should handle single collaborator', async () => {
             const singleCollaborator = [mockCollaborators[0]];
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(singleCollaborator);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(singleCollaborator);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -240,7 +151,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
 
     describe('Study access patterns', () => {
         beforeEach(() => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
         });
 
         it('should handle users with object-based studies', async () => {
@@ -248,7 +159,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: [{ _id: 'study-123', name: 'Test Study' }]
             };
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue([userWithObjectStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithObjectStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -261,7 +172,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[1],
                 studies: ['study-123', 'study-456']
             };
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue([userWithStringStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithStringStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -274,7 +185,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[2],
                 studies: [{ _id: 'All', name: 'All Studies' }]
             };
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue([userWithAllAccess]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithAllAccess]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -287,7 +198,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: ['study-123', { _id: 'All', name: 'All Studies' }]
             };
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue([userWithMixedStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithMixedStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -297,15 +208,15 @@ describe('UserService.getCollaboratorsByStudyID', () => {
     });
 
     describe('Error handling', () => {
-        it('should handle database aggregation error', async () => {
-            mockUserCollection.aggregate = jest.fn().mockRejectedValue(new Error('Database error'));
+        it('should handle DAO getCollaboratorsByStudyID error', async () => {
+            mockUserDAO.getCollaboratorsByStudyID.mockRejectedValue(new Error('Database error'));
 
             await expect(userService.getCollaboratorsByStudyID(studyID, submitterID))
                 .rejects.toThrow('Database error');
         });
 
         it('should handle _findApprovedStudies error', async () => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
             userService._findApprovedStudies = jest.fn().mockRejectedValue(new Error('Approved studies error'));
 
             await expect(userService.getCollaboratorsByStudyID(studyID, submitterID))
@@ -313,7 +224,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
         });
 
         it('should handle partial _findApprovedStudies errors', async () => {
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
             userService._findApprovedStudies = jest.fn()
                 .mockResolvedValueOnce(mockApprovedStudies)
                 .mockRejectedValueOnce(new Error('Second user error'))
@@ -330,7 +241,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: undefined
             };
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue([userWithUndefinedStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithUndefinedStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -343,7 +254,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: null
             };
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue([userWithNullStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithNullStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -356,47 +267,26 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 ...mockCollaborators[0],
                 studies: []
             };
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue([userWithEmptyStudies]);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue([userWithEmptyStudies]);
 
             const result = await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
             expect(result).toEqual([userWithEmptyStudies]);
             expect(userService._findApprovedStudies).toHaveBeenCalledWith([]);
         });
-
-        it('should handle special characters in studyID', async () => {
-            const specialStudyID = 'study-123-with-special-chars!@#$%';
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(specialStudyID, submitterID);
-
-            const query = mockUserCollection.aggregate.mock.calls[0][0][0]["$match"];
-            expect(query["$or"][0].studies["$in"]).toContain(specialStudyID);
-            expect(query["$or"][1]["studies._id"]["$in"]).toContain(specialStudyID);
-        });
-
-        it('should handle special characters in submitterID', async () => {
-            const specialSubmitterID = 'submitter-123-with-special-chars!@#$%';
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
-
-            await userService.getCollaboratorsByStudyID(studyID, specialSubmitterID);
-
-            const query = mockUserCollection.aggregate.mock.calls[0][0][0]["$match"];
-            expect(query._id["$ne"]).toBe(specialSubmitterID);
-        });
     });
 
     describe('Performance considerations', () => {
-        it('should make only one database call regardless of number of collaborators', async () => {
+        it('should make only one DAO call regardless of number of collaborators', async () => {
             const manyCollaborators = Array.from({ length: 100 }, (_, i) => ({
                 ...mockCollaborators[0],
                 _id: `collaborator-${i}`
             }));
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(manyCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(manyCollaborators);
 
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.getCollaboratorsByStudyID).toHaveBeenCalledTimes(1);
             expect(userService._findApprovedStudies).toHaveBeenCalledTimes(100);
         });
 
@@ -406,7 +296,7 @@ describe('UserService.getCollaboratorsByStudyID', () => {
                 processingOrder.push(studies);
                 return mockApprovedStudies;
             });
-            mockUserCollection.aggregate = jest.fn().mockResolvedValue(mockCollaborators);
+            mockUserDAO.getCollaboratorsByStudyID.mockResolvedValue(mockCollaborators);
 
             await userService.getCollaboratorsByStudyID(studyID, submitterID);
 
@@ -416,4 +306,4 @@ describe('UserService.getCollaboratorsByStudyID', () => {
             expect(processingOrder[2]).toEqual(mockCollaborators[2].studies);
         });
     });
-}); 
+});

@@ -1,3 +1,10 @@
+process.env.DOCDB_TLS = 'false';
+process.env.DOCDB_ENDPOINT = '127.0.0.1';
+process.env.DOCDB_PORT = '27017';
+process.env.DOCDB_USERNAME = 'test';
+process.env.DOCDB_PASSWORD = 'test';
+process.env.DOCDB_DB_NAME = 'crdc-datahub';
+
 const request = require('supertest');
 const session = require('express-session');
 const { NIH, LOGIN_GOV } = require("../constants/idp-constants");

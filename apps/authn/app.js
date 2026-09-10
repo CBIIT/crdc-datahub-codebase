@@ -1,14 +1,12 @@
 var createError = require('http-errors');
 var express = require('express');
 var path = require('path');
+const config = require('./config');
 const createSession = require("./crdc-datahub-database-drivers/session-middleware");
 var logger = require('morgan');
 const fs = require('fs');
 const cors = require('cors');
-const config = require('./config');
 const cookieParser = require('cookie-parser');
-
-console.log(config);
 
 const LOG_FOLDER = 'logs';
 if (!fs.existsSync(LOG_FOLDER)) {
@@ -33,7 +31,7 @@ app.use(cookieParser());
 // Ping/version/session-ttl
 app.use('/api/authn', checkRouter);
 
-app.use(createSession(config.session_secret, config.session_timeout, config.mongo_db_connection_string));
+app.use(createSession(config.session_secret, config.session_timeout, config.document_db_connection_string));
 app.use('/api/authn', authRouter);
 
 if (process.env.NODE_ENV === 'development') {

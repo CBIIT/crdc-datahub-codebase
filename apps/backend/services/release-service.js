@@ -7,8 +7,6 @@ const {replaceErrorString, sanitizeMongoDBInput, escapeRegexLiteral} = require("
 const ERROR = require("../constants/error-constants");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {getDataCommonsDisplayName, getDataCommonsOrigin} = require("../utility/data-commons-remapper");
-const {APPROVED_STUDIES_COLLECTION, DATA_COMMONS_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
-const {SORT, DIRECTION} = require("../crdc-datahub-database-drivers/constants/mongodb-constants");
 const {getSortDirection} = require("../crdc-datahub-database-drivers/utility/mongodb-utility");
 const ReleaseDAO = require("../dao/release");
 const ApprovedStudyDAO = require("../dao/approvedStudy")
@@ -24,13 +22,15 @@ const PROP_GROUPS = {
 };
 const NODE_TYPE = "type";
 
-const DATA_COMMONS_DISPLAY_NAMES = "dataCommonsDisplayNames";
-
 class ReleaseService {
     _ALL_FILTER = "All";
-    _STUDY_NODE = "study";
-    constructor(releaseCollection, authorizationService, dataModelService, s3Service, config) {
-        this.releaseCollection = releaseCollection;
+    /**
+     * @param {object} authorizationService
+     * @param {object} dataModelService
+     * @param {object} s3Service
+     * @param {object} config
+     */
+    constructor(authorizationService, dataModelService, s3Service, config) {
         this.authorizationService = authorizationService;
         this.dataModelService = dataModelService;
         this.releaseDAO = new ReleaseDAO();
@@ -39,13 +39,20 @@ class ReleaseService {
         this.config = config;
     }
 
+    /**
+     * Lists released studies with dataCommons enrichment and pagination.
+     * Sorts each study's dataCommonsDisplayNames (and aligned dataCommons) case-insensitively in JS.
+     * @param {object} params GraphQL list params (name, dbGaPID, dataCommonsDisplayNames, pagination)
+     * @param {object} context Request context with userInfo
+     * @returns {Promise<{studies: object[], total: number, dataCommonsDisplayNames: string[]}>}
+     */
     async listReleasedStudies(params, context) {
         verifySession(context)
             .verifyInitialized();
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.VIEW);
         if (userScope.isNoneScope()) {
             console.warn("Failed permission verification for listing release studies, returning empty list");
-            return {total: 0, studies: []};
+            return {total: 0, studies: [], dataCommonsDisplayNames: []};
         }
 
         const originalDataCommons = (params.dataCommonsDisplayNames || []).map(value => {
@@ -61,123 +68,40 @@ class ReleaseService {
         ];
 
         const [listConditions, dataCommonsCondition] = filterConditions;
-        // Don’t include this custom sort in the pagination sort — it can cause unexpected sorting behavior.
-        const customSort = params.orderBy === DATA_COMMONS_DISPLAY_NAMES ? null : params.orderBy
-        const paginationPipe = new MongoPagination(params?.first, params.offset, customSort, params.sortDirection);
-        const combinedPipeline = [
-            {$match: {nodeType: this._STUDY_NODE, studyID: {$exists: true}}},
-            {$group:{
-                _id: "$studyID",
-                dataCommons: { $addToSet: "$dataCommons" }
-            }},
-            {$unwind: { path: "$dataCommons" }},
-
-            {$lookup: {
-                from: DATA_COMMONS_COLLECTION,
-                let: { dc: "$dataCommons" },
-                pipeline: [
-                    { $match: { $expr: { $eq: ["$dataCommons", "$$dc"] } } },
-                    { $project: { _id: 0, dataCommonsDisplayName: 1 } }
-                ],
-                as: "matched"}
-            },
-            {$addFields: {
-                mappedDisplayName: {
-                    $cond: [
-                        { $gt: [{ $size: "$matched" }, 0] },
-                        { $arrayElemAt: ["$matched.dataCommonsDisplayName", 0] },
-                        "$dataCommons"
-                    ]
-            }}},
-            // Always set the mappedDisplayName asc. This array needs to be sorted on FE.
-            {$sort: { mappedDisplayName: 1 }},
-            {$group: {
-                    _id: "$_id",
-                    dataCommons: { $push: "$dataCommons" },
-                    dataCommonsDisplayNames: { $push: "$mappedDisplayName" },
-                    doc: { $first: "$$ROOT" }
-            }},
-            {$lookup: {
-                from: APPROVED_STUDIES_COLLECTION,
-                localField: "_id",
-                foreignField: "_id",
-                as: "approvedStudies"}},
-            {$unwind: {
-                path: "$approvedStudies"
-            }},
-            {$replaceRoot: {
-                newRoot: {
-                    $mergeObjects: [
-                        "$$ROOT",
-                        {dbGaPID: "$approvedStudies.dbGaPID", studyName: "$approvedStudies.studyName", studyAbbreviation: "$approvedStudies.studyAbbreviation",  studyID: "$approvedStudies._id"}
-            ]}}},
-            {$set: {
-                    dataCommonsDisplayNames: {
-                        $map: {
-                            input: {
-                                $sortArray: {
-                                    input: {
-                                        $map: {
-                                            input: "$dataCommonsDisplayNames",
-                                            as: "name",
-                                            in: {
-                                                original: "$$name",
-                                                lower: { $toLower: "$$name" }
-                                            }
-                                        }
-                                    },
-                                    sortBy: { lower: 1 }
-                                }
-                            },
-                            as: "item",
-                            in: "$$item.original"
-                        }
-                    }
-                }
-            },
-            {$set: {
-                    dataCommonsDisplayNamesSort: {
-                        $reduce: {
-                            input: "$dataCommonsDisplayNames",
-                            initialValue: "",
-                            in: { $concat: ["$$value", "$$this"] }
-                        }
-                    }
-                }
-            },
-
-            // Sort by the element of dataCommonsDisplayNames
-            ...(params.orderBy === 'dataCommonsDisplayNames'
-                ? [{
-                    $sort: {
-                        "dataCommonsDisplayNamesSort": params.sortDirection?.toLowerCase() === SORT.DESC ? DIRECTION.DESC : DIRECTION.ASC  // ascending by first element
-                    }
-                }]
-                : []),
-            {"$match": listConditions},
-            {$facet: {
-                studies: paginationPipe.getPaginationPipeline(),
-                totalCount: [{ $count: "count" }]
-            }}
-        ];
-
-        const [releaseStudies, dataCommons] = await Promise.all([
-            this.releaseCollection.aggregate(combinedPipeline),
-            this.releaseCollection.distinct("dataCommons", {nodeType: this._STUDY_NODE, studyID: {$exists: true}, ...dataCommonsCondition}),
+        const [{studies, total}, dataCommons] = await Promise.all([
+            this.releaseDAO.listReleasedStudies(
+                listConditions,
+                params?.first,
+                params.offset,
+                params.orderBy,
+                params.sortDirection
+            ),
+            this.releaseDAO.listReleasedStudyDataCommons(dataCommonsCondition),
         ]);
 
         return {
-            studies: releaseStudies[0].studies,
-            total: releaseStudies[0]?.totalCount[0]?.count || 0,
+            studies: studies.map((study) => {
+                const names = study.dataCommonsDisplayNames || [];
+                const commons = study.dataCommons || [];
+                const pairs = names.map((name, i) => ({ name, dc: commons[i] }));
+                pairs.sort((a, b) => a.name?.toLowerCase()?.localeCompare(b.name?.toLowerCase()));
+                return {
+                    ...study,
+                    dataCommonsDisplayNames: pairs.map((pair) => pair.name),
+                    dataCommons: pairs.map((pair) => pair.dc),
+                };
+            }),
+            total,
             dataCommonsDisplayNames: (dataCommons || [])
                 .map(getDataCommonsDisplayName)
                 .sort((a, b) => a?.toLowerCase()?.localeCompare(b?.toLowerCase()))
         }
     }
     /**
-     * API: Retrieves the total count and list of node types from the release collection for a given study.
-     * @param {*} params
-     * @param {*} context
+     * Retrieves the total count and list of node types from the release collection for a given study.
+     * Uses a single grouped aggregation; total is the sum of per-type counts (DocumentDB does not support $facet).
+     * @param {object} params
+     * @param {object} context
      * @returns {Promise<{ total: number, nodes: Array<{ name: string, count: number }> }>}
      */
     async getReleaseNodeTypes(params, context) {
@@ -186,10 +110,11 @@ class ReleaseService {
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.VIEW);
         if (userScope.isNoneScope()) {
             console.warn("Failed permission verification for get list node types, returning empty list");
-            return {total: 0, properties: [], nodes: []};
+            return {total: 0, nodes: []};
         }
         const originDataCommons = getDataCommonsOrigin(params?.dataCommonsDisplayName) || params?.dataCommonsDisplayName;
         const userConditions = this._listNodesConditions(null, originDataCommons, userScope, params?.studyID);
+        // DocumentDB does not support $facet; return grouped nodes and sum counts in JS.
         const nodeTypesPipeline = [
             {$match: {studyID: params?.studyID, ...userConditions}},
             {$addFields: {
@@ -226,30 +151,21 @@ class ReleaseService {
             {$sort: {
                     count: 1
             }},
-            {$facet: {
-                    nodes: [],
-                    total: [
-                        {$group: {_id: null, total: { $sum: "$count" }}},
-                        {$project: { _id: 0, total: 1 }}
-                    ]
-            }},
-            {$project: {
-                    nodes: "$nodes",
-                    total: { $arrayElemAt: ["$total.total", 0] }
-            }}
         ];
 
-        const groupByNodes = await this.releaseCollection.aggregate(nodeTypesPipeline)
+        const nodes = await this.releaseDAO.aggregate(nodeTypesPipeline);
+        const total = (nodes || []).reduce((sum, node) => sum + (node.count || 0), 0);
         return {
-            total: groupByNodes[0]?.total || 0,
-            nodes: groupByNodes[0]?.nodes || []
+            total,
+            nodes: nodes || []
         }
     }
     /**
-     * API: List all released records from the release collection for a given study.
-     * @param {*} params
-     * @param {*} context
-     * @returns {Promise<JSON>}
+     * Lists released data records for a study/node type with property filters and pagination.
+     * Uses separate count, results, and property aggregations (DocumentDB does not support $facet).
+     * @param {object} params
+     * @param {object} context
+     * @returns {Promise<{total: number, properties: string[], nodes: object[]}>}
      */
     async listReleasedDataRecords(params, context) {
         verifySession(context)
@@ -263,7 +179,16 @@ class ReleaseService {
         const {studyID, nodeType, first, offset, orderBy, sortDirection, properties, dataCommonsDisplayName} = params;
         const originDataCommons = getDataCommonsOrigin(dataCommonsDisplayName) || dataCommonsDisplayName;
         const listConditions = this._listNodesConditions(nodeType, originDataCommons, userScope, studyID);
-        const paginationPipe = new MongoPagination(first, offset, orderBy, sortDirection);
+        // Don’t include custom sort in pagination — a second $sort would override DocumentDB-safe ordering.
+        const usesCustomSort = Boolean(
+            orderBy && (properties?.length > 0 || orderBy.includes("."))
+        );
+        const paginationPipe = new MongoPagination(
+            first,
+            offset,
+            usesCustomSort ? null : orderBy,
+            sortDirection
+        );
         //
         const [rootKeys, parentKeys] = [[], []];
         (params?.properties || []).forEach(field => {
@@ -402,15 +327,10 @@ class ReleaseService {
                     },
                 ]
                 : []),
-            ...(orderBy?.includes(".") ?
+            ...(orderBy?.includes(".") && !(properties?.length > 0) ?
                 [{
                     $addFields: {
-                        _sortKey: {
-                            $getField: {
-                                field: orderBy,
-                                input: "$$ROOT",
-                            },
-                        },
+                        _sortKey: this._literalFieldValue(orderBy),
                     },
                 },
                     {
@@ -422,10 +342,16 @@ class ReleaseService {
                     {
                         $unset: "_sortKey",
                     }] : [] ) ,
-            {$facet: {
-                    studies: paginationPipe.getPaginationPipeline(),
-                    totalCount: [{ $count: "count" }]
-                }}
+        ];
+
+        // DocumentDB does not support $facet; page and count in parallel.
+        const resultsPipeline = [
+            ...combinedPipeline,
+            ...paginationPipe.getPaginationPipeline(),
+        ];
+        const countPipeline = [
+            ...commonQuery,
+            { $count: "count" },
         ];
 
         const allPropertiesPipeline = [
@@ -464,15 +390,16 @@ class ReleaseService {
             }
         ];
 
-        const [releaseNodes, allProperties] = await Promise.all([
-            this.releaseCollection.aggregate(combinedPipeline),
-            this.releaseCollection.aggregate(allPropertiesPipeline),
+        const [nodes, totalCountResult, allProperties] = await Promise.all([
+            this.releaseDAO.aggregate(resultsPipeline),
+            this.releaseDAO.aggregate(countPipeline),
+            this.releaseDAO.aggregate(allPropertiesPipeline),
         ]);
 
         return {
-            total: releaseNodes[0]?.totalCount[0]?.count || 0,
+            total: totalCountResult[0]?.count || 0,
             properties: allProperties[0]?.allProperties || [],
-            nodes: releaseNodes?.[0].studies || []
+            nodes: nodes || []
         }
     }
 
@@ -730,7 +657,7 @@ class ReleaseService {
                 }
             }
         ];
-        const result = await this.releaseCollection.aggregate(pipeline);
+        const result = await this.releaseDAO.aggregate(pipeline);
         // get unique props.keys
         result.forEach(doc => {
             Object.assign(uniquePropObj, doc.props || {});
@@ -819,11 +746,44 @@ class ReleaseService {
         return field.replace(/\./g, "_DOT_");
     }
 
-    // Build key-value pairs for use with $getField, using DOT-safe keys
+    /**
+     * Read a root field by literal name (may contain dots).
+     * DocumentDB does not support $getField; use objectToArray + filter instead.
+     * @param {string} field Literal field name
+     * @param {string|object} [input="$$ROOT"] Document expression
+     * @returns {object} Aggregation expression
+     */
+    _literalFieldValue(field, input = "$$ROOT") {
+        return {
+            $arrayElemAt: [
+                {
+                    $map: {
+                        input: {
+                            $filter: {
+                                input: { $objectToArray: input },
+                                as: "kv",
+                                cond: { $eq: ["$$kv.k", field] },
+                            },
+                        },
+                        as: "m",
+                        in: "$$m.v",
+                    },
+                },
+                0,
+            ],
+        };
+    }
+
+    /**
+     * Build key-value pairs for DOT-safe projection/sort keys.
+     * Dotted fields use _literalFieldValue (DocumentDB has no $getField); non-dotted use a direct path.
+     * @param {string[]} properties Field names (may contain dots)
+     * @returns {object[]}
+     */
     _buildKvPairsDotSafe(properties) {
         return properties.map(field => ({
             k: this._dotToSafe(field),
-            v: { $getField: { field, input: "$$ROOT" } }
+            v: field.includes(".") ? this._literalFieldValue(field) : `$${field}`,
         }));
     }
 

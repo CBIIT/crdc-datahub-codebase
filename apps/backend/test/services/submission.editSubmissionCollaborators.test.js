@@ -26,10 +26,10 @@ jest.mock('../../utility/data-commons-remapper', () => ({
 describe('Submission.editSubmissionCollaborators', () => {
     let submissionService;
     let mockSubmissionCollection, mockLogCollection, mockBatchService, mockUserService, 
-        mockOrganizationService, mockNotificationService, mockDataRecordService, 
+        mockProgramService, mockNotificationService, mockDataRecordService, 
         mockFetchDataModelInfo, mockAwsService, mockMetadataQueueName, mockS3Service, 
         mockEmailParams, mockDataCommonsList, mockHiddenDataCommonsList, 
-        mockValidationCollection, mockSqsLoaderQueue, mockQcResultsService, 
+        mockSqsLoaderQueue, mockQcResultsService, 
         mockUploaderCLIConfigs, mockSubmissionBucketName, mockConfigurationService, 
         mockUploadingMonitor, mockDataCommonsBucketMap, mockAuthorizationService, 
         mockDataModelService, mockUserDAO;
@@ -86,7 +86,7 @@ describe('Submission.editSubmissionCollaborators', () => {
         mockLogCollection = {};
         mockBatchService = {};
         mockUserService = {};
-        mockOrganizationService = {};
+        mockProgramService = {};
         mockNotificationService = {};
         mockDataRecordService = {};
         mockFetchDataModelInfo = jest.fn();
@@ -96,7 +96,6 @@ describe('Submission.editSubmissionCollaborators', () => {
         mockEmailParams = {};
         mockDataCommonsList = ['commons1', 'commons2'];
         mockHiddenDataCommonsList = [];
-        mockValidationCollection = {};
         mockSqsLoaderQueue = {};
         mockQcResultsService = {};
         mockUploaderCLIConfigs = {};
@@ -116,7 +115,7 @@ describe('Submission.editSubmissionCollaborators', () => {
             mockSubmissionCollection,
             mockBatchService,
             mockUserService,
-            mockOrganizationService,
+            mockProgramService,
             mockNotificationService,
             mockDataRecordService,
             mockFetchDataModelInfo,
@@ -126,7 +125,6 @@ describe('Submission.editSubmissionCollaborators', () => {
             mockEmailParams,
             mockDataCommonsList,
             mockHiddenDataCommonsList,
-            mockValidationCollection,
             mockSqsLoaderQueue,
             mockQcResultsService,
             mockUploaderCLIConfigs,
@@ -284,7 +282,7 @@ describe('Submission.editSubmissionCollaborators', () => {
 
             expect(result).toBeDefined();
             // The method still calls findFirst to get user info for collaboratorName and Organization
-            expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ id: 'collaborator-1' });
+            expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ _id: 'collaborator-1' });
         });
     });
 

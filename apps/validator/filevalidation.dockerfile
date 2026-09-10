@@ -6,7 +6,12 @@ RUN apk upgrade --no-cache
 WORKDIR /usr/validator
 COPY src/bento/ ./src/bento/
 COPY . .
+# Amazon DocumentDB CA bundle (gitignored). Always download so a local PEM cannot skip wget.
+RUN apk add --no-cache wget \
+ && mkdir -p resources/aws-documentdb-certificate \
+ && wget -O resources/aws-documentdb-certificate/global-bundle.pem \
+      https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 RUN pip3 install -r requirements.txt
  
-#CMD ["/usr/local/bin/python3", "src/validator.py", "-u", "$MONGO_DB_USER", "-p", "$MONGO_DB_PASSWORD", "-d", "$DATABASE_NAME", "-s", "$MONGO_DB_HOST", "-o", "27017", "-q", "$FILE_QUEUE", "-m", "https://raw.githubusercontent.com/CBIIT/crdc-datahub-models/", "configs/validate-file-config-deploy.yml"]
+#CMD ["/usr/local/bin/python3", "src/validator.py", "-u", "$docdb_username", "-p", "$docdb_password", "-d", "$docdb_db_name", "-s", "$docdb_endpoint", "-o", "27017", "-q", "$FILE_QUEUE", "-m", "https://raw.githubusercontent.com/CBIIT/crdc-datahub-models/", "configs/validate-file-config-deploy.yml"]
 CMD ["/usr/local/bin/python3", "src/validator.py", "configs/validate-file-config-deploy.yml"]

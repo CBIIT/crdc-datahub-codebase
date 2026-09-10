@@ -1,14 +1,18 @@
-# Build stage — npm is only required to install dependencies and run Prisma generate.
+# Build stage — npm is only required to install dependencies.
 FROM node:24.17.0-alpine3.24 AS builder
 WORKDIR /usr/src/app
 # Install dependencies first (cached unless package files change).
 COPY package*.json ./
 RUN npm ci
+# Amazon DocumentDB CA bundle (gitignored / dockerignored). Always download so a local PEM cannot skip wget.
+RUN mkdir -p resources/aws-documentdb-certificate \
+ && wget -O resources/aws-documentdb-certificate/global-bundle.pem \
+      https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 # Copy application source after npm ci so the dependency layer stays cached on code changes.
 COPY --chown=node:node . .
 
-# Generate Prisma client, then remove devDependencies
-RUN npx prisma generate && npm prune --omit=dev
+# Remove devDependencies for the production image
+RUN npm prune --omit=dev
 
 # Run stage
 FROM node:24.17.0-alpine3.24 AS fnl_base_image

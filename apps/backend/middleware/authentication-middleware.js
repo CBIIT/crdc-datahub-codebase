@@ -4,7 +4,7 @@ const {DatabaseConnector} = require("../crdc-datahub-database-drivers/database-c
 const {MongoDBCollection} = require("../crdc-datahub-database-drivers/mongodb-collection");
 const AuthenticationService = require("../services/authentication-service");
 const UserInitializationService = require("../services/user-initialization-service");
-const dbConnector = new DatabaseConnector(config.mongo_db_connection_string);
+const dbConnector = new DatabaseConnector(config.document_db_connection_string);
 
 
 let authenticationService, userInitializationService;
@@ -13,6 +13,9 @@ dbConnector.connect().then(async () => {
     const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
     authenticationService = new AuthenticationService(userCollection);
     userInitializationService = new UserInitializationService(userCollection, organizationCollection);
+}).catch((error) => {
+    console.error('Authentication middleware initialization failed:', error);
+    process.exit(1);
 });
 
 module.exports = async (req, res, next) => {

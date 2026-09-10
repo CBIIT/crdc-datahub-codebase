@@ -1,4 +1,9 @@
 require('dotenv').config();
+if (process.env.DOCDB_DB_NAME) {
+    process.env.DATABASE_NAME = process.env.DOCDB_DB_NAME;
+}
+const fs = require('fs');
+const path = require('path');
 const {readFile2Text} = require("./utility/io-util")
 const {ConfigurationService} = require("./services/configurationService");
 const {DATABASE_NAME, CONFIGURATION_COLLECTION} = require("./crdc-datahub-database-drivers/database-constants");
@@ -42,16 +47,89 @@ const SCHEDULED_JOBS = "SCHEDULED_JOBS";
 const LIST_OF_EMAIL_ADDRESS = "LIST_OF_EMAIL_ADDRESS";
 const LIST_OF_URLS = "LIST_OF_URLS";
 const TIMEOUT = "TIMEOUT";
-process.env.DATABASE_URL = `mongodb://${process.env.MONGO_DB_USER}:${process.env.MONGO_DB_PASSWORD}@${process.env.MONGO_DB_HOST}:${process.env.MONGO_DB_PORT}/${process.env.DATABASE_NAME}?authSource=admin`;
+
+/**
+ * Builds a MongoDB-compatible connection URI.
+ * Encodes user, password, and database for reserved URI characters.
+ * Query values (including tlsCAFile) are built via URLSearchParams.
+ * When caFile is set, enables TLS (tls=true + tlsCAFile) and SCRAM-SHA-1
+ * (DocumentDB / MongoDB Node driver 7.x compatibility). Always disables retryWrites.
+ * @param {string} user
+ * @param {string} password
+ * @param {string} host
+ * @param {string} port
+ * @param {string} database
+ * @param {string} [caFile]
+ * @returns {string}
+ */
+function buildConnectionString(user, password, host, port, database, caFile) {
+    const params = new URLSearchParams({
+        authSource: 'admin',
+        retryWrites: 'false',
+    });
+    if (caFile) {
+        params.set('tls', 'true');
+        params.set('tlsCAFile', caFile);
+        params.set('authMechanism', 'SCRAM-SHA-1');
+    }
+    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}?${params.toString()}`;
+}
+
+const DEFAULT_DOCUMENT_DB_CA_FILE = path.join(__dirname, 'resources/aws-documentdb-certificate/global-bundle.pem');
+const rawDocumentDbTls = process.env.DOCDB_TLS;
+const trimmedDocumentDbTls = rawDocumentDbTls == null ? '' : String(rawDocumentDbTls).trim();
+let documentDbTlsEnabled;
+if (!trimmedDocumentDbTls) {
+    documentDbTlsEnabled = true;
+} else {
+    const normalizedTls = trimmedDocumentDbTls.toLowerCase();
+    if (normalizedTls === 'true') {
+        documentDbTlsEnabled = true;
+    } else if (normalizedTls === 'false') {
+        documentDbTlsEnabled = false;
+    } else {
+        throw new Error(`DOCDB_TLS must be true or false, received: ${rawDocumentDbTls}`);
+    }
+}
+const documentDbCaFile = documentDbTlsEnabled
+    ? (process.env.DOCDB_CA_FILE || DEFAULT_DOCUMENT_DB_CA_FILE)
+    : null;
+
+/**
+ * Builds the shared DocumentDB connection URI from DOCDB_* environment
+ * variables and DATABASE_NAME (falls back to crdc-datahub via database-constants).
+ * Used by native drivers, sessions, and Mongoose.
+ * TLS is on when DOCDB_TLS is unset or true. CA defaults to
+ * resources/aws-documentdb-certificate/global-bundle.pem when DOCDB_CA_FILE
+ * is unset. Throws on first URI access if TLS is on and the CA file is missing.
+ * @returns {string}
+ * @throws {Error} When TLS is enabled and the CA file does not exist
+ */
+function buildDocumentDbConnectionString() {
+    if (documentDbTlsEnabled && !fs.existsSync(documentDbCaFile)) {
+        throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
+    }
+    return buildConnectionString(
+        process.env.DOCDB_USERNAME,
+        process.env.DOCDB_PASSWORD,
+        process.env.DOCDB_ENDPOINT,
+        process.env.DOCDB_PORT || '27017',
+        DATABASE_NAME,
+        documentDbCaFile,
+    );
+}
+
 let config = {
     //info variables
     version: process.env.VERSION || 'Version not set',
     date: process.env.DATE || new Date(),
-    //Mongo DB
-    mongo_db_user: process.env.MONGO_DB_USER,
-    mongo_db_password: process.env.MONGO_DB_PASSWORD,
-    mongo_db_host: process.env.MONGO_DB_HOST,
-    mongo_db_port: process.env.MONGO_DB_PORT,
+    // DocumentDB (shared by native drivers and Mongoose)
+    document_db_user: process.env.DOCDB_USERNAME,
+    document_db_password: process.env.DOCDB_PASSWORD,
+    document_db_host: process.env.DOCDB_ENDPOINT,
+    document_db_port: process.env.DOCDB_PORT || '27017',
+    document_db_tls: documentDbTlsEnabled,
+    document_db_ca_file: documentDbCaFile,
 
     //session
     session_secret: process.env.SESSION_SECRET,
@@ -161,7 +239,12 @@ let config = {
         };
     }
 }
-config.mongo_db_connection_string = process.env.DATABASE_URL;
+Object.defineProperty(config, 'document_db_connection_string', {
+    enumerable: true,
+    get() {
+        return buildDocumentDbConnectionString();
+    },
+});
 function parseHiddenModels(hiddenModels) {
     return hiddenModels.split(',')
         .filter(item => item?.trim().length > 0)

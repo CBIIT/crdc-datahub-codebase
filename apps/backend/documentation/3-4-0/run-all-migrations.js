@@ -1,6 +1,9 @@
+// LEGACY (reference only). Do not execute against current DocumentDB.
+// Do not update for new compatibility issues.
+//
 // 3.4.0 Complete Migration Script
 // This script contains all migrations in execution order
-// Can be pasted directly into MongoDB shell
+// Historical MongoDB shell paste — do not run against current DocumentDB.
 
 console.log("🚀 Starting 3.4.0 Migration Suite");
 console.log("=" .repeat(50));

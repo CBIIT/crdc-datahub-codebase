@@ -33,11 +33,6 @@ jest.mock('../../verifier/user-info-verifier');
 jest.mock('../../verifier/submission-verifier');
 jest.mock('../../domain/history-event');
 jest.mock('../../domain/user-scope');
-jest.mock('../../prisma', () => ({
-    log: {
-        create: jest.fn()
-    }
-}));
 
 const SubmissionDAO = require('../../dao/submission');
 const ProgramDAO = require('../../dao/program');
@@ -206,12 +201,13 @@ describe('Submission Service - getSubmission', () => {
         };
 
         // Create submission service instance
+        const mockLogCollection = { insert: jest.fn().mockResolvedValue({ acknowledged: true }) };
         submissionService = new Submission(
-            {}, // logCollection
+            mockLogCollection, // logCollection
             {}, // submissionCollection
             mockBatchService,
             mockUserService,
-            {}, // organizationService
+            {}, // programService
             mockNotifyUser,
             mockDataRecordService,
             jest.fn(), // fetchDataModelInfo
@@ -221,7 +217,6 @@ describe('Submission Service - getSubmission', () => {
             {}, // emailParams
             ['test-commons'], // dataCommonsList
             ['hidden-commons'], // hiddenDataCommonsList
-            {}, // validationCollection
             'sqs-loader-queue',
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -230,8 +225,7 @@ describe('Submission Service - getSubmission', () => {
             {}, // uploadingMonitor
             {}, // dataCommonsBucketMap
             mockAuthorizationService,
-            mockDataModelService,
-            {} // dataRecordsCollection
+            mockDataModelService
         );
 
         // Set mock DAOs
@@ -331,17 +325,25 @@ describe('Submission Service - getSubmission', () => {
         });
 
         it('should return dbGaPID from submission.study.dbGaPID', async () => {
-            // Use real _findByID so its precedence logic runs; DAO returns raw submission with conflicting values
+            // Use real _findByID so its precedence logic runs; study is loaded via approvedStudyDAO
             const rawSubmission = {
                 ...mockSubmission,
                 dbGaPID: 'old',
-                study: {
-                    ...mockSubmission.study,
-                    dbGaPID: 'new'
-                }
             };
-            mockSubmissionDAO.findFirst.mockResolvedValue(rawSubmission);
-            mockProgramDAO.findFirst.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
+            delete rawSubmission.study;
+            mockSubmissionDAO.findById.mockResolvedValue(rawSubmission);
+            submissionService.approvedStudyDAO = {
+                findById: jest.fn().mockResolvedValue({
+                    _id: 'study-123',
+                    studyName: 'Test Study',
+                    studyAbbreviation: 'TS',
+                    dbGaPID: 'new',
+                }),
+            };
+            submissionService.userDAO = {
+                findById: jest.fn().mockResolvedValue(null),
+            };
+            mockProgramDAO.findById.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
             submissionService._findByID = Submission.prototype._findByID.bind(submissionService);
             submissionService._getUserScope.mockResolvedValue(createMockUserScope(false, true));
             submissionService._getS3DirectorySize.mockResolvedValue({ size: 1024, formatted: '1 KB' });
@@ -462,8 +464,9 @@ describe('Submission Service - getSubmission', () => {
             // Verify
             expect(mockSubmissionDAO.findMany).toHaveBeenCalledWith({
                 studyID: 'study-123',
-                status: { in: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN] },
-                NOT: { id: 'sub-123' }
+                dataCommons: undefined,
+                status: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN],
+                _id: { not: 'sub-123' }
             });
             expect(result.otherSubmissions).toBeDefined();
             const parsedOtherSubs = JSON.parse(result.otherSubmissions);
@@ -1952,14 +1955,9 @@ describe('Submission Service - getSubmission', () => {
     });
 
     describe('_logDataRecord', () => {
-        let prisma;
-        
         beforeEach(() => {
             jest.clearAllMocks();
-            prisma = require('../../prisma');
-            // Use the existing mock from jest.mock, just reset and configure it
-            prisma.log.create.mockClear();
-            prisma.log.create.mockResolvedValue({ id: 'log-123' });
+            submissionService.logCollection.insert = jest.fn().mockResolvedValue({ acknowledged: true });
         });
 
         it('should handle array input', async () => {
@@ -1978,16 +1976,13 @@ describe('Submission Service - getSubmission', () => {
                 nodeIDs
             );
 
-            expect(prisma.log.create).toHaveBeenCalled();
-            const callArgs = prisma.log.create.mock.calls[0][0];
-            // Verify the call structure: prisma.log.create({ data: logData })
-            // The callArgs should be { data: { userID, userEmail, userName, eventType, submissionID, ... } }
+            expect(submissionService.logCollection.insert).toHaveBeenCalled();
+            const callArgs = submissionService.logCollection.insert.mock.calls[0][0];
             expect(callArgs).toBeDefined();
-            expect(callArgs).toHaveProperty('data');
-            expect(callArgs.data).toBeDefined();
-            expect(callArgs.data.submissionID).toBe('sub-123');
-            expect(callArgs.data.userID).toBe('user-123');
-            expect(callArgs.data.eventType).toBe('Delete_Data');
+            expect(callArgs.userID).toBe('user-123');
+            expect(callArgs.eventType).toBe('Delete_Data');
+            expect(callArgs.eventDetail.submissionID).toBe('sub-123');
+            expect(callArgs.submissionID).toBeUndefined();
         });
 
         it('should handle string input (deleteAll summary)', async () => {
@@ -2005,7 +2000,7 @@ describe('Submission Service - getSubmission', () => {
                 'deleteAll'
             );
 
-            expect(prisma.log.create).toHaveBeenCalled();
+            expect(submissionService.logCollection.insert).toHaveBeenCalled();
         });
     });
 });
@@ -2044,7 +2039,7 @@ describe('Submission Service - listSubmissions', () => {
             {}, // submissionCollection
             {}, // batchService
             {}, // userService
-            {}, // organizationService
+            {}, // programService
             {}, // notificationService
             {}, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -2054,7 +2049,6 @@ describe('Submission Service - listSubmissions', () => {
             {}, // emailParams
             dataCommonsList,
             hiddenDataCommonsList,
-            {}, // validationCollection
             'sqs-loader-queue', // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -2063,8 +2057,7 @@ describe('Submission Service - listSubmissions', () => {
             {}, // uploadingMonitor
             {}, // dataCommonsBucketMap
             {}, // authorizationService
-            {}, // dataModelService
-            {} // dataRecordsCollection
+            {} // dataModelService
         );
 
         // Override the submissionDAO with our mock
@@ -2112,7 +2105,7 @@ describe('Submission Service - listSubmissions', () => {
         const serviceNoHidden = new Submission(
             {}, {}, {}, {}, {}, {}, {}, jest.fn(), {}, 'queue', {}, {},
             dataCommonsListNoHidden, emptyHiddenList,
-            {}, 'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
+            'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
         );
         serviceNoHidden.submissionDAO = mockSubmissionDAO;
         serviceNoHidden._getUserScope = jest.fn().mockResolvedValue(
@@ -2135,7 +2128,7 @@ describe('Submission Service - listSubmissions', () => {
         const serviceAllHidden = new Submission(
             {}, {}, {}, {}, {}, {}, {}, jest.fn(), {}, 'queue', {}, {},
             allDataCommons, allHidden,
-            {}, 'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
+            'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
         );
         serviceAllHidden.submissionDAO = mockSubmissionDAO;
         serviceAllHidden._getUserScope = jest.fn().mockResolvedValue(

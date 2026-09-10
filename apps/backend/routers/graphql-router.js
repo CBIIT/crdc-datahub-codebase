@@ -5,29 +5,21 @@ const configuration = require("../config");
 const {Application} = require("../services/application");
 const {Submission} = require("../services/submission");
 const {AWSService} = require("../services/aws-request");
-const {CDE} = require("../services/CDEService");
 const {TooltipService} = require("../services/tooltip-service");
 const {MongoQueries} = require("../crdc-datahub-database-drivers/mongo-queries");
 const {DATABASE_NAME, APPLICATION_COLLECTION, SUBMISSIONS_COLLECTION, USER_COLLECTION, ORGANIZATION_COLLECTION, LOG_COLLECTION,
     APPROVED_STUDIES_COLLECTION,
-    DATA_RECORDS_COLLECTION,
-    INSTITUTION_COLLECTION,
-    VALIDATION_COLLECTION,
-    CONFIGURATION_COLLECTION,
-    CDE_COLLECTION,
-    DATA_RECORDS_ARCHIVE_COLLECTION,
-    QC_RESULTS_COLLECTION,
-    RELEASE_DATA_RECORDS_COLLECTION,
-    PENDING_PVS_COLLECTION
+    DATA_RECORDS_ARCHIVE_COLLECTION
 } = require("../crdc-datahub-database-drivers/database-constants");
 const {MongoDBCollection} = require("../crdc-datahub-database-drivers/mongodb-collection");
 const {DatabaseConnector} = require("../crdc-datahub-database-drivers/database-connector");
+const {connectMongoose} = require("../mongoose/connection");
 const {EmailService} = require("../services/email");
 const {NotifyUser} = require("../services/notify-user");
 const {ApprovedStudiesService} = require("../services/approved-studies");
 const {BatchService, UploadingMonitor} = require("../services/batch-service");
 const {S3Service} = require("../services/s3-service");
-const {Organization} = require("../services/organization-service");
+const {Program} = require("../services/program-service");
 const {DataRecordService} = require("../services/data-record-service");
 const {UtilityService} = require("../services/utility");
 const {InstitutionService} = require("../services/institution-service");
@@ -35,8 +27,8 @@ const {DashboardService} = require("../services/dashboardService");
 const UserInitializationService = require("../services/user-initialization-service");
 const {ConfigurationService} = require("../services/configurationService");
 const typeDefs = require("fs").readFileSync("resources/graphql/crdc-datahub.graphql", "utf8");
-const dbService = new MongoQueries(configuration.mongo_db_connection_string, DATABASE_NAME);
-const dbConnector = new DatabaseConnector(configuration.mongo_db_connection_string);
+const dbService = new MongoQueries(configuration.document_db_connection_string, DATABASE_NAME);
+const dbConnector = new DatabaseConnector(configuration.document_db_connection_string);
 const AuthenticationService = require("../services/authentication-service");
 const {apiAuthorization, extractAPINames, PUBLIC} = require("./api-authorization");
 const {QcResultService} = require("../services/qc-result-service");
@@ -52,7 +44,6 @@ const {ADMIN} = require("../crdc-datahub-database-drivers/constants/user-permiss
 const {CONSTRAINTS} = require("../constants/submission-constants");
 const {Release} = require("../services/release-service");
 const DataModelService = require("../services/data-model-service");
-const { MODEL_NAME } = require("../constants/db-constants");
 const PropertyPVDAO = require("../dao/propertyPV");
 const { PropertyPVService } = require("../services/property-pv-service");
 
@@ -70,6 +61,7 @@ const public_api_list = extractAPINames(schema, PUBLIC)
 let root;
 let authenticationService, userInitializationService;
 dbConnector.connect().then(async () => {
+    await connectMongoose(configuration.document_db_connection_string);
     const config = await configuration.updateConfig(dbConnector);
     const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
     const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
@@ -79,18 +71,16 @@ dbConnector.connect().then(async () => {
     const notificationsService = new NotifyUser(emailService, config.tier);
 
     const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
-    const propertyPVCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, MODEL_NAME.PROPERTY_PVS);
-    const propertyPVDAO = new PropertyPVDAO(propertyPVCollection);
+    const propertyPVDAO = new PropertyPVDAO();
     const propertyPVService = new PropertyPVService(configurationService, propertyPVDAO);
     const authorizationService = new AuthorizationService(configurationService);
     const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
     const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
-    const organizationService = new Organization(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection);
-    const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, {url: config.emails_url, contactEmail: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl});
+    const programService = new Program();
+    const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService, authorizationService, notificationsService, {url: config.emails_url, contactEmail: config.conditionalSubmissionContact, submissionGuideURL: config.submissionGuideUrl});
 
-    const institutionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, INSTITUTION_COLLECTION, userCollection);
-    const institutionService = new InstitutionService(institutionCollection, authorizationService);
-    const userService = new UserService(userCollection, logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days, configurationService, institutionService, authorizationService);
+    const institutionService = new InstitutionService(authorizationService);
+    const userService = new UserService(logCollection, organizationCollection, notificationsService, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days, configurationService, institutionService, authorizationService);
     const s3Service = new S3Service();
     const awsService = new AWSService(configurationService);
 
@@ -101,16 +91,11 @@ dbConnector.connect().then(async () => {
     const batchService = new BatchService(s3Service, config.sqs_loader_queue, awsService, config.prod_url, fetchDataModelInfo);
 
 
-    const qcResultCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, QC_RESULTS_COLLECTION);
-    const qcResultsService = new QcResultService(qcResultCollection, submissionCollection, authorizationService);
+    const qcResultsService = new QcResultService(authorizationService);
 
-    const releaseCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, RELEASE_DATA_RECORDS_COLLECTION);
-    const dataRecordCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_COLLECTION);
     const dataRecordArchiveCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_ARCHIVE_COLLECTION);
-    const dataRecordService = new DataRecordService(dataRecordCollection, dataRecordArchiveCollection, releaseCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
+    const dataRecordService = new DataRecordService(dataRecordArchiveCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
     qcResultsService.setDataRecordService(dataRecordService);
-
-    const validationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, VALIDATION_COLLECTION);
 
     const emailParams = {url: config.emails_url, officialEmail: config.official_email, inactiveDays: config.inactive_application_days, remindDay: config.remind_application_days,
         submissionSystemPortal: config.submission_system_portal, submissionHelpdesk: config.submission_helpdesk, remindSubmissionDay: config.inactiveSubmissionNotifyDays,
@@ -120,20 +105,19 @@ dbConnector.connect().then(async () => {
         
     const uploadingMonitor = UploadingMonitor.getInstance(batchService.batchDAO, configurationService);
 
-    const cdeService = new CDE();
     const tooltipService = new TooltipService();
     const dataModelService = new DataModelService(fetchDataModelInfo, config.model_url);
     const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
-        organizationService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
-        s3Service, emailParams, config.dataCommonsList, config.hiddenModels, validationCollection, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
-        config.submission_bucket, configurationService, uploadingMonitor, config.dataCommonsBucketMap, authorizationService, dataModelService, dataRecordCollection);
-    const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, organizationService, institutionService, configurationService, authorizationService);
+        programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
+        s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
+        config.submission_bucket, configurationService, uploadingMonitor, config.dataCommonsBucketMap, authorizationService, dataModelService);
+    const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, institutionService, configurationService, authorizationService);
 
     const dashboardService = new DashboardService(userService, awsService, configurationService, {sessionTimeout: config.dashboardSessionTimeout}, authorizationService);
     userInitializationService = new UserInitializationService(userCollection, organizationCollection, approvedStudiesCollection, configurationService);
     authenticationService = new AuthenticationService(userCollection);
 
-    const releaseService = new Release(releaseCollection, authorizationService, dataModelService, s3Service, config);
+    const releaseService = new Release(authorizationService, dataModelService, s3Service, config);
     root = {
         version: () => {return config.version},
         saveApplication: dataInterface.saveApplication.bind(dataInterface),
@@ -228,31 +212,30 @@ dbConnector.connect().then(async () => {
         editUser : userService.editUser.bind(userService),
         grantToken : userService.grantToken.bind(userService),
         listActiveDCPs: userService.listActiveDCPsAPI.bind(userService),
-        listPrograms: organizationService.listPrograms.bind(organizationService),
+        listPrograms: programService.listPrograms.bind(programService),
         getOrganization : async (params, context) => {
             const userScope = await getOrgUserScope(authorizationService, context?.userInfo, ADMIN.MANAGE_PROGRAMS);
             if (userScope.isNoneScope()) {
                 throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
             }
-            return await organizationService.getOrganizationAPI(params, context);
+            return await programService.getProgramAPI(params, context);
         },
         editOrganization : async (params, context) => {
             const userScope = await getOrgUserScope(authorizationService, context?.userInfo, ADMIN.MANAGE_PROGRAMS);
             if (userScope.isNoneScope()) {
                 throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
             }
-            return await organizationService.editOrganizationAPI(params, context);
+            return await programService.editProgramAPI(params, context);
         },
         createOrganization : async (params, context) => {
             const userScope = await getOrgUserScope(authorizationService, context?.userInfo, ADMIN.MANAGE_PROGRAMS);
             if (userScope.isNoneScope()) {
                 throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
             }
-            return await organizationService.createOrganizationAPI(params, context);
+            return await programService.createProgramAPI(params, context);
         },
         deleteDataRecords: submissionService.deleteDataRecords.bind(submissionService),
         getDashboardURL: dashboardService.getDashboardURL.bind(dashboardService),
-        retrieveCDEs: cdeService.getCDEs.bind(cdeService),
         editSubmissionCollaborators: submissionService.editSubmissionCollaborators.bind(submissionService),
         requestAccess: async (params, context)=> {
             const institutionName = sanitizeHtml(params?.institutionName, {allowedTags: [],allowedAttributes: {}});
@@ -286,6 +269,9 @@ dbConnector.connect().then(async () => {
         getSubmissionSummary: submissionService.getSubmissionSummary.bind(submissionService),
         retrievePVsByPropertyName: propertyPVService.retrievePVsByPropertyName.bind(propertyPVService),
     };
+}).catch((error) => {
+    console.error('GraphQL router initialization failed:', error);
+    process.exit(1);
 });
 
 async function getOrgUserScope(authorizationService, userInfo, permission) {

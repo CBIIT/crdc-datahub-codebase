@@ -10,9 +10,9 @@ const createSession = require("./crdc-datahub-database-drivers/session-middlewar
 const statusRouter = require("./routers/status-endpoints-router");
 const graphqlRouter = require("./routers/graphql-router");
 const {MongoDBCollection} = require("./crdc-datahub-database-drivers/mongodb-collection");
-const {DATABASE_NAME, APPLICATION_COLLECTION, USER_COLLECTION, LOG_COLLECTION, APPROVED_STUDIES_COLLECTION,
-    ORGANIZATION_COLLECTION, SUBMISSIONS_COLLECTION, DATA_RECORDS_COLLECTION, VALIDATION_COLLECTION,
-    DATA_RECORDS_ARCHIVE_COLLECTION, QC_RESULTS_COLLECTION, RELEASE_DATA_RECORDS_COLLECTION,  CONFIGURATION_COLLECTION
+const {DATABASE_NAME, APPLICATION_COLLECTION, LOG_COLLECTION, APPROVED_STUDIES_COLLECTION,
+    ORGANIZATION_COLLECTION, SUBMISSIONS_COLLECTION,
+    DATA_RECORDS_ARCHIVE_COLLECTION
 } = require("./crdc-datahub-database-drivers/database-constants");
 const {Application} = require("./services/application");
 const {Submission} = require("./services/submission");
@@ -20,12 +20,13 @@ const {DataRecordService} = require("./services/data-record-service");
 const {S3Service} = require("./services/s3-service");
 const {MongoQueries} = require("./crdc-datahub-database-drivers/mongo-queries");
 const {DatabaseConnector} = require("./crdc-datahub-database-drivers/database-connector");
+const {connectMongoose} = require("./mongoose/connection");
 const {getCurrentTime} = require("./crdc-datahub-database-drivers/utility/time-utility");
 const {EmailService} = require("./services/email");
 const {NotifyUser} = require("./services/notify-user");
 const {extractAndJoinFields} = require("./utility/string-util");
 const {ApprovedStudiesService} = require("./services/approved-studies");
-const {Organization} = require("./services/organization-service");
+const {Program} = require("./services/program-service");
 const {LOGIN, REACTIVATE_USER} = require("./crdc-datahub-database-drivers/constants/event-constants");
 const {BatchService} = require("./services/batch-service");
 const {AWSService} = require("./services/aws-request");
@@ -33,6 +34,7 @@ const {UtilityService} = require("./services/utility");
 const {QcResultService} = require("./services/qc-result-service");
 const {UserService} = require("./services/user");
 const {ConfigurationService} = require("./services/configurationService");
+const {AuthorizationService} = require("./services/authorization-service");
 const {EMAIL_NOTIFICATIONS} = require("./crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_CONSTANTS = require("./crdc-datahub-database-drivers/constants/user-constants");
 const ROLES = USER_CONSTANTS.USER.ROLES;
@@ -58,7 +60,7 @@ app.use(express.static(join(__dirname, 'public')));
 app.use("/", statusRouter);
 
 // create session
-app.use(createSession(configuration.session_secret, configuration.session_timeout, configuration.mongo_db_connection_string));
+app.use(createSession(configuration.session_secret, configuration.session_timeout, configuration.document_db_connection_string));
 
 // // authentication middleware
 // app.use(async (req, res, next) => {
@@ -74,15 +76,16 @@ app.use(createSession(configuration.session_secret, configuration.session_timeou
 app.use("/api/graphql", graphqlRouter);
 // Start the cron job. The frequency time read from the database
 (async () => {
-    const dbConnector = new DatabaseConnector(configuration.mongo_db_connection_string);
-    const dbService = new MongoQueries(configuration.mongo_db_connection_string, DATABASE_NAME);
+    const dbConnector = new DatabaseConnector(configuration.document_db_connection_string);
+    const dbService = new MongoQueries(configuration.document_db_connection_string, DATABASE_NAME);
     dbConnector.connect().then( async () => {
+        await connectMongoose(configuration.document_db_connection_string);
         const config = await configuration.updateConfig(dbConnector);
         const emailService = new EmailService(config.email_transport, config.emails_enabled);
         const configurationService = new ConfigurationService();
+        const authorizationService = new AuthorizationService(configurationService);
         const notificationsService = new NotifyUser(emailService, config.tier);
         const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
-        const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
         const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
         const emailParams = {
             url: config.emails_url,
@@ -105,10 +108,9 @@ app.use("/api/graphql", graphqlRouter);
         const logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
         const approvedStudiesCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPROVED_STUDIES_COLLECTION);
         const organizationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, ORGANIZATION_COLLECTION);
-        const organizationService = new Organization(organizationCollection, userCollection, submissionCollection, applicationCollection, approvedStudiesCollection);
-        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, userCollection, organizationService, submissionCollection);
-
-        const userService = new UserService(userCollection, logCollection, organizationCollection, notificationsService, submissionCollection, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
+        const programService = new Program();
+        const approvedStudiesService = new ApprovedStudiesService(approvedStudiesCollection, programService);
+        const userService = new UserService(logCollection, organizationCollection, notificationsService, applicationCollection, config.official_email, config.emails_url, approvedStudiesService, config.inactive_user_days);
         const s3Service = new S3Service();
 
         const awsService = new AWSService(submissionCollection, userService, config.role_arn, config.presign_expiration);
@@ -120,22 +122,18 @@ app.use("/api/graphql", graphqlRouter);
         
         const batchService = new BatchService(s3Service, config.sqs_loader_queue, awsService, config.prod_url, fetchDataModelInfo);
 
-        const qcResultCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, QC_RESULTS_COLLECTION);
-        const qcResultsService = new QcResultService(qcResultCollection, submissionCollection);
+        const qcResultsService = new QcResultService(authorizationService);
 
-        const releaseCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, RELEASE_DATA_RECORDS_COLLECTION);
-        const dataRecordCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_COLLECTION);
         const dataRecordArchiveCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, DATA_RECORDS_ARCHIVE_COLLECTION);
-        const dataRecordService = new DataRecordService(dataRecordCollection, dataRecordArchiveCollection, releaseCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
+        const dataRecordService = new DataRecordService(dataRecordArchiveCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
         qcResultsService.setDataRecordService(dataRecordService);
 
-        const validationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, VALIDATION_COLLECTION);
         const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
-            organizationService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
-            s3Service, emailParams, config.dataCommonsList, config.hiddenModels, validationCollection, config.sqs_loader_queue, qcResultsService, 
+            programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
+            s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, 
             config.uploaderCLIConfigs, config.submission_bucket, configurationService);
 
-        const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, organizationService, null, configurationService, null);
+        const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, null, configurationService, null);
         
         
         cronJob.schedule(config.scheduledJobTime, async () => {
@@ -312,6 +310,9 @@ app.use("/api/graphql", graphqlRouter);
                 console.warn(`Skipped tasks:`, results.filter(r => r.status === 'skipped').map(r => `Task ${r.taskNumber} - ${r.name}: ${r.error}`));
             }
         });
+    }).catch((error) => {
+        console.error('Backend startup initialization failed:', error);
+        process.exit(1);
     });
 })();
 

@@ -1,5 +1,5 @@
-// Submission orderBy mapping for Prisma queries
-// Note: organization filter in listSubmissions always expects organization names, not IDs
+// Submission orderBy mapping for Mongoose / aggregation sort paths after $lookup
+// Note: organization filter in listSubmissions expects organization IDs (programID), not names
 const SUBMISSION_ORDER_BY_MAP = {
     "updatedAt": "updatedAt",
     "createdAt": "createdAt",
@@ -9,7 +9,7 @@ const SUBMISSION_ORDER_BY_MAP = {
     "studyAbbreviation": "study.studyAbbreviation",
     "dbGaPID": "dbGaPID",
     "status": "status",
-    "concierge": "concierge",
+    "concierge": "concierge.fullName",
     "dataFileSize.size": "dataFileSize.size",
     "submitterName": "submitter.fullName",
     "conciergeName": "concierge.fullName",

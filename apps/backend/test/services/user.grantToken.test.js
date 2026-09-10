@@ -15,9 +15,9 @@ jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
 
 describe('UserService.grantToken', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, 
-        mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, 
-        mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays, 
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection,
+        mockNotificationsService, mockApplicationCollection,
+        mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays,
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
 
@@ -43,17 +43,14 @@ describe('UserService.grantToken', () => {
     };
 
     beforeEach(() => {
-        // Reset all mocks
         jest.clearAllMocks();
 
-        // Create mock collections and services
-        mockUserCollection = {
+        mockUserDAO = {
             update: jest.fn()
         };
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockOfficialEmail = 'test@example.com';
         mockAppUrl = 'http://test.com';
@@ -63,13 +60,10 @@ describe('UserService.grantToken', () => {
         mockInstitutionService = {};
         mockAuthorizationService = {};
 
-        // Create user service instance
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             mockOfficialEmail,
             mockAppUrl,
@@ -79,8 +73,8 @@ describe('UserService.grantToken', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
 
-        // Set up context and params
         context = {
             userInfo: mockUserInfo
         };
@@ -150,7 +144,7 @@ describe('UserService.grantToken', () => {
         });
 
         it('should accept active user status', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, context);
 
@@ -161,13 +155,12 @@ describe('UserService.grantToken', () => {
 
     describe('Token clearing', () => {
         it('should clear existing tokens when user has tokens', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             await userService.grantToken(params, context);
 
-            // Verify that existing tokens were cleared before token creation
-            // The context will be updated with the new token, so we check the database call
-            expect(mockUserCollection.update).toHaveBeenCalledWith(
+            expect(mockUserDAO.update).toHaveBeenCalledWith(
+                mockUserInfo._id,
                 expect.objectContaining({
                     _id: mockUserInfo._id,
                     tokens: expect.arrayContaining([expect.any(String)]),
@@ -180,12 +173,12 @@ describe('UserService.grantToken', () => {
             const noTokensContext = {
                 userInfo: mockUserInfoNoTokens
             };
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfoNoTokens._id, tokens: ['token'], updateAt: new Date() });
 
             await userService.grantToken(params, noTokensContext);
 
-            // Should not throw error when no tokens exist
-            expect(mockUserCollection.update).toHaveBeenCalledWith(
+            expect(mockUserDAO.update).toHaveBeenCalledWith(
+                mockUserInfoNoTokens._id,
                 expect.objectContaining({
                     _id: mockUserInfoNoTokens._id,
                     tokens: expect.arrayContaining([expect.any(String)]),
@@ -201,12 +194,12 @@ describe('UserService.grantToken', () => {
                     tokens: null
                 }
             };
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             await userService.grantToken(params, nullTokensContext);
 
-            // Should not throw error when tokens is null
-            expect(mockUserCollection.update).toHaveBeenCalledWith(
+            expect(mockUserDAO.update).toHaveBeenCalledWith(
+                mockUserInfo._id,
                 expect.objectContaining({
                     _id: mockUserInfo._id,
                     tokens: expect.arrayContaining([expect.any(String)]),
@@ -222,12 +215,12 @@ describe('UserService.grantToken', () => {
                     tokens: undefined
                 }
             };
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             await userService.grantToken(params, undefinedTokensContext);
 
-            // Should not throw error when tokens is undefined
-            expect(mockUserCollection.update).toHaveBeenCalledWith(
+            expect(mockUserDAO.update).toHaveBeenCalledWith(
+                mockUserInfo._id,
                 expect.objectContaining({
                     _id: mockUserInfo._id,
                     tokens: expect.arrayContaining([expect.any(String)]),
@@ -239,7 +232,7 @@ describe('UserService.grantToken', () => {
 
     describe('Token creation', () => {
         it('should create a new access token', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, context);
 
@@ -249,7 +242,7 @@ describe('UserService.grantToken', () => {
         });
 
         it('should return correct message', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, context);
 
@@ -257,12 +250,12 @@ describe('UserService.grantToken', () => {
         });
 
         it('should create token with user ID', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             await userService.grantToken(params, context);
 
-            // The token should be created with the user ID and stored in the database
-            expect(mockUserCollection.update).toHaveBeenCalledWith(
+            expect(mockUserDAO.update).toHaveBeenCalledWith(
+                mockUserInfo._id,
                 expect.objectContaining({
                     _id: mockUserInfo._id,
                     tokens: expect.arrayContaining([expect.any(String)]),
@@ -273,14 +266,12 @@ describe('UserService.grantToken', () => {
 
         it('should create token containing only the user ID in sub claim', async () => {
             const jwt = require('jsonwebtoken');
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, context);
 
             const decoded = jwt.decode(result.tokens[0]);
-            // Token should contain sub claim with user ID (JWT standard)
             expect(decoded.sub).toBe(mockUserInfo._id);
-            // Token should NOT contain full user object properties
             expect(decoded._id).toBeUndefined();
             expect(decoded.email).toBeUndefined();
             expect(decoded.firstName).toBeUndefined();
@@ -290,64 +281,52 @@ describe('UserService.grantToken', () => {
     });
 
     describe('Database update', () => {
-        it('should call userCollection.update with correct parameters', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+        it('should call userDAO.update with correct parameters', async () => {
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             await userService.grantToken(params, context);
 
-            expect(mockUserCollection.update).toHaveBeenCalledWith({
-                _id: mockUserInfo._id,
-                tokens: expect.arrayContaining([expect.any(String)]),
-                updateAt: expect.any(Date)
-            });
+            expect(mockUserDAO.update).toHaveBeenCalledWith(
+                mockUserInfo._id,
+                {
+                    _id: mockUserInfo._id,
+                    tokens: expect.arrayContaining([expect.any(String)]),
+                    updateAt: expect.any(Date)
+                }
+            );
         });
 
-        it('should handle database update with matchedCount 0', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 0 });
-
-            // Due to a bug in the implementation, this doesn't throw an error
-            const result = await userService.grantToken(params, context);
-
-            expect(result).toHaveProperty('tokens');
-            expect(result).toHaveProperty('message');
-        });
-
-        it('should handle database update returning null', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue(null);
-
-            // Due to a bug in the implementation, this doesn't throw an error
-            const result = await userService.grantToken(params, context);
-
-            expect(result).toHaveProperty('tokens');
-            expect(result).toHaveProperty('message');
-        });
-
-        it('should throw error when database update throws exception', async () => {
-            mockUserCollection.update = jest.fn().mockRejectedValue(new Error('Database error'));
+        it('should throw UPDATE_FAILED when database update rejects', async () => {
+            mockUserDAO.update.mockRejectedValue(new Error('Database error'));
 
             await expect(userService.grantToken(params, context))
-                .rejects.toThrow('Database error');
+                .rejects.toThrow(SUBMODULE_ERROR.UPDATE_FAILED);
+        });
+
+        it('should throw UPDATE_FAILED when database update throws exception', async () => {
+            mockUserDAO.update.mockRejectedValue(new Error('Database error'));
+
+            await expect(userService.grantToken(params, context))
+                .rejects.toThrow(SUBMODULE_ERROR.UPDATE_FAILED);
         });
     });
 
     describe('Context update', () => {
         it('should update context userInfo with new token', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             await userService.grantToken(params, context);
 
-            // Context should be updated with new user info
             expect(context.userInfo).toHaveProperty('tokens');
             expect(context.userInfo.tokens).toHaveLength(1);
             expect(context.userInfo).toHaveProperty('updateAt');
         });
 
         it('should preserve existing user info in context', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             await userService.grantToken(params, context);
 
-            // Existing user info should be preserved
             expect(context.userInfo._id).toBe(mockUserInfo._id);
             expect(context.userInfo.email).toBe(mockUserInfo.email);
             expect(context.userInfo.firstName).toBe(mockUserInfo.firstName);
@@ -360,7 +339,7 @@ describe('UserService.grantToken', () => {
 
     describe('Return value', () => {
         it('should return object with tokens array and message', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, context);
 
@@ -371,7 +350,7 @@ describe('UserService.grantToken', () => {
         });
 
         it('should return exactly one token', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, context);
 
@@ -379,7 +358,7 @@ describe('UserService.grantToken', () => {
         });
 
         it('should return valid JWT token', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, context);
 
@@ -396,7 +375,7 @@ describe('UserService.grantToken', () => {
                     role: USER.ROLES.ADMIN
                 }
             };
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, adminUserContext);
 
@@ -408,10 +387,10 @@ describe('UserService.grantToken', () => {
             const googleUserContext = {
                 userInfo: {
                     ...mockUserInfo,
-                    IDP: 'GOOGLE' // Use string literal instead of constant
+                    IDP: 'GOOGLE'
                 }
             };
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, googleUserContext);
 
@@ -428,7 +407,7 @@ describe('UserService.grantToken', () => {
                     userStatus: USER.STATUSES.ACTIVE
                 }
             };
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: 'minimal-user', tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, minimalUserContext);
 
@@ -439,15 +418,14 @@ describe('UserService.grantToken', () => {
 
     describe('Error handling', () => {
         it('should handle database connection errors', async () => {
-            mockUserCollection.update = jest.fn().mockRejectedValue(new Error('Connection failed'));
+            mockUserDAO.update.mockRejectedValue(new Error('Connection failed'));
 
             await expect(userService.grantToken(params, context))
-                .rejects.toThrow('Connection failed');
+                .rejects.toThrow(SUBMODULE_ERROR.UPDATE_FAILED);
         });
 
         it('should handle invalid token secret', async () => {
-            // This would be tested at the JWT level, but we can test the overall flow
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const result = await userService.grantToken(params, context);
 
@@ -471,7 +449,7 @@ describe('UserService.grantToken', () => {
 
     describe('Performance considerations', () => {
         it('should handle concurrent token requests', async () => {
-            mockUserCollection.update = jest.fn().mockResolvedValue({ matchedCount: 1 });
+            mockUserDAO.update.mockResolvedValue({ _id: mockUserInfo._id, tokens: ['token'], updateAt: new Date() });
 
             const promises = [
                 userService.grantToken(params, context),
@@ -488,4 +466,4 @@ describe('UserService.grantToken', () => {
             });
         });
     });
-}); 
+});
