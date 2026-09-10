@@ -1667,7 +1667,7 @@ class Application {
 
     async _sendConditionallyApprovedEmail(application, comment, isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification) {
         const applicant = await this._getApplicant(application);
-        const [applicantEmail, cCEmails, bCCEmails] = await this._getRecipientEmails(application, applicant, [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED]);
+        const [applicantEmail, cCEmails, notUsedEmails] = await this._getRecipientEmails(application, applicant, [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED]);
         const bCCUsers = await this._getUsersWithNotifications(requiredNotifications, INTERNAL_USERS_ROLES)
 
         const pendingTemplateParams = {
@@ -1679,10 +1679,13 @@ class Application {
         };
 
         const pendingCount = [isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification].filter(Boolean).length;
+        const bCCEmails = getEmailsBasedonConditionalApproval(bCCUsers, isDbGapMissing, isPendingModelChange, isPendingImageDeIdentification);
+        const [finalCCEmails, finalBCCmails] = filterDuplicateEmails(applicantEmail, cCEmails, bCCEmails);
         if (pendingCount > 1) {
-            await this.notificationService.multipleChangesApproveQuestionNotification(applicantEmail,
-                cCEmails,
-                bCCEmails,
+            await this.notificationService.multipleChangesApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
                 pendingTemplateParams,
                 isDbGapMissing,
                 isPendingModelChange,
@@ -1693,40 +1696,47 @@ class Application {
         }
 
         if (isDbGapMissing) {
-            await this.notificationService.dbGapMissingApproveQuestionNotification(applicantEmail,
-                cCEmails,
-                bCCEmails,
+            await this.notificationService.dbGapMissingApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
                 pendingTemplateParams
             );
             return;
         }
 
         if (isPendingModelChange) {
-            await this.notificationService.dataModelChangeApproveQuestionNotification(applicantEmail,
-                cCEmails,
-                bCCEmails,
+            await this.notificationService.dataModelChangeApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
                 pendingTemplateParams
             );
             return;
         }
 
+        // Todo: remove pending GPA condition
         if (isPendingGPA) {
-            await this.notificationService.pendingGPANotification(applicantEmail,
-                cCEmails,
-                bCCEmails,
+            await this.notificationService.pendingGPANotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
                 pendingTemplateParams
             );
             return;
         }
 
         if (isPendingImageDeIdentification) {
-            await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(applicantEmail,
-                cCEmails,
-                bCCEmails,
+            await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
                 pendingTemplateParams
             );
         }
     }
+
+
 
     async _getApplicant(application) {
         const applicants = await this.userService.userCollection.find(application?.applicantID);
@@ -1739,7 +1749,7 @@ class Application {
         const applicantEmail = applicant?.email;
         const cCEmails = getCCEmails(applicantEmail, application);
         const bCCEmails = getUserEmails(bCCUsers)
-            ?.filter((email) => !cCEmails.includes(email) && applicantEmail !== email);
+        const [finalCCEmails, finalBCCmails] = filterDuplicateEmails(applicantEmail, cCEmails, bCCEmails);
         return [applicantEmail, cCEmails, bCCEmails];
     }
 
@@ -2032,6 +2042,34 @@ const getCCEmails = (submitterEmail, application) => {
     return Array.from(emails);
 }
 
+const filterDuplicateEmails = (applicantEmail, cCEmails, bCCEmails) => {
+    let finalCCEmails = cCEmails.filter(email => email !== applicantEmail);
+    let finalBCCmails = bCCEmails.filter(email => email !== applicantEmail && !finalCCEmails.includes(email));
+    return [finalCCEmails, finalBCCmails];
+}
+
+const getEmailsBasedonConditionalApproval = (users, isDbGapMissing, isPendingModelChange, isPendingImageDeIdentification) => {
+    const emails = [];
+    for (const user of users) {
+        if (!user.notifications || !Array.isArray(user.notifications)) {
+            continue;
+        }
+        if (isDbGapMissing && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DB_GAP_MISSING)) {
+            emails.push(user.email);
+            continue
+        }
+        if (isPendingModelChange && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_MODEL_CHANGE)) {
+            emails.push(user.email);
+            continue;
+        }
+        if (isPendingImageDeIdentification && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_IMAGE_DE_IDENTIFICATION)) {
+            emails.push(user.email);
+            continue;
+        }
+    }
+    return emails;
+}
+
 const sendEmails = {
     inactiveApplications: async (notificationService, emailParams, email, applicantName, application, BCCEmails) => {
         try {
@@ -2176,5 +2214,7 @@ function logDaysDifference(inactiveDays, accessedAt, applicationID) {
 module.exports = {
     Application,
     VALID_ORDER_BY_LIST_APPLICATIONS,
-    getCCEmails
+    getCCEmails,
+    filterDuplicateEmails,
+    getEmailsBasedonConditionalApproval
 };
