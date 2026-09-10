@@ -482,9 +482,10 @@ class ApplicationDAO extends MongooseGenericDAO {
      * @param {string|null} [params.programName]
      * @param {string|null} [params.studyName]
      * @param {string|null} [params.applicantID] Own-scope applicant filter
-     * @returns {{match: object, submitterName: string|null, hasStudyFilter: boolean}}
+     * @param {boolean} [params.showAllVersions=false] When false, only revision-chain tails (nextRevisionId unset)
+     * @returns {{match: object, hasStudyFilter: boolean}}
      */
-    _buildListApplicationsMatch({statuses, programName, studyName, applicantID} = {}) {
+    _buildListApplicationsMatch({statuses, programName, studyName, applicantID, showAllVersions} = {}) {
         const match = {};
         if (statuses?.length) {
             match.status = {$in: statuses};
@@ -505,6 +506,10 @@ class ApplicationDAO extends MongooseGenericDAO {
         if (applicantID) {
             match.applicantID = applicantID;
         }
+        if (!showAllVersions) {
+            // Missing or null nextRevisionId: chain tail (latest SRF in the sequence)
+            match.nextRevisionId = null;
+        }
         return {match, hasStudyFilter};
     }
 
@@ -521,6 +526,7 @@ class ApplicationDAO extends MongooseGenericDAO {
      * @param {number} [params.offset]
      * @param {string} [params.orderBy]
      * @param {string} [params.sortDirection]
+     * @param {boolean} [params.showAllVersions=false] When false, only revision-chain tails
      * @returns {Promise<{applications: object[], total: number, programs: string[], studies: string[], studyAbbreviations: string[], status: string[], submitterNames: string[]}>}
      */
     async listApplicationsWithFacets({
@@ -533,12 +539,14 @@ class ApplicationDAO extends MongooseGenericDAO {
         offset,
         orderBy,
         sortDirection,
+        showAllVersions,
     } = {}) {
         const {match, hasStudyFilter} = this._buildListApplicationsMatch({
             statuses,
             programName,
             studyName,
             applicantID,
+            showAllVersions,
         });
 
         const submitterFilter =

@@ -137,6 +137,16 @@ describe('ApplicationDAO', () => {
          * Field-facet pipelines are indices 2–5.
          */
         const fieldFacetCallIndexes = [2, 3, 4, 5];
+        const listAggregateCallCount = 7;
+
+        /**
+         * First $match stage of a listApplicationsWithFacets aggregate pipeline.
+         * @param {object[]} pipeline
+         * @returns {object}
+         */
+        function firstMatch(pipeline) {
+            return pipeline.find((stage) => stage.$match).$match;
+        }
 
         it('should aggregate with applicant lookup and without $facet', async () => {
             ApplicationModel.aggregate
@@ -208,6 +218,71 @@ describe('ApplicationDAO', () => {
             for (const index of fieldFacetCallIndexes) {
                 const pipeline = ApplicationModel.aggregate.mock.calls[index][0];
                 expect(pipeline.some((stage) => stage.$lookup)).toBe(true);
+            }
+        });
+
+        it('should match nextRevisionId null when showAllVersions is omitted', async () => {
+            ApplicationModel.aggregate
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{count: 0}])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([]);
+
+            await dao.listApplicationsWithFacets({
+                first: 10,
+                offset: 0,
+            });
+
+            expect(ApplicationModel.aggregate).toHaveBeenCalledTimes(listAggregateCallCount);
+            for (const call of ApplicationModel.aggregate.mock.calls) {
+                expect(firstMatch(call[0]).nextRevisionId).toBeNull();
+            }
+        });
+
+        it('should match nextRevisionId null when showAllVersions is false', async () => {
+            ApplicationModel.aggregate
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{count: 0}])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([]);
+
+            await dao.listApplicationsWithFacets({
+                showAllVersions: false,
+                first: 10,
+                offset: 0,
+            });
+
+            expect(ApplicationModel.aggregate).toHaveBeenCalledTimes(listAggregateCallCount);
+            for (const call of ApplicationModel.aggregate.mock.calls) {
+                expect(firstMatch(call[0]).nextRevisionId).toBeNull();
+            }
+        });
+
+        it('should omit nextRevisionId from the match when showAllVersions is true', async () => {
+            ApplicationModel.aggregate
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{count: 0}])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([]);
+
+            await dao.listApplicationsWithFacets({
+                showAllVersions: true,
+                first: 10,
+                offset: 0,
+            });
+
+            expect(ApplicationModel.aggregate).toHaveBeenCalledTimes(listAggregateCallCount);
+            for (const call of ApplicationModel.aggregate.mock.calls) {
+                expect(firstMatch(call[0])).not.toHaveProperty('nextRevisionId');
             }
         });
     });

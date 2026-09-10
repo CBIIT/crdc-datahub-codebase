@@ -872,11 +872,13 @@ type Query {
         first: Int = -1,
         offset: Int = 0,
         orderBy: String = "createdAt",
-        sortDirection: String = "DESC"
+        sortDirection: String = "DESC",
+        showAllVersions: Boolean = false
     ): ListApplications
     # when first parameter is set to -1, we should return all applications (no pagination)
     # sortDirection in ["ASC", "DESC"]
-    # orderBy in ["applicant.applicantName", "applicant.fullName", "programName", "studyName", "studyAbbreviation", "status", "version", "createdAt", "updatedAt", "submittedDate"]
+    # showAllVersions false returns only revision-chain tails (nextRevisionId unset); true returns every matching SRF
+    # orderBy in ["applicant.applicantName", "applicant.fullName", "programName", "studyName", "studyAbbreviation", "status", "version", "sequenceNumber", "createdAt", "updatedAt", "submittedDate"]
 
     # Admin only
     listApprovedStudies(
