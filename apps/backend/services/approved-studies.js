@@ -32,6 +32,7 @@ const {PendingGPA} = require("../domain/pending-gpa");
 const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } = require("../utility/study-utility");
 const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev-helpers");
 const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+const {getCCEmails, filterDuplicateEmails, getEmailsBasedonConditionalApproval} = require("./application");
 
 class ApprovedStudiesService {
     /**
@@ -625,12 +626,19 @@ class ApprovedStudiesService {
                 // internal error for the logs, this will not be displayed to the user
                 throw new Error("Unable to find submitter with ID: " + application?.applicantID);
             }
-            const BCCUsers = await this.userDAO.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_CLEARED],
+            const bCCUsers = await this.userDAO.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED],
                 [USER.ROLES.DATA_COMMONS_PERSONNEL, USER.ROLES.FEDERAL_LEAD, USER.ROLES.ADMIN]);
-            const filteredBCCUsers = BCCUsers.filter((u) => u?._id !== aSubmitter?._id);
+            const cCEmails = getCCEmails(aSubmitter?.email, application);
+            const bCCEmails = getEmailsBasedonConditionalApproval(
+                bCCUsers, 
+                updateStudy.pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID),
+                updateStudy.pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE),
+                updateStudy.pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION)
+            );
+            const [finalCCEmails, finalBCCmails] = filterDuplicateEmails(aSubmitter?.email, cCEmails, bCCEmails);
 
-            if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_CLEARED)) {
-                const res = await this.notificationsService.clearPendingModelState(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
+            if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED)) {
+                const res = await this.notificationsService.clearPendingModelState(aSubmitter?.email, finalCCEmails, finalBCCmails, {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
                     studyName: updateStudy?.studyName || NA,
                     portalURL: this.emailParams.url || NA,
