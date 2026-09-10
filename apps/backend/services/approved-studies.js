@@ -141,6 +141,9 @@ class ApprovedStudiesService {
             return { ...result, _id: result._id ?? result.id };
         }
 
+        const missingDbGaPID = isTrue(fields.controlledAccess) && !fields.dbGaPID;
+        const pendingConditionsAtApproval = getPendingConditionsAtApproval(missingDbGaPID, fields.pendingModelChange, fields.pendingImageDeIdentification);
+
         const approvedStudies = ApprovedStudies.createApprovedStudies(
             fields.applicationID,
             fields.studyName,
@@ -156,7 +159,8 @@ class ApprovedStudiesService {
             fields.primaryContactID,
             pendingGPA,
             fields.programID,
-            fields.pendingImageDeIdentification
+            fields.pendingImageDeIdentification,
+            pendingConditionsAtApproval
         );
         const res = await this.approvedStudyDAO.create(approvedStudies);
 
@@ -766,6 +770,21 @@ const getUserEmails = (users) => {
         ?.map((aUser)=> aUser.email);
 }
 
+const getPendingConditionsAtApproval = (pendingDbGaPID,pendingModelChange, pendingImageDeIdentification) => {
+    let conditions = [];
+    if (isTrue(pendingDbGaPID)) {
+    conditions.push(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID);
+    }
+    if (isTrue(pendingModelChange)) {
+        conditions.push(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE);
+    }
+    if (isTrue(pendingImageDeIdentification)) {
+        conditions.push(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION);
+    }
+    return conditions;
+}
+
 module.exports = {
-    ApprovedStudiesService
+    ApprovedStudiesService,
+    getPendingConditionsAtApproval
 }

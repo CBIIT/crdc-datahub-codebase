@@ -1,4 +1,5 @@
 const { filterDuplicateEmails, getEmailsBasedonConditionalApproval } = require('../../services/application');
+const { getPendingConditionsAtApproval } = require('../../services/approved-studies');
 const {EMAIL_NOTIFICATIONS} = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
 
 describe('filterDuplicateEmails', () => {
@@ -119,4 +120,36 @@ describe('getEmailsBasedonConditionalApproval', () => {
         expect(result).toEqual(expect.arrayContaining(['user1@test.com']));
     });
 
+});
+
+describe('getPendingConditionsAtApproval', () => {
+    it('should return empty array if not pending conditions', () => {
+        const result = getPendingConditionsAtApproval(false, false, false);
+        expect(result).toEqual([]);
+    });
+
+    it('should return submission_request:pending_image_deidentification if pending image deidentification is true', () => {
+        const result = getPendingConditionsAtApproval(false, false, true);
+        expect(result).toEqual(['submission_request:pending_image_deidentification']);
+    });
+
+    it('should return submission_request:pending_model_update if pending model update is true', () => {
+        const result = getPendingConditionsAtApproval(false, true, false);
+        expect(result).toEqual(['submission_request:pending_model_update']);
+    });
+
+    it('should return submission_request:pending_dbgapid if pending dbgapid is true', () => {
+        const result = getPendingConditionsAtApproval(true, false, false);
+        expect(result).toEqual(['submission_request:pending_dbgapid']);
+    });
+
+    it('should return array of pending condidtions when multiple pending conditions are true', () => {
+        const result = getPendingConditionsAtApproval(true, true, true);
+        expect(result).toEqual(['submission_request:pending_dbgapid', 'submission_request:pending_model_update', 'submission_request:pending_image_deidentification']);
+    });
+
+    it('should treat null or undefined as false', () => {
+        const result = getPendingConditionsAtApproval(true, null, undefined);
+        expect(result).toEqual(['submission_request:pending_dbgapid']);
+    });
 });
