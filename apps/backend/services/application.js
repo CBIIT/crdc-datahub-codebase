@@ -2044,15 +2044,15 @@ const getEmailsBasedonConditionalApproval = (users, isDbGapMissing, isPendingMod
         if (!user.notifications || !Array.isArray(user.notifications)) {
             continue;
         }
-        if (isDbGapMissing && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_DB_GAP_MISSING)) {
+        if (isDbGapMissing && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID)) {
             emails.push(user.email);
             continue
         }
-        if (isPendingModelChange && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_MODEL_CHANGE)) {
+        if (isPendingModelChange && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE)) {
             emails.push(user.email);
             continue;
         }
-        if (isPendingImageDeIdentification && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_IMAGE_DE_IDENTIFICATION)) {
+        if (isPendingImageDeIdentification && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION)) {
             emails.push(user.email);
             continue;
         }

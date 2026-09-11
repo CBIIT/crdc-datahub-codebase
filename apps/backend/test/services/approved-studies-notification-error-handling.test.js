@@ -166,7 +166,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             {
                 _id: 'bcc-user-1',
                 email: 'bcc1@test.com',
-                notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_MODEL_CHANGE]
+                notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED, EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE]
             }
         ];
 
