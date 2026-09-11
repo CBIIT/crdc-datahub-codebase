@@ -1647,7 +1647,11 @@ class Application {
 
     async _sendFullApprovalEmail(application, comment) {
         const applicant = await this._getApplicant(application);
-        const [applicantEmail, cCEmails, bCCEmails] = await this._getRecipientEmails(application, applicant, [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW]);
+        const applicantEmail = applicant?.email;
+        const rawCCEmails = getCCEmails(applicantEmail, application);
+        const bCCUsers = await this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW], INTERNAL_USERS_ROLES)
+        const rawBCCEmails = getUserEmails(bCCUsers)
+        const [cCEmails, bCCEmails] = filterDuplicateEmails(applicantEmail, rawCCEmails, rawBCCEmails);
 
         if (applicant?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
             await this.notificationService.approveQuestionNotification(applicantEmail,
@@ -1669,7 +1673,7 @@ class Application {
         const applicant = await this._getApplicant(application);
         const applicantEmail = applicant?.email;
         const cCEmails = getCCEmails(applicantEmail, application);
-        const bCCUsers = await this._getUsersWithNotifications(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED, INTERNAL_USERS_ROLES)
+        const bCCUsers = await this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED], INTERNAL_USERS_ROLES)
 
         const pendingTemplateParams = {
             firstName: applicant?.firstName ?? 'User',
@@ -1739,20 +1743,6 @@ class Application {
 
     async _getApplicant(application) {
         return await this.userService.findByID(application?.applicantID);
-    }
-
-    async _getRecipientEmails(application, applicant, requiredNotifications) {
-        const bCCUsers = await this._getUsersWithNotifications(requiredNotifications, INTERNAL_USERS_ROLES)
-
-        const applicantEmail = applicant?.email;
-        const cCEmails = getCCEmails(applicantEmail, application);
-        const bCCEmails = getUserEmails(bCCUsers)
-        const [finalCCEmails, finalBCCmails] = filterDuplicateEmails(applicantEmail, cCEmails, bCCEmails);
-        return [applicantEmail, cCEmails, bCCEmails];
-    }
-
-    async _getUsersWithNotifications(requiredNotifications, roles) {
-        return await this.userService.getUsersByNotifications(requiredNotifications, roles);
     }
 
     async _cancelApplicationEmailInfo(application) {
