@@ -1,6 +1,6 @@
 const MongooseGenericDAO = require("./mongoose-generic");
 const ApplicationModel = require("../mongoose/models/application");
-const {USER_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
+const {USER_COLLECTION, APPLICATION_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, APPROVED} = require("../constants/application-constants");
@@ -475,17 +475,58 @@ class ApplicationDAO extends MongooseGenericDAO {
     }
 
     /**
+     * After the list $match, join inbound nextRevisionId and drop unclaimed seq>1 tails.
+     * Empty when showAllVersions is true. Equality $lookup only (DocumentDB).
+     * @param {boolean} [showAllVersions=false]
+     * @returns {object[]}
+     */
+    _currentRevisionPipeline(showAllVersions) {
+        if (showAllVersions) {
+            return [];
+        }
+        return [
+            {
+                $lookup: {
+                    from: APPLICATION_COLLECTION,
+                    localField: '_id',
+                    foreignField: 'nextRevisionId',
+                    as: '_revisionClaimants',
+                },
+            },
+            {
+                $addFields: {
+                    _isClaimedSuccessor: {$gt: [{$size: '$_revisionClaimants'}, 0]},
+                },
+            },
+            {
+                $match: {
+                    $nor: [{sequenceNumber: {$gt: 1}, _isClaimedSuccessor: false}],
+                },
+            },
+            {$unset: ['_revisionClaimants', '_isClaimedSuccessor']},
+        ];
+    }
+
+    /**
      * Builds the Mongo match for listApplications from API inputs.
      * Submitter-name matching is applied after applicant $lookup (see listApplicationsWithFacets).
+     * When showAllVersions is false, nextRevisionId is null (tails); seq>1 unclaimed tails
+     * are dropped later by _currentRevisionPipeline.
      * @param {object} params
      * @param {string[]} [params.statuses] Canonical status values (empty = no status filter)
      * @param {string|null} [params.programName]
      * @param {string|null} [params.studyName]
      * @param {string|null} [params.applicantID] Own-scope applicant filter
-     * @param {boolean} [params.showAllVersions=false] When false, only revision-chain tails (nextRevisionId unset)
+     * @param {boolean} [params.showAllVersions=false] When false, match tails only (nextRevisionId unset)
      * @returns {{match: object, hasStudyFilter: boolean}}
      */
-    _buildListApplicationsMatch({statuses, programName, studyName, applicantID, showAllVersions} = {}) {
+    _buildListApplicationsMatch({
+        statuses,
+        programName,
+        studyName,
+        applicantID,
+        showAllVersions,
+    } = {}) {
         const match = {};
         if (statuses?.length) {
             match.status = {$in: statuses};
@@ -507,7 +548,6 @@ class ApplicationDAO extends MongooseGenericDAO {
             match.applicantID = applicantID;
         }
         if (!showAllVersions) {
-            // Missing or null nextRevisionId: chain tail (latest SRF in the sequence)
             match.nextRevisionId = null;
         }
         return {match, hasStudyFilter};
@@ -516,6 +556,8 @@ class ApplicationDAO extends MongooseGenericDAO {
     /**
      * Lists applications with applicant enrichment, pagination, and facet values.
      * Uses separate count/facet queries (DocumentDB does not support $facet).
+     * When showAllVersions is false, only current-revision tails are returned:
+     * nextRevisionId unset, and sequenceNumber 1/missing or referenced as nextRevisionId by another SRF.
      * @param {object} params
      * @param {string[]} [params.statuses]
      * @param {string|null} [params.programName]
@@ -526,7 +568,7 @@ class ApplicationDAO extends MongooseGenericDAO {
      * @param {number} [params.offset]
      * @param {string} [params.orderBy]
      * @param {string} [params.sortDirection]
-     * @param {boolean} [params.showAllVersions=false] When false, only revision-chain tails
+     * @param {boolean} [params.showAllVersions=false] When false, only current-revision tails
      * @returns {Promise<{applications: object[], total: number, programs: string[], studies: string[], studyAbbreviations: string[], status: string[], submitterNames: string[]}>}
      */
     async listApplicationsWithFacets({
@@ -548,6 +590,7 @@ class ApplicationDAO extends MongooseGenericDAO {
             applicantID,
             showAllVersions,
         });
+        const currentRevisionPipeline = this._currentRevisionPipeline(showAllVersions);
 
         const submitterFilter =
             submitterName != null && submitterName !== ALL_FILTER
@@ -566,6 +609,7 @@ class ApplicationDAO extends MongooseGenericDAO {
 
         const basePipeline = [
             {$match: match},
+            ...currentRevisionPipeline,
             ...this._applicantLookupPipeline(),
             ...(submitterFilter ? [{$match: submitterFilter}] : []),
         ];
@@ -582,11 +626,11 @@ class ApplicationDAO extends MongooseGenericDAO {
             await Promise.all([
                 this.aggregate(basePipeline.concat(pagination.getPaginationPipeline())),
                 this._countListApplications(basePipeline),
-                this._distinctListField(basePipeline, match, submitterFilter, "programName", "programName"),
-                this._distinctListField(basePipeline, match, submitterFilter, "studyName", "studyName", hasStudyFilter),
-                this._distinctListField(basePipeline, match, submitterFilter, "studyAbbreviation", null, hasStudyFilter),
-                this._distinctListField(basePipeline, match, submitterFilter, "status", "status"),
-                this._distinctSubmitterNames(match),
+                this._distinctListField(basePipeline, match, submitterFilter, "programName", "programName", false, currentRevisionPipeline),
+                this._distinctListField(basePipeline, match, submitterFilter, "studyName", "studyName", hasStudyFilter, currentRevisionPipeline),
+                this._distinctListField(basePipeline, match, submitterFilter, "studyAbbreviation", null, hasStudyFilter, currentRevisionPipeline),
+                this._distinctListField(basePipeline, match, submitterFilter, "status", "status", false, currentRevisionPipeline),
+                this._distinctSubmitterNames(match, currentRevisionPipeline),
             ]);
 
         return {
@@ -601,7 +645,7 @@ class ApplicationDAO extends MongooseGenericDAO {
     }
 
     /**
-     * @param {object[]} basePipeline Match + applicant lookup (+ optional submitter match)
+     * @param {object[]} basePipeline Match + current-revision stages + applicant lookup (+ optional submitter match)
      * @returns {Promise<number>}
      */
     async _countListApplications(basePipeline) {
@@ -616,24 +660,27 @@ class ApplicationDAO extends MongooseGenericDAO {
      * Distinct facet values for a field, omitting that field's filter when excludeMatchKey is set.
      * When reuseBasePipeline is true (study filter active), distinct from the already-filtered match.
      * Applicant $lookup stages are included only when submitterFilter must be evaluated.
-     * @param {object[]} basePipeline Match + applicant lookup (+ optional submitter match)
+     * @param {object[]} basePipeline Match + current-revision stages + applicant lookup (+ optional submitter match)
      * @param {object} match
      * @param {object|null} submitterFilter
      * @param {string} field
      * @param {string|null} excludeMatchKey Match key to omit for this facet
      * @param {boolean} [reuseBasePipeline=false]
+     * @param {object[]} [currentRevisionPipeline] Self-join stages after $match when showAllVersions is false
      * @returns {Promise<string[]>}
      */
-    async _distinctListField(basePipeline, match, submitterFilter, field, excludeMatchKey, reuseBasePipeline = false) {
+    async _distinctListField(basePipeline, match, submitterFilter, field, excludeMatchKey, reuseBasePipeline = false, currentRevisionPipeline = []) {
         let pipeline;
         if (reuseBasePipeline) {
-            pipeline = submitterFilter ? [...basePipeline] : [{$match: match}];
+            pipeline = submitterFilter
+                ? [...basePipeline]
+                : [{$match: match}, ...currentRevisionPipeline];
         } else {
             const facetMatch = {...match};
             if (excludeMatchKey) {
                 delete facetMatch[excludeMatchKey];
             }
-            pipeline = [{$match: facetMatch}];
+            pipeline = [{$match: facetMatch}, ...currentRevisionPipeline];
             if (submitterFilter) {
                 pipeline.push(...this._applicantLookupPipeline(), {$match: submitterFilter});
             }
@@ -651,11 +698,13 @@ class ApplicationDAO extends MongooseGenericDAO {
     /**
      * Distinct submitter full names for the listApplications facet (omits submitter name filter).
      * @param {object} match Application match without submitter filter
+     * @param {object[]} [currentRevisionPipeline] Self-join stages after $match when showAllVersions is false
      * @returns {Promise<string[]>}
      */
-    async _distinctSubmitterNames(match) {
+    async _distinctSubmitterNames(match, currentRevisionPipeline = []) {
         const pipeline = [
             {$match: match},
+            ...currentRevisionPipeline,
             ...this._applicantLookupPipeline(),
             {$group: {_id: "$applicantID", fullName: {$first: "$applicant.fullName"}}},
             {$match: {fullName: {$nin: [null, ""]}}},
