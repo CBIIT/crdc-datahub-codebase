@@ -779,7 +779,7 @@ class Application {
                 throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
             }
         }
-        // Validate showAllVersions: omitted/null defaults to false (latest-only). Must be boolean when provided.
+        // Validate showAllVersions: omitted/null defaults to false (nextRevisionId missing or null only). Must be boolean when provided.
         const showAllVersionsParam = params?.showAllVersions;
         let showAllVersions = false;
         if (showAllVersionsParam !== undefined && showAllVersionsParam !== null) {
@@ -794,10 +794,11 @@ class Application {
 
     /**
      * Lists submission requests with filters, pagination, and facet values.
-     * When showAllVersions is false, only revision-chain tails (no nextRevisionId) are returned.
+     * When showAllVersions is false, only SRFs with nextRevisionId missing or null are returned
+     * (Canceled/Deleted tails and superseded seq>1 rows with no successor included).
      * Computes canBeReopened and canBeRestored per row from revision-chain rules.
      * @param {object} params Filter, pagination, and sort parameters
-     * @param {boolean} [params.showAllVersions=false] When true, return every matching SRF; when false, only latest in each chain
+     * @param {boolean} [params.showAllVersions=false] When true, return every matching SRF; when false, only SRFs with nextRevisionId missing or null
      * @param {object} context Request context with userInfo
      * @returns {Promise<object>} applications, total, programs, studies, and filter facets
      */
