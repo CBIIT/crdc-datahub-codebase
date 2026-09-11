@@ -1,6 +1,8 @@
 const { filterDuplicateEmails, getEmailsBasedonConditionalApproval } = require('../../services/application');
 const { getPendingConditionsAtApproval } = require('../../services/approved-studies');
-const {EMAIL_NOTIFICATIONS} = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
+PENDING_DBGAP = "submission_request:pending_dbgapid"
+PENDING_MODEL_UPDATE = "submission_request:pending_model_update"
+PENDING_IMG_DEID = "submission_request:pending_image_deidentification"
 
 describe('filterDuplicateEmails', () => {
     it('should filter applicant email from cc emails and bcc emails', () => {
@@ -23,9 +25,9 @@ describe('filterDuplicateEmails', () => {
 describe('getEmailsBasedonConditionalApproval', () => {
     it('should return email for db gap missing', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] },
-            { email: 'user2@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE] },
-            { email: 'user3@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION] }
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] },
+            { email: 'user2@test.com', notifications: [PENDING_MODEL_UPDATE] },
+            { email: 'user3@test.com', notifications: [PENDING_IMG_DEID] }
         ];
         const result = getEmailsBasedonConditionalApproval(users, true, false, false);
         expect(result).toEqual(expect.arrayContaining(['user1@test.com']));
@@ -33,9 +35,9 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
     it('should return email for pending model change', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] },
-            { email: 'user2@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE, 'other-notification'] },
-            { email: 'user3@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION, 'other-notification'] }
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] },
+            { email: 'user2@test.com', notifications: [PENDING_MODEL_UPDATE, 'other-notification'] },
+            { email: 'user3@test.com', notifications: [PENDING_IMG_DEID, 'other-notification'] }
         ];
         const result = getEmailsBasedonConditionalApproval(users, false, true, false);
         expect(result).toEqual(expect.arrayContaining(['user2@test.com']));
@@ -43,9 +45,9 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
     it('should return email for pending image de identification', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] },
-            { email: 'user2@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE, 'other-notification'] },
-            { email: 'user3@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION, 'other-notification'] }
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] },
+            { email: 'user2@test.com', notifications: [PENDING_MODEL_UPDATE, 'other-notification'] },
+            { email: 'user3@test.com', notifications: [PENDING_IMG_DEID, 'other-notification'] }
         ];
         const result = getEmailsBasedonConditionalApproval(users, false, false, true);
         expect(result).toEqual(expect.arrayContaining(['user3@test.com']));
@@ -53,9 +55,9 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
     it('should return all user emails that have dbgap missing', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] },
-            { email: 'user2@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] },
-            { email: 'user3@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION, 'other-notification'] }
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] },
+            { email: 'user2@test.com', notifications: [PENDING_DBGAP, 'other-notification'] },
+            { email: 'user3@test.com', notifications: [PENDING_IMG_DEID, 'other-notification'] }
         ];
         const result = getEmailsBasedonConditionalApproval(users, true, false, false);
         expect(result).toEqual(expect.arrayContaining(['user1@test.com', 'user2@test.com']));
@@ -63,7 +65,7 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
     it('should not return user email as long as user has one notification matching', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] 
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] 
             },
         ];
         const result = getEmailsBasedonConditionalApproval(users, true, true, true);
@@ -72,7 +74,7 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
     it('should not return user email if notification is empty', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] 
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] 
             },
             { emails: 'user2@test.com', notifications: []}
         ];
@@ -82,7 +84,7 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
     it('should not return user email if notification is null', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] 
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] 
             },
             { emails: 'user2@test.com', notifications: null}
         ];
@@ -92,7 +94,7 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
     it('should not return user email if notification is undefined', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] 
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] 
             },
             { emails: 'user2@test.com', notifications: undefined}
         ];
@@ -102,7 +104,7 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
     it('should not return user email if notification doesnt exist', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] 
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] 
             },
             { emails: 'user2@test.com'}
         ];
@@ -112,7 +114,7 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
     it('should not return user email if notification is not an array', () => {
         const users = [
-            { email: 'user1@test.com', notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID, 'other-notification'] 
+            { email: 'user1@test.com', notifications: [PENDING_DBGAP, 'other-notification'] 
             },
             { emails: 'user2@test.com', notifications: 123}
         ];
