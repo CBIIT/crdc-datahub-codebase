@@ -629,11 +629,12 @@ class ApprovedStudiesService {
             const bCCUsers = await this.userDAO.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED],
                 [USER.ROLES.DATA_COMMONS_PERSONNEL, USER.ROLES.FEDERAL_LEAD, USER.ROLES.ADMIN]);
             const cCEmails = getCCEmails(aSubmitter?.email, application);
+            const pendingConditionsAtApproval = updateStudy.pendingConditionsAtApproval || [];
             const bCCEmails = getEmailsBasedonConditionalApproval(
-                bCCUsers, 
-                updateStudy.pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID),
-                updateStudy.pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE),
-                updateStudy.pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION)
+                bCCUsers,
+                pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID),
+                pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE),
+                pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION)
             );
             const [finalCCEmails, finalBCCmails] = filterDuplicateEmails(aSubmitter?.email, cCEmails, bCCEmails);
 

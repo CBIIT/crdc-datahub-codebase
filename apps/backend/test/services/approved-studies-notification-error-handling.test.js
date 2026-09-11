@@ -127,7 +127,10 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             useProgramPC: false,
             pendingModelChange: true, // Was pending, now cleared
             isPendingGPA: true, // Was pending, now cleared
-            applicationID: 'app-id'
+            applicationID: 'app-id',
+            pendingConditionsAtApproval: [
+                EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE
+            ]
         };
 
         const mockPrimaryContact = {
@@ -147,7 +150,8 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
         const mockApplication = {
             _id: 'app-id',
-            applicantID: 'submitter-id'
+            applicantID: 'submitter-id',
+            questionnaireData: {}
         };
 
         const mockSubmitter = {
@@ -155,13 +159,14 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             firstName: 'John',
             lastName: 'Doe',
             email: 'john.doe@test.com',
-            notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_CLEARED]
+            notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED]
         };
 
         const mockBCCUsers = [
             {
                 _id: 'bcc-user-1',
-                email: 'bcc1@test.com'
+                email: 'bcc1@test.com',
+                notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_MODEL_CHANGE]
             }
         ];
 
@@ -292,7 +297,10 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                     isPendingGPA: false,
                     dbGaPID: 'phs000000',
                     pendingImageDeIdentification: true,
-                    applicationID: 'app-id'
+                    applicationID: 'app-id',
+                    pendingConditionsAtApproval: [
+                        EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION
+                    ]
                 };
                 service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue(studyImagePending);
                 service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
@@ -325,7 +333,8 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                     isPendingGPA: true,
                     dbGaPID: 'phs000000',
                     GPAName: '',
-                    applicationID: 'app-id'
+                    applicationID: 'app-id',
+                    pendingConditionsAtApproval: []
                 };
                 service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue(studyGpaPending);
                 service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
@@ -359,7 +368,10 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                     isPendingGPA: false,
                     dbGaPID: null,
                     GPAName: 'Existing GPA',
-                    applicationID: 'app-id'
+                    applicationID: 'app-id',
+                    pendingConditionsAtApproval: [
+                        EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID
+                    ]
                 };
                 service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue(studyMissingDbGaP);
                 service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
@@ -395,6 +407,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
                 expect(service.notificationsService.clearPendingModelState).toHaveBeenCalledWith(
                     'john.doe@test.com',
+                    [],
                     ['bcc1@test.com'],
                     {
                         firstName: 'John Doe',
@@ -531,8 +544,12 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
                 expect(service.notificationsService.clearPendingModelState).toHaveBeenCalledWith(
                     'john.doe@test.com',
-                    [], // Empty BCC list
-                    expect.any(Object)
+                    [],
+                    [],
+                    expect.objectContaining({
+                        firstName: 'John Doe',
+                        studyName: 'Updated Study'
+                    })
                 );
                 expect(result).toEqual(mockDisplayStudy);
             });

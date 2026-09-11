@@ -1654,7 +1654,7 @@ class Application {
                 cCEmails,
                 bCCEmails,
                 {
-                    firstName: applicant?.firstName,
+                    firstName: applicant?.firstName ?? 'User',
                     reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A"
                 },
                 {
@@ -1669,10 +1669,10 @@ class Application {
         const applicant = await this._getApplicant(application);
         const applicantEmail = applicant?.email;
         const cCEmails = getCCEmails(applicantEmail, application);
-        const bCCUsers = await this._getUsersWithNotifications(requiredNotifications, INTERNAL_USERS_ROLES)
+        const bCCUsers = await this._getUsersWithNotifications(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED, INTERNAL_USERS_ROLES)
 
         const pendingTemplateParams = {
-            firstName: applicant?.firstName,
+            firstName: applicant?.firstName ?? 'User',
             contactEmail: this.emailParams?.conditionalSubmissionContact,
             reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
             study: setDefaultIfNoName(application?.studyName),
@@ -1738,8 +1738,7 @@ class Application {
     }
 
     async _getApplicant(application) {
-        const applicants = await this.userService.findByID(application?.applicantID);
-        return applicants?.pop();
+        return await this.userService.findByID(application?.applicantID);
     }
 
     async _getRecipientEmails(application, applicant, requiredNotifications) {
@@ -1753,7 +1752,7 @@ class Application {
     }
 
     async _getUsersWithNotifications(requiredNotifications, roles) {
-        const bCCUsers = await this.userService.getUsersByNotifications(requiredNotifications, roles)
+        return await this.userService.getUsersByNotifications(requiredNotifications, roles);
     }
 
     async _cancelApplicationEmailInfo(application) {
@@ -2042,14 +2041,16 @@ const getCCEmails = (submitterEmail, application) => {
 }
 
 const filterDuplicateEmails = (applicantEmail, cCEmails, bCCEmails) => {
-    let finalCCEmails = cCEmails.filter(email => email !== applicantEmail);
-    let finalBCCmails = bCCEmails.filter(email => email !== applicantEmail && !finalCCEmails.includes(email));
+    const ccEmails = cCEmails ?? [];
+    const bccEmails = bCCEmails ?? [];
+    let finalCCEmails = ccEmails.filter(email => email !== applicantEmail);
+    let finalBCCmails = bccEmails.filter(email => email !== applicantEmail && !finalCCEmails.includes(email));
     return [finalCCEmails, finalBCCmails];
 }
 
 const getEmailsBasedonConditionalApproval = (users, isDbGapMissing, isPendingModelChange, isPendingImageDeIdentification) => {
     const emails = [];
-    for (const user of users) {
+    for (const user of users ?? []) {
         if (!user.notifications || !Array.isArray(user.notifications)) {
             continue;
         }
@@ -2181,7 +2182,7 @@ const sendEmails = {
 const getUserEmails = (users) => {
     return users
         ?.filter((aUser) => aUser?.email)
-        ?.map((aUser)=> aUser.email);
+        ?.map((aUser)=> aUser.email) ?? [];
 }
 
 const getApplicationQuestionnaire = (aApplication) => {
