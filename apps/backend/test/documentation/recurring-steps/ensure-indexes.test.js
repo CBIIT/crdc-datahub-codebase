@@ -2,6 +2,7 @@ const {
     DATA_RECORDS_COLLECTION,
     RELEASE_DATA_RECORDS_COLLECTION,
     SESSION_COLLECTION,
+    USER_COLLECTION,
 } = require('../../../crdc-datahub-database-drivers/database-constants');
 const {
     INDEXES,
@@ -102,6 +103,20 @@ describe('ensure-indexes', () => {
         return { db, collection, indexes, createIndex };
     }
 
+    /**
+     * @param {Map<string, object[]>} indexesByCollection
+     * @param {jest.Mock} createIndex
+     * @returns {object}
+     */
+    function dbWithIndexesByCollection(indexesByCollection, createIndex) {
+        const { db } = mockDb(catalogCollectionNames, { createIndex });
+        db.collection = jest.fn((name) => ({
+            indexes: jest.fn().mockResolvedValue(indexesByCollection.get(name) || []),
+            createIndex,
+        }));
+        return db;
+    }
+
     it('declares all 18 catalog indexes', () => {
         expect(INDEXES).toHaveLength(18);
         expect(INDEXES.map(({ collection, name, keys }) => ({ collection, name, keys }))).toEqual(expectedCatalog);
@@ -130,15 +145,15 @@ describe('ensure-indexes', () => {
         const indexesByCollection = new Map();
         for (const spec of INDEXES) {
             const list = indexesByCollection.get(spec.collection) || [];
-            list.push({ name: spec.name, key: spec.keys });
+            const entry = { name: spec.name, key: spec.keys };
+            if (spec.expireAfterSeconds !== undefined) {
+                entry.expireAfterSeconds = spec.expireAfterSeconds;
+            }
+            list.push(entry);
             indexesByCollection.set(spec.collection, list);
         }
         const createIndex = jest.fn();
-        const { db } = mockDb(catalogCollectionNames, { createIndex });
-        db.collection = jest.fn((name) => ({
-            indexes: jest.fn().mockResolvedValue(indexesByCollection.get(name) || []),
-            createIndex,
-        }));
+        const db = dbWithIndexesByCollection(indexesByCollection, createIndex);
 
         const result = await ensureIndexes(db);
 
@@ -157,11 +172,7 @@ describe('ensure-indexes', () => {
             { name: 'CRDC_ID_1', key: crdcSpec.keys },
         ]);
         const createIndex = jest.fn().mockResolvedValue('ok');
-        const { db } = mockDb(catalogCollectionNames, { createIndex });
-        db.collection = jest.fn((name) => ({
-            indexes: jest.fn().mockResolvedValue(indexesByCollection.get(name) || []),
-            createIndex,
-        }));
+        const db = dbWithIndexesByCollection(indexesByCollection, createIndex);
 
         const result = await ensureIndexes(db);
 
@@ -184,7 +195,7 @@ describe('ensure-indexes', () => {
         const result = await ensureIndexes(db);
 
         expect(result.success).toBe(false);
-        expect(result.error).toBe('index name conflict');
+        expect(result.error).toBe(`${USER_COLLECTION}.institution_id_role: index name conflict`);
         expect(result.created).toBe(INDEXES.length - 1);
         expect(createIndex).toHaveBeenCalledTimes(INDEXES.length);
     });
@@ -202,5 +213,130 @@ describe('ensure-indexes', () => {
         expect(result.skipped).toBe(0);
         expect(createIndex).toHaveBeenCalledTimes(INDEXES.length - dataRecordsCount);
         expect(collection).not.toHaveBeenCalledWith(DATA_RECORDS_COLLECTION);
+    });
+
+    it('returns success false when the same name exists with different keys and does not createIndex', async () => {
+        const indexesByCollection = new Map();
+        indexesByCollection.set(USER_COLLECTION, [
+            { name: 'institution_id_role', key: { role: 1 } },
+        ]);
+        const createIndex = jest.fn().mockResolvedValue('ok');
+        const db = dbWithIndexesByCollection(indexesByCollection, createIndex);
+
+        const result = await ensureIndexes(db);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toEqual(expect.stringContaining(`${USER_COLLECTION}.institution_id_role:`));
+        expect(result.error).toEqual(expect.stringContaining('different keys'));
+        expect(createIndex.mock.calls.some((call) => call[0]['institution._id'] === 1)).toBe(false);
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('institution_id_role'));
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('role'));
+    });
+
+    it('returns success false when expireAfterSeconds differs and does not createIndex', async () => {
+        const indexesByCollection = new Map();
+        indexesByCollection.set(SESSION_COLLECTION, [
+            { name: 'expires_1', key: { expires: 1 }, expireAfterSeconds: 3600 },
+        ]);
+        const createIndex = jest.fn().mockResolvedValue('ok');
+        const db = dbWithIndexesByCollection(indexesByCollection, createIndex);
+
+        const result = await ensureIndexes(db);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toEqual(expect.stringContaining(`${SESSION_COLLECTION}.expires_1:`));
+        expect(result.error).toEqual(expect.stringContaining('expireAfterSeconds'));
+        expect(result.skipped).toBe(1);
+        expect(createIndex.mock.calls.some((call) => call[0].expires === 1 && Object.keys(call[0]).length === 1))
+            .toBe(false);
+    });
+
+    it('skips a later catalog spec with the same keys using the in-memory index cache', async () => {
+        const duplicate = {
+            collection: RELEASE_DATA_RECORDS_COLLECTION,
+            keys: { CRDC_ID: 1 },
+            name: 'CRDC_ID_duplicate',
+        };
+        INDEXES.push(duplicate);
+        try {
+            const { db, createIndex } = mockDb();
+
+            const result = await ensureIndexes(db);
+
+            expect(result.success).toBe(true);
+            expect(result.created).toBe(INDEXES.length - 1);
+            expect(result.skipped).toBe(1);
+            expect(createIndex).toHaveBeenCalledTimes(INDEXES.length - 1);
+            expect(createIndex.mock.calls.filter((call) => call[0].CRDC_ID === 1 && Object.keys(call[0]).length === 1))
+                .toHaveLength(1);
+            expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('CRDC_ID_duplicate'));
+            expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('CRDC_ID'));
+        } finally {
+            INDEXES.pop();
+        }
+    });
+
+    it('retries when createIndex reports an index build in progress and then succeeds', async () => {
+        const createIndex = jest.fn()
+            .mockRejectedValueOnce(new Error('index build already in progress'))
+            .mockResolvedValue('ok');
+        const { db } = mockDb(catalogCollectionNames, { createIndex });
+
+        const result = await ensureIndexes(db);
+
+        expect(result.success).toBe(true);
+        expect(result.created).toBe(INDEXES.length);
+        expect(result.error).toBeUndefined();
+        expect(createIndex).toHaveBeenCalledTimes(INDEXES.length + 1);
+    });
+
+    it('skips after createIndex reports an equivalent index already exists', async () => {
+        const crdcSpec = INDEXES.find(
+            (spec) => spec.collection === RELEASE_DATA_RECORDS_COLLECTION && spec.name === 'CRDC_ID'
+        );
+        const releaseIndexes = { current: [] };
+        const createIndex = jest.fn().mockImplementation(async (keys) => {
+            if (keys.CRDC_ID === 1 && Object.keys(keys).length === 1) {
+                throw new Error('An equivalent index already exists');
+            }
+            return 'ok';
+        });
+        const { db } = mockDb();
+        db.collection = jest.fn((name) => {
+            if (name === RELEASE_DATA_RECORDS_COLLECTION) {
+                return {
+                    indexes: jest.fn().mockImplementation(async () => releaseIndexes.current),
+                    createIndex: jest.fn().mockImplementation(async (keys, options) => {
+                        try {
+                            return await createIndex(keys, options);
+                        } finally {
+                            if (!(keys.CRDC_ID === 1 && Object.keys(keys).length === 1)) {
+                                releaseIndexes.current = [
+                                    ...releaseIndexes.current,
+                                    { name: options.name, key: keys },
+                                ];
+                            } else {
+                                releaseIndexes.current = [
+                                    ...releaseIndexes.current,
+                                    { name: 'CRDC_ID_1', key: crdcSpec.keys },
+                                ];
+                            }
+                        }
+                    }),
+                };
+            }
+            return {
+                indexes: jest.fn().mockResolvedValue([]),
+                createIndex: jest.fn().mockResolvedValue('ok'),
+            };
+        });
+
+        const result = await ensureIndexes(db);
+
+        expect(result.success).toBe(true);
+        expect(result.skipped).toBe(1);
+        expect(result.created).toBe(INDEXES.length - 1);
+        expect(result.error).toBeUndefined();
+        expect(createIndex).toHaveBeenCalledWith(crdcSpec.keys, { name: 'CRDC_ID', background: true });
     });
 });

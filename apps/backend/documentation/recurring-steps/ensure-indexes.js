@@ -3,7 +3,11 @@
  * Awaits each createIndex so startup does not listen until the catalog is processed.
  * Idempotent: skips when the same name and key pattern already exist.
  * Same key pattern under a different name: logs a warning with both names and skips.
+ * Same name with different keys, or expireAfterSeconds mismatch: logs an error, does not
+ * drop/recreate, continues remaining specs, and returns success: false.
  * createIndex errors are logged; remaining catalog entries still run.
+ * Concurrent index builds and equivalent-index-exists errors refresh the cached index list
+ * and retry that spec a limited number of times.
  * Missing collections: logs an error, does not create the collection, skips specs for
  * that collection, continues other collections, and returns success: false.
  *
@@ -23,6 +27,9 @@ const {
     QC_RESULTS_COLLECTION,
     DATA_RECORDS_COLLECTION,
 } = require('../../crdc-datahub-database-drivers/database-constants');
+
+const CREATE_INDEX_MAX_ATTEMPTS = 3;
+const CREATE_INDEX_RETRY_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 500;
 
 /**
  * Indexes to ensure. Add new entries here in a later change.
@@ -138,9 +145,38 @@ function keysEqual(left, right) {
 }
 
 /**
+ * @param {string} [message]
+ * @returns {boolean}
+ */
+function isIndexBuildInProgress(message) {
+    const text = (message || '').toLowerCase();
+    return text.includes('already in progress') || text.includes('index build');
+}
+
+/**
+ * @param {string} [message]
+ * @returns {boolean}
+ */
+function isIndexAlreadyExists(message) {
+    const text = (message || '').toLowerCase();
+    return text.includes('already exists') || text.includes('equivalent index');
+}
+
+/**
+ * @param {{ collection: string, name: string }} spec
+ * @param {string} detail
+ * @returns {string}
+ */
+function specError(spec, detail) {
+    return `${spec.collection}.${spec.name}: ${detail}`;
+}
+
+/**
  * Creates catalog indexes when missing. Skips when name and keys already match, or when
- * the same keys exist under a different name (warning). Continues after createIndex errors
- * and missing collections (does not create collections).
+ * the same keys exist under a different name (warning). Same name with different keys or
+ * expireAfterSeconds mismatch is an error (no drop/recreate). Continues after createIndex
+ * errors and missing collections (does not create collections). Concurrent builds and
+ * equivalent-index-exists errors refresh the index cache and retry that spec.
  * @param {import('mongodb').Db} db
  * @returns {Promise<{success: boolean, created: number, skipped: number, error?: string}>}
  */
@@ -168,51 +204,91 @@ async function ensureIndexes(db) {
                     continue;
                 }
 
-                let state = collectionState.get(spec.collection);
-                if (!state) {
-                    const collection = db.collection(spec.collection);
-                    state = { collection, indexes: await collection.indexes() };
-                    collectionState.set(spec.collection, state);
-                }
-
-                const byName = state.indexes.find((idx) => idx.name === spec.name);
-                const byKeys = state.indexes.find((idx) => keysEqual(idx.key, spec.keys));
-
-                if (byName && keysEqual(byName.key, spec.keys)) {
-                    if (
-                        spec.expireAfterSeconds !== undefined
-                        && byName.expireAfterSeconds !== spec.expireAfterSeconds
-                    ) {
-                        console.warn(
-                            `   ⚠️  ${spec.collection}.${spec.name} exists with different expireAfterSeconds `
-                            + `(catalog ${spec.expireAfterSeconds}, existing ${byName.expireAfterSeconds}); skipping`
-                        );
-                    } else {
-                        console.log(`   ⏭️  ${spec.collection}.${spec.name} already exists`);
+                let resolved = false;
+                for (let attempt = 1; attempt <= CREATE_INDEX_MAX_ATTEMPTS && !resolved; attempt += 1) {
+                    let state = collectionState.get(spec.collection);
+                    if (!state) {
+                        const collection = db.collection(spec.collection);
+                        state = { collection, indexes: [...await collection.indexes()] };
+                        collectionState.set(spec.collection, state);
                     }
-                    skipped += 1;
-                    continue;
-                }
 
-                if (byKeys) {
-                    console.warn(
-                        `   ⚠️  ${spec.collection}: catalog index ${spec.name} matches existing index ${byKeys.name} `
-                        + '(same keys); skipping'
-                    );
-                    skipped += 1;
-                    continue;
-                }
+                    const byName = state.indexes.find((idx) => idx.name === spec.name);
+                    const byKeys = state.indexes.find((idx) => keysEqual(idx.key, spec.keys));
 
-                const createIndexOptions = { name: spec.name, background: true };
-                if (spec.expireAfterSeconds !== undefined) {
-                    createIndexOptions.expireAfterSeconds = spec.expireAfterSeconds;
+                    if (byName && keysEqual(byName.key, spec.keys)) {
+                        if (
+                            spec.expireAfterSeconds !== undefined
+                            && byName.expireAfterSeconds !== spec.expireAfterSeconds
+                        ) {
+                            const detail = `exists with different expireAfterSeconds `
+                                + `(catalog ${spec.expireAfterSeconds}, existing ${byName.expireAfterSeconds}); skipping`;
+                            console.warn(`   ⚠️  ${spec.collection}.${spec.name} ${detail}`);
+                            errors.push(specError(spec, detail));
+                        } else {
+                            console.log(`   ⏭️  ${spec.collection}.${spec.name} already exists`);
+                        }
+                        skipped += 1;
+                        resolved = true;
+                        continue;
+                    }
+
+                    if (byName) {
+                        const detail = `exists with different keys `
+                            + `(catalog ${JSON.stringify(spec.keys)}, existing ${JSON.stringify(byName.key)})`;
+                        console.warn(`   ⚠️  ${spec.collection}.${spec.name} ${detail}`);
+                        errors.push(specError(spec, detail));
+                        resolved = true;
+                        continue;
+                    }
+
+                    if (byKeys) {
+                        console.warn(
+                            `   ⚠️  ${spec.collection}: catalog index ${spec.name} matches existing index ${byKeys.name} `
+                            + '(same keys); skipping'
+                        );
+                        skipped += 1;
+                        resolved = true;
+                        continue;
+                    }
+
+                    const createIndexOptions = { name: spec.name, background: true };
+                    if (spec.expireAfterSeconds !== undefined) {
+                        createIndexOptions.expireAfterSeconds = spec.expireAfterSeconds;
+                    }
+                    try {
+                        await state.collection.createIndex(spec.keys, createIndexOptions);
+                        const recorded = { name: spec.name, key: spec.keys };
+                        if (spec.expireAfterSeconds !== undefined) {
+                            recorded.expireAfterSeconds = spec.expireAfterSeconds;
+                        }
+                        state.indexes.push(recorded);
+                        created += 1;
+                        console.log(`   ✅ Created ${spec.collection}.${spec.name}`);
+                        resolved = true;
+                    } catch (createError) {
+                        const canRetryBuild = isIndexBuildInProgress(createError.message)
+                            && attempt < CREATE_INDEX_MAX_ATTEMPTS;
+                        if (canRetryBuild) {
+                            collectionState.delete(spec.collection);
+                            await new Promise((resolve) => {
+                                setTimeout(resolve, CREATE_INDEX_RETRY_DELAY_MS);
+                            });
+                            continue;
+                        }
+                        if (isIndexAlreadyExists(createError.message)
+                            && attempt < CREATE_INDEX_MAX_ATTEMPTS) {
+                            state.indexes = [...await state.collection.indexes()];
+                            continue;
+                        }
+                        console.error(`❌ Error ensuring ${spec.collection}.${spec.name}:`, createError.message);
+                        errors.push(specError(spec, createError.message));
+                        resolved = true;
+                    }
                 }
-                await state.collection.createIndex(spec.keys, createIndexOptions);
-                created += 1;
-                console.log(`   ✅ Created ${spec.collection}.${spec.name}`);
             } catch (error) {
                 console.error(`❌ Error ensuring ${spec.collection}.${spec.name}:`, error.message);
-                errors.push(error.message);
+                errors.push(specError(spec, error.message));
             }
         }
 
