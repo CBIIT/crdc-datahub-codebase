@@ -3,6 +3,7 @@ jest.mock('../../mongoose/models/user', () => ({
     findOne: jest.fn(),
     find: jest.fn(),
     updateMany: jest.fn(),
+    aggregate: jest.fn(),
 }));
 
 const UserDAO = require('../../dao/user');
@@ -178,6 +179,38 @@ describe('UserDAO', () => {
             const result = await userDAO.getCollaboratorsByStudyID(studyID, submitterID);
 
             expect(result).toEqual([]);
+        });
+    });
+
+    describe('countSubmittersByInstitutionIDs', () => {
+        it('should group Submitter users by institution ID', async () => {
+            UserModel.aggregate.mockResolvedValue([
+                { _id: 'inst-1', submitterCount: 3 },
+            ]);
+
+            const result = await userDAO.countSubmittersByInstitutionIDs(['inst-1', 'inst-2']);
+
+            expect(UserModel.aggregate).toHaveBeenCalledWith([
+                {
+                    $match: {
+                        role: USER.ROLES.SUBMITTER,
+                        'institution._id': { $in: ['inst-1', 'inst-2'] },
+                    },
+                },
+                {
+                    $group: {
+                        _id: '$institution._id',
+                        submitterCount: { $sum: 1 },
+                    },
+                },
+            ]);
+            expect(result).toEqual([{ _id: 'inst-1', id: 'inst-1', submitterCount: 3 }]);
+        });
+
+        it('should return an empty array without aggregating when institutionIDs is empty', async () => {
+            const result = await userDAO.countSubmittersByInstitutionIDs([]);
+            expect(result).toEqual([]);
+            expect(UserModel.aggregate).not.toHaveBeenCalled();
         });
     });
 });

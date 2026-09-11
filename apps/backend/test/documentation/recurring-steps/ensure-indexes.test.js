@@ -22,6 +22,7 @@ describe('ensure-indexes', () => {
     const catalogCollectionNames = [...new Set(INDEXES.map((spec) => spec.collection))];
 
     const expectedCatalog = [
+        { collection: 'users', name: 'institution_id_role', keys: { 'institution._id': 1, role: 1 } },
         { collection: 'pendingPvs', name: 'submissionID_1', keys: { submissionID: 1 } },
         { collection: 'batch', name: 'submissionID_1_createdAt_-1', keys: { submissionID: 1, createdAt: -1 } },
         {
@@ -101,8 +102,8 @@ describe('ensure-indexes', () => {
         return { db, collection, indexes, createIndex };
     }
 
-    it('declares all 17 catalog indexes', () => {
-        expect(INDEXES).toHaveLength(17);
+    it('declares all 18 catalog indexes', () => {
+        expect(INDEXES).toHaveLength(18);
         expect(INDEXES.map(({ collection, name, keys }) => ({ collection, name, keys }))).toEqual(expectedCatalog);
         const sessionsSpec = INDEXES.find((spec) => spec.collection === SESSION_COLLECTION && spec.name === 'expires_1');
         expect(sessionsSpec.expireAfterSeconds).toBe(0);

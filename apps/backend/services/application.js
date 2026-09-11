@@ -1974,9 +1974,37 @@ const getCCEmails = (submitterEmail, application) => {
     if (!questionnaire || !submitterEmail) {
         return [];
     }
-    const CCEmailsSet = new Set([questionnaire?.primaryContact?.email, questionnaire?.pi?.email]
-        .filter((email) => email && email !== submitterEmail && EMAIL_REGEX.test(email)));
-    return Array.from(CCEmailsSet);
+
+    const emails = new Set();
+
+    // legacy data
+    if (questionnaire?.pi?.receivesEmails === undefined) {
+        let email = null;
+        if (questionnaire?.piAsPrimaryContact) {
+            email = questionnaire?.pi?.email 
+        } else if (questionnaire?.primaryContact?.email) {
+            email = questionnaire?.primaryContact?.email;
+        }
+        if (email && email !== submitterEmail && EMAIL_REGEX.test(email)) {
+            emails.add(email);
+        }
+    } else { // new data
+        let contacts = [questionnaire?.pi];
+        if (questionnaire?.primaryContact) {
+            contacts.push(questionnaire?.primaryContact);
+        }
+        if (questionnaire?.additionalContacts && questionnaire?.additionalContacts?.length > 0) {
+            contacts.push(...questionnaire?.additionalContacts);
+        }
+
+        for (const contact of contacts) {
+            if (contact?.receivesEmails === true && contact?.email && contact?.email !== submitterEmail && EMAIL_REGEX.test(contact?.email)) {
+                emails.add(contact?.email);
+            }
+        }
+    }
+
+    return Array.from(emails);
 }
 
 const sendEmails = {
@@ -2095,10 +2123,17 @@ const getUserEmails = (users) => {
 }
 
 const getApplicationQuestionnaire = (aApplication) => {
-    const questionnaire = parseJsonString(aApplication?.questionnaireData);
+    let questionnaire = null;
+    if (typeof aApplication?.questionnaireData === 'string') {
+        questionnaire = parseJsonString(aApplication?.questionnaireData);
+    } else if (typeof aApplication?.questionnaireData === 'object') {
+        questionnaire = aApplication?.questionnaireData;
+    } else {
+        console.error('Invalid questionnaire data type', ` id=${aApplication?._id}`);
+    }
+
     if (!questionnaire) {
         console.error(ERROR.FAILED_STORE_APPROVED_STUDIES + ` id=${aApplication?._id}`);
-        return null;
     }
     return questionnaire;
 }
@@ -2115,5 +2150,6 @@ function logDaysDifference(inactiveDays, accessedAt, applicationID) {
 
 module.exports = {
     Application,
-    VALID_ORDER_BY_LIST_APPLICATIONS
+    VALID_ORDER_BY_LIST_APPLICATIONS,
+    getCCEmails
 };

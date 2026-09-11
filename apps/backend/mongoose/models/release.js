@@ -26,7 +26,6 @@ const releaseSchema = new mongoose.Schema(
         },
         CRDC_ID: {
             type: String,
-            index: true,
         },
         dataCommons: {
             type: String,
@@ -70,11 +69,6 @@ const releaseSchema = new mongoose.Schema(
         timestamps: true,
         versionKey: false,
     }
-);
-
-releaseSchema.index(
-    { dataCommons: 1, nodeType: 1, nodeID: 1 },
-    { name: 'dataCommons_nodeType_nodeID' }
 );
 
 const ReleaseModel =

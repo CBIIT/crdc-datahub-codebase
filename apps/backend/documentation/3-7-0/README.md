@@ -46,6 +46,6 @@ Same as the backend service: `DOCDB_ENDPOINT`, `DOCDB_PORT`, `DOCDB_USERNAME`, `
 
 `DOCDB_USERNAME` and `DOCDB_PASSWORD` are required, including for local runs — credentials are always embedded in the URI. `DOCDB_DB_NAME` sets `DATABASE_NAME`.
 
-## Note on 3.6.0
+## Note on older migrations
 
-The 3.6.0 migration suite remains available for manual use (`npm run migrate:3.6.0`) but is not run at startup after 3.7.0.
+Folders `documentation/3-2-0` through `documentation/3-6-0` (and `scripts/3-4-0-migrations.js`) are **legacy (reference only)**. Do not run them against current DocumentDB and do not update them for new compatibility issues.

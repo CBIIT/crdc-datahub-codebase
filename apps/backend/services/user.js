@@ -760,6 +760,12 @@ class UserService {
         return role && role === USER.ROLES.ADMIN;
     }
 
+    /**
+     * Finds active non-NIH users whose latest qualifying log event is older than the inactivity window.
+     * Latest log is chosen with $reduce (DocumentDB $sortArray is only valid in $project).
+     * @param {string[]} qualifyingEvents Log event types that count as activity
+     * @returns {Promise<object[]>}
+     */
     async checkForInactiveUsers(qualifyingEvents) {
         // users collection field names
         const USER_FIELDS = {
@@ -826,12 +832,20 @@ class UserService {
         pipeline.push({
             $set: {
                 [LATEST_LOG]: {
-                    $first: {
-                        $sortArray: {
-                            input: "$" + LOGS_ARRAY,
-                            sortBy: {
-                                timestamp: -1
-                            }
+                    $reduce: {
+                        input: "$" + LOGS_ARRAY,
+                        initialValue: null,
+                        in: {
+                            $cond: [
+                                {
+                                    $or: [
+                                        { $eq: ["$$value", null] },
+                                        { $gt: ["$$this." + LOGS_FIELDS.TIMESTAMP, "$$value." + LOGS_FIELDS.TIMESTAMP] }
+                                    ]
+                                },
+                                "$$this",
+                                "$$value"
+                            ]
                         }
                     }
                 }

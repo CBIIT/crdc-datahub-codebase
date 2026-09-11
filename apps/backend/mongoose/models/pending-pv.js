@@ -14,7 +14,6 @@ const pendingPVSchema = new mongoose.Schema(
         submissionID: {
             type: String,
             required: true,
-            index: true,
         },
         offendingProperty: {
             type: String,

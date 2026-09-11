@@ -11,6 +11,7 @@
  */
 
 const {
+    USER_COLLECTION,
     PENDING_PVS_COLLECTION,
     BATCH_COLLECTION,
     SUBMISSIONS_COLLECTION,
@@ -28,6 +29,11 @@ const {
  * @type {{ collection: string, keys: object, name: string, expireAfterSeconds?: number }[]}
  */
 const INDEXES = [
+    {
+        collection: USER_COLLECTION,
+        keys: { 'institution._id': 1, role: 1 },
+        name: 'institution_id_role',
+    },
     {
         collection: PENDING_PVS_COLLECTION,
         keys: { submissionID: 1 },

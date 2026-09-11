@@ -254,4 +254,66 @@ describe('ApplicationDAO', () => {
             });
         });
     });
+
+    describe('inactivity reminder flag updates', () => {
+        it('should mark interval reminders without bumping timestamps', async () => {
+            ApplicationModel.findByIdAndUpdate.mockReturnValue(
+                createLeanQuery({_id: 'app1', inactiveReminder_7: true})
+            );
+            const result = await dao.markIntervalReminderSent('app1', [7, 15]);
+            expect(ApplicationModel.findByIdAndUpdate).toHaveBeenCalledWith(
+                'app1',
+                {$set: {inactiveReminder_7: true, inactiveReminder_15: true}},
+                {new: true, timestamps: false}
+            );
+            expect(result).toEqual({
+                id: 'app1',
+                _id: 'app1',
+                inactiveReminder_7: true,
+            });
+        });
+
+        it('should mark final reminders without bumping timestamps', async () => {
+            ApplicationModel.updateMany.mockResolvedValue({matchedCount: 2, modifiedCount: 2});
+            const result = await dao.markFinalRemindersSent(['app1', 'app2']);
+            expect(ApplicationModel.updateMany).toHaveBeenCalledWith(
+                {_id: {$in: ['app1', 'app2']}},
+                {
+                    $set: {
+                        inactiveReminder_7: true,
+                        inactiveReminder_15: true,
+                        inactiveReminder_30: true,
+                        finalInactiveReminder: true,
+                    },
+                },
+                {timestamps: false}
+            );
+            expect(result).toEqual({matchedCount: 2, modifiedCount: 2});
+        });
+
+        it('should not write when final reminder ids are empty', async () => {
+            const result = await dao.markFinalRemindersSent([]);
+            expect(ApplicationModel.updateMany).not.toHaveBeenCalled();
+            expect(result).toEqual({matchedCount: 0, modifiedCount: 0});
+        });
+
+        it('should not write when interval reminder days are unknown', async () => {
+            const result = await dao.markIntervalReminderSent('app1', [99]);
+            expect(ApplicationModel.findByIdAndUpdate).not.toHaveBeenCalled();
+            expect(result).toEqual({id: 'app1', _id: 'app1'});
+        });
+
+        it('should not write when interval reminder days are empty', async () => {
+            const result = await dao.markIntervalReminderSent('app1', []);
+            expect(ApplicationModel.findByIdAndUpdate).not.toHaveBeenCalled();
+            expect(result).toEqual({id: 'app1', _id: 'app1'});
+        });
+
+        it('should reject when the application is not found for an interval reminder', async () => {
+            ApplicationModel.findByIdAndUpdate.mockReturnValue(createLeanQuery(null));
+            await expect(dao.markIntervalReminderSent('missing-app', [7])).rejects.toThrow(
+                'Failed to update Application'
+            );
+        });
+    });
 });

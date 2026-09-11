@@ -73,7 +73,6 @@ const qcResultSchema = new mongoose.Schema(
         submissionID: {
             type: String,
             required: true,
-            index: true,
         },
         submittedID: {
             type: String,
