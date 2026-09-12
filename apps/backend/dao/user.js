@@ -47,6 +47,9 @@ class UserDAO extends MongooseGenericDAO {
      * @returns {Promise<object[]>}
      */
     async getUsersByNotifications(notifications, roles = []) {
+        if (!Array.isArray(notifications)) {
+            notifications = [notifications];
+        }
         return await this.findMany({
             userStatus: USER.STATUSES.ACTIVE,
             notifications: {$in: notifications},

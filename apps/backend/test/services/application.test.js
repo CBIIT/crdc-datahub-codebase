@@ -1835,18 +1835,14 @@ describe('Application', () => {
         });
 
         it('sends pendingImageDeIdentificationApproveQuestionNotification when only pending image de-identification', async () => {
-            const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+            const conditionalApprovalNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED;
+            const pendingImageDeIdentificationNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_IMAGE_DEIDENTIFICATION;
             const mockApplication = {
                 _id: 'app1',
                 status: IN_REVIEW,
                 studyName: 'study1',
                 studyAbbreviation: 'S1',
                 applicantID: 'user-applicant-1',
-                applicant: {
-                    applicantID: 'user-applicant-1',
-                    applicantEmail: 'submitter@test.com',
-                    applicantName: 'Submitter Name'
-                },
                 programName: 'Program One',
                 programAbbreviation: 'PO',
                 programDescription: 'Program Description',
@@ -1875,8 +1871,9 @@ describe('Application', () => {
             global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
             mockUserService.findByID.mockResolvedValueOnce({
+                firstName: 'Submitter Name',
                 email: 'submitter@test.com',
-                notifications: [reviewNotification]
+                notifications: [conditionalApprovalNotification, pendingImageDeIdentificationNotification]
             });
 
             await app.approveApplication({
@@ -1901,17 +1898,14 @@ describe('Application', () => {
         });
 
         it('sends multipleChangesApproveQuestionNotification when image de-identification and model change pendings', async () => {
-            const reviewNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW;
+            const conditionalApprovalNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED;
+            const pendingImageDeIdentificationNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_IMAGE_DEIDENTIFICATION;
+            const pendingModelChangeNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_MODEL_CHANGE;
             const mockApplication = {
                 _id: 'app1',
                 status: IN_REVIEW,
                 studyName: 'study1',
                 applicantID: 'user-applicant-1',
-                applicant: {
-                    applicantID: 'user-applicant-1',
-                    applicantEmail: 'submitter@test.com',
-                    applicantName: 'Submitter Name'
-                },
                 programName: 'Program One',
                 programAbbreviation: 'PO',
                 programDescription: 'Program Description',
@@ -1940,8 +1934,9 @@ describe('Application', () => {
             global.getApplicationQuestionnaire = jest.fn().mockReturnValue(mockQuestionnaire);
             mockUserService.getUsersByNotifications.mockResolvedValue([]);
             mockUserService.findByID.mockResolvedValueOnce({
+                firstName: 'Submitter Name',
                 email: 'submitter@test.com',
-                notifications: [reviewNotification]
+                notifications: [conditionalApprovalNotification, pendingImageDeIdentificationNotification, pendingModelChangeNotification]
             });
 
             await app.approveApplication({
