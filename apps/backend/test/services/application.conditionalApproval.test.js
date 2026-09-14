@@ -126,32 +126,68 @@ describe('getEmailsBasedonConditionalApproval', () => {
 
 describe('getPendingConditionsAtApproval', () => {
     it('should return empty array if not pending conditions', () => {
-        const result = getPendingConditionsAtApproval(false, false, false);
+        const approvedStudy = {
+            controlledAccess: false,
+            dbGaPID: 'phs000007',
+            pendingModelChange: false,
+            pendingImageDeIdentification: false
+        };
+        const result = getPendingConditionsAtApproval(approvedStudy);
         expect(result).toEqual([]);
     });
 
     it('should return submission_request:pending_image_deidentification if pending image deidentification is true', () => {
-        const result = getPendingConditionsAtApproval(false, false, true);
+        const approvedStudy = {
+            controlledAccess: false,
+            dbGaPID: 'phs000007',
+            pendingModelChange: false,
+            pendingImageDeIdentification: true
+        };
+        const result = getPendingConditionsAtApproval(approvedStudy);
         expect(result).toEqual(['submission_request:pending_image_deidentification']);
     });
 
     it('should return submission_request:pending_model_update if pending model update is true', () => {
-        const result = getPendingConditionsAtApproval(false, true, false);
+        const approvedStudy = {
+            controlledAccess: false,
+            dbGaPID: 'phs000007',
+            pendingModelChange: true,
+            pendingImageDeIdentification: false
+        };
+        const result = getPendingConditionsAtApproval(approvedStudy);
         expect(result).toEqual(['submission_request:pending_model_update']);
     });
 
     it('should return submission_request:pending_dbgapid if pending dbgapid is true', () => {
-        const result = getPendingConditionsAtApproval(true, false, false);
+        const approvedStudy = {
+            controlledAccess: true,
+            dbGaPID: null,
+            pendingModelChange: false,
+            pendingImageDeIdentification: false
+        };
+        const result = getPendingConditionsAtApproval(approvedStudy);
         expect(result).toEqual(['submission_request:pending_dbgapid']);
     });
 
     it('should return array of pending condidtions when multiple pending conditions are true', () => {
-        const result = getPendingConditionsAtApproval(true, true, true);
+        const approvedStudy = {
+            controlledAccess: true,
+            dbGaPID: null,
+            pendingModelChange: true,
+            pendingImageDeIdentification: true
+        };
+        const result = getPendingConditionsAtApproval(approvedStudy);
         expect(result).toEqual(['submission_request:pending_dbgapid', 'submission_request:pending_model_update', 'submission_request:pending_image_deidentification']);
     });
 
     it('should treat null or undefined as false', () => {
-        const result = getPendingConditionsAtApproval(true, null, undefined);
+        const approvedStudy = {
+            controlledAccess: true,
+            dbGaPID: null,
+            pendingModelChange: null,
+            pendingImageDeIdentification: undefined
+        };
+        const result = getPendingConditionsAtApproval(approvedStudy);
         expect(result).toEqual(['submission_request:pending_dbgapid']);
     });
 });
