@@ -33,6 +33,7 @@ const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } =
 const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev-helpers");
 const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
 const {getCCEmails, filterDuplicateEmails, getEmailsBasedonConditionalApproval} = require("./application");
+const { getPendingConditionsAtApproval } = require("../utility/pending-conditions-at-approval");
 
 class ApprovedStudiesService {
     /**
@@ -776,21 +777,6 @@ const getUserEmails = (users) => {
     return users
         ?.filter((aUser) => aUser?.email)
         ?.map((aUser)=> aUser.email);
-}
-
-const getPendingConditionsAtApproval = (approvedStudy = {}) => {
-    const pendingDbGaPID = isTrue(approvedStudy.controlledAccess) && !approvedStudy.dbGaPID;
-    let conditions = [];
-    if (isTrue(pendingDbGaPID)) {
-    conditions.push(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID);
-    }
-    if (isTrue(approvedStudy.pendingModelChange)) {
-        conditions.push(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE);
-    }
-    if (isTrue(approvedStudy.pendingImageDeIdentification)) {
-        conditions.push(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION);
-    }
-    return conditions;
 }
 
 module.exports = {
