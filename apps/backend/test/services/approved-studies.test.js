@@ -1,5 +1,5 @@
 const { ApprovedStudiesService } = require('../../services/approved-studies');
-const { ADMIN } = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
+const { ADMIN, EMAIL_NOTIFICATIONS } = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
 const ERROR = require('../../constants/error-constants');
 const { replaceErrorString } = require('../../utility/string-util');
 const { APPROVED_STUDY_STATUS_FILTER_MAX_LENGTH, STUDY_ABBREVIATION_MAX_LENGTH } = require('../../crdc-datahub-database-drivers/constants/approved-study-constants');
@@ -1156,7 +1156,8 @@ describe('ApprovedStudiesService', () => {
                 null,
                 expect.objectContaining({ GPAName: 'GPA Name' }),
                 'program-1',
-                false
+                false,
+                []
             );
             expect(service.approvedStudyDAO.create).toHaveBeenCalledWith(fakeStudy);
             expect(service.approvedStudyDAO.update).not.toHaveBeenCalled();
@@ -1194,7 +1195,8 @@ describe('ApprovedStudiesService', () => {
                 null,
                 expect.objectContaining({ GPAName: DEFAULT_GPA_NAME, isPendingGPA: false }),
                 'program-1',
-                false
+                false,
+                []
             );
         });
 
@@ -1301,7 +1303,8 @@ describe('ApprovedStudiesService', () => {
                 null,
                 expect.anything(),
                 'program-1',
-                false
+                false,
+                []
             );
         });
 
@@ -1361,6 +1364,9 @@ describe('ApprovedStudiesService', () => {
             ['phs12345', null],
         ])('should normalize dbGaPPPHSNumber %p to dbGaPID %p', async (input, expectedDbGaPID) => {
             ApprovedStudies.createApprovedStudies.mockClear();
+            const expectedPendingConditions = expectedDbGaPID === null
+                ? [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID]
+                : [];
 
             await service.saveApprovedStudyFromApplication(
                 application,
@@ -1387,7 +1393,8 @@ describe('ApprovedStudiesService', () => {
                 null,
                 expect.objectContaining({ GPAName: 'GPA Name' }),
                 'program-1',
-                false
+                false,
+                expectedPendingConditions
             );
         });
 

@@ -69,6 +69,9 @@ const approvedStudySchema = new mongoose.Schema(
         GPAName: {
             type: String,
         },
+        pendingConditionsAtApproval: {
+            type: [String],
+        },
     },
     {
         collection: APPROVED_STUDIES_COLLECTION,
