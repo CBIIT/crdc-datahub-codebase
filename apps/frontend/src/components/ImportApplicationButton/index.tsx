@@ -1,4 +1,5 @@
 import { Button, ButtonProps, Stack, styled, Typography } from "@mui/material";
+import { isEqual, omit } from "lodash";
 import { useSnackbar } from "notistack";
 import { useState } from "react";
 
@@ -159,6 +160,12 @@ const ImportApplicationButton = ({ activeSection, disabled = false, ...rest }: P
       Logger.error(`ImportApplicationButton: Failed to parse file`, error);
       enqueueSnackbar(IMPORT_ERROR_MESSAGE, { variant: "error" });
       setIsUploading(false);
+      return;
+    }
+
+    if (isEqual(omit(parsedForm, "sections"), omit(data?.questionnaireData, "sections"))) {
+      enqueueSnackbar("No changes were applied. The imported file matches the current form.");
+      resetImportState();
       return;
     }
 
