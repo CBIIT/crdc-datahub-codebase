@@ -243,10 +243,12 @@ class ApprovedStudiesService {
         const { fields } = this._buildUpdatableStudyFieldsFromApplication(
             application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
         );
+        const pendingConditionsAtApproval = getPendingConditionsAtApproval(fields);
 
         const updateStudy = {
             ...existingStudy,
             ...fields,
+            pendingConditionsAtApproval,
             updatedAt: getCurrentTime(),
         };
 
