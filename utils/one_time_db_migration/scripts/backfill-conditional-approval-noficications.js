@@ -1,6 +1,6 @@
 /**
  * One-time migration: remove submission_request:pending_cleared notification from all
- * users and backfill conditional-approval notifications on existing active User/Submitter users.
+ * users and backfill conditional-approval notifications on existing User/Submitter users.
  *
  * Idempotent via $pull / $addToSet. Run once after sync-pbac-defaults (manual or first deploy).
  * Not intended for recurring startup sync — admins may remove notifications per user afterward.

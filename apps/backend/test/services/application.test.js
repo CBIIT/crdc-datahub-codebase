@@ -1836,7 +1836,7 @@ describe('Application', () => {
 
         it('sends pendingImageDeIdentificationApproveQuestionNotification when only pending image de-identification', async () => {
             const conditionalApprovalNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED;
-            const pendingImageDeIdentificationNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_IMAGE_DEIDENTIFICATION;
+            const pendingImageDeIdentificationNotification = USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION;
             const mockApplication = {
                 _id: 'app1',
                 status: IN_REVIEW,

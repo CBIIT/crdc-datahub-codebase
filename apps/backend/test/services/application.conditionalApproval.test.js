@@ -1,8 +1,8 @@
 const { filterDuplicateEmails, getEmailsBasedonConditionalApproval } = require('../../services/application');
 const { getPendingConditionsAtApproval } = require('../../services/approved-studies');
-PENDING_DBGAP = "submission_request:pending_dbgapid"
-PENDING_MODEL_UPDATE = "submission_request:pending_model_update"
-PENDING_IMG_DEID = "submission_request:pending_image_deidentification"
+const PENDING_DBGAP = "submission_request:pending_dbgapid"
+const PENDING_MODEL_UPDATE = "submission_request:pending_model_update"
+const PENDING_IMG_DEID = "submission_request:pending_image_deidentification"
 
 describe('filterDuplicateEmails', () => {
     it('should filter applicant email from cc emails and bcc emails', () => {
