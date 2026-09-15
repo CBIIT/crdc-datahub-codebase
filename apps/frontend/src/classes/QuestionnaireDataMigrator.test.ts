@@ -75,19 +75,17 @@ describe("run", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                firstName: "Bob",
-                lastName: "Smith",
-                email: "some.mock@example.com",
-                address: "756 A Mock Address, Apt 1",
-                position: "Mock Position",
-                ORCID: "Some ORCID which isn't actually valid",
-                institution: "Missing ID", // This will be updated
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              firstName: "Bob",
+              lastName: "Smith",
+              email: "some.mock@example.com",
+              address: "756 A Mock Address, Apt 1",
+              position: "Mock Position",
+              ORCID: "Some ORCID which isn't actually valid",
+              institution: "Missing ID", // This will be updated
+            }),
+          }),
         },
       },
     });
@@ -147,13 +145,11 @@ describe("run", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                institution: "I was populated without an ID!!!", // This will be updated
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              institution: "I was populated without an ID!!!", // This will be updated
+            }),
+          }),
         },
       },
     });
@@ -198,14 +194,12 @@ describe("run", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                institution: "an outdated value from an old form", // This will be updated
-                institutionID: mockInstitutions[0]._id,
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              institution: "an outdated value from an old form", // This will be updated
+              institutionID: mockInstitutions[0]._id,
+            }),
+          }),
         },
       },
     });
@@ -254,14 +248,12 @@ describe("run", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                firstName: "PreviousApp",
-                lastName: "PI",
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              firstName: "PreviousApp",
+              lastName: "PI",
+            }),
+          }),
         },
       },
     });
@@ -335,7 +327,7 @@ describe("_migrateLastApp", () => {
       mockGetLastApplication.mockResolvedValue({
         data: {
           getMyLastApplication: {
-            questionnaireData: JSON.stringify(lastAppData),
+            questionnaireData: lastAppData,
           },
         },
       });
