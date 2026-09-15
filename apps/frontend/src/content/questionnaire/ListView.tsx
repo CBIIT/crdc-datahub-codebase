@@ -164,7 +164,6 @@ const columns: Column<T>[] = [
     label: "SRF Version",
     renderValue: (a) => a.sequenceNumber,
     field: "sequenceNumber",
-    default: true,
   },
   {
     label: "Submitted Date",
