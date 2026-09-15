@@ -1,0 +1,177 @@
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { DATA_RECORDS_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
+
+/**
+ * Embedded error/warning schema for embedded Error fields.
+ */
+const errorSchema = new mongoose.Schema(
+    {
+        title: { type: String, required: true },
+        description: { type: String, required: true },
+        code: { type: String },
+        offendingProperty: { type: String },
+        offendingValue: { type: String },
+        severity: { type: String },
+    },
+    {
+        _id: false,
+        suppressReservedKeysWarning: true,
+    }
+);
+
+/**
+ * Embedded additional/cross-validation error schema for embedded AdditionalError fields.
+ */
+const additionalErrorSchema = new mongoose.Schema(
+    {
+        conflictingSubmissions: { type: [String], default: undefined },
+        description: { type: String },
+        title: { type: String },
+    },
+    { _id: false }
+);
+
+/**
+ * Embedded parent relationship schema for embedded Parent fields.
+ */
+const parentSchema = new mongoose.Schema(
+    {
+        parentIDPropName: { type: String },
+        parentIDValue: { type: String },
+        parentType: { type: String },
+    },
+    { _id: false }
+);
+
+/**
+ * Embedded S3 file info schema for embedded S3FileInfo fields.
+ */
+const s3FileInfoSchema = new mongoose.Schema(
+    {
+        createdAt: { type: Date },
+        errors: { type: [errorSchema], default: [] },
+        fileName: { type: String },
+        md5: { type: String },
+        size: { type: String },
+        status: { type: String },
+        updatedAt: { type: Date },
+        warnings: { type: [errorSchema], default: [] },
+    },
+    {
+        _id: false,
+        suppressReservedKeysWarning: true,
+    }
+);
+
+/**
+ * Mongoose schema for dataRecord, for the DataRecord collection.
+ */
+const dataRecordSchema = new mongoose.Schema(
+    {
+        _id: {
+            type: String,
+            default: () => uuidv4(),
+        },
+        CRDC_ID: {
+            type: String,
+        },
+        IDPropName: {
+            type: String,
+            required: true,
+        },
+        additionalErrors: {
+            type: [additionalErrorSchema],
+            default: [],
+        },
+        batchIDs: {
+            type: [String],
+            default: undefined,
+        },
+        dataCommons: {
+            type: String,
+            required: true,
+        },
+        entityType: {
+            type: String,
+        },
+        errors: {
+            type: [errorSchema],
+            default: [],
+        },
+        latestBatchDisplayID: {
+            type: Number,
+            required: true,
+        },
+        latestBatchID: {
+            type: String,
+            required: true,
+        },
+        lineNumber: {
+            type: Number,
+            required: true,
+        },
+        nodeID: {
+            type: String,
+            required: true,
+        },
+        nodeType: {
+            type: String,
+            required: true,
+        },
+        orginalFileName: {
+            type: String,
+            required: true,
+        },
+        parents: {
+            type: [parentSchema],
+            default: [],
+        },
+        props: {
+            type: mongoose.Schema.Types.Mixed,
+        },
+        qcResultID: {
+            type: String,
+        },
+        rawData: {
+            type: mongoose.Schema.Types.Mixed,
+        },
+        s3FileInfo: {
+            type: s3FileInfoSchema,
+        },
+        status: {
+            type: String,
+            required: true,
+        },
+        studyID: {
+            type: String,
+            required: true,
+        },
+        submissionID: {
+            type: String,
+            required: true,
+        },
+        uploadedDate: {
+            type: Date,
+            required: true,
+        },
+        validatedAt: {
+            type: Date,
+        },
+        warnings: {
+            type: [errorSchema],
+            default: [],
+        },
+    },
+    {
+        collection: DATA_RECORDS_COLLECTION,
+        timestamps: true,
+        versionKey: false,
+        suppressReservedKeysWarning: true,
+    }
+);
+
+const DataRecordModel =
+    mongoose.models.DataRecord || mongoose.model('DataRecord', dataRecordSchema);
+
+module.exports = DataRecordModel;

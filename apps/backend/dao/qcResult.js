@@ -1,124 +1,165 @@
-const GenericDAO = require("./generic");
-const {MODEL_NAME} = require("../constants/db-constants");
+const MongooseGenericDAO = require("./mongoose-generic");
+const QcResultModel = require("../mongoose/models/qc-result");
 const {VALIDATION_STATUS} = require("../constants/submission-constants");
 const {getSortDirection} = require("../crdc-datahub-database-drivers/utility/mongodb-utility");
 const ISSUE_COUNT = "issueCount";
 const ALL_FLAG = "All";
-class QCResultDAO extends GenericDAO {
-    constructor(qcResultCollection) {
-        super(MODEL_NAME.QC_RESULT);
-        this.qcResultCollection = qcResultCollection;
+
+class QCResultDAO extends MongooseGenericDAO {
+    constructor() {
+        super(QcResultModel);
     }
 
-    // note: use MongoDB because Prisma has to fetch all matching documents into memory before grouping and paginating
+    /**
+     * Aggregate QC issues for a submission, grouped by issue type with distinct record counts.
+     * Page sort uses grouped `_id` as a unique tiebreaker so skip/limit is stable across requests.
+     * @param {string} submissionID Submission ID
+     * @param {string} severity Severity filter (Error, Warning, or All)
+     * @param {number} first Page size
+     * @param {number} offset Page offset
+     * @param {string} orderBy Sort field
+     * @param {string} sortDirection Sort direction
+     * @returns {Promise<{total: number, results: object[]}>}
+     */
     async aggregatedSubmissionQCResults(submissionID, severity, first, offset, orderBy, sortDirection) {
-        // Create lookup pipeline
-        let basePipeline = [];
-        // Filter by submission ID
-        basePipeline.push({
-            $match: {
-                submissionID: submissionID
-            }
-        });
-        // Set severity field
-        basePipeline.push({
-            $set: {
-                "errors.severity": VALIDATION_STATUS.ERROR,
-                "warnings.severity": VALIDATION_STATUS.WARNING
-            }
-        })
-        // Combine warnings and errors arrays
-        basePipeline.push({
-            $set: {
-                issues: {
-                    $concatArrays: ["$warnings", "$errors"]
+        const severityFilter = formatSeverityFilter(severity);
+        const basePipeline = this._aggregatedQCResultsBasePipeline(submissionID, severityFilter);
+        const countPipeline = [
+            ...basePipeline,
+            { $count: "total" }
+        ];
+        const paginationPipeline = [
+            ...basePipeline,
+            {
+                $project: {
+                    title: "$_id.title",
+                    severity: "$_id.severity",
+                    code: "$_id.code",
+                    count: "$count",
+                    property: { $ifNull: ["$_id.property", "N/A"] },
+                    value: { $ifNull: ["$_id.value", "N/A"] }
+                }
+            },
+            {
+                $sort: {
+                    [orderBy]: getSortDirection(sortDirection),
+                    _id: 1
                 }
             }
-        })
-        // Unwind issues array
-        basePipeline.push({
-            $unwind:{
-                path: "$issues"
-            }
-        });
-        // Filter by severity
-        // Format severity filter
-        let severityFilter = formatSeverityFilter(severity);
-        // Add the severity filter to the pipeline
-        if (!!severityFilter) {
-            basePipeline.push({
-                $match:{
-                    "issues.severity": severityFilter
-                }
-            });
+        ];
+        if (offset > 0) {
+            paginationPipeline.push({ $skip: offset });
         }
-        // Aggregate and count distinct data records for each issue type
-        basePipeline.push({
-            $group:{
-                _id: {
-                    title: "$issues.title",
-                    severity: "$issues.severity",
-                    code: "$issues.code",
-                    property: "$issues.offendingProperty",
-                    value: "$issues.offendingValue"
-                },
-                distinctRecords: {
-                    $addToSet: "$dataRecordID"  // Collect unique dataRecordID values for this specific issue type (title, severity, code, property, value combination)
-                }
-            }
-        });
-        // Count distinct data records (not individual issue occurrences)
-        basePipeline.push({
-            $addFields: {
-                count: { $size: "$distinctRecords" }  // Calculate count as the number of distinct records with this issue
-            }
-        });
-        // Format the output
-        basePipeline.push({
-            $project:{
-                _id: 0,
-                title: "$_id.title",
-                severity: "$_id.severity",
-                code: "$_id.code",
-                count: "$count",
-                property: { $ifNull: ["$_id.property", "N/A"] },
-                value: { $ifNull: ["$_id.value", "N/A"] }
-            }
-        });
-        // Create count pipeline
-        let countPipeline = [...basePipeline];
-        countPipeline.push({
-            $count: "total"
-        });
-        // Create pagination pipeline
-        let paginationPipeline = [...basePipeline];
-        // Sort the results
-        paginationPipeline.push({
-            $sort: {
-                [orderBy]: getSortDirection(sortDirection)
-            }
-        });
-        // Paginate
-        if (offset > 0){
-            paginationPipeline.push({
-                $skip: offset
-            });
+        if (first > 0) {
+            paginationPipeline.push({ $limit: first });
         }
-        if (first > 0){
-            paginationPipeline.push({
-                $limit: first
-            });
-        }
-        // Run pipelines
-        const countPipelineResult = await this.qcResultCollection.aggregate(countPipeline);
+        paginationPipeline.push({ $unset: "_id" });
+        const [countPipelineResult, paginatedPipelineResult] = await Promise.all([
+            this.aggregate(countPipeline),
+            this.aggregate(paginationPipeline)
+        ]);
         const totalRecords = countPipelineResult[0]?.total;
-        const paginatedPipelineResult = await this.qcResultCollection.aggregate(paginationPipeline);
         return {
             total: totalRecords || 0,
             results: paginatedPipelineResult
         };
     }
 
+    /**
+     * Shared stages through two-stage distinct $group (no $addToSet).
+     * @param {string} submissionID Submission ID
+     * @param {string|null} severityFilter Error, Warning, or null for all
+     * @returns {object[]}
+     */
+    _aggregatedQCResultsBasePipeline(submissionID, severityFilter) {
+        const pipeline = [{ $match: { submissionID } }];
+        const nonEmptyArray = {
+            $exists: true,
+            $type: "array",
+            $ne: []
+        };
+        if (severityFilter === VALIDATION_STATUS.ERROR) {
+            pipeline.push(
+                { $match: { errors: nonEmptyArray } },
+                {
+                    $project: {
+                        dataRecordID: 1,
+                        errors: mappedIssuesWithSeverity("$errors", VALIDATION_STATUS.ERROR)
+                    }
+                },
+                { $unwind: { path: "$errors" } },
+                {
+                    $group: {
+                        _id: issueGroupKey("$errors")
+                    }
+                }
+            );
+        } else if (severityFilter === VALIDATION_STATUS.WARNING) {
+            pipeline.push(
+                { $match: { warnings: nonEmptyArray } },
+                {
+                    $project: {
+                        dataRecordID: 1,
+                        warnings: mappedIssuesWithSeverity("$warnings", VALIDATION_STATUS.WARNING)
+                    }
+                },
+                { $unwind: { path: "$warnings" } },
+                {
+                    $group: {
+                        _id: issueGroupKey("$warnings")
+                    }
+                }
+            );
+        } else {
+            pipeline.push(
+                {
+                    $project: {
+                        dataRecordID: 1,
+                        issues: {
+                            $concatArrays: [
+                                mappedIssuesWithSeverity("$errors", VALIDATION_STATUS.ERROR),
+                                mappedIssuesWithSeverity("$warnings", VALIDATION_STATUS.WARNING)
+                            ]
+                        }
+                    }
+                },
+                { $unwind: { path: "$issues" } },
+                {
+                    $group: {
+                        _id: issueGroupKey("$issues")
+                    }
+                }
+            );
+        }
+        pipeline.push({
+            $group: {
+                _id: {
+                    title: "$_id.title",
+                    severity: "$_id.severity",
+                    code: "$_id.code",
+                    property: "$_id.property",
+                    value: "$_id.value"
+                },
+                count: { $sum: 1 }
+            }
+        });
+        return pipeline;
+    }
+
+    /**
+     * List QC result rows for a submission with filters, issue counts, and pagination.
+     * Uses split count + page pipelines (DocumentDB does not support $facet).
+     * @param {string} submissionID Submission ID
+     * @param {string[]} nodeTypes Node type filters
+     * @param {string[]} batchIDs Batch ID filters (only the first is applied)
+     * @param {string} severities Severity filter (Error, Warning, or All)
+     * @param {string} issueCode Issue code filter
+     * @param {number} first Page size
+     * @param {number} offset Page offset
+     * @param {string} orderBy Sort field
+     * @param {string} sortDirection Sort direction
+     * @returns {Promise<{results: object[], total: number}>}
+     */
     async submissionQCResults(submissionID, nodeTypes, batchIDs, severities, issueCode, first, offset, orderBy, sortDirection){
         // Create lookup pipeline
         let pipeline = [];
@@ -218,7 +259,7 @@ class QCResultDAO extends GenericDAO {
         countPipeline.push({
             $count: "total"
         });
-        const countPipelineResult = await this.qcResultCollection.aggregate(countPipeline);
+        const countPipelineResult = await this.aggregate(countPipeline);
         const totalRecords = countPipelineResult[0]?.total;
         // Create paginated pipeline
         let pagedPipeline = [...pipeline];
@@ -243,12 +284,41 @@ class QCResultDAO extends GenericDAO {
                 $limit: first
             });
         }
-        const pagedPipelineResult = await this.qcResultCollection.aggregate(pagedPipeline);
+        const pagedPipelineResult = await this.aggregate(pagedPipeline);
         const dataRecords = replaceNaN(pagedPipelineResult, null);
         return {
             results: dataRecords || [],
             total: totalRecords || 0
         }
+    }
+
+    /**
+     * Find QC results for a submission that include a specific error code.
+     * Projects only submittedID and submissionID for callers that need IDs/counts.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorCode Error code to match in the errors array
+     * @returns {Promise<object[]>}
+     */
+    async findBySubmissionErrorCodes(submissionID, errorCode) {
+        const result = await this.model
+            .find({ submissionID, "errors.code": errorCode })
+            .select("submittedID submissionID")
+            .lean();
+        return result.map((item) => this._mapDoc(item));
+    }
+
+    /**
+     * Return submittedID and dataRecordID for QC results of a given type in a submission.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorType Node/error type to match
+     * @returns {Promise<object[]>}
+     */
+    async getQCResultsErrors(submissionID, errorType) {
+        const result = await this.aggregate([
+            {"$match": { submissionID: submissionID, type: errorType}},
+            {"$project": {submittedID: 1, dataRecordID: 1}}
+        ]);
+        return result || [];
     }
 }
 
@@ -280,4 +350,42 @@ function formatSeverityFilter(severity){
     return null;
 }
 
-module.exports = QCResultDAO
+/**
+ * $map that attaches severity and keeps only grouping fields.
+ * @param {string} arrayPath Field path including $ (e.g. "$errors")
+ * @param {string} severity Error or Warning
+ * @returns {object}
+ */
+function mappedIssuesWithSeverity(arrayPath, severity) {
+    return {
+        $map: {
+            input: { $ifNull: [arrayPath, []] },
+            as: "issue",
+            in: {
+                title: "$$issue.title",
+                code: "$$issue.code",
+                offendingProperty: "$$issue.offendingProperty",
+                offendingValue: "$$issue.offendingValue",
+                severity
+            }
+        }
+    };
+}
+
+/**
+ * First-stage $group _id: issue identity plus dataRecordID for distinct counting.
+ * @param {string} issuePath Field path including $ (e.g. "$errors")
+ * @returns {object}
+ */
+function issueGroupKey(issuePath) {
+    return {
+        title: `${issuePath}.title`,
+        severity: `${issuePath}.severity`,
+        code: `${issuePath}.code`,
+        property: `${issuePath}.offendingProperty`,
+        value: `${issuePath}.offendingValue`,
+        dataRecordID: "$dataRecordID"
+    };
+}
+
+module.exports = QCResultDAO;

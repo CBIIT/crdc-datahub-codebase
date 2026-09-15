@@ -9,7 +9,7 @@ describe('Submission.getSubmissionSummary', () => {
 
     beforeEach(() => {
         // Mock organization service with organizationCollection
-        const mockOrganizationService = {
+        const mockProgramService = {
             organizationCollection: {}
         };
 
@@ -19,7 +19,7 @@ describe('Submission.getSubmissionSummary', () => {
             {}, // submissionCollection
             {}, // batchService
             {}, // userService
-            mockOrganizationService, // organizationService
+            mockProgramService, // programService
             {}, // notificationService
             { retrieveDSSummary: jest.fn() }, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -29,7 +29,6 @@ describe('Submission.getSubmissionSummary', () => {
             {}, // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            {}, // validationCollection
             'test-loader-queue', // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -38,8 +37,7 @@ describe('Submission.getSubmissionSummary', () => {
             {}, // uploadingMonitor
             new Map(), // dataCommonsBucketMap
             {}, // authorizationService
-            {}, // dataModelService
-            {} // dataRecordsCollection
+            {} // dataModelService
         );
 
         // Mock dependencies

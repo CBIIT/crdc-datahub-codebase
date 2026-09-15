@@ -1,9 +1,18 @@
-class PropertyPVDAO {
-    constructor(collection) {
-        this.collection = collection;
+const MongooseGenericDAO = require("./mongoose-generic");
+const PropertyPVModel = require("../mongoose/models/property-pv");
+
+/**
+ * Mongoose-backed DAO for property permissible values (propertyPVs).
+ */
+class PropertyPVDAO extends MongooseGenericDAO {
+    constructor() {
+        super(PropertyPVModel);
     }
 
     /**
+     * Finds property PV documents matching any of the given property names for a model/version.
+     * Maps BSON PermissibleValues to GraphQL-facing permissibleValues (null when missing/null).
+     *
      * @param {string[]} propertyNames non-empty deduped list
      * @param {string} version
      * @param {string} model
@@ -13,26 +22,15 @@ class PropertyPVDAO {
         if (!propertyNames.length) {
             return [];
         }
-        return await this.collection.aggregate([
-            {
-                $match: {
-                    property: { $in: propertyNames },
-                    version,
-                    model
-                }
-            },
-            {
-                $project: {
-                    id: '$_id',
-                    property: '$property',
-                    model: '$model',
-                    version: '$version',
-                    permissibleValues: '$PermissibleValues',
-                    createdAt: '$createdAt',
-                    updatedAt: '$updatedAt',
-                }
-            }
-        ]);
+        const docs = await this.findMany({
+            property: { $in: propertyNames },
+            version,
+            model,
+        });
+        return docs.map((doc) => ({
+            ...doc,
+            permissibleValues: doc.PermissibleValues ?? null,
+        }));
     }
 }
 

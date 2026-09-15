@@ -31,7 +31,7 @@ const sanitizeMongoDBInput = (raw) => {
     return raw.trim();
 }
 
-/** Escape a string for use as a literal inside MongoDB $regex or Prisma MongoDB case-insensitive filters (which compile to regex). */
+/** Escape a string for use as a literal inside MongoDB $regex. */
 const escapeRegexLiteral = (raw) => {
     if (raw === undefined || raw === null) return "";
     return String(raw).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
