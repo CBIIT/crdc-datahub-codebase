@@ -230,6 +230,10 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
   ] = watch(["programName", "showAllVersions", "studyName", "statuses", "submitterName"]);
 
   useEffect(() => {
+    if (Object.values(touchedFilters).some((filter) => filter)) {
+      return;
+    }
+
     const programName = searchParams.get("programName");
     const showAllVersions = searchParams.get("showAllVersions") === "true";
     const studyName = searchParams.get("studyName");
@@ -257,9 +261,13 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
     if (Object.values(touchedFilters).every((filter) => !filter)) {
       handleFormChange(getValues());
     }
-  }, [applicationData?.programs, applicationData?.studies, searchParams?.toString()]);
+  }, [searchParams?.toString()]);
 
   useEffect(() => {
+    if (Object.values(touchedFilters).every((filter) => !filter)) {
+      return;
+    }
+
     const newSearchParams = new URLSearchParams(searchParams);
 
     if (programNameFilter && programNameFilter !== "All") {
