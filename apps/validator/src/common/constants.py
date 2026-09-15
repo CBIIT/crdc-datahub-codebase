@@ -1,7 +1,5 @@
 #define constants, enums, etc.
 #config 
-from sre_parse import SRE_FLAG_ASCII
-
 
 MONGO_DB = "connection-str"
 SQS_NAME = "sqs"
@@ -306,9 +304,8 @@ STUDY_ACRONYM = 'studyAcronym'
 STUDY_DESCRIPTION = 'studyDescription'
 
 # property names in SRF
-SRF_PROGRAM_NAME = 'programName'
-SRF_PROGRAM_ACRONYM = 'programAcronym'
-SRF_PROGRAM_DESCRIPTION = 'programDescription'
-SRF_STUDY_NAME = 'studyName'
-SRF_STUDY_ACRONYM = 'studyAcronym'
-SRF_STUDY_DESCRIPTION = 'studyDescription'
+SRF_PROGRAM = 'program'
+SRF_STUDY = 'study'
+SRF_NAME = 'name'
+SRF_ACRONYM = 'abbreviation'
+SRF_DESCRIPTION = 'description'

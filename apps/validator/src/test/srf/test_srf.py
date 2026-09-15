@@ -1,11 +1,52 @@
 from common.srf import SRF
-from common.constants import STUDY_NAME
+import json
 
-srf_data = {}
-system_populated_props = {}
+srf_data = {
+    "questionnaireData": {
+        "program": {
+            "name": "",
+            "abbreviation": "",
+            "description": ""
+        },
+        "study": {
+            "name": "Ming 2nd condition",
+            "abbreviation": "MING-COND-2",
+            "description": "ming's second conditionally approved study",
+        }
+    }
+}
 
+system_populated_props = {
+        "study_name": "studyName",
+        "study_acronym": "studyAcronym",
+        "study_description": "studyDescription"
+}
+
+
+def test_get_study_name_from_empty_srf():
+    srf = SRF()
+    study_name = srf.get_property_value("study_name")
+    assert study_name is None
+
+def test_get_study_name_from_srf_with_no_system_populated_props():
+    srf = SRF(srf_data, {})
+    study_name = srf.get_property_value("study_name")
+    assert study_name is None
 
 def test_get_study_name():
-    srf = SRF()
-    study_name = srf.get_property_value(STUDY_NAME)
-    assert study_name is None
+    srf = SRF(srf_data, system_populated_props)
+    study_name = srf.get_property_value("study_name")
+    assert study_name == "Ming 2nd condition"
+
+def test_get_program_name():
+    srf = SRF(srf_data, system_populated_props)
+    program_name = srf.get_property_value("program_name")
+    assert program_name == None
+
+def test_get_study_acronym_from_string_questionnaire():
+    srf_string_data = {
+        "questionnaireData": json.dumps(srf_data['questionnaireData'])
+    }
+    srf = SRF(srf_string_data, system_populated_props)
+    value = srf.get_property_value("study_acronym")
+    assert value == "MING-COND-2"
