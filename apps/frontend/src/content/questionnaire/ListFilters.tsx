@@ -58,24 +58,28 @@ const StyledInlineLabel = styled("label")({
 });
 
 const StyledShowAllVersions = styled(FormControlLabel)({
-  margin: "0 32px 0 0",
   whiteSpace: "nowrap",
+  marginTop: "8px",
   "& .MuiFormControlLabel-label": {
-    fontWeight: 700,
-    fontSize: "16px",
+    color: "#083A50",
+    fontWeight: "700",
+    userSelect: "none",
+  },
+  "& .MuiCheckbox-root:not(.Mui-disabled)": {
+    color: "#005EA2 !important",
   },
 });
 
 const StyledSelect = styled(StyledSelectFormComponent)({
-  width: "298.25px",
+  width: "252px",
 });
 
 const StyledTextField = styled(StyledTextFieldFormComponent)({
-  width: "298.25px",
+  width: "252px",
 });
 
 const StyledAutocomplete = styled(StyledAutocompleteFormComponent)({
-  width: "298.25px",
+  width: "252px",
 });
 
 const StyledRefreshIcon = styled(RefreshIcon)({
@@ -333,30 +337,32 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
   return (
     <StyledContainer>
       <Stack direction="row" alignItems="center">
-        <Controller
-          name="showAllVersions"
-          control={control}
-          render={({ field }) => (
-            <StyledShowAllVersions
-              label="Show All Versions"
-              control={
-                <Checkbox
-                  {...field}
-                  checked={field.value}
-                  data-testid="show-all-versions-checkbox"
-                  onChange={(event) => {
-                    const showAllVersions = event.target.checked;
-                    field.onChange(showAllVersions);
-                    handleFilterChange("showAllVersions");
-                    handleFormChange({ ...getValues(), showAllVersions });
-                  }}
-                />
-              }
-            />
-          )}
-        />
         <Grid container>
-          <Grid item xs={3}>
+          <Grid item xs sx={{ maxWidth: "198px !important" }}>
+            <Controller
+              name="showAllVersions"
+              control={control}
+              render={({ field }) => (
+                <StyledShowAllVersions
+                  label="Show All Versions"
+                  control={
+                    <Checkbox
+                      {...field}
+                      checked={field.value}
+                      data-testid="show-all-versions-checkbox"
+                      onChange={(event) => {
+                        const showAllVersions = event.target.checked;
+                        field.onChange(showAllVersions);
+                        handleFilterChange("showAllVersions");
+                        handleFormChange({ ...getValues(), showAllVersions });
+                      }}
+                    />
+                  }
+                />
+              )}
+            />
+          </Grid>
+          <Grid item xs>
             <StyledFormControl>
               <StyledInlineLabel htmlFor="submitter-name-filter">Submitter Name</StyledInlineLabel>
               <StyledTextField
@@ -377,7 +383,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
             </StyledFormControl>
           </Grid>
 
-          <Grid item xs={3}>
+          <Grid item xs>
             <StyledFormControl>
               <StyledInlineLabel htmlFor="programName-filter">Program</StyledInlineLabel>
               <Controller
@@ -417,7 +423,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
             </StyledFormControl>
           </Grid>
 
-          <Grid item xs={3}>
+          <Grid item xs>
             <StyledFormControl>
               <StyledInlineLabel htmlFor="study-name-filter">Study</StyledInlineLabel>
               <StyledTextField
@@ -438,7 +444,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
             </StyledFormControl>
           </Grid>
 
-          <Grid item xs={3}>
+          <Grid item xs>
             <StyledFormControl>
               <StyledInlineLabel htmlFor="status-filter">Status</StyledInlineLabel>
               <Controller
