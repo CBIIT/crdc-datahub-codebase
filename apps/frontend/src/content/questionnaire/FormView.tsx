@@ -957,6 +957,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
         confirmText="Confirm to move to Inquired"
         onCancel={handleCloseInquireFormDialog}
         onSubmit={(reviewComment) => submitInquireForm(reviewComment)}
+        loading={status === FormStatus.SUBMITTING}
       />
       <ReviewFormDialog
         open={openRejectDialog}
@@ -964,6 +965,7 @@ const FormView: FC<Props> = ({ section }: Props) => {
         confirmText="Confirm to Reject"
         onCancel={handleCloseRejectFormDialog}
         onSubmit={(reviewComment) => submitRejectForm(reviewComment)}
+        loading={status === FormStatus.SUBMITTING}
       />
     </>
   );
