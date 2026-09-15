@@ -1,4 +1,8 @@
+from unittest import TestCase
+
 from test.utils.mock_metadata_validator import create_mock_data_model
+from common.constants import STUDY_NAME, STUDY_ACRONYM, STUDY_DESCRIPTION
+
 
 data_model = create_mock_data_model()
 
@@ -70,3 +74,18 @@ def test_get_list_delimiter():
 
 def test_get_omit_dcf_prefix():
     assert data_model.get_omit_dcf_prefix() == True
+
+def test_get_system_populated_props():
+    system_populated_props = data_model.get_system_populated_props()
+    assert isinstance(system_populated_props, dict)
+    assert 'study_name' in system_populated_props
+    assert system_populated_props['study_name'] == STUDY_NAME
+    assert 'study_acronym' in system_populated_props
+    assert system_populated_props['study_acronym'] == STUDY_ACRONYM
+    assert 'study_description' in system_populated_props
+    assert system_populated_props['study_description'] == STUDY_DESCRIPTION
+    assert 'study_description' in system_populated_props
+
+def test_get_system_populated_prop_list():
+    system_populated_prop_list = data_model.get_system_populated_prop_list()
+    TestCase().assertCountEqual(system_populated_prop_list, ['study_name', 'study_description', 'study_acronym'])

@@ -1,5 +1,5 @@
 from common.constants import NODES_LABEL, RELATIONSHIPS, LIST_DELIMITER_PROP, PROPERTY_NAMES, OMIT_DCF_PREFIX, \
-    COMPOSITION_KEY, DEF_SEMANTICS, DEF_MAIN_NODES, DEF_FILE_NODES, DEF_FILE_NAME_FIELD
+    COMPOSITION_KEY, DEF_SEMANTICS, DEF_MAIN_NODES, DEF_FILE_NODES, DEF_FILE_NAME_FIELD, SYSTEM_POPULATED_PROPS
 
 
 class DataModel:
@@ -95,6 +95,12 @@ class DataModel:
     """
     def get_configured_prop_name(self, prop_name):
         return self._get_semantics().get(PROPERTY_NAMES, {}).get(prop_name)
+
+    def get_system_populated_props(self):
+        return self._get_semantics().get(SYSTEM_POPULATED_PROPS, {})
+    
+    def get_system_populated_prop_list(self):
+        return list(self.get_system_populated_props().keys())
     
     """
     get file name property, pick first file node name if there are multiple file nodes
