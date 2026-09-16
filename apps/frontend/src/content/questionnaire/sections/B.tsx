@@ -55,7 +55,7 @@ export type KeyedFunding = {
  * @returns {JSX.Element}
  */
 const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSectionProps) => {
-  const { status, data: applicationData, formRef } = useFormContext();
+  const { status, data: applicationData, formRef, notifyChange } = useFormContext();
   const data = applicationData?.questionnaireData;
 
   const { activeOrganizations: programs } = useOrganizationListContext();
@@ -195,6 +195,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         DOI: "",
       },
     ]);
+    notifyChange?.();
   };
 
   /**
@@ -204,6 +205,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
    */
   const removePublication = (key: string) => {
     setPublications((prev) => prev?.filter((c) => c.key !== key));
+    notifyChange?.();
   };
 
   /**
@@ -220,6 +222,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         expectedDate: dayjs().format("MM/DD/YYYY"),
       },
     ]);
+    notifyChange?.();
   };
 
   /**
@@ -229,6 +232,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
    */
   const removePlannedPublication = (key: string) => {
     setPlannedPublications((prev) => prev?.filter((c) => c.key !== key));
+    notifyChange?.();
   };
 
   /**
@@ -247,6 +251,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         otherDataTypesSubmitted: "",
       },
     ]);
+    notifyChange?.();
   };
 
   /**
@@ -256,6 +261,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
    */
   const removeRepository = (key: string) => {
     setRepositories(repositories.filter((c) => c.key !== key));
+    notifyChange?.();
   };
 
   /**
@@ -273,6 +279,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         nciProgramOfficer: "",
       },
     ]);
+    notifyChange?.();
   };
 
   /**
@@ -282,6 +289,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
    */
   const removeFunding = (key: string) => {
     setFundings((prev) => prev?.filter((f) => f.key !== key));
+    notifyChange?.();
   };
 
   /**

@@ -9,13 +9,16 @@ const {DATABASE_NAME, LOG_COLLECTION, USER_COLLECTION} = require("../crdc-datahu
 const {LoginEvent, LogoutEvent} = require("../crdc-datahub-database-drivers/domain/log-events");
 const {User} = require("../crdc-datahub-database-drivers/services/user");
 const {ERROR} = require("../crdc-datahub-database-drivers/constants/error-constants");
-const dbConnector = new DatabaseConnector(config.mongo_db_connection_string);
+const dbConnector = new DatabaseConnector(config.document_db_connection_string);
 let logCollection;
 let userService;
 dbConnector.connect().then(() => {
     logCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, LOG_COLLECTION);
     const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
     userService = new User(userCollection, logCollection);
+}).catch((error) => {
+    console.error('AuthN login route initialization failed:', error);
+    process.exit(1);
 });
 
 /* Login */

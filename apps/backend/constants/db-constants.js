@@ -8,7 +8,6 @@ module.exports = Object.freeze({
         APPLICATION: "application",
         APPROVED_STUDY: "approvedStudy",
         SUBMISSION: "submission",
-        CDE: "cDE",
         PENDING_PVS: "pendingPVs",
         PROPERTY_PVS: "propertyPVs",
         PROGRAM: "program",
@@ -17,7 +16,6 @@ module.exports = Object.freeze({
         VALIDATION: "validation",
         RELEASE: "release",
         DATA_RECORDS: "dataRecord",
-        QC_RESULT: "qcResult",
         BATCH: "batch",
         RELEASE: "release"
     },

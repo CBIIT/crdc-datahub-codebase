@@ -24,7 +24,7 @@ describe('Submission._notifyConfigurationChange', () => {
             null, // submissionCollection
             null, // batchService
             null, // userService
-            { organizationCollection: null }, // organizationService
+            {}, // programService
             mockNotificationService, // notificationService
             null, // dataRecordService
             null, // fetchDataModelInfo
@@ -34,7 +34,6 @@ describe('Submission._notifyConfigurationChange', () => {
             { url: 'https://test.com' }, // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            null, // validationCollection
             null, // sqsLoaderQueue
             null, // qcResultsService
             null, // uploaderCLIConfigs
@@ -43,8 +42,7 @@ describe('Submission._notifyConfigurationChange', () => {
             null, // uploadingMonitor
             null, // dataCommonsBucketMap
             null, // authorizationService
-            null, // dataModelService
-            null  // dataRecordsCollection
+            null // dataModelService
         );
 
         submissionService.userDAO = mockUserDAO;

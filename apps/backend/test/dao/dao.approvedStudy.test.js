@@ -1,52 +1,64 @@
-const ApprovedStudyDAO = require('../../dao/approvedStudy');
-const GenericDAO = require('../../dao/generic');
+jest.mock('../../mongoose/models/approved-study', () => ({
+    modelName: 'ApprovedStudy',
+    findById: jest.fn(),
+}));
 
-jest.mock('../../dao/generic');
+const ApprovedStudyDAO = require('../../dao/approvedStudy');
+const ApprovedStudyModel = require('../../mongoose/models/approved-study');
+
+/**
+ * @param {*} resolvedValue
+ * @returns {{ lean: jest.Mock }}
+ */
+function createLeanQuery(resolvedValue) {
+    return {
+        lean: jest.fn().mockResolvedValue(resolvedValue),
+    };
+}
 
 describe('ApprovedStudyDAO', () => {
     let approvedStudyDAO;
-    let mockFindById;
 
     beforeEach(() => {
-        // Mock the findById method on the prototype
-        mockFindById = jest.fn();
-        GenericDAO.prototype.findById = mockFindById;
         approvedStudyDAO = new ApprovedStudyDAO();
-    });
-
-    afterEach(() => {
         jest.clearAllMocks();
     });
 
     describe('getApprovedStudyByID', () => {
-        it('should call findById with the correct studyID and return the result', async () => {
+        it('should call findById with the correct studyID and return the mapped result', async () => {
             const studyID = '123';
-            const mockResult = { id: studyID, name: 'Test Study' };
-            mockFindById.mockResolvedValue(mockResult);
+            ApprovedStudyModel.findById.mockReturnValue(
+                createLeanQuery({ _id: studyID, studyName: 'Test Study' })
+            );
 
             const result = await approvedStudyDAO.getApprovedStudyByID(studyID);
 
-            expect(mockFindById).toHaveBeenCalledWith(studyID);
-            expect(result).toBe(mockResult);
+            expect(ApprovedStudyModel.findById).toHaveBeenCalledWith(studyID);
+            expect(result).toEqual({
+                id: studyID,
+                _id: studyID,
+                studyName: 'Test Study',
+            });
         });
 
         it('should return null if findById returns null', async () => {
-            const studyID = 'notfound';
-            mockFindById.mockResolvedValue(null);
+            ApprovedStudyModel.findById.mockReturnValue(createLeanQuery(null));
 
-            const result = await approvedStudyDAO.getApprovedStudyByID(studyID);
+            const result = await approvedStudyDAO.getApprovedStudyByID('notfound');
 
-            expect(mockFindById).toHaveBeenCalledWith(studyID);
+            expect(ApprovedStudyModel.findById).toHaveBeenCalledWith('notfound');
             expect(result).toBeNull();
         });
 
         it('should propagate errors from findById', async () => {
-            const studyID = 'error';
-            const error = new Error('Database error');
-            mockFindById.mockRejectedValue(error);
+            ApprovedStudyModel.findById.mockReturnValue({
+                lean: jest.fn().mockRejectedValue(new Error('Database error')),
+            });
 
-            await expect(approvedStudyDAO.getApprovedStudyByID(studyID)).rejects.toThrow('Database error');
-            expect(mockFindById).toHaveBeenCalledWith(studyID);
+            await expect(approvedStudyDAO.getApprovedStudyByID('error')).rejects.toThrow(
+                'Failed to find ApprovedStudy by ID'
+            );
+            expect(ApprovedStudyModel.findById).toHaveBeenCalledWith('error');
         });
     });
 });

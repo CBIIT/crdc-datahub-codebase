@@ -178,11 +178,97 @@ jobs:
           echo "Scanning: $IMAGE_NAME"
           echo "========================================"
           trivy image \
-            --exit-code 1 \
-            --severity CRITICAL,HIGH \
+            --exit-code 0 \
+            --severity CRITICAL,HIGH,MEDIUM \
             --no-progress \
             --format table \
             "$IMAGE_NAME"
+
+          trivy image \
+            --exit-code 0 \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --no-progress \
+            --format json \
+            --output "trivy-${{ matrix.name }}.json" \
+            "$IMAGE_NAME"
+
+      - name: Create Trivy result summary
+        if: ${{ always() && inputs.trivy_scan == true }}
+        run: |
+          python3 - "trivy-${{ matrix.name }}.json" "${{ matrix.name }}" "$IMAGE_NAME" << 'PYEOF'
+          import json
+          import sys
+
+          scan_file, service, image = sys.argv[1:4]
+          cves_by_severity = {
+              "critical": set(),
+              "high": set(),
+              "medium": set(),
+              "low": set(),
+          }
+          finding_values = set()
+          scan_error = ""
+
+          try:
+              with open(scan_file) as f:
+                  data = json.load(f)
+
+              for result in data.get("Results") or []:
+                  for vulnerability in result.get("Vulnerabilities") or []:
+                      severity = str(vulnerability.get("Severity") or "UNKNOWN").upper()
+                      severity_key = severity.lower()
+                      cve = str(vulnerability.get("VulnerabilityID") or "").strip()
+                      if severity_key in cves_by_severity and cve:
+                          cves_by_severity[severity_key].add(cve)
+
+                      finding_values.add((
+                          str(vulnerability.get("PkgName") or "").strip(),
+                          cve,
+                          severity,
+                          str(vulnerability.get("InstalledVersion") or "").strip(),
+                      ))
+          except Exception as error:
+              scan_error = str(error)
+              print(f"Could not read/parse {scan_file}: {error}")
+
+          counts = {
+              severity: len(cves)
+              for severity, cves in cves_by_severity.items()
+          }
+          findings = [
+              {
+                  "library": library,
+                  "cve": cve,
+                  "severity": severity,
+                  "installed": installed,
+              }
+              for library, cve, severity, installed in sorted(finding_values)
+          ]
+
+          result = {
+              "scanner": "Trivy",
+              "count_basis": "unique_cves",
+              "service": service,
+              "image": image,
+              **counts,
+              "findings": findings,
+              "has_critical_or_high": counts["critical"] > 0 or counts["high"] > 0,
+              "scan_error": scan_error,
+          }
+
+          result_file = f"trivy-result-{service}.json"
+          with open(result_file, "w") as f:
+              json.dump(result, f, indent=2)
+          print(json.dumps(result, indent=2))
+          PYEOF
+
+      - name: Upload per-image Trivy result summary
+        if: ${{ always() && inputs.trivy_scan == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-result-${{ matrix.name }}
+          path: trivy-result-${{ matrix.name }}.json
+          retention-days: 2
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -216,6 +302,7 @@ jobs:
       REGION: "us-east-1"
       TWISTLOCK_URL: "https://twistlock.nci.nih.gov"
       TWISTLOCK_PATH: "/opt/twistlock/twistcli"
+      TWISTLOCK_SECRET_ID: "prod/twistlock"
     strategy:
       fail-fast: false
       #max-parallel: 1
@@ -254,6 +341,31 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
           role-to-assume: ${{ secrets.AWS_BUILD_ROLE_TO_ASSUME }}
 
+      - name: Load Twistlock credentials from AWS Secrets Manager
+        run: |
+          set -Eeuo pipefail
+
+          SECRET_JSON=$(aws secretsmanager get-secret-value \
+            --region "$REGION" \
+            --secret-id "$TWISTLOCK_SECRET_ID" \
+            --query SecretString \
+            --output text)
+          export SECRET_JSON
+
+          TWISTLOCK_USERNAME=$(python3 -c 'import json, os; print(json.loads(os.environ["SECRET_JSON"])["username"])')
+          TWISTLOCK_PASSWORD=$(python3 -c 'import json, os; print(json.loads(os.environ["SECRET_JSON"])["password"])')
+
+          test -n "$TWISTLOCK_USERNAME"
+          test -n "$TWISTLOCK_PASSWORD"
+
+          echo "::add-mask::$TWISTLOCK_USERNAME"
+          echo "::add-mask::$TWISTLOCK_PASSWORD"
+
+          {
+            echo "TWISTLOCK_USERNAME=$TWISTLOCK_USERNAME"
+            echo "TWISTLOCK_PASSWORD=$TWISTLOCK_PASSWORD"
+          } >> "$GITHUB_ENV"
+
       - name: Login to Amazon ECR
         run: |
           REGISTRY_URL="${{ secrets.AWS_ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com"
@@ -270,7 +382,7 @@ jobs:
 
           TWISTLOCK_PATH="${RUNNER_TEMP}/twistcli"
 
-          curl --fail --silent --show-error --location -u "${{ secrets.TWISTLOCK_USERNAME }}:${{ secrets.TWISTLOCK_PASSWORD }}" --output "${TWISTLOCK_PATH}" "${TWISTLOCK_URL}/api/v1/util/twistcli"
+          curl --fail --silent --show-error --location -u "${TWISTLOCK_USERNAME}:${TWISTLOCK_PASSWORD}" --output "${TWISTLOCK_PATH}" "${TWISTLOCK_URL}/api/v1/util/twistcli"
           test -s "${TWISTLOCK_PATH}"
           chmod 0755 "${TWISTLOCK_PATH}"
 
@@ -299,8 +411,8 @@ jobs:
           echo "========================================"
           ${TWISTLOCK_PATH} images scan \
             --address "${TWISTLOCK_URL}" \
-            --user "${{ secrets.TWISTLOCK_USERNAME }}" \
-            --password "${{ secrets.TWISTLOCK_PASSWORD }}" \
+            --user "${TWISTLOCK_USERNAME}" \
+            --password "${TWISTLOCK_PASSWORD}" \
             --output-file "scan-${{ matrix.name }}.json" \
             "$IMAGE_NAME" \
             2>&1 | tee scan-output-${{ matrix.name }}.log
@@ -326,7 +438,7 @@ jobs:
               --max-time 30 \
               --output /dev/null \
               --write-out '%{http_code}' \
-              -u "${{ secrets.TWISTLOCK_USERNAME }}:${{ secrets.TWISTLOCK_PASSWORD }}" \
+              -u "${TWISTLOCK_USERNAME}:${TWISTLOCK_PASSWORD}" \
               "${TWISTLOCK_URL}/api/v1/version" \
               || true
           )
@@ -363,6 +475,7 @@ jobs:
                   gh_out.write("low_count=0\n")
                   gh_out.write("cves_json=[]\n")
                   gh_out.write("findings_json=[]\n")
+                  gh_out.write("report_available=false\n")
                   gh_out.write("has_critical_or_high=false\n")
               sys.exit(0)
 
@@ -448,6 +561,7 @@ jobs:
               gh_out.write(f"low_count={sev_counts['low']}\n")
               gh_out.write(f"cves_json={json.dumps(cves)}\n")
               gh_out.write(f"findings_json={json.dumps(findings)}\n")
+              gh_out.write("report_available=true\n")
               gh_out.write(f"has_critical_or_high={has_critical_or_high}\n")
 
           PYEOF
@@ -465,7 +579,8 @@ jobs:
             "low": ${{ steps.format_table.outputs.low_count || 0 }},
             "cves": ${{ steps.format_table.outputs.cves_json || '[]' }},
             "findings": ${{ steps.format_table.outputs.findings_json || '[]' }},
-            "has_critical_or_high": "${{ steps.format_table.outputs.has_critical_or_high || 'false' }}"
+            "has_critical_or_high": "${{ steps.format_table.outputs.has_critical_or_high || 'false' }}",
+            "report_available": ${{ steps.format_table.outputs.report_available || 'false' }}
           }
           EOF
           cat "result-${{ matrix.name }}.json"
@@ -505,71 +620,125 @@ jobs:
           #retention-days: 2
 
   # ──────────────────────────────────────────────
-  # Job 4: Twistlock Scan Summary - combine results, fail on critical/high
+  # Job 4: Trivy and Twistlock summaries - fail on critical/high from either scan
   # ──────────────────────────────────────────────
   twistlock_summary:
-    name: Twistlock Scan Summary
+    name: Trivy and Twistlock Scan Summary
     runs-on: ubuntu-latest
-    needs: [twistlock_scan]
-    if: always() && needs.twistlock_scan.result != 'skipped'
+    needs: [build, twistlock_scan]
+    if: always() && (needs.build.result != 'skipped' || needs.twistlock_scan.result != 'skipped')
     steps:
-      - name: Download all per-image result summaries
+      - name: Download Trivy per-image result summaries
+        if: ${{ inputs.trivy_scan == true }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: trivy-result-*
+          path: trivy-results
+          merge-multiple: true
+
+      - name: Download Twistlock per-image result summaries
+        if: ${{ inputs.twistlock_scan == true && needs.twistlock_scan.result != 'skipped' }}
         uses: actions/download-artifact@v4
         with:
           pattern: twistlock-result-*
-          path: results
+          path: twistlock-results
           merge-multiple: true
 
-      - name: Build combined summary and evaluate pass/fail
+      - name: Build Trivy and Twistlock summaries and evaluate pass/fail
         run: |
           python3 - << 'PYEOF'
           import glob
           import json
           import os
 
-          files = sorted(glob.glob("results/*.json"))
-          rows = []
-          any_fail = False
-
-          for fpath in files:
-              try:
-                  with open(fpath) as f:
-                      rows.append(json.load(f))
-              except Exception as e:
-                  print(f"Could not read {fpath}: {e}")
-
-          lines = []
-          lines.append("## \U0001F512 Twistlock Scan Results\n")
-          lines.append("| Service | Critical | High | Medium | Low | Library | CVEs (Severity) | Installed Version | Status |")
-          lines.append("|---|---|---|---|---|---|---|---|---|")
+          def load_results(pattern):
+              rows = []
+              for fpath in sorted(glob.glob(pattern)):
+                  try:
+                      with open(fpath) as f:
+                          rows.append(json.load(f))
+                  except Exception as error:
+                      print(f"Could not read {fpath}: {error}")
+              return rows
 
           def format_finding_value(value, default="None"):
               text = str(value or default).replace("|", "\\|").replace("`", "'")
               return f"`{text}`" if text != "None" else text
 
-          for r in rows:
-              crit = r.get("critical", 0)
-              high = r.get("high", 0)
-              med = r.get("medium", 0)
-              low = r.get("low", 0)
-              findings = r.get("findings") or []
-              library_text = "<br>".join(format_finding_value(f.get("library")) for f in findings) if findings else "None"
-              cve_text = "<br>".join(
-                  format_finding_value(f"{f.get('cve') or 'Unknown'} ({f.get('severity') or 'UNKNOWN'})")
-                  for f in findings
-              ) if findings else "None"
-              installed_text = "<br>".join(format_finding_value(f.get("installed")) for f in findings) if findings else "None"
-              failed = r.get("has_critical_or_high") == "true"
-              if failed:
-                  any_fail = True
-              status = "\u274C FAIL" if failed else "\u2705 PASS"
-              lines.append(f"| {r.get('service','?')} | {crit} | {high} | {med} | {low} | {library_text} | {cve_text} | {installed_text} | {status} |")
+          def as_bool(value):
+              return value is True or str(value).lower() == "true"
 
-          lines.append("")
+          def result_failed(result):
+              return as_bool(result.get("has_critical_or_high", False))
+
+          def report_missing(result):
+              report_available = result.get("report_available")
+              return report_available is not None and not as_bool(report_available)
+
+          def add_scan_section(lines, scanner, rows):
+              lines.append(f"## \U0001F512 {scanner} Scan Results\n")
+              if not rows:
+                  lines.append(f"No {scanner} scan results were produced.\n")
+                  return False, False
+
+              if scanner == "Trivy":
+                  lines.append("Severity totals count unique CVE IDs; all affected packages remain listed below.\n")
+
+              lines.append("| Service | Critical | High | Medium | Low | Library | CVEs (Severity) | Installed Version | Status |")
+              lines.append("|---|---|---|---|---|---|---|---|---|")
+              scanner_vulnerability_failed = False
+              scanner_report_missing = False
+
+              for result in rows:
+                  crit = result.get("critical", 0)
+                  high = result.get("high", 0)
+                  med = result.get("medium", 0)
+                  low = result.get("low", 0)
+                  findings = result.get("findings") or []
+                  library_text = "<br>".join(format_finding_value(f.get("library")) for f in findings) if findings else "None"
+                  cve_text = "<br>".join(
+                      format_finding_value(f"{f.get('cve') or 'Unknown'} ({f.get('severity') or 'UNKNOWN'})")
+                      for f in findings
+                  ) if findings else "None"
+                  installed_text = "<br>".join(format_finding_value(f.get("installed")) for f in findings) if findings else "None"
+                  vulnerability_failed = result_failed(result)
+                  missing_report = report_missing(result)
+
+                  if vulnerability_failed:
+                      scanner_vulnerability_failed = True
+
+                  if missing_report:
+                      scanner_report_missing = True
+                      status = "\u274C NO VULN REPORT"
+                  elif vulnerability_failed:
+                      status = "\u274C FAIL"
+                  else:
+                      status = "\u2705 PASS"
+
+                  lines.append(f"| {result.get('service','?')} | {crit} | {high} | {med} | {low} | {library_text} | {cve_text} | {installed_text} | {status} |")
+
+              lines.append("")
+              if scanner_report_missing:
+                  lines.append(f"\u274C **No vulnerability reports were generated for one or more {scanner} scans.**\n")
+              elif scanner_vulnerability_failed:
+                  lines.append(f"\u274C **{scanner} found CRITICAL or HIGH vulnerabilities.**\n")
+              else:
+                  lines.append(f"\u2705 **{scanner} found no CRITICAL or HIGH vulnerabilities.**\n")
+              return scanner_vulnerability_failed, scanner_report_missing
+
+          trivy_rows = load_results("trivy-results/*.json")
+          twistlock_rows = load_results("twistlock-results/*.json")
+
+          lines = []
+          trivy_vulnerabilities, trivy_missing = add_scan_section(lines, "Trivy", trivy_rows)
+          twistlock_vulnerabilities, twistlock_missing = add_scan_section(lines, "Twistlock", twistlock_rows)
+          any_fail = trivy_vulnerabilities or twistlock_vulnerabilities or trivy_missing or twistlock_missing
+
+          lines.append("## Combined Security Scan Result\n")
           if any_fail:
-              lines.append("\u274C **One or more images have CRITICAL or HIGH vulnerabilities.**")
+              lines.append("\u274C **A vulnerability report is missing, or Trivy/Twistlock found CRITICAL or HIGH vulnerabilities.**")
           else:
-              lines.append("\u2705 **No CRITICAL or HIGH vulnerabilities found across all images.**")
+              lines.append("\u2705 **No CRITICAL or HIGH vulnerabilities were found by Trivy or Twistlock.**")
 
           summary_md = "\n".join(lines)
           print(summary_md)
@@ -581,12 +750,11 @@ jobs:
               f.write(f"ANY_CRITICAL_OR_HIGH={'true' if any_fail else 'false'}\n")
           PYEOF
 
-      - name: Fail if any image has critical/high vulnerabilities
+      - name: Fail if vulnerability report is missing or critical/high vulnerabilities are found
         if: env.ANY_CRITICAL_OR_HIGH == 'true'
-        #if: needs.twistlock_scan.result == 'failure'
         run: |
-          echo "Failing build: one or more images have CRITICAL or HIGH vulnerabilities."
-          exit 1        
+          echo "Failing build: a vulnerability report is missing, or Trivy/Twistlock found CRITICAL or HIGH vulnerabilities."
+          exit 1
 
   # ──────────────────────────────────────────────
   # Job 5: Slack notification (always runs)

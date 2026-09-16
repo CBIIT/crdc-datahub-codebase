@@ -6,10 +6,8 @@ const mockApprovedStudiesService = {};
 const mockUserService = {
   getUsersByNotifications: jest.fn(),
   getUserByID: jest.fn(),
-  userCollection: {
-    find: jest.fn(),
-    aggregate: jest.fn()
-  }
+  findByID: jest.fn(),
+  findByIDs: jest.fn()
 };
 const mockDbService = {};
 const mockNotificationsService = {
@@ -23,7 +21,7 @@ const mockEmailParams = {
   officialEmail: 'test@example.com',
   inactiveApplicationNotifyDays: [7, 15, 30]
 };
-const mockOrganizationService = {};
+const mockProgramService = {};
 const mockConfigurationService = {};
 
 describe('remindApplicationSubmission', () => {
@@ -51,8 +49,8 @@ describe('remindApplicationSubmission', () => {
 
     mockApplicationDAO = {
       getInactiveApplication: jest.fn(),
-      updateMany: jest.fn(),
-      update: jest.fn()
+      markFinalRemindersSent: jest.fn(),
+      markIntervalReminderSent: jest.fn()
     };
 
     applicationService = new Application(
@@ -63,7 +61,7 @@ describe('remindApplicationSubmission', () => {
       mockDbService,
       mockNotificationsService,
       mockEmailParams,
-      mockOrganizationService,
+      mockProgramService,
       null,
       mockConfigurationService,
       null
@@ -84,7 +82,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]) // final default
         .mockResolvedValueOnce([]); // final short
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockApplicationDAO.markFinalRemindersSent.mockResolvedValue({ matchedCount: 0 });
 
       // No interval reminders
       for (let i = 0; i < 6; i++) {
@@ -126,7 +124,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]) // day 15 short
         .mockResolvedValueOnce([]); // day 30 default
 
-      mockApplicationDAO.update.mockResolvedValue({ matchedCount: 1 });
+      mockApplicationDAO.markIntervalReminderSent.mockResolvedValue({ matchedCount: 1 });
 
       mockUserService.getUsersByNotifications.mockResolvedValue([]);
       mockUserService.getUserByID.mockResolvedValue({
@@ -135,7 +133,7 @@ describe('remindApplicationSubmission', () => {
         email: 'blank@example.com',
         notifications: ['submission_request:expiring']
       });
-      mockUserService.userCollection.find.mockResolvedValue([]);
+      mockUserService.findByID.mockResolvedValue(null);
       applicationService.userDAO.findFirst.mockResolvedValue(null);
 
       await applicationService.remindApplicationSubmission();
@@ -186,7 +184,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([mockRegularApp]) // final default - has study name
         .mockResolvedValueOnce([mockBlankNewApp, mockRegularApp]); // final short - both present
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockApplicationDAO.markFinalRemindersSent.mockResolvedValue({ matchedCount: 0 });
 
       // No interval reminders
       for (let i = 0; i < 6; i++) {
@@ -205,7 +203,7 @@ describe('remindApplicationSubmission', () => {
         email: 'test@example.com'
       });
 
-      mockUserService.userCollection.find.mockResolvedValue([]);
+      mockUserService.findByID.mockResolvedValue(null);
       applicationService.userDAO.findFirst.mockResolvedValue(null);
 
       await applicationService.remindApplicationSubmission();
@@ -229,7 +227,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]) // final default
         .mockResolvedValueOnce([]); // final short
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockApplicationDAO.markFinalRemindersSent.mockResolvedValue({ matchedCount: 0 });
 
       // Same app appears in multiple intervals (simulating it's returning at different reminder intervals)
       mockApplicationDAO.getInactiveApplication
@@ -240,7 +238,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([mockApp]) // 30 days default
         .mockResolvedValueOnce([]); // 30 days short
 
-      mockApplicationDAO.update.mockResolvedValue({ matchedCount: 1 });
+      mockApplicationDAO.markIntervalReminderSent.mockResolvedValue({ matchedCount: 1 });
 
       mockUserService.getUserByID.mockResolvedValue({
         firstName: 'Test',
@@ -250,13 +248,13 @@ describe('remindApplicationSubmission', () => {
       });
 
       mockUserService.getUsersByNotifications.mockResolvedValue([]);
-      mockUserService.userCollection.find.mockResolvedValue([{ id: 'user-tracked', email: 'test@example.com' }]);
+      mockUserService.findByID.mockResolvedValue({ id: 'user-tracked', email: 'test@example.com' });
       applicationService.userDAO.findFirst.mockResolvedValue({ id: 'user-tracked', email: 'test@example.com' });
 
       await applicationService.remindApplicationSubmission();
 
       // Should have called update for the deduped app
-      expect(mockApplicationDAO.update).toHaveBeenCalled();
+      expect(mockApplicationDAO.markIntervalReminderSent).toHaveBeenCalled();
     });
 
     it('should set reminder flags after sending emails', async () => {
@@ -274,7 +272,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]) // final default
         .mockResolvedValueOnce([]); // final short
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockApplicationDAO.markFinalRemindersSent.mockResolvedValue({ matchedCount: 0 });
 
       // 7-day interval has app
       mockApplicationDAO.getInactiveApplication
@@ -285,7 +283,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]) // 30 days default
         .mockResolvedValueOnce([]); // 30 days short
 
-      mockApplicationDAO.update.mockResolvedValue({ matchedCount: 1 });
+      mockApplicationDAO.markIntervalReminderSent.mockResolvedValue({ matchedCount: 1 });
 
       mockUserService.getUserByID.mockResolvedValue({
         firstName: 'Flag',
@@ -295,16 +293,15 @@ describe('remindApplicationSubmission', () => {
       });
 
       mockUserService.getUsersByNotifications.mockResolvedValue([]);
-      mockUserService.userCollection.find.mockResolvedValue([{ id: 'user-flag-test', email: 'flag@example.com' }]);
+      mockUserService.findByID.mockResolvedValue({ id: 'user-flag-test', email: 'flag@example.com' });
       applicationService.userDAO.findFirst.mockResolvedValue({ id: 'user-flag-test', email: 'flag@example.com' });
 
       await applicationService.remindApplicationSubmission();
 
       // Verify update was called with reminder flags
-      expect(mockApplicationDAO.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          _id: 'app-flag-test'
-        })
+      expect(mockApplicationDAO.markIntervalReminderSent).toHaveBeenCalledWith(
+        'app-flag-test',
+        expect.any(Array)
       );
     });
 
@@ -314,7 +311,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]) // final default
         .mockResolvedValueOnce([]); // final short
 
-      mockApplicationDAO.updateMany.mockResolvedValue({ matchedCount: 0 });
+      mockApplicationDAO.markFinalRemindersSent.mockResolvedValue({ matchedCount: 0 });
 
       // For interval reminders with [7, 15, 30] and shortDays=30:
       // day=7: query both (7 < 30) ✓
@@ -328,7 +325,7 @@ describe('remindApplicationSubmission', () => {
         .mockResolvedValueOnce([]); // 30 days default
       // 30 days short should NOT be called
 
-      mockApplicationDAO.update.mockResolvedValue({ matchedCount: 0 });
+      mockApplicationDAO.markIntervalReminderSent.mockResolvedValue({ matchedCount: 0 });
 
       await applicationService.remindApplicationSubmission();
 
