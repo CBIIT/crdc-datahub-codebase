@@ -17,9 +17,9 @@ srf_data = {
 }
 
 system_populated_props = {
-        "study_name": "studyName",
-        "study_acronym": "studyAcronym",
-        "study_description": "studyDescription"
+    "study_name": "studyName",
+    "study_acronym": "studyAcronym",
+    "study_description": "studyDescription"
 }
 
 
@@ -50,3 +50,17 @@ def test_get_study_acronym_from_string_questionnaire():
     srf = SRF(srf_string_data, system_populated_props)
     value = srf.get_property_value("study_acronym")
     assert value == "MING-COND-2"
+
+def test_get_all_system_populated_values_with_no_system_populated_props():
+    srf = SRF(srf_data, {})
+    values = srf.get_all_system_populated_values()
+    assert values == {}
+
+def test_get_all_system_populated_values_with_system_populated_props():
+    srf = SRF(srf_data, system_populated_props)
+    values = srf.get_all_system_populated_values()
+    assert values == {
+        "study_name": "Ming 2nd condition",
+        "study_acronym": "MING-COND-2",
+        "study_description": "ming's second conditionally approved study",
+    }

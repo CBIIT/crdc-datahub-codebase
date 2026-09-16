@@ -53,3 +53,8 @@ class SRF:
         if not srf_prop:
             return None
         return self.questionnaire.get(srf_prop.get(NODE, {})).get(srf_prop.get(PROP))
+
+    def get_all_system_populated_values(self):
+        if not self.system_populated_props:
+            return {}
+        return {prop: self.get_property_value(prop) for prop in self.system_populated_props.keys()}

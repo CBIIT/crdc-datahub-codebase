@@ -101,7 +101,16 @@ class DataModel:
     
     def get_system_populated_prop_list(self):
         return list(self.get_system_populated_props().keys())
-    
+
+    def get_system_populated_props_for_node(self, node):
+        props = self.get_node_props(node)
+        system_populated_props = self.get_system_populated_prop_list()
+        if not props or not system_populated_props:
+            return {}
+        populated_props = set(props.keys()) & set(system_populated_props)
+        populated_props_dict = self.get_system_populated_props()
+        return {prop: populated_props_dict[prop] for prop in populated_props}
+
     """
     get file name property, pick first file node name if there are multiple file nodes
     """

@@ -89,3 +89,16 @@ def test_get_system_populated_props():
 def test_get_system_populated_prop_list():
     system_populated_prop_list = data_model.get_system_populated_prop_list()
     TestCase().assertCountEqual(system_populated_prop_list, ['study_name', 'study_description', 'study_acronym'])
+
+def test_get_system_populated_props_for_node_without_system_populated_props():
+    assert data_model.get_system_populated_props_for_node('file') == {}
+
+def test_get_system_populated_props_for_node_with_system_populated_props():
+    props = data_model.get_system_populated_props_for_node('study')
+    assert isinstance(props, dict)
+    assert 'study_name' in props
+    assert props['study_name'] == STUDY_NAME
+    assert 'study_description' in props
+    assert props['study_description'] == STUDY_DESCRIPTION
+    assert 'study_acronym' in props
+    assert props['study_acronym'] == STUDY_ACRONYM
