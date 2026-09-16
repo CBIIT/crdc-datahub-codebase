@@ -2799,14 +2799,71 @@ describe("Parsing", () => {
     const sheet = middleware.workbook.getWorksheet(HIDDEN_SHEET_NAMES.programs);
     const rows = [];
     sheet.getColumn(1).eachCell((cell, rowNumber) => {
-      rows.push([cell.value, sheet.getCell(`B${rowNumber}`).value]);
+      rows.push([
+        cell.value,
+        sheet.getCell(`B${rowNumber}`).value,
+        sheet.getCell(`E${rowNumber}`).value,
+      ]);
     });
 
     expect(rows).toEqual([
-      [naId, "Not Applicable"],
-      ["program-1", "Existing Program"],
-      ["Other", ""],
+      [naId, "NA", "Not Applicable"],
+      ["program-1", "Existing Program", "Existing Program"],
+      ["Other", "", "Other"],
     ]);
+  });
+
+  it("should round-trip the system managed 'Not Applicable' program unchanged", async () => {
+    const naId = "437e864a-621b-40f5-b214-3dc368137081";
+    const naDescription = "This is a catch-all place for all studies without a program associated.";
+    const mockPrograms = vi.fn().mockResolvedValue({
+      data: {
+        listPrograms: {
+          programs: [
+            {
+              _id: naId,
+              name: "NA",
+              abbreviation: "NA",
+              description: naDescription,
+              readOnly: true,
+            },
+          ],
+        },
+      },
+    });
+
+    const mockForm = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: naId,
+        name: "NA",
+        abbreviation: "NA",
+        description: naDescription,
+      }),
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, { getPrograms: mockPrograms });
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionB();
+
+    // @ts-expect-error Private member
+    expect(middleware.workbook.getWorksheet("Program and Study").getCell("A2").value).toBe(
+      "Not Applicable"
+    );
+
+    // @ts-expect-error Private member
+    middleware.data = { ...InitialQuestionnaire, sections: [...InitialSections] };
+
+    // @ts-expect-error Private member
+    await middleware.parseSectionB();
+
+    // @ts-expect-error Private member
+    expect(middleware.data.program).toEqual({
+      _id: naId,
+      name: "NA",
+      abbreviation: "NA",
+      description: naDescription,
+    });
   });
 
   it("should export the system managed 'Not Applicable' program rather than 'Other'", async () => {

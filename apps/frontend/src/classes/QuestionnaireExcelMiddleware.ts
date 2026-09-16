@@ -42,7 +42,7 @@ import { SectionCtxBase } from "./Excel/SectionBase";
  * An internal template version identifier.
  * Increments from X.0 to X.9, then bumps to X+1.0. Do NOT use X.10 or above.
  */
-export const TEMPLATE_VERSION = "1.8";
+export const TEMPLATE_VERSION = "1.9";
 
 /**
  * The names of the HIDDEN sheets used in the Excel workbook.
@@ -611,8 +611,9 @@ export class QuestionnaireExcelMiddleware {
       sheet = this.workbook.addWorksheet(HIDDEN_SHEET_NAMES.programs, { state: "veryHidden" });
 
       const programs = await this.getAPIPrograms();
+      const notApplicable = buildNotApplicableProgram(programs);
       const fullPrograms: ProgramInput[] = [
-        { ...buildNotApplicableProgram(programs), name: NotApplicableProgram._id },
+        notApplicable,
         ...programs.filter((program) => !program.readOnly),
         OtherProgram,
       ];
@@ -625,10 +626,11 @@ export class QuestionnaireExcelMiddleware {
         sheet.getCell(`C${row}`).value = program.abbreviation || "";
         sheet.getCell(`D${row}`).value = program.description || "";
 
-        // Set the formula for the Program name to default to Program ID if empty
-        sheet.getCell(`E${row}`).value = {
-          formula: `IF(LEN(TRIM(B${row}))>0,B${row},A${row})`,
-        };
+        // Set the Program dropdown label
+        sheet.getCell(`E${row}`).value =
+          program._id === notApplicable._id
+            ? NotApplicableProgram._id
+            : program.name || program._id || "";
       });
     }
 
