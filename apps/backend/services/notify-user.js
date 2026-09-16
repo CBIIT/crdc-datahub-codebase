@@ -1,6 +1,6 @@
-const yaml = require('js-yaml');
-const fs = require('fs');
-const {createEmailTemplate} = require("../lib/create-email-template");
+const {createEmailTemplate, EmailContentUnavailableError} = require("../lib/create-email-template");
+const {getEmailContentCache, getUninitializedCacheLogMessage, EMAIL_CONTENT_LOG_PREFIX} = require("../lib/email-content-cache");
+const {getInvalidEmailConstantKeys} = require("../lib/email-content-constants");
 const sanitizeHtml = require('sanitize-html');
 const {replaceMessageVariables} = require("../utility/string-util");
 const {defaultStudyAbbreviationToNA} = require("../utility/study-abbrev-helpers");
@@ -34,27 +34,94 @@ const CDE_ID = "CDE ID";
 const REQUESTED_PERMISSIVE_VALUE = "Requested Permissive Value";
 const JUSTIFICATION = "Justification";
 
+/**
+ * Substitutes `$variables` then sanitizes YAML notification body HTML.
+ * @param {string} yamlValue
+ * @param {object} [messageVariables]
+ * @returns {string}
+ */
+function sanitizeNotificationBody(yamlValue, messageVariables) {
+    return sanitizeAllowlistedHtml(replaceMessageVariables(yamlValue, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+}
+
 class NotifyUser {
 
-    constructor(emailService, tier) {
+    /**
+     * @param {object} emailService
+     * @param {string} [tier] Subject prefix such as `[DEV]`
+     * @param {object} [emailContentCache] Cache override for tests
+     */
+    constructor(emailService, tier, emailContentCache) {
         this.emailService = emailService;
-        this.email_constants = undefined
-        try {
-            this.email_constants = yaml.load(fs.readFileSync('resources/yaml/notification_email_values.yaml', 'utf8'));
-        } catch (e) {
-            console.error(e)
-        }
+        this.email_constants = undefined;
         this.tier = tier;
+        this.emailContentCache = emailContentCache;
     }
 
+    /**
+     * Reloads YAML copy from the email content cache.
+     * Logs when the cache is not initialized so the send is skipped.
+     * @returns {Promise<boolean>}
+     */
+    async _refreshEmailConstants() {
+        const cache = this.emailContentCache || getEmailContentCache();
+        const parsed = cache ? await cache.getYaml() : undefined;
+        const uninitializedMessage = cache && typeof cache.getUninitializedCacheLogMessage === 'function'
+            ? cache.getUninitializedCacheLogMessage()
+            : getUninitializedCacheLogMessage(0);
+        if (parsed == null) {
+            this.email_constants = undefined;
+            console.error(uninitializedMessage);
+            return false;
+        }
+        const invalidKeys = getInvalidEmailConstantKeys(parsed);
+        if (invalidKeys.length > 0) {
+            this.email_constants = undefined;
+            if (invalidKeys[0] === '<root>') {
+                console.error(`${EMAIL_CONTENT_LOG_PREFIX} Email not sent: email YAML is not a mapping`);
+            } else {
+                console.error(
+                    `${EMAIL_CONTENT_LOG_PREFIX} Email not sent: email YAML missing or invalid keys: ${invalidKeys.join(', ')}`
+                );
+            }
+            return false;
+        }
+        this.email_constants = parsed;
+        return true;
+    }
+
+    /**
+     * Runs the send callback. Assumes this.email_constants is already set by the caller.
+     * Skips the send when the HTML template cannot be loaded or compiled.
+     * @param {Function} fn
+     * @returns {Promise<*>}
+     */
     async send(fn){
-        if (this.email_constants) return await fn();
-        console.error("Unable to load email constants from file, email not sent");
+        try {
+            return await fn();
+        } catch (e) {
+            if (e instanceof EmailContentUnavailableError) {
+                console.error(e.message);
+                return;
+            }
+            throw e;
+        }
     }
 
+    /**
+     * Sends the SRC review-needed notification for a submitted SRF.
+     * @param {string|string[]} toEmails
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async submitQuestionNotification(toEmails, CCEmails, BCCEmails, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_FIRST_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-        const secondMessage = replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_SECOND_CONTENT, messageVariables);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.SUBMISSION_SUBMIT_FIRST_CONTENT, messageVariables);
+        const secondMessage = sanitizeNotificationBody(this.email_constants.SUBMISSION_SUBMIT_SECOND_CONTENT, messageVariables);
         const subject = this.email_constants.SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -70,9 +137,21 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the submitter confirmation that an SRF was received.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCsEmails
+     * @param {object} messageVariables
+     * @param {object} templateParams
+     * @returns {Promise<*>}
+     */
     async submitRequestReceivedNotification(email, CCEmails, BCCsEmails, messageVariables, templateParams) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_RECEIVE_CONTENT_FIRST, {}), PRESET_NOTIFICATION_TEXT_HTML);
-        const secondMessage = replaceMessageVariables(this.email_constants.SUBMISSION_SUBMIT_RECEIVE_CONTENT_SECOND, messageVariables);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.SUBMISSION_SUBMIT_RECEIVE_CONTENT_FIRST, {});
+        const secondMessage = sanitizeNotificationBody(this.email_constants.SUBMISSION_SUBMIT_RECEIVE_CONTENT_SECOND, messageVariables);
         const subject = this.email_constants.SUBMISSION_SUBMIT_RECEIVE_SUBJECT;
         return await this.send(async () => {
             const res = await this.emailService.sendNotification(
@@ -91,8 +170,20 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the inactive-SRF reminder to the submitter.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async inactiveApplicationsNotification(email, CCEmails, BCCEmails, template_params, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.INACTIVE_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.INACTIVE_APPLICATION_CONTENT, messageVariables);
         const subject = this.email_constants.INACTIVE_APPLICATION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -108,8 +199,20 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the canceled-SRF notification.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCsEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async cancelApplicationNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.CANCEL_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.CANCEL_APPLICATION_CONTENT, messageVariables);
         const subject = this.email_constants.CANCEL_APPLICATION_SUBJECT;
         return await this.send(async () => {
             const res = await this.emailService.sendNotification(
@@ -128,10 +231,22 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the restored-SRF notification.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCsEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async restoreApplicationNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-        const secondMessage = replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_SECOND_CONTENT, messageVariables);
-        const thirdMessage = replaceMessageVariables(this.email_constants.RESTORE_APPLICATION_THIRD_CONTENT, messageVariables);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.RESTORE_APPLICATION_CONTENT, messageVariables);
+        const secondMessage = sanitizeNotificationBody(this.email_constants.RESTORE_APPLICATION_SECOND_CONTENT, messageVariables);
+        const thirdMessage = sanitizeNotificationBody(this.email_constants.RESTORE_APPLICATION_THIRD_CONTENT, messageVariables);
         const subject = this.email_constants.RESTORE_APPLICATION_SUBJECT;
         return await this.send(async () => {
             const res = await this.emailService.sendNotification(
@@ -150,10 +265,22 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the reopened-SRF notification.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCsEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async reopenApplicationNotification(email, CCEmails, BCCsEmails, templateParams, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REOPEN_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-        const secondMessage = replaceMessageVariables(this.email_constants.REOPEN_APPLICATION_SECOND_CONTENT, messageVariables);
-        const thirdMessage = replaceMessageVariables(this.email_constants.REOPEN_APPLICATION_THIRD_CONTENT, messageVariables);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.REOPEN_APPLICATION_CONTENT, messageVariables);
+        const secondMessage = sanitizeNotificationBody(this.email_constants.REOPEN_APPLICATION_SECOND_CONTENT, messageVariables);
+        const thirdMessage = sanitizeNotificationBody(this.email_constants.REOPEN_APPLICATION_THIRD_CONTENT, messageVariables);
         const subject = this.email_constants.REOPEN_APPLICATION_SUBJECT;
         return await this.send(async () => {
             const res = await this.emailService.sendNotification(
@@ -180,10 +307,22 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the SRF inquire / request-for-information email.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async inquireQuestionNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
-        const message = replaceMessageVariables(this.email_constants.INQUIRE_CONTENT, messageVariables);
-        const secondMessage = replaceMessageVariables(this.email_constants.INQUIRE_SECOND_CONTENT, messageVariables);
-        const thirdMessage = replaceMessageVariables(this.email_constants.INQUIRE_THIRD_CONTENT, messageVariables);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.INQUIRE_CONTENT, messageVariables);
+        const secondMessage = sanitizeNotificationBody(this.email_constants.INQUIRE_SECOND_CONTENT, messageVariables);
+        const thirdMessage = sanitizeNotificationBody(this.email_constants.INQUIRE_THIRD_CONTENT, messageVariables);
         const subject = this.email_constants.INQUIRE_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -199,9 +338,21 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the rejected-SRF notification.
+     * @param {string|string[]} email
+     * @param {string[]} toCCEmails
+     * @param {string[]} toBCCEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async rejectQuestionNotification(email, toCCEmails, toBCCEmails, templateParams, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REJECT_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-        const secondMessage = replaceMessageVariables(this.email_constants.REJECT_SECOND_CONTENT, {});
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.REJECT_CONTENT, messageVariables);
+        const secondMessage = sanitizeNotificationBody(this.email_constants.REJECT_SECOND_CONTENT, {});
         const subject = this.email_constants.REJECT_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -217,11 +368,23 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the approved-SRF notification with no pending conditions.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async approveQuestionNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         return await this.send(async () => {
-            const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.APPROVE_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-            const secondMessage = replaceMessageVariables(this.email_constants.APPROVE_SECOND_CONTENT, messageVariables);
-            const thirdMessage = replaceMessageVariables(this.email_constants.APPROVE_THIRD_CONTENT, messageVariables);
+            const message = sanitizeNotificationBody(this.email_constants.APPROVE_CONTENT, messageVariables);
+            const secondMessage = sanitizeNotificationBody(this.email_constants.APPROVE_SECOND_CONTENT, messageVariables);
+            const thirdMessage = sanitizeNotificationBody(this.email_constants.APPROVE_THIRD_CONTENT, messageVariables);
             const subject = this.email_constants.APPROVE_SUBJECT;
             await this.emailService.sendNotification(
                 this.email_constants.NOTIFICATION_SENDER,
@@ -236,10 +399,21 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the approved-SRF email when dbGaP is still pending.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @returns {Promise<*>}
+     */
     async dbGapMissingApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
+            const topMessage = sanitizeNotificationBody(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
             const missingDbGapPendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.MISSING_DBGAP_PENDING_CHANGE, templateParams),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -260,10 +434,21 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the approved-SRF email when GPA information is still pending.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @returns {Promise<*>}
+     */
     async pendingGPANotification(email, CCEmails, BCCEmails, templateParams) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
+            const topMessage = sanitizeNotificationBody(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
             const GPAPendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.MISSING_GPA_INFO, templateParams),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -285,10 +470,21 @@ class NotifyUser {
     }
 
 
+    /**
+     * Sends the approved-SRF email when a data-model change is pending.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @returns {Promise<*>}
+     */
     async dataModelChangeApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
+            const topMessage = sanitizeNotificationBody(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
             const dataModelPendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.DATA_MODEL_PENDING_CHANGE, {}),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -310,10 +506,21 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the approved-SRF email when image de-identification is pending.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @returns {Promise<*>}
+     */
     async pendingImageDeIdentificationApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.IMAGE_DEIDENTIFICATION_PENDING_TOP_MESSAGE, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
+            const topMessage = sanitizeNotificationBody(this.email_constants.IMAGE_DEIDENTIFICATION_PENDING_TOP_MESSAGE, templateParams);
             const imagePendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.PENDING_IMAGE_DEIDENTIFICATION_APPROVE_EMAIL, templateParams),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -335,10 +542,25 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the approved-SRF email with multiple pending conditions.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @param {boolean} isDbGapMissing
+     * @param {boolean} isPendingModelChange
+     * @param {boolean} isPendingGPA
+     * @param {boolean} isPendingImageDeIdentification
+     * @returns {Promise<*>}
+     */
     async multipleChangesApproveQuestionNotification(email, CCEmails, BCCEmails, templateParams, isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
-            const topMessage = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.CONDITIONAL_PENDING_MULTIPLE_CHANGES, templateParams), PRESET_NOTIFICATION_TEXT_HTML);
+            const topMessage = sanitizeNotificationBody(this.email_constants.CONDITIONAL_PENDING_MULTIPLE_CHANGES, templateParams);
             const dataModelPendingCondition = sanitizeAllowlistedHtml(
                 replaceMessageVariables(this.email_constants.DATA_MODEL_PENDING_CHANGE_MULTIPLE, {}),
                 PRESET_SR_APPROVAL_PENDING_HTML
@@ -384,9 +606,19 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the user role-change notification.
+     * @param {string|string[]} email
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async userRoleChangeNotification(email, templateParams, messageVariables) {
-        const topMessage = replaceMessageVariables(this.email_constants.USER_ROLE_CHANGE_CONTENT_TOP, messageVariables);
-        const bottomMessage = replaceMessageVariables(this.email_constants.USER_ROLE_CHANGE_CONTENT_BOTTOM, messageVariables);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const topMessage = sanitizeNotificationBody(this.email_constants.USER_ROLE_CHANGE_CONTENT_TOP, messageVariables);
+        const bottomMessage = sanitizeNotificationBody(this.email_constants.USER_ROLE_CHANGE_CONTENT_BOTTOM, messageVariables);
         const subject = this.email_constants.USER_ROLE_CHANGE_SUBJECT;
         const additionalInfo = [
             [ACCOUNT_TYPE, templateParams.accountType?.toUpperCase()],
@@ -412,8 +644,18 @@ class NotifyUser {
     }
 
 
+    /**
+     * Sends the inactive-user warning to the account holder.
+     * @param {string|string[]} email
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async inactiveUserNotification(email, template_params, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.INACTIVE_USER_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.INACTIVE_USER_CONTENT, messageVariables);
         const subject = this.email_constants.INACTIVE_USER_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -428,8 +670,19 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the inactive-user notice to admins.
+     * @param {string|string[]} email
+     * @param {string[]} BCCEmails
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async inactiveUserAdminNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.INACTIVE_ADMIN_USER_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.INACTIVE_ADMIN_USER_CONTENT, messageVariables);
         const subject = this.email_constants.INACTIVE_ADMIN_USER_SUBJECT;
         const recipientName = this.email_constants.INACTIVE_ADMIN_USER_RECIPIENT_NAME;
         return await this.send(async () => {
@@ -446,9 +699,20 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the deleted data-submission notification.
+     * @param {string|string[]} email
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async deleteSubmissionNotification(email, BCCEmails, templateParams, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SUBMISSION_FIRST_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-        const secondMessage = replaceMessageVariables(this.email_constants.SUBMISSION_SECOND_CONTENT, messageVariables);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.SUBMISSION_FIRST_CONTENT, messageVariables);
+        const secondMessage = sanitizeNotificationBody(this.email_constants.SUBMISSION_SECOND_CONTENT, messageVariables);
         const subject = this.email_constants.DELETE_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -464,7 +728,17 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the missing-primary-contact reminder.
+     * @param {string|string[]} toEmails
+     * @param {string[]} CCEmails
+     * @param {object} templateParams
+     * @returns {Promise<*>}
+     */
     async remindNoPrimaryContact(toEmails, CCEmails, templateParams) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         const subject = replaceMessageVariables(this.email_constants.REMIND_PRIMARY_CONTACT_SUBJECT, templateParams);
         return await this.send(async () => {
             return await this.emailService.sendNotification(
@@ -477,7 +751,19 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the expiring-SRF reminder.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async remindApplicationsNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
         const secondMessage = replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_SECOND_CONTENT, messageVariables);
         const subject = replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_SUBJECT, messageVariables);
@@ -495,10 +781,22 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the final inactive-SRF reminder.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async finalRemindApplicationsNotification(email, CCEmails, BCCEmails, templateParams, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-        const secondMessage = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_SECOND_CONTENT, messageVariables);
-        const thirdMessage = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_APPLICATION_THIRD_CONTENT, messageVariables);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.FINAL_INACTIVE_APPLICATION_CONTENT, messageVariables);
+        const secondMessage = sanitizeNotificationBody(this.email_constants.FINAL_INACTIVE_APPLICATION_SECOND_CONTENT, messageVariables);
+        const thirdMessage = sanitizeNotificationBody(this.email_constants.FINAL_INACTIVE_APPLICATION_THIRD_CONTENT, messageVariables);
         const subject = this.email_constants.FINAL_INACTIVE_APPLICATION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -514,8 +812,20 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the released data-submission notification.
+     * @param {string|string[]} emails
+     * @param {string[]} BCCsEmails
+     * @param {object} template_params
+     * @param {object} subjectVariables
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async releaseDataSubmissionNotification(emails, BCCsEmails,template_params, subjectVariables, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.RELEASE_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.RELEASE_DATA_SUBMISSION_CONTENT, messageVariables);
         const subject = replaceMessageVariables(this.email_constants.RELEASE_DATA_SUBMISSION_SUBJECT, subjectVariables)
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -531,9 +841,20 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the submitted data-submission notification.
+     * @param {string|string[]} email
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async submitDataSubmissionNotification(email, BCCEmails,templateParams, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.SUBMIT_DATA_SUBMISSION_CONTENT_FIRST, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-        const secondMessage = replaceMessageVariables(this.email_constants.SUBMIT_DATA_SUBMISSION_CONTENT_SECOND, messageVariables);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.SUBMIT_DATA_SUBMISSION_CONTENT_FIRST, messageVariables);
+        const secondMessage = sanitizeNotificationBody(this.email_constants.SUBMIT_DATA_SUBMISSION_CONTENT_SECOND, messageVariables);
         const subject = this.email_constants.SUBMIT_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -549,8 +870,19 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the completed data-submission notification.
+     * @param {string|string[]} email
+     * @param {string[]} BCCEmails
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async completeSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.COMPLETE_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.COMPLETE_DATA_SUBMISSION_CONTENT, messageVariables);
         const subject = this.email_constants.COMPLETE_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -566,8 +898,19 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the canceled data-submission notification.
+     * @param {string|string[]} email
+     * @param {string[]} BCCEmails
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async cancelSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.CANCEL_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.CANCEL_DATA_SUBMISSION_CONTENT, messageVariables);
         const subject = this.email_constants.CANCEL_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -583,8 +926,19 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the withdrawn data-submission notification.
+     * @param {string|string[]} email
+     * @param {string[]} BCCEmails
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async withdrawSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.WITHDRAW_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.WITHDRAW_DATA_SUBMISSION_CONTENT, messageVariables);
         const subject = this.email_constants.WITHDRAW_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -600,8 +954,19 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the rejected data-submission notification.
+     * @param {string|string[]} email
+     * @param {string[]} BCCEmails
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async rejectSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REJECT_DATA_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.REJECT_DATA_SUBMISSION_CONTENT, messageVariables);
         const subject = this.email_constants.REJECT_DATA_SUBMISSION_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -617,8 +982,18 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the deactivated-user notification.
+     * @param {string|string[]} email
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async deactivateUserNotification(email, template_params, messageVariables) {
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.DEACTIVATE_USER_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const message = sanitizeNotificationBody(this.email_constants.DEACTIVATE_USER_CONTENT, messageVariables);
         const subject = this.email_constants.DEACTIVATE_USER_SUBJECT;
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -632,9 +1007,20 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the inactive data-submission reminder.
+     * @param {string|string[]} email
+     * @param {string[]} BCCEmails
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async inactiveSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         const subject = replaceMessageVariables(this.email_constants.INACTIVE_SUBMISSION_SUBJECT, messageVariables);
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.INACTIVE_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+        const message = sanitizeNotificationBody(this.email_constants.INACTIVE_SUBMISSION_CONTENT, messageVariables);
         return await this.send(async () => {
             await this.emailService.sendNotification(
                 this.email_constants.NOTIFICATION_SENDER,
@@ -649,9 +1035,18 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the user access-request notification.
+     * @param {string|string[]} email
+     * @param {object} templateParams
+     * @returns {Promise<*>}
+     */
     async requestUserAccessNotification(email, templateParams) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         const sanitizedAdditionalInfo = sanitizeHtml(templateParams.additionalInfo, {allowedTags: [],allowedAttributes: {}});
-        const topMessage = replaceMessageVariables(this.email_constants.USER_REQUEST_ACCESS_CONTENT, {});
+        const topMessage = sanitizeNotificationBody(this.email_constants.USER_REQUEST_ACCESS_CONTENT, {});
         const subject = this.email_constants.USER_REQUEST_ACCESS_SUBJECT;
         const additionalInfo = [
             [USER_NAME, templateParams.userName],
@@ -678,9 +1073,20 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the permissive-value request notification.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string} dataCommonsName
+     * @param {object} templateParams
+     * @returns {Promise<*>}
+     */
     async requestPVNotification(email, CCEmails, dataCommonsName, templateParams) {
-        const topMessage = replaceMessageVariables(this.email_constants.PV_REQUEST_SUBJECT_CONTENT, {});
-        const bottomMessage = replaceMessageVariables(this.email_constants.PV_REQUEST_SUBJECT_SECOND_CONTENT, {});
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
+        const topMessage = sanitizeNotificationBody(this.email_constants.PV_REQUEST_SUBJECT_CONTENT, {});
+        const bottomMessage = sanitizeNotificationBody(this.email_constants.PV_REQUEST_SUBJECT_SECOND_CONTENT, {});
         const subject = this.email_constants.PV_REQUEST_SUBJECT;
         const pendingPV = [
             [SUBMITTER_NAME, templateParams?.submitterName],
@@ -712,7 +1118,18 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the edited data-submission notification.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} templateParams
+     * @returns {Promise<*>}
+     */
     async updateSubmissionNotification(email, CCEmails, BCCEmails, templateParams) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         const subject = replaceMessageVariables(this.email_constants.UPDATE_SUBMISSION_SUBJECT, {});
         return await this.send(async () => {
             return await this.emailService.sendNotification(
@@ -728,10 +1145,22 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the final inactive data-submission notification.
+     * @param {string|string[]} email
+     * @param {string[]} BCCEmails
+     * @param {object} template_params
+     * @param {object} messageVariables
+     * @returns {Promise<*>}
+     */
     async finalInactiveSubmissionNotification(email, BCCEmails, template_params, messageVariables) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         const subject = replaceMessageVariables(this.email_constants.FINAL_INACTIVE_SUBMISSION_SUBJECT, messageVariables);
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.FINAL_INACTIVE_SUBMISSION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-        const additionalMsg = this.email_constants.FINAL_INACTIVE_SUBMISSION_ADDITIONAL_CONTENT;
+        const message = sanitizeNotificationBody(this.email_constants.FINAL_INACTIVE_SUBMISSION_CONTENT, messageVariables);
+        const additionalMsg = this.email_constants.FINAL_INACTIVE_SUBMISSION_ADDITIONAL_CONTENT
+            .map((item) => sanitizeAllowlistedHtml(item, PRESET_NOTIFICATION_TEXT_HTML));
         return await this.send(async () => {
             await this.emailService.sendNotification(
                 this.email_constants.NOTIFICATION_SENDER,
@@ -746,7 +1175,18 @@ class NotifyUser {
         });
     }
 
+    /**
+     * Sends the pending-model-state cleared notification.
+     * @param {string|string[]} email
+     * @param {string[]} CCEmails
+     * @param {string[]} BCCEmails
+     * @param {object} template_params
+     * @returns {Promise<*>}
+     */
     async clearPendingModelState(email, CCEmails, BCCEmails, template_params) {
+        if (!(await this._refreshEmailConstants())) {
+            return;
+        }
         const subject = replaceMessageVariables(this.email_constants.CLEAR_PENDING_STATE_SUBJECT, {});
         return await this.send(async () => {
             return await this.emailService.sendNotification(

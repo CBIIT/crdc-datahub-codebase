@@ -105,6 +105,12 @@ describe('Util Test', () => {
         expect(result).toBe('This is arms test. Dear Bento');
     })
 
+    test('/replace msg variables returns empty string for non-string input', () => {
+        expect(replaceMessageVariables(undefined, { study: 'X' })).toBe('');
+        expect(replaceMessageVariables(null, { study: 'X' })).toBe('');
+        expect(replaceMessageVariables(12, { study: 'X' })).toBe('');
+    })
+
 
     test('extract fields from object', () => {
         const tests = [
