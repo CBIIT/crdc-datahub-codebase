@@ -122,7 +122,7 @@ class DataLoader:
                         }
                         if system_populated_values:
                             updated_properties = {
-                                k: v for k, v in system_populated_props.items() \
+                                k: v for k, v in system_populated_values.items() \
                                 if k not in dataRecord[PROPERTIES] or dataRecord[PROPERTIES][k] in [None, ""]
                             }
                             dataRecord[PROPERTIES].update(updated_properties)
