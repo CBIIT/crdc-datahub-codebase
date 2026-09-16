@@ -21,7 +21,12 @@ import {
 } from "@/schemas/ApplicationSections";
 import { isFormulaValue, isHyperlinkValue, isRichTextValue, isSharedFormulaValue } from "@/utils";
 import { parseReleaseVersion } from "@/utils/envUtils";
-import { determineSectionStatus, parseSchemaObject, sectionHasData } from "@/utils/formUtils";
+import {
+  buildNotApplicableProgram,
+  determineSectionStatus,
+  parseSchemaObject,
+  sectionHasData,
+} from "@/utils/formUtils";
 import { Logger } from "@/utils/logger";
 
 import { SectionA, SectionAColumns } from "./Excel/A/SectionA";
@@ -606,7 +611,11 @@ export class QuestionnaireExcelMiddleware {
       sheet = this.workbook.addWorksheet(HIDDEN_SHEET_NAMES.programs, { state: "veryHidden" });
 
       const programs = await this.getAPIPrograms();
-      const fullPrograms: ProgramInput[] = [NotApplicableProgram, ...programs, OtherProgram];
+      const fullPrograms: ProgramInput[] = [
+        { ...buildNotApplicableProgram(programs), name: NotApplicableProgram._id },
+        ...programs.filter((program) => !program.readOnly),
+        OtherProgram,
+      ];
 
       fullPrograms.forEach((program, index) => {
         const row = index + 1;
@@ -752,16 +761,12 @@ export class QuestionnaireExcelMiddleware {
   /**
    * Retrieves the list of programs from the dependencies.
    *
-   * @note This excludes 'readOnly' programs from the program list.
    * @returns The array of programs.
    */
   private async getAPIPrograms(): Promise<Organization[]> {
     try {
       const { data } = (await this.dependencies.getPrograms?.()) || {};
-      return (
-        (data?.listPrograms?.programs as Organization[])?.filter((program) => !program.readOnly) ||
-        []
-      );
+      return (data?.listPrograms?.programs as Organization[]) || [];
     } catch (error) {
       return [];
     }

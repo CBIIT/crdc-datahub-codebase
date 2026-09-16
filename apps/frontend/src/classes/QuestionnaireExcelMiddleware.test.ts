@@ -2755,6 +2755,101 @@ describe("Parsing", () => {
     expect(output.program?.description).toBe("An existing program.");
   });
 
+  it("should list the system managed 'Not Applicable' program and exclude other readOnly programs", async () => {
+    const naId = "437e864a-621b-40f5-b214-3dc368137081";
+    const mockPrograms = vi.fn().mockResolvedValue({
+      data: {
+        listPrograms: {
+          programs: [
+            {
+              _id: "program-1",
+              name: "Existing Program",
+              abbreviation: "EP",
+              description: "An existing program.",
+              readOnly: false,
+            },
+            {
+              _id: "system-1",
+              name: "Another System Program",
+              abbreviation: "ASP",
+              description: "A system managed program that is not NA.",
+              readOnly: true,
+            },
+            {
+              _id: naId,
+              name: "NA",
+              abbreviation: "NA",
+              description:
+                "This is a catch-all place for all studies without a program associated.",
+              readOnly: true,
+            },
+          ],
+        },
+      },
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(questionnaireDataFactory.build(), {
+      getPrograms: mockPrograms,
+    });
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionB();
+
+    // @ts-expect-error Private member
+    const sheet = middleware.workbook.getWorksheet(HIDDEN_SHEET_NAMES.programs);
+    const rows = [];
+    sheet.getColumn(1).eachCell((cell, rowNumber) => {
+      rows.push([cell.value, sheet.getCell(`B${rowNumber}`).value]);
+    });
+
+    expect(rows).toEqual([
+      [naId, "Not Applicable"],
+      ["program-1", "Existing Program"],
+      ["Other", ""],
+    ]);
+  });
+
+  it("should export the system managed 'Not Applicable' program rather than 'Other'", async () => {
+    const naId = "437e864a-621b-40f5-b214-3dc368137081";
+    const mockPrograms = vi.fn().mockResolvedValue({
+      data: {
+        listPrograms: {
+          programs: [
+            {
+              _id: naId,
+              name: "NA",
+              abbreviation: "NA",
+              description:
+                "This is a catch-all place for all studies without a program associated.",
+              readOnly: true,
+            },
+          ],
+        },
+      },
+    });
+
+    const mockForm = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: naId,
+        name: "NA",
+        abbreviation: "NA",
+        description: "This is a catch-all place for all studies without a program associated.",
+      }),
+    });
+
+    const middleware = new QuestionnaireExcelMiddleware(mockForm, {
+      getPrograms: mockPrograms,
+    });
+
+    // @ts-expect-error Private member
+    await middleware.serializeSectionB();
+
+    // @ts-expect-error Private member
+    const sheet = middleware.workbook.getWorksheet("Program and Study");
+
+    expect(sheet.getCell("A2").value).toBe("Not Applicable");
+  });
+
   it("should parse the MM/DD/YYYY date from Planned Publications", async () => {
     const mockForm = questionnaireDataFactory.build({
       program: programInputFactory.build({
