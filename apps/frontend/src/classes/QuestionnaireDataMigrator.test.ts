@@ -1916,6 +1916,25 @@ describe("_migrateNotApplicableProgram", () => {
     );
   });
 
+  it("should migrate a pre-3.2.0 program using the notApplicable flag", async () => {
+    const data = questionnaireDataFactory.build({
+      program: {
+        _id: "",
+        name: "",
+        abbreviation: "",
+        description: "",
+        notApplicable: true,
+      } as ProgramInput,
+    });
+
+    const migrator = buildMigrator(data, [systemProgram]);
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateNotApplicableProgram();
+
+    expect(migrator.getData().program).toEqual(expectedProgram);
+  });
+
   it("should update stale values on a program already using the real _id", async () => {
     const data = questionnaireDataFactory.build({
       program: programInputFactory.build({

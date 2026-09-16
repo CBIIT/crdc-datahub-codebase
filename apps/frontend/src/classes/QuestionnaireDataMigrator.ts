@@ -282,8 +282,16 @@ export class QuestionnaireDataMigrator {
     }
 
     const notApplicableProgram = buildNotApplicableProgram(activePrograms);
+
+    // In 3.2.0, the notApplicable property was replaced by the "Not Applicable" program ID
+    const isLegacyNAProgram =
+      !!program && "notApplicable" in program && program.notApplicable === true;
+
     const isNAProgram =
-      program?._id === NotApplicableProgram._id || program?._id === notApplicableProgram._id;
+      isLegacyNAProgram ||
+      program?._id === NotApplicableProgram._id ||
+      program?._id === notApplicableProgram._id;
+
     if (!isNAProgram || isEqual(program, notApplicableProgram)) {
       return;
     }
