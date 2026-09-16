@@ -102,3 +102,11 @@ def test_get_system_populated_props_for_node_with_system_populated_props():
     assert props['study_description'] == STUDY_DESCRIPTION
     assert 'study_acronym' in props
     assert props['study_acronym'] == STUDY_ACRONYM
+
+def test_get_final_required_props():
+    props = data_model.get_final_required_props_for_node('file')
+    assert props == []
+
+def test_get_final_required_props_for_node_with_system_populated_props():
+    props = data_model.get_final_required_props_for_node('study')
+    TestCase().assertCountEqual(props, ['phs_accession', 'study_data_types'])
