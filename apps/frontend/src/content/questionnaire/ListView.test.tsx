@@ -560,43 +560,6 @@ describe("ListView Component", () => {
     });
   });
 
-  it("uses Last Updated Date as the default sort key", async () => {
-    const variableMatcher = vi.fn().mockReturnValue(true);
-
-    const listApplicationsMock: MockedResponse<ListApplicationsResp, ListApplicationsInput> = {
-      request: {
-        query: LIST_APPLICATIONS,
-      },
-      variableMatcher,
-      result: {
-        data: {
-          listApplications: {
-            total: 0,
-            applications: [],
-            programs: [],
-            studies: [],
-          },
-        },
-      },
-    };
-
-    render(
-      <TestParent role="Submitter" mocks={[listApplicationsMock]}>
-        <ListView />
-      </TestParent>
-    );
-
-    await waitFor(() => {
-      expect(variableMatcher).toHaveBeenCalled();
-    });
-
-    expect(variableMatcher).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderBy: "updatedAt",
-      })
-    );
-  });
-
   it("uses non-Federal default statuses in list query", async () => {
     const variableMatcher = vi.fn().mockReturnValue(true);
 

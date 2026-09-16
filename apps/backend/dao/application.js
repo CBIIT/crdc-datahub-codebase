@@ -488,14 +488,24 @@ class ApplicationDAO extends MongooseGenericDAO {
     /**
      * Builds the Mongo match for listApplications from API inputs.
      * Submitter-name matching is applied after applicant $lookup (see listApplicationsWithFacets).
+     * When showAllVersions is false, `{nextRevisionId: null}` matches missing or BSON null (latest).
+     * Includes Canceled/Deleted tails and superseded seq>1 rows with no successor
+     * (e.g. after reopen-over-terminal replaceExistingLink).
      * @param {object} params
      * @param {string[]} [params.statuses] Canonical status values (empty = no status filter)
      * @param {string|null} [params.programName]
      * @param {string|null} [params.studyName]
      * @param {string|null} [params.applicantID] Own-scope applicant filter
-     * @returns {{match: object, submitterName: string|null, hasStudyFilter: boolean}}
+     * @param {boolean} [params.showAllVersions=false] When false, match SRFs with nextRevisionId missing or null
+     * @returns {{match: object, hasStudyFilter: boolean}}
      */
-    _buildListApplicationsMatch({statuses, programName, studyName, applicantID} = {}) {
+    _buildListApplicationsMatch({
+        statuses,
+        programName,
+        studyName,
+        applicantID,
+        showAllVersions,
+    } = {}) {
         const match = {};
         if (statuses?.length) {
             match.status = {$in: statuses};
@@ -516,12 +526,17 @@ class ApplicationDAO extends MongooseGenericDAO {
         if (applicantID) {
             match.applicantID = applicantID;
         }
+        if (!showAllVersions) {
+            match.nextRevisionId = null;
+        }
         return {match, hasStudyFilter};
     }
 
     /**
      * Lists applications with applicant enrichment, pagination, and facet values.
      * Uses separate count/facet queries (DocumentDB does not support $facet).
+     * When showAllVersions is false, only SRFs with nextRevisionId missing or null are returned
+     * (Canceled/Deleted tails and superseded seq>1 rows with no successor included).
      * @param {object} params
      * @param {string[]} [params.statuses]
      * @param {string|null} [params.programName]
@@ -532,6 +547,7 @@ class ApplicationDAO extends MongooseGenericDAO {
      * @param {number} [params.offset]
      * @param {string} [params.orderBy]
      * @param {string} [params.sortDirection]
+     * @param {boolean} [params.showAllVersions=false] When false, only SRFs with nextRevisionId missing or null
      * @returns {Promise<{applications: object[], total: number, programs: string[], studies: string[], studyAbbreviations: string[], status: string[], submitterNames: string[]}>}
      */
     async listApplicationsWithFacets({
@@ -544,12 +560,14 @@ class ApplicationDAO extends MongooseGenericDAO {
         offset,
         orderBy,
         sortDirection,
+        showAllVersions,
     } = {}) {
         const {match, hasStudyFilter} = this._buildListApplicationsMatch({
             statuses,
             programName,
             studyName,
             applicantID,
+            showAllVersions,
         });
 
         const submitterFilter =

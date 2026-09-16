@@ -494,6 +494,45 @@ describe("Implementation Requirements", () => {
     expect(getByText("Confirm to move to Inquired")).toBeInTheDocument();
   });
 
+  it.each([
+    { action: "Approve", contextFn: "approveForm" },
+    { action: "Reject", contextFn: "rejectForm" },
+    { action: "Request Additional Information", contextFn: "inquireForm" },
+  ] as const)(
+    "should only call $contextFn once when the $action confirm button is clicked repeatedly",
+    async ({ action, contextFn }) => {
+      mockUseFormMode.mockReturnValue({ formMode: "Review", readOnlyInputs: true });
+      mockFormObject = {
+        ref: { current: document.createElement("form") },
+        data: { sections: completedSections } as QuestionnaireData,
+      };
+
+      const { getByRole, getByTestId } = render(<TestParent />);
+
+      userEvent.click(getByRole("button", { name: action }));
+
+      await waitFor(() => {
+        expect(getByTestId("review-comment")).toBeInTheDocument();
+      });
+
+      userEvent.type(
+        within(getByTestId("review-comment")).getByRole("textbox"),
+        "mock review comment"
+      );
+
+      const confirmButton = getByTestId("review-form-dialog-confirm-button");
+      userEvent.click(confirmButton);
+      userEvent.click(confirmButton, null, { skipPointerEventsCheck: true });
+      userEvent.click(confirmButton, null, { skipPointerEventsCheck: true });
+
+      await waitFor(() => {
+        expect(baseFormCtxState[contextFn]).toHaveBeenCalledTimes(1);
+      });
+
+      expect(baseFormCtxState[contextFn]).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it("should indicate that changes were saved if any portion of the form has data", async () => {
     mockUseFormMode.mockReturnValue({ formMode: "Edit", readOnlyInputs: false });
 
