@@ -34,14 +34,60 @@ const CDE_ID = "CDE ID";
 const REQUESTED_PERMISSIVE_VALUE = "Requested Permissive Value";
 const JUSTIFICATION = "Justification";
 
+const PRESET_PLAIN_TEXT_HTML = { allowedTags: [], allowedAttributes: {} };
+
 /**
- * Substitutes `$variables` then sanitizes YAML notification body HTML.
+ * Strips HTML from a single runtime interpolation value.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function sanitizePlainTextVariable(value) {
+    if (value == null) {
+        return '';
+    }
+    return sanitizeAllowlistedHtml(String(value), PRESET_PLAIN_TEXT_HTML);
+}
+
+/**
+ * Strips HTML from each interpolation value so user-controlled copy cannot inject anchors.
+ * @param {object} [messageVariables]
+ * @returns {object|undefined}
+ */
+function sanitizeMessageVariables(messageVariables) {
+    if (!messageVariables || typeof messageVariables !== 'object') {
+        return messageVariables;
+    }
+    const sanitized = {};
+    for (const key of Object.keys(messageVariables)) {
+        sanitized[key] = sanitizePlainTextVariable(messageVariables[key]);
+    }
+    return sanitized;
+}
+
+/**
+ * Interpolates plain-text variables into trusted YAML HTML, then sanitizes the fragment.
  * @param {string} yamlValue
  * @param {object} [messageVariables]
  * @returns {string}
  */
 function sanitizeNotificationBody(yamlValue, messageVariables) {
-    return sanitizeAllowlistedHtml(replaceMessageVariables(yamlValue, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
+    return sanitizeAllowlistedHtml(
+        replaceMessageVariables(yamlValue, sanitizeMessageVariables(messageVariables)),
+        PRESET_NOTIFICATION_TEXT_HTML
+    );
+}
+
+/**
+ * Interpolates plain-text variables into a pending-condition YAML snippet, then sanitizes it.
+ * @param {string} yamlValue
+ * @param {object} [templateParams]
+ * @returns {string}
+ */
+function sanitizePendingConditionHtml(yamlValue, templateParams) {
+    return sanitizeAllowlistedHtml(
+        replaceMessageVariables(yamlValue, sanitizeMessageVariables(templateParams)),
+        PRESET_SR_APPROVAL_PENDING_HTML
+    );
 }
 
 class NotifyUser {
@@ -414,9 +460,9 @@ class NotifyUser {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
             const topMessage = sanitizeNotificationBody(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
-            const missingDbGapPendingCondition = sanitizeAllowlistedHtml(
-                replaceMessageVariables(this.email_constants.MISSING_DBGAP_PENDING_CHANGE, templateParams),
-                PRESET_SR_APPROVAL_PENDING_HTML
+            const missingDbGapPendingCondition = sanitizePendingConditionHtml(
+                this.email_constants.MISSING_DBGAP_PENDING_CHANGE,
+                templateParams
             );
             await this.emailService.sendNotification(
                 this.email_constants.NOTIFICATION_SENDER,
@@ -449,9 +495,9 @@ class NotifyUser {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
             const topMessage = sanitizeNotificationBody(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
-            const GPAPendingCondition = sanitizeAllowlistedHtml(
-                replaceMessageVariables(this.email_constants.MISSING_GPA_INFO, templateParams),
-                PRESET_SR_APPROVAL_PENDING_HTML
+            const GPAPendingCondition = sanitizePendingConditionHtml(
+                this.email_constants.MISSING_GPA_INFO,
+                templateParams
             );
             await this.emailService.sendNotification(
                 this.email_constants.NOTIFICATION_SENDER,
@@ -485,9 +531,9 @@ class NotifyUser {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
             const topMessage = sanitizeNotificationBody(this.email_constants.SINGLE_PENDING_PENDING_TOP_MESSAGE, templateParams);
-            const dataModelPendingCondition = sanitizeAllowlistedHtml(
-                replaceMessageVariables(this.email_constants.DATA_MODEL_PENDING_CHANGE, {}),
-                PRESET_SR_APPROVAL_PENDING_HTML
+            const dataModelPendingCondition = sanitizePendingConditionHtml(
+                this.email_constants.DATA_MODEL_PENDING_CHANGE,
+                {}
             );
             await this.emailService.sendNotification(
                 this.email_constants.NOTIFICATION_SENDER,
@@ -521,9 +567,9 @@ class NotifyUser {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
             const topMessage = sanitizeNotificationBody(this.email_constants.IMAGE_DEIDENTIFICATION_PENDING_TOP_MESSAGE, templateParams);
-            const imagePendingCondition = sanitizeAllowlistedHtml(
-                replaceMessageVariables(this.email_constants.PENDING_IMAGE_DEIDENTIFICATION_APPROVE_EMAIL, templateParams),
-                PRESET_SR_APPROVAL_PENDING_HTML
+            const imagePendingCondition = sanitizePendingConditionHtml(
+                this.email_constants.PENDING_IMAGE_DEIDENTIFICATION_APPROVE_EMAIL,
+                templateParams
             );
             await this.emailService.sendNotification(
                 this.email_constants.NOTIFICATION_SENDER,
@@ -561,21 +607,21 @@ class NotifyUser {
         return await this.send(async () => {
             const subject = this.email_constants.APPROVE_SUBJECT;
             const topMessage = sanitizeNotificationBody(this.email_constants.CONDITIONAL_PENDING_MULTIPLE_CHANGES, templateParams);
-            const dataModelPendingCondition = sanitizeAllowlistedHtml(
-                replaceMessageVariables(this.email_constants.DATA_MODEL_PENDING_CHANGE_MULTIPLE, {}),
-                PRESET_SR_APPROVAL_PENDING_HTML
+            const dataModelPendingCondition = sanitizePendingConditionHtml(
+                this.email_constants.DATA_MODEL_PENDING_CHANGE_MULTIPLE,
+                {}
             );
-            const missingDbGapPendingCondition = sanitizeAllowlistedHtml(
-                replaceMessageVariables(this.email_constants.MISSING_DBGAP_PENDING_CHANGE_MULTIPLE, templateParams),
-                PRESET_SR_APPROVAL_PENDING_HTML
+            const missingDbGapPendingCondition = sanitizePendingConditionHtml(
+                this.email_constants.MISSING_DBGAP_PENDING_CHANGE_MULTIPLE,
+                templateParams
             );
-            const missingGPAPendingCondition = sanitizeAllowlistedHtml(
-                replaceMessageVariables(this.email_constants.MISSING_GPA_INFO_MULTIPLE, templateParams),
-                PRESET_SR_APPROVAL_PENDING_HTML
+            const missingGPAPendingCondition = sanitizePendingConditionHtml(
+                this.email_constants.MISSING_GPA_INFO_MULTIPLE,
+                templateParams
             );
-            const imagePendingCondition = sanitizeAllowlistedHtml(
-                replaceMessageVariables(this.email_constants.PENDING_IMAGE_DEIDENTIFICATION_APPROVE_EMAIL_MULTIPLE, templateParams),
-                PRESET_SR_APPROVAL_PENDING_HTML
+            const imagePendingCondition = sanitizePendingConditionHtml(
+                this.email_constants.PENDING_IMAGE_DEIDENTIFICATION_APPROVE_EMAIL_MULTIPLE,
+                templateParams
             );
             // Only include valid pending conditions
             const pendingConditions = [
@@ -764,8 +810,8 @@ class NotifyUser {
         if (!(await this._refreshEmailConstants())) {
             return;
         }
-        const message = sanitizeAllowlistedHtml(replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_CONTENT, messageVariables), PRESET_NOTIFICATION_TEXT_HTML);
-        const secondMessage = replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_SECOND_CONTENT, messageVariables);
+        const message = sanitizeNotificationBody(this.email_constants.REMIND_EXPIRED_APPLICATION_CONTENT, messageVariables);
+        const secondMessage = sanitizeNotificationBody(this.email_constants.REMIND_EXPIRED_APPLICATION_SECOND_CONTENT, messageVariables);
         const subject = replaceMessageVariables(this.email_constants.REMIND_EXPIRED_APPLICATION_SUBJECT, messageVariables);
         return await this.send(async () => {
             await this.emailService.sendNotification(
@@ -1208,5 +1254,7 @@ const isTierAdded = (tier) => {
 };
 
 module.exports = {
-    NotifyUser
+    NotifyUser,
+    sanitizeNotificationBody,
+    sanitizePendingConditionHtml
 }

@@ -20,7 +20,7 @@ const fixtureYaml = yaml.load(
 );
 
 const { createEmailTemplate, EmailContentUnavailableError } = require('../../lib/create-email-template');
-const { NotifyUser } = require('../../services/notify-user');
+const { NotifyUser, sanitizeNotificationBody, sanitizePendingConditionHtml } = require('../../services/notify-user');
 
 describe('NotifyUser', () => {
     let notify;
@@ -381,5 +381,49 @@ describe('NotifyUser', () => {
             { firstName: 'Pat', reviewComments: 'C', studyName: 'S', studyAbbreviation: 'SA' },
             {}
         )).rejects.toThrow('handlebars exploded');
+    });
+
+    it('does not turn a user-controlled study name into an https anchor', async () => {
+        await notify.cancelApplicationNotification(
+            'a@a',
+            [],
+            [],
+            { firstName: 'Pat' },
+            {
+                studyName: '<a href="https://evil.example">Fake Study</a>',
+                canceledNameBy: 'Admin',
+                contactEmail: 'help@nih.gov',
+            }
+        );
+        const templateCall = createEmailTemplate.mock.calls.find(
+            (call) => call[0] === 'notification-template.html'
+        );
+        expect(templateCall[1].message).not.toMatch(/href="https:\/\/evil\.example"/);
+        expect(templateCall[1].message).toContain('Fake Study');
+        expect(templateCall[1].message).toContain('<b>');
+    });
+});
+
+describe('sanitizeNotificationBody', () => {
+    it('keeps YAML https links after interpolating stripped variables', () => {
+        const yamlValue = 'Contact $contactEmail about <a href="https://grants.nih.gov/dbgap">dbGaP</a>.';
+        const out = sanitizeNotificationBody(yamlValue, {
+            contactEmail: '<a href="https://evil.example">bad</a>',
+        });
+        expect(out).toContain('https://grants.nih.gov/dbgap');
+        expect(out).not.toMatch(/href="https:\/\/evil\.example"/);
+        expect(out).toContain('bad');
+    });
+});
+
+describe('sanitizePendingConditionHtml', () => {
+    it('keeps YAML dbGaP links and strips HTML from interpolated contact email', () => {
+        const out = sanitizePendingConditionHtml(
+            fixtureYaml.MISSING_DBGAP_PENDING_CHANGE,
+            { contactEmail: '<a href="https://evil.example">phish</a>' }
+        );
+        expect(out).toMatch(/href="https:\/\/grants\.nih\.gov/);
+        expect(out).not.toMatch(/href="https:\/\/evil\.example"/);
+        expect(out).toContain('phish');
     });
 });

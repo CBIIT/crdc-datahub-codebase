@@ -383,6 +383,33 @@ describe('EmailContentCache', () => {
         const yamlConstants = await cache.getYaml();
         expect(yamlConstants).toBeNull();
     });
+
+    it('treats invalid Handlebars templates as incomplete', async () => {
+        mockHttpsGet((url, res) => {
+            res.statusCode = 200;
+            const href = String(url);
+            let body;
+            if (href.includes(YAML_RELATIVE_PATH)) {
+                body = FIXTURE_YAML;
+            } else if (href.includes('email-templates/notification-template.html')) {
+                body = '{{#if unclosed';
+            } else {
+                body = '<p>ok</p>';
+            }
+            process.nextTick(() => {
+                res.emit('data', Buffer.from(body));
+                res.emit('end');
+            });
+        });
+        const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+        await cache.prefetchAll();
+        expect(cache.consecutiveFetchFailures).toBe(1);
+        expect(cache._retryTimer).not.toBeNull();
+        const status = String(errorSpy.mock.calls.find((call) => String(call[0]).includes('initialization incomplete'))?.[0] || '');
+        expect(status).toContain(`${EMAIL_CONTENT_LOG_PREFIX} invalid templates: notification-template.html`);
+        expect(infoSpy).not.toHaveBeenCalled();
+        infoSpy.mockRestore();
+    });
 });
 
 describe('initializeEmailContentCache', () => {

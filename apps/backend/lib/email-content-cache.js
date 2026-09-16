@@ -2,6 +2,7 @@ const fsp = require('fs/promises');
 const path = require('path');
 const https = require('https');
 const yaml = require('js-yaml');
+const handlebars = require('handlebars');
 const {getInvalidEmailConstantKeys} = require('./email-content-constants');
 
 const EMAIL_CONTENT_LOG_PREFIX = '[EMAIL_CONTENT]';
@@ -138,6 +139,7 @@ class EmailContentCache {
      * @returns {Promise<{
      *   complete: boolean,
      *   missingTemplates: string[],
+     *   invalidTemplates: string[],
      *   yamlNotFound: boolean,
      *   yamlParseError: string|null,
      *   yamlNotMapping: boolean,
@@ -146,9 +148,16 @@ class EmailContentCache {
      */
     async _inspectContentStatus() {
         const missingTemplates = [];
+        const invalidTemplates = [];
         for (const fileName of EMAIL_TEMPLATE_FILES) {
             try {
-                await fsp.access(this._destPath(`email-templates/${fileName}`));
+                const text = await fsp.readFile(this._destPath(`email-templates/${fileName}`), 'utf8');
+                try {
+                    // Syntax only; do not execute (layouts use helpers registered elsewhere).
+                    handlebars.parse(text);
+                } catch {
+                    invalidTemplates.push(fileName);
+                }
             } catch {
                 missingTemplates.push(fileName);
             }
@@ -174,6 +183,7 @@ class EmailContentCache {
             yamlNotFound = true;
         }
         const complete = missingTemplates.length === 0
+            && invalidTemplates.length === 0
             && !yamlNotFound
             && !yamlParseError
             && !yamlNotMapping
@@ -181,6 +191,7 @@ class EmailContentCache {
         return {
             complete,
             missingTemplates,
+            invalidTemplates,
             yamlNotFound,
             yamlParseError,
             yamlNotMapping,
@@ -220,6 +231,9 @@ class EmailContentCache {
         ];
         if (status.missingTemplates.length > 0) {
             lines.push(`${EMAIL_CONTENT_LOG_PREFIX} missing templates: ${status.missingTemplates.join(', ')}`);
+        }
+        if (status.invalidTemplates.length > 0) {
+            lines.push(`${EMAIL_CONTENT_LOG_PREFIX} invalid templates: ${status.invalidTemplates.join(', ')}`);
         }
         if (status.yamlNotFound) {
             lines.push(`${EMAIL_CONTENT_LOG_PREFIX} yaml: not found`);
