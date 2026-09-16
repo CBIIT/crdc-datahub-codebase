@@ -1,4 +1,4 @@
-from common.srf import SRF
+from common.srf import SRF, backfill_missing_or_empty_properties
 import json
 
 srf_data = {
@@ -95,3 +95,21 @@ def test_get_all_system_populated_values_with_empty_values():
         "study_acronym": "",
         "study_description": "ming's second conditionally approved study",
     }
+
+def test_replace_missing_or_empty_properties():
+    original = {"abc": "123"}
+    updated = {}
+    result = backfill_missing_or_empty_properties(original, updated)
+    assert result == {}
+
+def test_replace_missing_properties():
+    original = {"abc": "", "def": 2}
+    updated = {"ghi": "hello"}
+    result = backfill_missing_or_empty_properties(original, updated)
+    assert result == {"ghi": "hello"}
+
+def test_replace_empty_properties():
+    original = {"abc": "", "def": 2}
+    updated = {"abc": "hello", "ghi": "world"}
+    result = backfill_missing_or_empty_properties(original, updated)
+    assert result == {"abc": "hello", "ghi": "world"}

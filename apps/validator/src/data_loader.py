@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 from bento.common.utils import get_logger
-from common.utils import get_uuid_str, current_datetime, removeTailingEmptyColumnsAndRows, get_date_time
+from common.utils import get_uuid_str, current_datetime, removeTailingEmptyColumnsAndRows
 from common.constants import TYPE, ID, SUBMISSION_ID, STATUS, STATUS_NEW, NODE_ID, \
     ERRORS, WARNINGS, CREATED_AT, UPDATED_AT, S3_FILE_INFO, FILE_NAME, \
     MD5, SIZE, PARENT_TYPE, DATA_COMMON_NAME, QC_RESULT_ID, BATCH_IDS, \
@@ -11,7 +11,7 @@ from common.constants import TYPE, ID, SUBMISSION_ID, STATUS, STATUS_NEW, NODE_I
     ORIN_FILE_NAME, ADDITION_ERRORS, RAW_DATA, DCF_PREFIX, ID_FIELD, ORCID, ENTITY_TYPE, STUDY_ID, \
     DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, LATEST_BATCH_DISPLAY_ID, SUBFOLDER_FILE_NAME, SRF_ID
 
-from common.srf import SRF
+from common.srf import SRF, backfill_missing_or_empty_properties
 
 SEPARATOR_CHAR = '\t'
 UTF8_ENCODE ='utf8'
@@ -121,11 +121,8 @@ class DataLoader:
                             STUDY_ID: self.submission.get(STUDY_ID)
                         }
                         if system_populated_values:
-                            updated_properties = {
-                                k: v for k, v in system_populated_values.items() \
-                                if k not in dataRecord[PROPERTIES] or dataRecord[PROPERTIES][k] in [None, ""]
-                            }
-                            dataRecord[PROPERTIES].update(updated_properties)
+                            backfilled_properties = backfill_missing_or_empty_properties(dataRecord[PROPERTIES], system_populated_values)
+                            dataRecord[PROPERTIES].update(backfilled_properties)
                         if crdc_id:
                             dataRecord["CRDC_ID"] = crdc_id
                         if type in file_types:
