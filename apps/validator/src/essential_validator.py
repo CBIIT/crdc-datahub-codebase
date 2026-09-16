@@ -506,9 +506,7 @@ class EssentialValidator:
                 return False
         if self.submission_intention != SUBMISSION_INTENTION_DELETE: 
             # check missing required proper 
-            required_props = self.model.get_node_req_props(type)
-            system_populated_props = self.model.get_system_populated_prop_list()
-            final_required_props = list(set(required_props) -set(system_populated_props))
+            final_required_props = self.model.get_final_required_props(type)
             missed_props = [ prop for prop in final_required_props if prop not in columns and prop != id_field]
             if len(missed_props) > 0:
                 msg = f'“{file_info[FILE_NAME]}”: '

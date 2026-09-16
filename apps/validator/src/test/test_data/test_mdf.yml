@@ -296,6 +296,7 @@ PropDefinitions:
       value_type: list
       item_type: TBD
   study_data_types:
+    Req: true
     Type:
       value_type: list
       item_type:
@@ -333,12 +334,16 @@ PropDefinitions:
     Key: true
   phs_accession:
     Type: string
+    Req: true
   study_name:
     Type: string
+    Req: true
   study_acronym:
     Type: string
+    Req: true
   study_description:
     Type: string
+    Req: true
   file_name:
     Type: string
   md5sum:
