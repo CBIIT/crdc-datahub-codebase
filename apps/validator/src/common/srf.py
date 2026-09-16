@@ -52,9 +52,14 @@ class SRF:
         srf_prop = SRF_PROP_MAPPING.get(system_prop)
         if not srf_prop:
             return None
-        return self.questionnaire.get(srf_prop.get(NODE, {})).get(srf_prop.get(PROP))
+        value = self.questionnaire.get(srf_prop.get(NODE, {})).get(srf_prop.get(PROP), "").strip()
+        return value
 
     def get_all_system_populated_values(self):
         if not self.system_populated_props:
             return {}
-        return {prop: self.get_property_value(prop) for prop in self.system_populated_props.keys()}
+        values = {}
+        for prop in self.system_populated_props.keys():
+            rawValue = self.get_property_value(prop)
+            values[prop] = rawValue
+        return  values
