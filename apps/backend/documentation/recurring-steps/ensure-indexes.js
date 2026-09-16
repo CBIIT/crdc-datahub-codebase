@@ -10,6 +10,7 @@
 
 const {
     USER_COLLECTION,
+    APPLICATION_COLLECTION,
     RELEASE_DATA_RECORDS_COLLECTION,
     DATA_RECORDS_COLLECTION,
     APPROVED_STUDIES_COLLECTION,
@@ -77,6 +78,11 @@ const INDEXES = [
         collection: VALIDATION_COLLECTION,
         keys: { submissionID: 1 },
         name: 'submissionID_1',
+    },
+    {
+        collection: APPLICATION_COLLECTION,
+        keys: { nextRevisionId: 1 },
+        name: 'nextRevisionId_1',
     },
 ];
 
