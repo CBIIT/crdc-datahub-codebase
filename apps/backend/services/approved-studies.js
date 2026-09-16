@@ -18,14 +18,12 @@ const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-
 const {getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesForUser,
     getDataCommonsDisplayNamesForApprovedStudyList
 } = require("../utility/data-commons-remapper");
-const {SORT: PRISMA_SORT} = require("../constants/db-constants");
 const {UserScope} = require("../domain/user-scope");
 const {replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
 const NA_PROGRAM = "NA";
 const NA = "NA";
-const prisma = require("../prisma");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
-const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
+const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 const ProgramDAO = require("../dao/program");
 const UserDAO = require("../dao/user");
 const SubmissionDAO = require("../dao/submission");
@@ -34,19 +32,30 @@ const {PendingGPA} = require("../domain/pending-gpa");
 const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } = require("../utility/study-utility");
 const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev-helpers");
 const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+const {getCCEmails, filterDuplicateEmails, getEmailsBasedonConditionalApproval} = require("./application");
+const { getPendingConditionsAtApproval } = require("../utility/pending-conditions-at-approval");
 
 class ApprovedStudiesService {
-    constructor(approvedStudiesCollection, userCollection, organizationService, submissionCollection, authorizationService, notificationsService, emailParams) {
+    /**
+     * @param {object} approvedStudiesCollection Native Mongo collection retained as a temporary bridge for
+     *   UserService (and callers via userService.approvedStudiesCollection). Not used by ApprovedStudyDAO
+     *   (Mongoose); remove once those paths migrate to approvedStudyDAO.
+     * @param {object} programService Program service
+     * @param {object} [authorizationService] Authorization service
+     * @param {object} [notificationsService] Notifications service
+     * @param {object} [emailParams] Email URL / contact params
+     */
+    constructor(approvedStudiesCollection, programService, authorizationService, notificationsService, emailParams) {
+        // TEMPORARY: native-driver bridge for UserService until it uses approvedStudyDAO.
         this.approvedStudiesCollection = approvedStudiesCollection;
-        this.userCollection = userCollection;
-        this.organizationService = organizationService;
+        this.programService = programService;
         this.authorizationService = authorizationService;
-        this.programDAO = new ProgramDAO(organizationService.organizationCollection);
-        this.userDAO = new UserDAO(userCollection);
-        this.submissionDAO = new SubmissionDAO(submissionCollection);
+        this.programDAO = new ProgramDAO();
+        this.userDAO = new UserDAO();
+        this.submissionDAO = new SubmissionDAO();
         this.notificationsService = notificationsService;
         this.emailParams = emailParams;
-        this.approvedStudyDAO = new ApprovedStudyDAO(approvedStudiesCollection);
+        this.approvedStudyDAO = new ApprovedStudyDAO();
         this.applicationDAO = new ApplicationDAO();
     }
 
@@ -134,6 +143,8 @@ class ApprovedStudiesService {
             return { ...result, _id: result._id ?? result.id };
         }
 
+        const pendingConditionsAtApproval = getPendingConditionsAtApproval(fields);
+
         const approvedStudies = ApprovedStudies.createApprovedStudies(
             fields.applicationID,
             fields.studyName,
@@ -149,7 +160,8 @@ class ApprovedStudiesService {
             fields.primaryContactID,
             pendingGPA,
             fields.programID,
-            fields.pendingImageDeIdentification
+            fields.pendingImageDeIdentification,
+            pendingConditionsAtApproval
         );
         const res = await this.approvedStudyDAO.create(approvedStudies);
 
@@ -176,8 +188,8 @@ class ApprovedStudiesService {
 
     /**
      * List Approved Studies by a studyName API.
-     * Case-insensitive match on studyName (Prisma Mongo `equals` + `mode: insensitive`).
-     * On MongoDB, Prisma implements that filter with a regex; `escapeRegexLiteral` keeps user input literal (e.g. `*`).
+     * Case-insensitive match on studyName via regex.
+     * `escapeRegexLiteral` keeps user input literal (e.g. `*`).
      * @api
      * @param {string} studyName
      * @returns {Promise<Object[]>} Empty array when no match; otherwise a one-element array with the first case-insensitive match and `_id`
@@ -206,16 +218,7 @@ class ApprovedStudiesService {
      * @returns {Promise<Object|null>}
      */
     async findByApplicationID(applicationID) {
-        if (!applicationID) {
-            return null;
-        }
-        const row = await prisma.approvedStudy.findFirst({
-            where: { applicationID }
-        });
-        if (!row) {
-            return null;
-        }
-        return { ...row, _id: row.id };
+        return await this.approvedStudyDAO.findByApplicationID(applicationID);
     }
 
     /**
@@ -240,10 +243,12 @@ class ApprovedStudiesService {
         const { fields } = this._buildUpdatableStudyFieldsFromApplication(
             application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
         );
+        const pendingConditionsAtApproval = getPendingConditionsAtApproval(fields);
 
         const updateStudy = {
             ...existingStudy,
             ...fields,
+            pendingConditionsAtApproval,
             updatedAt: getCurrentTime(),
         };
 
@@ -291,7 +296,7 @@ class ApprovedStudiesService {
         }
         // find program/organization by programID reference
         if (approvedStudy?.programID) {
-            approvedStudy.program = await this.organizationService.getOrganizationByID(approvedStudy.programID, true);
+            approvedStudy.program = await this.programService.getProgramByID(approvedStudy.programID, true);
         }
         // find primaryContact
         if (approvedStudy?.primaryContactID)
@@ -437,7 +442,7 @@ class ApprovedStudiesService {
             status
         } = this._verifyAndFormatStudyParams(params);
         // Find the study to update
-        let updateStudy = await this.approvedStudyDAO.findFirst({id: studyID});
+        let updateStudy = await this.approvedStudyDAO.findFirst({_id: studyID});
         if (!updateStudy) {
             throw new Error(ERROR.APPROVED_STUDY_NOT_FOUND);
         }
@@ -527,9 +532,7 @@ class ApprovedStudiesService {
         
         const updatedSubmissions = await this.submissionDAO.updateMany({
             studyID: updateStudy._id,
-            status: {
-                in: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED],
-            },
+            status: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED],
             conciergeID: { not: conciergeID }},{
             conciergeID: conciergeID,
             updatedAt: getCurrentTime()
@@ -546,11 +549,11 @@ class ApprovedStudiesService {
             
             const updatedSubmissionProgramIDs = await this.submissionDAO.updateMany({
                 studyID: updateStudy._id,
-                status: {
+                status: [
                     // Submission status must be in the list below otherwise it will not be updated
                     // Completed is the only excluded status right now
-                    in: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED],
-                },
+                    NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, CANCELED, DELETED, ARCHIVED
+                ],
                 programID: { not: newProgramID }
             }, {
                 programID: newProgramID,
@@ -578,7 +581,7 @@ class ApprovedStudiesService {
 
         let programForGraphQL = program;
         if (program?._id) {
-            const programWithStudiesList = await this.organizationService.getOrganizationByID(program._id, true);
+            const programWithStudiesList = await this.programService.getProgramByID(program._id, true);
             if (programWithStudiesList) {
                 programForGraphQL = programWithStudiesList;
             }
@@ -614,23 +617,31 @@ class ApprovedStudiesService {
     async _notifyClearPendingState(updateStudy) {
         const errorMsg = replaceErrorString(ERROR.FAILED_TO_NOTIFY_CLEAR_PENDING_STATE, `studyID: ${updateStudy?._id}`);
         try{
-            const application = await this.applicationDAO.findFirst({id: updateStudy.applicationID});
+            const application = await this.applicationDAO.findById(updateStudy.applicationID);
             if (!application || !application?._id) {
                 // internal error for the logs, this will not be displayed to the user
                 throw new Error("Unable to find application with ID: " + updateStudy.applicationID);
             }
 
-            const aSubmitter = await this.userDAO.findFirst({id: application?.applicantID});
+            const aSubmitter = await this.userDAO.findFirst({_id: application?.applicantID});
             if (!aSubmitter?._id) {
                 // internal error for the logs, this will not be displayed to the user
                 throw new Error("Unable to find submitter with ID: " + application?.applicantID);
             }
-            const BCCUsers = await this.userDAO.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_CLEARED],
+            const bCCUsers = await this.userDAO.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED],
                 [USER.ROLES.DATA_COMMONS_PERSONNEL, USER.ROLES.FEDERAL_LEAD, USER.ROLES.ADMIN]);
-            const filteredBCCUsers = BCCUsers.filter((u) => u?._id !== aSubmitter?._id);
+            const cCEmails = getCCEmails(aSubmitter?.email, application);
+            const pendingConditionsAtApproval = updateStudy.pendingConditionsAtApproval || [];
+            const bCCEmails = getEmailsBasedonConditionalApproval(
+                bCCUsers,
+                pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID),
+                pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE),
+                pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION)
+            );
+            const [finalCCEmails, finalBCCmails] = filterDuplicateEmails(aSubmitter?.email, cCEmails, bCCEmails);
 
-            if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_CLEARED)) {
-                const res = await this.notificationsService.clearPendingModelState(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
+            if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED)) {
+                const res = await this.notificationsService.clearPendingModelState(aSubmitter?.email, finalCCEmails, finalBCCmails, {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
                     studyName: updateStudy?.studyName || NA,
                     portalURL: this.emailParams.url || NA,
@@ -745,18 +756,18 @@ class ApprovedStudiesService {
         let program = null;
          // verify the provided programID is valid
         if (programID){
-            program = await this.organizationService.getOrganizationByID(programID, false);
+            program = await this.programService.getProgramByID(programID, false);
         }
         // if the provided programID is not valid was not provided then use the NA program as a fallback
         if (!program){
-            program = await this.organizationService.getOrganizationByName(NA_PROGRAM);
+            program = await this.programService.getProgramByName(NA_PROGRAM);
         }
         // if the program is still not valid then throw an error, this should not happen
         if (!program){
             console.error("Unable to find a program with the provided programID then unable to find the NA program as a fallback. Please verify that the NA program has been properly initialized.");
             throw new Error(ERROR.STUDY_CREATION_FAILED);
         }
-        if (program?.status === ORGANIZATION.STATUSES.INACTIVE) {
+        if (program?.status === PROGRAM.STATUSES.INACTIVE) {
             throw new Error(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
         }
         return program;
@@ -771,5 +782,6 @@ const getUserEmails = (users) => {
 }
 
 module.exports = {
-    ApprovedStudiesService
+    ApprovedStudiesService,
+    getPendingConditionsAtApproval
 }

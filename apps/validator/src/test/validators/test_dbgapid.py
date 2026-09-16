@@ -50,7 +50,7 @@ def test_invalid_dbgapid():
     assert error["offendingValue"] == "wrong_dbgapid"
     assert error['title'] == "dbGaPID mismatch"
     assert error["severity"] == "Error"
-    assert error['description'] == "message prefix: dbGaPID mismatch: dbGaPID doesn't match the pre-approved value - 'dbgap_id_1'."
+    assert error['description'] == "message prefix: phs_accession: 'wrong_dbgapid' doesn't match the pre-approved value - 'dbgap_id_1'."
 
 def test_dbgapid_not_in_data():
     data_record = {

@@ -191,14 +191,13 @@ class Stack(Stack):
             rds_port     = self.rds.rds.db_instance_endpoint_port
 
         ## Document DB - referred to documentdb.py
-        if config.getboolean('db', 'create_docdb', fallback=False):
+        create_docdb = config.getboolean('db', 'create_docdb', fallback=False)
+        if create_docdb:
             self.docdb = DocumentDbCluster(
               self,
               f"{self.namingPrefix}-docdb",
               vpc=self.VPC
             )
-            docdb_endpoint = self.docdb.cluster.attr_endpoint
-            docdb_port     = self.docdb.cluster.attr_port
 
         ### Secrets
         
@@ -221,16 +220,31 @@ class Stack(Stack):
             guardrail_id = config["secrets"].get("guardrail_id")
 
 
+        if create_docdb:
+            docdb_endpoint = self.docdb.cluster.attr_endpoint
+            docdb_port = self.docdb.cluster.attr_port
+            docdb_username = config.get('db', 'docdb_user')
+            docdb_password = config.get('db', 'docdb_password')
+            docdb_db_name = config.get('db', 'docdb_db_name')
+        else:
+            # config.ini [db] must supply docdb_endpoint, docdb_port, docdb_user,
+            # docdb_password, and docdb_db_name (not mongo_db_*).
+            docdb_endpoint = config['db']['docdb_endpoint']
+            docdb_port = config['db']['docdb_port']
+            docdb_username = config['db']['docdb_user']
+            docdb_password = config['db']['docdb_password']
+            docdb_db_name = config['db']['docdb_db_name']
+
         self.secret = secretsmanager.Secret(self, "Secret",
 #            secret_name="{}/{}/{}".format(config['main']['secret_prefix'], config['main']['tier'], "crdc-dh"),
             secret_name="{}/{}".format(config['main']['resource_prefix'], config['main']['tier']),
 #            secret_string_value=secretsmanager.SecretValue.unsafe_plain_text(secret_value),
             secret_object_value={
-                "mongo_db_user": SecretValue.unsafe_plain_text(config['db']['mongo_db_user']),
-                "mongo_db_password": SecretValue.unsafe_plain_text(config['db']['mongo_db_password']),
-                "mongo_db_host": SecretValue.unsafe_plain_text(config['db']['mongo_db_host']),
-                "mongo_db_port": SecretValue.unsafe_plain_text(config['db']['mongo_db_port']),
-                "database_name": SecretValue.unsafe_plain_text(config['db']['database_name']),
+                "docdb_endpoint": SecretValue.unsafe_plain_text(docdb_endpoint),
+                "docdb_port": SecretValue.unsafe_plain_text(docdb_port),
+                "docdb_username": SecretValue.unsafe_plain_text(docdb_username),
+                "docdb_password": SecretValue.unsafe_plain_text(docdb_password),
+                "docdb_db_name": SecretValue.unsafe_plain_text(docdb_db_name),
                 "neo4j_uri": SecretValue.unsafe_plain_text(config['db']['neo4j_uri']),
                 "neo4j_password": SecretValue.unsafe_plain_text(config['db']['neo4j_password']),
                 # "es_host": SecretValue.unsafe_plain_text(self.osDomain.domain_endpoint),
@@ -278,17 +292,6 @@ class Stack(Stack):
                     if config.getboolean('db', 'create_rds', fallback=False)
                     else {}
                 ),
-                **(
-                    {
-                        "docdb_db_name": SecretValue.unsafe_plain_text(config.get('db', 'docdb_db_name')),
-                        "docdb_endpoint": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_endpoint),
-                        "docdb_port": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_port),
-                        "docdb_username": SecretValue.unsafe_plain_text(config.get('db', 'docdb_user')),
-                        "docdb_password":  SecretValue.unsafe_plain_text(config.get('db', 'docdb_password')),
-                    }
-                    if config.getboolean('db', 'create_docdb', fallback=False)
-                    else {}
-                )
 #                "newrelic_license_key": SecretValue.unsafe_plain_text(config['secrets']['newrelic_license_key'])
 
             }

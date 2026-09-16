@@ -8,11 +8,9 @@ const QCResultDAO = require("../dao/qcResult");
 const SubmissionDAO = require("../dao/submission");
 
 class QcResultService{
-    constructor(qcResultCollection, submissionCollection, authorizationService){
-        this.qcResultCollection = qcResultCollection;
-        this.submissionCollection = submissionCollection;
+    constructor(authorizationService){
         this.authorizationService = authorizationService;
-        this.qcResultDAO = new QCResultDAO(this.qcResultCollection);
+        this.qcResultDAO = new QCResultDAO();
         this.submissionDAO = new SubmissionDAO();
         this.dataRecordService = null;
     }
@@ -30,7 +28,7 @@ class QcResultService{
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
         // Check that the specified submissionID exists
-        const submission = await this.submissionDAO.findFirst({id: params._id});
+        const submission = await this.submissionDAO.findFirst({_id: params._id});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
@@ -51,7 +49,7 @@ class QcResultService{
         let query = {
             submissionID: submissionID,
             validationType: isFileValidationQC
-                ? {in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE]}
+                ? [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE]
                 : dataType
         };
         
@@ -67,9 +65,7 @@ class QcResultService{
         } else {
             // Normal deletion: delete specific submittedIDs
             if (submittedIDs && submittedIDs.length > 0) {
-                query.submittedID = {
-                    in: submittedIDs
-                };
+                query.submittedID = submittedIDs;
             } else {
                 // No submittedIDs provided, nothing to delete
                 return;
@@ -86,23 +82,24 @@ class QcResultService{
         }
     }
 
+    /**
+     * Find QC results for a submission that include a specific error code.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorCode Error code to match
+     * @returns {Promise<object[]>}
+     */
     async findBySubmissionErrorCodes(submissionID, errorCode) {
-        return this.qcResultDAO.findMany({
-            submissionID: submissionID, errors: {some: {code: errorCode}}},
-            {
-                select: {
-                    submittedID: true,
-                    submissionID: true
-            }
-        });
+        return this.qcResultDAO.findBySubmissionErrorCodes(submissionID, errorCode);
     }
 
+    /**
+     * Return submittedID and dataRecordID for QC results of a given type in a submission.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorType Node/error type to match
+     * @returns {Promise<object[]>}
+     */
     async getQCResultsErrors(submissionID, errorType) {
-        const result = await this.qcResultCollection.aggregate([
-            {"$match": { submissionID: submissionID, type: errorType}},
-            {"$project": {submittedID: 1, dataRecordID: 1}}
-        ]);
-        return result || [];
+        return this.qcResultDAO.getQCResultsErrors(submissionID, errorType);
     }
 
     async resetQCResultData(submissionID) {
@@ -118,7 +115,7 @@ class QcResultService{
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
         // Check that the specified submissionID exists
-        const submission = await this.submissionDAO.findFirst({id: params.submissionID});
+        const submission = await this.submissionDAO.findFirst({_id: params.submissionID});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
@@ -134,7 +131,7 @@ class QcResultService{
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        const submission = await this.submissionDAO.findFirst({id: params.submissionID});
+        const submission = await this.submissionDAO.findFirst({_id: params.submissionID});
         if (!submission) {
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }

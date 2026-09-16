@@ -776,7 +776,7 @@ class MetaDataValidator:
             if dbGaPID == self.dbGaPID:
                 return {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
             else:
-                return {VALIDATION_RESULT: STATUS_ERROR, ERRORS: [create_error("M038", [msg_prefix, self.dbGaPID], dbGaPID_prop_name, dbGaPID)], WARNINGS: []}
+                return {VALIDATION_RESULT: STATUS_ERROR, ERRORS: [create_error("M038", [msg_prefix, dbGaPID_prop_name, dbGaPID, self.dbGaPID], dbGaPID_prop_name, dbGaPID)], WARNINGS: []}
 
         return result
 

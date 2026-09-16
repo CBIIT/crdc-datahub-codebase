@@ -139,6 +139,7 @@ backup/
 **/.vscode/
 **/.DS_Store
 **/s3_download/*.tsv
+resources/aws-documentdb-certificate/
 
 #config files for testing
 **/configs/models
