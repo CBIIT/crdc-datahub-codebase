@@ -11,7 +11,8 @@ from common.constants import TYPE, ID, SUBMISSION_ID, STATUS, STATUS_NEW, NODE_I
     ORIN_FILE_NAME, ADDITION_ERRORS, RAW_DATA, DCF_PREFIX, ID_FIELD, ORCID, ENTITY_TYPE, STUDY_ID, \
     DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, LATEST_BATCH_DISPLAY_ID, SUBFOLDER_FILE_NAME, SRF_ID
 
-from common.srf import SRF, backfill_missing_or_empty_properties
+from common.srf import SRF
+from common.system_populated_props import  backfill_missing_or_empty_properties
 
 SEPARATOR_CHAR = '\t'
 UTF8_ENCODE ='utf8'
