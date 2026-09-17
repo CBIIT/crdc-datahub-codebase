@@ -4,7 +4,7 @@ import { validate as validateUUID } from "uuid";
 
 import { NotApplicableProgram } from "@/config/ProgramConfig";
 import { LastAppResp, ListInstitutionsResp } from "@/graphql";
-import { buildNotApplicableProgram, isNotApplicableProgram, safeParse } from "@/utils";
+import { buildNotApplicableProgram, isNotApplicableProgram } from "@/utils";
 import { Logger } from "@/utils/logger";
 
 /**
@@ -99,12 +99,15 @@ export class QuestionnaireDataMigrator {
     if (!sectionA || sectionA?.status === "Not Started") {
       const { data: lastAppData } = await getLastApplication();
       const { getMyLastApplication: lastApp } = lastAppData || {};
-      const parsedLastAppData = safeParse<QuestionnaireData>(lastApp?.questionnaireData);
 
-      Logger.info("_migrateLastApp: Migrating last app", { ...this.data }, parsedLastAppData);
+      Logger.info(
+        "_migrateLastApp: Migrating last app",
+        { ...this.data },
+        lastApp?.questionnaireData
+      );
       this.data.pi = {
         ...this.data.pi,
-        ...parsedLastAppData.pi,
+        ...lastApp?.questionnaireData?.pi,
       };
     }
   }
