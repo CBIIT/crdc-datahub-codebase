@@ -43,7 +43,7 @@ class SRF:
         if isinstance(questionnaire, str):
             self.questionnaire = json.loads(questionnaire)
 
-    def get_property_value(self, prop):
+    def _get_property_value(self, prop):
         if not self.questionnaire:
             return None
         system_prop = self.system_populated_props.get(prop)
@@ -60,10 +60,6 @@ class SRF:
             return {}
         values = {}
         for prop in self.system_populated_props.keys():
-            rawValue = self.get_property_value(prop)
+            rawValue = self._get_property_value(prop)
             values[prop] = rawValue
         return  values
-
-    def get_values_for_properties(self, properties: list) -> dict:
-        result = {}
-        return result
