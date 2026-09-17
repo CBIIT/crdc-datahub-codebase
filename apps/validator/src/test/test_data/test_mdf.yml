@@ -62,6 +62,11 @@ Nodes:
       - participant_bmis
     Tags:
       Template: "Yes"
+  program:
+    Props:
+      - program_name
+      - program_acronym
+      - program_description
   study:
     Props:
       - study_name
@@ -333,6 +338,15 @@ PropDefinitions:
     Type: string
     Key: true
   phs_accession:
+    Type: string
+    Req: true
+  program_name:
+    Type: string
+    Req: true
+  program_acronym:
+    Type: string
+    Req: true
+  program_description:
     Type: string
     Req: true
   study_name:

@@ -26,9 +26,12 @@
         "dbGaPID": "phs_accession"
       },
       "system-populated-props": {
-        "study_name": "studyName",
-        "study_acronym": "studyAcronym",
-        "study_description": "studyDescription"
+        "program_name": "ProgramName",
+        "program_acronym": "ProgramAcronym",
+        "program_description": "ProgramDescription",
+        "study_name": "StudyName",
+        "study_acronym": "StudyAcronym",
+        "study_description": "StudyDescription"
       }
     },
     "current-version": "1.0.0",

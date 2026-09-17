@@ -298,12 +298,12 @@ DEF_MAIN_NODES = "main-nodes"
 DEF_FILE_NAME_FIELD = 'name-field'
 
 SYSTEM_POPULATED_PROPS = "system-populated-props"
-PROGRAM_NAME = 'programName'
-PROGRAM_ACRONYM = 'programAcronym'
-PROGRAM_DESCRIPTION = 'programDescription'
-STUDY_NAME = 'studyName'
-STUDY_ACRONYM = 'studyAcronym'
-STUDY_DESCRIPTION = 'studyDescription'
+PROGRAM_NAME = 'ProgramName'
+PROGRAM_ACRONYM = 'ProgramAcronym'
+PROGRAM_DESCRIPTION = 'ProgramDescription'
+STUDY_NAME = 'StudyName'
+STUDY_ACRONYM = 'StudyAcronym'
+STUDY_DESCRIPTION = 'StudyDescription'
 
 # property names in SRF
 SRF_PROGRAM = 'program'

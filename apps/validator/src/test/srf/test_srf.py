@@ -4,9 +4,9 @@ import json
 srf_data = {
     "questionnaireData": {
         "program": {
-            "name": "",
-            "abbreviation": "",
-            "description": ""
+            "name": "My Program",
+            "abbreviation": "MY_PROGRAM",
+            "description": "Program description"
         },
         "study": {
             "name": "Ming 2nd condition",
@@ -17,9 +17,12 @@ srf_data = {
 }
 
 system_populated_props = {
-    "study_name": "studyName",
-    "study_acronym": "studyAcronym",
-    "study_description": "studyDescription"
+    "program_name": "ProgramName",
+    "program_acronym": "ProgramAcronym",
+    "program_description": "ProgramDescription",
+    "study_name": "StudyName",
+    "study_acronym": "StudyAcronym",
+    "study_description": "StudyDescription"
 }
 
 
@@ -53,7 +56,7 @@ def test_get_study_name():
 def test_get_program_name():
     srf = SRF(srf_data, system_populated_props)
     program_name = srf._get_property_value("program_name")
-    assert program_name == None
+    assert program_name == "My Program"
 
 def test_get_study_acronym_from_string_questionnaire():
     srf_string_data = {
@@ -72,6 +75,9 @@ def test_get_all_system_populated_values_with_system_populated_props():
     srf = SRF(srf_data, system_populated_props)
     values = srf.get_all_system_populated_values()
     assert values == {
+        "program_name": "My Program",
+        "program_acronym": "MY_PROGRAM",
+        "program_description": "Program description",
         "study_name": "Ming 2nd condition",
         "study_acronym": "MING-COND-2",
         "study_description": "ming's second conditionally approved study",
@@ -81,6 +87,11 @@ def test_get_all_system_populated_values_with_system_populated_props():
 def test_get_all_system_populated_values_with_empty_values():
     local_srf_data = {
         "questionnaireData": {
+            "program": {
+                "name": "My Program",
+                "abbreviation": "MY_PROGRAM",
+                "description": "Program description"
+            },
             "study": {
                 "name": "Ming 2nd condition",
                 "abbreviation": "  ",
@@ -91,6 +102,9 @@ def test_get_all_system_populated_values_with_empty_values():
     srf = SRF(local_srf_data, system_populated_props)
     values = srf.get_all_system_populated_values()
     assert values == {
+        "program_name": "My Program",
+        "program_acronym": "MY_PROGRAM",
+        "program_description": "Program description",
         "study_name": "Ming 2nd condition",
         "study_acronym": "",
         "study_description": "ming's second conditionally approved study",
