@@ -58,7 +58,7 @@ type Props = {
   confirmButtonProps?: Omit<ButtonProps, "children" | "onClick">;
   loading?: boolean;
   onCancel?: () => void;
-  onSubmit?: (reviewComment: string) => void;
+  onSubmit?: (reviewComment: string) => void | Promise<unknown>;
   children?: ReactNode;
 } & Omit<DialogProps, "onClose" | "onSubmit" | "children" | "title">;
 
@@ -77,7 +77,7 @@ const ReviewFormDialog: FC<Props> = ({
     handleSubmit,
     control,
     reset,
-    formState: { errors },
+    formState: { errors, isSubmitting, isSubmitSuccessful },
   } = useForm<ReviewFormFields>({
     mode: "onSubmit",
     reValidateMode: "onSubmit",
@@ -99,8 +99,11 @@ const ReviewFormDialog: FC<Props> = ({
     maximumFractionDigits: 0,
   }).format(MAX_REVIEW_COMMENT_LIMIT);
 
-  const handleOnSubmit = (data: ReviewFormFields) => {
-    onSubmit?.(data.reviewComment);
+  const submissionPending = loading || isSubmitting;
+  const submitDisabled = submissionPending || isSubmitSuccessful;
+
+  const handleOnSubmit = async (data: ReviewFormFields) => {
+    await onSubmit?.(data.reviewComment);
   };
 
   const handleOnCancel = () => {
@@ -140,8 +143,8 @@ const ReviewFormDialog: FC<Props> = ({
           <LoadingButton
             data-testid="review-form-dialog-confirm-button"
             onClick={handleSubmit(handleOnSubmit)}
-            disabled={!trimmedTextLength || loading}
-            loading={loading}
+            disabled={!trimmedTextLength || submitDisabled}
+            loading={submissionPending}
             {...confirmButtonProps}
           >
             {confirmText}
@@ -171,7 +174,7 @@ const ReviewFormDialog: FC<Props> = ({
             }}
             onTextLengthChange={setPlainTextLength}
             placeholder={`${reviewCommentLimitLabel} characters allowed`}
-            disabled={loading}
+            disabled={submitDisabled}
             aria-label="Review comment input"
             data-testid="review-comment"
           />

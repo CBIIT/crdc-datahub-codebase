@@ -1,12 +1,15 @@
+/**
+ * LEGACY (reference only). Do not execute against current DocumentDB.
+ * Do not update for new compatibility issues.
+ *
+ * Migration Runner for 3.4.0
+ * Executes MongoDB migrations using Node.js MongoDB driver
+ */
 const { MongoClient } = require('mongodb');
 const fs = require('fs');
 const path = require('path');
 const configuration = require('../config');
 
-/**
- * Migration Runner for 3.4.0
- * Executes MongoDB migrations using Node.js MongoDB driver
- */
 class MigrationRunner {
     constructor() {
         this.client = null;

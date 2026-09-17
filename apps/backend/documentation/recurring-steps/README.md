@@ -8,6 +8,7 @@ Do not run these scripts standalone unless debugging; use the version orchestrat
 
 | File | Purpose |
 |------|---------|
+| `ensure-indexes.js` | Create DocumentDB indexes from a catalog when missing (same name and key pattern is a no-op) |
 | `sync-pbac-defaults.js` | Insert or overwrite PBAC defaults from `resources/json/PBACDefaults_config.json` into Mongo `configuration` when JSON version is higher |
 | `migration-utils.js` | Shared MongoDB connection helpers for orchestrators |
 

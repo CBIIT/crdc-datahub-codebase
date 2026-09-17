@@ -506,8 +506,8 @@ class EssentialValidator:
                 return False
         if self.submission_intention != SUBMISSION_INTENTION_DELETE: 
             # check missing required proper 
-            required_props = self.model.get_node_req_props(type)
-            missed_props = [ prop for prop in required_props if prop not in columns and prop != id_field]
+            final_required_props = self.model.get_final_required_props_for_node(type)
+            missed_props = [ prop for prop in final_required_props if prop not in columns and prop != id_field]
             if len(missed_props) > 0:
                 msg = f'“{file_info[FILE_NAME]}”: '
                 msg += f'Properties {json.dumps(missed_props)} are required.' if len(missed_props) > 1 else f'Property "{missed_props[0]}" is required.'

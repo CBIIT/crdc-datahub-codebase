@@ -5,9 +5,11 @@
  *         (or startup via bin/www.js)
  *
  * Migration files:
+ * - ensure-indexes-migration.js: Create catalog indexes (recurring step)
  * - sync-pbac-defaults-migration.js: Sync PBAC defaults from JSON (recurring step)
  * - backfill-application-sequence-number.js: Backfill Application.sequenceNumber where missing
  * - backfill-submission-submission-request-id.js: Backfill Submission.submissionRequestID from study.applicationID
+ * - backfill-getPendingConditionsAtApproval.js: Backfill ApprovedStudy.pendingConditionsAtApproval where missing
  * - dedupe-review-comments.js: Clear review comments copied onto "In Revision" events (CRDCDH-3894)
  * - update-inactive-application-config.js: Set INACTIVE_APPLICATION_DAYS and INACTIVE_APPLICATION_NOTIFY_DAYS defaults
  */
@@ -17,9 +19,11 @@ const {
     closeDatabaseConnection
 } = require('../recurring-steps/migration-utils');
 
+const { executeEnsureIndexes } = require('./ensure-indexes-migration');
 const { executeSyncPbacDefaults } = require('./sync-pbac-defaults-migration');
 const { executeBackfillApplicationSequenceNumber } = require('./backfill-application-sequence-number');
 const { executeBackfillSubmissionRequestID } = require('./backfill-submission-submission-request-id');
+const { executeBackfillGetPendingConditionsAtApproval } = require('./backfill-getPendingConditionsAtApproval');
 const { executeDedupeReviewComments } = require('./dedupe-review-comments');
 
 async function orchestrateMigration() {
@@ -36,6 +40,11 @@ async function orchestrateMigration() {
 
         const availableMigrations = [
             {
+                name: 'Ensure DocumentDB indexes (recurring)',
+                file: 'ensure-indexes-migration.js',
+                execute: () => executeEnsureIndexes(db)
+            },
+            {
                 name: 'Sync PBAC defaults from JSON (recurring)',
                 file: 'sync-pbac-defaults-migration.js',
                 execute: () => executeSyncPbacDefaults(db)
@@ -49,6 +58,11 @@ async function orchestrateMigration() {
                 name: 'Backfill Submission.submissionRequestID',
                 file: 'backfill-submission-submission-request-id.js',
                 execute: () => executeBackfillSubmissionRequestID(db)
+            },
+            {
+                name: 'Backfill ApprovedStudy.pendingConditionsAtApproval',
+                file: 'backfill-getPendingConditionsAtApproval.js',
+                execute: () => executeBackfillGetPendingConditionsAtApproval(db)
             },
             {
                 name: 'Remove duplicated "In Revision" review comments',
@@ -117,17 +131,19 @@ async function main() {
     }
 }
 
-process.on('unhandledRejection', (error) => {
-    console.error('❌ Unhandled rejection:', error.message);
-    process.exit(1);
-});
-
-process.on('SIGINT', () => {
-    console.log('\n🛑 Received SIGINT, shutting down gracefully...');
-    process.exit(0);
-});
-
+// Registered only for CLI runs. bin/www.js imports this module, and process-wide
+// handlers here would otherwise terminate the running server.
 if (require.main === module) {
+    process.on('unhandledRejection', (error) => {
+        console.error('❌ Unhandled rejection:', error.message);
+        process.exit(1);
+    });
+
+    process.on('SIGINT', () => {
+        console.log('\n🛑 Received SIGINT, shutting down gracefully...');
+        process.exit(0);
+    });
+
     main();
 }
 

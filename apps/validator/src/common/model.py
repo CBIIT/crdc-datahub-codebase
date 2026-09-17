@@ -1,5 +1,5 @@
 from common.constants import NODES_LABEL, RELATIONSHIPS, LIST_DELIMITER_PROP, PROPERTY_NAMES, OMIT_DCF_PREFIX, \
-    COMPOSITION_KEY, DEF_SEMANTICS, DEF_MAIN_NODES, DEF_FILE_NODES, DEF_FILE_NAME_FIELD
+    COMPOSITION_KEY, DEF_SEMANTICS, DEF_MAIN_NODES, DEF_FILE_NODES, DEF_FILE_NAME_FIELD, SYSTEM_POPULATED_PROPS
 
 
 class DataModel:
@@ -95,7 +95,28 @@ class DataModel:
     """
     def get_configured_prop_name(self, prop_name):
         return self._get_semantics().get(PROPERTY_NAMES, {}).get(prop_name)
+
+    def get_system_populated_props(self):
+        return self._get_semantics().get(SYSTEM_POPULATED_PROPS, {})
     
+    def get_system_populated_prop_list(self):
+        return list(self.get_system_populated_props().keys())
+
+    def get_system_populated_props_for_node(self, node):
+        props = self.get_node_props(node)
+        system_populated_props = self.get_system_populated_prop_list()
+        if not props or not system_populated_props:
+            return {}
+        populated_props = set(props.keys()) & set(system_populated_props)
+        populated_props_dict = self.get_system_populated_props()
+        return {prop: populated_props_dict[prop] for prop in populated_props}
+
+    def get_final_required_props_for_node(self, node):
+        required_props = self.get_node_req_props(node)
+        system_populated_props = self.get_system_populated_prop_list()
+        final_required_props = list(set(required_props.keys()) - set(system_populated_props))
+        return final_required_props
+
     """
     get file name property, pick first file node name if there are multiple file nodes
     """

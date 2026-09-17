@@ -12,7 +12,7 @@ router.get("/version", async (req, res, next) => {
         version: config.version,
         date: config.date
     };
-    if (!(await MongoDBHealthCheck(config.mongo_db_connection_string))) {
+    if (!(await MongoDBHealthCheck(config.document_db_connection_string))) {
         body.error = ERROR.MONGODB_HEALTH_CHECK_FAILED;
         res.status(503);
     }

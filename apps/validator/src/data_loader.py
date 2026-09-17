@@ -3,13 +3,16 @@ import os
 import pandas as pd
 import numpy as np
 from bento.common.utils import get_logger
-from common.utils import get_uuid_str, current_datetime, removeTailingEmptyColumnsAndRows, get_date_time
+from common.utils import get_uuid_str, current_datetime, removeTailingEmptyColumnsAndRows
 from common.constants import TYPE, ID, SUBMISSION_ID, STATUS, STATUS_NEW, NODE_ID, \
     ERRORS, WARNINGS, CREATED_AT, UPDATED_AT, S3_FILE_INFO, FILE_NAME, \
     MD5, SIZE, PARENT_TYPE, DATA_COMMON_NAME, QC_RESULT_ID, BATCH_IDS, \
     FILE_NAME_FIELD, FILE_SIZE_FIELD, FILE_MD5_FIELD, NODE_TYPE, PARENTS, CRDC_ID, PROPERTIES, \
     ORIN_FILE_NAME, ADDITION_ERRORS, RAW_DATA, DCF_PREFIX, ID_FIELD, ORCID, ENTITY_TYPE, STUDY_ID, \
-    DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, LATEST_BATCH_DISPLAY_ID, SUBFOLDER_FILE_NAME
+    DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, LATEST_BATCH_DISPLAY_ID, SUBFOLDER_FILE_NAME, SRF_ID
+
+from common.srf import SRF
+from common.system_populated_props import  backfill_missing_or_empty_properties
 
 SEPARATOR_CHAR = '\t'
 UTF8_ENCODE ='utf8'
@@ -32,7 +35,7 @@ class DataLoader:
         self.main_nodes = self.model.get_main_nodes()
         self.errors = None
         self.submission = submission
-
+        self.srf_data = self.mongo_dao.get_srf(submission.get(SRF_ID))
     """
     param: file_path_list downloaded from s3 bucket
     """
@@ -56,6 +59,10 @@ class DataLoader:
                 df = df.replace({np.nan: None})  # replace Nan in dataframe with None
                 df = df.reset_index()  # make sure indexes pair with number of rows
                 col_names =list(df.columns)
+                node_type = df[TYPE].iloc[0]
+                system_populated_props = self.model.get_system_populated_props_for_node(node_type)
+                srf = SRF(self.srf_data, system_populated_props)
+                system_populated_values = srf.get_all_system_populated_values()
                 for index, row in df.iterrows():
                     type = row[TYPE]
                     rawData = df.loc[index].to_dict()
@@ -114,6 +121,9 @@ class DataLoader:
                             ENTITY_TYPE: self.model.get_entity_type(type), 
                             STUDY_ID: self.submission.get(STUDY_ID)
                         }
+                        if system_populated_values:
+                            backfilled_properties = backfill_missing_or_empty_properties(dataRecord[PROPERTIES], system_populated_values)
+                            dataRecord[PROPERTIES].update(backfilled_properties)
                         if crdc_id:
                             dataRecord["CRDC_ID"] = crdc_id
                         if type in file_types:
