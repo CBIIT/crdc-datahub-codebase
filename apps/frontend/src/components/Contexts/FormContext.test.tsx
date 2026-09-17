@@ -1697,7 +1697,7 @@ describe("saveApp Tests", () => {
 });
 
 describe("notifyChange Tests", () => {
-  const getAppMock: MockedResponse<GetAppResp> = {
+  const getAppMock: MockedResponse<GetAppResp, GetAppInput> = {
     request: {
       query: GET_APP,
     },
@@ -1706,11 +1706,9 @@ describe("notifyChange Tests", () => {
       data: {
         getApplication: {
           ...baseApplication,
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+          }),
         },
       },
     },

@@ -372,14 +372,12 @@ describe("_migrateLastApp", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                firstName: "SHOULD NOT POPULATE",
-                lastName: "NOT CALLED BY API",
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              firstName: "SHOULD NOT POPULATE",
+              lastName: "NOT CALLED BY API",
+            }),
+          }),
         },
       },
     });
