@@ -62,7 +62,9 @@ class DataLoader:
                 node_type = df[TYPE].iloc[0]
                 system_populated_props = self.model.get_system_populated_props_for_node(node_type)
                 srf = SRF(self.srf_data, system_populated_props)
-                system_populated_values = srf.get_all_system_populated_values()
+                system_populated_values = {}
+                if self.srf_data:
+                    system_populated_values = srf.get_all_system_populated_values()
                 for index, row in df.iterrows():
                     type = row[TYPE]
                     rawData = df.loc[index].to_dict()
