@@ -76,7 +76,7 @@ def test_get_omit_dcf_prefix():
     assert data_model.get_omit_dcf_prefix() == True
 
 def test_get_system_populated_props():
-    system_populated_props = data_model.get_system_populated_props()
+    system_populated_props = data_model.get_system_populated_props_dict()
     assert isinstance(system_populated_props, dict)
     assert 'study_name' in system_populated_props
     assert system_populated_props['study_name'] == STUDY_NAME
@@ -91,10 +91,10 @@ def test_get_system_populated_prop_list():
     TestCase().assertCountEqual(system_populated_prop_list, ['study_name', 'study_description', 'study_acronym'])
 
 def test_get_system_populated_props_for_node_without_system_populated_props():
-    assert data_model.get_system_populated_props_for_node('file') == {}
+    assert data_model.get_system_populated_props_dict_for_node('file') == {}
 
 def test_get_system_populated_props_for_node_with_system_populated_props():
-    props = data_model.get_system_populated_props_for_node('study')
+    props = data_model.get_system_populated_props_dict_for_node('study')
     assert isinstance(props, dict)
     assert 'study_name' in props
     assert props['study_name'] == STUDY_NAME
@@ -104,9 +104,9 @@ def test_get_system_populated_props_for_node_with_system_populated_props():
     assert props['study_acronym'] == STUDY_ACRONYM
 
 def test_get_final_required_props():
-    props = data_model.get_final_required_props_for_node('file')
+    props = data_model.get_final_required_props_dict_for_node('file')
     assert props == []
 
 def test_get_final_required_props_for_node_with_system_populated_props():
-    props = data_model.get_final_required_props_for_node('study')
+    props = data_model.get_final_required_props_dict_for_node('study')
     TestCase().assertCountEqual(props, ['phs_accession', 'study_data_types'])

@@ -34,7 +34,10 @@ class DataLoader:
         self.main_nodes = self.model.get_main_nodes()
         self.errors = None
         self.submission = submission
-        self.srf_data = self.mongo_dao.get_srf(submission.get(SRF_ID))
+        self.srf_data = None
+        srf_id = submission.get(SRF_ID)
+        if srf_id:
+            self.srf_data = self.mongo_dao.get_srf(srf_id)
     """
     param: file_path_list downloaded from s3 bucket
     """
@@ -59,9 +62,11 @@ class DataLoader:
                 df = df.reset_index()  # make sure indexes pair with number of rows
                 col_names =list(df.columns)
                 node_type = df[TYPE].iloc[0]
-                system_populated_props = self.model.get_system_populated_props_for_node(node_type)
-                srf = SRF(self.srf_data, system_populated_props)
-                system_populated_values = srf.get_all_system_populated_values()
+                system_populated_props = self.model.get_system_populated_props_dict_for_node(node_type)
+                system_populated_values = {}
+                if self.srf_data:
+                    srf = SRF(self.srf_data, system_populated_props)
+                    system_populated_values = srf.get_all_system_populated_values()
                 for index, row in df.iterrows():
                     type = row[TYPE]
                     rawData = df.loc[index].to_dict()

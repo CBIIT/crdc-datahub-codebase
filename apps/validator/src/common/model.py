@@ -96,22 +96,22 @@ class DataModel:
     def get_configured_prop_name(self, prop_name):
         return self._get_semantics().get(PROPERTY_NAMES, {}).get(prop_name)
 
-    def get_system_populated_props(self):
+    def get_system_populated_props_dict(self):
         return self._get_semantics().get(SYSTEM_POPULATED_PROPS, {})
     
     def get_system_populated_prop_list(self):
-        return list(self.get_system_populated_props().keys())
+        return list(self.get_system_populated_props_dict().keys())
 
-    def get_system_populated_props_for_node(self, node):
+    def get_system_populated_props_dict_for_node(self, node):
         props = self.get_node_props(node)
         system_populated_props = self.get_system_populated_prop_list()
         if not props or not system_populated_props:
             return {}
         populated_props = set(props.keys()) & set(system_populated_props)
-        populated_props_dict = self.get_system_populated_props()
+        populated_props_dict = self.get_system_populated_props_dict()
         return {prop: populated_props_dict[prop] for prop in populated_props}
 
-    def get_final_required_props_for_node(self, node):
+    def get_final_required_props_dict_for_node(self, node):
         required_props = self.get_node_req_props(node)
         system_populated_props = self.get_system_populated_prop_list()
         final_required_props = list(set(required_props.keys()) - set(system_populated_props))
