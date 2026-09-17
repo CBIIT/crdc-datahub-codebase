@@ -1,9 +1,10 @@
 import { LazyQueryExecFunction } from "@apollo/client";
-import { cloneDeep, unset } from "lodash";
+import { cloneDeep, isEqual, unset } from "lodash";
 import { validate as validateUUID } from "uuid";
 
+import { NotApplicableProgram } from "@/config/ProgramConfig";
 import { LastAppResp, ListInstitutionsResp } from "@/graphql";
-import { safeParse } from "@/utils";
+import { buildNotApplicableProgram, isNotApplicableProgram, safeParse } from "@/utils";
 import { Logger } from "@/utils/logger";
 
 /**
@@ -13,7 +14,9 @@ type MigratorDependencies = {
   getInstitutions: LazyQueryExecFunction<ListInstitutionsResp, unknown>;
   newInstitutions: Array<{ id: string; name: string }>;
   getLastApplication: LazyQueryExecFunction<LastAppResp, unknown>;
-  activePrograms: Pick<Organization, "_id">[];
+  activePrograms: Array<
+    Partial<Pick<Organization, "_id" | "name" | "abbreviation" | "description" | "readOnly">>
+  >;
 };
 
 /**
@@ -59,6 +62,7 @@ export class QuestionnaireDataMigrator {
     await this._migrateGPA();
     await this._migrateRepositoryOtherDataTypes();
     await this._migrateInactiveProgram();
+    await this._migrateNotApplicableProgram();
     await this._migrateReceivesEmails();
 
     return this.data;
@@ -264,6 +268,36 @@ export class QuestionnaireDataMigrator {
       abbreviation: program.abbreviation || "",
       description: program.description || "",
     };
+  }
+
+  /**
+   * Migrates a "Not Applicable" program onto the system managed program record from the API.
+   */
+  private async _migrateNotApplicableProgram(): Promise<void> {
+    const { program } = this.data;
+    const { activePrograms } = this.dependencies;
+
+    if (!activePrograms?.some(isNotApplicableProgram)) {
+      return;
+    }
+
+    const notApplicableProgram = buildNotApplicableProgram(activePrograms);
+
+    // In 3.2.0, the notApplicable property was replaced by the "Not Applicable" program ID
+    const isLegacyNAProgram =
+      !!program && "notApplicable" in program && program.notApplicable === true;
+
+    const isNAProgram =
+      isLegacyNAProgram ||
+      program?._id === NotApplicableProgram._id ||
+      program?._id === notApplicableProgram._id;
+
+    if (!isNAProgram || isEqual(program, notApplicableProgram)) {
+      return;
+    }
+
+    Logger.info("_migrateNotApplicableProgram: Migrating Not Applicable program", { ...program });
+    this.data.program = notApplicableProgram;
   }
 
   /**

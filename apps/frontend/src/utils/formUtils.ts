@@ -79,6 +79,39 @@ export const mapObjectWithKey = (obj, index: number) => ({
 });
 
 /**
+ * Determines whether a program is the system managed catch-all program.
+ *
+ * @param program The program to test
+ * @returns True when the program is the system managed "NA" program
+ */
+export const isNotApplicableProgram = (program: { name?: string; readOnly?: boolean }): boolean =>
+  program?.readOnly === true && program?.name?.trim() === "NA";
+
+/**
+ * Builds the "Not Applicable" program option from the system managed program record.
+ *
+ * @param programs The list of programs returned by the API
+ * @returns The "Not Applicable" option, falling back to {@link NotApplicableProgram}
+ */
+export const buildNotApplicableProgram = (
+  programs: Array<
+    Partial<Pick<Organization, "_id" | "name" | "abbreviation" | "description" | "readOnly">>
+  >
+): ProgramInput => {
+  const systemProgram = programs?.find(isNotApplicableProgram);
+  if (!systemProgram?._id) {
+    return { ...NotApplicableProgram };
+  }
+
+  return {
+    _id: systemProgram._id,
+    name: systemProgram.name || "",
+    abbreviation: systemProgram.abbreviation || "",
+    description: systemProgram.description || "",
+  };
+};
+
+/**
  * Given a program from a form, find either a pre-defined program,
  * 'Not Applicable' program, or 'Other' program.
  *
@@ -88,12 +121,15 @@ export const mapObjectWithKey = (obj, index: number) => ({
  */
 export const findProgram = (
   formProgram: ProgramInput,
-  programOptions: ProgramInput[]
+  programOptions: Array<
+    Partial<Pick<Organization, "_id" | "name" | "abbreviation" | "description" | "readOnly">>
+  >
 ): ProgramInput | null => {
   if (!formProgram || !programOptions?.length) {
     return null;
   }
 
+  const notApplicableProgram = buildNotApplicableProgram(programOptions);
   const hasContent =
     formProgram?._id?.length > 0 ||
     formProgram?.name?.length > 0 ||
@@ -102,14 +138,20 @@ export const findProgram = (
 
   // In 3.2.0, the notApplicable property was removed
   if (!hasContent && "notApplicable" in formProgram && formProgram?.notApplicable === true) {
-    return NotApplicableProgram;
+    return notApplicableProgram;
   }
 
   if (!hasContent) {
     return null;
   }
 
-  const allProgramOptions = [NotApplicableProgram, ...programOptions, OtherProgram];
+  // Prior to 3.7.0, "Not Applicable" was a hard-coded program option
+  if (formProgram._id === NotApplicableProgram._id) {
+    return notApplicableProgram;
+  }
+
+  const selectableOptions = programOptions.filter((program) => !program?.readOnly);
+  const allProgramOptions = [notApplicableProgram, ...selectableOptions, OtherProgram];
   const existingProgram = allProgramOptions?.find((program) => program._id === formProgram._id);
 
   if (existingProgram?._id === OtherProgram?._id) {
