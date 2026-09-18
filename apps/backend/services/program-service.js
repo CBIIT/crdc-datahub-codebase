@@ -176,7 +176,6 @@ class Program {
     }
 
     const conciergeProvided = typeof params.conciergeID !== "undefined";
-    let conciergeChanged = false;
     // Only update the concierge if it is provided and different from the currently assigned concierge
     if (conciergeProvided && !!params.conciergeID && params.conciergeID !== currentProgram.conciergeID) {
       const conciergeUser = await this.userDAO.findFirst({
@@ -191,13 +190,11 @@ class Program {
       updatedProgram.conciergeID = params.conciergeID;
       updatedProgram.conciergeName = `${conciergeUser.firstName} ${conciergeUser.lastName}`.trim();
       updatedProgram.conciergeEmail = conciergeUser.email;
-      conciergeChanged = true;
       // Only remove the concierge if it is purposely set to null and there is a currently assigned concierge
     } else if (conciergeProvided && !params.conciergeID && !!currentProgram.conciergeID) {
       updatedProgram.conciergeID = null;
       updatedProgram.conciergeName = null;
       updatedProgram.conciergeEmail = null;
-      conciergeChanged = true;
     }
 
     if (params.status && Object.values(PROGRAM.STATUSES).includes(params.status)) {
@@ -221,14 +218,14 @@ class Program {
       throw new Error(ERROR.UPDATE_FAILED);
     }
 
-    if (conciergeChanged) {
+    if (conciergeProvided) {
       const studies = await this.approvedStudyDAO.findMany(
         { programID: orgID },
         { projection: { _id: 1 } },
       );
       await this._updatePrimaryContact(
         studies?.map((study) => study?._id) || [],
-        updatedProgram.conciergeID,
+        params.conciergeID || null,
       );
     }
 

@@ -427,6 +427,40 @@ describe('Program.editProgram', () => {
     );
   });
 
+  it('should clear concierge from program-level data submissions', async () => {
+    const orgID = 'org-123';
+    const currentOrg = {
+      _id: orgID,
+      name: 'Test Org',
+      abbreviation: 'TST',
+      status: PROGRAM.STATUSES.ACTIVE,
+      conciergeID: 'old-concierge',
+    };
+
+    mockProgramDAO.getProgramByID.mockResolvedValue(currentOrg);
+    mockProgramDAO.updateMany.mockResolvedValue({ count: 1 });
+    mockApprovedStudyDAO.findMany.mockResolvedValue([{ _id: 'study-1' }]);
+    mockSubmissionDAO.programLevelSubmissions = jest.fn().mockResolvedValue([
+      { _id: 'active-submission' },
+      { _id: 'completed-submission' },
+    ]);
+    mockSubmissionDAO.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+
+    await program.editProgram(orgID, { conciergeID: null });
+
+    expect(mockSubmissionDAO.updateMany).toHaveBeenCalledWith(
+      {
+        _id: ['active-submission', 'completed-submission'],
+        status: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED],
+        conciergeID: { not: null },
+      },
+      {
+        conciergeID: null,
+        updatedAt: expect.any(Date),
+      },
+    );
+  });
+
   it(`should throw when setting status ${PROGRAM.STATUSES.INACTIVE} while program has assigned studies`, async () => {
     const orgID = 'org-123';
     const currentOrg = { _id: orgID, name: 'Test Org', abbreviation: 'TST' };
