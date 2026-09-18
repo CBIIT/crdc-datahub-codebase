@@ -71,6 +71,8 @@ class DataLoader:
                     if rawData.get('index') is not None:
                         del rawData['index'] #remove index column
                     node_id = self.get_node_id(type, rawData, system_populated_values)  #convert the file_id to correct format.
+                    if not node_id:
+                        self.errors.append(f"Node type {type} Key/ID value is not available")
                     if type in file_types:
                         node_id = self.adjust_file_id_case(node_id)
                     exist_node = self.mongo_dao.get_dataRecord_by_node(node_id, type, self.batch[SUBMISSION_ID])
@@ -239,7 +241,10 @@ class DataLoader:
                     row[id_field] = id_val
                     return id_val
                 elif id_field in system_populated_values:
-                    return system_populated_values[id_field]
+                    system_value = system_populated_values.get(id_field)
+                    if not system_value:
+                        self.log(f'Cannot populate value for {id_field}')
+                    return system_value
         return None
 
     """
