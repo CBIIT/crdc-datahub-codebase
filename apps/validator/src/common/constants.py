@@ -1,5 +1,6 @@
 #define constants, enums, etc.
 #config 
+
 MONGO_DB = "connection-str"
 SQS_NAME = "sqs"
 RETRIES = "retries"
@@ -41,6 +42,8 @@ BATCH_STATUS_FAILED = "Failed"
 BATCH_TYPE_METADATA ="metadata"
 BATCH_STATUS_UPLOADED = "Uploaded"
 SUBMISSION_COLLECTION="submissions"
+SRF_COLLECTION="applications"
+SRF_ID="submissionRequestID"
 DATA_COMMON_NAME ="dataCommons"
 ORCID = "ORCID"
 BATCH_INTENTION = "metadataIntention"
@@ -293,3 +296,18 @@ DEF_SEMANTICS = "semantics"
 DEF_FILE_NODES = "file-nodes"
 DEF_MAIN_NODES = "main-nodes"
 DEF_FILE_NAME_FIELD = 'name-field'
+
+SYSTEM_POPULATED_PROPS = "system-populated-props"
+PROGRAM_NAME = 'ProgramName'
+PROGRAM_ACRONYM = 'ProgramAcronym'
+PROGRAM_DESCRIPTION = 'ProgramDescription'
+STUDY_NAME = 'StudyName'
+STUDY_ACRONYM = 'StudyAcronym'
+STUDY_DESCRIPTION = 'StudyDescription'
+
+# property names in SRF
+SRF_PROGRAM = 'program'
+SRF_STUDY = 'study'
+SRF_NAME = 'name'
+SRF_ACRONYM = 'abbreviation'
+SRF_DESCRIPTION = 'description'

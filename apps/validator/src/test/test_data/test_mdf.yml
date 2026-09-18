@@ -62,8 +62,16 @@ Nodes:
       - participant_bmis
     Tags:
       Template: "Yes"
+  program:
+    Props:
+      - program_name
+      - program_acronym
+      - program_description
   study:
     Props:
+      - study_name
+      - study_acronym
+      - study_description
       - study_data_types
       - experimental_strategy_and_data_subtype
       - study_payments
@@ -293,6 +301,7 @@ PropDefinitions:
       value_type: list
       item_type: TBD
   study_data_types:
+    Req: true
     Type:
       value_type: list
       item_type:
@@ -330,6 +339,25 @@ PropDefinitions:
     Key: true
   phs_accession:
     Type: string
+    Req: true
+  program_name:
+    Type: string
+    Req: true
+  program_acronym:
+    Type: string
+    Req: true
+  program_description:
+    Type: string
+    Req: true
+  study_name:
+    Type: string
+    Req: true
+  study_acronym:
+    Type: string
+    Req: true
+  study_description:
+    Type: string
+    Req: true
   file_name:
     Type: string
   md5sum:

@@ -22,6 +22,7 @@ import { NotApplicableProgram, OtherProgram } from "../../../config/ProgramConfi
 import SectionMetadata from "../../../config/SectionMetadata";
 import useFormMode from "../../../hooks/useFormMode";
 import {
+  buildNotApplicableProgram,
   combineQuestionnaireData,
   filterAlphaNumeric,
   formatCharacterLimitPlaceholder,
@@ -77,7 +78,8 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
     data.study?.funding?.map(mapObjectWithKey) || []
   );
 
-  const customProgramIds: string[] = [NotApplicableProgram._id, OtherProgram._id];
+  const notApplicableProgram = useMemo(() => buildNotApplicableProgram(programs), [programs]);
+
   const programKeyRef = useRef(new Date().getTime());
   const formContainerRef = useRef<HTMLDivElement>();
   const { getFormObjectRef } = refs;
@@ -154,7 +156,6 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
       return;
     }
 
-    const allProgramOptions = [NotApplicableProgram, ...programs, OtherProgram];
     const newProgram = allProgramOptions.find((program) => program._id === value);
     if (!newProgram?._id) {
       Logger.error(`B.tsx: Unable to change program due to invalid ID.`);
@@ -162,13 +163,8 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
     }
     programKeyRef.current = new Date().getTime();
 
-    if (newProgram?._id === NotApplicableProgram._id || newProgram?._id === OtherProgram._id) {
-      setProgram({
-        _id: newProgram._id,
-        name: "",
-        abbreviation: "",
-        description: "",
-      });
+    if (newProgram?._id === OtherProgram._id) {
+      setProgram({ ...OtherProgram });
       return;
     }
 
@@ -302,8 +298,11 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
     if (!program) {
       return "";
     }
-    if (customProgramIds.includes(program._id)) {
-      return program._id;
+    if (program._id === notApplicableProgram._id) {
+      return NotApplicableProgram._id;
+    }
+    if (program._id === OtherProgram._id) {
+      return OtherProgram._id;
     }
 
     return `${program.name || ""}${
@@ -358,10 +357,10 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
 
   const allProgramOptions = useMemo(() => {
     // Filter out system-managed programs
-    const filteredPrograms = programs?.filter((p) => !p.readOnly);
+    const filteredPrograms = programs?.filter((p) => !p.readOnly) ?? [];
 
-    return [NotApplicableProgram, ...filteredPrograms, OtherProgram];
-  }, [NotApplicableProgram, OtherProgram, programs]);
+    return [notApplicableProgram, ...filteredPrograms, OtherProgram];
+  }, [notApplicableProgram, OtherProgram, programs]);
 
   const readOnlyProgramName =
     readOnlyInputs ||

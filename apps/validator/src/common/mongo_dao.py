@@ -13,7 +13,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     GENERATED_PROPS, FILE_ENDED, METADATA_ENDED, METADATA_STATUS, FILE_STATUS, FILE_VALIDATION, METADATA_VALIDATION, \
     CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL, \
     COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS, STATUS_DETAIL, \
-    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS
+    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION
 from common.utils import get_exception_msg, current_datetime, get_uuid_str
 from common.s3_utils import S3Service
 
@@ -93,6 +93,23 @@ class MongoDao:
             self.log.exception(f"Failed to find submission, {submissionId}: {get_exception_msg()}")
             return None
 
+
+    """
+    get SRF by id
+    """
+    def get_srf(self, srf_id):
+        db = self.client[self.db_name]
+        srf_collection = db[SRF_COLLECTION]
+        try:
+            return srf_collection.find_one({ID: srf_id})
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to find SRF, {srf_id}: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to find SRF, {srf_id}: {get_exception_msg()}")
+            return None
     """
     check node exists by node name and its value
     """

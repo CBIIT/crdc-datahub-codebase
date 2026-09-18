@@ -1,4 +1,8 @@
+from unittest import TestCase
+
 from test.utils.mock_metadata_validator import create_mock_data_model
+from common.constants import STUDY_NAME, STUDY_ACRONYM, STUDY_DESCRIPTION
+
 
 data_model = create_mock_data_model()
 
@@ -70,3 +74,39 @@ def test_get_list_delimiter():
 
 def test_get_omit_dcf_prefix():
     assert data_model.get_omit_dcf_prefix() == True
+
+def test_get_system_populated_props():
+    system_populated_props = data_model.get_system_populated_props()
+    assert isinstance(system_populated_props, dict)
+    assert 'study_name' in system_populated_props
+    assert system_populated_props['study_name'] == STUDY_NAME
+    assert 'study_acronym' in system_populated_props
+    assert system_populated_props['study_acronym'] == STUDY_ACRONYM
+    assert 'study_description' in system_populated_props
+    assert system_populated_props['study_description'] == STUDY_DESCRIPTION
+    assert 'study_description' in system_populated_props
+
+def test_get_system_populated_prop_list():
+    system_populated_prop_list = data_model.get_system_populated_prop_list()
+    TestCase().assertCountEqual(system_populated_prop_list, ['study_name', 'study_description', 'study_acronym', 'program_name', 'program_acronym', 'program_description'])
+
+def test_get_system_populated_props_for_node_without_system_populated_props():
+    assert data_model.get_system_populated_props_for_node('file') == {}
+
+def test_get_system_populated_props_for_node_with_system_populated_props():
+    props = data_model.get_system_populated_props_for_node('study')
+    assert isinstance(props, dict)
+    assert 'study_name' in props
+    assert props['study_name'] == STUDY_NAME
+    assert 'study_description' in props
+    assert props['study_description'] == STUDY_DESCRIPTION
+    assert 'study_acronym' in props
+    assert props['study_acronym'] == STUDY_ACRONYM
+
+def test_get_final_required_props():
+    props = data_model.get_final_required_props_for_node('file')
+    assert props == []
+
+def test_get_final_required_props_for_node_with_system_populated_props():
+    props = data_model.get_final_required_props_for_node('study')
+    TestCase().assertCountEqual(props, ['phs_accession', 'study_data_types'])

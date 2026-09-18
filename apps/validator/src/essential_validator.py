@@ -443,12 +443,17 @@ class EssentialValidator:
 
         id_field = self.model.get_node_id(type)
         # check if missing id property
-        if id_field and not id_field in columns: 
-            msg = f'“{file_info[FILE_NAME]}”: Key property “{id_field}” is required.'
-            self.log.error(msg)
-            file_info[ERRORS].append(msg)
-            self.batch[ERRORS].append(msg)
-            return False
+        system_populated_props = self.model.get_system_populated_props_for_node(type).keys()
+        if id_field and not id_field in columns:
+            if id_field in system_populated_props:
+                self.df[id_field] = np.nan
+            else:
+                msg = f'“{file_info[FILE_NAME]}”: Key property “{id_field}” is required.'
+                self.log.error(msg)
+                file_info[ERRORS].append(msg)
+                self.batch[ERRORS].append(msg)
+                return False
+
         #check if id property value is empty
         nan_count = self.df.isnull().sum()[id_field]
         # check if the node has composition id (user story CRDCDh-2631)
@@ -477,7 +482,7 @@ class EssentialValidator:
                     file_info[ERRORS].append(msg)
                     self.batch[ERRORS].append(msg)
                     return False
-        if nan_count > 0 and not composition_key: 
+        if nan_count > 0 and not composition_key and id_field not in system_populated_props:
             nan_rows = self.df[self.df[id_field].isnull()].to_dict("index")
             for key in nan_rows.keys():
                 msg = f'“{file_info[FILE_NAME]}:{key + 2}”:  Key property “{id_field}” value is required.'
@@ -505,9 +510,9 @@ class EssentialValidator:
             if not isValidId:
                 return False
         if self.submission_intention != SUBMISSION_INTENTION_DELETE: 
-            # check missing required proper 
-            required_props = self.model.get_node_req_props(type)
-            missed_props = [ prop for prop in required_props if prop not in columns and prop != id_field]
+            # check missing required proper
+            final_required_props = self.model.get_final_required_props_for_node(type)
+            missed_props = [ prop for prop in final_required_props if prop not in columns and prop != id_field]
             if len(missed_props) > 0:
                 msg = f'“{file_info[FILE_NAME]}”: '
                 msg += f'Properties {json.dumps(missed_props)} are required.' if len(missed_props) > 1 else f'Property "{missed_props[0]}" is required.'
