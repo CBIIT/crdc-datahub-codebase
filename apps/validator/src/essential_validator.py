@@ -443,7 +443,8 @@ class EssentialValidator:
 
         id_field = self.model.get_node_id(type)
         # check if missing id property
-        if id_field and not id_field in columns: 
+        system_populated_props = self.model.get_system_populated_prop_list(type)
+        if id_field and not id_field in columns and id_field not in system_populated_props:
             msg = f'“{file_info[FILE_NAME]}”: Key property “{id_field}” is required.'
             self.log.error(msg)
             file_info[ERRORS].append(msg)
@@ -477,7 +478,7 @@ class EssentialValidator:
                     file_info[ERRORS].append(msg)
                     self.batch[ERRORS].append(msg)
                     return False
-        if nan_count > 0 and not composition_key: 
+        if nan_count > 0 and not composition_key and id_field not in system_populated_props:
             nan_rows = self.df[self.df[id_field].isnull()].to_dict("index")
             for key in nan_rows.keys():
                 msg = f'“{file_info[FILE_NAME]}:{key + 2}”:  Key property “{id_field}” value is required.'
@@ -505,7 +506,7 @@ class EssentialValidator:
             if not isValidId:
                 return False
         if self.submission_intention != SUBMISSION_INTENTION_DELETE: 
-            # check missing required proper 
+            # check missing required proper
             final_required_props = self.model.get_final_required_props_for_node(type)
             missed_props = [ prop for prop in final_required_props if prop not in columns and prop != id_field]
             if len(missed_props) > 0:
