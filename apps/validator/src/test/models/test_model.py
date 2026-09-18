@@ -1,10 +1,10 @@
 from unittest import TestCase
 
-from test.utils.mock_metadata_validator import create_mock_data_model
+from test.utils.metadata_validator import create_test_data_model
 from common.constants import STUDY_NAME, STUDY_ACRONYM, STUDY_DESCRIPTION
 
 
-data_model = create_mock_data_model()
+data_model = create_test_data_model()
 
 def test_node_with_required_relationships():
     rels = data_model.get_node_req_rel_columns('file')
