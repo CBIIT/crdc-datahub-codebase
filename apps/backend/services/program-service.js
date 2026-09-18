@@ -4,6 +4,7 @@ const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organizati
 const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {getDataCommonsDisplayNamesForUserOrganization} = require("../utility/data-commons-remapper");
 const {replaceErrorString} = require("../utility/string-util");
+const { NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED } = require("../constants/submission-constants");
 const ProgramDAO = require("../dao/program");
 const SubmissionDAO = require("../dao/submission");
 const UserDAO = require("../dao/user");
@@ -217,6 +218,17 @@ class Program {
       throw new Error(ERROR.UPDATE_FAILED);
     }
 
+    if (conciergeProvided) {
+      const studies = await this.approvedStudyDAO.findMany(
+        { programID: orgID },
+        { projection: { _id: 1 } },
+      );
+      await this._updatePrimaryContact(
+        studies?.map((study) => study?._id) || [],
+        params.conciergeID || null,
+      );
+    }
+
     if (updatedProgram.name || updatedProgram?.abbreviation) {
       const promises = [];
       if (updatedProgram.name) {
@@ -245,8 +257,14 @@ class Program {
   }
 
 
-  // If data concierge is not available in the submission,
-  // It will update the conciergeName/conciergeEmail at the program level if available.
+  /**
+   * Updates the assigned concierge for all Data Submissions where the study designates the
+   * primary contact as the program's primary contact.
+   * 
+   * @note This should be called when updating a program's data concierge
+   * @param {Array<string>} studyIDs The IDs of the studies to update
+   * @param {string} conciergeID The ID of the concierge to set as the primary contact
+   */
   async _updatePrimaryContact(studyIDs, conciergeID) {
     const programLevelSubmissions = await this.submissionDAO.programLevelSubmissions(studyIDs);
     const submissionIDs = programLevelSubmissions?.map((s) => s?._id);
@@ -254,6 +272,7 @@ class Program {
       const updateSubmission = await this.submissionDAO.updateMany(
           {
             _id: submissionIDs,
+            status: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED],
             conciergeID: { not: conciergeID},
           },
           {
