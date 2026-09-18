@@ -444,12 +444,16 @@ class EssentialValidator:
         id_field = self.model.get_node_id(type)
         # check if missing id property
         system_populated_props = self.model.get_system_populated_props_for_node(type).keys()
-        if id_field and not id_field in columns and id_field not in system_populated_props:
-            msg = f'“{file_info[FILE_NAME]}”: Key property “{id_field}” is required.'
-            self.log.error(msg)
-            file_info[ERRORS].append(msg)
-            self.batch[ERRORS].append(msg)
-            return False
+        if id_field and not id_field in columns:
+            if id_field in system_populated_props:
+                self.df[id_field] = np.nan
+            else:
+                msg = f'“{file_info[FILE_NAME]}”: Key property “{id_field}” is required.'
+                self.log.error(msg)
+                file_info[ERRORS].append(msg)
+                self.batch[ERRORS].append(msg)
+                return False
+
         #check if id property value is empty
         nan_count = self.df.isnull().sum()[id_field]
         # check if the node has composition id (user story CRDCDh-2631)
