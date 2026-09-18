@@ -44,15 +44,14 @@ class SRF:
             self.questionnaire = json.loads(questionnaire)
 
     def _get_property_value(self, prop):
-        if not self.questionnaire:
-            return None
         system_prop = self.system_populated_props.get(prop)
         if not system_prop:
             return None
         srf_prop = SRF_PROP_MAPPING.get(system_prop)
         if not srf_prop:
             return None
-        value = self.questionnaire.get(srf_prop.get(NODE, {})).get(srf_prop.get(PROP), "").strip()
+        node = self.questionnaire.get(srf_prop.get(NODE, {}), {})
+        value = node.get(srf_prop.get(PROP), "").strip()
         return value
 
     def get_all_system_populated_values(self):

@@ -58,6 +58,11 @@ def test_get_program_name():
     program_name = srf._get_property_value("program_name")
     assert program_name == "My Program"
 
+def test_get_program_name_when_srf_is_empty():
+    srf = SRF({}, system_populated_props)
+    program_name = srf._get_property_value("program_name")
+    assert program_name == ""
+
 def test_get_study_acronym_from_string_questionnaire():
     srf_string_data = {
         "questionnaireData": json.dumps(srf_data['questionnaireData'])
@@ -108,4 +113,17 @@ def test_get_all_system_populated_values_with_empty_values():
         "study_name": "Ming 2nd condition",
         "study_acronym": "",
         "study_description": "ming's second conditionally approved study",
+    }
+
+def test_empty_srf_data_still_return_propertys_with_empty_values():
+    local_srf_data = {}
+    srf = SRF(local_srf_data, system_populated_props)
+    values = srf.get_all_system_populated_values()
+    assert values == {
+        "program_name": "",
+        "program_acronym": "",
+        "program_description": "",
+        "study_name": "",
+        "study_acronym": "",
+        "study_description": "",
     }

@@ -35,7 +35,8 @@ class DataLoader:
         self.main_nodes = self.model.get_main_nodes()
         self.errors = None
         self.submission = submission
-        self.srf_data = self.mongo_dao.get_srf(submission.get(SRF_ID))
+        srf_data = self.mongo_dao.get_srf(submission.get(SRF_ID))
+        self.srf_data = srf_data if srf_data else {}
     """
     param: file_path_list downloaded from s3 bucket
     """
@@ -60,11 +61,9 @@ class DataLoader:
                 df = df.reset_index()  # make sure indexes pair with number of rows
                 col_names =list(df.columns)
                 node_type = df[TYPE].iloc[0]
-                system_populated_values = {}
-                if self.srf_data:
-                    system_populated_props = self.model.get_system_populated_props_for_node(node_type)
-                    srf = SRF(self.srf_data, system_populated_props)
-                    system_populated_values = srf.get_all_system_populated_values()
+                system_populated_props = self.model.get_system_populated_props_for_node(node_type)
+                srf = SRF(self.srf_data, system_populated_props)
+                system_populated_values = srf.get_all_system_populated_values()
                 for index, row in df.iterrows():
                     type = row[TYPE]
                     rawData = df.loc[index].to_dict()
@@ -241,7 +240,7 @@ class DataLoader:
                     row[id_field] = id_val
                     return id_val
                 elif id_field in system_populated_values:
-                    system_value = system_populated_values.get(id_field)
+                    system_value = system_populated_values.get(id_field, "")
                     if not system_value:
                         self.log(f'Cannot populate value for {id_field}')
                     return system_value
