@@ -4,6 +4,7 @@ const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organizati
 const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {getDataCommonsDisplayNamesForUserOrganization} = require("../utility/data-commons-remapper");
 const {replaceErrorString} = require("../utility/string-util");
+const { NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED } = require("../constants/submission-constants");
 const ProgramDAO = require("../dao/program");
 const SubmissionDAO = require("../dao/submission");
 const UserDAO = require("../dao/user");
@@ -175,6 +176,7 @@ class Program {
     }
 
     const conciergeProvided = typeof params.conciergeID !== "undefined";
+    let conciergeChanged = false;
     // Only update the concierge if it is provided and different from the currently assigned concierge
     if (conciergeProvided && !!params.conciergeID && params.conciergeID !== currentProgram.conciergeID) {
       const conciergeUser = await this.userDAO.findFirst({
@@ -189,11 +191,13 @@ class Program {
       updatedProgram.conciergeID = params.conciergeID;
       updatedProgram.conciergeName = `${conciergeUser.firstName} ${conciergeUser.lastName}`.trim();
       updatedProgram.conciergeEmail = conciergeUser.email;
+      conciergeChanged = true;
       // Only remove the concierge if it is purposely set to null and there is a currently assigned concierge
     } else if (conciergeProvided && !params.conciergeID && !!currentProgram.conciergeID) {
       updatedProgram.conciergeID = null;
       updatedProgram.conciergeName = null;
       updatedProgram.conciergeEmail = null;
+      conciergeChanged = true;
     }
 
     if (params.status && Object.values(PROGRAM.STATUSES).includes(params.status)) {
@@ -215,6 +219,17 @@ class Program {
 
     if (typeof updateResult?.count !== 'number' || updateResult.count < 1) {
       throw new Error(ERROR.UPDATE_FAILED);
+    }
+
+    if (conciergeChanged) {
+      const studies = await this.approvedStudyDAO.findMany(
+        { programID: orgID },
+        { projection: { _id: 1 } },
+      );
+      await this._updatePrimaryContact(
+        studies?.map((study) => study?._id) || [],
+        updatedProgram.conciergeID,
+      );
     }
 
     if (updatedProgram.name || updatedProgram?.abbreviation) {
@@ -245,8 +260,14 @@ class Program {
   }
 
 
-  // If data concierge is not available in the submission,
-  // It will update the conciergeName/conciergeEmail at the program level if available.
+  /**
+   * Updates the assigned concierge for all Data Submissions where the study designates the
+   * primary contact as the program's primary contact.
+   * 
+   * @note This should be called when updating a program's data concierge
+   * @param {Array<string>} studyIDs The IDs of the studies to update
+   * @param {string} conciergeID The ID of the concierge to set as the primary contact
+   */
   async _updatePrimaryContact(studyIDs, conciergeID) {
     const programLevelSubmissions = await this.submissionDAO.programLevelSubmissions(studyIDs);
     const submissionIDs = programLevelSubmissions?.map((s) => s?._id);
@@ -254,6 +275,7 @@ class Program {
       const updateSubmission = await this.submissionDAO.updateMany(
           {
             _id: submissionIDs,
+            status: [NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED],
             conciergeID: { not: conciergeID},
           },
           {
