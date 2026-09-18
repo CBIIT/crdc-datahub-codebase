@@ -70,7 +70,7 @@ class DataLoader:
                     rawData = df.loc[index].to_dict()
                     if rawData.get('index') is not None:
                         del rawData['index'] #remove index column
-                    node_id = self.get_node_id(type, rawData)  #convert the file_id to correct format.
+                    node_id = self.get_node_id(type, rawData, system_populated_values)  #convert the file_id to correct format.
                     if type in file_types:
                         node_id = self.adjust_file_id_case(node_id)
                     exist_node = self.mongo_dao.get_dataRecord_by_node(node_id, type, self.batch[SUBMISSION_ID])
@@ -220,7 +220,7 @@ class DataLoader:
     """
     get node id defined in model dict
     """
-    def get_node_id(self, type, row):
+    def get_node_id(self, type, row, system_populated_values = {}):
         id_field = self.model.get_node_id(type)
         if id_field: 
             if row.get(id_field) and row[id_field].strip():
@@ -238,6 +238,8 @@ class DataLoader:
                     id_val = id_val if id_val != "_" else ""
                     row[id_field] = id_val
                     return id_val
+                elif id_field in system_populated_values:
+                    return system_populated_values[id_field]
         return None
 
     """
