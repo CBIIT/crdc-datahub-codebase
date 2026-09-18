@@ -443,7 +443,7 @@ class EssentialValidator:
 
         id_field = self.model.get_node_id(type)
         # check if missing id property
-        system_populated_props = self.model.get_system_populated_prop_list(type)
+        system_populated_props = self.model.get_system_populated_props_for_node(type).keys()
         if id_field and not id_field in columns and id_field not in system_populated_props:
             msg = f'“{file_info[FILE_NAME]}”: Key property “{id_field}” is required.'
             self.log.error(msg)
