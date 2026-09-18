@@ -23,7 +23,7 @@ WORKDIR /usr/src/app
 COPY --from=builder --chown=node:node /usr/src/app .
 # Remove global npm shipped with the Node base image; only the node binary is needed at runtime.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
-    && mkdir -p logs && chown node:node logs
+    && mkdir -p logs cache/email-content && chown -R node:node logs cache
 USER node
 EXPOSE 8080
 CMD ["node", "./bin/www"]

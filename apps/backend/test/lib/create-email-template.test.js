@@ -108,3 +108,50 @@ describe('markdownToHtml Handlebars helper', () => {
     expect(out).toMatch(/<br\s*\/?>\s*<p>Line two<\/p>/);
   });
 });
+
+const {
+    createEmailTemplate,
+    EmailContentUnavailableError,
+} = require('../../lib/create-email-template');
+const { resetEmailContentCacheForTests } = require('../../lib/email-content-cache');
+
+describe('createEmailTemplate', () => {
+    afterEach(() => {
+        resetEmailContentCacheForTests();
+    });
+
+    it('throws EmailContentUnavailableError when the process cache is missing', async () => {
+        resetEmailContentCacheForTests();
+        await expect(createEmailTemplate('notification-template.html', {}))
+            .rejects.toBeInstanceOf(EmailContentUnavailableError);
+    });
+
+    it('throws EmailContentUnavailableError when getTemplate returns null', async () => {
+        const cache = {
+            getTemplate: jest.fn().mockResolvedValue(null),
+            getUninitializedCacheLogMessage: () => 'template missing',
+        };
+        await expect(createEmailTemplate('notification-template.html', {}, cache))
+            .rejects.toThrow(EmailContentUnavailableError);
+        await expect(createEmailTemplate('notification-template.html', {}, cache))
+            .rejects.toThrow('template missing');
+    });
+
+    it('compiles a template from the cache override', async () => {
+        const cache = {
+            getTemplate: jest.fn().mockResolvedValue('<p>Hello {{ firstName }}</p>'),
+        };
+        await expect(createEmailTemplate('notification-template.html', { firstName: 'Pat' }, cache))
+            .resolves.toBe('<p>Hello Pat</p>');
+    });
+
+    it('throws EmailContentUnavailableError when Handlebars compile fails', async () => {
+        const cache = {
+            getTemplate: jest.fn().mockResolvedValue('{{#if unclosed'),
+        };
+        await expect(createEmailTemplate('notification-template.html', {}, cache))
+            .rejects.toBeInstanceOf(EmailContentUnavailableError);
+        await expect(createEmailTemplate('notification-template.html', {}, cache))
+            .rejects.toThrow(/Handlebars compile failed for notification-template.html/);
+    });
+});

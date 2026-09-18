@@ -224,6 +224,10 @@ let config = {
             file_queue: fileQueueConf?.keys?.sqs || process.env.FILE_QUEUE,
             export_queue: exporterQueueConf?.keys?.sqs || process.env.EXPORTER_QUEUE,
             model_url: modelURLConf || getModelUrl(tierConf?.keys?.tier),
+            email_content_branch: getEmailContentBranch(tierConf?.keys?.tier),
+            email_content_base_url: getEmailContentBaseUrl(tierConf?.keys?.tier),
+            email_content_cache_dir: process.env.EMAIL_CONTENT_CACHE_DIR || 'cache/email-content',
+            email_content_refresh_seconds: getEmailContentRefreshSeconds(),
             //uploader configuration file template
             uploaderCLIConfigs: readUploaderCLIConfigTemplate(),
             dataCommonsList: dataCommonsListConf?.key || (process.env.DATA_COMMONS_LIST ? JSON.parse(process.env.DATA_COMMONS_LIST) : ["CDS", "ICDC", "CTDC", "CCDI", "PSDC", "Test MDF", "Hidden Model"]),
@@ -290,6 +294,41 @@ function getModelUrl(dbTier) {
     return modelUrl.join("");
 }
 
+/**
+ * Sanitized GitHub branch from configuration TIER.
+ * @param {string} [dbTier]
+ * @returns {string}
+ */
+function getEmailContentBranch(dbTier) {
+    const tier = dbTier?.replace(/[^a-zA-Z\d]/g, '')?.trim();
+    if (tier?.length > 0) {
+        return tier.toLowerCase();
+    }
+    console.error('No tier configuration variable found, defaulting to prod email content branch');
+    return 'prod';
+}
+
+/**
+ * Raw GitHub base URL for email templates and YAML, including the TIER branch.
+ * @param {string} [dbTier]
+ * @returns {string}
+ */
+function getEmailContentBaseUrl(dbTier) {
+    return `https://raw.githubusercontent.com/CBIIT/crdc-submission-portal-email-content/${getEmailContentBranch(dbTier)}`;
+}
+
+/**
+ * Seconds to reuse a cached email file before refetching. Default 300.
+ * @returns {number}
+ */
+function getEmailContentRefreshSeconds() {
+    const parsed = Number.parseInt(process.env.EMAIL_CONTENT_REFRESH_SECONDS);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+        return parsed;
+    }
+    return 300;
+}
+
 function extractTierName(dbTier) {
     const tier = dbTier || process.env.TIER;
     return tier?.replace(/prod(uction)?/gi, '')?.replace(/[^a-zA-Z\d]/g, '')?.trim();
@@ -299,5 +338,9 @@ function getTier(dbTier) {
     const tier = extractTierName(dbTier);
     return tier?.length > 0 ? `[${tier.toUpperCase()}]` : '';
 }
+
+config.getEmailContentBranch = getEmailContentBranch;
+config.getEmailContentBaseUrl = getEmailContentBaseUrl;
+config.getEmailContentRefreshSeconds = getEmailContentRefreshSeconds;
 
 module.exports = config;
