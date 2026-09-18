@@ -242,7 +242,7 @@ class DataLoader:
                 elif id_field in system_populated_values:
                     system_value = system_populated_values.get(id_field, "")
                     if not system_value:
-                        self.log(f'Cannot populate value for {id_field}')
+                        self.log.warning(f'Cannot populate value for {id_field}')
                     return system_value
         return None
 
