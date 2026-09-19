@@ -7,7 +7,6 @@ data_model = create_test_data_model()
 
 def test_node_with_required_relationships():
     rels = data_model.get_node_req_rel_columns('file')
-    assert rels is not None
     assert isinstance(rels, list)
     assert len(rels) == 2
     assert 'diagnosis.diagnosis_id' in rels
@@ -15,9 +14,16 @@ def test_node_with_required_relationships():
 
 def test_node_without_required_relationships():
     rels = data_model.get_node_req_rel_columns('diagnosis')
-    assert rels is not None
     assert isinstance(rels, list)
     assert len(rels) == 0
+
+def test_node_with_required_but_auto_populated_relationships():
+    rels = data_model.get_node_req_rel_columns('participant')
+    assert rels == ['study.study_id']
+
+def test_node_with_only_required_but_auto_populated_relationships():
+    rels = data_model.get_node_req_rel_columns('study')
+    assert rels == []
 
 def test_edge_to_column_name_None():
     assert data_model.edge_to_column_name(None) == ''

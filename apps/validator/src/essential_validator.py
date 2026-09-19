@@ -656,7 +656,8 @@ class EssentialValidator:
                 return False, msgs
         
         # check if has relationship
-        if len(rel_props) == 0:
+        system_populated_relationships = self.model.get_system_populated_relationships_for_node(type).keys()
+        if len(rel_props) == 0 and len(system_populated_relationships) == 0:
             return False, [f'“{file_info[FILE_NAME]}”: All relationship columns are missing. Please ensure at least one relationship column is included.']
         
         def_rel_nodes = [ key for key in def_rel.keys()]

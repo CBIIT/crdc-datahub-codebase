@@ -62,9 +62,11 @@ class DataModel:
     def get_node_req_rel_columns(self, node):
         edges = self.mdf_model.edges.values() if self.mdf_model else []
         req_rel_columns = []
+        system_populated_relationships = self.get_system_populated_relationships_for_node(node)
         for edge in edges:
-            if edge.src.handle == node and edge.is_required:
-                req_rel_columns.append(self.edge_to_column_name(edge))
+            column_name = self.edge_to_column_name(edge)
+            if edge.src.handle == node and edge.is_required and column_name not in system_populated_relationships:
+                req_rel_columns.append(column_name)
         return req_rel_columns
 
     def get_node_rel_columns(self, node):
