@@ -1,5 +1,6 @@
 from common.srf import SRF
 import json
+import pytest
 
 srf_data = {
     "questionnaireData": {
@@ -132,44 +133,18 @@ def test_empty_srf_data_still_return_propertys_with_empty_values():
         "study_description": "",
     }
 
-def test_system_populated_relationship_value_map():
-    srf = SRF(srf_data, system_populated_props, {})
-    relationships = srf.get_system_populated_relationship_value_map()
-    assert  relationships == {}
+test_data = [
+    pytest.param(srf_data, system_populated_props, {"program.program_acronym": "ProgramAcronym"}, {"program.program_acronym": "MY_PROGRAM" }, id="Should get correct relationship dict"),
+    pytest.param(srf_data, system_populated_props, {}, {}, id="Empty system populated relationships should get empty relationship dict"),
+    pytest.param(srf_data, system_populated_props, {"property": "ProgramAcronym"}, {}, id="Invalid relationship column name should get empty relationship dict"),
+    pytest.param(srf_data, system_populated_props, {"program.program_acronym": "wrong system prop"}, {}, id="Invalid system property should get empty relationship dict"),
+    pytest.param({
+        "questionnaireData": { "program": { "abbreviation": "  ", }}}, system_populated_props, system_populated_relationships, {}, id="Blank srf value should get empty relationship dict"),
+    pytest.param({}, system_populated_props, system_populated_relationships, {}, id="Empty srf should get empty relationship dict"),
+]
 
-def test_system_populated_relationship_value_map_not_valid():
-    local_relationships_mapping = {"property": "ProgramAcronym"}
-    srf = SRF(srf_data, system_populated_props, local_relationships_mapping)
+@pytest.mark.parametrize("srf_data, system_populated_porps, system_populated_rels, expected", test_data)
+def test_get_system_populated_relationship_value_map(srf_data, system_populated_porps, system_populated_rels, expected):
+    srf = SRF(srf_data, system_populated_porps, system_populated_rels)
     relationships = srf.get_system_populated_relationship_value_map()
-    assert  relationships == {}
-
-def test_system_populated_relationship_value_map_not_valid2():
-    local_relationships_mapping = {"program.program_acronym": "wrong system property"}
-    srf = SRF(srf_data, system_populated_props, local_relationships_mapping)
-    relationships = srf.get_system_populated_relationship_value_map()
-    assert  relationships == {}
-
-def test_system_populated_relationship_value_missing_srf_value():
-    local_srf_data = {
-        "questionnaireData": {
-            "program": {
-                "name": "My Program",
-                "abbreviation": "  ",
-                "description": "Program description"
-            },
-            "study": {
-                "name": "Ming 2nd condition",
-                "abbreviation": "  ",
-                "description": "ming's second conditionally approved study",
-            }
-        }
-    }
-    srf = SRF(local_srf_data, system_populated_props, system_populated_relationships)
-    relationships = srf.get_system_populated_relationship_value_map()
-    assert relationships == {}
-
-def test_system_populated_relationship_value_empty_srf():
-    local_srf_data = { }
-    srf = SRF(local_srf_data, system_populated_props, system_populated_relationships)
-    relationships = srf.get_system_populated_relationship_value_map()
-    assert relationships == {}
+    assert relationships == expected
