@@ -124,6 +124,15 @@ Relationships:
         Dst: diagnosis
     Props: null
     nanoid: "111222"
+  of_program:
+    Mul: many_to_one
+    Ends:
+      - Src: study
+        Dst: program
+      - Src: participant
+        Dst: program
+    Props: null
+
 UniversalNodeProperties:
   mustHave:
     - id
@@ -345,6 +354,7 @@ PropDefinitions:
     Req: true
   program_acronym:
     Type: string
+    Key: true
     Req: true
   program_description:
     Type: string
