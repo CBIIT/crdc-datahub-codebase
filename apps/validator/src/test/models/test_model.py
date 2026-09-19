@@ -1,28 +1,30 @@
 from unittest import TestCase
 
+import pytest
+
 from test.utils.metadata_validator import create_test_data_model
 from common.constants import STUDY_NAME, STUDY_ACRONYM, STUDY_DESCRIPTION, PROGRAM_ACRONYM
 
 data_model = create_test_data_model()
 
 def test_node_with_required_relationships():
-    rels = data_model.get_node_req_rel_columns('file')
+    rels = data_model.get_final_req_rel_columns_for_node('file')
     assert isinstance(rels, list)
     assert len(rels) == 2
     assert 'diagnosis.diagnosis_id' in rels
     assert 'participant.participant_id' in rels
 
 def test_node_without_required_relationships():
-    rels = data_model.get_node_req_rel_columns('diagnosis')
+    rels = data_model.get_final_req_rel_columns_for_node('diagnosis')
     assert isinstance(rels, list)
     assert len(rels) == 0
 
 def test_node_with_required_but_auto_populated_relationships():
-    rels = data_model.get_node_req_rel_columns('participant')
+    rels = data_model.get_final_req_rel_columns_for_node('participant')
     assert rels == ['study.study_id']
 
 def test_node_with_only_required_but_auto_populated_relationships():
-    rels = data_model.get_node_req_rel_columns('study')
+    rels = data_model.get_final_req_rel_columns_for_node('study')
     assert rels == []
 
 def test_edge_to_column_name_None():
@@ -134,3 +136,14 @@ def test_get_final_required_props():
 def test_get_final_required_props_for_node_with_system_populated_props():
     props = data_model.get_final_required_props_for_node('study')
     TestCase().assertCountEqual(props, ['phs_accession', 'study_data_types'])
+
+must_populated_rel_data = [
+    pytest.param('study', {"program.program_acronym": "ProgramAcronym"}, id='should return when populated is sole relationship'),
+    pytest.param('participant', {"program.program_acronym": "ProgramAcronym"}, id='should return when populated is required relationship'),
+]
+
+@pytest.mark.parametrize('node, expected', must_populated_rel_data)
+def test_get_must_populated_relationships_for_node(node: str, expected: dict):
+    relationships = data_model.get_must_populated_relationships_for_node(node)
+    assert isinstance(relationships, dict)
+    assert relationships == expected

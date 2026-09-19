@@ -57,18 +57,33 @@ class DataModel:
         return {k: v for (k, v) in props.items() if v.get("required") == True}
 
     """
-    get required relationships of a node in the model
+    Return relationship columns user must provide
     """
-    def get_node_req_rel_columns(self, node):
+    def get_final_req_rel_columns_for_node(self, node):
+        required_columns = self.get_req_rel_columns_for_node(node)
+        system_populated_relationships = self.get_system_populated_relationships_for_node(node)
+        result = []
+        for column in required_columns:
+            if column not in system_populated_relationships:
+                result.append(column)
+        return result
+
+    """
+    Return required relationship columns defined in the model
+    """
+    def get_req_rel_columns_for_node(self, node):
         edges = self.mdf_model.edges.values() if self.mdf_model else []
         req_rel_columns = []
-        system_populated_relationships = self.get_system_populated_relationships_for_node(node)
         for edge in edges:
             column_name = self.edge_to_column_name(edge)
-            if edge.src.handle == node and edge.is_required and column_name not in system_populated_relationships:
+            if edge.src.handle == node and edge.is_required:
                 req_rel_columns.append(column_name)
         return req_rel_columns
 
+
+    """
+    Return all relationship columns defined in the model
+    """
     def get_node_rel_columns(self, node):
         edges = self.mdf_model.edges.values() if self.mdf_model else []
         req_rel_columns = []
@@ -133,6 +148,28 @@ class DataModel:
                 result[relationship_column] = system_populated_props[id_prop]
         return result
 
+    """ 
+    returns relationship columns that must be populated even user doesn't include the column
+    """
+    def get_must_populated_relationships_for_node(self, node):
+        all_potential_relationships = self.get_node_rel_columns(node)
+        required_relationships = self.get_req_rel_columns_for_node(node)
+        system_populated_relationships = self.get_system_populated_relationships_for_node(node)
+
+        # sole relationship
+        if len(all_potential_relationships) == 1:
+            return system_populated_relationships
+
+        # required and system populated
+        result = {}
+        for relationship, system_prop in system_populated_relationships.items():
+            if relationship in required_relationships:
+                result[relationship] = system_prop
+        return result
+
+    """
+    Returns properties user must provide
+    """
     def get_final_required_props_for_node(self, node):
         required_props = self.get_node_req_props(node)
         system_populated_props = self.get_system_populated_prop_list()

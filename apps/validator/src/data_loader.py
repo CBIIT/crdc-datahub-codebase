@@ -59,12 +59,16 @@ class DataLoader:
                 df = removeTailingEmptyColumnsAndRows(df)
                 df = df.replace({np.nan: None})  # replace Nan in dataframe with None
                 df = df.reset_index()  # make sure indexes pair with number of rows
-                col_names =list(df.columns)
                 node_type = df[TYPE].iloc[0]
                 system_populated_props, system_populated_relationships = self.model.get_system_populated_props_for_node(node_type)
                 srf = SRF(self.srf_data, system_populated_props, system_populated_relationships)
                 system_populated_values = srf.get_system_populated_property_value_map()
                 system_populated_relationship_values = srf.get_system_populated_relationship_value_map()
+                must_populated_relationship_columns = self.model.get_must_populated_relationships_for_node(node_type)
+                for relationship in must_populated_relationship_columns:
+                    if relationship not in df.columns:
+                        df[relationship] = None
+                col_names = list(df.columns)
                 for index, row in df.iterrows():
                     type = row[TYPE]
                     rawData = df.loc[index].to_dict()

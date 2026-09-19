@@ -521,7 +521,7 @@ class EssentialValidator:
                 self.batch[ERRORS].append(msg)
 
             # check missing required relationship 
-            required_relationships = self.model.get_node_req_rel_columns(type)
+            required_relationships = self.model.get_final_req_rel_columns_for_node(type)
             missed_rels = [ rel for rel in required_relationships if rel not in columns]
             if len(missed_rels) > 0:
                 msg = f'“{file_info[FILE_NAME]}”: '
