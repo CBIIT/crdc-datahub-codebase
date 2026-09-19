@@ -3,7 +3,7 @@ from unittest import TestCase
 import pytest
 
 from test.utils.metadata_validator import create_test_data_model
-from common.constants import STUDY_NAME, STUDY_ACRONYM, STUDY_DESCRIPTION, PROGRAM_ACRONYM
+from common.constants import SYSTEM_STUDY_NAME, SYSTEM_STUDY_ACRONYM, SYSTEM_STUDY_DESCRIPTION, SYSTEM_PROGRAM_NAME, SYSTEM_PROGRAM_ACRONYM, SYSTEM_PROGRAM_DESCRIPTION
 
 data_model = create_test_data_model()
 
@@ -86,11 +86,11 @@ def test_get_system_populated_props():
     system_populated_props = data_model.get_system_populated_props()
     assert isinstance(system_populated_props, dict)
     assert 'study_name' in system_populated_props
-    assert system_populated_props['study_name'] == STUDY_NAME
+    assert system_populated_props['study_name'] == SYSTEM_STUDY_NAME
     assert 'study_acronym' in system_populated_props
-    assert system_populated_props['study_acronym'] == STUDY_ACRONYM
+    assert system_populated_props['study_acronym'] == SYSTEM_STUDY_ACRONYM
     assert 'study_description' in system_populated_props
-    assert system_populated_props['study_description'] == STUDY_DESCRIPTION
+    assert system_populated_props['study_description'] == SYSTEM_STUDY_DESCRIPTION
     assert 'study_description' in system_populated_props
 
 def test_get_system_populated_prop_list():
@@ -104,26 +104,26 @@ def test_get_system_populated_props_for_node_with_system_populated_props():
     props, relationships = data_model.get_system_populated_props_for_node('study')
     assert isinstance(props, dict)
     assert 'study_name' in props
-    assert props['study_name'] == STUDY_NAME
+    assert props['study_name'] == SYSTEM_STUDY_NAME
     assert 'study_description' in props
-    assert props['study_description'] == STUDY_DESCRIPTION
+    assert props['study_description'] == SYSTEM_STUDY_DESCRIPTION
     assert 'study_acronym' in props
-    assert props['study_acronym'] == STUDY_ACRONYM
+    assert props['study_acronym'] == SYSTEM_STUDY_ACRONYM
 
     assert "program.program_acronym" in relationships
-    assert relationships["program.program_acronym"] == PROGRAM_ACRONYM
+    assert relationships["program.program_acronym"] == SYSTEM_PROGRAM_ACRONYM
 
 def test_get_system_populated_relationships_for_node():
     relationships = data_model.get_system_populated_relationships_for_node('study')
     assert isinstance(relationships, dict)
     assert 'program.program_acronym' in relationships
-    assert relationships['program.program_acronym'] == PROGRAM_ACRONYM
+    assert relationships['program.program_acronym'] == SYSTEM_PROGRAM_ACRONYM
 
 def test_get_system_populated_relationships_for_node_2():
     relationships = data_model.get_system_populated_relationships_for_node('participant')
     assert isinstance(relationships, dict)
     assert 'program.program_acronym' in relationships
-    assert relationships['program.program_acronym'] == PROGRAM_ACRONYM
+    assert relationships['program.program_acronym'] == SYSTEM_PROGRAM_ACRONYM
 
 def test_get_system_populated_relationships_for_node_with_no_system_populated_relationships():
     relationships = data_model.get_system_populated_relationships_for_node('file')
