@@ -71,6 +71,17 @@ def test_get_parents_with_blank_parent_value_match_auto_populate():
         "parentIDValue": "populated-id"
     }]
 
+def test_get_parents_with_none_parent_value_match_auto_populate():
+    """parent column exist, but only space/blank value, use auto_populate data available"""
+    raw_data = {"some-prop": "some value", "study.study_id": None}
+    populated = {"study.study_id": "populated-id"}
+    parents = loader.get_parents({"study.study_id"}, raw_data, populated )
+    assert parents == [{
+        "parentType": "study",
+        "parentIDPropName": "study_id",
+        "parentIDValue": "populated-id"
+    }]
+
 def test_get_parents_with_blank_parent_value_un_matched_auto_populate():
     """parent column exist, but only space/blank value, no auto_populate data available"""
     raw_data = {"some-prop": "some value", "study.study_id": "   "}
@@ -86,8 +97,12 @@ def test_get_parents_with_no_parent_value_unmatch_auto_populate():
     assert parents == []
 
 def test_get_parents_with_no_parent_column_match_auto_populate():
-    """ parent column doesn't exist, do not auto populate even with auto populate data available """
+    """ parent column doesn't exist, auto populate if auto populate data available """
     raw_data = {"some-prop": "some value"}
     populated = {"study.study_id": "populated-id"}
     parents = loader.get_parents({"study.study_id"}, raw_data, populated )
-    assert parents == []
+    assert parents == [{
+        "parentType": "study",
+        "parentIDPropName": "study_id",
+        "parentIDValue": "populated-id"
+    }]

@@ -266,7 +266,7 @@ class DataLoader:
                 else:
                     parents.append({"parentType": parent_type, "parentIDPropName": parent_id_prop, "parentIDValue": val.strip()})
                 rawData.update({relation.replace(".", "|"): val})
-            elif isinstance(val, str) and val.strip() == "" and relation in system_populated_values:
+            elif relation in system_populated_values:
                 value = system_populated_values.get(relation, "").strip()
                 if value:
                     parents.append({"parentType": parent_type, "parentIDPropName": parent_id_prop, "parentIDValue": value})

@@ -167,3 +167,9 @@ def test_system_populated_relationship_value_missing_srf_value():
     srf = SRF(local_srf_data, system_populated_props, system_populated_relationships)
     relationships = srf.get_system_populated_relationship_value_map()
     assert relationships == {}
+
+def test_system_populated_relationship_value_empty_srf():
+    local_srf_data = { }
+    srf = SRF(local_srf_data, system_populated_props, system_populated_relationships)
+    relationships = srf.get_system_populated_relationship_value_map()
+    assert relationships == {}
