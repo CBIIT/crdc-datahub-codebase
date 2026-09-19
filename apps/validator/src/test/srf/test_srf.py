@@ -31,107 +31,94 @@ system_populated_relationships = {
 }
 
 
-def test_get_study_name_from_empty_srf():
-    srf = SRF()
-    study_name = srf._get_property_value("study_name")
-    assert study_name is None
+get_property_value_test_data = [
+    pytest.param({}, {}, "study_name", None, id="Empty srf with no system populated props should return None"),
+    pytest.param(srf_data, {}, "study_name", None, id="Srf with no system populated props should return None"),
+    pytest.param(
+        {"questionnaireData": {"study": {"name": "  "}}},
+        system_populated_props,
+        "study_name",
+        "",
+        id="Whitespace-only srf value should return empty string",
+    ),
+    pytest.param(srf_data, system_populated_props, "study_name", "Ming 2nd condition", id="Should get study name"),
+    pytest.param(srf_data, system_populated_props, "program_name", "My Program", id="Should get program name"),
+    pytest.param({}, system_populated_props, "program_name", "", id="Empty srf should return empty string for mapped property"),
+    pytest.param(
+        {"questionnaireData": json.dumps(srf_data["questionnaireData"])},
+        system_populated_props,
+        "study_acronym",
+        "MING-COND-2",
+        id="String questionnaire data should get study acronym",
+    ),
+]
 
-def test_get_study_name_from_srf_with_no_system_populated_props():
-    srf = SRF(srf_data, {})
-    study_name = srf._get_property_value("study_name")
-    assert study_name is None
+@pytest.mark.parametrize("srf_data, system_populated_porps, prop, expected", get_property_value_test_data)
+def test_get_property_value(srf_data, system_populated_porps, prop, expected):
+    srf = SRF(srf_data, system_populated_porps)
+    assert srf._get_property_value(prop) == expected
 
-def test_get_study_name_from_srf_with_multiple_spaces_value():
-    local_srf_data = {
-        "questionnaireData": {
-            "study": {
-                "name": "  "
+property_value_map_test_data = [
+    pytest.param(srf_data, {}, {}, id="No system populated props should get empty dict"),
+    pytest.param(
+        srf_data,
+        system_populated_props,
+        {
+            "program_name": "My Program",
+            "program_acronym": "MY_PROGRAM",
+            "program_description": "Program description",
+            "study_name": "Ming 2nd condition",
+            "study_acronym": "MING-COND-2",
+            "study_description": "ming's second conditionally approved study",
+        },
+        id="Should get correct property value map",
+    ),
+    pytest.param(
+        {
+            "questionnaireData": {
+                "program": {
+                    "name": "My Program",
+                    "abbreviation": "MY_PROGRAM",
+                    "description": "Program description",
+                },
+                "study": {
+                    "name": "Ming 2nd condition",
+                    "abbreviation": "  ",
+                    "description": "ming's second conditionally approved study",
+                },
             }
-        }
-    }
-    srf = SRF(local_srf_data, system_populated_props)
-    study_name = srf._get_property_value("study_name")
-    assert study_name is ""
+        },
+        system_populated_props,
+        {
+            "program_name": "My Program",
+            "program_acronym": "MY_PROGRAM",
+            "program_description": "Program description",
+            "study_name": "Ming 2nd condition",
+            "study_acronym": "",
+            "study_description": "ming's second conditionally approved study",
+        },
+        id="Blank srf value should get empty string in property map",
+    ),
+    pytest.param(
+        {},
+        system_populated_props,
+        {
+            "program_name": "",
+            "program_acronym": "",
+            "program_description": "",
+            "study_name": "",
+            "study_acronym": "",
+            "study_description": "",
+        },
+        id="Empty srf should return properties with empty values",
+    ),
+]
 
-def test_get_study_name():
-    srf = SRF(srf_data, system_populated_props)
-    study_name = srf._get_property_value("study_name")
-    assert study_name == "Ming 2nd condition"
-
-def test_get_program_name():
-    srf = SRF(srf_data, system_populated_props)
-    program_name = srf._get_property_value("program_name")
-    assert program_name == "My Program"
-
-def test_get_program_name_when_srf_is_empty():
-    srf = SRF({}, system_populated_props)
-    program_name = srf._get_property_value("program_name")
-    assert program_name == ""
-
-def test_get_study_acronym_from_string_questionnaire():
-    srf_string_data = {
-        "questionnaireData": json.dumps(srf_data['questionnaireData'])
-    }
-    srf = SRF(srf_string_data, system_populated_props)
-    value = srf._get_property_value("study_acronym")
-    assert value == "MING-COND-2"
-
-def test_get_all_system_populated_values_with_no_system_populated_props():
-    srf = SRF(srf_data, {})
+@pytest.mark.parametrize("srf_data, system_populated_porps, expected", property_value_map_test_data)
+def test_get_system_populated_property_value_map(srf_data, system_populated_porps, expected):
+    srf = SRF(srf_data, system_populated_porps)
     values = srf.get_system_populated_property_value_map()
-    assert values == {}
-
-def test_get_all_system_populated_values_with_system_populated_props():
-    srf = SRF(srf_data, system_populated_props)
-    values = srf.get_system_populated_property_value_map()
-    assert values == {
-        "program_name": "My Program",
-        "program_acronym": "MY_PROGRAM",
-        "program_description": "Program description",
-        "study_name": "Ming 2nd condition",
-        "study_acronym": "MING-COND-2",
-        "study_description": "ming's second conditionally approved study",
-    }
-
-
-def test_get_all_system_populated_values_with_empty_values():
-    local_srf_data = {
-        "questionnaireData": {
-            "program": {
-                "name": "My Program",
-                "abbreviation": "MY_PROGRAM",
-                "description": "Program description"
-            },
-            "study": {
-                "name": "Ming 2nd condition",
-                "abbreviation": "  ",
-                "description": "ming's second conditionally approved study",
-            }
-        }
-    }
-    srf = SRF(local_srf_data, system_populated_props)
-    values = srf.get_system_populated_property_value_map()
-    assert values == {
-        "program_name": "My Program",
-        "program_acronym": "MY_PROGRAM",
-        "program_description": "Program description",
-        "study_name": "Ming 2nd condition",
-        "study_acronym": "",
-        "study_description": "ming's second conditionally approved study",
-    }
-
-def test_empty_srf_data_still_return_propertys_with_empty_values():
-    local_srf_data = {}
-    srf = SRF(local_srf_data, system_populated_props)
-    values = srf.get_system_populated_property_value_map()
-    assert values == {
-        "program_name": "",
-        "program_acronym": "",
-        "program_description": "",
-        "study_name": "",
-        "study_acronym": "",
-        "study_description": "",
-    }
+    assert values == expected
 
 test_data = [
     pytest.param(srf_data, system_populated_props, {"program.program_acronym": "ProgramAcronym"}, {"program.program_acronym": "MY_PROGRAM" }, id="Should get correct relationship dict"),
