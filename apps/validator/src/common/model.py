@@ -131,7 +131,7 @@ class DataModel:
         props = self.get_node_props(node)
         system_populated_props = self.get_system_populated_prop_list()
         if not props or not system_populated_props:
-            return {}
+            return ({}, {})
         populated_props = set(props.keys()) & set(system_populated_props)
         populated_props_dict = self.get_system_populated_props()
         system_populated_properties = {prop: populated_props_dict[prop] for prop in populated_props}
