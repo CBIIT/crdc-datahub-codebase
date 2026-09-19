@@ -443,7 +443,7 @@ class EssentialValidator:
 
         id_field = self.model.get_node_id(type)
         # check if missing id property
-        system_populated_props = self.model.get_system_populated_props_for_node(type).keys()
+        system_populated_props, system_populated_relationships = self.model.get_system_populated_props_for_node(type)
         if id_field and not id_field in columns:
             if id_field in system_populated_props:
                 self.df[id_field] = np.nan
