@@ -443,7 +443,7 @@ class EssentialValidator:
 
         id_field = self.model.get_node_id(type)
         # check if missing id property
-        system_populated_props = self.model.get_system_populated_props_for_node(type).keys()
+        system_populated_props, system_populated_relationships = self.model.get_system_populated_props_for_node(type)
         if id_field and not id_field in columns:
             if id_field in system_populated_props:
                 self.df[id_field] = np.nan
@@ -656,7 +656,8 @@ class EssentialValidator:
                 return False, msgs
         
         # check if has relationship
-        if len(rel_props) == 0:
+        system_populated_relationships = self.model.get_system_populated_relationships_for_node(type).keys()
+        if len(rel_props) == 0 and len(system_populated_relationships) == 0:
             return False, [f'“{file_info[FILE_NAME]}”: All relationship columns are missing. Please ensure at least one relationship column is included.']
         
         def_rel_nodes = [ key for key in def_rel.keys()]

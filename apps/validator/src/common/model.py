@@ -62,11 +62,21 @@ class DataModel:
     def get_node_req_rel_columns(self, node):
         edges = self.mdf_model.edges.values() if self.mdf_model else []
         req_rel_columns = []
+        system_populated_relationships = self.get_system_populated_relationships_for_node(node)
         for edge in edges:
-            if edge.src.handle == node and edge.is_required:
+            column_name = self.edge_to_column_name(edge)
+            if edge.src.handle == node and edge.is_required and column_name not in system_populated_relationships:
+                req_rel_columns.append(column_name)
+        return req_rel_columns
+
+    def get_node_rel_columns(self, node):
+        edges = self.mdf_model.edges.values() if self.mdf_model else []
+        req_rel_columns = []
+        for edge in edges:
+            if edge.src.handle == node:
                 req_rel_columns.append(self.edge_to_column_name(edge))
         return req_rel_columns
-    
+
     """
     get file nodes in the model
     """
@@ -109,7 +119,19 @@ class DataModel:
             return {}
         populated_props = set(props.keys()) & set(system_populated_props)
         populated_props_dict = self.get_system_populated_props()
-        return {prop: populated_props_dict[prop] for prop in populated_props}
+        system_populated_properties = {prop: populated_props_dict[prop] for prop in populated_props}
+        system_populated_relationships = self.get_system_populated_relationships_for_node(node)
+        return system_populated_properties, system_populated_relationships
+
+    def get_system_populated_relationships_for_node(self, node):
+        relationship_columns = self.get_node_rel_columns(node)
+        system_populated_props = self.get_system_populated_props()
+        result = {}
+        for relationship_column in relationship_columns:
+            node, id_prop = relationship_column.split('.')
+            if id_prop in system_populated_props:
+                result[relationship_column] = system_populated_props[id_prop]
+        return result
 
     def get_final_required_props_for_node(self, node):
         required_props = self.get_node_req_props(node)
@@ -167,6 +189,3 @@ class DataModel:
 
     def get_edges(self):
         return self.mdf_model.edges.values() if self.mdf_model else []
-    
-    
-    

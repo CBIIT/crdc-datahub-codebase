@@ -1,14 +1,12 @@
 from unittest import TestCase
 
-from test.utils.mock_metadata_validator import create_mock_data_model
-from common.constants import STUDY_NAME, STUDY_ACRONYM, STUDY_DESCRIPTION
+from test.utils.metadata_validator import create_test_data_model
+from common.constants import STUDY_NAME, STUDY_ACRONYM, STUDY_DESCRIPTION, PROGRAM_ACRONYM
 
-
-data_model = create_mock_data_model()
+data_model = create_test_data_model()
 
 def test_node_with_required_relationships():
     rels = data_model.get_node_req_rel_columns('file')
-    assert rels is not None
     assert isinstance(rels, list)
     assert len(rels) == 2
     assert 'diagnosis.diagnosis_id' in rels
@@ -16,9 +14,16 @@ def test_node_with_required_relationships():
 
 def test_node_without_required_relationships():
     rels = data_model.get_node_req_rel_columns('diagnosis')
-    assert rels is not None
     assert isinstance(rels, list)
     assert len(rels) == 0
+
+def test_node_with_required_but_auto_populated_relationships():
+    rels = data_model.get_node_req_rel_columns('participant')
+    assert rels == ['study.study_id']
+
+def test_node_with_only_required_but_auto_populated_relationships():
+    rels = data_model.get_node_req_rel_columns('study')
+    assert rels == []
 
 def test_edge_to_column_name_None():
     assert data_model.edge_to_column_name(None) == ''
@@ -91,10 +96,10 @@ def test_get_system_populated_prop_list():
     TestCase().assertCountEqual(system_populated_prop_list, ['study_name', 'study_description', 'study_acronym', 'program_name', 'program_acronym', 'program_description'])
 
 def test_get_system_populated_props_for_node_without_system_populated_props():
-    assert data_model.get_system_populated_props_for_node('file') == {}
+    assert data_model.get_system_populated_props_for_node('file') == ({}, {})
 
 def test_get_system_populated_props_for_node_with_system_populated_props():
-    props = data_model.get_system_populated_props_for_node('study')
+    props, relationships = data_model.get_system_populated_props_for_node('study')
     assert isinstance(props, dict)
     assert 'study_name' in props
     assert props['study_name'] == STUDY_NAME
@@ -102,6 +107,25 @@ def test_get_system_populated_props_for_node_with_system_populated_props():
     assert props['study_description'] == STUDY_DESCRIPTION
     assert 'study_acronym' in props
     assert props['study_acronym'] == STUDY_ACRONYM
+
+    assert "program.program_acronym" in relationships
+    assert relationships["program.program_acronym"] == PROGRAM_ACRONYM
+
+def test_get_system_populated_relationships_for_node():
+    relationships = data_model.get_system_populated_relationships_for_node('study')
+    assert isinstance(relationships, dict)
+    assert 'program.program_acronym' in relationships
+    assert relationships['program.program_acronym'] == PROGRAM_ACRONYM
+
+def test_get_system_populated_relationships_for_node_2():
+    relationships = data_model.get_system_populated_relationships_for_node('participant')
+    assert isinstance(relationships, dict)
+    assert 'program.program_acronym' in relationships
+    assert relationships['program.program_acronym'] == PROGRAM_ACRONYM
+
+def test_get_system_populated_relationships_for_node_with_no_system_populated_relationships():
+    relationships = data_model.get_system_populated_relationships_for_node('file')
+    assert relationships == {}
 
 def test_get_final_required_props():
     props = data_model.get_final_required_props_for_node('file')
