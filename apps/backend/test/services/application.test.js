@@ -1592,7 +1592,7 @@ describe('Application', () => {
                 status: IN_REVIEW,
                 studyName: 'study1',
                 sequenceNumber: 2,
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+                questionnaireData: { program: { _id: 'program1' } },
             };
             const existingStudy = { _id: 'existing-study', applicationID: 'source-app', createdAt: '2020-01-01' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
@@ -1628,7 +1628,7 @@ describe('Application', () => {
                 status: IN_REVIEW,
                 studyName: 'study1',
                 sequenceNumber: 2,
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+                questionnaireData: { program: { _id: 'program1' } },
             };
             // applicationID already points at the application being (re)approved, but other fields
             // (e.g. dbGaPID, GPAName, controlledAccess) may still have changed and should be refreshed.
@@ -1662,7 +1662,7 @@ describe('Application', () => {
                 status: IN_REVIEW,
                 studyName: 'study1',
                 sequenceNumber: 2,
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+                questionnaireData: { program: { _id: 'program1' } },
             };
             const existingStudy = { _id: 'other-study', applicationID: 'unrelated-source' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
@@ -1696,7 +1696,7 @@ describe('Application', () => {
                 studyName: 'study1',
                 programName: 'Existing Program',
                 sequenceNumber: 2,
-                questionnaireData: JSON.stringify({ program: { _id: null }, accessTypes: ['Open Access'] }),
+                questionnaireData: { program: { _id: null }, accessTypes: ['Open Access'] },
             };
             const existingStudy = { _id: 'existing-study', applicationID: 'source-app', createdAt: '2020-01-01' };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
@@ -1729,7 +1729,7 @@ describe('Application', () => {
                 _id: 'app1',
                 status: IN_REVIEW,
                 studyName: 'study1',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+                questionnaireData: { program: { _id: 'program1' } }
             };
             app.getApplicationById = jest.fn().mockResolvedValue(mockApplication);
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
@@ -1749,7 +1749,7 @@ describe('Application', () => {
                 _id: 'app1',
                 status: IN_REVIEW,
                 studyName: 'study1',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+                questionnaireData: { program: { _id: 'program1' } },
             };
             mockApprovedStudiesService.findByStudyName.mockResolvedValue([]);
             mockProgramService.getProgramByID.mockResolvedValue({ _id: 'program1' });
@@ -1777,7 +1777,7 @@ describe('Application', () => {
                 programName: 'Program One',
                 programAbbreviation: 'PO',
                 programDescription: 'Program Description',
-                questionnaireData: JSON.stringify({ program: { _id: null } })
+                questionnaireData: { program: { _id: null } }
             };
             const mockQuestionnaire = { program: { _id: null } };
             const mockNewProgram = { _id: 'new-program-1', name: 'Program One' };
@@ -1831,7 +1831,7 @@ describe('Application', () => {
                 programName: 'Program One',
                 programAbbreviation: 'PO',
                 programDescription: 'Program Description',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+                questionnaireData: { program: { _id: 'program1' } }
             };
             const mockQuestionnaire = { program: { _id: 'program1' }, accessTypes: [], study: {} };
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
@@ -1879,7 +1879,7 @@ describe('Application', () => {
                 programName: 'Program One',
                 programAbbreviation: 'PO',
                 programDescription: 'Program Description',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+                questionnaireData: { program: { _id: 'program1' } }
             };
             const mockQuestionnaire = { program: { _id: 'program1' }, accessTypes: [], study: {} };
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
@@ -1942,7 +1942,7 @@ describe('Application', () => {
                 programName: 'Program One',
                 programAbbreviation: 'PO',
                 programDescription: 'Program Description',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+                questionnaireData: { program: { _id: 'program1' } }
             };
             const mockQuestionnaire = { program: { _id: 'program1' }, accessTypes: [], study: {} };
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
@@ -2007,7 +2007,7 @@ describe('Application', () => {
                 programName: 'Program One',
                 programAbbreviation: 'PO',
                 programDescription: 'Program Description',
-                questionnaireData: JSON.stringify({ program: { _id: null } })
+                questionnaireData: { program: { _id: null } }
             };
             const mockQuestionnaire = { program: { _id: null } };
             const mockNewProgram = { _id: 'new-program-1', name: 'Program One' };
@@ -2052,7 +2052,7 @@ describe('Application', () => {
                 status: IN_REVIEW,
                 studyName: 'study1',
                 programName: 'Existing Program',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+                questionnaireData: { program: { _id: 'program1' } }
             };
             const mockQuestionnaire = { program: { _id: 'program1' } };
             const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
@@ -2095,7 +2095,7 @@ describe('Application', () => {
                 status: IN_REVIEW,
                 studyName: 'study1',
                 programName: 'Existing Program',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+                questionnaireData: { program: { _id: 'program1' } }
             };
             const mockQuestionnaire = { program: { _id: 'program1' } };
             const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
@@ -2136,7 +2136,7 @@ describe('Application', () => {
                 status: IN_REVIEW,
                 studyName: 'study1',
                 programName: 'Duplicate Program',
-                questionnaireData: JSON.stringify({ program: { _id: null } })
+                questionnaireData: { program: { _id: null } }
             };
             const mockQuestionnaire = { program: { _id: null } };
             const mockDuplicateProgram = { _id: 'duplicate1', name: 'Duplicate Program' };
@@ -2157,7 +2157,7 @@ describe('Application', () => {
                 status: IN_REVIEW,
                 studyName: 'study1',
                 programName: 'Existing Program',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } })
+                questionnaireData: { program: { _id: 'program1' } }
             };
             const mockQuestionnaire = { program: { _id: 'program1' } };
             const mockExistingProgram = { _id: 'program1', name: 'Existing Program' };
@@ -2211,7 +2211,7 @@ describe('Application', () => {
                     applicantName: 'Submitter Name'
                 },
                 programName: 'Program One',
-                questionnaireData: JSON.stringify(mockQuestionnaire)
+                questionnaireData: mockQuestionnaire
             };
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
             const approvedFromDb = {
@@ -2279,7 +2279,7 @@ describe('Application', () => {
                 ORCID: '0000-0001',
                 PI: 'PI Name',
                 organization: { name: 'Org One' },
-                questionnaireData: JSON.stringify(mockQuestionnaire)
+                questionnaireData: mockQuestionnaire
             };
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
             const approvedFromDb = {
@@ -2333,7 +2333,7 @@ describe('Application', () => {
                 status: IN_REVIEW,
                 studyName: 'study1',
                 programName: 'Program One',
-                questionnaireData: JSON.stringify(mockQuestionnaire)
+                questionnaireData: mockQuestionnaire
             };
             const mockExistingProgram = { _id: 'program1', name: 'Program One' };
 
@@ -2437,7 +2437,7 @@ describe('Application', () => {
                 _id: 'app1',
                 status: IN_REVIEW,
                 studyName: 'study1',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+                questionnaireData: { program: { _id: 'program1' } },
             };
             const mockQuestionnaire = { program: { _id: 'program1' } };
 
@@ -2469,7 +2469,7 @@ describe('Application', () => {
                 _id: 'app1',
                 status: IN_REVIEW,
                 studyName: 'study1',
-                questionnaireData: JSON.stringify({ program: { _id: 'program1' } }),
+                questionnaireData: { program: { _id: 'program1' } },
             };
             const mockQuestionnaire = { program: { _id: 'program1' } };
             const approvedFromDb = {
@@ -2611,7 +2611,7 @@ describe('Application', () => {
                 version: '1.0',
                 studyName: 'Default Study',
                 studyAbbreviation: 'DS',
-                questionnaireData: '{}',
+                questionnaireData: {},
                 applicant: {
                     applicantID: 'user-applicant-1',
                     applicantEmail: 'submitter@test.com',
@@ -2715,7 +2715,7 @@ describe('Application', () => {
                 studyAbbreviation: 'TS',
                 programName: 'CDS',
                 PI: 'Dr. Jane Smith',
-                questionnaireData: '{}',
+                questionnaireData: {},
                 applicant: {
                     applicantID: 'user-applicant-1',
                     applicantEmail: 'submitter@test.com',
@@ -2942,7 +2942,7 @@ describe('Application', () => {
             status: APPROVED,
             sequenceNumber: 1,
             nextRevisionId: null,
-            questionnaireData: '{}',
+            questionnaireData: {},
             programName: 'Prog',
             studyName: 'Study',
             studyAbbreviation: 'ST',
@@ -3397,7 +3397,7 @@ describe('Application', () => {
             studyAbbreviation: 'TS',
             programName: 'Test Program',
             programAbbreviation: 'TP',
-            questionnaireData: JSON.stringify({ primaryContact: { email: 'pc@test.com' }, pi: { email: 'pi@test.com' } }),
+            questionnaireData: { primaryContact: { email: 'pc@test.com' }, pi: { email: 'pi@test.com' } },
         };
 
         const ownerUser = {

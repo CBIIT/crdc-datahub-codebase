@@ -2,9 +2,9 @@ from common.constants import ERRORS, STATUS_PASSED, STATUS_ERROR, WARNINGS
 
 from metadata_validator import get_column_name_from_parent_obj
 
-from test.utils.mock_metadata_validator import create_mock_validator
+from test.utils.metadata_validator import create_test_validator
 
-validator = create_mock_validator()
+validator = create_test_validator()
 
 
 def test_column_name_from_parent_obj():

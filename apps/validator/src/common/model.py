@@ -1,5 +1,5 @@
 from common.constants import NODES_LABEL, RELATIONSHIPS, LIST_DELIMITER_PROP, PROPERTY_NAMES, OMIT_DCF_PREFIX, \
-    COMPOSITION_KEY, DEF_SEMANTICS, DEF_MAIN_NODES, DEF_FILE_NODES, DEF_FILE_NAME_FIELD
+    COMPOSITION_KEY, DEF_SEMANTICS, DEF_MAIN_NODES, DEF_FILE_NODES, DEF_FILE_NAME_FIELD, SYSTEM_POPULATED_PROPS
 
 
 class DataModel:
@@ -57,16 +57,41 @@ class DataModel:
         return {k: v for (k, v) in props.items() if v.get("required") == True}
 
     """
-    get required relationships of a node in the model
+    Return relationship columns user must provide
     """
-    def get_node_req_rel_columns(self, node):
+    def get_final_req_rel_columns_for_node(self, node):
+        required_columns = self.get_req_rel_columns_for_node(node)
+        system_populated_relationships = self.get_system_populated_relationships_for_node(node)
+        result = []
+        for column in required_columns:
+            if column not in system_populated_relationships:
+                result.append(column)
+        return result
+
+    """
+    Return required relationship columns defined in the model
+    """
+    def get_req_rel_columns_for_node(self, node):
         edges = self.mdf_model.edges.values() if self.mdf_model else []
         req_rel_columns = []
         for edge in edges:
+            column_name = self.edge_to_column_name(edge)
             if edge.src.handle == node and edge.is_required:
+                req_rel_columns.append(column_name)
+        return req_rel_columns
+
+
+    """
+    Return all relationship columns defined in the model
+    """
+    def get_node_rel_columns(self, node):
+        edges = self.mdf_model.edges.values() if self.mdf_model else []
+        req_rel_columns = []
+        for edge in edges:
+            if edge.src.handle == node:
                 req_rel_columns.append(self.edge_to_column_name(edge))
         return req_rel_columns
-    
+
     """
     get file nodes in the model
     """
@@ -95,7 +120,62 @@ class DataModel:
     """
     def get_configured_prop_name(self, prop_name):
         return self._get_semantics().get(PROPERTY_NAMES, {}).get(prop_name)
+
+    def get_system_populated_props(self):
+        return self._get_semantics().get(SYSTEM_POPULATED_PROPS, {})
     
+    def get_system_populated_prop_list(self):
+        return list(self.get_system_populated_props().keys())
+
+    def get_system_populated_props_for_node(self, node):
+        props = self.get_node_props(node)
+        system_populated_props = self.get_system_populated_prop_list()
+        if not props or not system_populated_props:
+            return ({}, {})
+        populated_props = set(props.keys()) & set(system_populated_props)
+        populated_props_dict = self.get_system_populated_props()
+        system_populated_properties = {prop: populated_props_dict[prop] for prop in populated_props}
+        system_populated_relationships = self.get_system_populated_relationships_for_node(node)
+        return system_populated_properties, system_populated_relationships
+
+    def get_system_populated_relationships_for_node(self, node):
+        relationship_columns = self.get_node_rel_columns(node)
+        system_populated_props = self.get_system_populated_props()
+        result = {}
+        for relationship_column in relationship_columns:
+            node, id_prop = relationship_column.split('.')
+            if id_prop in system_populated_props:
+                result[relationship_column] = system_populated_props[id_prop]
+        return result
+
+    """ 
+    returns relationship columns that must be populated even user doesn't include the column
+    """
+    def get_must_populated_relationships_for_node(self, node):
+        all_potential_relationships = self.get_node_rel_columns(node)
+        required_relationships = self.get_req_rel_columns_for_node(node)
+        system_populated_relationships = self.get_system_populated_relationships_for_node(node)
+
+        # sole relationship
+        if len(all_potential_relationships) == 1:
+            return system_populated_relationships
+
+        # required and system populated
+        result = {}
+        for relationship, system_prop in system_populated_relationships.items():
+            if relationship in required_relationships:
+                result[relationship] = system_prop
+        return result
+
+    """
+    Returns properties user must provide
+    """
+    def get_final_required_props_for_node(self, node):
+        required_props = self.get_node_req_props(node)
+        system_populated_props = self.get_system_populated_prop_list()
+        final_required_props = list(set(required_props.keys()) - set(system_populated_props))
+        return final_required_props
+
     """
     get file name property, pick first file node name if there are multiple file nodes
     """
@@ -146,6 +226,3 @@ class DataModel:
 
     def get_edges(self):
         return self.mdf_model.edges.values() if self.mdf_model else []
-    
-    
-    

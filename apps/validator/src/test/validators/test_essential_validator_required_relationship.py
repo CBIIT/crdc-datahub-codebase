@@ -26,8 +26,9 @@ def _make_validator(required_rel_columns):
     validator.model.get_node_id.return_value = ID_FIELD
     validator.model.get_composition_key.return_value = None
     validator.model.get_node_req_props.return_value = {}
-    validator.model.get_node_req_rel_columns.return_value = required_rel_columns
+    validator.model.get_final_req_rel_columns_for_node.return_value = required_rel_columns
     validator.model.get_node_relationships.return_value = {}
+    validator.model.get_system_populated_props_for_node.return_value = ({}, {})
     validator.def_file_nodes = []
     validator.def_file_name = None
     validator.submission_intention = "New"
