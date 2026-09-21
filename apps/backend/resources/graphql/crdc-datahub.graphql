@@ -968,8 +968,11 @@ type Query {
     "Limit to current user only"
     getMyUser : User
 
-    "Users with user:manage see users per their scope. Users with submission_request:reopen (without user:manage) see Submitter/User accounts with submission_request:create only."
+    "Users with user:manage see users per their scope."
     listUsers: [User]
+
+    "Users with submission_request:reopen see Submitter/User accounts with submission_request:create only."
+    listReopenOwners: [UserInfo]
     listActiveCurators: [UserInfo]
     getUser(userID: ID!): User
 

@@ -8,8 +8,8 @@ import { Controller, useForm } from "react-hook-form";
 import { hasPermission } from "@/config/AuthPermissions";
 
 import {
-  LIST_USERS,
-  ListUsersResp,
+  LIST_REOPEN_OWNERS,
+  ListReopenOwnersResp,
   REOPEN_APPROVED_SR,
   ReopenApprovedSRInput,
   ReopenApprovedSRResp,
@@ -104,7 +104,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
 
   const selectedOwner = watch("owner");
 
-  const [listUsers] = useLazyQuery<ListUsersResp>(LIST_USERS, {
+  const [listReopenOwners] = useLazyQuery<ListReopenOwnersResp>(LIST_REOPEN_OWNERS, {
     context: { clientName: "backend" },
     fetchPolicy: "cache-first",
   });
@@ -148,17 +148,15 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
     }
 
     try {
-      const { data, error } = await listUsers();
-      if (error || !data?.listUsers) {
+      const { data, error } = await listReopenOwners();
+      if (error || !data?.listReopenOwners) {
         throw new Error("Unable to retrieve users.");
       }
 
-      let eligibleUsers: UserOption[] = data.listUsers
-        .filter((u) => u.userStatus === "Active" && (u.role === "User" || u.role === "Submitter"))
-        .map((u) => ({
-          _id: u._id,
-          label: [u.firstName, u.lastName].join(" ").trim(),
-        }));
+      let eligibleUsers: UserOption[] = data.listReopenOwners.map((u) => ({
+        _id: u.userID,
+        label: [u.firstName, u.lastName].join(" ").trim(),
+      }));
 
       // Make sure the current owner is always in the options list
       if (currentOwnerOption && !eligibleUsers.some((u) => u._id === currentOwnerOption._id)) {
@@ -183,7 +181,7 @@ const ReopenApplicationButton = ({ application, onComplete, disabled, ...rest }:
         variant: "error",
       });
     }
-  }, [currentOwnerOption, enqueueSnackbar, isInternalUser, listUsers, setValue]);
+  }, [currentOwnerOption, enqueueSnackbar, isInternalUser, listReopenOwners, setValue]);
 
   const onCloseDialog = useCallback(() => {
     setConfirmOpen(false);

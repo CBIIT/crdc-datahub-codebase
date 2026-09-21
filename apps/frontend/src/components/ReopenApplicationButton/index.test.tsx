@@ -10,8 +10,8 @@ import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 
 import {
-  LIST_USERS,
-  ListUsersResp,
+  LIST_REOPEN_OWNERS,
+  ListReopenOwnersResp,
   REOPEN_APPROVED_SR,
   ReopenApprovedSRInput,
   ReopenApprovedSRResp,
@@ -27,21 +27,16 @@ type TestParentProps = {
   children: React.ReactNode;
 };
 
-const listUsersMock: MockedResponse<ListUsersResp> = {
+const listUsersMock: MockedResponse<ListReopenOwnersResp> = {
   request: {
-    query: LIST_USERS,
+    query: LIST_REOPEN_OWNERS,
   },
   variableMatcher: () => true,
   result: {
     data: {
-      listUsers: [
-        userFactory.build({ _id: "user-1", firstName: "John", lastName: "Doe", role: "User" }),
-        userFactory.build({
-          _id: "user-2",
-          firstName: "Jane",
-          lastName: "Smith",
-          role: "Submitter",
-        }),
+      listReopenOwners: [
+        { userID: "user-1", firstName: "John", lastName: "Doe" },
+        { userID: "user-2", firstName: "Jane", lastName: "Smith" },
       ],
     },
   },
@@ -180,9 +175,9 @@ describe("Basic Functionality", () => {
   });
 
   it("should show an error snackbar when owners cannot be loaded", async () => {
-    const failingListUsersMock: MockedResponse<ListUsersResp> = {
+    const failingListUsersMock: MockedResponse<ListReopenOwnersResp> = {
       request: {
-        query: LIST_USERS,
+        query: LIST_REOPEN_OWNERS,
       },
       variableMatcher: () => true,
       result: {

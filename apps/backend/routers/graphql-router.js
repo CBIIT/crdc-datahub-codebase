@@ -213,6 +213,7 @@ dbConnector.connect().then(async () => {
         getUser : userService.getUser.bind(userService),
         updateMyUser : userService.updateMyUser.bind(userService),
         listUsers : userService.listUsers.bind(userService),
+        listReopenOwners : userService.listReopenOwners.bind(userService),
         editUser : userService.editUser.bind(userService),
         grantToken : userService.grantToken.bind(userService),
         listActiveDCPs: userService.listActiveDCPsAPI.bind(userService),
