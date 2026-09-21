@@ -59,11 +59,16 @@ class DataLoader:
                 df = removeTailingEmptyColumnsAndRows(df)
                 df = df.replace({np.nan: None})  # replace Nan in dataframe with None
                 df = df.reset_index()  # make sure indexes pair with number of rows
-                col_names =list(df.columns)
                 node_type = df[TYPE].iloc[0]
-                system_populated_props = self.model.get_system_populated_props_for_node(node_type)
-                srf = SRF(self.srf_data, system_populated_props)
-                system_populated_values = srf.get_all_system_populated_values()
+                system_populated_props, system_populated_relationships = self.model.get_system_populated_props_for_node(node_type)
+                srf = SRF(self.srf_data, system_populated_props, system_populated_relationships)
+                system_populated_values = srf.get_system_populated_property_value_map()
+                system_populated_relationship_values = srf.get_system_populated_relationship_value_map()
+                must_populated_relationship_columns = self.model.get_must_populated_relationships_for_node(node_type)
+                for relationship in must_populated_relationship_columns:
+                    if relationship not in df.columns:
+                        df[relationship] = None
+                col_names = list(df.columns)
                 for index, row in df.iterrows():
                     type = row[TYPE]
                     rawData = df.loc[index].to_dict()
@@ -118,7 +123,7 @@ class DataLoader:
                             NODE_ID: node_id,
                             "IDPropName": self.model.get_node_id(type),
                             PROPERTIES: {k: v for (k, v) in rawData.items() if k in prop_names},
-                            PARENTS: self.get_parents(relation_fields, row),
+                            PARENTS: self.get_parents(relation_fields, row, system_populated_relationship_values),
                             RAW_DATA:  rawData,
                             ADDITION_ERRORS: [],
                             ENTITY_TYPE: self.model.get_entity_type(type), 
@@ -250,21 +255,26 @@ class DataLoader:
     get parents based on relationship fields that in format of
     [parent node].parentNodeID
     """
-    def get_parents(self, relation_fields, rawData):
+    def get_parents(self, relation_fields, rawData, system_populated_values = {}):
         parents = []
         for relation in relation_fields:
             val = rawData.get(relation)
             # skip blank/whitespace-only values so they're treated as "not provided" instead of an invalid relationship
+            [parent_type, parent_id_prop] = [part.strip() for part in relation.split('.')]
             if val and val.strip():
-                temp = [part.strip() for part in relation.split('.')]
                 if "|" in val:
                     val_list = val.split("|")
                     for iVal in val_list:
                         if iVal.strip():
-                            parents.append({"parentType": temp[0], "parentIDPropName": temp[1], "parentIDValue": iVal.strip()})
+                            parents.append({"parentType": parent_type, "parentIDPropName": parent_id_prop, "parentIDValue": iVal.strip()})
                 else:
-                    parents.append({"parentType": temp[0], "parentIDPropName": temp[1], "parentIDValue": val.strip()})
+                    parents.append({"parentType": parent_type, "parentIDPropName": parent_id_prop, "parentIDValue": val.strip()})
                 rawData.update({relation.replace(".", "|"): val})
+            elif relation in system_populated_values:
+                value = system_populated_values.get(relation, "").strip()
+                if value:
+                    parents.append({"parentType": parent_type, "parentIDPropName": parent_id_prop, "parentIDValue": value})
+
         return parents
     
     """
