@@ -24,6 +24,7 @@ const {connectMongoose} = require("./mongoose/connection");
 const {getCurrentTime} = require("./crdc-datahub-database-drivers/utility/time-utility");
 const {EmailService} = require("./services/email");
 const {NotifyUser} = require("./services/notify-user");
+const {initializeEmailContentFromConfig, startEmailContentPrefetch} = require("./lib/email-content-cache");
 const {extractAndJoinFields} = require("./utility/string-util");
 const {ApprovedStudiesService} = require("./services/approved-studies");
 const {Program} = require("./services/program-service");
@@ -81,6 +82,9 @@ app.use("/api/graphql", graphqlRouter);
     dbConnector.connect().then( async () => {
         await connectMongoose(configuration.document_db_connection_string);
         const config = await configuration.updateConfig(dbConnector);
+        initializeEmailContentFromConfig(config);
+        // Prefetch is non-blocking: the API must start even if GitHub email content is missing.
+        startEmailContentPrefetch();
         const emailService = new EmailService(config.email_transport, config.emails_enabled);
         const configurationService = new ConfigurationService();
         const authorizationService = new AuthorizationService(configurationService);

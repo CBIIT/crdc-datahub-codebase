@@ -16,6 +16,7 @@ const {DatabaseConnector} = require("../crdc-datahub-database-drivers/database-c
 const {connectMongoose} = require("../mongoose/connection");
 const {EmailService} = require("../services/email");
 const {NotifyUser} = require("../services/notify-user");
+const {initializeEmailContentFromConfig, startEmailContentPrefetch} = require("../lib/email-content-cache");
 const {ApprovedStudiesService} = require("../services/approved-studies");
 const {BatchService, UploadingMonitor} = require("../services/batch-service");
 const {S3Service} = require("../services/s3-service");
@@ -63,6 +64,9 @@ let authenticationService, userInitializationService;
 dbConnector.connect().then(async () => {
     await connectMongoose(configuration.document_db_connection_string);
     const config = await configuration.updateConfig(dbConnector);
+    initializeEmailContentFromConfig(config);
+    // Prefetch is non-blocking: the API must start even if GitHub email content is missing.
+    startEmailContentPrefetch();
     const applicationCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, APPLICATION_COLLECTION);
     const submissionCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, SUBMISSIONS_COLLECTION);
     const userCollection = new MongoDBCollection(dbConnector.client, DATABASE_NAME, USER_COLLECTION);
