@@ -62,8 +62,16 @@ Nodes:
       - participant_bmis
     Tags:
       Template: "Yes"
+  program:
+    Props:
+      - program_name
+      - program_acronym
+      - program_description
   study:
     Props:
+      - study_name
+      - study_acronym
+      - study_description
       - study_data_types
       - experimental_strategy_and_data_subtype
       - study_payments
@@ -91,11 +99,6 @@ Relationships:
         Req: true
         Dst: participant
         Mul: one_to_one
-      - Src: study
-        Dst: participant
-        Mul: many_to_many
-        Tags:
-          Display: false
     Desc: A participant can have many diagnoses.
     Props:
       - of_participant_id
@@ -116,6 +119,23 @@ Relationships:
         Dst: diagnosis
     Props: null
     nanoid: "111222"
+  of_program:
+    Mul: many_to_one
+    Req: true
+    Ends:
+      - Src: study
+        Dst: program
+      - Src: participant
+        Dst: program
+    Props: null
+  of_study:
+    Mul: many_to_one
+    Ends:
+      - Src: participant
+        Dst: study
+        Req: true
+    Props: null
+
 UniversalNodeProperties:
   mustHave:
     - id
@@ -293,6 +313,7 @@ PropDefinitions:
       value_type: list
       item_type: TBD
   study_data_types:
+    Req: true
     Type:
       value_type: list
       item_type:
@@ -330,6 +351,26 @@ PropDefinitions:
     Key: true
   phs_accession:
     Type: string
+    Req: true
+  program_name:
+    Type: string
+    Req: true
+  program_acronym:
+    Type: string
+    Key: true
+    Req: true
+  program_description:
+    Type: string
+    Req: true
+  study_name:
+    Type: string
+    Req: true
+  study_acronym:
+    Type: string
+    Req: true
+  study_description:
+    Type: string
+    Req: true
   file_name:
     Type: string
   md5sum:

@@ -73,7 +73,7 @@ type Application {
     controlledAccess: Boolean
     ORCID: String
     # questionnaire data as JSON string
-    questionnaireData: String
+    questionnaireData: JSON
     PI: String
     openAccess: Boolean,
     conditional: Boolean,
@@ -113,7 +113,7 @@ input AppInput {
     _id: ID
     programName: String
     studyAbbreviation: String
-    questionnaireData: String
+    questionnaireData: JSON
     studyName: String!
     controlledAccess: Boolean!
     ORCID: String
