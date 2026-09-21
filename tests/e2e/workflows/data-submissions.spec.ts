@@ -23,8 +23,8 @@ test('should complete a Data Submission successfully', async ({ page, dataSubmis
   await page.getByText('Choose Files', { exact: true }).click();
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles([
-    path.join(__dirname, 'program.tsv'),
-    path.join(__dirname, 'study.tsv'),
+    path.join(__dirname, '../../assets/program.tsv'),
+    path.join(__dirname, '../../assets/study.tsv'),
   ]);
   await page.getByTestId('metadata-upload-file-upload-button').click();
   await expect(page.getByTestId('metadata-upload-file-upload-button')).toHaveText('Uploading...');
@@ -36,3 +36,4 @@ test('should complete a Data Submission successfully', async ({ page, dataSubmis
   await dataSubmissionsPage.validateButton.click();
   await expect(dataSubmissionsPage.validationStatusChip).toHaveText('VALIDATION COMPLETED', { timeout: 60_000 });
 });
+
