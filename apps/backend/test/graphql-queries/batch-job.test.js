@@ -77,8 +77,8 @@ describe('Batch Jobs test', () => {
         dbService.updateMany.mockReset();
         dbService.updateMany.mockResolvedValue({ modifiedCount: 0 });
         await dataInterface.deleteInactiveApplications(30); // use a valid days value
-        expect(dbService.updateMany).toBeCalledTimes(0);
-        expect(notificationsService.inactiveApplicationsNotification).toBeCalledTimes(0);
+        expect(dbService.updateMany).toHaveBeenCalledTimes(0);
+        expect(notificationsService.inactiveApplicationsNotification).toHaveBeenCalledTimes(0);
     });
 
     test("deleteInactiveApplications undefined", async () => {
