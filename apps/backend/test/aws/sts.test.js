@@ -1,53 +1,59 @@
+jest.mock('aws-sdk', () => {
+    const assumeRole = jest.fn();
+    return {
+        STS: jest.fn(() => ({ assumeRole })),
+        S3: jest.fn(),
+        SQS: jest.fn(),
+        QuickSight: jest.fn(),
+        Credentials: jest.fn(),
+    };
+});
+jest.mock('aws-sdk/lib/maintenance_mode_message', () => ({ suppress: true }));
+jest.mock('../../config', () => ({
+    role_arn: 'arn:aws:iam::123456789012:role/test-submission',
+}));
+
 const AWS = require('aws-sdk');
-require('aws-sdk/lib/maintenance_mode_message').suppress = true;
-const fs = require('fs');
-const path = require('path');
-const currentFilePath = __filename; // Path to the current JavaScript file
-const currentDirectory = path.dirname(currentFilePath);
+const { AWSService } = require('../../services/aws-request');
 
-const bucketName = "crdcdh-test-submission";
-const roleARN = 'arn:aws:iam::420434175168:role/crdcdh-test-submission';
-const fileNames = 'save-application.test.js'
+describe('AWSService.createTempCredentials', () => {
+    const roleArn = 'arn:aws:iam::123456789012:role/test-submission';
+    const bucketName = 'test-bucket';
+    const rootPath = 'submissions/abc';
+    let awsService;
+    let assumeRole;
+    let configurationService;
 
-
-describe('sts credential test', () => {
-    test("session errors", async () => {
-        // Initialize an STS object
-        const sts = new AWS.STS();
-        // Define the role ARN that you want to assume
-        const assumeRoleParams = {
-            RoleArn: roleARN,
-            RoleSessionName: 'TemporarySession'
+    beforeEach(() => {
+        jest.clearAllMocks();
+        assumeRole = new AWS.STS().assumeRole;
+        configurationService = {
+            findByType: jest.fn().mockReturnValue({ value: 1 }),
         };
-        // Assume the role
-        sts.assumeRole(assumeRoleParams, (err, data) => {
-            if (err) {
-                console.error('Error assuming role:', err);
-            } else {
-                // Use the temporary credentials
-                const tempCredentials = new AWS.Credentials({
-                    accessKeyId: data.Credentials.AccessKeyId,
-                    secretAccessKey: data.Credentials.SecretAccessKey,
-                    sessionToken: data.Credentials.SessionToken
-                });
+        awsService = new AWSService(configurationService);
+        assumeRole.mockImplementation((_params, cb) => cb(new Error('Error assuming role')));
+    });
 
-                // Create an AWS service object using the temporary credentials
-                const s3 = new AWS.S3({ credentials: tempCredentials });
-                const localFilePath = path.join(currentDirectory, fileNames);
-                const uploadParams = {
-                    Bucket: bucketName,
-                    Key: "test/" + fileNames, // Corrected object key in S3 (full path)
-                    Body: fs.createReadStream(localFilePath)
-                };
+    test('rejects when assumeRole fails and sends the expected STS request', async () => {
+        await expect(awsService.createTempCredentials(bucketName, rootPath))
+            .rejects.toThrow('Error assuming role');
 
-                s3.upload(uploadParams, (err, uploadData) => {
-                    if (err) {
-                        console.error('Error uploading:', err);
-                        return;
-                    }
-                    console.log('File uploaded successfully!');
-                });
-            }
-        });
+        expect(assumeRole).toHaveBeenCalledTimes(1);
+        expect(assumeRole).toHaveBeenCalledWith(
+            {
+                RoleArn: roleArn,
+                RoleSessionName: expect.stringMatching(/^Temp_Session_\d+$/),
+                DurationSeconds: 3600,
+                Policy: JSON.stringify({
+                    Version: '2012-10-17',
+                    Statement: [{
+                        Effect: 'Allow',
+                        Action: ['s3:GetObject', 's3:PutObject'],
+                        Resource: [`arn:aws:s3:::${bucketName}/${rootPath}/*`],
+                    }],
+                }),
+            },
+            expect.any(Function),
+        );
     });
 });

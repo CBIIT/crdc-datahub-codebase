@@ -189,7 +189,7 @@ describe('Util Test', () => {
     test('Should throw an error for invalid JSON', () => {
         const invalidJsonString = '{"key": "value",}';
         parseJsonString(invalidJsonString);
-        expect(consoleErrorSpy).toBeCalledTimes(1)
+        expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
     });
 
     test('Should handle parsing of nested objects', () => {
