@@ -293,7 +293,7 @@ class FileValidator:
         errors = []
         prefix = os.path.join(os.path.join(self.rootPath, "file/"))
         for file in self.bucket.bucket.objects.filter(Prefix=prefix):
-            if "/log" in file.key:
+            if file.key.startswith(f"{prefix}log/"):
                 continue
             file_name = file.key.split("/")[-1]
             if not file_name or file_name in manifest_names:
