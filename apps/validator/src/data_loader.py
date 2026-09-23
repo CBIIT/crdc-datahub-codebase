@@ -123,7 +123,8 @@ class DataLoader:
                             NODE_ID: node_id,
                             "IDPropName": self.model.get_node_id(type),
                             PROPERTIES: {k: v for (k, v) in rawData.items() if k in prop_names},
-                            PARENTS: self.get_parents(relation_fields, row, system_populated_relationship_values),
+                            # must use rawData here,(not row) so that parent properties with pipes replacing dot will be preserved and used in sorting algorithm
+                            PARENTS: self.get_parents(relation_fields, rawData, system_populated_relationship_values),
                             RAW_DATA:  rawData,
                             ADDITION_ERRORS: [],
                             ENTITY_TYPE: self.model.get_entity_type(type), 
@@ -254,6 +255,8 @@ class DataLoader:
     """
     get parents based on relationship fields that in format of
     [parent node].parentNodeID
+    This function must be called with rawData, because it has side effect of populating sorting keys in rawData.
+    The sorting keys are used when sort by parent columns.
     """
     def get_parents(self, relation_fields, rawData, system_populated_values = {}):
         parents = []
@@ -274,6 +277,7 @@ class DataLoader:
                 value = system_populated_values.get(relation, "").strip()
                 if value:
                     parents.append({"parentType": parent_type, "parentIDPropName": parent_id_prop, "parentIDValue": value})
+                rawData.update({relation.replace(".", "|"): value})
 
         return parents
     
