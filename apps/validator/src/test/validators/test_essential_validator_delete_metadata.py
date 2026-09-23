@@ -108,6 +108,34 @@ class TestDeleteMessageDeleteOrphanedDataFiles:
         call_args = mock_remover.remove_metadata.call_args[0]
         assert call_args[3] is True
 
+    def test_set_submission_validation_status_file_status_none_when_no_file_errors(
+        self, mock_configs, mock_mongo_dao
+    ):
+        """When delete succeeds with no fileErrors, file_status is not set to Error."""
+        msg = _make_delete_message()
+        job_queue = MagicMock()
+        job_queue.receiveMsgs.side_effect = [[msg], KeyboardInterrupt]
+        mock_mongo_dao.get_submission.return_value = None
+
+        with patch("essential_validator.ModelFactory"):
+            with patch("essential_validator.set_scale_in_protection"):
+                with patch("essential_validator.MetadataRemover") as mock_remover_class:
+                    mock_remover = MagicMock()
+                    mock_remover.submission = {
+                        constants.ID: "sub-1",
+                        constants.METADATA_VALIDATION_STATUS: constants.STATUS_PASSED,
+                    }
+                    mock_remover.remove_metadata.return_value = (True, [])
+                    mock_remover_class.return_value = mock_remover
+                    try:
+                        essentialValidate(mock_configs, job_queue, mock_mongo_dao)
+                    except KeyboardInterrupt:
+                        pass
+
+        call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
+        assert call_args[1] is None
+        assert call_args[4] == []
+
 
 class TestDeleteSuccessAppendsOrphanErrors:
     """set_submission_validation_status receives combined fileErrors (existing + orphan F008)."""
@@ -148,6 +176,7 @@ class TestDeleteSuccessAppendsOrphanErrors:
         mock_mongo_dao.set_submission_validation_status.assert_called_once()
         call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
         # set_submission_validation_status(submission, file_status, metadata_status, cross_submission_status, fileErrors, is_delete, ...)
+        assert call_args[1] == constants.STATUS_ERROR
         file_errors = call_args[4]
         assert file_errors == [existing_error, orphan_error]
         assert call_args[5] is True
@@ -180,6 +209,7 @@ class TestDeleteSuccessAppendsOrphanErrors:
                         pass
 
         call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
+        assert call_args[1] == constants.STATUS_ERROR
         file_errors = call_args[4]
         assert file_errors == [orphan_error]
 
@@ -215,5 +245,6 @@ class TestDeleteSuccessAppendsOrphanErrors:
                         pass
 
         call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
+        assert call_args[1] == constants.STATUS_ERROR
         file_errors = call_args[4]
         assert file_errors == [existing_error]
