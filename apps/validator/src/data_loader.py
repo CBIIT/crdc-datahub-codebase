@@ -255,6 +255,8 @@ class DataLoader:
     """
     get parents based on relationship fields that in format of
     [parent node].parentNodeID
+    This function must be called with rawData, because it has side effect of populating sorting keys in rawData.
+    The sorting keys are used when sort by parent columns.
     """
     def get_parents(self, relation_fields, rawData, system_populated_values = {}):
         parents = []
