@@ -1203,4 +1203,60 @@ describe('DataRecordService', () => {
       expect(DataRecordModel.aggregate).not.toHaveBeenCalled();
     });
   });
+
+  describe('initializeDataValidation', () => {
+    test('sets totalFileMessages to file count plus orphan detection message', async () => {
+      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([
+        { _id: 'file-1' },
+        { _id: 'file-2' },
+      ]);
+      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue([]);
+      mockAwsService.sendSQSMessage.mockResolvedValue();
+
+      const result = await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.FILE],
+        VALIDATION.SCOPE.ALL,
+        'validation-1'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.totalFileMessages).toBe(3);
+      expect(result.failedFileCount).toBe(0);
+      expect(dataRecordService._sendBatchSQSMessage).toHaveBeenCalled();
+    });
+
+    test('sets totalFileMessages to 1 when there are no file nodes', async () => {
+      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([]);
+      mockAwsService.sendSQSMessage.mockResolvedValue();
+
+      const result = await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.DATA_FILE],
+        VALIDATION.SCOPE.NEW,
+        'validation-1'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.totalFileMessages).toBe(1);
+      expect(result.failedFileCount).toBe(0);
+    });
+
+    test('counts per-file and submission-level enqueue failures in failedFileCount', async () => {
+      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([{ _id: 'file-1' }]);
+      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue(['file send failed']);
+      mockAwsService.sendSQSMessage.mockRejectedValue(new Error('sqs error'));
+
+      const result = await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.FILE],
+        VALIDATION.SCOPE.ALL,
+        'validation-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.totalFileMessages).toBe(2);
+      expect(result.failedFileCount).toBe(2);
+    });
+  });
 });

@@ -2553,6 +2553,111 @@ describe('Submission.validateSubmission', () => {
         });
     });
 
+    it('should write totalFileMessages to validation document on successful file validation', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = { success: true, totalFileMessages: 4, failedFileCount: 0 };
+        mockParams.types = [VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', { totalFileMessages: 4 });
+    });
+
+    it('should mark validation as Error with statusDetail on partial file SQS send failure', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate file',
+            totalFileMessages: 10,
+            failedFileCount: 2
+        };
+        mockParams.types = [VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalFileMessages: 10,
+            status: VALIDATION_STATUS.ERROR,
+            statusDetail: ['Failed to enqueue 2 of 10 file messages']
+        });
+    });
+
+    it('should write totalBatches and totalFileMessages when both are returned', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: true,
+            totalBatches: 3,
+            failedCount: 0,
+            totalFileMessages: 2,
+            failedFileCount: 0
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA, VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalBatches: 3,
+            totalFileMessages: 2
+        });
+    });
+
+    it('should include batch and file statusDetail when both enqueue attempts fail', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate metadata, Failed to validate file',
+            totalBatches: 5,
+            failedCount: 2,
+            totalFileMessages: 10,
+            failedFileCount: 1
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA, VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalBatches: 5,
+            totalFileMessages: 10,
+            status: VALIDATION_STATUS.ERROR,
+            statusDetail: [
+                'Failed to enqueue 2 of 5 batch messages',
+                'Failed to enqueue 1 of 10 file messages'
+            ]
+        });
+    });
+
     it('should not update validation document when no totalBatches in result', async () => {
         const mockCreateScope = { isNoneScope: () => false };
         const mockValidationRecord = { id: 'validation1' };
