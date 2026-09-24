@@ -901,6 +901,7 @@ class Submission {
             throw new Error(ERROR.FAILED_INSERT_VALIDATION_OBJECT);
         }
         const result = await this.dataRecordService.initializeDataValidation(params._id, params?.types, params?.scope, validationRecord.id);
+        console.log(`total file messages: ${result.totalFileMessages}, failed file count: ${result.failedFileCount}`);
         if (result.totalBatches || result.totalFileMessages ) {
             let validationUpdate = {}
             if (result.totalBatches) {
