@@ -20,7 +20,6 @@ const {getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesFor
 } = require("../utility/data-commons-remapper");
 const {UserScope} = require("../domain/user-scope");
 const {replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
-const NA_PROGRAM = "NA";
 const NA = "NA";
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organization-constants");
@@ -172,7 +171,7 @@ class ApprovedStudiesService {
     }
 
     async storeApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification) {
-        // Validate programID and fall back to NA program if needed
+        // Validate programID and fall back to default program if needed
         const program = await this._validateProgramID(programID);
         const validatedProgramID = program?._id;
 
@@ -454,7 +453,7 @@ class ApprovedStudiesService {
         // if the name is changing, verify that the new name is unique
         if (name !== updateStudy.studyName)
             await this._validateStudyName(name)
-        // verify the programID or use the NA program
+        // verify the programID or use the default program
         const program = await this._validateProgramID(programID);
         // verify that useProgramPC is false or primaryContactID is null
         if (useProgramPC && primaryContactID) {
@@ -746,11 +745,11 @@ class ApprovedStudiesService {
     
     /**
      * Validates that the provided programID matches a program in the database.
-     * If the provided programID is invalid or null, falls back to the "NA" program.
+     * If the provided programID is invalid or null, falls back to the default program.
      * 
      * @param {string|null} programID The program ID to validate
      * @returns {Promise<Object>} The validated program object
-     * @throws {Error} If neither the provided programID nor the NA program can be found
+     * @throws {Error} If neither the provided programID nor the default program can be found
      */
     async _validateProgramID(programID) {
         let program = null;
@@ -758,13 +757,13 @@ class ApprovedStudiesService {
         if (programID){
             program = await this.programService.getProgramByID(programID, false);
         }
-        // if the provided programID is not valid was not provided then use the NA program as a fallback
+        // if the provided programID is not valid was not provided then use the default program as a fallback
         if (!program){
-            program = await this.programService.getProgramByName(NA_PROGRAM);
+            program = await this.programService.getDefaultProgram();
         }
         // if the program is still not valid then throw an error, this should not happen
         if (!program){
-            console.error("Unable to find a program with the provided programID then unable to find the NA program as a fallback. Please verify that the NA program has been properly initialized.");
+            console.error("Unable to find a program with the provided programID then unable to find the default program as a fallback. Please verify that the default program has been properly initialized.");
             throw new Error(ERROR.STUDY_CREATION_FAILED);
         }
         if (program?.status === PROGRAM.STATUSES.INACTIVE) {
