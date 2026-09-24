@@ -234,7 +234,6 @@ class DataRecordService {
             // one message per file + extra message for orphaned file detection
             fileMessagesInfo.totalFileMessages = fileNodes.length + 1;
             fileMessagesInfo.failedFileCount = 0;
-            console.log(`Initial total file messages: ${fileMessagesInfo.totalFileMessages}`);
             if (fileNodes && fileNodes.length > 0) {
                 const fileValidationErrors = await this._sendBatchSQSMessage(fileNodes, validationID, submissionID);
                 if (fileValidationErrors.length > 0) {
@@ -256,7 +255,6 @@ class DataRecordService {
             validationResult.failedCount = metadataBatchInfo.failedCount;
         }
         if (fileMessagesInfo) {
-            console.log(`Final total file messages: ${fileMessagesInfo.totalFileMessages}, failed file count: ${fileMessagesInfo.failedFileCount}`);
             validationResult.totalFileMessages = fileMessagesInfo.totalFileMessages;
             validationResult.failedFileCount = fileMessagesInfo.failedFileCount;
         }

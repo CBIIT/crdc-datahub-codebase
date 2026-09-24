@@ -901,7 +901,6 @@ class Submission {
             throw new Error(ERROR.FAILED_INSERT_VALIDATION_OBJECT);
         }
         const result = await this.dataRecordService.initializeDataValidation(params._id, params?.types, params?.scope, validationRecord.id);
-        console.log(`total file messages: ${result.totalFileMessages}, failed file count: ${result.failedFileCount}`);
         if (result.totalBatches || result.totalFileMessages ) {
             let validationUpdate = {}
             if (result.totalBatches) {
@@ -909,7 +908,6 @@ class Submission {
             }
             if (result.totalFileMessages) {
                 validationUpdate.totalFileMessages = result.totalFileMessages;
-                console.log(`Added total file messages to validation record: ${validationUpdate.totalFileMessages}`);
             }
             if (!result.success && (result.failedCount > 0 || result.failedFileCount > 0)) {
                 validationUpdate.status = VALIDATION_STATUS.ERROR;
@@ -922,7 +920,6 @@ class Submission {
                 }
                 validationUpdate.statusDetail = statusDetail;
             }
-            console.log(`Total file messages in validation record: ${validationUpdate.totalFileMessages}`);
             await this.validationDAO.update(validationRecord.id, validationUpdate);
         }
         const updatedSubmission = await this._recordSubmissionValidation(params._id, validationRecord, params?.types, aSubmission);
