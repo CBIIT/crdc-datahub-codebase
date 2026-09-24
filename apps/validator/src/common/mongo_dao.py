@@ -338,7 +338,7 @@ class MongoDao:
         try:
             if file_status:
                 updated_submission[FILE_VALIDATION_STATUS] = file_status if file_status != "None" else None
-                updated_submission[VALIDATION_ENDED] = submission[VALIDATION_ENDED]
+                updated_submission[VALIDATION_ENDED] = submission.get(VALIDATION_ENDED)
                 if fileErrors is not None:
                     updated_submission[FILE_ERRORS] = fileErrors if fileErrors and len(fileErrors) > 0 else []
                 else:
@@ -370,7 +370,9 @@ class MongoDao:
                 # check if all file nodes are deleted
                 if is_delete and (self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID], S3_FILE_INFO: {"$exists": True}}) == 0):
                     # if file nodes are all deleted, update file validation status to new if there are still data files in the bucket otherwise set to None
-                    updated_submission[FILE_VALIDATION_STATUS] = STATUS_NEW if self.s3_service.submissionHasDataFile(submission) else None
+                    # keep Error when submission-level file errors (e.g. orphaned files) were just recorded
+                    if not (fileErrors and len(fileErrors) > 0):
+                        updated_submission[FILE_VALIDATION_STATUS] = STATUS_NEW if self.s3_service.submissionHasDataFile(submission) else None
                 if is_delete:
                     updated_submission["deletingData"] = False
                 updated_submission[METADATA_VALIDATION_STATUS] = overall_metadata_status

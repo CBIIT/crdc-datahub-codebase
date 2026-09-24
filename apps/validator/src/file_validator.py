@@ -282,22 +282,50 @@ class FileValidator:
             
         return STATUS_PASSED, None
     
+    def _collect_extra_s3_file_errors(self, submission_id, manifest_file_names):
+        """
+        Build F008 submission-level errors for objects under file/ that are not listed in manifest_file_names.
+        Skips log paths and empty key suffixes (prefix placeholders).
+        """
+        if not self.bucket:
+            return []
+        manifest_names = set(manifest_file_names or [])
+        errors = []
+        prefix = os.path.join(os.path.join(self.rootPath, "file/"))
+        for file in self.bucket.bucket.objects.filter(Prefix=prefix):
+            if file.key.startswith(f"{prefix}log/"):
+                continue
+            file_name = file.key.split("/")[-1]
+            if not file_name or file_name in manifest_names:
+                continue
+            file_batch = self.mongo_dao.find_batch_by_file_name(submission_id, DATA_FILE_TYPE, file_name)
+            batchID = file_batch[ID] if file_batch else "-"
+            displayID = file_batch[DISPLAY_ID] if file_batch else None
+            msg = (
+                f'Data file “{file_name}”: associated metadata not found. '
+                f"Please upload associated metadata (aka. manifest) file"
+            )
+            self.log.error(msg)
+            errors.append({
+                TYPE: DATA_FILE_TYPE,
+                QC_VALIDATION_TYPE: DATA_FILE_TYPE,
+                SUBMITTED_ID: file_name,
+                BATCH_ID: batchID,
+                DISPLAY_ID: displayID,
+                QC_SEVERITY: STATUS_ERROR,
+                UPLOADED_DATE: file.last_modified,
+                QC_VALIDATE_DATE: current_datetime(),
+                ERRORS: [create_error("F008", [file_name], "file name", file_name)],
+            })
+        return errors
+
     """
     Validate all file in a submission:
     1. Extra files, validate if there are files in files folder of the submission that are not specified in any manifests of the submission. 
     This may happen if submitter uploaded files (via CLI) but forgot to upload the manifest. (error) included in total count.
     """
     def validate_all_files(self, submission_id):
-        errors = []
-        missing_count = 0
-        # this error will not happen anymore
-        # if not self.get_root_path(submission_id):
-        #     msg = f'Invalid submission object, no rootPath found, {submission_id}!'
-        #     self.log.error(msg)
-        #     error = create_error("Invalid submission", msg, "", "Error", SUBMISSION_ID, submission_id)
-        #     return STATUS_ERROR, [error]
         self.get_root_path(submission_id)
-        key = os.path.join(os.path.join(self.rootPath, f"file/"))
 
         try:
             if not self.submission:
@@ -310,58 +338,30 @@ class FileValidator:
             submission_intention = self.submission.get(SUBMISSION_INTENTION)
             # get manifest info for the submission
             manifest_info_list = self.mongo_dao.get_files_by_submission(submission_id) if submission_intention != SUBMISSION_INTENTION_DELETE else []
-            if not manifest_info_list or len(manifest_info_list) == 0:
+            if not manifest_info_list:
+                extra_errors = self._collect_extra_s3_file_errors(submission_id, set())
+                if extra_errors:
+                    return STATUS_ERROR, extra_errors
                 msg = f"No data file records found for the submission."
                 self.log.error(msg)
                 return None, None
-            # 1: check if Extra files, validate if there are files in files folder of the submission that are not specified 
-            # in any manifests of the submission. This may happen if submitter uploaded files (via CLI) but forgot to upload 
-            # the manifest. (error) included in total count.
+
             manifest_file_list = [{ID: manifest_info[ID], S3_FILE_INFO: manifest_info[S3_FILE_INFO]} for manifest_info in manifest_info_list]
             manifest_file_names = [manifest_info[S3_FILE_INFO][FILE_NAME] for manifest_info in manifest_info_list]
 
-            # get file objects info in mounted s3 bucket base on key
-            # root, dirs, files = next(os.walk(key))
-            # get file info in the s3 bucket file folder
-            files = self.bucket.bucket.objects.filter(Prefix=key)
-            for file in files:
-                # don't retrieve logs
-                if '/log' in file.key:
-                    break
-                file_name = file.key.split('/')[-1]
-               
-                if file_name not in manifest_file_names:
-                    file_batch = self.mongo_dao.find_batch_by_file_name(submission_id, DATA_FILE_TYPE, file_name)
-                    batchID = file_batch[ID] if file_batch else "-"
-                    displayID = file_batch[DISPLAY_ID] if file_batch else None
-                    msg = f'Data file “{file_name}”: associated metadata not found. Please upload associated metadata (aka. manifest) file'
-                    self.log.error(msg)
-                    error = {
-                        TYPE: DATA_FILE_TYPE,
-                        QC_VALIDATION_TYPE: DATA_FILE_TYPE,
-                        SUBMITTED_ID: file_name,
-                        BATCH_ID: batchID,
-                        DISPLAY_ID: displayID,
-                        QC_SEVERITY: STATUS_ERROR,
-                        UPLOADED_DATE: file.last_modified,
-                        QC_VALIDATE_DATE: current_datetime(),
-                        ERRORS: [create_error("F008", [file_name], "file name", file_name)]
-                    }
-                    errors.append(error)
-                    missing_count += 1
+            extra_errors = self._collect_extra_s3_file_errors(submission_id, manifest_file_names)
+            if extra_errors:
+                return STATUS_ERROR, extra_errors
 
-            if missing_count > 0 and len(errors) > 0:
-                return STATUS_ERROR, errors
-            else:
-                records =  next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_ERROR), None)
-                if records: 
-                    return STATUS_ERROR, None
-                
-                records = next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_WARNING), None)
-                if records: 
-                    return STATUS_WARNING, None
-                
-                return STATUS_PASSED, None
+            records = next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_ERROR), None)
+            if records:
+                return STATUS_ERROR, None
+
+            records = next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_WARNING), None)
+            if records:
+                return STATUS_WARNING, None
+
+            return STATUS_PASSED, None
    
         except Exception as e:
             self.log.exception(e)
