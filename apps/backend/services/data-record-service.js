@@ -42,6 +42,7 @@ const DATA_SHEET = {
     FILE_NAME: "file_name",
     MD5SUM: "md5sum"
 };
+
 class DataRecordService {
     /**
      * @param {object} dataRecordArchiveCollection Archive collection (native MongoDBCollection)
@@ -178,7 +179,23 @@ class DataRecordService {
         }
     }
 
-    async validateMetadata(submissionID, types, scope, validationID) {
+    /**
+     * 
+     * @param {*} submissionID 
+     * @param {*} types ['metadata', 'data file']
+     * @param {*} scope ['new', 'all']
+     * @param {*} validationID 
+     * @returns Promise of object with the following properties: 
+     *    {
+     *      success: boolean,
+     *      message?: string,
+     *      totalBatches?: number,
+     *      failedCount?: number,
+     *      totalFileMessages?: number,
+     *      failedFileCount?: number
+     *    }
+     */
+    async initializeDataValidation(submissionID, types, scope, validationID) {
         isValidMetadata(types, scope);
         const isMetadata = types.some(t => t === VALIDATION.TYPES.METADATA || t === VALIDATION.TYPES.CROSS_SUBMISSION);
         let errorMessages = [];
@@ -211,22 +228,35 @@ class DataRecordService {
             }
         }
         const isFile = types.some(t => (t?.toLowerCase() === VALIDATION.TYPES.DATA_FILE || t?.toLowerCase() === VALIDATION.TYPES.FILE));
+        let fileMessagesInfo = {};
         if (isFile) {
             const fileNodes = await this._getFileNodes(submissionID, scope);
+            // one message per file + extra message for orphaned file detection
+            fileMessagesInfo.totalFileMessages = fileNodes.length + 1;
+            fileMessagesInfo.failedFileCount = 0;
             if (fileNodes && fileNodes.length > 0) {
                 const fileValidationErrors = await this._sendBatchSQSMessage(fileNodes, validationID, submissionID);
-                if (fileValidationErrors.length > 0)
+                if (fileValidationErrors.length > 0) {
                     errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, ...fileValidationErrors)
+                    fileMessagesInfo.failedFileCount = fileValidationErrors.length;
+                }
             }
             const msg = Message.createFileSubmissionMessage("Validate Submission Files", submissionID, validationID);
             const fileResult = await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.fileQueueName, submissionID);
-            if (!fileResult.success)
+            if (!fileResult.success) {
                 errorMessages.push(fileResult.message);
+                fileMessagesInfo.failedFileCount += 1;
+            }
         }
+
         const validationResult = (errorMessages.length > 0) ? ValidationHandler.handle(errorMessages) : ValidationHandler.success();
         if (metadataBatchInfo) {
             validationResult.totalBatches = metadataBatchInfo.totalBatches;
             validationResult.failedCount = metadataBatchInfo.failedCount;
+        }
+        if (fileMessagesInfo) {
+            validationResult.totalFileMessages = fileMessagesInfo.totalFileMessages;
+            validationResult.failedFileCount = fileMessagesInfo.failedFileCount;
         }
         return validationResult;
     }

@@ -900,12 +900,25 @@ class Submission {
         if (!validationRecord) {
             throw new Error(ERROR.FAILED_INSERT_VALIDATION_OBJECT);
         }
-        const result = await this.dataRecordService.validateMetadata(params._id, params?.types, params?.scope, validationRecord.id);
-        if (result.totalBatches != null) {
-            const validationUpdate = { totalBatches: result.totalBatches };
-            if (!result.success && result.failedCount > 0) {
+        const result = await this.dataRecordService.initializeDataValidation(params._id, params?.types, params?.scope, validationRecord.id);
+        if (result.totalBatches || result.totalFileMessages ) {
+            let validationUpdate = {}
+            if (result.totalBatches) {
+                validationUpdate.totalBatches = result.totalBatches;
+            }
+            if (result.totalFileMessages) {
+                validationUpdate.totalFileMessages = result.totalFileMessages;
+            }
+            if (!result.success && (result.failedCount > 0 || result.failedFileCount > 0)) {
                 validationUpdate.status = VALIDATION_STATUS.ERROR;
-                validationUpdate.statusDetail = [`Failed to enqueue ${result.failedCount} of ${result.totalBatches} batch messages`];
+                statusDetail = [];
+                if (result.failedCount > 0) {
+                    statusDetail.push(`Failed to enqueue ${result.failedCount} of ${result.totalBatches} batch messages`);
+                }
+                if (result.failedFileCount > 0) {
+                    statusDetail.push(`Failed to enqueue ${result.failedFileCount} of ${result.totalFileMessages} file messages`);
+                }
+                validationUpdate.statusDetail = statusDetail;
             }
             await this.validationDAO.update(validationRecord.id, validationUpdate);
         }

@@ -2394,7 +2394,7 @@ describe('Submission.validateSubmission', () => {
         };
 
         mockDataRecordService = {
-            validateMetadata: jest.fn()
+            initializeDataValidation: jest.fn()
         };
 
         // Create submission service with mocked dependencies
@@ -2507,7 +2507,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._isCollaborator.mockReturnValue(true);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         const result = await submissionService.validateSubmission(mockParams, mockContext);
@@ -2524,7 +2524,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._getUserScope.mockResolvedValue(mockCreateScope);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         await submissionService.validateSubmission(mockParams, mockContext);
@@ -2541,7 +2541,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._getUserScope.mockResolvedValue(mockCreateScope);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         await submissionService.validateSubmission(mockParams, mockContext);
@@ -2562,7 +2562,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._getUserScope.mockResolvedValue(mockCreateScope);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         await submissionService.validateSubmission(mockParams, mockContext);
