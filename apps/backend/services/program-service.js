@@ -298,6 +298,14 @@ class Program {
   }
 
   /**
+   * Retrieve default program from the database
+   * Current logic is to return first program has readOnly == true
+   */
+  async getDefaultProgram() {
+    return await this.programDAO.findFirst({ readOnly: true });
+  }
+
+  /**
    * Create a Program API Interface (GraphQL: createOrganization).
    * @api
    * @param {CreateProgramInput} params Endpoint parameters
