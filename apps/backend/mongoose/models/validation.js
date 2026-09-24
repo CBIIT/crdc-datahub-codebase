@@ -54,6 +54,15 @@ const validationSchema = new mongoose.Schema(
         worstBatchStatus: {
             type: Number,
         },
+        totalFileMessages: {
+            type: Number,
+        },
+        completedFileMessages: {
+            type: Number,
+        },
+        worstFileStatus: {
+            type: Number,
+        },
         type: {
             type: [String],
             default: undefined,
