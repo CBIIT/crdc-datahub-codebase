@@ -1048,6 +1048,7 @@ class Application {
             inactiveReminder_15: false,
             inactiveReminder_30: false,
             finalInactiveReminder: false,
+            newInstitutions: [],
             // copied fields from source SRF
             questionnaireData: source.questionnaireData,
             programName: source.programName,
@@ -1062,7 +1063,6 @@ class Application {
             PI: source.PI,
             GPAName: source.GPAName,
             organization: source.organization,
-            newInstitutions: source.newInstitutions
         };
         const insertedApp = await this.applicationDAO.reopenApprovedRevision(
             source._id,
