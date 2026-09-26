@@ -89,7 +89,6 @@ def fileValidate(configs, job_queue, mongo_dao):
                             status = STATUS_ERROR
                         else:
                             status, msgs = validator.validate_all_files(data[SUBMISSION_ID])
-                        record_validation_progress(status, validation_id, submission, mongo_dao)
                         updated_submission = {
                             FILE_ERRORS: msgs
                         }
