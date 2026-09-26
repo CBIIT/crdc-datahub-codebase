@@ -908,6 +908,7 @@ class Submission {
             }
             if (result.totalFileMessages) {
                 validationUpdate.totalFileMessages = result.totalFileMessages;
+                validationUpdate.completedFileMessages = 0;
             }
             if (!result.success && (result.failedCount > 0 || result.failedFileCount > 0)) {
                 validationUpdate.status = VALIDATION_STATUS.ERROR;
