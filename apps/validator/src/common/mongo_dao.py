@@ -1110,6 +1110,35 @@ class MongoDao:
             self.log.exception(f"Failed to increment completed batches for {log_ctx}: {get_exception_msg()}")
             return None, False, 0, None, []
 
+    def atomic_update_validation(self, validation_id, update_ops):
+        db = self.client[self.db_name]
+        data_collection = db[VALIDATION_COLLECTION]
+        try:
+            return data_collection.find_one_and_update({ID: validation_id}, update_ops, return_document=ReturnDocument.AFTER)
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to atomic update validation for {validation_id}: {get_exception_msg()}")
+            return None
+
+    def update_validation(self, validation_id: str, updated_validation: dict):
+        db = self.client[self.db_name]
+        data_collection = db[VALIDATION_COLLECTION]
+        try:
+            return data_collection.update_one({ID: validation_id}, {"$set": updated_validation})
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to update validation for {validation_id}: {get_exception_msg()}")
+
+    def update_submission(self, submission_id: str, updated_submission: dict):
+        db = self.client[self.db_name]
+        data_collection = db[SUBMISSION_COLLECTION]
+        try:
+            return data_collection.update_one({ID: submission_id}, {"$set": updated_submission})
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to update submission for {submission_id}: {get_exception_msg()}")
+
+
     def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, submission_id=None):
         """Update validation status.
 
