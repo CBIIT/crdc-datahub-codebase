@@ -2,7 +2,8 @@ import pytest
 from unittest.mock import MagicMock
 from datetime import datetime, timedelta
 
-from file_validator import compose_validation_update_ops, compose_updated_validation_and_submission, COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS, TOTAL_FILE_MESSAGES
+from file_validator import compose_validation_update_ops, compose_updated_validation_and_submission, get_validation_status_from_worse_value,\
+     COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS 
 from common.constants import FILE_ENDED, FILE_STATUS, VALIDATION_ENDED, FILE_VALIDATION_STATUS, VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA, \
     ENDED, VALIDATION_STATUS, METADATA_STATUS, METADATA_ENDED, WORST_BATCH_STATUS
 log = MagicMock()
@@ -111,3 +112,13 @@ validation_fields_test_data = [
 @pytest.mark.parametrize("status, expected", validation_fields_test_data)
 def test_compose_validation_update_ops(status: str, expected: dict):
     assert compose_validation_update_ops(status) == expected
+
+status_precedence_test_data = [
+    pytest.param(-1, None, id='Should return None when value is out of range'),
+    pytest.param(0, 'Passed', id='Should return Passed when value is 0'),
+    pytest.param(1, 'Warning', id='Should return Warning when value is 1'),
+    pytest.param(2, 'Error', id='Should return Error when value is 2'),
+]
+@pytest.mark.parametrize("value, expected", status_precedence_test_data)
+def test_get_validation_status_from_worse_value(value: int, expected: str):
+    assert get_validation_status_from_worse_value(value) == expected
