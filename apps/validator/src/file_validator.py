@@ -74,6 +74,7 @@ def fileValidate(configs, job_queue, mongo_dao):
                             log.info(f'The data file record passed validation, {data[FILE_ID]}.')
                         #4. update dataRecords
                         if not mongo_dao.update_file_info(fileRecord):
+                            status = STATUS_FAILED
                             log.error(f'Failed to update data file record, {data[FILE_ID]}!')
                         else:
                             log.info(f'The data file record is updated,{data[FILE_ID]}.')
@@ -442,7 +443,7 @@ class FileValidator:
                 return STATUS_ERROR, extra_errors
             elif not manifest_info_list:
                 # No file reocrds, no orphaned files
-                return None, None
+                return STATUS_ERROR, None
             else:
                 # All files are validated
                 return STATUS_PASSED, None
