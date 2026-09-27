@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from file_validator import compose_validation_update_ops, compose_updated_validation_and_submission, COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS, TOTAL_FILE_MESSAGES
 from common.constants import FILE_ENDED, FILE_STATUS, VALIDATION_ENDED, FILE_VALIDATION_STATUS, VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA, \
     ENDED, VALIDATION_STATUS, METADATA_STATUS, METADATA_ENDED, WORST_BATCH_STATUS
-mongo_dao = MagicMock()
+log = MagicMock()
 first_ended_at = datetime.now()
 second_ended_at = first_ended_at + timedelta(seconds=1)
 
@@ -101,7 +101,7 @@ validation_status_test_data = [
 
 @pytest.mark.parametrize("validation, ended_at, expected", validation_status_test_data)
 def test_compose_updated_validation_and_submission(validation: dict, ended_at: object, expected: dict):
-    assert compose_updated_validation_and_submission(validation, ended_at) == expected
+    assert compose_updated_validation_and_submission(validation, ended_at, log) == expected
 
 validation_fields_test_data = [
     pytest.param('Error', {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 2}}, id='Should increment completedFileMessages by 1 and try to increase worstFileStatus to 2 when error'),

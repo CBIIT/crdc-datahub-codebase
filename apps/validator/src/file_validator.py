@@ -98,7 +98,7 @@ def fileValidate(configs, job_queue, mongo_dao):
                     
                     log.info(f'Processed {SERVICE_TYPE_FILE} validation for the {"data file, "+ data.get(FILE_ID) if data.get(FILE_ID) else "submission, " + data.get(SUBMISSION_ID)}!')
                     file_processed += 1
-                    record_validation_progress(status, validation_id, mongo_dao)
+                    record_validation_progress(status, validation_id, mongo_dao, log)
                     msg.delete()
                 except Exception as e:
                     log.exception(e)
@@ -114,8 +114,8 @@ def fileValidate(configs, job_queue, mongo_dao):
             log.info('Good bye!')
             return
 
-def record_validation_progress(status: str, validation_id: str, mongo_dao: object):
-    print(f'record_validation_progress: status={status}, validation_id={validation_id}')
+def record_validation_progress(status: str, validation_id: str, mongo_dao: object, log: object):
+    log.info(f'record_validation_progress: status={status}, validation_id={validation_id}')
     if not status:
         return
     updated_validation_ops = compose_validation_update_ops(status)
@@ -124,7 +124,7 @@ def record_validation_progress(status: str, validation_id: str, mongo_dao: objec
         raise Exception(f'Failed to update validation record for {validation_id}')
     isLastBatch = updated_validation.get(TOTAL_FILE_MESSAGES) == updated_validation.get(COMPLETED_FILE_MESSAGES)
     if isLastBatch:
-        print(f'File validation is completed, updating validation and submission records')
+        log.info(f'File validation is completed, updating validation and submission records')
         submission_id = updated_validation.get(SUBMISSION_ID)
         validation_fields, submission_fields = compose_updated_validation_and_submission(updated_validation, current_datetime())
         mongo_dao.update_validation(validation_id, validation_fields)
@@ -141,13 +141,13 @@ def record_validation_progress(status: str, validation_id: str, mongo_dao: objec
     - fileValidationStatus (copy from validation)
     - validationEnded (copy from validation)
 """
-def compose_updated_validation_and_submission(validation: dict, ended_at: object) -> dict:
+def compose_updated_validation_and_submission(validation: dict, ended_at: object, log: object) -> dict:
     if not validation:
         raise ValueError(f'Invalid validation object: {validation}')
     if not ended_at or not isinstance(ended_at, datetime):
         raise ValueError(f'Invalid ended at: {ended_at}')
 
-    print(f'Compose updated validation and submission records for file validation')
+    log.info(f'Compose updated validation and submission records for file validation')
     file_value = validation.get(WORST_FILE_STATUS)
     file_status = get_validation_status_from_worse_value(file_value)
     updated_validation = {
@@ -169,7 +169,7 @@ def compose_updated_validation_and_submission(validation: dict, ended_at: object
     overall_ended = ended_at
 
     if has_metadata_validation and metadata_ended:
-        print(f'Metadata validation has completed too, consolidate overall status and ended time')
+        log.info(f'Metadata validation has completed too, consolidate overall status and ended time')
         metadata_value = validation.get(WORST_BATCH_STATUS)
         overall_value = max(file_value, metadata_value)
         overall_status = get_validation_status_from_worse_value(overall_value)
@@ -178,7 +178,7 @@ def compose_updated_validation_and_submission(validation: dict, ended_at: object
 
 
     if not has_metadata_validation or (has_metadata_validation and metadata_ended):
-        print(f'Update validation and submission records with overall status and ended time')
+        log.info(f'Update validation and submission records with overall status and ended time')
         updated_validation[ENDED] = overall_ended
         updated_validation[VALIDATION_STATUS] = overall_status
 
