@@ -67,6 +67,7 @@ FILE_NAME = "fileName"
 STATUS_ERROR = "Error"
 STATUS_WARNING = "Warning"
 STATUS_PASSED = "Passed"
+STATUS_FAILED = "Failed"
 STATUS_NEW = "New"
 FAILED = "Failed"
 # For batch metadata validation, statusDetail may be a list of failure message strings.

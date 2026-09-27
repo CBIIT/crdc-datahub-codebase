@@ -8,10 +8,10 @@ from bento.common.s3 import S3Bucket
 from common.constants import ERRORS, WARNINGS, STATUS, S3_FILE_INFO, ID, SIZE, MD5, UPDATED_AT, \
     FILE_NAME, SQS_TYPE, SQS_NAME, FILE_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, SUBMISSION_ID, \
     BATCH_BUCKET, SERVICE_TYPE_FILE, LAST_MODIFIED, CREATED_AT, TYPE, SUBMISSION_INTENTION, SUBMISSION_INTENTION_DELETE,\
-    VALIDATION_ID, QC_RESULT_ID, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, FILE_VALIDATION, \
+    VALIDATION_ID, QC_RESULT_ID, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, \
     DATA_FILE_TYPE, QC_VALIDATION_TYPE, SUBMITTED_ID, BATCH_ID, DISPLAY_ID, UPLOADED_DATE, STATUS_PRECEDENCE, VALIDATION_ENDED,\
-    FILE_VALIDATION_STATUS, FILE_ENDED, FILE_STATUS, ENDED, VALIDATION_STATUS, VALIDATION_TYPE_METADATA, METADATA_STATUS, \
-    WORST_BATCH_STATUS, METADATA_ENDED, FILE_ERRORS
+    FILE_VALIDATION_STATUS, FILE_ENDED, FILE_STATUS, ENDED, VALIDATION_STATUS, VALIDATION_TYPE_METADATA, \
+    WORST_BATCH_STATUS, METADATA_ENDED, FILE_ERRORS, STATUS_FAILED
 
 from common.utils import get_exception_msg, current_datetime, get_s3_file_info, get_s3_file_md5, create_error, get_uuid_str
 from service.ecs_agent import set_scale_in_protection
@@ -193,6 +193,8 @@ def get_validation_status_from_worse_value(worse_value: int) -> str:
 
 def compose_validation_update_ops(status: str) -> dict:
     result = {'$inc': {COMPLETED_FILE_MESSAGES: 1}}
+    if status == STATUS_FAILED:
+        result = {}
     new_status_value = STATUS_PRECEDENCE.get(status)
     if new_status_value is None:
         raise ValueError(f'Invalid file status: {status}')
@@ -426,42 +428,31 @@ class FileValidator:
             if not self.submission:
                 msg = f'Invalid submission object, no related submission object found, {submission_id}!'
                 self.log.error(msg)
-                return False
+                return STATUS_FAILED, None
             
             submission_intention = self.submission.get(SUBMISSION_INTENTION)
             # get manifest info for the submission
             manifest_info_list = self.mongo_dao.get_files_by_submission(submission_id) if submission_intention != SUBMISSION_INTENTION_DELETE else []
-            if not manifest_info_list:
-                extra_errors = self._collect_extra_s3_file_errors(submission_id, set())
-                if extra_errors:
-                    return STATUS_ERROR, extra_errors
-                msg = f"No data file records found for the submission."
-                self.log.error(msg)
-                return None, None
-
-            manifest_file_list = [{ID: manifest_info[ID], S3_FILE_INFO: manifest_info[S3_FILE_INFO]} for manifest_info in manifest_info_list]
+            if manifest_info_list is None:
+                return STATUS_FAILED, None
             manifest_file_names = [manifest_info[S3_FILE_INFO][FILE_NAME] for manifest_info in manifest_info_list]
-
             extra_errors = self._collect_extra_s3_file_errors(submission_id, manifest_file_names)
             if extra_errors:
+                # Found orphaned files
                 return STATUS_ERROR, extra_errors
-
-            records = next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_ERROR), None)
-            if records:
-                return STATUS_ERROR, None
-
-            records = next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_WARNING), None)
-            if records:
-                return STATUS_WARNING, None
-
-            return STATUS_PASSED, None
+            elif not manifest_info_list:
+                # No file reocrds, no orphaned files
+                return None, None
+            else:
+                # All files are validated
+                return STATUS_PASSED, None
    
         except Exception as e:
             self.log.exception(e)
             msg = f"{submission_id}: Failed to validate data files! {get_exception_msg()}!"
             self.log.exception(msg)
             error = create_error("F011", [], "", "")
-            return None, [error]
+            return STATUS_FAILED, [error]
     
     def set_status(self, record, qc_result, status, error):
         record[S3_FILE_INFO][UPDATED_AT] = current_datetime()

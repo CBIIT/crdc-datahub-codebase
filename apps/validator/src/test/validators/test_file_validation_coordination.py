@@ -105,6 +105,7 @@ def test_compose_updated_validation_and_submission(validation: dict, ended_at: o
     assert compose_updated_validation_and_submission(validation, ended_at, log) == expected
 
 validation_fields_test_data = [
+    pytest.param('Failed', {'$max': {WORST_FILE_STATUS: 3}}, id='Should not increment completedFileMessages only try to increase worstFileStatus to 3 when failed'),
     pytest.param('Error', {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 2}}, id='Should increment completedFileMessages by 1 and try to increase worstFileStatus to 2 when error'),
     pytest.param('Warning', {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 1}}, id='Should increment completedFileMessages by 1 and try to increase worstFileStatus to 1 when warning'),
     pytest.param('Passed', {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 0}}, id='Should increment completedFileMessages by 1 and try to increase worstFileStatus to 0 when passed'),
@@ -118,6 +119,8 @@ status_precedence_test_data = [
     pytest.param(0, 'Passed', id='Should return Passed when value is 0'),
     pytest.param(1, 'Warning', id='Should return Warning when value is 1'),
     pytest.param(2, 'Error', id='Should return Error when value is 2'),
+    pytest.param(3, 'Failed', id='Should return Failed when value is 3'),
+    pytest.param(4, None, id='Should return None when value greater than 3')
 ]
 @pytest.mark.parametrize("value, expected", status_precedence_test_data)
 def test_get_validation_status_from_worse_value(value: int, expected: str):
