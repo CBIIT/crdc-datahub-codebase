@@ -454,7 +454,7 @@ class DataRecordDAO extends MongooseGenericDAO {
     async updateManyPipeline(filter, updatePipeline) {
         const condition = this._requireFilter(filter, 'updateManyPipeline');
         try {
-            return await this.model.updateMany(condition, updatePipeline);
+            return await this.model.updateMany(condition, updatePipeline, { updatePipeline: true });
         } catch (error) {
             console.error(`DataRecordDAO.updateManyPipeline failed:`, {
                 error: error.message,

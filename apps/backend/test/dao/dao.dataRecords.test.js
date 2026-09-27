@@ -147,7 +147,11 @@ describe('DataRecordDAO', () => {
             });
             const pipeline = [{ $set: { status: 'New' } }];
             const result = await dataRecordDAO.updateManyPipeline({ submissionID: 'sub-1' }, pipeline);
-            expect(DataRecordModel.updateMany).toHaveBeenCalledWith({ submissionID: 'sub-1' }, pipeline);
+            expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
+                { submissionID: 'sub-1' },
+                pipeline,
+                { updatePipeline: true }
+            );
             expect(result).toEqual({ acknowledged: true, modifiedCount: 3, matchedCount: 3 });
         });
     });

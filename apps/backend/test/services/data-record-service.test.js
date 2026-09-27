@@ -435,7 +435,8 @@ describe('DataRecordService', () => {
               status: 'New'
             })
           })
-        ])
+        ]),
+        { updatePipeline: true }
       );
     });
   });
@@ -459,7 +460,8 @@ describe('DataRecordService', () => {
               s3FileInfo: { $mergeObjects: ['$s3FileInfo', { status: 'New' }] }
             })
           })
-        ])
+        ]),
+        { updatePipeline: true }
       );
     });
 
@@ -473,7 +475,8 @@ describe('DataRecordService', () => {
           submissionID: 'sub-1',
           s3FileInfo: { $exists: true, $ne: null }
         },
-        expect.any(Array)
+        expect.any(Array),
+        { updatePipeline: true }
       );
     });
 
