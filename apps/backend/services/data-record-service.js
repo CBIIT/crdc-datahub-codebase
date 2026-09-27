@@ -244,7 +244,7 @@ class DataRecordService {
             const msg = Message.createFileSubmissionMessage("Validate Submission Files", submissionID, validationID);
             const fileResult = await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.fileQueueName, submissionID);
             if (!fileResult.success) {
-                errorMessages.push(fileResult.message);
+                errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, fileResult.message);
                 fileMessagesInfo.failedFileCount += 1;
             }
         }
