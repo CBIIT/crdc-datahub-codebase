@@ -122,7 +122,7 @@ def record_validation_progress(status: str, validation_id: str, mongo_dao: objec
     updated_validation = mongo_dao.atomic_update_validation(validation_id, updated_validation_ops)
     if not updated_validation:
         raise Exception(f'Failed to update validation record for {validation_id}')
-    isLastBatch = updated_validation.get(TOTAL_FILE_MESSAGES) == updated_validation.get(COMPLETED_FILE_MESSAGES)
+    isLastBatch = updated_validation.get(COMPLETED_FILE_MESSAGES) >= updated_validation.get(TOTAL_FILE_MESSAGES)
     if isLastBatch:
         log.info(f'File validation is completed, updating validation and submission records')
         submission_id = updated_validation.get(SUBMISSION_ID)
