@@ -2,7 +2,6 @@
 
 import json
 import os
-import time
 from bento.common.sqs import VisibilityExtender
 from bento.common.utils import get_logger
 from bento.common.s3 import S3Bucket
@@ -59,7 +58,6 @@ def fileValidate(configs, job_queue, mongo_dao):
                     # Make sure job is in correct format
                     if data.get(SQS_TYPE) == "Validate File" and data.get(FILE_ID):
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
-                        time.sleep(10)
                         #1 call mongo_dao to get batch by batch_id
                         fileRecord = mongo_dao.get_file(data[FILE_ID])
                         if fileRecord is None: 
@@ -82,7 +80,6 @@ def fileValidate(configs, job_queue, mongo_dao):
 
                     elif data.get(SQS_TYPE) == "Validate Submission Files" and data.get(SUBMISSION_ID) and data.get(VALIDATION_ID):
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
-                        time.sleep(5)
                         submission_id = data[SUBMISSION_ID]
                         validator = FileValidator(mongo_dao)
                         status = None
@@ -150,7 +147,6 @@ def compose_updated_validation_and_submission(validation: dict, ended_at: object
     if not ended_at or not isinstance(ended_at, datetime):
         raise ValueError(f'Invalid ended at: {ended_at}')
 
-    log.info(f'Compose updated validation and submission records for file validation')
     file_value = validation.get(WORST_FILE_STATUS)
     file_status = get_validation_status_from_worse_value(file_value)
     updated_validation = {
@@ -172,7 +168,7 @@ def compose_updated_validation_and_submission(validation: dict, ended_at: object
     overall_ended = ended_at
 
     if has_metadata_validation and metadata_ended:
-        log.info(f'Metadata validation has completed too, consolidate overall status and ended time')
+        log.info(f'Metadata validation has completed earlier, consolidate overall status and ended time')
         metadata_value = validation.get(WORST_BATCH_STATUS)
         overall_value = max(file_value, metadata_value)
         overall_status = get_validation_status_from_worse_value(overall_value)
