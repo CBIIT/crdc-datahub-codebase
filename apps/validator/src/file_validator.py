@@ -129,7 +129,7 @@ def record_validation_progress(status: str, validation_id: str, mongo_dao: objec
     if isLastBatch:
         log.info(f'File validation is completed, updating validation and submission records')
         submission_id = updated_validation.get(SUBMISSION_ID)
-        validation_fields, submission_fields = compose_updated_validation_and_submission(updated_validation, current_datetime())
+        validation_fields, submission_fields = compose_updated_validation_and_submission(updated_validation, current_datetime(), log)
         mongo_dao.update_validation(validation_id, validation_fields)
         mongo_dao.update_submission(submission_id, submission_fields)
 
