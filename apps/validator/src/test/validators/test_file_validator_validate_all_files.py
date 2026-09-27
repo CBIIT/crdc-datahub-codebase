@@ -65,7 +65,7 @@ def test_validate_all_files_no_records_and_empty_s3_returns_none(submission_doc)
     status, errors = validator.validate_all_files("sub-1")
 
     assert status is constants.STATUS_ERROR
-    assert errors is None
+    assert errors == []
 
 
 def test_validate_all_files_skips_log_keys_when_no_records(submission_doc):
