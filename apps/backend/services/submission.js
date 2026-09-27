@@ -911,7 +911,7 @@ class Submission {
             }
             if (!result.success && (result.failedCount > 0 || result.failedFileCount > 0)) {
                 validationUpdate.status = VALIDATION_STATUS.ERROR;
-                statusDetail = [];
+                const statusDetail = [];
                 if (result.failedCount > 0) {
                     statusDetail.push(`Failed to enqueue ${result.failedCount} of ${result.totalBatches} batch messages`);
                 }
