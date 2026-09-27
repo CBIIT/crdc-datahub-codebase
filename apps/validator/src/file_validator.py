@@ -53,33 +53,40 @@ def fileValidate(configs, job_queue, mongo_dao):
                 try:
                     data = json.loads(msg.body)
                     log.debug(data)
-                    validation_id = data[VALIDATION_ID]
+                    validation_id = data.get(VALIDATION_ID)
+                    if not validation_id:
+                        log.error(f'Invalid message: {data}!')
+                        msg.delete()
+                        continue
                     status = None
+                    file_id = data.get(FILE_ID)
                     # Make sure job is in correct format
-                    if data.get(SQS_TYPE) == "Validate File" and data.get(FILE_ID):
+                    if data.get(SQS_TYPE) == "Validate File" and file_id:
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
                         #1 call mongo_dao to get batch by batch_id
-                        fileRecord = mongo_dao.get_file(data[FILE_ID])
+                        fileRecord = mongo_dao.get_file(file_id)
                         if fileRecord is None: 
+                            log.error(f'The data file record is not found, {file_id}!')
                             msg.delete()
                             continue
                         #2. validate file.
                         validator = FileValidator(mongo_dao)
                         status = validator.validate(fileRecord)
                         if status == STATUS_ERROR:
-                            log.error(f'The data file record is invalid, {data[FILE_ID]}!')
+                            log.error(f'The data file record is invalid, {file_id}!')
                         elif status == STATUS_WARNING:
-                            log.error(f'The data file record is valid but with warning, {data[FILE_ID]}!')
+                            log.error(f'The data file record is valid but with warning, {file_id}!')
                         else:
-                            log.info(f'The data file record passed validation, {data[FILE_ID]}.')
+                            log.info(f'The data file record passed validation, {file_id}.')
                         #4. update dataRecords
                         if not mongo_dao.update_file_info(fileRecord):
                             status = STATUS_FAILED
-                            log.error(f'Failed to update data file record, {data[FILE_ID]}!')
+                            log.error(f'Failed to update data file record, {file_id}!')
                         else:
-                            log.info(f'The data file record is updated,{data[FILE_ID]}.')
+                            log.info(f'The data file record is updated,{file_id}.')
 
-                    elif data.get(SQS_TYPE) == "Validate Submission Files" and data.get(SUBMISSION_ID) and data.get(VALIDATION_ID):
+                        log.info(f'Processed validation for "data file: " {file_id}')
+                    elif data.get(SQS_TYPE) == "Validate Submission Files" and data.get(SUBMISSION_ID):
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
                         submission_id = data[SUBMISSION_ID]
                         validator = FileValidator(mongo_dao)
@@ -94,10 +101,10 @@ def fileValidate(configs, job_queue, mongo_dao):
                             FILE_ERRORS: msgs
                         }
                         mongo_dao.update_submission(submission_id, updated_submission)
+                        log.info(f'Processed orphaned file validation for submission: {submission_id}')
                     else:
                         log.error(f'Invalid message: {data}!')
                     
-                    log.info(f'Processed {SERVICE_TYPE_FILE} validation for the {"data file, "+ data.get(FILE_ID) if data.get(FILE_ID) else "submission, " + data.get(SUBMISSION_ID)}!')
                     file_processed += 1
                     record_validation_progress(status, validation_id, mongo_dao, log)
                     msg.delete()
