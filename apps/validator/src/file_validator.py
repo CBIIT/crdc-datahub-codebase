@@ -58,8 +58,8 @@ def fileValidate(configs, job_queue, mongo_dao):
                     status = None
                     # Make sure job is in correct format
                     if data.get(SQS_TYPE) == "Validate File" and data.get(FILE_ID):
-                        time.sleep(10)
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
+                        time.sleep(10)
                         #1 call mongo_dao to get batch by batch_id
                         fileRecord = mongo_dao.get_file(data[FILE_ID])
                         if fileRecord is None: 
@@ -81,8 +81,8 @@ def fileValidate(configs, job_queue, mongo_dao):
                             log.info(f'The data file record is updated,{data[FILE_ID]}.')
 
                     elif data.get(SQS_TYPE) == "Validate Submission Files" and data.get(SUBMISSION_ID) and data.get(VALIDATION_ID):
-                        time.sleep(5)
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
+                        time.sleep(5)
                         submission_id = data[SUBMISSION_ID]
                         validator = FileValidator(mongo_dao)
                         status = None
