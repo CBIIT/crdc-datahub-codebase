@@ -4,6 +4,8 @@ import numpy as np
 import re
 import json
 import os
+import time
+from contextlib import contextmanager
 from botocore.exceptions import ClientError
 from bento.common.sqs import VisibilityExtender
 from bento.common.utils import get_logger
@@ -29,6 +31,16 @@ FILE_ERROR_LIMIT = 100
 """
 Interface for essential validation of metadata via SQS
 """
+
+@contextmanager
+def _timed_step(log, batch_id, step):
+    """Log elapsed seconds for one Load Metadata step, including when the step raises."""
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = time.perf_counter() - start
+        log.info(f'Load Metadata timing batch={batch_id} step={step} elapsed_s={elapsed:.3f}')
 
 def essentialValidate(configs, job_queue, mongo_dao):
     batches_processed = 0
@@ -66,14 +78,19 @@ def essentialValidate(configs, job_queue, mongo_dao):
                 data = None
                 validator = None
                 data_loader = None
+                load_batch_id = None
+                load_started = None
                 try:
                     data = json.loads(msg.body)
                     log.debug(data)
                     # Make sure job is in correct format
                     if data.get(SQS_TYPE) == TYPE_LOAD and data.get(BATCH_ID):
+                        load_batch_id = data[BATCH_ID]
+                        load_started = time.perf_counter()
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
                         #1 call mongo_dao to get batch by batch_id
-                        batch = mongo_dao.get_batch(data[BATCH_ID])
+                        with _timed_step(log, load_batch_id, 'get_batch'):
+                            batch = mongo_dao.get_batch(data[BATCH_ID])
                         if not batch:
                             log.error(f"No batch find for {data[BATCH_ID]}")
                             batches_processed +=1
@@ -82,11 +99,14 @@ def essentialValidate(configs, job_queue, mongo_dao):
                         #2. validate batch and files.
                         validator = EssentialValidator(mongo_dao, model_store)
                         try:
-                            result = validator.validate(batch)
+                            with _timed_step(log, load_batch_id, 'validate'):
+                                result = validator.validate(batch)
                             if result and validator.download_file_list and len(validator.download_file_list) > 0:
                                 #3. call mongo_dao to load data
-                                data_loader = DataLoader(validator.model, batch, mongo_dao, validator.bucket, validator.root_path, validator.datacommon, validator.submission)
-                                result, errors = data_loader.load_data(validator.download_file_list)
+                                with _timed_step(log, load_batch_id, 'create_data_loader'):
+                                    data_loader = DataLoader(validator.model, batch, mongo_dao, validator.bucket, validator.root_path, validator.datacommon, validator.submission)
+                                with _timed_step(log, load_batch_id, 'load_data'):
+                                    result, errors = data_loader.load_data(validator.download_file_list)
                                 if result:
                                     batch[STATUS] = BATCH_STATUS_UPLOADED
                                     submission_meta_status = STATUS_NEW
@@ -107,9 +127,11 @@ def essentialValidate(configs, job_queue, mongo_dao):
                             #5. update submission's metadataValidationStatus
                             if batch[ERRORS] and len(batch[ERRORS]) > BATCH_ERROR_LIMIT:
                                 batch[ERRORS] = batch[ERRORS][:BATCH_ERROR_LIMIT]
-                            mongo_dao.update_batch(batch)
+                            with _timed_step(log, load_batch_id, 'update_batch'):
+                                mongo_dao.update_batch(batch)
                             if validator.submission and submission_meta_status == STATUS_NEW:
-                                mongo_dao.set_submission_validation_status(validator.submission, None, submission_meta_status, None, None)
+                                with _timed_step(log, load_batch_id, 'set_submission_validation_status'):
+                                    mongo_dao.set_submission_validation_status(validator.submission, None, submission_meta_status, None, None)
                     
                     elif data.get(SQS_TYPE) == TYPE_DELETE and data.get(SUBMISSION_ID) and data.get(NODE_TYPE):
                         # if both nodeIDs and deleteAll are not provided, raise error
@@ -169,7 +191,13 @@ def essentialValidate(configs, job_queue, mongo_dao):
                         extender.stop()
                         extender = None
                     #cleanup contents in the s3 download dir
-                    cleanup_s3_download_dir(S3_DOWNLOAD_DIR)
+                    if load_started is not None:
+                        with _timed_step(log, load_batch_id, 'cleanup_download_dir'):
+                            cleanup_s3_download_dir(S3_DOWNLOAD_DIR)
+                        total_elapsed = time.perf_counter() - load_started
+                        log.info(f'Load Metadata timing batch={load_batch_id} step=total elapsed_s={total_elapsed:.3f}')
+                    else:
+                        cleanup_s3_download_dir(S3_DOWNLOAD_DIR)
 
         except KeyboardInterrupt:
             log.info('Good bye!')
@@ -201,24 +229,46 @@ class EssentialValidator:
         self.def_file_nodes = None
         self.def_file_name = None
 
+    def _log_step_time(self, batch_id, step, start, file_name=None):
+        elapsed = time.perf_counter() - start
+        file_part = f' file={file_name}' if file_name else ''
+        self.log.info(f'Load Metadata timing batch={batch_id} step={step}{file_part} elapsed_s={elapsed:.3f}')
+
     def validate(self,batch):
+        batch_id = batch.get(ID)
         self.bucket = S3Bucket(batch.get(BATCH_BUCKET))
-        if not self.validate_batch(batch):
+        step_started = time.perf_counter()
+        try:
+            batch_valid = self.validate_batch(batch)
+        finally:
+            self._log_step_time(batch_id, 'validate_batch', step_started)
+        if not batch_valid:
             return False
         self.def_file_nodes = self.model.get_file_nodes()
         self.def_file_name = self.model.get_file_name()
         try:
-            for file_info in self.file_info_list: 
+            for file_info in self.file_info_list:
+                file_name = file_info.get(FILE_NAME)
                 #1. download the file in s3 and load tsv file into dataframe
-                if not self.download_file(file_info):
+                step_started = time.perf_counter()
+                try:
+                    downloaded = self.download_file(file_info)
+                finally:
+                    self._log_step_time(batch_id, 'download_file', step_started, file_name)
+                if not downloaded:
                     file_info[STATUS] = STATUS_ERROR
                     # return False
                     continue
                 #2. validate meatadata in self.df
-                if not self.validate_data(file_info):
+                step_started = time.perf_counter()
+                try:
+                    data_valid = self.validate_data(file_info)
+                finally:
+                    self._log_step_time(batch_id, 'validate_data', step_started, file_name)
+                if not data_valid:
                     file_info[STATUS] = STATUS_ERROR
                 if len(file_info[ERRORS]) > FILE_ERROR_LIMIT:
-                    file_info[ERRORS] =  file_info[ERRORS][:FILE_ERROR_LIMIT]  
+                    file_info[ERRORS] =  file_info[ERRORS][:FILE_ERROR_LIMIT]
             return True if len(self.batch[ERRORS]) == 0 else False
         except Exception as e:
             self.log.exception(e)
