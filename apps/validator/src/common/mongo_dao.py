@@ -1123,21 +1123,12 @@ class MongoDao:
     def update_validation(self, validation_id: str, updated_validation: dict):
         db = self.client[self.db_name]
         data_collection = db[VALIDATION_COLLECTION]
-        try:
-            return data_collection.update_one({ID: validation_id}, {"$set": updated_validation})
-        except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to update validation for {validation_id}: {get_exception_msg()}")
+        return data_collection.update_one({ID: validation_id}, {"$set": updated_validation})
 
     def update_submission(self, submission_id: str, updated_submission: dict):
         db = self.client[self.db_name]
         data_collection = db[SUBMISSION_COLLECTION]
-        try:
-            return data_collection.update_one({ID: submission_id}, {"$set": updated_submission})
-        except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to update submission for {submission_id}: {get_exception_msg()}")
-
+        return data_collection.update_one({ID: submission_id}, {"$set": updated_submission})
 
     def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, submission_id=None):
         """Update validation status.
