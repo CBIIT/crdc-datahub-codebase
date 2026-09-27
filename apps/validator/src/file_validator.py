@@ -436,13 +436,13 @@ class FileValidator:
             if not self.submission:
                 msg = f'Invalid submission object, no related submission object found, {submission_id}!'
                 self.log.error(msg)
-                return STATUS_FAILED, None
+                return STATUS_FAILED, []
             
             submission_intention = self.submission.get(SUBMISSION_INTENTION)
             # get manifest info for the submission
             manifest_info_list = self.mongo_dao.get_files_by_submission(submission_id) if submission_intention != SUBMISSION_INTENTION_DELETE else []
             if manifest_info_list is None:
-                return STATUS_FAILED, None
+                return STATUS_FAILED, []
             manifest_file_names = [manifest_info[S3_FILE_INFO][FILE_NAME] for manifest_info in manifest_info_list]
             extra_errors = self._collect_extra_s3_file_errors(submission_id, manifest_file_names)
             if extra_errors:
@@ -450,17 +450,17 @@ class FileValidator:
                 return STATUS_ERROR, extra_errors
             elif not manifest_info_list:
                 # No file reocrds, no orphaned files
-                return STATUS_ERROR, None
+                return STATUS_ERROR, []
             else:
                 # All files are validated
-                return STATUS_PASSED, None
+                return STATUS_PASSED, []
    
         except Exception as e:
             self.log.exception(e)
             msg = f"{submission_id}: Failed to validate data files! {get_exception_msg()}!"
             self.log.exception(msg)
             error = create_error("F011", [], "", "")
-            return STATUS_FAILED, [error]
+            return STATUS_FAILED, errors + [error]
     
     def set_status(self, record, qc_result, status, error):
         record[S3_FILE_INFO][UPDATED_AT] = current_datetime()
