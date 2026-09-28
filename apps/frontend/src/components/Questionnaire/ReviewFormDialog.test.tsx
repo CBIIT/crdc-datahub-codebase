@@ -165,6 +165,43 @@ describe("Implementation Requirements", () => {
     expect(getByTestId("review-form-dialog-confirm-button")).not.toBeDisabled();
   });
 
+  it.each<string>(["<img src='x' />", "<br />", "   "])(
+    "should disable the confirm button when no content remains after sanitization of %p",
+    async (comment) => {
+      const { getByTestId } = render(<ReviewFormDialog open header="Test" confirmText="Confirm" />);
+
+      userEvent.paste(within(getByTestId("review-comment")).getByRole("textbox"), comment);
+
+      await waitFor(() => {
+        expect(getByTestId("review-form-dialog-confirm-button")).toBeDisabled();
+      });
+    }
+  );
+
+  it("should explain why the confirm button is disabled when no content remains after sanitization", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" />
+    );
+
+    expect(queryByTestId("review-comment-dialog-error")).not.toBeInTheDocument();
+
+    const input = within(getByTestId("review-comment")).getByRole("textbox");
+    userEvent.paste(input, "<img src='x' />");
+
+    await waitFor(() => {
+      expect(getByTestId("review-comment-dialog-error")).toHaveTextContent(
+        "Please enter a valid comment."
+      );
+    });
+
+    userEvent.clear(input);
+    userEvent.paste(input, "A valid comment");
+
+    await waitFor(() => {
+      expect(queryByTestId("review-comment-dialog-error")).not.toBeInTheDocument();
+    });
+  });
+
   it("should show a validation error when the review comment exceeds 10,000 characters", async () => {
     const mockOnSubmit = vi.fn();
 
