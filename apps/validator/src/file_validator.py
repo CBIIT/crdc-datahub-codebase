@@ -501,7 +501,7 @@ class FileValidator:
             msg = f"{submission_id}: Failed to validate data files! {get_exception_msg()}!"
             self.log.exception(msg)
             error = create_error("F011", [], "", "")
-            return STATUS_FAILED, errors + [error]
+            return STATUS_FAILED, [error]
     
     def set_status(self, record, qc_result, status, error):
         record[S3_FILE_INFO][UPDATED_AT] = current_datetime()
