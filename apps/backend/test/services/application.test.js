@@ -3018,6 +3018,30 @@ describe('Application', () => {
             expect(app.getApplicationById).toHaveBeenCalledTimes(1);
         });
 
+        it('does not copy source newInstitutions into the reopened SRF', async () => {
+            app.getApplicationById = jest.fn().mockResolvedValue({
+                ...approvedSource,
+                newInstitutions: [{ id: 'legacy-inst-1', name: 'Legacy Institution' }],
+            });
+            app.applicationDAO.reopenApprovedRevision.mockResolvedValue({
+                _id: 'new-revision-id',
+                status: REOPENED,
+                sequenceNumber: 2,
+                submittedDate: null,
+                version: '3.0',
+            });
+
+            await app.reopenApprovedSubmissionRequest({ _id: 'approved-1' }, context);
+
+            expect(app.applicationDAO.reopenApprovedRevision).toHaveBeenCalledWith(
+                'approved-1',
+                expect.objectContaining({
+                    newInstitutions: [],
+                }),
+                false
+            );
+        });
+
         it('populates applicantName from firstName and lastName when fullName is missing', async () => {
             app.getApplicationById = jest.fn().mockResolvedValue(approvedSource);
             app.userDAO.findByIdAndStatus.mockResolvedValue({
