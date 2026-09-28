@@ -138,17 +138,141 @@ describe('DataRecordDAO', () => {
         });
     });
 
-    describe('updateManyPipeline', () => {
-        it('delegates to the model with a pipeline update', async () => {
+    describe('resetDataRecords', () => {
+        const fileStatusUpdate = {
+            $set: {
+                updatedAt: expect.any(Date),
+                's3FileInfo.status': VALIDATION_STATUS.NEW
+            }
+        };
+        const recordStatusUpdate = {
+            $set: {
+                status: VALIDATION_STATUS.NEW,
+                updatedAt: expect.any(Date)
+            }
+        };
+
+        it('resets file status then top-level status with standard updates', async () => {
+            DataRecordModel.updateMany
+                .mockResolvedValueOnce({ acknowledged: true, modifiedCount: 2, matchedCount: 2 })
+                .mockResolvedValueOnce({ acknowledged: true, modifiedCount: 10, matchedCount: 10 });
+
+            const result = await dataRecordDAO.resetDataRecords('sub-1', VALIDATION_STATUS.NEW);
+
+            expect(result).toEqual({ acknowledged: true, matchedCount: 10, modifiedCount: 10 });
+            expect(DataRecordModel.updateMany).toHaveBeenNthCalledWith(
+                1,
+                {
+                    submissionID: 'sub-1',
+                    's3FileInfo.status': { $exists: true, $ne: null }
+                },
+                fileStatusUpdate
+            );
+            expect(DataRecordModel.updateMany).toHaveBeenNthCalledWith(
+                2,
+                { submissionID: 'sub-1' },
+                recordStatusUpdate
+            );
+            expect(Array.isArray(DataRecordModel.updateMany.mock.calls[0][1])).toBe(false);
+            expect(Array.isArray(DataRecordModel.updateMany.mock.calls[1][1])).toBe(false);
+        });
+
+        it('returns acknowledged false when either update is not acknowledged', async () => {
+            DataRecordModel.updateMany
+                .mockResolvedValueOnce({ acknowledged: true, modifiedCount: 2, matchedCount: 2 })
+                .mockResolvedValueOnce({ acknowledged: false, modifiedCount: 0, matchedCount: 10 });
+
+            const result = await dataRecordDAO.resetDataRecords('sub-1', VALIDATION_STATUS.NEW);
+
+            expect(result).toEqual({ acknowledged: false, matchedCount: 10, modifiedCount: 0 });
+        });
+
+        it('throws the generic update error when an update fails', async () => {
+            DataRecordModel.updateMany.mockRejectedValue(new Error('db down'));
+
+            await expect(dataRecordDAO.resetDataRecords('sub-1', VALIDATION_STATUS.NEW))
+                .rejects.toThrow('Failed to update many DataRecord');
+        });
+    });
+
+    describe('resetS3FileLinkedMetadataStatusToNew', () => {
+        it('updates selected file links with a standard update document', async () => {
+            const updateResult = { acknowledged: true, modifiedCount: 2, matchedCount: 2 };
+            DataRecordModel.updateMany.mockResolvedValue(updateResult);
+
+            const result = await dataRecordDAO.resetS3FileLinkedMetadataStatusToNew(
+                'sub-1',
+                ['a.txt', 'b.txt']
+            );
+
+            expect(result).toEqual(updateResult);
+            expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
+                {
+                    submissionID: 'sub-1',
+                    s3FileInfo: { $exists: true, $ne: null },
+                    's3FileInfo.fileName': { $in: ['a.txt', 'b.txt'] }
+                },
+                {
+                    $set: {
+                        updatedAt: expect.any(Date),
+                        's3FileInfo.status': VALIDATION_STATUS.NEW
+                    }
+                }
+            );
+            expect(Array.isArray(DataRecordModel.updateMany.mock.calls[0][1])).toBe(false);
+        });
+
+        it('updates every linked file when fileNames is null', async () => {
             DataRecordModel.updateMany.mockResolvedValue({
                 acknowledged: true,
-                modifiedCount: 3,
-                matchedCount: 3,
+                modifiedCount: 5,
+                matchedCount: 5
             });
-            const pipeline = [{ $set: { status: 'New' } }];
-            const result = await dataRecordDAO.updateManyPipeline({ submissionID: 'sub-1' }, pipeline);
-            expect(DataRecordModel.updateMany).toHaveBeenCalledWith({ submissionID: 'sub-1' }, pipeline);
-            expect(result).toEqual({ acknowledged: true, modifiedCount: 3, matchedCount: 3 });
+
+            await dataRecordDAO.resetS3FileLinkedMetadataStatusToNew('sub-1', null);
+
+            expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
+                {
+                    submissionID: 'sub-1',
+                    s3FileInfo: { $exists: true, $ne: null }
+                },
+                {
+                    $set: {
+                        updatedAt: expect.any(Date),
+                        's3FileInfo.status': VALIDATION_STATUS.NEW
+                    }
+                }
+            );
+        });
+
+        it('updates every linked file when fileNames is omitted', async () => {
+            DataRecordModel.updateMany.mockResolvedValue({
+                acknowledged: true,
+                modifiedCount: 5,
+                matchedCount: 5
+            });
+
+            await dataRecordDAO.resetS3FileLinkedMetadataStatusToNew('sub-1');
+
+            expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
+                {
+                    submissionID: 'sub-1',
+                    s3FileInfo: { $exists: true, $ne: null }
+                },
+                {
+                    $set: {
+                        updatedAt: expect.any(Date),
+                        's3FileInfo.status': VALIDATION_STATUS.NEW
+                    }
+                }
+            );
+        });
+
+        it('returns an acknowledged no-op for an empty fileNames array', async () => {
+            const result = await dataRecordDAO.resetS3FileLinkedMetadataStatusToNew('sub-1', []);
+
+            expect(result).toEqual({ acknowledged: true, modifiedCount: 0, matchedCount: 0 });
+            expect(DataRecordModel.updateMany).not.toHaveBeenCalled();
         });
     });
 

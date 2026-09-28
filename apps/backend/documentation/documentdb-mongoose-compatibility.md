@@ -10,7 +10,7 @@ Reference for Mongoose ODM APIs and features that are incompatible with, or requ
 | Target engine | Amazon DocumentDB **8.0** (see `awscdk/crdcdh/app/documentdb.py`) |
 | ODM / driver  | **Mongoose 9.8.0** (nested MongoDB Node driver **7.5.x**)         |
 | Other drivers | Top-level `mongodb@5` remains for sessions (`connect-mongo`) and migration scripts — separate from Mongoose’s nested driver |
-| Last reviewed | 2026-09-02                                                        |
+| Last reviewed | 2026-09-28                                                        |
 
 
 
@@ -58,6 +58,7 @@ When reviewing diffs that touch Mongoose connection setup, schemas, queries, agg
      [ ] Text / partial indexes are supported on 8.0; confirm schema options match intended DocumentDB behavior.
 7. **Bulk writes**
   - [ ] `bulkWrite` / `insertMany` / `updateMany` / `deleteMany`: individual ops are atomic; the **batch as a whole** is not unless wrapped in an explicit transaction.
+     [ ] Flag `updateOne` / `updateMany` / `findOneAndUpdate` when the update argument is an array (an aggregation-pipeline update). DocumentDB 8.0 does **not** support updates with an aggregation pipeline. Mongoose 9 rejects that array unless `{ updatePipeline: true }` is set; enabling the option does not make the operation DocumentDB-compatible. Use a standard update document (dotted `$set`, `$unset`, and other update operators).
 
 If unsure whether an operator is supported, check the AWS 8.0 matrix linked above or run the AWS compat tool against the changed files.
 
@@ -104,6 +105,7 @@ These Mongoose APIs map to MongoDB operations that DocumentDB 8.0 does **not** s
 
 | Mongoose API / pattern                                               | Underlying MongoDB | DocDB 8.0                 | Alternative                                                                                     |
 | -------------------------------------------------------------------- | ------------------ | ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `updateOne` / `updateMany` / `findOneAndUpdate` with an array update | Update with an aggregation pipeline | **No** | Standard update document. Nested fields use dotted `$set` (for example `"s3FileInfo.status"`). Mongoose 9 also throws unless `{ updatePipeline: true }`; that option does not add DocumentDB support. |
 | `Model.aggregate([{ $facet: ... }])`                                 | `$facet` stage     | **No**                    | Run separate aggregations/queries (e.g. count + page), or reshape the pipeline without `$facet` |
 | `Model.aggregate([{ $lookup: { let, pipeline } }])`                  | Correlated `$lookup` | **No**                  | Equality `$lookup` (`localField` / `foreignField`), then `$filter` / `$addFields` on the parent pipeline. [AWS `$lookup` differences](https://docs.aws.amazon.com/documentdb/latest/devguide/functional-differences.html) |
 | `$sortArray` inside `$set` / `$addFields`                            | `$sortArray`       | **No** (except `$project`) | DocumentDB 8.0 supports `$sortArray` **only** in `$project` (Planner v3). Prefer `$sort` before `$group`, or `$reduce` to pick min/max. [AWS `$sortArray`](https://docs.aws.amazon.com/documentdb/latest/developerguide/sortArray.html); [API matrix](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html) |
@@ -175,6 +177,23 @@ Mongoose aggregation is a thin wrapper over MongoDB aggregation pipelines. Compa
 `$match`, `$project`, `$addFields` / `$set`, `$unset`, `$group`, `$sort`, `$skip`, `$limit`, `$count`, `$unwind`, `$lookup` (equality / uncorrelated only), `$replaceRoot` / `$replaceWith`, `$sample`, `$redact`, `$geoNear`, `$bucket`, `$merge`, `$out`, `$sortByCount` (8.0.1+).
 
 `$sortArray` is supported on 8.0 **only** inside `$project` (Planner v3). See [AWS `$sortArray`](https://docs.aws.amazon.com/documentdb/latest/developerguide/sortArray.html) and the array-operators row in [Supported MongoDB APIs](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html).
+
+Support for `$set` and `$mergeObjects` in `Model.aggregate` does **not** extend to the update command. Passing a pipeline array as the update to `updateOne`, `updateMany`, or `findOneAndUpdate` is a different MongoDB feature (updates with an aggregation pipeline) and is not supported on DocumentDB 8.0. Mongoose 9 rejects the array by default (`Cannot pass an array to query updates unless the updatePipeline option is set`). `{ updatePipeline: true }` only bypasses that Mongoose check.
+
+```javascript
+// INCOMPATIBLE — aggregation pipeline passed as the update
+await Model.updateMany(
+  { submissionID, s3FileInfo: { $exists: true, $ne: null } },
+  [{ $set: { "s3FileInfo.status": "New" } }],
+  { updatePipeline: true }
+);
+
+// COMPATIBLE — standard update document; dotted $set keeps the rest of s3FileInfo
+await Model.updateMany(
+  { submissionID, s3FileInfo: { $exists: true, $ne: null } },
+  { $set: { "s3FileInfo.status": "New", updatedAt: new Date() } }
+);
+```
 
 Always verify new operators against the AWS matrix before merging.
 

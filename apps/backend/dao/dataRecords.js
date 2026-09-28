@@ -3,6 +3,7 @@ const DataRecordModel = require("../mongoose/models/data-record");
 const {VALIDATION_STATUS} = require("../constants/submission-constants");
 const {getSortDirection} = require("../crdc-datahub-database-drivers/utility/mongodb-utility");
 const {BATCH} = require("../crdc-datahub-database-drivers/constants/batch-constants");
+const {getCurrentTime} = require("../crdc-datahub-database-drivers/utility/time-utility");
 
 const NODE_VIEW = {
     submissionID: "$submissionID",
@@ -445,20 +446,83 @@ class DataRecordDAO extends MongooseGenericDAO {
     }
 
     /**
-     * Update many documents with an aggregation pipeline update (not $set-wrapped).
-     * Returns the native Mongoose UpdateResult (acknowledged, modifiedCount, matchedCount).
-     * @param {object} filter Mongo filter
-     * @param {object[]} updatePipeline Aggregation update pipeline stages
-     * @returns {Promise<object>}
+     * Resets data-record validation status for a submission.
+     * File status is updated only on records that already have s3FileInfo.status.
+     * The two writes run in sequence; DocumentDB does not support this as one conditional update.
+     * @param {string} submissionID Submission whose records are reset
+     * @param {string} status Validation status to apply
+     * @returns {Promise<object>} Combined result. acknowledged is true only when both updates acknowledge. matchedCount and modifiedCount come from the submission-wide update.
+     * @throws {Error} When either database update fails
      */
-    async updateManyPipeline(filter, updatePipeline) {
-        const condition = this._requireFilter(filter, 'updateManyPipeline');
+    async resetDataRecords(submissionID, status) {
+        const updatedAt = getCurrentTime();
         try {
-            return await this.model.updateMany(condition, updatePipeline);
+            const fileStatusResult = await this.model.updateMany(
+                {
+                    submissionID,
+                    "s3FileInfo.status": { $exists: true, $ne: null }
+                },
+                { $set: {
+                    updatedAt,
+                    "s3FileInfo.status": status
+                }}
+            );
+            const recordStatusResult = await this.model.updateMany(
+                { submissionID },
+                { $set: {
+                    status,
+                    updatedAt
+                }}
+            );
+            return {
+                acknowledged: fileStatusResult.acknowledged === true && recordStatusResult.acknowledged === true,
+                matchedCount: recordStatusResult.matchedCount,
+                modifiedCount: recordStatusResult.modifiedCount
+            };
         } catch (error) {
-            console.error(`DataRecordDAO.updateManyPipeline failed:`, {
+            console.error(`DataRecordDAO.resetDataRecords failed:`, {
                 error: error.message,
-                filter: JSON.stringify(filter),
+                submissionID,
+                status,
+                stack: error.stack
+            });
+            throw new Error(`Failed to update many ${this._modelName}`);
+        }
+    }
+
+    /**
+     * Resets the file-validation status on metadata linked to removed S3 files.
+     * @param {string} submissionID Submission containing the linked metadata
+     * @param {string[]|null} [fileNames] Removed file names. Null or omitted targets every linked metadata record in the submission.
+     * @returns {Promise<object>} Native Mongoose UpdateResult
+     * @throws {Error} When the database update fails
+     */
+    async resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames) {
+        if (fileNames && fileNames.length === 0) {
+            return { acknowledged: true, modifiedCount: 0, matchedCount: 0 };
+        }
+
+        const filter = {
+            submissionID,
+            s3FileInfo: { $exists: true, $ne: null }
+        };
+        if (fileNames != null) {
+            filter["s3FileInfo.fileName"] = { $in: fileNames };
+        }
+
+        try {
+            return await this.model.updateMany(
+                filter,
+                { $set: {
+                    updatedAt: getCurrentTime(),
+                    "s3FileInfo.status": VALIDATION_STATUS.NEW
+                }}
+            );
+        } catch (error) {
+            console.error(`DataRecordDAO.resetS3FileLinkedMetadataStatusToNew failed:`, {
+                error: error.message,
+                submissionID,
+                fileNames,
                 stack: error.stack
             });
             throw new Error(`Failed to update many ${this._modelName}`);
