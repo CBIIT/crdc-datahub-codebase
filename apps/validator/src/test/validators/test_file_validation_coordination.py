@@ -1,11 +1,13 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 from datetime import datetime, timedelta
 
 from file_validator import updates_to_mark_task_done, updates_to_consolidate_metadata_and_file_validations, validation_status_from_value,\
      record_task_result, updates_to_mark_file_validation_done, COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS, TOTAL_FILE_MESSAGES
 from common.constants import FILE_ENDED, FILE_STATUS, VALIDATION_ENDED, FILE_VALIDATION_STATUS, VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA, \
     ENDED, VALIDATION_STATUS, METADATA_STATUS, METADATA_ENDED, WORST_BATCH_STATUS, SUBMISSION_ID
+from common.mongo_dao import ensure_update_ops
+
 log = MagicMock()
 first_ended_at = datetime.now()
 second_ended_at = first_ended_at + timedelta(seconds=1)
@@ -172,8 +174,7 @@ def test_record_validation_progress_skips_missing_status(status):
     record_task_result(status, VALIDATION_ID, mongo_dao, progress_log)
 
     mongo_dao.atomic_update_validation.assert_not_called()
-    mongo_dao.update_validation.assert_not_called()
-    mongo_dao.update_submission.assert_not_called()
+    mongo_dao.atomic_update_submission.assert_not_called()
     progress_log.info.assert_called_once_with(
         f'record_validation_progress: status={status}, validation_id={VALIDATION_ID}'
     )
@@ -185,8 +186,7 @@ def test_record_validation_progress_raises_on_invalid_status():
         record_task_result('Unknown', VALIDATION_ID, mongo_dao, MagicMock())
 
     mongo_dao.atomic_update_validation.assert_not_called()
-    mongo_dao.update_validation.assert_not_called()
-    mongo_dao.update_submission.assert_not_called()
+    mongo_dao.atomic_update_submission.assert_not_called()
 
 failed_update_test_data = [
     pytest.param(None, id='Should raise when atomic update returns None'),
@@ -203,8 +203,7 @@ def test_record_validation_progress_raises_when_atomic_update_fails(updated_vali
     mongo_dao.atomic_update_validation.assert_called_once_with(
         VALIDATION_ID, updates_to_mark_task_done('Error')
     )
-    mongo_dao.update_validation.assert_not_called()
-    mongo_dao.update_submission.assert_not_called()
+    mongo_dao.atomic_update_submission.assert_not_called()
 
 incomplete_progress_test_data = [
     pytest.param('Error', 2, id='Should record an error without finalizing when messages remain'),
@@ -224,8 +223,7 @@ def test_record_validation_progress_does_not_finalize_incomplete_validation(stat
         VALIDATION_ID,
         {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: worst_file_status}},
     )
-    mongo_dao.update_validation.assert_not_called()
-    mongo_dao.update_submission.assert_not_called()
+    mongo_dao.atomic_update_submission.assert_not_called()
 
 finalize_progress_test_data = [
     pytest.param(
@@ -298,9 +296,37 @@ def test_record_validation_progress_finalizes_last_file_message(status, updated_
     with patch('file_validator.current_datetime', return_value=progress_ended_at):
         record_task_result(status, VALIDATION_ID, mongo_dao, progress_log)
 
-    mongo_dao.atomic_update_validation.assert_called_once_with(
-        VALIDATION_ID, updates_to_mark_task_done(status)
-    )
-    mongo_dao.update_validation.assert_called_with(VALIDATION_ID, expected_validation)
-    mongo_dao.update_submission.assert_called_with(SUBMISSION, expected_submission)
+    task_done_update = updates_to_mark_task_done(status)
+    validation_calls = [
+        call(VALIDATION_ID, task_done_update),
+        call(VALIDATION_ID, expected_validation),
+    ]
+    if expected_validation.get(ENDED) is not None and FILE_ENDED not in expected_validation:
+        file_status = validation_status_from_value(updated_validation[WORST_FILE_STATUS])
+        validation_calls.insert(
+            1,
+            call(
+                VALIDATION_ID,
+                {FILE_ENDED: progress_ended_at, FILE_STATUS: file_status},
+            ),
+        )
+        mongo_dao.atomic_update_submission.assert_has_calls([
+            call(SUBMISSION, {FILE_VALIDATION_STATUS: file_status}),
+            call(SUBMISSION, expected_submission),
+        ])
+    else:
+        mongo_dao.atomic_update_submission.assert_called_once_with(
+            SUBMISSION, expected_submission
+        )
+
+    mongo_dao.atomic_update_validation.assert_has_calls(validation_calls)
     progress_log.info.assert_any_call('File validation is completed, updating validation and submission records')
+
+
+@pytest.mark.parametrize("updates, expected", [
+    pytest.param({'$inc': {}}, {'$inc': {}}, id='Should return original operation when it is not a pure data dict'),
+    pytest.param({"prop1": "value1", "prop2": "value2"}, {'$set': {"prop1": "value1", "prop2": "value2"}}, id='Should return $set operation when updates is a pure data dict'),
+    pytest.param({"$inc": {"prop1": 1}, "prop2": "value2"}, {'$inc': {"prop1": 1}, '$set': {"prop2": "value2"}}, id='Should return $inc and $set operations when updates contains both'),
+])
+def test_ensure_update_ops(updates: dict, expected: dict):
+    assert ensure_update_ops(updates) == expected

@@ -140,15 +140,15 @@ def record_task_result(status: str, validation_id: str, mongo_dao: object, log: 
         submission_id = updated_validation.get(SUBMISSION_ID)
         validation_updates, submission_updates = updates_to_mark_file_validation_done(updated_validation, current_datetime(), log)
 
-        mongo_dao.update_submission(submission_id, submission_updates)
-        mongo_dao.update_validation(validation_id, validation_updates)
+        mongo_dao.atomic_update_submission(submission_id, submission_updates)
+        updated_validation = mongo_dao.atomic_update_validation(validation_id, validation_updates)
         
         if VALIDATION_TYPE_METADATA in updated_validation.get('type'):
             validaton_update, submission_update = updates_to_consolidate_metadata_and_file_validations(updated_validation, log)
             if validaton_update:
-                mongo_dao.update_validation(validation_id, validaton_update)
+                mongo_dao.atomic_update_validation(validation_id, validaton_update)
             if submission_update:
-                mongo_dao.update_submission(submission_id, submission_update)
+                mongo_dao.atomic_update_submission(submission_id, submission_update)
 
 """
   Used to compose updates when file validation is done
