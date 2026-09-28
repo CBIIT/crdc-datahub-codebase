@@ -212,11 +212,11 @@ export const stripHtmlTags = (input: string): string => {
   }
 
   const parsed = new DOMParser().parseFromString(input, "text/html");
-  parsed.body
+  parsed
     .querySelectorAll("script, style, textarea, option, xmp")
     .forEach((element) => element.remove());
 
-  return parsed.body.textContent || "";
+  return parsed.documentElement.textContent || "";
 };
 
 /**

@@ -576,6 +576,13 @@ describe("stripHtmlTags", () => {
     );
   });
 
+  it.each<[string, string]>([
+    ["<title>Review</title>", "Review"],
+    ["<title>Review</title> and more", "Review and more"],
+  ])("should keep the text of head-only elements in %p", (value, expected) => {
+    expect(utils.stripHtmlTags(value)).toBe(expected);
+  });
+
   it.each<string>([
     "<img src='x' onerror='alert(1)' />",
     "<script>alert(1)</script>",
