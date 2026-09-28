@@ -21,6 +21,8 @@ from datetime import datetime
 TOTAL_FILE_MESSAGES = 'totalFileMessages'
 COMPLETED_FILE_MESSAGES = 'completedFileMessages'
 WORST_FILE_STATUS = 'worstFileStatus'
+VALIDATION_SCOPE = 'scope'
+NEW_SCOPE = 'New'
 
 VISIBILITY_TIMEOUT = 20
 """
@@ -139,6 +141,11 @@ def record_task_result(status: str, validation_id: str, mongo_dao: object, log: 
     if isLastBatch:
         log.info(f'File validation is completed, updating validation and submission records')
         submission_id = updated_validation.get(SUBMISSION_ID)
+        if updated_validation.get(VALIDATION_SCOPE) == NEW_SCOPE:
+            file_records = mongo_dao.get_files_by_submission(submission_id)
+            worst_file_status = gather_highest_validation_values(file_records)
+            updated_validation[WORST_FILE_STATUS] = max(worst_file_status, updated_validation.get(WORST_FILE_STATUS))
+        
         validation_updates, submission_updates = updates_to_mark_file_validation_done(updated_validation, current_datetime(), log)
 
         mongo_dao.atomic_update_submission(submission_id, submission_updates)
@@ -194,6 +201,18 @@ def updates_to_mark_file_validation_done(validation: dict, ended_at: object, log
 
     return  updated_validation,  updated_submission
 
+def gather_highest_validation_values(file_records: list) -> int:
+    s3_file_info_list = [file[S3_FILE_INFO] for file in file_records]
+
+    worst_value = STATUS_PRECEDENCE[STATUS_PASSED]
+    for file in s3_file_info_list:
+        if file[STATUS] == STATUS_ERROR:
+            worst_value = STATUS_PRECEDENCE[STATUS_ERROR]
+            break
+        elif file[STATUS] == STATUS_WARNING:
+            worst_value = max(worst_value, STATUS_PRECEDENCE[STATUS_WARNING])
+
+    return worst_value
 
 """
   Used to compose updates when validating both metadata and data file

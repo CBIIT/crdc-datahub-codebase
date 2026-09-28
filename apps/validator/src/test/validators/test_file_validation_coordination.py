@@ -3,9 +3,10 @@ from unittest.mock import MagicMock, patch, call
 from datetime import datetime, timedelta
 
 from file_validator import updates_to_mark_task_done, updates_to_consolidate_metadata_and_file_validations, validation_status_from_value,\
-     record_task_result, updates_to_mark_file_validation_done, COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS, TOTAL_FILE_MESSAGES
+     record_task_result, updates_to_mark_file_validation_done, gather_highest_validation_values, \
+     COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS, TOTAL_FILE_MESSAGES
 from common.constants import FILE_ENDED, FILE_STATUS, VALIDATION_ENDED, FILE_VALIDATION_STATUS, VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA, \
-    ENDED, VALIDATION_STATUS, METADATA_STATUS, METADATA_ENDED, WORST_BATCH_STATUS, SUBMISSION_ID
+    ENDED, VALIDATION_STATUS, METADATA_STATUS, METADATA_ENDED, WORST_BATCH_STATUS, SUBMISSION_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, S3_FILE_INFO, STATUS
 from common.mongo_dao import ensure_update_ops
 
 log = MagicMock()
@@ -330,3 +331,12 @@ def test_record_validation_progress_finalizes_last_file_message(status, updated_
 ])
 def test_ensure_update_ops(updates: dict, expected: dict):
     assert ensure_update_ops(updates) == expected
+
+
+@pytest.mark.parametrize("file_records, expected", [
+    pytest.param([{S3_FILE_INFO: {STATUS: STATUS_ERROR}}, {S3_FILE_INFO: {STATUS: STATUS_WARNING}}, {S3_FILE_INFO: {STATUS: STATUS_PASSED}}], 2, id='Should return 2 when the worst file status is Error'),
+    pytest.param([{S3_FILE_INFO: {STATUS: STATUS_WARNING}}, {S3_FILE_INFO: {STATUS: STATUS_PASSED}}], 1, id='Should return 1 when the worst file status is Warning'),
+    pytest.param([{S3_FILE_INFO: {STATUS: STATUS_PASSED}}, {S3_FILE_INFO: {STATUS: STATUS_PASSED}}], 0, id='Should return 0 when the worst file status is Passed'),
+])
+def test_gether_highest_validation_values(file_records: list, expected: int):
+    assert gather_highest_validation_values(file_records) == expected
