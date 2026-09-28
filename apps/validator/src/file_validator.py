@@ -106,7 +106,7 @@ def fileValidate(configs, job_queue, mongo_dao):
                         log.error(f'Invalid message: {data}!')
                     
                     file_processed += 1
-                    record_validation_progress(status, validation_id, mongo_dao, log)
+                    record_task_result(status, validation_id, mongo_dao, log)
                     msg.delete()
                 except Exception as e:
                     log.exception(e)
@@ -122,11 +122,11 @@ def fileValidate(configs, job_queue, mongo_dao):
             log.info('Good bye!')
             return
 
-def record_validation_progress(status: str, validation_id: str, mongo_dao: object, log: object):
+def record_task_result(status: str, validation_id: str, mongo_dao: object, log: object):
     log.info(f'record_validation_progress: status={status}, validation_id={validation_id}')
     if not status:
         return
-    updated_validation_ops = compose_validation_update_ops(status)
+    updated_validation_ops = updates_to_mark_task_done(status)
     updated_validation = mongo_dao.atomic_update_validation(validation_id, updated_validation_ops)
     if not updated_validation:
         raise Exception(f'Failed to update validation record for {validation_id}')
@@ -134,11 +134,22 @@ def record_validation_progress(status: str, validation_id: str, mongo_dao: objec
     if isLastBatch:
         log.info(f'File validation is completed, updating validation and submission records')
         submission_id = updated_validation.get(SUBMISSION_ID)
-        validation_fields, submission_fields = compose_updated_validation_and_submission(updated_validation, current_datetime(), log)
-        mongo_dao.update_validation(validation_id, validation_fields)
-        mongo_dao.update_submission(submission_id, submission_fields)
+        validation_updates, submission_updates = updates_to_mark_file_validation_done(updated_validation, current_datetime(), log)
+
+        mongo_dao.update_submission(submission_id, submission_updates)
+        updated_validation = mongo_dao.atomic_update_validation(validation_id, validation_updates)
+        if not updated_validation:
+            raise Exception(f'Failed to update validation record for {validation_id}')
+        
+        if VALIDATION_TYPE_METADATA in updated_validation.get('type'):
+            validaton_update, submission_update = updates_to_consolidate_metadata_and_file_validations(updated_validation, log)
+            if validaton_update:
+                mongo_dao.atomic_update_validation(validation_id, validaton_update)
+            if submission_update:
+                mongo_dao.update_submission(submission_id, submission_update)
 
 """
+  Used to compose updates when file validation is done
   Returns tuple of validation fields needed to be updated, and submission fields needed to be updated
   validation: 
     - fileEnded
@@ -149,14 +160,16 @@ def record_validation_progress(status: str, validation_id: str, mongo_dao: objec
     - fileValidationStatus (copy from validation)
     - validationEnded (copy from validation)
 """
-def compose_updated_validation_and_submission(validation: dict, ended_at: object, log: object) -> dict:
+
+def updates_to_mark_file_validation_done(validation: dict, ended_at: object, log: object) -> dict:
     if not validation:
         raise ValueError(f'Invalid validation object: {validation}')
     if not ended_at or not isinstance(ended_at, datetime):
         raise ValueError(f'Invalid ended at: {ended_at}')
 
+    log.info(f'File validation is done, composing updates')
     file_value = validation.get(WORST_FILE_STATUS)
-    file_status = get_validation_status_from_worse_value(file_value)
+    file_status = validation_status_from_value(file_value)
     updated_validation = {
         FILE_ENDED: ended_at,
         FILE_STATUS: file_status,
@@ -169,37 +182,63 @@ def compose_updated_validation_and_submission(validation: dict, ended_at: object
     if not validation_types or not isinstance(validation_types, list):
         raise ValueError(f'Invalid validation types: {validation_types}')
 
-    has_metadata_validation = VALIDATION_TYPE_METADATA in validation_types
-    metadata_ended = validation.get(METADATA_ENDED) is not None
+    if VALIDATION_TYPE_METADATA not in validation_types:
+        updated_validation[ENDED] = ended_at
+        updated_validation[VALIDATION_STATUS] = file_status
 
-    overall_status = file_status
-    overall_ended = ended_at
+        updated_submission[VALIDATION_ENDED] = ended_at
 
-    if has_metadata_validation and metadata_ended:
+
+    return {'$set': updated_validation}, {'$set': updated_submission}
+
+
+"""
+  Used to compose updates when validating both metadata and data file
+  Returns tuple of validation fields needed to be updated, and submission fields needed to be updated
+  validation: 
+    - ended (later of file and metadata validation)
+    - status (higher of file and metadata validation)
+  submission:
+    - validationEnded (copy from validation)
+"""
+def updates_to_consolidate_metadata_and_file_validations(validation: dict, log: object) -> dict:
+    if not validation:
+        raise ValueError(f'Invalid validation object: {validation}')
+
+    log.info(f'Metadata and file validation, consolidating overall status and ended time')
+    overall_status = None
+    overall_ended = None
+
+    file_value = validation.get(WORST_FILE_STATUS)
+    file_ended = validation.get(FILE_ENDED)
+    metadata_ended = validation.get(METADATA_ENDED)
+
+
+    if metadata_ended is not None:
         log.info(f'Metadata validation has completed earlier, consolidate overall status and ended time')
         metadata_value = validation.get(WORST_BATCH_STATUS)
         overall_value = max(file_value, metadata_value)
-        overall_status = get_validation_status_from_worse_value(overall_value)
+        overall_status = validation_status_from_value(overall_value)
 
-        overall_ended = max(ended_at, validation.get(METADATA_ENDED))
+        overall_ended = max(file_ended, metadata_ended)
+        updated_validation = {'$set': {
+            ENDED: overall_ended,
+            VALIDATION_STATUS: overall_status,
+        }}
+        updated_submission = {'$set': {
+            VALIDATION_ENDED: overall_ended,
+        }}
+        return updated_validation, updated_submission
+    else:
+        return None, None
 
-
-    if not has_metadata_validation or (has_metadata_validation and metadata_ended):
-        log.info(f'Update validation and submission records with overall status and ended time')
-        updated_validation[ENDED] = overall_ended
-        updated_validation[VALIDATION_STATUS] = overall_status
-
-        updated_submission[VALIDATION_ENDED] = overall_ended
-
-    return updated_validation, updated_submission
-
-def get_validation_status_from_worse_value(worse_value: int) -> str:
+def validation_status_from_value(worse_value: int) -> str:
     for status, value in STATUS_PRECEDENCE.items():
         if value == worse_value:
             return status
     return None
 
-def compose_validation_update_ops(status: str) -> dict:
+def updates_to_mark_task_done(status: str) -> dict:
     result = {'$inc': {COMPLETED_FILE_MESSAGES: 1}}
     if status == STATUS_FAILED:
         result = {}

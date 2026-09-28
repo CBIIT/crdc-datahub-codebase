@@ -2,107 +2,122 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
 
-from file_validator import compose_validation_update_ops, compose_updated_validation_and_submission, get_validation_status_from_worse_value,\
-     record_validation_progress, COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS, TOTAL_FILE_MESSAGES
+from file_validator import updates_to_mark_task_done, updates_to_consolidate_metadata_and_file_validations, validation_status_from_value,\
+     record_task_result, updates_to_mark_file_validation_done, COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS, TOTAL_FILE_MESSAGES
 from common.constants import FILE_ENDED, FILE_STATUS, VALIDATION_ENDED, FILE_VALIDATION_STATUS, VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA, \
     ENDED, VALIDATION_STATUS, METADATA_STATUS, METADATA_ENDED, WORST_BATCH_STATUS, SUBMISSION_ID
 log = MagicMock()
 first_ended_at = datetime.now()
 second_ended_at = first_ended_at + timedelta(seconds=1)
 
-validation_status_test_data = [
+validation_completed_test_data = [
     pytest.param({
         "type": [VALIDATION_TYPE_FILE],
         WORST_FILE_STATUS: 0
     }, 
     first_ended_at, 
-    ({
+    ({'$set': {
         FILE_ENDED: first_ended_at,
         FILE_STATUS: 'Passed',
         ENDED: first_ended_at,
         VALIDATION_STATUS: 'Passed'
-    },
-    {
+    }},
+    {'$set': {
         FILE_VALIDATION_STATUS: 'Passed',
         VALIDATION_ENDED: first_ended_at
-    }),
-    id='data file validation only'),
+    }}),
+    id='Should update both file and overall validation status and ended time for data file validation only'),
+    pytest.param({
+        "type": [VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA],
+        WORST_FILE_STATUS: 0
+    }, 
+    second_ended_at, 
+    ({'$set': {
+        FILE_ENDED: second_ended_at,
+        FILE_STATUS: 'Passed'
+    }},
+    {'$set': {
+        FILE_VALIDATION_STATUS: 'Passed'
+    }}),
+    id='Should only update file validation status and ended time for Metadata and data file validation'),
+]
+
+@pytest.mark.parametrize("validation, ended_at, expected", validation_completed_test_data)
+def test_compse_updates_when_file_validation_done(validation: dict, ended_at: object, expected: dict):
+    assert updates_to_mark_file_validation_done(validation, ended_at, log) == expected
+
+
+validation_status_test_data = [
+    pytest.param({
+        "type": [VALIDATION_TYPE_FILE],
+        WORST_FILE_STATUS: 0
+    }, 
+    (None, None),
+    id='Should return None, None when data file validation only '),
     pytest.param({
         "type": [VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA],
         WORST_FILE_STATUS: 0,
-        METADATA_STATUS: 'Warning',
         WORST_BATCH_STATUS: 1,
+        FILE_ENDED: second_ended_at,
         METADATA_ENDED: first_ended_at
     }, 
-    second_ended_at, 
-    ({
-        FILE_ENDED: second_ended_at,
-        FILE_STATUS: 'Passed',
-        ENDED: second_ended_at,
-        VALIDATION_STATUS: 'Warning'
-    },
-    {
-        FILE_VALIDATION_STATUS: 'Passed',
-        VALIDATION_ENDED: second_ended_at
-    }),
+    (
+        {'$set': {
+            ENDED: second_ended_at,
+            VALIDATION_STATUS: 'Warning'
+        }},
+        {'$set': {
+            VALIDATION_ENDED: second_ended_at
+        }}
+    ),
     id='Metadata and data file validation, metadata status is higher, ended earlier'),
     pytest.param({
         "type": [VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA],
         WORST_FILE_STATUS: 2,
-        METADATA_STATUS: 'Warning',
         WORST_BATCH_STATUS: 1,
-        METADATA_ENDED: first_ended_at
+        METADATA_ENDED: first_ended_at,
+        FILE_ENDED: second_ended_at
     }, 
-    second_ended_at, 
-    ({
-        FILE_ENDED: second_ended_at,
-        FILE_STATUS: 'Error',
-        ENDED: second_ended_at,
-        VALIDATION_STATUS: 'Error'
-    },
-    {
-        FILE_VALIDATION_STATUS: 'Error',
-        VALIDATION_ENDED: second_ended_at
-    }),
+    (
+        {'$set': {
+            ENDED: second_ended_at,
+            VALIDATION_STATUS: 'Error'
+        }},
+        {'$set': {
+            VALIDATION_ENDED: second_ended_at
+        }}
+    ),
     id='Metadata and data file validation, metadata status is lower ended earlier'),
     pytest.param({
         "type": [VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA],
         WORST_FILE_STATUS: 1,
-        METADATA_STATUS: 'Error',
         WORST_BATCH_STATUS: 2,
-        METADATA_ENDED: second_ended_at
+        METADATA_ENDED: second_ended_at,
+        FILE_ENDED: first_ended_at
     }, 
-    first_ended_at, 
-    ({
-        FILE_ENDED: first_ended_at,
-        FILE_STATUS: 'Warning',
-        ENDED: second_ended_at,
-        VALIDATION_STATUS: 'Error'
-    },
-    {
-        FILE_VALIDATION_STATUS: 'Warning',
-        VALIDATION_ENDED: second_ended_at
-    }),
+    (
+        {'$set': {
+            ENDED: second_ended_at,
+            VALIDATION_STATUS: 'Error'
+        }},
+        {'$set': {
+            VALIDATION_ENDED: second_ended_at
+        }}
+    ),
     id='Metadata and data file validation, metadata status is higher ended later, although not likely to happen'),
     pytest.param({
         "type": [VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA],
         WORST_FILE_STATUS: 0,
         WORST_BATCH_STATUS: 2,
+        FILE_ENDED: first_ended_at
     }, 
-    second_ended_at, 
-    ({
-        FILE_ENDED: second_ended_at,
-        FILE_STATUS: 'Passed',
-    },
-    {
-        FILE_VALIDATION_STATUS: 'Passed',
-    }),
+    (None, None),
     id='Metadata and data file validation, metadata not finished yet, should not update overall status and end time'),
 ]
 
-@pytest.mark.parametrize("validation, ended_at, expected", validation_status_test_data)
-def test_compose_updated_validation_and_submission(validation: dict, ended_at: object, expected: dict):
-    assert compose_updated_validation_and_submission(validation, ended_at, log) == expected
+@pytest.mark.parametrize("validation, expected", validation_status_test_data)
+def test_compose_updates_after_validating_metadata_and_file(validation: dict, expected: dict):
+    assert updates_to_consolidate_metadata_and_file_validations(validation, log) == expected
 
 validation_fields_test_data = [
     pytest.param('Failed', {'$max': {WORST_FILE_STATUS: 3}}, id='Should not increment completedFileMessages only try to increase worstFileStatus to 3 when failed'),
@@ -111,8 +126,8 @@ validation_fields_test_data = [
     pytest.param('Passed', {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 0}}, id='Should increment completedFileMessages by 1 and try to increase worstFileStatus to 0 when passed'),
 ]
 @pytest.mark.parametrize("status, expected", validation_fields_test_data)
-def test_compose_validation_update_ops(status: str, expected: dict):
-    assert compose_validation_update_ops(status) == expected
+def test_compose_validaton_updates_one_task_done(status: str, expected: dict):
+    assert updates_to_mark_task_done(status) == expected
 
 status_precedence_test_data = [
     pytest.param(-1, None, id='Should return None when value is out of range'),
@@ -124,7 +139,7 @@ status_precedence_test_data = [
 ]
 @pytest.mark.parametrize("value, expected", status_precedence_test_data)
 def test_get_validation_status_from_worse_value(value: int, expected: str):
-    assert get_validation_status_from_worse_value(value) == expected
+    assert validation_status_from_value(value) == expected
 
 VALIDATION_ID = 'val-1'
 SUBMISSION = 'sub-1'
@@ -151,7 +166,7 @@ def test_record_validation_progress_skips_missing_status(status):
     mongo_dao = MagicMock()
     progress_log = MagicMock()
 
-    record_validation_progress(status, VALIDATION_ID, mongo_dao, progress_log)
+    record_task_result(status, VALIDATION_ID, mongo_dao, progress_log)
 
     mongo_dao.atomic_update_validation.assert_not_called()
     mongo_dao.update_validation.assert_not_called()
@@ -164,7 +179,7 @@ def test_record_validation_progress_raises_on_invalid_status():
     mongo_dao = MagicMock()
 
     with pytest.raises(ValueError, match='Invalid file status: Unknown'):
-        record_validation_progress('Unknown', VALIDATION_ID, mongo_dao, MagicMock())
+        record_task_result('Unknown', VALIDATION_ID, mongo_dao, MagicMock())
 
     mongo_dao.atomic_update_validation.assert_not_called()
     mongo_dao.update_validation.assert_not_called()
@@ -180,10 +195,10 @@ def test_record_validation_progress_raises_when_atomic_update_fails(updated_vali
     mongo_dao.atomic_update_validation.return_value = updated_validation
 
     with pytest.raises(Exception, match=f'Failed to update validation record for {VALIDATION_ID}'):
-        record_validation_progress('Error', VALIDATION_ID, mongo_dao, MagicMock())
+        record_task_result('Error', VALIDATION_ID, mongo_dao, MagicMock())
 
     mongo_dao.atomic_update_validation.assert_called_once_with(
-        VALIDATION_ID, compose_validation_update_ops('Error')
+        VALIDATION_ID, updates_to_mark_task_done('Error')
     )
     mongo_dao.update_validation.assert_not_called()
     mongo_dao.update_submission.assert_not_called()
@@ -200,7 +215,7 @@ def test_record_validation_progress_does_not_finalize_incomplete_validation(stat
         **{WORST_FILE_STATUS: worst_file_status}
     )
 
-    record_validation_progress(status, VALIDATION_ID, mongo_dao, MagicMock())
+    record_task_result(status, VALIDATION_ID, mongo_dao, MagicMock())
 
     mongo_dao.atomic_update_validation.assert_called_once_with(
         VALIDATION_ID,
@@ -216,17 +231,18 @@ finalize_progress_test_data = [
             TOTAL_FILE_MESSAGES: 1,
             COMPLETED_FILE_MESSAGES: 1,
             WORST_FILE_STATUS: 0,
+            FILE_ENDED: progress_ended_at,
         }),
-        {
+        {'$set': {
             FILE_ENDED: progress_ended_at,
             FILE_STATUS: 'Passed',
             ENDED: progress_ended_at,
             VALIDATION_STATUS: 'Passed',
-        },
-        {
+        }},
+        {'$set': {
             FILE_VALIDATION_STATUS: 'Passed',
             VALIDATION_ENDED: progress_ended_at,
-        },
+        }},
         id='Should finalize file-only validation when the last file message completes',
     ),
     pytest.param(
@@ -239,17 +255,15 @@ finalize_progress_test_data = [
             METADATA_STATUS: 'Warning',
             WORST_BATCH_STATUS: 1,
             METADATA_ENDED: metadata_ended_at,
-        }),
-        {
             FILE_ENDED: progress_ended_at,
-            FILE_STATUS: 'Error',
+        }),
+        {'$set': {
             ENDED: progress_ended_at,
             VALIDATION_STATUS: 'Error',
-        },
-        {
-            FILE_VALIDATION_STATUS: 'Error',
+        }},
+        {'$set': {
             VALIDATION_ENDED: progress_ended_at,
-        },
+        }},
         id='Should consolidate overall status when metadata already finished',
     ),
     pytest.param(
@@ -260,14 +274,15 @@ finalize_progress_test_data = [
             WORST_FILE_STATUS: 0,
             'type': [VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA],
             WORST_BATCH_STATUS: 2,
+            FILE_ENDED: progress_ended_at,
         }),
-        {
+        {'$set': {
             FILE_ENDED: progress_ended_at,
             FILE_STATUS: 'Passed',
-        },
-        {
+        }},
+        {'$set': {
             FILE_VALIDATION_STATUS: 'Passed',
-        },
+        }},
         id='Should update file status only when metadata has not finished',
     ),
 ]
@@ -278,8 +293,8 @@ def test_record_validation_progress_finalizes_last_file_message(status, updated_
     progress_log = MagicMock()
 
     with patch('file_validator.current_datetime', return_value=progress_ended_at):
-        record_validation_progress(status, VALIDATION_ID, mongo_dao, progress_log)
+        record_task_result(status, VALIDATION_ID, mongo_dao, progress_log)
 
-    mongo_dao.update_validation.assert_called_once_with(VALIDATION_ID, expected_validation)
-    mongo_dao.update_submission.assert_called_once_with(SUBMISSION, expected_submission)
+    mongo_dao.atomic_update_validation.assert_called_with(VALIDATION_ID, expected_validation)
+    mongo_dao.update_submission.assert_called_with(SUBMISSION, expected_submission)
     progress_log.info.assert_any_call('File validation is completed, updating validation and submission records')
