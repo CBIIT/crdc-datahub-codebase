@@ -67,6 +67,7 @@ def fileValidate(configs, job_queue, mongo_dao):
                         fileRecord = mongo_dao.get_file(file_id)
                         if fileRecord is None: 
                             log.error(f'The data file record is not found, {file_id}!')
+                            record_task_result(STATUS_ERROR, validation_id, mongo_dao, log)
                             msg.delete()
                             continue
                         #2. validate file.
