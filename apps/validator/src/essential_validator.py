@@ -280,31 +280,37 @@ class EssentialValidator:
     
     def validate_batch(self, batch):
         msg = None
+        batch_id = batch.get(ID)
         batch[ERRORS] = []
         #This service only processes metadata batches, if a file batch is passed, it should be ignored (output an error message in the log).
-        if batch.get(TYPE) != BATCH_TYPE_METADATA:
-            msg = f'Invalid batch type, only metadata allowed, {batch[ID]}!'
-            self.log.error(msg)
-            batch[ERRORS].append(msg)
-            return False
+        with _timed_step(self.log, batch_id, 'validate_batch.check_batch_type'):
+            if batch.get(TYPE) != BATCH_TYPE_METADATA:
+                msg = f'Invalid batch type, only metadata allowed, {batch[ID]}!'
+                self.log.error(msg)
+                batch[ERRORS].append(msg)
+                return False
 
-        if not batch.get("files") or len(batch["files"]) == 0:
-            msg = f'Invalid batch, no files found, {batch[ID]}!'
-            self.log.error(msg)
-            batch[ERRORS].append(msg)
-            return False
-        
+        with _timed_step(self.log, batch_id, 'validate_batch.check_files_present'):
+            if not batch.get("files") or len(batch["files"]) == 0:
+                msg = f'Invalid batch, no files found, {batch[ID]}!'
+                self.log.error(msg)
+                batch[ERRORS].append(msg)
+                return False
+
         #Non-conformed metadata file Format, only TSV (.tsv or .txt) files are allowed
-        file_info_list = [ file for file in batch["files"] if file.get(FILE_NAME) and file[FILE_NAME].lower().endswith(".tsv") or file[FILE_NAME].lower().endswith(".txt") ]
+        with _timed_step(self.log, batch_id, 'validate_batch.filter_metadata_files'):
+            file_info_list = [ file for file in batch["files"] if file.get(FILE_NAME) and file[FILE_NAME].lower().endswith(".tsv") or file[FILE_NAME].lower().endswith(".txt") ]
         if not file_info_list or len(file_info_list) == 0:
             msg = f'Invalid batch, no metadata files found, {batch[ID]}!'
             self.log.error(msg)
             batch[ERRORS].append(msg)
             return False
-        else:
-            self.file_info_list = file_info_list
-            self.batch = batch
-            # get data common from submission
+
+        self.file_info_list = file_info_list
+        self.batch = batch
+        self.download_file_list = []
+        # get data common from submission
+        with _timed_step(self.log, batch_id, 'validate_batch.get_submission'):
             submission = self.mongo_dao.get_submission(batch.get(SUBMISSION_ID))
             if not submission or not submission.get(DATA_COMMON_NAME):
                 msg = f'Invalid batch, no datacommon found, {batch[ID]}!'
@@ -316,15 +322,16 @@ class EssentialValidator:
             self.submission_id  = submission[ID]
             self.submission_intention = submission.get(SUBMISSION_INTENTION)
             self.root_path = submission.get(ROOT_PATH)
-            self.download_file_list = []
-            model_version = submission.get(MODEL_VERSION) 
+            model_version = submission.get(MODEL_VERSION)
+
+        with _timed_step(self.log, batch_id, 'validate_batch.get_model_by_data_common_version'):
             self.model = self.model_store.get_model_by_data_common_version(self.datacommon, model_version)
             if not self.model.model or not self.model.get_nodes():
                 msg = f'{self.datacommon} model version "{model_version}" is not available.'
                 self.log.error(msg)
                 batch[ERRORS].append(msg)
                 return False
-            return True
+        return True
     
     def download_file(self, file_info):
         key = os.path.join(self.batch[FILE_PREFIX], file_info[FILE_NAME])
