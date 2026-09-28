@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import os
+import time
+from contextlib import contextmanager
 import pandas as pd
 import numpy as np
 from bento.common.utils import get_logger
@@ -19,6 +21,19 @@ UTF8_ENCODE ='utf8'
 
 PRINCIPAL_INVESTIGATOR = "principal_investigator"
 BATCH_SIZE = 1000
+
+
+@contextmanager
+def _timed_step(log, batch_id, step, file_name=None):
+    """Log elapsed seconds for one load_data step, including when the step raises."""
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = time.perf_counter() - start
+        file_part = f' file={file_name}' if file_name else ''
+        log.info(f'Load Metadata timing batch={batch_id} step={step}{file_part} elapsed_s={elapsed:.3f}')
+
 
 # This script load matadata files to database
 # input: file info list
@@ -43,106 +58,124 @@ class DataLoader:
     def load_data(self, file_path_list):
         returnVal = True
         self.errors = []
+        batch_id = self.batch.get(ID)
         file_types = [k for (k,v) in self.file_nodes.items()]
         main_node_types = [k for (k,v) in self.main_nodes.items()]
 
         for file in file_path_list:
             all_records = []
             file_name = os.path.basename(file)
+            df = None
             # 1. read file to dataframe
             if not os.path.isfile(file):
                 self.errors.append(f"File does not exist, {file}")
                 continue
             try:
-                df = pd.read_csv(file, sep=SEPARATOR_CHAR, header=0, dtype='str', encoding=UTF8_ENCODE,keep_default_na=False,na_values=[''])
-                df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if pd.api.types.is_string_dtype(x) else x) # strip white space.  covers both legacy object dtype and pandas' newer str dtype
-                df = removeTailingEmptyColumnsAndRows(df)
-                df = df.replace({np.nan: None})  # replace Nan in dataframe with None
-                df = df.reset_index()  # make sure indexes pair with number of rows
-                node_type = df[TYPE].iloc[0]
-                system_populated_props, system_populated_relationships = self.model.get_system_populated_props_for_node(node_type)
-                srf = SRF(self.srf_data, system_populated_props, system_populated_relationships)
-                system_populated_values = srf.get_system_populated_property_value_map()
-                system_populated_relationship_values = srf.get_system_populated_relationship_value_map()
-                must_populated_relationship_columns = self.model.get_must_populated_relationships_for_node(node_type)
-                for relationship in must_populated_relationship_columns:
-                    if relationship not in df.columns:
-                        df[relationship] = None
-                col_names = list(df.columns)
-                for index, row in df.iterrows():
-                    type = row[TYPE]
-                    rawData = df.loc[index].to_dict()
-                    if rawData.get('index') is not None:
-                        del rawData['index'] #remove index column
-                    node_id = self.get_node_id(type, rawData, system_populated_values)  #convert the file_id to correct format.
-                    if not node_id:
-                        self.errors.append(f"Node type {type} Key/ID value is not available")
-                    if type in file_types:
-                        node_id = self.adjust_file_id_case(node_id)
-                    exist_node = self.mongo_dao.get_dataRecord_by_node(node_id, type, self.batch[SUBMISSION_ID])
-                    # add logic to delete QC record if exist_node
-                    if exist_node and exist_node.get(QC_RESULT_ID): 
-                        self.mongo_dao.delete_qcRecord(exist_node[QC_RESULT_ID])
-                        exist_node[QC_RESULT_ID] = None
-                        s3FileInfo = exist_node.get(S3_FILE_INFO)
-                        if s3FileInfo:
-                            s3FileInfo[QC_RESULT_ID] = None                  
-                    relation_fields = [name for name in col_names if '.' in name]
-                    prop_names = [name for name in col_names if not name in [TYPE, 'index', SUBFOLDER_FILE_NAME] + relation_fields]
-                    batchIds = [self.batch[ID]] if not exist_node else  exist_node[BATCH_IDS] + [self.batch[ID]]
-                    current_date_time = current_datetime()
-                    id = self.get_record_id(exist_node)
-                    # onlu generating CRDC ID for valid nodes
-                    valid_crdc_id_nodes = type in main_node_types
-                    crdc_id = self.get_crdc_id(exist_node, type, node_id, self.submission.get(STUDY_ID)) if valid_crdc_id_nodes else None
-                    # file nodes
-                    if valid_crdc_id_nodes and type in file_types:
-                        crdc_id = node_id if node_id.startswith(DCF_PREFIX) else DCF_PREFIX + node_id
-                    # principal investigator node
-                    if type == PRINCIPAL_INVESTIGATOR and PRINCIPAL_INVESTIGATOR in main_node_types:
-                        submission = self.mongo_dao.get_submission(self.batch[SUBMISSION_ID])
-                        crdc_id = submission.get(ORCID) if submission and submission.get(ORCID) else None
+                with _timed_step(self.log, batch_id, 'load_data.read_file', file_name):
+                    df = pd.read_csv(file, sep=SEPARATOR_CHAR, header=0, dtype='str', encoding=UTF8_ENCODE,keep_default_na=False,na_values=[''])
+                    df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if pd.api.types.is_string_dtype(x) else x) # strip white space.  covers both legacy object dtype and pandas' newer str dtype
+                    df = removeTailingEmptyColumnsAndRows(df)
+                    df = df.replace({np.nan: None})  # replace Nan in dataframe with None
+                    df = df.reset_index()  # make sure indexes pair with number of rows
+                    node_type = df[TYPE].iloc[0]
 
-                    if index == 0 or not self.process_m2m_rel(all_records, node_id, rawData, relation_fields):
-                        dataRecord = {
-                            ID: id,
-                            SUBMISSION_ID: self.batch[SUBMISSION_ID],
-                            DATA_COMMON_NAME: self.data_common,
-                            BATCH_IDS: batchIds,
-                            LATEST_BATCH_ID: self.batch[ID],
-                            LATEST_BATCH_DISPLAY_ID: self.batch.get(DISPLAY_ID),
-                            UPLOADED_DATE: current_date_time, 
-                            STATUS: STATUS_NEW,
-                            ERRORS: [],
-                            WARNINGS: [],
-                            CREATED_AT : current_date_time if not exist_node else exist_node[CREATED_AT], 
-                            UPDATED_AT: current_date_time, 
-                            ORIN_FILE_NAME: file_name,
-                            "lineNumber":  index + 2,
-                            NODE_TYPE: type,
-                            NODE_ID: node_id,
-                            "IDPropName": self.model.get_node_id(type),
-                            PROPERTIES: {k: v for (k, v) in rawData.items() if k in prop_names},
-                            # must use rawData here,(not row) so that parent properties with pipes replacing dot will be preserved and used in sorting algorithm
-                            PARENTS: self.get_parents(relation_fields, rawData, system_populated_relationship_values),
-                            RAW_DATA:  rawData,
-                            ADDITION_ERRORS: [],
-                            ENTITY_TYPE: self.model.get_entity_type(type), 
-                            STUDY_ID: self.submission.get(STUDY_ID)
-                        }
-                        if system_populated_values:
-                            backfilled_properties = backfill_missing_or_empty_properties(dataRecord[PROPERTIES], system_populated_values)
-                            dataRecord[PROPERTIES].update(backfilled_properties)
-                        if crdc_id:
-                            dataRecord["CRDC_ID"] = crdc_id
+                with _timed_step(self.log, batch_id, 'load_data.prepare_srf_and_columns', file_name):
+                    system_populated_props, system_populated_relationships = self.model.get_system_populated_props_for_node(node_type)
+                    srf = SRF(self.srf_data, system_populated_props, system_populated_relationships)
+                    system_populated_values = srf.get_system_populated_property_value_map()
+                    system_populated_relationship_values = srf.get_system_populated_relationship_value_map()
+                    must_populated_relationship_columns = self.model.get_must_populated_relationships_for_node(node_type)
+                    for relationship in must_populated_relationship_columns:
+                        if relationship not in df.columns:
+                            df[relationship] = None
+                    col_names = list(df.columns)
+
+                mongo_io_elapsed = 0.0
+                row_count = len(df.index)
+                with _timed_step(self.log, batch_id, 'load_data.build_records', file_name):
+                    for index, row in df.iterrows():
+                        type = row[TYPE]
+                        rawData = df.loc[index].to_dict()
+                        if rawData.get('index') is not None:
+                            del rawData['index'] #remove index column
+                        node_id = self.get_node_id(type, rawData, system_populated_values)  #convert the file_id to correct format.
+                        if not node_id:
+                            self.errors.append(f"Node type {type} Key/ID value is not available")
                         if type in file_types:
-                            id_field = self.file_nodes.get(type, {}).get(ID_FIELD)
-                            dataRecord[S3_FILE_INFO] = self.get_file_info(type, prop_names, row)
-                            dataRecord[PROPERTIES][id_field] = node_id
-                        all_records.append(dataRecord)
+                            node_id = self.adjust_file_id_case(node_id)
+                        mongo_started = time.perf_counter()
+                        exist_node = self.mongo_dao.get_dataRecord_by_node(node_id, type, self.batch[SUBMISSION_ID])
+                        # add logic to delete QC record if exist_node
+                        if exist_node and exist_node.get(QC_RESULT_ID):
+                            self.mongo_dao.delete_qcRecord(exist_node[QC_RESULT_ID])
+                            exist_node[QC_RESULT_ID] = None
+                            s3FileInfo = exist_node.get(S3_FILE_INFO)
+                            if s3FileInfo:
+                                s3FileInfo[QC_RESULT_ID] = None
+                        relation_fields = [name for name in col_names if '.' in name]
+                        prop_names = [name for name in col_names if not name in [TYPE, 'index', SUBFOLDER_FILE_NAME] + relation_fields]
+                        batchIds = [self.batch[ID]] if not exist_node else  exist_node[BATCH_IDS] + [self.batch[ID]]
+                        current_date_time = current_datetime()
+                        id = self.get_record_id(exist_node)
+                        # onlu generating CRDC ID for valid nodes
+                        valid_crdc_id_nodes = type in main_node_types
+                        crdc_id = self.get_crdc_id(exist_node, type, node_id, self.submission.get(STUDY_ID)) if valid_crdc_id_nodes else None
+                        # file nodes
+                        if valid_crdc_id_nodes and type in file_types:
+                            crdc_id = node_id if node_id.startswith(DCF_PREFIX) else DCF_PREFIX + node_id
+                        # principal investigator node
+                        if type == PRINCIPAL_INVESTIGATOR and PRINCIPAL_INVESTIGATOR in main_node_types:
+                            submission = self.mongo_dao.get_submission(self.batch[SUBMISSION_ID])
+                            crdc_id = submission.get(ORCID) if submission and submission.get(ORCID) else None
+                        mongo_io_elapsed += time.perf_counter() - mongo_started
+
+                        if index == 0 or not self.process_m2m_rel(all_records, node_id, rawData, relation_fields):
+                            dataRecord = {
+                                ID: id,
+                                SUBMISSION_ID: self.batch[SUBMISSION_ID],
+                                DATA_COMMON_NAME: self.data_common,
+                                BATCH_IDS: batchIds,
+                                LATEST_BATCH_ID: self.batch[ID],
+                                LATEST_BATCH_DISPLAY_ID: self.batch.get(DISPLAY_ID),
+                                UPLOADED_DATE: current_date_time,
+                                STATUS: STATUS_NEW,
+                                ERRORS: [],
+                                WARNINGS: [],
+                                CREATED_AT : current_date_time if not exist_node else exist_node[CREATED_AT],
+                                UPDATED_AT: current_date_time,
+                                ORIN_FILE_NAME: file_name,
+                                "lineNumber":  index + 2,
+                                NODE_TYPE: type,
+                                NODE_ID: node_id,
+                                "IDPropName": self.model.get_node_id(type),
+                                PROPERTIES: {k: v for (k, v) in rawData.items() if k in prop_names},
+                                # must use rawData here,(not row) so that parent properties with pipes replacing dot will be preserved and used in sorting algorithm
+                                PARENTS: self.get_parents(relation_fields, rawData, system_populated_relationship_values),
+                                RAW_DATA:  rawData,
+                                ADDITION_ERRORS: [],
+                                ENTITY_TYPE: self.model.get_entity_type(type),
+                                STUDY_ID: self.submission.get(STUDY_ID)
+                            }
+                            if system_populated_values:
+                                backfilled_properties = backfill_missing_or_empty_properties(dataRecord[PROPERTIES], system_populated_values)
+                                dataRecord[PROPERTIES].update(backfilled_properties)
+                            if crdc_id:
+                                dataRecord["CRDC_ID"] = crdc_id
+                            if type in file_types:
+                                id_field = self.file_nodes.get(type, {}).get(ID_FIELD)
+                                dataRecord[S3_FILE_INFO] = self.get_file_info(type, prop_names, row)
+                                dataRecord[PROPERTIES][id_field] = node_id
+                            all_records.append(dataRecord)
+
+                self.log.info(
+                    f'Load Metadata timing batch={batch_id} step=load_data.build_records.mongo_io'
+                    f' file={file_name} row_count={row_count} record_count={len(all_records)}'
+                    f' elapsed_s={mongo_io_elapsed:.3f}'
+                )
 
                 # 3-1. upsert data in a tsv file into mongo DB
-                result, error = self.mongo_dao.update_data_records(all_records)
+                with _timed_step(self.log, batch_id, 'load_data.update_data_records', file_name):
+                    result, error = self.mongo_dao.update_data_records(all_records)
                 if error:
                     self.errors.append(f'“{file_name}”: updating metadata failed - database error.  Please try again and contact the helpdesk if this error persists.')
                 returnVal = returnVal and result
@@ -155,7 +188,8 @@ class DataLoader:
                     self.errors.append(msg)
                     return False, self.errors
             finally:
-                del df
+                if df is not None:
+                    del df
 
         del file_path_list
         return returnVal, self.errors
