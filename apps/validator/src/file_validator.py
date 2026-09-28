@@ -126,6 +126,10 @@ def record_task_result(status: str, validation_id: str, mongo_dao: object, log: 
     log.info(f'record_validation_progress: status={status}, validation_id={validation_id}')
     if not status:
         return
+
+    if status == STATUS_FAILED:
+        raise Exception(f'File validation task failed in validation: {validation_id}')
+
     updated_validation_ops = updates_to_mark_task_done(status)
     updated_validation = mongo_dao.atomic_update_validation(validation_id, updated_validation_ops)
     if not updated_validation:
@@ -240,8 +244,6 @@ def validation_status_from_value(worse_value: int) -> str:
 
 def updates_to_mark_task_done(status: str) -> dict:
     result = {'$inc': {COMPLETED_FILE_MESSAGES: 1}}
-    if status == STATUS_FAILED:
-        result = {}
     new_status_value = STATUS_PRECEDENCE.get(status)
     if new_status_value is None:
         raise ValueError(f'Invalid file status: {status}')
