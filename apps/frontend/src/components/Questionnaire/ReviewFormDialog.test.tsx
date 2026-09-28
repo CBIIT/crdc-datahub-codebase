@@ -221,6 +221,35 @@ describe("Implementation Requirements", () => {
     expect(mockOnSubmit).not.toHaveBeenCalled();
   });
 
+  it("should replace a stale validation error when the new content is invalid after sanitization", async () => {
+    const mockOnSubmit = vi.fn();
+
+    const { getByTestId } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />
+    );
+
+    const input = within(getByTestId("review-comment")).getByRole("textbox");
+    userEvent.paste(input, "X".repeat(10_050));
+    userEvent.click(getByTestId("review-form-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(getByTestId("review-comment-dialog-error")).toHaveTextContent(
+        "Maximum of 10,000 characters allowed"
+      );
+    });
+
+    userEvent.clear(input);
+    userEvent.paste(input, "<img src='x' />");
+
+    await waitFor(() => {
+      expect(getByTestId("review-comment-dialog-error")).toHaveTextContent(
+        "Please enter a valid comment."
+      );
+    });
+
+    expect(getByTestId("review-form-dialog-confirm-button")).toBeDisabled();
+  });
+
   it("should display a character counter that updates as the user types", () => {
     const { getByTestId } = render(<ReviewFormDialog open header="Test" />);
 

@@ -116,11 +116,11 @@ const ReviewFormDialog: FC<Props> = ({
   const submitDisabled = submissionPending || isSubmitSuccessful;
 
   const errorMessage = useMemo<string>(() => {
-    if (errors?.reviewComment?.message?.length > 0) {
-      return errors.reviewComment.message;
+    if (plainTextLength > 0 && sanitizedTextLength === 0) {
+      return INVALID_COMMENT_MESSAGE;
     }
 
-    return plainTextLength > 0 && sanitizedTextLength === 0 ? INVALID_COMMENT_MESSAGE : "";
+    return errors?.reviewComment?.message || "";
   }, [errors?.reviewComment?.message, plainTextLength, sanitizedTextLength]);
 
   const handleOnSubmit = async (data: ReviewFormFields) => {
