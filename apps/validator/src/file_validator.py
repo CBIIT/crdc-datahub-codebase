@@ -141,14 +141,12 @@ def record_task_result(status: str, validation_id: str, mongo_dao: object, log: 
         validation_updates, submission_updates = updates_to_mark_file_validation_done(updated_validation, current_datetime(), log)
 
         mongo_dao.update_submission(submission_id, submission_updates)
-        updated_validation = mongo_dao.atomic_update_validation(validation_id, validation_updates)
-        if not updated_validation:
-            raise Exception(f'Failed to update validation record for {validation_id}')
+        mongo_dao.update_validation(validation_id, validation_updates)
         
         if VALIDATION_TYPE_METADATA in updated_validation.get('type'):
             validaton_update, submission_update = updates_to_consolidate_metadata_and_file_validations(updated_validation, log)
             if validaton_update:
-                mongo_dao.atomic_update_validation(validation_id, validaton_update)
+                mongo_dao.update_validation(validation_id, validaton_update)
             if submission_update:
                 mongo_dao.update_submission(submission_id, submission_update)
 
@@ -193,7 +191,7 @@ def updates_to_mark_file_validation_done(validation: dict, ended_at: object, log
         updated_submission[VALIDATION_ENDED] = ended_at
 
 
-    return {'$set': updated_validation}, {'$set': updated_submission}
+    return  updated_validation,  updated_submission
 
 
 """
@@ -225,13 +223,13 @@ def updates_to_consolidate_metadata_and_file_validations(validation: dict, log: 
         overall_status = validation_status_from_value(overall_value)
 
         overall_ended = max(file_ended, metadata_ended)
-        updated_validation = {'$set': {
+        updated_validation = {
             ENDED: overall_ended,
             VALIDATION_STATUS: overall_status,
-        }}
-        updated_submission = {'$set': {
+        }
+        updated_submission =  {
             VALIDATION_ENDED: overall_ended,
-        }}
+        }
         return updated_validation, updated_submission
     else:
         return None, None

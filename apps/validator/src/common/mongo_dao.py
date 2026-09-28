@@ -1125,10 +1125,10 @@ class MongoDao:
         data_collection = db[VALIDATION_COLLECTION]
         return data_collection.update_one({ID: validation_id}, {"$set": updated_validation})
 
-    def update_submission(self, submission_id: str, update_ops: dict):
+    def update_submission(self, submission_id: str, updated_fields: dict):
         db = self.client[self.db_name]
         data_collection = db[SUBMISSION_COLLECTION]
-        return data_collection.update_one({ID: submission_id}, update_ops)
+        return data_collection.update_one({ID: submission_id}, {"$set": updated_fields})
 
     def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, submission_id=None):
         """Update validation status.

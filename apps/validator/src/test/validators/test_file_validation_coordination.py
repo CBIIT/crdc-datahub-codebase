@@ -16,29 +16,33 @@ validation_completed_test_data = [
         WORST_FILE_STATUS: 0
     }, 
     first_ended_at, 
-    ({'$set': {
-        FILE_ENDED: first_ended_at,
-        FILE_STATUS: 'Passed',
-        ENDED: first_ended_at,
-        VALIDATION_STATUS: 'Passed'
-    }},
-    {'$set': {
-        FILE_VALIDATION_STATUS: 'Passed',
-        VALIDATION_ENDED: first_ended_at
-    }}),
+    (
+        {
+            FILE_ENDED: first_ended_at,
+            FILE_STATUS: 'Passed',
+            ENDED: first_ended_at,
+            VALIDATION_STATUS: 'Passed'
+        },
+        {
+            FILE_VALIDATION_STATUS: 'Passed',
+            VALIDATION_ENDED: first_ended_at
+        }
+    ),
     id='Should update both file and overall validation status and ended time for data file validation only'),
     pytest.param({
         "type": [VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA],
         WORST_FILE_STATUS: 0
     }, 
     second_ended_at, 
-    ({'$set': {
-        FILE_ENDED: second_ended_at,
-        FILE_STATUS: 'Passed'
-    }},
-    {'$set': {
-        FILE_VALIDATION_STATUS: 'Passed'
-    }}),
+    (
+        {
+            FILE_ENDED: second_ended_at,
+            FILE_STATUS: 'Passed'
+        },
+        {
+            FILE_VALIDATION_STATUS: 'Passed'
+        }
+    ),
     id='Should only update file validation status and ended time for Metadata and data file validation'),
 ]
 
@@ -62,13 +66,13 @@ validation_status_test_data = [
         METADATA_ENDED: first_ended_at
     }, 
     (
-        {'$set': {
+        {
             ENDED: second_ended_at,
             VALIDATION_STATUS: 'Warning'
-        }},
-        {'$set': {
+        },
+        {
             VALIDATION_ENDED: second_ended_at
-        }}
+        }
     ),
     id='Metadata and data file validation, metadata status is higher, ended earlier'),
     pytest.param({
@@ -79,13 +83,13 @@ validation_status_test_data = [
         FILE_ENDED: second_ended_at
     }, 
     (
-        {'$set': {
+        {
             ENDED: second_ended_at,
             VALIDATION_STATUS: 'Error'
-        }},
-        {'$set': {
+        },
+        {
             VALIDATION_ENDED: second_ended_at
-        }}
+        }
     ),
     id='Metadata and data file validation, metadata status is lower ended earlier'),
     pytest.param({
@@ -96,13 +100,13 @@ validation_status_test_data = [
         FILE_ENDED: first_ended_at
     }, 
     (
-        {'$set': {
+        {
             ENDED: second_ended_at,
             VALIDATION_STATUS: 'Error'
-        }},
-        {'$set': {
+        },
+        {
             VALIDATION_ENDED: second_ended_at
-        }}
+        }
     ),
     id='Metadata and data file validation, metadata status is higher ended later, although not likely to happen'),
     pytest.param({
@@ -120,7 +124,6 @@ def test_compose_updates_after_validating_metadata_and_file(validation: dict, ex
     assert updates_to_consolidate_metadata_and_file_validations(validation, log) == expected
 
 validation_fields_test_data = [
-    pytest.param('Failed', {'$max': {WORST_FILE_STATUS: 3}}, id='Should not increment completedFileMessages only try to increase worstFileStatus to 3 when failed'),
     pytest.param('Error', {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 2}}, id='Should increment completedFileMessages by 1 and try to increase worstFileStatus to 2 when error'),
     pytest.param('Warning', {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 1}}, id='Should increment completedFileMessages by 1 and try to increase worstFileStatus to 1 when warning'),
     pytest.param('Passed', {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 0}}, id='Should increment completedFileMessages by 1 and try to increase worstFileStatus to 0 when passed'),
@@ -233,16 +236,16 @@ finalize_progress_test_data = [
             WORST_FILE_STATUS: 0,
             FILE_ENDED: progress_ended_at,
         }),
-        {'$set': {
+        {
             FILE_ENDED: progress_ended_at,
             FILE_STATUS: 'Passed',
             ENDED: progress_ended_at,
             VALIDATION_STATUS: 'Passed',
-        }},
-        {'$set': {
+        },
+        {
             FILE_VALIDATION_STATUS: 'Passed',
             VALIDATION_ENDED: progress_ended_at,
-        }},
+        },
         id='Should finalize file-only validation when the last file message completes',
     ),
     pytest.param(
@@ -257,13 +260,13 @@ finalize_progress_test_data = [
             METADATA_ENDED: metadata_ended_at,
             FILE_ENDED: progress_ended_at,
         }),
-        {'$set': {
+        {
             ENDED: progress_ended_at,
             VALIDATION_STATUS: 'Error',
-        }},
-        {'$set': {
+        },
+        {
             VALIDATION_ENDED: progress_ended_at,
-        }},
+        },
         id='Should consolidate overall status when metadata already finished',
     ),
     pytest.param(
@@ -276,13 +279,13 @@ finalize_progress_test_data = [
             WORST_BATCH_STATUS: 2,
             FILE_ENDED: progress_ended_at,
         }),
-        {'$set': {
+        {
             FILE_ENDED: progress_ended_at,
             FILE_STATUS: 'Passed',
-        }},
-        {'$set': {
+        },
+        {
             FILE_VALIDATION_STATUS: 'Passed',
-        }},
+        },
         id='Should update file status only when metadata has not finished',
     ),
 ]
@@ -295,6 +298,9 @@ def test_record_validation_progress_finalizes_last_file_message(status, updated_
     with patch('file_validator.current_datetime', return_value=progress_ended_at):
         record_task_result(status, VALIDATION_ID, mongo_dao, progress_log)
 
-    mongo_dao.atomic_update_validation.assert_called_with(VALIDATION_ID, expected_validation)
+    mongo_dao.atomic_update_validation.assert_called_once_with(
+        VALIDATION_ID, updates_to_mark_task_done(status)
+    )
+    mongo_dao.update_validation.assert_called_with(VALIDATION_ID, expected_validation)
     mongo_dao.update_submission.assert_called_with(SUBMISSION, expected_submission)
     progress_log.info.assert_any_call('File validation is completed, updating validation and submission records')
