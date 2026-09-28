@@ -200,6 +200,26 @@ export const isStringLengthBetween = (
 };
 
 /**
+ * Removes all HTML tags from a string, keeping only the text content.
+ * Mirrors the backend's sanitation behavior.
+ *
+ * @param {string} input - The string to strip HTML from.
+ * @returns {string} The remaining text content, or an empty string if the input is invalid.
+ */
+export const stripHtmlTags = (input: string): string => {
+  if (typeof input !== "string" || !input.length) {
+    return "";
+  }
+
+  const parsed = new DOMParser().parseFromString(input, "text/html");
+  parsed
+    .querySelectorAll("script, style, textarea, option, xmp")
+    .forEach((element) => element.remove());
+
+  return parsed.documentElement.textContent || "";
+};
+
+/**
  * Extracts the major and minor version numbers from a version string.
  *
  * @param {string} version - The version string to parse.
