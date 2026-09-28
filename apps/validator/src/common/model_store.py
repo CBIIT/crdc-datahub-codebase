@@ -1,4 +1,6 @@
 import os
+import time
+from contextlib import contextmanager
 from bento.common.utils import get_logger
 from common.model_reader import YamlModelParser
 from common.model import DataModel
@@ -7,6 +9,21 @@ from common.utils import download_file_to_dict, get_exception_msg
 from common.mdf_reader import get_model_from_mdf_files
 
 YML_FILE_EXT = ".yml"
+
+
+@contextmanager
+def _timed_model_step(log, data_common, version, step):
+    """Log elapsed seconds for model load steps, including when the step raises."""
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = time.perf_counter() - start
+        log.info(
+            f'Model store timing data_common={data_common} version={version} '
+            f'step={step} elapsed_s={elapsed:.3f}'
+        )
+
 
 class ModelFactory:
     
@@ -28,22 +45,26 @@ class ModelFactory:
     """
     def create_model(self, data_common, version):
         dc = data_common
-        model_config = self.models_def[dc]
-        model_dir = os.path.join(self.model_def_dir, os.path.join(dc, version))
-        #process model files for the data common
-        file_names = [os.path.join(model_dir, file) for file in model_config[DEF_MODEL_FILES]]
-        # props_file_name = os.path.join(model_dir, v[DEF_MODEL_PROP_FILE])
-        delimiter = model_config.get(LIST_DELIMITER_PROP)
-        #process model files for the data common
-        try:
-            mdf_model = get_model_from_mdf_files(file_names, handle=dc)
-            model_reader = YamlModelParser(file_names, dc, delimiter, version)
-            return DataModel(model_reader.model, mdf_model, model_config)
-        except Exception as e:
-            self.log.exception(e)
-            msg = f"Failed to create data model: {data_common}/{version}!"
-            self.log.exception(f"{msg} {get_exception_msg()}")
-            return None
+        with _timed_model_step(self.log, dc, version, 'create_model'):
+            model_config = self.models_def[dc]
+            model_dir = os.path.join(self.model_def_dir, os.path.join(dc, version))
+            #process model files for the data common
+            file_names = [os.path.join(model_dir, file) for file in model_config[DEF_MODEL_FILES]]
+            # props_file_name = os.path.join(model_dir, v[DEF_MODEL_PROP_FILE])
+            delimiter = model_config.get(LIST_DELIMITER_PROP)
+            #process model files for the data common
+            try:
+                with _timed_model_step(self.log, dc, version, 'create_model.get_model_from_mdf_files'):
+                    mdf_model = get_model_from_mdf_files(file_names, handle=dc)
+                with _timed_model_step(self.log, dc, version, 'create_model.yaml_model_parser'):
+                    model_reader = YamlModelParser(file_names, dc, delimiter, version)
+                with _timed_model_step(self.log, dc, version, 'create_model.data_model_init'):
+                    return DataModel(model_reader.model, mdf_model, model_config)
+            except Exception as e:
+                self.log.exception(e)
+                msg = f"Failed to create data model: {data_common}/{version}!"
+                self.log.exception(f"{msg} {get_exception_msg()}")
+                return None
     """
     get current version by data common
     """
@@ -56,15 +77,17 @@ class ModelFactory:
     get model by data common and version
     """       
     def get_model_by_data_common_version(self, data_common, version):
-        model = None
-        if not version:
-            version = self.get_current_version_by_datacommon(data_common)
-        try:
-            return self.create_model(data_common, version)
-        except Exception as e:
-            self.log.exception(e)
-            msg = f"Failed to create data model: {data_common}/{version}!"
-            self.log.exception(f"{msg} {get_exception_msg()}")
+        resolved_version = version
+        if not resolved_version:
+            with _timed_model_step(self.log, data_common, 'unset', 'get_model_by_data_common_version.resolve_version'):
+                resolved_version = self.get_current_version_by_datacommon(data_common)
+        with _timed_model_step(self.log, data_common, resolved_version, 'get_model_by_data_common_version'):
+            try:
+                return self.create_model(data_common, resolved_version)
+            except Exception as e:
+                self.log.exception(e)
+                msg = f"Failed to create data model: {data_common}/{resolved_version}!"
+                self.log.exception(f"{msg} {get_exception_msg()}")
 
 def model_key(data_common, version):
     return f"{data_common}_{version}"
