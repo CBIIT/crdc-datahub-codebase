@@ -447,11 +447,12 @@ class DataRecordDAO extends MongooseGenericDAO {
 
     /**
      * Resets data-record validation status for a submission.
-     * File status is updated only on records that already have s3FileInfo.status.
-     * The two writes run in sequence; DocumentDB does not support this as one conditional update.
+     * Records that already have s3FileInfo.status get both statuses in one write.
+     * Records with a missing or null file status get only the top-level status.
+     * The two writes are disjoint; DocumentDB does not support this as one conditional update.
      * @param {string} submissionID Submission whose records are reset
      * @param {string} status Validation status to apply
-     * @returns {Promise<object>} Combined result. acknowledged is true only when both updates acknowledge. matchedCount and modifiedCount come from the submission-wide update.
+     * @returns {Promise<object>} Combined result. acknowledged is true only when both updates acknowledge. matchedCount and modifiedCount are the sum of both results.
      * @throws {Error} When either database update fails
      */
     async resetDataRecords(submissionID, status) {
@@ -463,12 +464,16 @@ class DataRecordDAO extends MongooseGenericDAO {
                     "s3FileInfo.status": { $exists: true, $ne: null }
                 },
                 { $set: {
+                    status,
                     updatedAt,
                     "s3FileInfo.status": status
                 }}
             );
             const recordStatusResult = await this.model.updateMany(
-                { submissionID },
+                {
+                    submissionID,
+                    "s3FileInfo.status": null
+                },
                 { $set: {
                     status,
                     updatedAt
@@ -476,8 +481,8 @@ class DataRecordDAO extends MongooseGenericDAO {
             );
             return {
                 acknowledged: fileStatusResult.acknowledged === true && recordStatusResult.acknowledged === true,
-                matchedCount: recordStatusResult.matchedCount,
-                modifiedCount: recordStatusResult.modifiedCount
+                matchedCount: (fileStatusResult.matchedCount || 0) + (recordStatusResult.matchedCount || 0),
+                modifiedCount: (fileStatusResult.modifiedCount || 0) + (recordStatusResult.modifiedCount || 0)
             };
         } catch (error) {
             console.error(`DataRecordDAO.resetDataRecords failed:`, {

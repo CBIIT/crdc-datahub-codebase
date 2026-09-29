@@ -141,6 +141,7 @@ describe('DataRecordDAO', () => {
     describe('resetDataRecords', () => {
         const fileStatusUpdate = {
             $set: {
+                status: VALIDATION_STATUS.NEW,
                 updatedAt: expect.any(Date),
                 's3FileInfo.status': VALIDATION_STATUS.NEW
             }
@@ -152,10 +153,10 @@ describe('DataRecordDAO', () => {
             }
         };
 
-        it('resets file status then top-level status with standard updates', async () => {
+        it('sets both statuses on file records and top-level status on the complement', async () => {
             DataRecordModel.updateMany
                 .mockResolvedValueOnce({ acknowledged: true, modifiedCount: 2, matchedCount: 2 })
-                .mockResolvedValueOnce({ acknowledged: true, modifiedCount: 10, matchedCount: 10 });
+                .mockResolvedValueOnce({ acknowledged: true, modifiedCount: 8, matchedCount: 8 });
 
             const result = await dataRecordDAO.resetDataRecords('sub-1', VALIDATION_STATUS.NEW);
 
@@ -170,7 +171,10 @@ describe('DataRecordDAO', () => {
             );
             expect(DataRecordModel.updateMany).toHaveBeenNthCalledWith(
                 2,
-                { submissionID: 'sub-1' },
+                {
+                    submissionID: 'sub-1',
+                    's3FileInfo.status': null
+                },
                 recordStatusUpdate
             );
             expect(Array.isArray(DataRecordModel.updateMany.mock.calls[0][1])).toBe(false);
@@ -180,11 +184,11 @@ describe('DataRecordDAO', () => {
         it('returns acknowledged false when either update is not acknowledged', async () => {
             DataRecordModel.updateMany
                 .mockResolvedValueOnce({ acknowledged: true, modifiedCount: 2, matchedCount: 2 })
-                .mockResolvedValueOnce({ acknowledged: false, modifiedCount: 0, matchedCount: 10 });
+                .mockResolvedValueOnce({ acknowledged: false, modifiedCount: 0, matchedCount: 8 });
 
             const result = await dataRecordDAO.resetDataRecords('sub-1', VALIDATION_STATUS.NEW);
 
-            expect(result).toEqual({ acknowledged: false, matchedCount: 10, modifiedCount: 0 });
+            expect(result).toEqual({ acknowledged: false, matchedCount: 10, modifiedCount: 2 });
         });
 
         it('throws the generic update error when an update fails', async () => {
