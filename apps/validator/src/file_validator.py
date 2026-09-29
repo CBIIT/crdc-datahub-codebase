@@ -103,7 +103,7 @@ def fileValidate(configs, job_queue, mongo_dao):
                         updated_submission = {
                             FILE_ERRORS: msgs
                         }
-                        mongo_dao.update_submission(submission_id, updated_submission)
+                        mongo_dao.atomic_update_submission(submission_id, updated_submission)
                         log.info(f'Processed orphaned file validation for submission: {submission_id}')
                     else:
                         log.error(f'Invalid message: {data}!')
