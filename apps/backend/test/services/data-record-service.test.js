@@ -421,67 +421,60 @@ describe('DataRecordService', () => {
   });
 
   describe('resetDataRecords', () => {
-    test('should reset data records status', async () => {
-      DataRecordModel.updateMany.mockResolvedValue({ modifiedCount: 10 });
+    test('should delegate submissionID and status to the data record DAO', async () => {
+      const updateResult = { acknowledged: true, matchedCount: 10, modifiedCount: 10 };
+      dataRecordService.dataRecordDAO.resetDataRecords = jest.fn()
+        .mockResolvedValue(updateResult);
 
       const result = await dataRecordService.resetDataRecords('submission-123', 'New');
 
-      expect(result).toEqual({ modifiedCount: 10 });
-      expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
-        { submissionID: 'submission-123' },
-        expect.arrayContaining([
-          expect.objectContaining({
-            $set: expect.objectContaining({
-              status: 'New'
-            })
-          })
-        ])
+      expect(result).toEqual(updateResult);
+      expect(dataRecordService.dataRecordDAO.resetDataRecords).toHaveBeenCalledWith(
+        'submission-123',
+        'New'
       );
     });
   });
 
   describe('resetS3FileLinkedMetadataStatusToNew', () => {
-    test('should update by file names and set New only on s3FileInfo', async () => {
-      DataRecordModel.updateMany.mockResolvedValue({ modifiedCount: 2 });
+    test('should delegate selected file names to the data record DAO', async () => {
+      const updateResult = { acknowledged: true, modifiedCount: 2, matchedCount: 2 };
+      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest.fn()
+        .mockResolvedValue(updateResult);
 
       const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', ['a.txt', 'b.txt']);
 
-      expect(result).toEqual({ modifiedCount: 2 });
-        expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
-        {
-          submissionID: 'sub-1',
-          s3FileInfo: { $exists: true, $ne: null },
-          's3FileInfo.fileName': { $in: ['a.txt', 'b.txt'] }
-        },
-        expect.arrayContaining([
-          expect.objectContaining({
-            $set: expect.objectContaining({
-              s3FileInfo: { $mergeObjects: ['$s3FileInfo', { status: 'New' }] }
-            })
-          })
-        ])
+      expect(result).toEqual(updateResult);
+      expect(dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith(
+        'sub-1',
+        ['a.txt', 'b.txt']
       );
     });
 
-    test('should match all s3FileInfo records when fileNames is null', async () => {
-      DataRecordModel.updateMany.mockResolvedValue({ modifiedCount: 5 });
+    test('should delegate null to target all linked file metadata', async () => {
+      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest.fn()
+        .mockResolvedValue({ acknowledged: true, modifiedCount: 5, matchedCount: 5 });
 
       await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', null);
 
-      expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
-        {
-          submissionID: 'sub-1',
-          s3FileInfo: { $exists: true, $ne: null }
-        },
-        expect.any(Array)
+      expect(dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith(
+        'sub-1',
+        null
       );
     });
 
-    test('should no-op for empty fileNames array', async () => {
+    test('should preserve the DAO no-op result for an empty fileNames array', async () => {
+      const noOpResult = { acknowledged: true, modifiedCount: 0, matchedCount: 0 };
+      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest.fn()
+        .mockResolvedValue(noOpResult);
+
       const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', []);
 
-      expect(result).toEqual({ acknowledged: true, modifiedCount: 0, matchedCount: 0 });
-      expect(DataRecordModel.updateMany).not.toHaveBeenCalled();
+      expect(result).toEqual(noOpResult);
+      expect(dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith(
+        'sub-1',
+        []
+      );
     });
   });
 

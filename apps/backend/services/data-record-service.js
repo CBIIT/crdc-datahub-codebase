@@ -513,48 +513,27 @@ class DataRecordService {
 
         return await this.dataRecordDAO.distinct("nodeType", { submissionID });
     }
-    // This MongoDB schema is optimized for performance by reducing joins and leveraging document-based structure.
+    /**
+     * Resets data-record validation status for a submission.
+     * File status is updated only where s3FileInfo.status already exists.
+     * @param {string} submissionID Submission whose records are reset
+     * @param {string} status Validation status to apply
+     * @returns {Promise<object>} Combined update result; acknowledged is true only when both writes acknowledge
+     */
     async resetDataRecords(submissionID, status) {
-        return await this.dataRecordDAO.updateManyPipeline(
-            { submissionID: submissionID },
-            [{ $set: {
-                status: status,
-                updatedAt: getCurrentTime(),
-                s3FileInfo: {
-                    $cond: [
-                        { $gt: ["$s3FileInfo.status", null] }, // only if exists
-                        { $mergeObjects: ["$s3FileInfo", { status: status }] }, // override
-                        "$s3FileInfo" // otherwise leave unchanged
-        ]}}}]
-        );
+        return await this.dataRecordDAO.resetDataRecords(submissionID, status);
     }
 
     /**
      * After one or more data files are removed from S3, set s3FileInfo.status to New on matching data records
      * (top-level data record status is not changed). Updates updatedAt.
      * @param {string} submissionID
-     * @param {string[]|null} fileNames - Names of removed data files. Pass null to match every data record
+     * @param {string[]|null} [fileNames] Names of removed data files. Null or omitted matches every data record
      *        in the submission that has s3FileInfo (e.g. delete all data files with no exclusives).
      * @returns {Promise<import('mongodb').UpdateResult>}
      */
     async resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames) {
-        if (fileNames && fileNames.length === 0) {
-            return { acknowledged: true, modifiedCount: 0, matchedCount: 0 };
-        }
-        const filter = {
-            submissionID,
-            s3FileInfo: { $exists: true, $ne: null }
-        };
-        if (fileNames != null) {
-            filter["s3FileInfo.fileName"] = { $in: fileNames };
-        }
-        return await this.dataRecordDAO.updateManyPipeline(
-            filter,
-            [{ $set: {
-                updatedAt: getCurrentTime(),
-                s3FileInfo: { $mergeObjects: ["$s3FileInfo", { status: VALIDATION_STATUS.NEW }] }
-            }}]
-        );
+        return await this.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames);
     }
 
     _getSubmissionStatQuery(submissionID, validNodeStatus) {
