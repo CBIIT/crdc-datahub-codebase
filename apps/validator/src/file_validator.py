@@ -8,11 +8,21 @@ from bento.common.s3 import S3Bucket
 from common.constants import ERRORS, WARNINGS, STATUS, S3_FILE_INFO, ID, SIZE, MD5, UPDATED_AT, \
     FILE_NAME, SQS_TYPE, SQS_NAME, FILE_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, SUBMISSION_ID, \
     BATCH_BUCKET, SERVICE_TYPE_FILE, LAST_MODIFIED, CREATED_AT, TYPE, SUBMISSION_INTENTION, SUBMISSION_INTENTION_DELETE,\
-    VALIDATION_ID, VALIDATION_ENDED, QC_RESULT_ID, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, FILE_VALIDATION, \
-    DATA_FILE_TYPE, QC_VALIDATION_TYPE, SUBMITTED_ID, BATCH_ID, DISPLAY_ID, UPLOADED_DATE
+    VALIDATION_ID, QC_RESULT_ID, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, \
+    DATA_FILE_TYPE, QC_VALIDATION_TYPE, SUBMITTED_ID, BATCH_ID, DISPLAY_ID, UPLOADED_DATE, STATUS_PRECEDENCE, VALIDATION_ENDED,\
+    FILE_VALIDATION_STATUS, FILE_ENDED, FILE_STATUS, ENDED, VALIDATION_STATUS, VALIDATION_TYPE_METADATA, \
+    WORST_BATCH_STATUS, METADATA_ENDED, FILE_ERRORS, STATUS_FAILED
+
 from common.utils import get_exception_msg, current_datetime, get_s3_file_info, get_s3_file_md5, create_error, get_uuid_str
 from service.ecs_agent import set_scale_in_protection
 from metadata_validator import get_qc_result
+from datetime import datetime
+
+TOTAL_FILE_MESSAGES = 'totalFileMessages'
+COMPLETED_FILE_MESSAGES = 'completedFileMessages'
+WORST_FILE_STATUS = 'worstFileStatus'
+VALIDATION_SCOPE = 'scope'
+NEW_SCOPE = 'New'
 
 VISIBILITY_TIMEOUT = 20
 """
@@ -45,30 +55,41 @@ def fileValidate(configs, job_queue, mongo_dao):
                 try:
                     data = json.loads(msg.body)
                     log.debug(data)
+                    validation_id = data.get(VALIDATION_ID)
+                    if not validation_id:
+                        log.error(f'Invalid message: {data}!')
+                        msg.delete()
+                        continue
+                    status = None
+                    file_id = data.get(FILE_ID)
                     # Make sure job is in correct format
-                    if data.get(SQS_TYPE) == "Validate File" and data.get(FILE_ID):
+                    if data.get(SQS_TYPE) == "Validate File" and file_id:
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
                         #1 call mongo_dao to get batch by batch_id
-                        fileRecord = mongo_dao.get_file(data[FILE_ID])
+                        fileRecord = mongo_dao.get_file(file_id)
                         if fileRecord is None: 
+                            log.error(f'The data file record is not found, {file_id}!')
+                            record_task_result(STATUS_ERROR, validation_id, mongo_dao, log)
                             msg.delete()
                             continue
                         #2. validate file.
                         validator = FileValidator(mongo_dao)
                         status = validator.validate(fileRecord)
                         if status == STATUS_ERROR:
-                            log.error(f'The data file record is invalid, {data[FILE_ID]}!')
+                            log.error(f'The data file record is invalid, {file_id}!')
                         elif status == STATUS_WARNING:
-                            log.error(f'The data file record is valid but with warning, {data[FILE_ID]}!')
+                            log.error(f'The data file record is valid but with warning, {file_id}!')
                         else:
-                            log.info(f'The data file record passed validation, {data[FILE_ID]}.')
+                            log.info(f'The data file record passed validation, {file_id}.')
                         #4. update dataRecords
                         if not mongo_dao.update_file_info(fileRecord):
-                            log.error(f'Failed to update data file record, {data[FILE_ID]}!')
+                            status = STATUS_FAILED
+                            log.error(f'Failed to update data file record, {file_id}!')
                         else:
-                            log.info(f'The data file record is updated,{data[FILE_ID]}.')
+                            log.info(f'The data file record is updated,{file_id}.')
 
-                    elif data.get(SQS_TYPE) == "Validate Submission Files" and data.get(SUBMISSION_ID) and data.get(VALIDATION_ID):
+                        log.info(f'Processed validation for "data file: " {file_id}')
+                    elif data.get(SQS_TYPE) == "Validate Submission Files" and data.get(SUBMISSION_ID):
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
                         submission_id = data[SUBMISSION_ID]
                         validator = FileValidator(mongo_dao)
@@ -79,20 +100,16 @@ def fileValidate(configs, job_queue, mongo_dao):
                             status = STATUS_ERROR
                         else:
                             status, msgs = validator.validate_all_files(data[SUBMISSION_ID])
-
-                        # update validation records
-                        validation_id = data[VALIDATION_ID]
-                        validation_end_at = current_datetime()
-                        update_status = mongo_dao.update_validation_status(validation_id, status, validation_end_at, FILE_VALIDATION)
-                        if update_status:
-                            validator.submission[VALIDATION_ENDED] = validation_end_at
-                        #update submission
-                        mongo_dao.set_submission_validation_status(validator.submission, status if status else "None", None, None, msgs)
+                        updated_submission = {
+                            FILE_ERRORS: msgs
+                        }
+                        mongo_dao.atomic_update_submission(submission_id, updated_submission)
+                        log.info(f'Processed orphaned file validation for submission: {submission_id}')
                     else:
                         log.error(f'Invalid message: {data}!')
                     
-                    log.info(f'Processed {SERVICE_TYPE_FILE} validation for the {"data file, "+ data.get(FILE_ID) if data.get(FILE_ID) else "submission, " + data.get(SUBMISSION_ID)}!')
                     file_processed += 1
+                    record_task_result(status, validation_id, mongo_dao, log)
                     msg.delete()
                 except Exception as e:
                     log.exception(e)
@@ -107,6 +124,151 @@ def fileValidate(configs, job_queue, mongo_dao):
         except KeyboardInterrupt:
             log.info('Good bye!')
             return
+
+def record_task_result(status: str, validation_id: str, mongo_dao: object, log: object):
+    log.info(f'record_validation_progress: status={status}, validation_id={validation_id}')
+    if not status:
+        return
+
+    if status == STATUS_FAILED:
+        raise Exception(f'File validation task failed in validation: {validation_id}')
+
+    updated_validation_ops = updates_to_mark_task_done(status)
+    updated_validation = mongo_dao.atomic_update_validation(validation_id, updated_validation_ops)
+    if not updated_validation:
+        raise Exception(f'Failed to update validation record for {validation_id}')
+    isLastBatch = updated_validation.get(COMPLETED_FILE_MESSAGES) >= updated_validation.get(TOTAL_FILE_MESSAGES)
+    if isLastBatch:
+        log.info(f'File validation is completed, updating validation and submission records')
+        submission_id = updated_validation.get(SUBMISSION_ID)
+        if updated_validation.get(VALIDATION_SCOPE) == NEW_SCOPE:
+            file_records = mongo_dao.get_files_by_submission(submission_id)
+            worst_file_status = gather_highest_validation_values(file_records)
+            updated_validation[WORST_FILE_STATUS] = max(worst_file_status, updated_validation.get(WORST_FILE_STATUS))
+        
+        validation_updates, submission_updates = updates_to_mark_file_validation_done(updated_validation, current_datetime(), log)
+
+        mongo_dao.atomic_update_submission(submission_id, submission_updates)
+        updated_validation = mongo_dao.atomic_update_validation(validation_id, validation_updates)
+        
+        if VALIDATION_TYPE_METADATA in updated_validation.get('type'):
+            validaton_update, submission_update = updates_to_consolidate_metadata_and_file_validations(updated_validation, log)
+            if validaton_update:
+                mongo_dao.atomic_update_validation(validation_id, validaton_update)
+            if submission_update:
+                mongo_dao.atomic_update_submission(submission_id, submission_update)
+
+"""
+  Used to compose updates when file validation is done
+  Returns tuple of validation fields needed to be updated, and submission fields needed to be updated
+  validation: 
+    - fileEnded
+    - fileStatus
+    - ended (later of file and metadata validation)
+    - status (higher of file and metadata validation)
+  submission:
+    - fileValidationStatus (copy from validation)
+    - validationEnded (copy from validation)
+"""
+
+def updates_to_mark_file_validation_done(validation: dict, ended_at: object, log: object) -> dict:
+    if not validation:
+        raise ValueError(f'Invalid validation object: {validation}')
+    if not ended_at or not isinstance(ended_at, datetime):
+        raise ValueError(f'Invalid ended at: {ended_at}')
+
+    log.info(f'File validation is done, composing updates')
+    file_value = validation.get(WORST_FILE_STATUS)
+    file_status = validation_status_from_value(file_value)
+    updated_validation = {
+        FILE_ENDED: ended_at,
+        FILE_STATUS: file_status,
+    }
+    updated_submission = {
+        FILE_VALIDATION_STATUS: file_status,
+    }
+
+    validation_types = validation.get('type')
+    if not validation_types or not isinstance(validation_types, list):
+        raise ValueError(f'Invalid validation types: {validation_types}')
+
+    if VALIDATION_TYPE_METADATA not in validation_types:
+        updated_validation[ENDED] = ended_at
+        updated_validation[VALIDATION_STATUS] = file_status
+
+        updated_submission[VALIDATION_ENDED] = ended_at
+
+
+    return  updated_validation,  updated_submission
+
+def gather_highest_validation_values(file_records: list) -> int:
+    s3_file_info_list = [file[S3_FILE_INFO] for file in file_records]
+
+    worst_value = STATUS_PRECEDENCE[STATUS_PASSED]
+    for file in s3_file_info_list:
+        if file[STATUS] == STATUS_ERROR:
+            worst_value = STATUS_PRECEDENCE[STATUS_ERROR]
+            break
+        elif file[STATUS] == STATUS_WARNING:
+            worst_value = max(worst_value, STATUS_PRECEDENCE[STATUS_WARNING])
+
+    return worst_value
+
+"""
+  Used to compose updates when validating both metadata and data file
+  Returns tuple of validation fields needed to be updated, and submission fields needed to be updated
+  validation: 
+    - ended (later of file and metadata validation)
+    - status (higher of file and metadata validation)
+  submission:
+    - validationEnded (copy from validation)
+"""
+def updates_to_consolidate_metadata_and_file_validations(validation: dict, log: object) -> dict:
+    if not validation:
+        raise ValueError(f'Invalid validation object: {validation}')
+
+    log.info(f'Metadata and file validation, consolidating overall status and ended time')
+    overall_status = None
+    overall_ended = None
+
+    file_value = validation.get(WORST_FILE_STATUS)
+    file_ended = validation.get(FILE_ENDED)
+    metadata_ended = validation.get(METADATA_ENDED)
+
+
+    if metadata_ended is not None:
+        log.info(f'Metadata validation has completed earlier, consolidate overall status and ended time')
+        metadata_value = validation.get(WORST_BATCH_STATUS)
+        overall_value = max(file_value, metadata_value)
+        overall_status = validation_status_from_value(overall_value)
+
+        overall_ended = max(file_ended, metadata_ended)
+        updated_validation = {
+            ENDED: overall_ended,
+            VALIDATION_STATUS: overall_status,
+        }
+        updated_submission =  {
+            VALIDATION_ENDED: overall_ended,
+        }
+        return updated_validation, updated_submission
+    else:
+        return None, None
+
+def validation_status_from_value(worse_value: int) -> str:
+    for status, value in STATUS_PRECEDENCE.items():
+        if value == worse_value:
+            return status
+    return None
+
+def updates_to_mark_task_done(status: str) -> dict:
+    result = {'$inc': {COMPLETED_FILE_MESSAGES: 1}}
+    new_status_value = STATUS_PRECEDENCE.get(status)
+    if new_status_value is None:
+        raise ValueError(f'Invalid file status: {status}')
+    result['$max'] = {WORST_FILE_STATUS: new_status_value}
+
+    return result
+
 
 """
  Requirement for the ticket crdcdh-539
@@ -333,42 +495,31 @@ class FileValidator:
             if not self.submission:
                 msg = f'Invalid submission object, no related submission object found, {submission_id}!'
                 self.log.error(msg)
-                return False
+                return STATUS_FAILED, []
             
             submission_intention = self.submission.get(SUBMISSION_INTENTION)
             # get manifest info for the submission
             manifest_info_list = self.mongo_dao.get_files_by_submission(submission_id) if submission_intention != SUBMISSION_INTENTION_DELETE else []
-            if not manifest_info_list:
-                extra_errors = self._collect_extra_s3_file_errors(submission_id, set())
-                if extra_errors:
-                    return STATUS_ERROR, extra_errors
-                msg = f"No data file records found for the submission."
-                self.log.error(msg)
-                return None, None
-
-            manifest_file_list = [{ID: manifest_info[ID], S3_FILE_INFO: manifest_info[S3_FILE_INFO]} for manifest_info in manifest_info_list]
+            if manifest_info_list is None:
+                return STATUS_FAILED, []
             manifest_file_names = [manifest_info[S3_FILE_INFO][FILE_NAME] for manifest_info in manifest_info_list]
-
             extra_errors = self._collect_extra_s3_file_errors(submission_id, manifest_file_names)
             if extra_errors:
+                # Found orphaned files
                 return STATUS_ERROR, extra_errors
-
-            records = next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_ERROR), None)
-            if records:
-                return STATUS_ERROR, None
-
-            records = next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_WARNING), None)
-            if records:
-                return STATUS_WARNING, None
-
-            return STATUS_PASSED, None
+            elif not manifest_info_list:
+                # No file reocrds, no orphaned files
+                return STATUS_ERROR, []
+            else:
+                # All files are validated
+                return STATUS_PASSED, []
    
         except Exception as e:
             self.log.exception(e)
             msg = f"{submission_id}: Failed to validate data files! {get_exception_msg()}!"
             self.log.exception(msg)
             error = create_error("F011", [], "", "")
-            return None, [error]
+            return STATUS_FAILED, [error]
     
     def set_status(self, record, qc_result, status, error):
         record[S3_FILE_INFO][UPDATED_AT] = current_datetime()

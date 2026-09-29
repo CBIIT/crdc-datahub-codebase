@@ -1110,6 +1110,26 @@ class MongoDao:
             self.log.exception(f"Failed to increment completed batches for {log_ctx}: {get_exception_msg()}")
             return None, False, 0, None, []
 
+    """
+    Atomically update validation document
+    update_ops: dict of update operations, or pure data dict, can not contain both at the same time
+    If it is pure data dict, it will be set as $set operation, otherwise it will be the update_ops
+    return: updated validation document
+    """
+    def atomic_update_validation(self, validation_id, updates):
+        update_ops = ensure_update_ops(updates)
+
+        db = self.client[self.db_name]
+        data_collection = db[VALIDATION_COLLECTION]
+        return data_collection.find_one_and_update({ID: validation_id}, update_ops, return_document=ReturnDocument.AFTER)
+
+    def atomic_update_submission(self, submission_id: str, updates: dict):
+        update_ops = ensure_update_ops(updates)
+
+        db = self.client[self.db_name]
+        data_collection = db[SUBMISSION_COLLECTION]
+        return data_collection.find_one_and_update({ID: submission_id}, update_ops, return_document=ReturnDocument.AFTER)
+
     def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, submission_id=None):
         """Update validation status.
 
@@ -1685,3 +1705,18 @@ def remove_id (data_record):
             continue
         data[k] = data_record[k]
     return data
+
+"""
+    Return update operations wrapped in $set operation if it contains non-operation keys
+"""
+def ensure_update_ops(updates: dict) -> dict:
+    result = {}
+    set_ops = {}
+    for key, value in updates.items():
+        if key.startswith('$'):
+            result[key] = value
+        else:
+            set_ops[key] = value
+    if len(set_ops) > 0:
+        result['$set'] = set_ops
+    return result
