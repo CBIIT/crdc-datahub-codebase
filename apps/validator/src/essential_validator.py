@@ -142,11 +142,9 @@ def essentialValidate(configs, job_queue, mongo_dao):
                                 submission_for_update = fresh_submission or validator.submission
                                 status = submission_for_update.get(METADATA_VALIDATION_STATUS)
                                 status = STATUS_PASSED if status in [STATUS_ERROR, STATUS_WARNING] else status
-                                existing_file_errors = submission_for_update.get(FILE_ERRORS) or []
-                                combined_file_errors = existing_file_errors + (orphan_errors or [])
-                                file_status = STATUS_ERROR if (orphan_errors or existing_file_errors) else None
+                                file_status = STATUS_ERROR if orphan_errors else None
                                 mongo_dao.set_submission_validation_status(
-                                    submission_for_update, file_status, status, None, combined_file_errors, True
+                                    submission_for_update, file_status, status, None, orphan_errors, True
                                 )
                     else:
                         log.error(f'Invalid message: {data}!')
