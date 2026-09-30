@@ -225,9 +225,9 @@ class MetadataRemover:
 
             if delete_orphaned_data_files and orphan_s3_infos:
                 self.delete_files_in_s3([{FILE_NAME: info[FILE_NAME]} for info in orphan_s3_infos if info not in protected_files])
-                orphan_s3_infos = self._build_orphan_error(protected_files, submission_id)
-            else:
-                orphan_errors = self._build_orphan_error(orphan_s3_infos, submission_id)
+
+            remaining_orphan_s3_infos = self._find_orphaned_files(submission_id)
+            orphan_errors = self._build_orphan_error(remaining_orphan_s3_infos, submission_id)
 
         except Exception:
             self.log.exception(f"Failed to find orphaned files or build F008 errors: {get_exception_msg()}")
