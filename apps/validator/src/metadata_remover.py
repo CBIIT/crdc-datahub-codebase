@@ -227,10 +227,11 @@ class MetadataRemover:
                     manifest_file_names.add(manifest_info[S3_FILE_INFO][FILE_NAME])
 
             orphan_s3_infos = self._find_orphaned_files(manifest_file_names)
-            orphan_errors = self._build_orphan_error(orphan_s3_infos, submission_id)
 
             if delete_orphaned_data_files and orphan_s3_infos:
                 self.delete_files_in_s3([{FILE_NAME: info[FILE_NAME]} for info in orphan_s3_infos])
+            else:
+                orphan_errors = self._build_orphan_error(orphan_s3_infos, submission_id)
 
         except Exception:
             self.log.exception(f"Failed to find orphaned files or build F008 errors: {get_exception_msg()}")
