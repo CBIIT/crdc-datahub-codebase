@@ -75,10 +75,11 @@ class MetadataRemover:
             existed_nodes = self.validate_data(submission_id, node_type, node_ids)
             if not existed_nodes or len(existed_nodes) == 0:
                 return (False, [])
+            existing_orphaned_files = self._find_orphaned_files(submission_id)
             if not self.delete_nodes(existed_nodes, delete_orphaned_data_files):
                 return (False, [])
             #3. after successful delete: find orphaned files, optionally delete them, build F008 errors
-            orphan_errors = self._find_orphaned_files_and_build_errors(submission_id, delete_orphaned_data_files)
+            orphan_errors = self._find_orphaned_files_and_build_errors(submission_id, delete_orphaned_data_files, existing_orphaned_files)
             return True, orphan_errors
         except Exception:
             self.log.exception(f'Failed to delete metadata, {get_exception_msg()}!')
@@ -209,7 +210,7 @@ class MetadataRemover:
             })
         return response.get("NextContinuationToken")
 
-    def _find_orphaned_files_and_build_errors(self, submission_id, delete_orphaned_data_files):
+    def _find_orphaned_files_and_build_errors(self, submission_id, delete_orphaned_data_files, protected_files: list[dict] = []):
         """
         After metadata deletion: find S3 keys under file/ not referenced by any remaining dataRecord.
         Always returns F008-shaped errors for those orphans.
@@ -220,16 +221,11 @@ class MetadataRemover:
             return []
         orphan_errors = []
         try:
-            manifest_info_list = self.mongo_dao.get_files_by_submission(submission_id) or []
-            manifest_file_names = set()
-            for manifest_info in manifest_info_list:
-                if manifest_info.get(S3_FILE_INFO) and manifest_info[S3_FILE_INFO].get(FILE_NAME):
-                    manifest_file_names.add(manifest_info[S3_FILE_INFO][FILE_NAME])
-
-            orphan_s3_infos = self._find_orphaned_files(manifest_file_names)
+            orphan_s3_infos = self._find_orphaned_files(submission_id)
 
             if delete_orphaned_data_files and orphan_s3_infos:
-                self.delete_files_in_s3([{FILE_NAME: info[FILE_NAME]} for info in orphan_s3_infos])
+                self.delete_files_in_s3([{FILE_NAME: info[FILE_NAME]} for info in orphan_s3_infos if info not in protected_files])
+                orphan_s3_infos = self._build_orphan_error(protected_files, submission_id)
             else:
                 orphan_errors = self._build_orphan_error(orphan_s3_infos, submission_id)
 
@@ -238,7 +234,12 @@ class MetadataRemover:
 
         return orphan_errors
 
-    def _find_orphaned_files(self, known_file_names: set) -> list[dict]:
+    def _find_orphaned_files(self, submission_id: str) -> list[dict]:
+        file_records = self.mongo_dao.get_files_by_submission(submission_id) or []
+        known_file_names = set()
+        for file in file_records:
+            if file.get(S3_FILE_INFO) and file[S3_FILE_INFO].get(FILE_NAME):
+                known_file_names.add(file[S3_FILE_INFO][FILE_NAME])
         # S3 keys use forward slashes; paginate list_objects_v2 (first page, then while token)
         prefix = (os.path.join(self.root_path, "file") + "/").replace("\\", "/")
         orphan_s3_infos = []
