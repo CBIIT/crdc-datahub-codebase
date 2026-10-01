@@ -184,7 +184,8 @@ class DataRecordService {
      * @param {*} submissionID 
      * @param {*} types ['metadata', 'data file']
      * @param {*} scope ['new', 'all']
-     * @param {*} validationID 
+     * @param {*} validationID
+     * @param {object} [validationDAO] When provided, expected task keys are stored before any SQS send
      * @returns Promise of object with the following properties: 
      *    {
      *      success: boolean,
@@ -195,7 +196,7 @@ class DataRecordService {
      *      failedFileCount?: number
      *    }
      */
-    async initializeDataValidation(submissionID, types, scope, validationID) {
+    async initializeDataValidation(submissionID, types, scope, validationID, validationDAO) {
         isValidMetadata(types, scope);
         const isMetadata = types.some(t => t === VALIDATION.TYPES.METADATA || t === VALIDATION.TYPES.CROSS_SUBMISSION);
         let errorMessages = [];
@@ -219,7 +220,7 @@ class DataRecordService {
                         errorMessages.push(ERRORS.FAILED_VALIDATE_METADATA, noRecordsError);
                     } else {
                         metadataBatchInfo = await this._sendMetadataBatchMessages(
-                            dataRecordIds, submissionID, scope, validationID
+                            dataRecordIds, submissionID, scope, validationID, validationDAO
                         );
                         if (metadataBatchInfo.errors.length > 0)
                             errorMessages.push(ERRORS.FAILED_VALIDATE_METADATA, ...metadataBatchInfo.errors);
@@ -231,9 +232,16 @@ class DataRecordService {
         let fileMessagesInfo = {};
         if (isFile) {
             const fileNodes = await this._getFileNodes(submissionID, scope);
-            // one message per file + extra message for orphaned file detection
-            fileMessagesInfo.totalFileMessages = fileNodes.length + 1;
+            const expectedFileTaskKeys = fileNodes.map((node) => `file:${node._id}`);
+            expectedFileTaskKeys.push(`submission:${submissionID}`);
+            fileMessagesInfo.totalFileMessages = expectedFileTaskKeys.length;
             fileMessagesInfo.failedFileCount = 0;
+            if (validationDAO) {
+                await validationDAO.update(validationID, {
+                    expectedFileTaskKeys,
+                    totalFileMessages: expectedFileTaskKeys.length,
+                });
+            }
             if (fileNodes && fileNodes.length > 0) {
                 const fileValidationErrors = await this._sendBatchSQSMessage(fileNodes, validationID, submissionID);
                 if (fileValidationErrors.length > 0) {
@@ -279,7 +287,17 @@ class DataRecordService {
         return fileValidationErrors;
     }
 
-    async _sendMetadataBatchMessages(dataRecordIds, submissionID, scope, validationID) {
+    /**
+     * Sends one metadata batch message per chunk.
+     * Expected batch indexes are stored before the first send when a validation DAO is provided.
+     * @param {string[]} dataRecordIds Data record IDs to validate
+     * @param {string} submissionID Submission ID
+     * @param {string} scope Validation scope
+     * @param {string} validationID Validation document ID
+     * @param {object} [validationDAO] Validation DAO used to persist expected indexes
+     * @returns {Promise<{totalBatches: number, failedCount: number, errors: string[]}>}
+     */
+    async _sendMetadataBatchMessages(dataRecordIds, submissionID, scope, validationID, validationDAO) {
         let config = null;
         try {
             config = await this.configurationService.findByType(VALIDATION.METADATA_BATCH_CONFIG_TYPE);
@@ -300,6 +318,13 @@ class DataRecordService {
             chunks.push(dataRecordIds.slice(i, i + batchSize));
         }
         const totalBatches = chunks.length;
+        const expectedBatchIndexes = chunks.map((_, index) => index);
+        if (validationDAO) {
+            await validationDAO.update(validationID, {
+                expectedBatchIndexes,
+                totalBatches,
+            });
+        }
         const errors = [];
         for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
             const msg = Message.createMetadataBatchMessage(

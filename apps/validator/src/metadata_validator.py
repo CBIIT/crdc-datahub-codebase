@@ -14,8 +14,10 @@ from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, W
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
     GENERATED_PROPS, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, NAME_PROP, \
-    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX, STUDY_NAME, DBGAPID
+    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX, STUDY_NAME, DBGAPID, \
+    METADATA_ENDED, METADATA_STATUS
 from common.utils import current_datetime, get_exception_msg, create_error, get_uuid_str, has_permissive_value
+from common.validation_completion import apply_current_task_completion, validation_is_aborted
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
 from service.ecs_agent import set_scale_in_protection
@@ -25,6 +27,23 @@ from pv_puller_v2 import get_all_pvs_by_version
 VISIBILITY_TIMEOUT = 20
 BATCH_SIZE = 1000
 PROPERTY_NOT_FOUND = "Permissible values not available"
+
+
+def _finalize_metadata_current_task(mongo_dao, validation_id, ended_at, log, status_detail=None):
+    """Reconcile the metadata current task without closing a combined validation early.
+
+    Submission metadataValidationStatus is updated by the caller. validationEnded is not set here.
+
+    @param mongo_dao DAO used for the current task update and conditional close-out
+    @param validation_id Validation document id
+    @param ended_at When the metadata current task finished
+    @param log Logger
+    @param status_detail Failure messages stored on the validation document when provided
+    @returns Latest validation document
+    """
+    return apply_current_task_completion(
+        mongo_dao, validation_id, ended_at, VALIDATION_TYPE_METADATA, log, status_detail
+    )
 
 
 def _process_metadata_batch(mongo_dao, model_store, configs, data):
@@ -40,8 +59,10 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
         batchIndex
         
     If validationID is missing or totalBatches < 1, the message is rejected without calling the DB;
-    the validation will not complete and may appear stuck. 
+    the validation will not complete and may appear stuck.
     The backend must always send valid validationID and totalBatches.
+
+    A failed progress or close-out write raises so the caller does not delete the SQS message.
 
     Returns the MetaDataValidator instance for cleanup by the caller,
     or None if the batch message is invalid.
@@ -129,6 +150,11 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
                     batch_index=batch_index,
                 )
 
+            if completed_count is None:
+                raise RuntimeError(
+                    f'Failed to record {batch_label} completion submission_id={submission_id} validation_id={validation_id}'
+                )
+
             if is_last_batch:
                 log.info(f'All {total_batches} batches complete submission_id={submission_id} validation_id={validation_id}')
                 final_status = worst_status
@@ -137,35 +163,55 @@ def _process_metadata_batch(mongo_dao, model_store, configs, data):
                 if failed_count > 0:
                     log.error(f'Validation submission_id={submission_id} validation_id={validation_id}: {failed_count} of {total_batches} batches failed')
                 validation_end_at = current_datetime()
-
-                update_ok = mongo_dao.update_validation_status(
-                    validation_id, final_status, validation_end_at, METADATA_VALIDATION,
-                    status_detail=final_detail,
-                    submission_id=submission_id,
+                updated_validation = _finalize_metadata_current_task(
+                    mongo_dao, validation_id, validation_end_at, log, final_detail
                 )
-                if not update_ok:
-                    log.warning(
-                        f'Validation submission_id={submission_id} validation_id={validation_id}: '
-                        'status update reported no modification; validation record may be stale.'
+                validation_aborted = validation_is_aborted(updated_validation)
+                if validation_aborted:
+                    log.info(
+                        f'Validation was aborted; skipping metadata submission update '
+                        f'submission_id={submission_id} validation_id={validation_id}'
                     )
-
-                if submission:
-                    sub_doc = validator.submission if validator else submission
-                    sub_doc[VALIDATION_ENDED] = validation_end_at
-                    mongo_dao.set_submission_validation_status(
-                        sub_doc, None, final_status, None, None,
-                        status_detail=final_detail,
-                        scope=scope,
+                elif not isinstance(updated_validation, dict) or updated_validation.get(METADATA_ENDED) is None:
+                    raise RuntimeError(
+                        f'Validation {validation_id} metadata task did not end after the expected batches were recorded'
                     )
+                else:
+                    recorded_status = updated_validation.get(METADATA_STATUS)
+                    if isinstance(recorded_status, str) and recorded_status:
+                        final_status = recorded_status
 
-                log.info(f'Validation completed submission_id={submission_id} validation_id={validation_id} status={final_status}')
-            elif completed_count is not None:
+                    submission_updated = not submission
+                    if submission:
+                        sub_doc = validator.submission if validator else submission
+                        submission_updated = mongo_dao.set_submission_validation_status(
+                            sub_doc, None, final_status, None, None,
+                            status_detail=final_detail,
+                            scope=scope,
+                        )
+                        if not submission_updated:
+                            latest_validation = mongo_dao.get_validation(validation_id)
+                            if validation_is_aborted(latest_validation):
+                                log.info(
+                                    f'Validation was aborted during metadata submission update '
+                                    f'submission_id={submission_id} validation_id={validation_id}'
+                                )
+                            else:
+                                raise RuntimeError(
+                                    f'Failed to update metadata submission status for {submission_id}'
+                                )
+
+                    if submission_updated:
+                        log.info(
+                            f'Validation completed submission_id={submission_id} '
+                            f'validation_id={validation_id} status={final_status}'
+                        )
+            else:
                 log.info(f'{batch_label} complete submission_id={submission_id} validation_id={validation_id} '
                          f'{total_batches - completed_count} batches remaining')
-            else:
-                log.error(f'Failed to record {batch_label} completion submission_id={submission_id} validation_id={validation_id} -- validation may be stuck')
         except Exception as fe:
             log.exception(f'Failed to finalize batch submission_id={submission_id} validation_id={validation_id} {batch_label}: {fe}')
+            raise
 
     return validator
 

@@ -159,6 +159,14 @@ COMPLETED_BATCHES = "completedBatches"
 FAILED_BATCHES = "failedBatches"
 BATCH_STATUS_DETAILS = "batchStatusDetails"
 WORST_BATCH_STATUS = "worstBatchStatus"
+PROCESSED_BATCH_INDEXES = "processedBatchIndexes"
+EXPECTED_BATCH_INDEXES = "expectedBatchIndexes"
+TOTAL_FILE_MESSAGES = "totalFileMessages"
+COMPLETED_FILE_MESSAGES = "completedFileMessages"
+WORST_FILE_STATUS = "worstFileStatus"
+PROCESSED_FILE_TASK_KEYS = "processedFileTaskKeys"
+EXPECTED_FILE_TASK_KEYS = "expectedFileTaskKeys"
+VALIDATION_ABORTED = "aborted"
 STATUS_PRECEDENCE = {
     "Passed": 0,
     "Warning": 1,

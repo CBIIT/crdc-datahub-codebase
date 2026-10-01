@@ -1251,5 +1251,63 @@ describe('DataRecordService', () => {
       expect(result.totalFileMessages).toBe(2);
       expect(result.failedFileCount).toBe(2);
     });
+
+    test('persists expected file task keys before sending file messages', async () => {
+      const order = [];
+      const validationDAO = {
+        update: jest.fn(async () => {
+          order.push('persist');
+        })
+      };
+      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([{ _id: 'file-1' }]);
+      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockImplementation(async () => {
+        order.push('send-files');
+        return [];
+      });
+      mockAwsService.sendSQSMessage.mockImplementation(async () => {
+        order.push('send-submission');
+      });
+
+      await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.FILE],
+        VALIDATION.SCOPE.ALL,
+        'validation-1',
+        validationDAO
+      );
+
+      expect(validationDAO.update).toHaveBeenCalledWith('validation-1', {
+        expectedFileTaskKeys: ['file:file-1', 'submission:sub-1'],
+        totalFileMessages: 2,
+      });
+      expect(order[0]).toBe('persist');
+    });
+
+    test('persists expected batch indexes before sending metadata batches', async () => {
+      const order = [];
+      const validationDAO = {
+        update: jest.fn(async () => {
+          order.push('persist');
+        })
+      };
+      mockAwsService.sendSQSMessage.mockImplementation(async () => {
+        order.push('send');
+      });
+
+      const result = await dataRecordService._sendMetadataBatchMessages(
+        ['record-1', 'record-2'],
+        'sub-1',
+        VALIDATION.SCOPE.ALL,
+        'validation-1',
+        validationDAO
+      );
+
+      expect(validationDAO.update).toHaveBeenCalledWith('validation-1', expect.objectContaining({
+        expectedBatchIndexes: expect.any(Array),
+        totalBatches: result.totalBatches,
+      }));
+      expect(order[0]).toBe('persist');
+      expect(result.totalBatches).toBeGreaterThan(0);
+    });
   });
 });

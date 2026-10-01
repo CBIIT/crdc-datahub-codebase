@@ -9,18 +9,14 @@ from common.constants import ERRORS, WARNINGS, STATUS, S3_FILE_INFO, ID, SIZE, M
     FILE_NAME, SQS_TYPE, SQS_NAME, FILE_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, SUBMISSION_ID, \
     BATCH_BUCKET, SERVICE_TYPE_FILE, LAST_MODIFIED, CREATED_AT, TYPE, SUBMISSION_INTENTION, SUBMISSION_INTENTION_DELETE,\
     VALIDATION_ID, QC_RESULT_ID, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, \
-    DATA_FILE_TYPE, QC_VALIDATION_TYPE, SUBMITTED_ID, BATCH_ID, DISPLAY_ID, UPLOADED_DATE, STATUS_PRECEDENCE, VALIDATION_ENDED,\
-    FILE_VALIDATION_STATUS, FILE_ENDED, FILE_STATUS, ENDED, VALIDATION_STATUS, VALIDATION_TYPE_METADATA, \
-    WORST_BATCH_STATUS, METADATA_ENDED, FILE_ERRORS, STATUS_FAILED
+    DATA_FILE_TYPE, QC_VALIDATION_TYPE, SUBMITTED_ID, BATCH_ID, DISPLAY_ID, UPLOADED_DATE, STATUS_PRECEDENCE, \
+    FILE_ERRORS, STATUS_FAILED, WORST_FILE_STATUS, EXPECTED_FILE_TASK_KEYS, PROCESSED_FILE_TASK_KEYS
 
 from common.utils import get_exception_msg, current_datetime, get_s3_file_info, get_s3_file_md5, create_error, get_uuid_str
+from common.validation_completion import apply_current_task_completion
 from service.ecs_agent import set_scale_in_protection
 from metadata_validator import get_qc_result
-from datetime import datetime
 
-TOTAL_FILE_MESSAGES = 'totalFileMessages'
-COMPLETED_FILE_MESSAGES = 'completedFileMessages'
-WORST_FILE_STATUS = 'worstFileStatus'
 VALIDATION_SCOPE = 'scope'
 NEW_SCOPE = 'New'
 
@@ -62,14 +58,16 @@ def fileValidate(configs, job_queue, mongo_dao):
                         continue
                     status = None
                     file_id = data.get(FILE_ID)
+                    task_key = None
                     # Make sure job is in correct format
                     if data.get(SQS_TYPE) == "Validate File" and file_id:
+                        task_key = f"file:{file_id}"
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
                         #1 call mongo_dao to get batch by batch_id
                         fileRecord = mongo_dao.get_file(file_id)
                         if fileRecord is None: 
                             log.error(f'The data file record is not found, {file_id}!')
-                            record_task_result(STATUS_ERROR, validation_id, mongo_dao, log)
+                            record_task_result(STATUS_ERROR, validation_id, mongo_dao, log, task_key)
                             msg.delete()
                             continue
                         #2. validate file.
@@ -92,6 +90,7 @@ def fileValidate(configs, job_queue, mongo_dao):
                     elif data.get(SQS_TYPE) == "Validate Submission Files" and data.get(SUBMISSION_ID):
                         extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
                         submission_id = data[SUBMISSION_ID]
+                        task_key = f"submission:{submission_id}"
                         validator = FileValidator(mongo_dao)
                         status = None
                         msgs = []
@@ -109,7 +108,7 @@ def fileValidate(configs, job_queue, mongo_dao):
                         log.error(f'Invalid message: {data}!')
                     
                     file_processed += 1
-                    record_task_result(status, validation_id, mongo_dao, log)
+                    record_task_result(status, validation_id, mongo_dao, log, task_key)
                     msg.delete()
                 except Exception as e:
                     log.exception(e)
@@ -125,81 +124,56 @@ def fileValidate(configs, job_queue, mongo_dao):
             log.info('Good bye!')
             return
 
-def record_task_result(status: str, validation_id: str, mongo_dao: object, log: object):
+def record_task_result(status: str, validation_id: str, mongo_dao: object, log: object, task_key: str = None):
+    """Record one file task key and reconcile completion from the expected set.
+
+    Failed stays queued. A missing expected set stays queued. The file task finishes
+    only when every expected key has been recorded.
+
+    @param status Passed, Warning, Error, or Failed
+    @param validation_id Validation document id
+    @param mongo_dao DAO used to record progress and completion
+    @param log Logger
+    @param task_key Stable key for this file or submission-level task
+    @raises Exception When status is Failed or required progress cannot be saved
+    @raises ValueError When the status or task key is invalid
+    @raises RuntimeError When the expected file-key set is not stored yet
+    """
     log.info(f'record_validation_progress: status={status}, validation_id={validation_id}')
     if not status:
         return
 
     if status == STATUS_FAILED:
         raise Exception(f'File validation task failed in validation: {validation_id}')
+    if status not in STATUS_PRECEDENCE:
+        raise ValueError(f'Invalid file status: {status}')
+    if not task_key:
+        raise ValueError(f'File validation task key is required for validation: {validation_id}')
 
-    updated_validation_ops = updates_to_mark_task_done(status)
-    updated_validation = mongo_dao.atomic_update_validation(validation_id, updated_validation_ops)
+    updated_validation = mongo_dao.record_file_task_completion(validation_id, task_key, status)
     if not updated_validation:
         raise Exception(f'Failed to update validation record for {validation_id}')
-    isLastBatch = updated_validation.get(COMPLETED_FILE_MESSAGES) >= updated_validation.get(TOTAL_FILE_MESSAGES)
-    if isLastBatch:
-        log.info(f'File validation is completed, updating validation and submission records')
-        submission_id = updated_validation.get(SUBMISSION_ID)
-        if updated_validation.get(VALIDATION_SCOPE) == NEW_SCOPE:
-            file_records = mongo_dao.get_files_by_submission(submission_id)
+
+    expected = updated_validation.get(EXPECTED_FILE_TASK_KEYS)
+    processed = updated_validation.get(PROCESSED_FILE_TASK_KEYS) or []
+    complete = isinstance(expected, list) and all(key in processed for key in expected)
+    if complete and updated_validation.get(VALIDATION_SCOPE) == NEW_SCOPE:
+        file_records = mongo_dao.get_files_by_submission(updated_validation.get(SUBMISSION_ID))
+        if file_records:
             worst_file_status = gather_highest_validation_values(file_records)
-            updated_validation[WORST_FILE_STATUS] = max(worst_file_status, updated_validation.get(WORST_FILE_STATUS))
-        
-        validation_updates, submission_updates = updates_to_mark_file_validation_done(updated_validation, current_datetime(), log)
+            stored_worst = updated_validation.get(WORST_FILE_STATUS) or 0
+            if worst_file_status > stored_worst:
+                rescanned_validation = mongo_dao.atomic_update_validation(
+                    validation_id, {"$max": {WORST_FILE_STATUS: worst_file_status}}
+                )
+                if not rescanned_validation:
+                    raise RuntimeError(
+                        f'Failed to persist rescanned file status for validation: {validation_id}'
+                    )
 
-        mongo_dao.atomic_update_submission(submission_id, submission_updates)
-        updated_validation = mongo_dao.atomic_update_validation(validation_id, validation_updates)
-        
-        if VALIDATION_TYPE_METADATA in updated_validation.get('type'):
-            validaton_update, submission_update = updates_to_consolidate_metadata_and_file_validations(updated_validation, log)
-            if validaton_update:
-                mongo_dao.atomic_update_validation(validation_id, validaton_update)
-            if submission_update:
-                mongo_dao.atomic_update_submission(submission_id, submission_update)
-
-"""
-  Used to compose updates when file validation is done
-  Returns tuple of validation fields needed to be updated, and submission fields needed to be updated
-  validation: 
-    - fileEnded
-    - fileStatus
-    - ended (later of file and metadata validation)
-    - status (higher of file and metadata validation)
-  submission:
-    - fileValidationStatus (copy from validation)
-    - validationEnded (copy from validation)
-"""
-
-def updates_to_mark_file_validation_done(validation: dict, ended_at: object, log: object) -> dict:
-    if not validation:
-        raise ValueError(f'Invalid validation object: {validation}')
-    if not ended_at or not isinstance(ended_at, datetime):
-        raise ValueError(f'Invalid ended at: {ended_at}')
-
-    log.info(f'File validation is done, composing updates')
-    file_value = validation.get(WORST_FILE_STATUS)
-    file_status = validation_status_from_value(file_value)
-    updated_validation = {
-        FILE_ENDED: ended_at,
-        FILE_STATUS: file_status,
-    }
-    updated_submission = {
-        FILE_VALIDATION_STATUS: file_status,
-    }
-
-    validation_types = validation.get('type')
-    if not validation_types or not isinstance(validation_types, list):
-        raise ValueError(f'Invalid validation types: {validation_types}')
-
-    if VALIDATION_TYPE_METADATA not in validation_types:
-        updated_validation[ENDED] = ended_at
-        updated_validation[VALIDATION_STATUS] = file_status
-
-        updated_submission[VALIDATION_ENDED] = ended_at
-
-
-    return  updated_validation,  updated_submission
+    apply_current_task_completion(
+        mongo_dao, validation_id, current_datetime(), VALIDATION_TYPE_FILE, log
+    )
 
 def gather_highest_validation_values(file_records: list) -> int:
     s3_file_info_list = [file[S3_FILE_INFO] for file in file_records]
@@ -213,62 +187,6 @@ def gather_highest_validation_values(file_records: list) -> int:
             worst_value = max(worst_value, STATUS_PRECEDENCE[STATUS_WARNING])
 
     return worst_value
-
-"""
-  Used to compose updates when validating both metadata and data file
-  Returns tuple of validation fields needed to be updated, and submission fields needed to be updated
-  validation: 
-    - ended (later of file and metadata validation)
-    - status (higher of file and metadata validation)
-  submission:
-    - validationEnded (copy from validation)
-"""
-def updates_to_consolidate_metadata_and_file_validations(validation: dict, log: object) -> dict:
-    if not validation:
-        raise ValueError(f'Invalid validation object: {validation}')
-
-    log.info(f'Metadata and file validation, consolidating overall status and ended time')
-    overall_status = None
-    overall_ended = None
-
-    file_value = validation.get(WORST_FILE_STATUS)
-    file_ended = validation.get(FILE_ENDED)
-    metadata_ended = validation.get(METADATA_ENDED)
-
-
-    if metadata_ended is not None:
-        log.info(f'Metadata validation has completed earlier, consolidate overall status and ended time')
-        metadata_value = validation.get(WORST_BATCH_STATUS)
-        overall_value = max(file_value, metadata_value)
-        overall_status = validation_status_from_value(overall_value)
-
-        overall_ended = max(file_ended, metadata_ended)
-        updated_validation = {
-            ENDED: overall_ended,
-            VALIDATION_STATUS: overall_status,
-        }
-        updated_submission =  {
-            VALIDATION_ENDED: overall_ended,
-        }
-        return updated_validation, updated_submission
-    else:
-        return None, None
-
-def validation_status_from_value(worse_value: int) -> str:
-    for status, value in STATUS_PRECEDENCE.items():
-        if value == worse_value:
-            return status
-    return None
-
-def updates_to_mark_task_done(status: str) -> dict:
-    result = {'$inc': {COMPLETED_FILE_MESSAGES: 1}}
-    new_status_value = STATUS_PRECEDENCE.get(status)
-    if new_status_value is None:
-        raise ValueError(f'Invalid file status: {status}')
-    result['$max'] = {WORST_FILE_STATUS: new_status_value}
-
-    return result
-
 
 """
  Requirement for the ticket crdcdh-539

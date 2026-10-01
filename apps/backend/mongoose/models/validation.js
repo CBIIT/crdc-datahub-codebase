@@ -14,6 +14,9 @@ const validationSchema = new mongoose.Schema(
         ended: {
             type: Date,
         },
+        aborted: {
+            type: Boolean,
+        },
         metadataEnded: {
             type: Date,
         },
@@ -54,6 +57,14 @@ const validationSchema = new mongoose.Schema(
         worstBatchStatus: {
             type: Number,
         },
+        processedBatchIndexes: {
+            type: [Number],
+            default: undefined,
+        },
+        expectedBatchIndexes: {
+            type: [Number],
+            default: undefined,
+        },
         totalFileMessages: {
             type: Number,
         },
@@ -62,6 +73,14 @@ const validationSchema = new mongoose.Schema(
         },
         worstFileStatus: {
             type: Number,
+        },
+        processedFileTaskKeys: {
+            type: [String],
+            default: undefined,
+        },
+        expectedFileTaskKeys: {
+            type: [String],
+            default: undefined,
         },
         type: {
             type: [String],

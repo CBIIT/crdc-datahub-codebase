@@ -2513,6 +2513,13 @@ describe('Submission.validateSubmission', () => {
         const result = await submissionService.validateSubmission(mockParams, mockContext);
 
         expect(result).toEqual(mockValidationResult);
+        expect(mockDataRecordService.initializeDataValidation).toHaveBeenCalledWith(
+            mockParams._id,
+            mockParams.types,
+            mockParams.scope,
+            'validation1',
+            mockValidationDAO
+        );
     });
 
     it('should write totalBatches to validation document on successful batch validation', async () => {
@@ -3186,5 +3193,32 @@ describe('Submission._recordSubmissionValidation and _updateValidationStatus', (
             'sub1',
             expect.objectContaining({ fileValidationStatus: VALIDATION_STATUS.VALIDATING })
         );
+    });
+
+    it('marks an aborted validation with ended and Error without replacing progress', async () => {
+        const validationRecord = {
+            id: 'validation1',
+            submissionID: 'sub1',
+            status: 'Validating',
+            processedBatchIndexes: [0],
+            completedBatches: 1,
+        };
+        await submissionService._updateValidationStatus(
+            [VALIDATION.TYPES.METADATA],
+            { _id: 'sub1', metadataValidationStatus: 'Validating' },
+            null,
+            'NA',
+            'NA',
+            new Date(),
+            validationRecord
+        );
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            aborted: true,
+            ended: expect.any(Date),
+            status: 'Error',
+        });
+        const updateArg = mockValidationDAO.update.mock.calls[0][1];
+        expect(updateArg.processedBatchIndexes).toBeUndefined();
+        expect(updateArg.completedBatches).toBeUndefined();
     });
 });

@@ -900,7 +900,9 @@ class Submission {
         if (!validationRecord) {
             throw new Error(ERROR.FAILED_INSERT_VALIDATION_OBJECT);
         }
-        const result = await this.dataRecordService.initializeDataValidation(params._id, params?.types, params?.scope, validationRecord.id);
+        const result = await this.dataRecordService.initializeDataValidation(
+            params._id, params?.types, params?.scope, validationRecord.id, this.validationDAO
+        );
         if (result.totalBatches || result.totalFileMessages ) {
             let validationUpdate = {}
             if (result.totalBatches) {
@@ -2422,7 +2424,18 @@ class Submission {
         }
     }
 
-    // private function
+    /**
+     * Restores submission validation status after an aborted run.
+     * The validation document is marked aborted with ended and Error, while in-flight progress stays intact.
+     * @param {string[]} types Validation types requested for this run
+     * @param {object} aSubmission Submission document
+     * @param {string|null} metaStatus Metadata status to restore, or "NA" to leave it unchanged
+     * @param {string|null} fileStatus File status to restore, or "NA" to leave it unchanged
+     * @param {string|null} crossSubmissionStatus Cross-submission status to restore, or "NA" to leave it unchanged
+     * @param {Date} updatedTime Submission timestamp to persist
+     * @param {object|null} [validationRecord] Validation document to mark Error when the run is aborted
+     * @returns {Promise<void>}
+     */
     async _updateValidationStatus(types, aSubmission, metaStatus, fileStatus, crossSubmissionStatus, updatedTime, validationRecord = null) {
         const typesToUpdate = {};
         // Cross validation status now only applies to submissions with same study AND data commons
@@ -2446,16 +2459,19 @@ class Submission {
             typesToUpdate.fileValidationStatus = fileStatus;
         }
 
+        if (validationRecord) {
+            await this.validationDAO.update(validationRecord.id, {
+                aborted: true,
+                ended: new Date(),
+                status: "Error",
+            });
+        }
+
         if (Object.keys(typesToUpdate).length === 0) {
             return;
         }
 
         const updated = await this.submissionDAO.update(aSubmission?._id, this._prepareUpdateData({...typesToUpdate, validationEnded: getCurrentTime()}, false))
-        if (validationRecord) {
-            validationRecord["ended"] = new Date();
-            validationRecord["status"] = "Error";
-            await this.validationDAO.update(validationRecord["id"], validationRecord)
-        }
         if (!updated) {
             throw new Error(ERROR.FAILED_VALIDATE_METADATA);
         }

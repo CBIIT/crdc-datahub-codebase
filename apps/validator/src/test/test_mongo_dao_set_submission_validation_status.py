@@ -124,3 +124,20 @@ def test_scope_all_overwrites_regardless(mock_client_class):
     update_one_call = mock_submission_collection.update_one.call_args
     set_payload = update_one_call[0][1]["$set"]
     assert set_payload[METADATA_VALIDATION_STATUS] == STATUS_PASSED
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_does_not_write_validation_ended_from_submission_timestamp(mock_client_class):
+    mock_submission_collection = _setup_mock_db(mock_client_class)
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    with patch.object(dao, "count_docs", return_value=0):
+        submission = {
+            ID: "sub_1",
+            METADATA_VALIDATION_STATUS: STATUS_PASSED,
+            VALIDATION_ENDED: "stale-end",
+        }
+        dao.set_submission_validation_status(
+            submission, None, STATUS_ERROR, None, None, status_detail=None, scope="all"
+        )
+    set_payload = mock_submission_collection.update_one.call_args[0][1]["$set"]
+    assert VALIDATION_ENDED not in set_payload

@@ -6,14 +6,16 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     FILE_MD5_COLLECTION, FILE_NAME, CRDC_ID, RELEASE_COLLECTION, DATA_COMMON_NAME, KEY, \
     VALUE_PROP, VALIDATED_AT, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, FAILED, PARENT_ID_NAME, \
     SUBMISSION_REL_STATUS, SUBMISSION_REL_STATUS_DELETED, STUDY_ABBREVIATION, SUBMISSION_STATUS, STUDY_ID, \
-    CROSS_SUBMISSION_VALIDATION_STATUS, ADDITION_ERRORS, VALIDATION_COLLECTION, VALIDATION_ENDED, CONFIG_COLLECTION, \
+    CROSS_SUBMISSION_VALIDATION_STATUS, ADDITION_ERRORS, VALIDATION_COLLECTION, CONFIG_COLLECTION, \
     BATCH_BUCKET, CDE_COLLECTION, CDE_CODE, CDE_VERSION, ENTITY_TYPE, QC_COLLECTION, QC_RESULT_ID, CONFIG_TYPE, \
     SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, CDE_PERMISSIVE_VALUES, PROPERTY_PERMISSIBLE_VALUES, CREATED_AT, PROPERTIES, \
     STUDY_COLLECTION, ORGANIZATION_COLLECTION, USER_COLLECTION, PV_CONCEPT_CODE_COLLECTION, CONCEPT_CODE, PERMISSIBLE_VALUE, \
     GENERATED_PROPS, FILE_ENDED, METADATA_ENDED, METADATA_STATUS, FILE_STATUS, FILE_VALIDATION, METADATA_VALIDATION, \
     CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL, \
     COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS, STATUS_DETAIL, \
-    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION
+    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION, EXPECTED_BATCH_INDEXES, \
+    PROCESSED_BATCH_INDEXES, EXPECTED_FILE_TASK_KEYS, PROCESSED_FILE_TASK_KEYS, \
+    COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS
 from common.utils import get_exception_msg, current_datetime, get_uuid_str
 from common.s3_utils import S3Service
 
@@ -326,6 +328,9 @@ class MongoDao:
 
         When scope is 'new' (case-insensitive), submission metadata status is only updated
         if the new result is worse than or equal to the existing (Error > Warning > Passed).
+
+        Does not set validationEnded. Close-out writes that field after every metadata and file
+        task in the validation type has ended.
         """
         if metadata_status == FAILED:
             metadata_status = None
@@ -338,7 +343,6 @@ class MongoDao:
         try:
             if file_status:
                 updated_submission[FILE_VALIDATION_STATUS] = file_status if file_status != "None" else None
-                updated_submission[VALIDATION_ENDED] = submission.get(VALIDATION_ENDED)
                 if fileErrors is not None:
                     updated_submission[FILE_ERRORS] = fileErrors if fileErrors and len(fileErrors) > 0 else []
                 else:
@@ -376,8 +380,7 @@ class MongoDao:
                 if is_delete:
                     updated_submission["deletingData"] = False
                 updated_submission[METADATA_VALIDATION_STATUS] = overall_metadata_status
-                updated_submission[VALIDATION_ENDED] = submission.get(VALIDATION_ENDED)
-                
+
             if cross_submission_status:
                 updated_submission[CROSS_SUBMISSION_VALIDATION_STATUS] = cross_submission_status
             result = file_collection.update_one({ID : submission[ID]}, {"$set": updated_submission}, False)
@@ -1051,64 +1054,196 @@ class MongoDao:
             self.log.exception(f"Failed to count documents for collection, {collection} at conditions {query}")
             return False
 
+    def _validation_collection(self):
+        return self.client[self.db_name][VALIDATION_COLLECTION]
+
+    def get_validation(self, validation_id):
+        """Load a validation document. Database errors propagate.
+
+        @param validation_id Validation document id
+        @returns Validation document, or None when it does not exist
+        """
+        return self._validation_collection().find_one({ID: validation_id})
+
+    def conditional_update_validation(self, query, updates):
+        """Apply a validation update only when the query still matches.
+
+        @param query MongoDB filter, including the status fields that must not have changed
+        @param updates Fields to set
+        @returns Updated validation document, or None when the condition no longer matches
+        """
+        if not updates:
+            return None
+        return self._validation_collection().find_one_and_update(
+            query, {"$set": updates}, return_document=ReturnDocument.AFTER
+        )
+
+    def _stored_validation(self, validation_id):
+        stored = self._validation_collection().find_one({ID: validation_id})
+        if not stored:
+            raise RuntimeError(f"Validation document not found: validation_id={validation_id}")
+        return stored
+
+    def _record_task_key(self, validation_id, key, expected_field, processed_field,
+                         counter_field, worst_field, status=None, status_detail=None,
+                         details_field=None, extra_inc=None):
+        """Record one expected task key, merging a duplicate without a second completion.
+
+        A missing expected set or unexpected key raises so the message can be retried.
+        A repeated key updates the worst status without incrementing the counter or
+        appending its detail again.
+
+        @param validation_id Validation document id
+        @param key Expected task key
+        @param expected_field Expected-key field name
+        @param processed_field Processed-key field name
+        @param counter_field Counter incremented only for a new expected key
+        @param worst_field Numeric worst-status field
+        @param status Status string tracked with $max when provided
+        @param status_detail Detail appended when provided
+        @param details_field Detail array; statusDetail is used when omitted
+        @param extra_inc Additional counters incremented only on the first completion
+        @returns Updated validation document
+        @raises ValueError When the status or task key cannot be recorded
+        @raises RuntimeError When the expected set is missing or the validation document does not exist
+        """
+        if status is not None and status not in STATUS_PRECEDENCE:
+            raise ValueError(f"Invalid completed task status: {status}")
+        validation_collection = self._validation_collection()
+        stored = self._stored_validation(validation_id)
+        expected = stored.get(expected_field)
+        if not isinstance(expected, list):
+            raise RuntimeError(f"Validation {validation_id} is missing {expected_field}")
+        if key not in expected:
+            raise ValueError(
+                f"Validation {validation_id} received unexpected task key {key}"
+            )
+
+        merge_ops = {}
+        duplicate_ops = {}
+        if status is not None:
+            merge_ops["$max"] = {worst_field: STATUS_PRECEDENCE[status]}
+            duplicate_ops["$max"] = {worst_field: STATUS_PRECEDENCE[status]}
+        if status_detail:
+            merge_ops["$push"] = {details_field or STATUS_DETAIL: status_detail}
+        already = key in (stored.get(processed_field) or [])
+        if already:
+            if not duplicate_ops:
+                return stored
+            result = validation_collection.find_one_and_update(
+                {ID: validation_id, processed_field: key},
+                duplicate_ops,
+                return_document=ReturnDocument.AFTER,
+            )
+            if not result:
+                raise RuntimeError(f"Validation document not found: validation_id={validation_id}")
+            self.log.info(f"Validation validation_id={validation_id} task {key} already recorded")
+            return result
+
+        inc_fields = {counter_field: 1}
+        if extra_inc:
+            inc_fields.update(extra_inc)
+        insert_ops = {
+            "$inc": inc_fields,
+            "$addToSet": {processed_field: key},
+        }
+        insert_ops.update(merge_ops)
+        result = validation_collection.find_one_and_update(
+            {ID: validation_id, processed_field: {"$ne": key}},
+            insert_ops,
+            return_document=ReturnDocument.AFTER,
+        )
+        if result:
+            return result
+        if duplicate_ops:
+            result = validation_collection.find_one_and_update(
+                {ID: validation_id, processed_field: key},
+                duplicate_ops,
+                return_document=ReturnDocument.AFTER,
+            )
+        else:
+            result = validation_collection.find_one(
+                {ID: validation_id, processed_field: key}
+            )
+        if not result:
+            raise RuntimeError(f"Validation document not found: validation_id={validation_id}")
+        self.log.info(f"Validation validation_id={validation_id} task {key} already recorded")
+        return result
+
+    def _task_set_complete(self, result, expected_field, processed_field):
+        if not isinstance(result, dict):
+            return False
+        expected = result.get(expected_field)
+        if not isinstance(expected, list):
+            return False
+        processed = result.get(processed_field) or []
+        return all(key in processed for key in expected)
+
+    def _batch_progress_tuple(self, result):
+        completed = result.get(COMPLETED_BATCHES, 0) if isinstance(result, dict) else 0
+        failed = result.get(FAILED_BATCHES, 0) if isinstance(result, dict) else 0
+        worst_value = result.get(WORST_BATCH_STATUS, 0) if isinstance(result, dict) else 0
+        worst = PRECEDENCE_TO_STATUS.get(worst_value, STATUS_PASSED)
+        details = result.get(BATCH_STATUS_DETAILS, []) if isinstance(result, dict) else []
+        is_last = self._task_set_complete(result, EXPECTED_BATCH_INDEXES, PROCESSED_BATCH_INDEXES)
+        return completed, is_last, failed, worst, details
+
     def increment_completed_batches(self, validation_id, total_batches,
                                     batch_failed=False, batch_status=None, status_detail=None,
                                     submission_id=None, batch_index=None):
-        """Atomically increment completedBatches counter for a validation.
+        """Record one metadata batch once per expected index.
 
-        When batch_failed is True, also increments failedBatches.
-        When batch_status is provided, tracks the worst status via $max.
-        When status_detail is provided, appends it to batchStatusDetails via $push.
+        A missing batch_index is treated as 0. The batch task is complete when every
+        expectedBatchIndexes value is in processedBatchIndexes. A repeated index keeps
+        the worse status without another completion. total_batches is used for logging
+        and is not the completion check.
 
-        submission_id and batch_index are optional; when provided (e.g. by batched
-        metadata validation), they are included in log messages.
+        Database errors propagate. A missing validation document or expected set raises.
 
-        Returns 5-tuple: (completed_count, is_last_batch, failed_count,
-                          worst_status_str, batch_details).
+        @param validation_id Validation document id
+        @param total_batches Message batch total, used for logging
+        @param batch_failed When True, also increments failedBatches on first completion
+        @param batch_status Status string tracked with $max when provided
+        @param status_detail Failure message appended when provided
+        @param submission_id Submission id included in log messages when provided
+        @param batch_index Zero-based batch index; omitted values count as 0
+        @returns (completed_count, is_last_batch, failed_count, worst_status_str, batch_details)
+        @raises ValueError When the index or status is invalid
+        @raises RuntimeError When the expected set is missing or the validation document does not exist
         """
-        db = self.client[self.db_name]
-        validation_collection = db[VALIDATION_COLLECTION]
-        log_ctx = f'validation_id={validation_id}'
+        if batch_index is None:
+            batch_index = 0
+        if not isinstance(batch_index, int) or batch_index < 0:
+            raise ValueError(f"Invalid batch index {batch_index}")
+        log_total = total_batches if isinstance(total_batches, int) and total_batches >= 1 else "?"
+        log_ctx = f"validation_id={validation_id}"
         if submission_id is not None:
-            log_ctx += f' submission_id={submission_id}'
-        if batch_index is not None:
-            log_ctx += f' batch={batch_index + 1}/{total_batches}'
-        try:
-            inc_fields = {COMPLETED_BATCHES: 1}
-            if batch_failed:
-                inc_fields[FAILED_BATCHES] = 1
-            update_ops = {'$inc': inc_fields}
-            if batch_status is not None:
-                if batch_status not in STATUS_PRECEDENCE:
-                    self.log.warning(f"Unknown batch_status '{batch_status}', treating as worst (Error)")
-                precedence = STATUS_PRECEDENCE.get(batch_status, STATUS_PRECEDENCE[STATUS_ERROR])
-                update_ops['$max'] = {WORST_BATCH_STATUS: precedence}
-            if status_detail:
-                update_ops['$push'] = {BATCH_STATUS_DETAILS: status_detail}
-            result = validation_collection.find_one_and_update(
-                {ID: validation_id},
-                update_ops,
-                return_document=ReturnDocument.AFTER
-            )
-            if result:
-                completed = result.get(COMPLETED_BATCHES, 0)
-                failed = result.get(FAILED_BATCHES, 0)
-                is_last = completed >= total_batches
-                worst = PRECEDENCE_TO_STATUS.get(result.get(WORST_BATCH_STATUS, 0), STATUS_PASSED)
-                details = result.get(BATCH_STATUS_DETAILS, [])
-                self.log.info(f'Validation {log_ctx}: completed {completed}/{total_batches} batches, {failed} failed')
-                return completed, is_last, failed, worst, details
-            else:
-                self.log.error(f'Validation document not found: {log_ctx}')
-                return None, False, 0, None, []
-        except errors.PyMongoError as pe:
-            self.log.exception(pe)
-            self.log.exception(f"Failed to increment completed batches for {log_ctx}: {get_exception_msg()}")
-            return None, False, 0, None, []
-        except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to increment completed batches for {log_ctx}: {get_exception_msg()}")
-            return None, False, 0, None, []
+            log_ctx += f" submission_id={submission_id}"
+        log_ctx += f" batch={batch_index + 1}/{log_total}"
+        extra_inc = {FAILED_BATCHES: 1} if batch_failed else None
+        result = self._record_task_key(
+            validation_id, batch_index, EXPECTED_BATCH_INDEXES, PROCESSED_BATCH_INDEXES,
+            COMPLETED_BATCHES, WORST_BATCH_STATUS, status=batch_status, status_detail=status_detail,
+            details_field=BATCH_STATUS_DETAILS, extra_inc=extra_inc,
+        )
+        completed, is_last, failed, worst, details = self._batch_progress_tuple(result)
+        self.log.info(f"Validation {log_ctx}: completed {completed}/{log_total} batches, {failed} failed")
+        return completed, is_last, failed, worst, details
+
+    def record_file_task_completion(self, validation_id, task_key, status, status_detail=None):
+        """Record one file task key once.
+
+        @param validation_id Validation document id
+        @param task_key Stable file or submission task key
+        @param status Passed, Warning, Error, or Failed
+        @param status_detail Detail appended when provided
+        @returns Updated validation document
+        @raises RuntimeError When the expected file-key set is missing or the document does not exist
+        """
+        return self._record_task_key(
+            validation_id, task_key, EXPECTED_FILE_TASK_KEYS, PROCESSED_FILE_TASK_KEYS,
+            COMPLETED_FILE_MESSAGES, WORST_FILE_STATUS, status=status, status_detail=status_detail,
+        )
 
     """
     Atomically update validation document
