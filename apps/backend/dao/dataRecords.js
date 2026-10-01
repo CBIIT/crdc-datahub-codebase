@@ -502,6 +502,32 @@ class DataRecordDAO extends MongooseGenericDAO {
      * @returns {Promise<object>} Native Mongoose UpdateResult
      * @throws {Error} When the database update fails
      */
+    /**
+     * @param {string} submissionID
+     * @returns {Promise<string[]>} s3FileInfo.status values for records with s3FileInfo in the submission
+     */
+    async findS3FileInfoStatuses(submissionID) {
+        try {
+            const records = await this.model.find(
+                {
+                    submissionID,
+                    s3FileInfo: { $exists: true, $ne: null }
+                },
+                { 's3FileInfo.status': 1 }
+            ).lean();
+            return records
+                .map((record) => record?.s3FileInfo?.status)
+                .filter((status) => status != null && status !== '');
+        } catch (error) {
+            console.error(`DataRecordDAO.findS3FileInfoStatuses failed:`, {
+                error: error.message,
+                submissionID,
+                stack: error.stack
+            });
+            throw new Error(`Failed to find ${this._modelName}`);
+        }
+    }
+
     async resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames) {
         if (fileNames && fileNames.length === 0) {
             return { acknowledged: true, modifiedCount: 0, matchedCount: 0 };

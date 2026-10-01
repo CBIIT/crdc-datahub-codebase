@@ -1,4 +1,4 @@
-const { DataRecordService } = require('../../services/data-record-service');
+const { DataRecordService, deriveFileValidationStatus } = require('../../services/data-record-service');
 const { VALIDATION_STATUS, VALIDATION, DATA_FILE } = require('../../constants/submission-constants');
 const ERRORS = require('../../constants/error-constants');
 const { BATCH } = require('../../crdc-datahub-database-drivers/constants/batch-constants');
@@ -1342,6 +1342,49 @@ describe('DataRecordService', () => {
       expect(result.message).toContain(ERRORS.FAILED_VALIDATE_METADATA);
       expect(result.message).toContain('Failed to persist totalBatches');
       expect(mockAwsService.sendSQSMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deriveFileValidationStatus', () => {
+    it('returns Error when submission fileErrors remain', () => {
+      expect(deriveFileValidationStatus([{ submittedID: 'extra.txt' }], ['Passed'])).toBe(VALIDATION_STATUS.ERROR);
+    });
+
+    it('prioritizes New over Error and Warning on s3FileInfo statuses', () => {
+      expect(deriveFileValidationStatus([], [VALIDATION_STATUS.PASSED, VALIDATION_STATUS.NEW])).toBe(VALIDATION_STATUS.NEW);
+      expect(deriveFileValidationStatus([], [VALIDATION_STATUS.ERROR, VALIDATION_STATUS.WARNING])).toBe(VALIDATION_STATUS.ERROR);
+      expect(deriveFileValidationStatus([], [VALIDATION_STATUS.PASSED, VALIDATION_STATUS.WARNING])).toBe(VALIDATION_STATUS.WARNING);
+      expect(deriveFileValidationStatus([], [VALIDATION_STATUS.PASSED])).toBe(VALIDATION_STATUS.PASSED);
+      expect(deriveFileValidationStatus([], [])).toBe(VALIDATION_STATUS.PASSED);
+    });
+  });
+
+  describe('recalculateFileValidationStatus', () => {
+    let dataRecordService;
+    let mockDataRecordDAO;
+
+    beforeEach(() => {
+      mockDataRecordDAO = {
+        findS3FileInfoStatuses: jest.fn()
+      };
+      dataRecordService = new DataRecordService(
+        mockDataRecordArchiveCollection,
+        'file-queue',
+        'metadata-queue',
+        mockAwsService,
+        mockS3Service,
+        mockQcResultsService,
+        'export-queue',
+        null
+      );
+      dataRecordService.dataRecordDAO = mockDataRecordDAO;
+    });
+
+    it('loads s3FileInfo statuses and derives submission file validation status', async () => {
+      mockDataRecordDAO.findS3FileInfoStatuses.mockResolvedValue([VALIDATION_STATUS.PASSED, VALIDATION_STATUS.PASSED]);
+      const status = await dataRecordService.recalculateFileValidationStatus('sub-1', []);
+      expect(mockDataRecordDAO.findS3FileInfoStatuses).toHaveBeenCalledWith('sub-1');
+      expect(status).toBe(VALIDATION_STATUS.PASSED);
     });
   });
 });
