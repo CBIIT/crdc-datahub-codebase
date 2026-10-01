@@ -20,6 +20,30 @@ const NODE_RELATION_TYPE_PARENT="parent";
 const NODE_RELATION_TYPE_CHILD="child";
 const NODE_RELATION_TYPES = [NODE_RELATION_TYPE_PARENT, NODE_RELATION_TYPE_CHILD];
 const FILE = "file";
+
+/**
+ * Derives submission.fileValidationStatus from submission-level file errors and per-record s3FileInfo.status.
+ * @param {object[]|null|undefined} fileErrors Submission fileErrors array
+ * @param {string[]} s3FileInfoStatuses Collected s3FileInfo.status values for the submission
+ * @returns {string} One of VALIDATION_STATUS values
+ */
+function deriveFileValidationStatus(fileErrors, s3FileInfoStatuses) {
+    if (fileErrors && fileErrors.length > 0) {
+        return VALIDATION_STATUS.ERROR;
+    }
+    const statuses = s3FileInfoStatuses || [];
+    if (statuses.includes(VALIDATION_STATUS.NEW)) {
+        return VALIDATION_STATUS.NEW;
+    }
+    if (statuses.includes(VALIDATION_STATUS.ERROR)) {
+        return VALIDATION_STATUS.ERROR;
+    }
+    if (statuses.includes(VALIDATION_STATUS.WARNING)) {
+        return VALIDATION_STATUS.WARNING;
+    }
+    return VALIDATION_STATUS.PASSED;
+}
+
 const DATA_SHEET = {
     SUBJECT_ID: "participant_id",
     SAMPLE_ID: "sample_id",
@@ -534,6 +558,24 @@ class DataRecordService {
      */
     async resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames) {
         return await this.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames);
+    }
+
+    /**
+     * @param {string} submissionID
+     * @returns {Promise<string[]>}
+     */
+    async getS3FileInfoStatusesForSubmission(submissionID) {
+        return await this.dataRecordDAO.findS3FileInfoStatuses(submissionID);
+    }
+
+    /**
+     * @param {string} submissionID
+     * @param {object[]|null|undefined} fileErrors
+     * @returns {Promise<string>}
+     */
+    async recalculateFileValidationStatus(submissionID, fileErrors) {
+        const s3FileInfoStatuses = await this.getS3FileInfoStatusesForSubmission(submissionID);
+        return deriveFileValidationStatus(fileErrors, s3FileInfoStatuses);
     }
 
     _getSubmissionStatQuery(submissionID, validNodeStatus) {
@@ -1123,7 +1165,8 @@ class SubmissionStats {
 }
 
 module.exports = {
-    DataRecordService, 
+    DataRecordService,
+    deriveFileValidationStatus,
     NODE_RELATION_TYPES,
     Message,
     Stat,

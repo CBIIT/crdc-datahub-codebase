@@ -1845,38 +1845,33 @@ class Submission {
             
             const hasDeletedFiles = deletedCount > 0;
             if (hasDeletedFiles) {
-                // query submission data files (only if not deleteAll without exclusives, to avoid loading all files)
-                const promises = [];
-                if (deleteAll && exclusiveIDs.length === 0) {
-                    // For deleteAll without exclusives, directory is empty, so skip file listing
-                    promises.push(Promise.resolve([]));
-                } else {
-                    promises.push(this._getAllSubmissionDataFiles(aSubmission?.bucketName, aSubmission?.rootPath));
-                }
-                promises.push(this._getS3DirectorySize(aSubmission?.bucketName, `${aSubmission?.rootPath}/${FILE}/`));
-                
+                const promises = [
+                    deleteAll && exclusiveIDs.length === 0
+                        ? Promise.resolve([])
+                        : this._getAllSubmissionDataFiles(aSubmission?.bucketName, aSubmission?.rootPath),
+                    this._getS3DirectorySize(aSubmission?.bucketName, `${aSubmission?.rootPath}/${FILE}/`),
+                    this._logDataRecord(context?.userInfo, aSubmission._id, VALIDATION.TYPES.DATA_FILE, nodeIDsForLogging),
+                    this.dataRecordService.resetS3FileLinkedMetadataStatusToNew(aSubmission._id, metadataResetFileNames)
+                ];
                 // Delete QC results for deleted files (only if not already done in deleteAll path)
                 if (deleteAll) {
-                    // QC results already deleted in deleteAll path above, skip
                     promises.push(Promise.resolve());
                 } else {
-                    // Normal deletion: delete QC results for deleted files
                     const filesToDeleteQC = Array.isArray(deletedResult) ? deletedResult : [];
-                    promises.push(this.qcResultsService.deleteQCResultBySubmissionID(aSubmission._id, VALIDATION.TYPES.DATA_FILE, filesToDeleteQC, false, []));
+                    promises.push(this.qcResultsService.deleteQCResultBySubmissionID(
+                        aSubmission._id, VALIDATION.TYPES.DATA_FILE, filesToDeleteQC, false, []
+                    ));
                 }
-                
-                // log data record
-                promises.push(this._logDataRecord(context?.userInfo, aSubmission._id, VALIDATION.TYPES.DATA_FILE, nodeIDsForLogging));
-                promises.push(
-                    this.dataRecordService.resetS3FileLinkedMetadataStatusToNew(aSubmission._id, metadataResetFileNames)
-                );
-                
-                // Await all promises to ensure errors are properly caught and handled
-                // Note: qcDeletionResult, logResult, and metadata reset result are available but not used
-                const [submissionDataFiles, dataFileSize, qcDeletionResult, logResult, _metadataReset] = await Promise.all(promises);
-                
-                // reset fileValidationStatus if the number of data files changed. No data files exists if null
-                const fileValidationStatus = submissionDataFiles?.length > 0 ? VALIDATION_STATUS.NEW : null;
+
+                const [submissionDataFiles, dataFileSize, _logResult, _metadataReset, _qcDeletionResult] = await Promise.all(promises);
+
+                const refreshedSubmission = await this._findByID(aSubmission._id);
+                const fileValidationStatus = submissionDataFiles?.length > 0
+                    ? await this.dataRecordService.recalculateFileValidationStatus(
+                        aSubmission._id,
+                        refreshedSubmission?.fileErrors
+                    )
+                    : null;
                 // update submission data file info
                 const res = await this.submissionDAO.update(aSubmission?._id, this._prepareUpdateData({
                     fileValidationStatus,
