@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(_project_root, 'src'))
 
 from metadata_validator import metadataValidate, MetaDataValidator
 from common import constants
+from common.validation_closeout import METADATA_PROGRESS
 from pymongo import errors
 
 
@@ -283,7 +284,7 @@ class TestGetDataRecordsByIds:
 # ---------------------------------------------------------------------------
 
 class TestBatchHandler:
-    """Tests for the constants.TYPE_METADATA_VALIDATE_BATCH branch in metadataValidate."""
+    """Tests for metadata batch messages in metadataValidate."""
 
     @pytest.fixture
     def mock_configs(self):
@@ -315,9 +316,8 @@ class TestBatchHandler:
         }
         dao.find_study_by_id.return_value = {'studyName': 'Test Study'}
         dao.find_organization_name_by_study_id.return_value = ['Test Org']
-        dao.increment_completed_batches.return_value = (1, False, 0, constants.STATUS_PASSED, [])
-        dao.update_validation_status.return_value = True
-        dao.set_submission_validation_status.return_value = True
+        dao.atomic_update_validation.return_value = {'status': constants.STATUS_FAILED}
+        dao.atomic_update_submission.return_value = {'_id': 'sub-1'}
         return dao
 
     def _make_batch_msg(self, overrides=None):
@@ -345,190 +345,134 @@ class TestBatchHandler:
             with patch('metadata_validator.set_scale_in_protection'):
                 metadataValidate(mock_configs, job_queue, mock_mongo_dao)
 
-    # -- happy path (non-last batch) --
+    def test_happy_path_records_passed_and_deletes(self, mock_configs, mock_model_store, mock_mongo_dao):
+        """A successfully validated batch records Passed progress and is acknowledged.
 
-    def test_happy_path_non_last_batch(self, mock_configs, mock_model_store, mock_mongo_dao):
+        Stub node validation only to keep its error flags clear, then verify it
+        receives the loaded records and metadata progress is recorded as Passed.
+        """
         msg = self._make_batch_msg()
-        mock_mongo_dao.increment_completed_batches.return_value = (1, False, 0, constants.STATUS_PASSED, [])
+        records = [{constants.ID: 'r1'}, {constants.ID: 'r2'}]
 
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+        def leave_flags_unset(self, data_records):
+            assert not self.isError
+            assert not self.isWarning
+            return len(data_records)
 
+        with patch('metadata_validator.record_type_progress') as record:
+            with patch.object(MetaDataValidator, 'validate_nodes', autospec=True, side_effect=leave_flags_unset) as validate_nodes:
+                self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+
+        validate_nodes.assert_called_once()
+        assert validate_nodes.call_args[0][1] == records
         mock_mongo_dao.get_dataRecords_by_ids.assert_called_once_with(['r1', 'r2'])
-        mock_mongo_dao.increment_completed_batches.assert_called_once()
-        call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
-        assert call_kwargs['batch_failed'] is False
-        assert call_kwargs['status_detail'] is None
-        mock_mongo_dao.update_validation_status.assert_not_called()
+        assert record.call_args[0][0] == constants.STATUS_PASSED
+        assert record.call_args[0][4] is METADATA_PROGRESS
+        assert record.call_args[1]['total_count'] == 3
+        assert record.call_args[1].get('status_detail') is None
         msg.delete.assert_called_once()
 
-    # -- happy path (last batch) --
+    def test_error_flag_records_error(self, mock_configs, mock_model_store, mock_mongo_dao):
+        """A node-validation error flag makes the batch result Error.
 
-    def test_happy_path_last_batch_sets_final_status(self, mock_configs, mock_model_store, mock_mongo_dao):
-        msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
-        mock_mongo_dao.increment_completed_batches.return_value = (3, True, 0, constants.STATUS_PASSED, [])
+        Have validate_nodes set the validator's real isError flag, then inspect
+        the status and progress type passed to record_type_progress.
+        """
+        msg = self._make_batch_msg()
+        records = [{constants.ID: 'r1'}, {constants.ID: 'r2'}]
 
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+        def flag_error(self, _data_records):
+            self.isError = True
+            return 0
 
-        mock_mongo_dao.update_validation_status.assert_called_once()
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[0] == 'val-1'
-        assert args[1] == constants.STATUS_PASSED
-        assert kwargs['status_detail'] is None
+        with patch('metadata_validator.record_type_progress') as record:
+            with patch.object(MetaDataValidator, 'validate_nodes', autospec=True, side_effect=flag_error) as validate_nodes:
+                self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-        mock_mongo_dao.set_submission_validation_status.assert_called_once()
-        sub_kwargs = mock_mongo_dao.set_submission_validation_status.call_args[1]
-        assert sub_kwargs['status_detail'] is None
+        validate_nodes.assert_called_once()
+        assert validate_nodes.call_args[0][1] == records
+        assert record.call_args[0][0] == constants.STATUS_ERROR
+        assert record.call_args[0][4] is METADATA_PROGRESS
         msg.delete.assert_called_once()
 
-    # -- validate_nodes throws, counter still increments --
+    def test_validate_node_exception_records_error_and_deletes(self, mock_configs, mock_model_store, mock_mongo_dao):
+        """An exception inside one node becomes a handled Error batch.
 
-    def test_validate_nodes_exception_still_increments(self, mock_configs, mock_model_store, mock_mongo_dao):
+        Patch only validate_node so real validate_nodes catches the exception,
+        sets isError, records Error progress, and permits message deletion.
+        """
         msg = self._make_batch_msg()
 
-        with patch.object(MetaDataValidator, 'validate_nodes', side_effect=RuntimeError('boom')):
-            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+        with patch('metadata_validator.record_type_progress') as record:
+            with patch.object(MetaDataValidator, 'validate_node', side_effect=RuntimeError('boom')):
+                self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-        call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
-        assert call_kwargs['batch_failed'] is True
-        assert call_kwargs['batch_status'] == constants.FAILED
+        assert record.call_args[0][0] == constants.STATUS_ERROR
+        assert record.call_args[0][4] is METADATA_PROGRESS
+        msg.delete.assert_called_once()
 
-    def test_validate_nodes_exception_last_batch_uses_worst_status(self, mock_configs, mock_model_store, mock_mongo_dao):
-        msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
-        mock_mongo_dao.increment_completed_batches.return_value = (3, True, 1, constants.STATUS_ERROR, [])
-
-        with patch.object(MetaDataValidator, 'validate_nodes', side_effect=RuntimeError('boom')):
-            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        assert args[1] == constants.STATUS_ERROR
-
-    # -- model not available --
-
-    def test_model_unavailable_still_increments(self, mock_configs, mock_model_store, mock_mongo_dao):
+    def test_model_unavailable_records_failed_task(self, mock_configs, mock_model_store, mock_mongo_dao):
         bad_model = MagicMock()
         bad_model.model = None
         bad_model.get_nodes.return_value = []
         mock_model_store.get_model_by_data_common_version.return_value = bad_model
-
         msg = self._make_batch_msg()
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-        mock_mongo_dao.increment_completed_batches.assert_called_once()
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-    def test_model_unavailable_last_batch_preserves_status_error(self, mock_configs, mock_model_store, mock_mongo_dao):
-        bad_model = MagicMock()
-        bad_model.model = None
-        bad_model.get_nodes.return_value = []
-        mock_model_store.get_model_by_data_common_version.return_value = bad_model
-        mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.FAILED, ['CDS model version "1.0" is not available.']
-        )
+        assert record.call_args[0][0] == constants.FAILED
+        assert 'not available' in record.call_args[1]['status_detail']
+        msg.delete.assert_called_once()
 
-        msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.FAILED
-        assert any('not available' in d for d in kwargs['status_detail'])
-        # Caller passes FAILED; DAO does not write it to submission
-        sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
-        assert sub_args[2] == constants.FAILED
-
-    # -- missing study --
-
-    def test_missing_study_id_still_increments(self, mock_configs, mock_model_store, mock_mongo_dao):
-        mock_mongo_dao.get_submission.return_value = {
-            '_id': 'sub-1',
-            constants.DATA_COMMON_NAME: 'CDS',
-            constants.MODEL_VERSION: '1.0',
-        }
-        msg = self._make_batch_msg()
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        mock_mongo_dao.increment_completed_batches.assert_called_once()
-
-    def test_study_not_found_still_increments(self, mock_configs, mock_model_store, mock_mongo_dao):
+    def test_missing_study_records_failed_task(self, mock_configs, mock_model_store, mock_mongo_dao):
         mock_mongo_dao.find_study_by_id.return_value = None
         msg = self._make_batch_msg()
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-        mock_mongo_dao.increment_completed_batches.assert_called_once()
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-    def test_missing_study_last_batch_sets_failed(self, mock_configs, mock_model_store, mock_mongo_dao):
-        mock_mongo_dao.find_study_by_id.return_value = None
-        mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.FAILED, ['Invalid submission, no study found, sub-1!']
-        )
-        msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
+        assert record.call_args[0][0] == constants.FAILED
+        assert 'no study found' in record.call_args[1]['status_detail']
+        msg.delete.assert_called_once()
 
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+    def test_submission_not_found_fails_fast(self, mock_configs, mock_model_store, mock_mongo_dao):
+        """A missing submission fails the run without normal progress or submission writes.
 
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.FAILED
-        assert any('no study found' in d for d in kwargs['status_detail'])
-        sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
-        assert sub_args[2] == constants.FAILED
-
-    # -- submission not found --
-
-    def test_submission_not_found_still_increments(self, mock_configs, mock_model_store, mock_mongo_dao):
+        Return no submission and inspect the fail-fast validation update while
+        verifying record_type_progress and atomic_update_submission are unused.
+        """
         mock_mongo_dao.get_submission.return_value = None
         msg = self._make_batch_msg()
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-        mock_mongo_dao.increment_completed_batches.assert_called_once()
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-    def test_submission_not_found_last_batch_sets_failed(self, mock_configs, mock_model_store, mock_mongo_dao):
-        mock_mongo_dao.get_submission.return_value = None
-        mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.FAILED, ['Submission not found: sub-1']
-        )
-        msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
+        record.assert_not_called()
+        mock_mongo_dao.atomic_update_submission.assert_not_called()
+        fail_call = mock_mongo_dao.atomic_update_validation.call_args
+        fail_update = fail_call[0][1]
+        assert fail_update[constants.VALIDATION_STATUS] == constants.STATUS_FAILED
+        assert any('Submission not found' in detail for detail in fail_update[constants.STATUS_DETAIL])
+        assert fail_call[1]['expected_status'] == 'Validating'
+        msg.delete.assert_called_once()
 
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.FAILED
-        assert any('Submission not found' in d for d in kwargs['status_detail'])
-        mock_mongo_dao.set_submission_validation_status.assert_not_called()
-
-    # -- no data records found --
-
-    def test_no_data_records_still_increments(self, mock_configs, mock_model_store, mock_mongo_dao):
+    def test_no_data_records_fails_fast(self, mock_configs, mock_model_store, mock_mongo_dao):
         mock_mongo_dao.get_dataRecords_by_ids.return_value = []
         msg = self._make_batch_msg()
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-        mock_mongo_dao.increment_completed_batches.assert_called_once()
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-    def test_no_data_records_last_batch_updates_submission_status(self, mock_configs, mock_model_store, mock_mongo_dao):
-        mock_mongo_dao.get_dataRecords_by_ids.return_value = []
-        mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.FAILED, ['No data records found for provided IDs in batch 0']
-        )
-        msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
+        record.assert_not_called()
+        fail_call = mock_mongo_dao.atomic_update_validation.call_args
+        fail_update = fail_call[0][1]
+        assert fail_update[constants.VALIDATION_STATUS] == constants.STATUS_FAILED
+        assert any('No data records found' in detail for detail in fail_update[constants.STATUS_DETAIL])
+        assert fail_call[1]['expected_status'] == 'Validating'
+        msg.delete.assert_called_once()
 
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        mock_mongo_dao.update_validation_status.assert_called_once()
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.FAILED
-        assert any('No data records found' in d for d in kwargs['status_detail'])
-
-        mock_mongo_dao.set_submission_validation_status.assert_called_once()
-        sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
-        sub_kwargs = mock_mongo_dao.set_submission_validation_status.call_args[1]
-        assert sub_args[2] == constants.FAILED
-        assert any('No data records found' in d for d in sub_kwargs['status_detail'])
-
-    # -- missing scope treated as invalid message --
-
-    def test_missing_scope_treated_as_invalid(self, mock_configs, mock_model_store, mock_mongo_dao):
+    def test_missing_scope_fails_fast_without_counting_the_batch(self, mock_configs, mock_model_store, mock_mongo_dao):
         payload = {
             constants.SQS_TYPE: constants.TYPE_METADATA_VALIDATE_BATCH,
             constants.SUBMISSION_ID: 'sub-1',
@@ -540,205 +484,115 @@ class TestBatchHandler:
         msg = MagicMock()
         msg.body = json.dumps(payload)
 
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        mock_mongo_dao.get_submission.assert_called_once()
-        mock_mongo_dao.get_dataRecords_by_ids.assert_not_called()
-        call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
-        assert call_kwargs['batch_failed'] is True
-        assert call_kwargs['batch_status'] == constants.FAILED
-        msg.delete.assert_called_once()
-
-    def test_missing_scope_last_batch_updates_submission_status(self, mock_configs, mock_model_store, mock_mongo_dao):
-        payload = {
-            constants.SQS_TYPE: constants.TYPE_METADATA_VALIDATE_BATCH,
-            constants.SUBMISSION_ID: 'sub-1',
-            constants.VALIDATION_ID: 'val-1',
-            constants.DATA_RECORD_IDS: ['r1', 'r2'],
-            constants.TOTAL_BATCHES: 1,
-            constants.BATCH_INDEX: 0,
-        }
-        msg = MagicMock()
-        msg.body = json.dumps(payload)
-        mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.FAILED, ['Missing required field: scope']
-        )
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        mock_mongo_dao.update_validation_status.assert_called_once()
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.FAILED
-        assert 'Missing required field: scope' in kwargs['status_detail']
-
-        mock_mongo_dao.set_submission_validation_status.assert_called_once()
-        sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
-        sub_kwargs = mock_mongo_dao.set_submission_validation_status.call_args[1]
-        assert sub_args[2] == constants.FAILED
-        assert 'Missing required field: scope' in sub_kwargs['status_detail']
-
-    # -- zero total_batches treated as invalid message --
-
-    def test_zero_total_batches_treated_as_invalid(self, mock_configs, mock_model_store, mock_mongo_dao):
-        msg = self._make_batch_msg({constants.TOTAL_BATCHES: 0})
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        mock_mongo_dao.increment_completed_batches.assert_not_called()
-        mock_mongo_dao.get_dataRecords_by_ids.assert_not_called()
-        msg.delete.assert_called_once()
-
-    # -- worst-status precedence --
-
-    def test_worst_status_precedence_used_as_final(self, mock_configs, mock_model_store, mock_mongo_dao):
-        """Final status comes from worst_status in the 5-tuple, not from local batch state."""
-        msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
-        mock_mongo_dao.increment_completed_batches.return_value = (3, True, 0, constants.STATUS_WARNING, [])
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        assert args[1] == constants.STATUS_WARNING
-
-    def test_last_batch_succeeds_but_prior_batch_failed_uses_worst_status(self, mock_configs, mock_model_store, mock_mongo_dao):
-        """When the finalizing batch succeeds locally but worst_status is Failed,
-        the final status must reflect the worst across all batches."""
-        msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
-        mock_mongo_dao.increment_completed_batches.return_value = (
-            3, True, 1, constants.FAILED, ['Batch 1: Submission not found']
-        )
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.FAILED
-        assert kwargs['status_detail'] == ['Batch 1: Submission not found']
-
-    def test_multiple_prior_failures_accumulated_in_details(self, mock_configs, mock_model_store, mock_mongo_dao):
-        msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
-        accumulated = ['Batch 0: No data records found', 'Batch 1: Missing scope']
-        mock_mongo_dao.increment_completed_batches.return_value = (3, True, 2, constants.STATUS_ERROR, accumulated)
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.STATUS_ERROR
-        assert kwargs['status_detail'] == accumulated
-
-    # -- accumulated details written as array --
-
-    def test_accumulated_details_written_as_array(self, mock_configs, mock_model_store, mock_mongo_dao):
-        msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
-        details_array = ['Batch 0: error A', 'Batch 1: error B']
-        mock_mongo_dao.increment_completed_batches.return_value = (3, True, 2, constants.STATUS_ERROR, details_array)
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert isinstance(kwargs['status_detail'], list)
-        assert kwargs['status_detail'] == details_array
-
-        sub_kwargs = mock_mongo_dao.set_submission_validation_status.call_args[1]
-        assert isinstance(sub_kwargs['status_detail'], list)
-        assert sub_kwargs['status_detail'] == details_array
-
-    # -- empty batch_details on success yields None --
-
-    def test_success_with_empty_details_sets_none(self, mock_configs, mock_model_store, mock_mongo_dao):
-        msg = self._make_batch_msg({constants.BATCH_INDEX: 2})
-        mock_mongo_dao.increment_completed_batches.return_value = (3, True, 0, constants.STATUS_PASSED, [])
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert kwargs['status_detail'] is None
-
-    # -- increment_completed_batches exception skips finalization --
-
-    def test_increment_exception_skips_finalization(self, mock_configs, mock_model_store, mock_mongo_dao):
-        mock_mongo_dao.increment_completed_batches.side_effect = RuntimeError("db down")
-        msg = self._make_batch_msg()
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        mock_mongo_dao.update_validation_status.assert_not_called()
-        mock_mongo_dao.set_submission_validation_status.assert_not_called()
-        msg.delete.assert_called_once()
-
-    # -- increment_completed_batches returns None (DB error, no exception) --
-
-    def test_increment_returns_none_logs_error(self, mock_configs, mock_model_store, mock_mongo_dao, caplog):
-        import logging
-        mock_mongo_dao.increment_completed_batches.return_value = (None, False, 0, None, [])
-        msg = self._make_batch_msg()
-
-        with caplog.at_level(logging.ERROR):
+        with patch('metadata_validator.record_type_progress') as record:
             self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-        mock_mongo_dao.update_validation_status.assert_not_called()
-        mock_mongo_dao.set_submission_validation_status.assert_not_called()
-        assert any('validation may be stuck' in r.getMessage() for r in caplog.records)
+        record.assert_not_called()
+        mock_mongo_dao.get_dataRecords_by_ids.assert_not_called()
+        fail_call = mock_mongo_dao.atomic_update_validation.call_args
+        fail_update = fail_call[0][1]
+        assert fail_update[constants.VALIDATION_STATUS] == constants.STATUS_FAILED
+        assert any('scope' in detail for detail in fail_update[constants.STATUS_DETAIL])
+        assert fail_call[1]['expected_status'] == 'Validating'
+        msg.delete.assert_called_once()
 
-    # -- missing validation_id --
+    def test_zero_total_batches_fails_fast(self, mock_configs, mock_model_store, mock_mongo_dao):
+        """A nonpositive totalBatches is a permanent content error.
 
-    def test_missing_validation_id_skips_processing(self, mock_configs, mock_model_store, mock_mongo_dao):
-        """When validation_id is absent, the function returns before try/finally,
-        so no increment and no data record fetch should occur."""
+        Send zero and inspect the fail-fast status and detail, while verifying no
+        records are loaded and normal batch progress is not recorded.
+        """
+        msg = self._make_batch_msg({constants.TOTAL_BATCHES: 0})
+
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+
+        record.assert_not_called()
+        mock_mongo_dao.get_dataRecords_by_ids.assert_not_called()
+        fail_call = mock_mongo_dao.atomic_update_validation.call_args
+        fail_update = fail_call[0][1]
+        assert fail_update[constants.VALIDATION_STATUS] == constants.STATUS_FAILED
+        assert any('total_batches' in detail for detail in fail_update[constants.STATUS_DETAIL])
+        assert fail_call[1]['expected_status'] == 'Validating'
+        msg.delete.assert_called_once()
+
+    def test_fail_fast_predicate_miss_still_deletes_message(self, mock_configs, mock_model_store, mock_mongo_dao):
+        """An already-finalized validation is a race, not a retryable write failure."""
+        mock_mongo_dao.get_submission.return_value = None
+        mock_mongo_dao.atomic_update_validation.return_value = None
+        msg = self._make_batch_msg()
+
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+
+        record.assert_not_called()
+        mock_mongo_dao.atomic_update_submission.assert_not_called()
+        msg.delete.assert_called_once()
+
+    def test_init_failure_records_detail_for_accumulation(self, mock_configs, mock_model_store, mock_mongo_dao):
+        """A model init failure records Failed progress with a detail for later close-out."""
+        bad_model = MagicMock()
+        bad_model.model = None
+        bad_model.get_nodes.return_value = []
+        mock_model_store.get_model_by_data_common_version.return_value = bad_model
+        msg = self._make_batch_msg()
+
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+
+        assert record.call_args[0][0] == constants.FAILED
+        assert record.call_args[0][4] is METADATA_PROGRESS
+        assert 'not available' in record.call_args[1]['status_detail']
+        msg.delete.assert_called_once()
+
+    def test_missing_validation_id_deletes_without_failing_a_run(self, mock_configs, mock_model_store, mock_mongo_dao):
         msg = self._make_batch_msg({constants.VALIDATION_ID: None})
 
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-        mock_mongo_dao.increment_completed_batches.assert_not_called()
+        record.assert_not_called()
+        mock_mongo_dao.atomic_update_validation.assert_not_called()
         mock_mongo_dao.get_dataRecords_by_ids.assert_not_called()
         msg.delete.assert_called_once()
 
-    # -- missing constants.DATA_COMMON_NAME on last batch --
+    def test_data_records_lookup_error_is_retried(self, mock_configs, mock_model_store, mock_mongo_dao):
+        mock_mongo_dao.get_dataRecords_by_ids.return_value = None
+        msg = self._make_batch_msg()
 
-    def test_missing_datacommon_last_batch_sets_failed(self, mock_configs, mock_model_store, mock_mongo_dao):
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+
+        record.assert_not_called()
+        mock_mongo_dao.atomic_update_validation.assert_not_called()
+        msg.delete.assert_not_called()
+
+    def test_closeout_write_failure_is_retried(self, mock_configs, mock_model_store, mock_mongo_dao):
+        """A close-out persistence failure leaves the message available for retry.
+
+        Raise from record_type_progress and verify the message is not deleted and
+        the retryable path does not separately mark the validation Failed.
+        """
+        msg = self._make_batch_msg()
+
+        with patch('metadata_validator.record_type_progress', side_effect=RuntimeError('db down')):
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+
+        msg.delete.assert_not_called()
+        for update_call in mock_mongo_dao.atomic_update_validation.call_args_list:
+            assert update_call[0][1].get(constants.VALIDATION_STATUS) != constants.STATUS_FAILED
+
+    def test_missing_datacommon_records_failed_task(self, mock_configs, mock_model_store, mock_mongo_dao):
         mock_mongo_dao.get_submission.return_value = {
             '_id': 'sub-1',
             constants.MODEL_VERSION: '1.0',
             constants.STUDY_ID: 'study-1',
         }
-        mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.FAILED, ['Invalid submission, no datacommon found, sub-1!']
-        )
-        msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.FAILED
-        assert any('no datacommon found' in d for d in kwargs['status_detail'])
-        sub_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
-        assert sub_args[2] == constants.FAILED
-
-    # -- get_dataRecords_by_ids returns None (DB error) --
-
-    def test_data_records_db_error_returns_none_still_increments(self, mock_configs, mock_model_store, mock_mongo_dao):
-        mock_mongo_dao.get_dataRecords_by_ids.return_value = None
         msg = self._make_batch_msg()
 
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
 
-        call_kwargs = mock_mongo_dao.increment_completed_batches.call_args[1]
-        assert call_kwargs['batch_failed'] is True
-        assert call_kwargs['batch_status'] == constants.FAILED
-
-    def test_data_records_db_error_last_batch_sets_failed(self, mock_configs, mock_model_store, mock_mongo_dao):
-        mock_mongo_dao.get_dataRecords_by_ids.return_value = None
-        mock_mongo_dao.increment_completed_batches.return_value = (
-            1, True, 1, constants.FAILED, ['No data records found for provided IDs in batch 0']
-        )
-        msg = self._make_batch_msg({constants.TOTAL_BATCHES: 1})
-
-        self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
-
-        args = mock_mongo_dao.update_validation_status.call_args[0]
-        kwargs = mock_mongo_dao.update_validation_status.call_args[1]
-        assert args[1] == constants.FAILED
-        assert any('No data records found' in d for d in kwargs['status_detail'])
+        assert record.call_args[0][0] == constants.FAILED
+        assert 'no datacommon found' in record.call_args[1]['status_detail']
+        msg.delete.assert_called_once()
