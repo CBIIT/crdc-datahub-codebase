@@ -15,6 +15,8 @@ from common.constants import (
 )
 from common.utils import get_exception_msg, create_error, current_datetime
 
+LAST_MODIFIED = "last_modified"
+
 """
 Process delete metadata requests.
 """
@@ -73,10 +75,11 @@ class MetadataRemover:
             existed_nodes = self.validate_data(submission_id, node_type, node_ids)
             if not existed_nodes or len(existed_nodes) == 0:
                 return (False, [])
+            existing_orphaned_files = self._find_orphaned_files(submission_id)
             if not self.delete_nodes(existed_nodes, delete_orphaned_data_files):
                 return (False, [])
             #3. after successful delete: find orphaned files, optionally delete them, build F008 errors
-            orphan_errors = self._find_orphaned_files_and_build_errors(submission_id, delete_orphaned_data_files)
+            orphan_errors = self._find_orphaned_files_and_build_errors(submission_id, delete_orphaned_data_files, existing_orphaned_files)
             return True, orphan_errors
         except Exception:
             self.log.exception(f'Failed to delete metadata, {get_exception_msg()}!')
@@ -203,11 +206,11 @@ class MetadataRemover:
                 continue
             orphan_s3_infos.append({
                 FILE_NAME: file_name,
-                "last_modified": item.get("LastModified"),
+                LAST_MODIFIED: item.get("LastModified"),
             })
         return response.get("NextContinuationToken")
 
-    def _find_orphaned_files_and_build_errors(self, submission_id, delete_orphaned_data_files):
+    def _find_orphaned_files_and_build_errors(self, submission_id, delete_orphaned_data_files, protected_files: list[dict] = []):
         """
         After metadata deletion: find S3 keys under file/ not referenced by any remaining dataRecord.
         Always returns F008-shaped errors for those orphans.
@@ -218,53 +221,64 @@ class MetadataRemover:
             return []
         orphan_errors = []
         try:
-            manifest_info_list = self.mongo_dao.get_files_by_submission(submission_id) or []
-            manifest_file_names = set()
-            for manifest_info in manifest_info_list:
-                if manifest_info.get(S3_FILE_INFO) and manifest_info[S3_FILE_INFO].get(FILE_NAME):
-                    manifest_file_names.add(manifest_info[S3_FILE_INFO][FILE_NAME])
-
-            # S3 keys use forward slashes; paginate list_objects_v2 (first page, then while token)
-            key = (os.path.join(self.root_path, "file") + "/").replace("\\", "/")
-            orphan_s3_infos = []
-
-            response = self.bucket.client.list_objects_v2(
-                Bucket=self.bucket.bucket_name,
-                Prefix=key,
-                MaxKeys=S3_LIST_ORPHANS_PAGE_SIZE,
-            )
-            continuation_token = self._process_s3_list_page(response, manifest_file_names, orphan_s3_infos)
-            while continuation_token:
-                response = self.bucket.client.list_objects_v2(
-                    Bucket=self.bucket.bucket_name,
-                    Prefix=key,
-                    MaxKeys=S3_LIST_ORPHANS_PAGE_SIZE,
-                    ContinuationToken=continuation_token,
-                )
-                continuation_token = self._process_s3_list_page(response, manifest_file_names, orphan_s3_infos)
+            orphan_s3_infos = self._find_orphaned_files(submission_id)
 
             if delete_orphaned_data_files and orphan_s3_infos:
-                self.delete_files_in_s3([{FILE_NAME: info[FILE_NAME]} for info in orphan_s3_infos])
+                self.delete_files_in_s3([{FILE_NAME: info[FILE_NAME]} for info in orphan_s3_infos if info not in protected_files])
 
-            for info in orphan_s3_infos:
-                file_name = info[FILE_NAME]
-                file_batch = self.mongo_dao.find_batch_by_file_name(submission_id, DATA_FILE_TYPE, file_name)
-                batch_id = file_batch[ID] if file_batch else "-"
-                display_id = file_batch.get(DISPLAY_ID) if file_batch else None
-                error = {
-                    TYPE: DATA_FILE_TYPE,
-                    QC_VALIDATION_TYPE: DATA_FILE_TYPE,
-                    SUBMITTED_ID: file_name,
-                    BATCH_ID: batch_id,
-                    DISPLAY_ID: display_id,
-                    QC_SEVERITY: STATUS_ERROR,
-                    UPLOADED_DATE: info.get("last_modified"),
-                    QC_VALIDATE_DATE: current_datetime(),
-                    ERRORS: [create_error("F008", [file_name], "file name", file_name)],
-                }
-                orphan_errors.append(error)
+            remaining_orphan_s3_infos = self._find_orphaned_files(submission_id)
+            orphan_errors = self._build_orphan_error(remaining_orphan_s3_infos, submission_id)
+
         except Exception:
             self.log.exception(f"Failed to find orphaned files or build F008 errors: {get_exception_msg()}")
+
+        return orphan_errors
+
+    def _find_orphaned_files(self, submission_id: str) -> list[dict]:
+        file_records = self.mongo_dao.get_files_by_submission(submission_id) or []
+        known_file_names = set()
+        for file in file_records:
+            if file.get(S3_FILE_INFO) and file[S3_FILE_INFO].get(FILE_NAME):
+                known_file_names.add(file[S3_FILE_INFO][FILE_NAME])
+        # S3 keys use forward slashes; paginate list_objects_v2 (first page, then while token)
+        prefix = (os.path.join(self.root_path, "file") + "/").replace("\\", "/")
+        orphan_s3_infos = []
+
+        response = self.bucket.client.list_objects_v2(
+            Bucket=self.bucket.bucket_name,
+            Prefix=prefix,
+            MaxKeys=S3_LIST_ORPHANS_PAGE_SIZE,
+        )
+        continuation_token = self._process_s3_list_page(response, known_file_names, orphan_s3_infos)
+        while continuation_token:
+            response = self.bucket.client.list_objects_v2(
+                Bucket=self.bucket.bucket_name,
+                Prefix=prefix,
+                MaxKeys=S3_LIST_ORPHANS_PAGE_SIZE,
+                ContinuationToken=continuation_token,
+            )
+            continuation_token = self._process_s3_list_page(response, known_file_names, orphan_s3_infos)
+        return orphan_s3_infos
+
+    def _build_orphan_error(self, orphan_s3_infos: list[dict], submission_id: str) -> list[dict]:
+        orphan_errors = []
+        for info in orphan_s3_infos:
+            file_name = info[FILE_NAME]
+            file_batch = self.mongo_dao.find_batch_by_file_name(submission_id, DATA_FILE_TYPE, file_name)
+            batch_id = file_batch[ID] if file_batch else "-"
+            display_id = file_batch.get(DISPLAY_ID) if file_batch else None
+            error = {
+                TYPE: DATA_FILE_TYPE,
+                QC_VALIDATION_TYPE: DATA_FILE_TYPE,
+                SUBMITTED_ID: file_name,
+                BATCH_ID: batch_id,
+                DISPLAY_ID: display_id,
+                QC_SEVERITY: STATUS_ERROR,
+                UPLOADED_DATE: info.get(LAST_MODIFIED),
+                QC_VALIDATE_DATE: current_datetime(),
+                ERRORS: [create_error("F008", [file_name], "file name", file_name)],
+            }
+            orphan_errors.append(error)
         return orphan_errors
 
     """

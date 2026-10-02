@@ -154,14 +154,15 @@ def test_remove_metadata_success_returns_true_and_orphan_errors():
     with patch("metadata_remover.S3Bucket", return_value=mock_bucket):
         remover = MetadataRemover(mock_dao, mock_store)
         with patch.object(remover, "process_children", return_value=True):
-            with patch.object(
-                remover,
-                "_find_orphaned_files_and_build_errors",
-                return_value=[{"submittedID": "orphan.csv", "errors": [{"code": "F008"}]}],
-            ):
-                result, orphan_errors = remover.remove_metadata(
-                    "sub-1", "Subject", ["n1"], delete_orphaned_data_files=False
-                )
+            with patch.object(remover, "_find_orphaned_files", return_value=[]):
+                with patch.object(
+                    remover,
+                    "_find_orphaned_files_and_build_errors",
+                    return_value=[{"submittedID": "orphan.csv", "errors": [{"code": "F008"}]}],
+                ):
+                    result, orphan_errors = remover.remove_metadata(
+                        "sub-1", "Subject", ["n1"], delete_orphaned_data_files=False
+                    )
 
     assert result is True
     assert len(orphan_errors) == 1
@@ -310,10 +311,11 @@ def test_remove_metadata_passes_delete_orphaned_data_files_to_find_orphans():
         remover = MetadataRemover(mock_dao, mock_store)
         with patch.object(remover, "process_children", return_value=True):
             find_orphans = MagicMock(return_value=[])
-            with patch.object(remover, "_find_orphaned_files_and_build_errors", find_orphans):
-                remover.remove_metadata("sub-1", "Subject", ["n1"], delete_orphaned_data_files=True)
+            with patch.object(remover, "_find_orphaned_files", return_value=[]):
+                with patch.object(remover, "_find_orphaned_files_and_build_errors", find_orphans):
+                    remover.remove_metadata("sub-1", "Subject", ["n1"], delete_orphaned_data_files=True)
 
-        find_orphans.assert_called_once_with("sub-1", True)
+        find_orphans.assert_called_once_with("sub-1", True, [])
 
 
 # ---------------------------------------------------------------------------
