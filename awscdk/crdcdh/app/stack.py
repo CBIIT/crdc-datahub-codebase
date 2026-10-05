@@ -29,8 +29,8 @@ from rds import RdsInstance
 from documentdb import DocumentDbCluster
 from knowledgebase import KnowledgeBase
 from guardrail import Guardrail
-from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, chatbotbe
-#from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
+#from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, chatbotbe
+from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
 
 class Stack(Stack):
     def __init__(self, scope: Construct, **kwargs) -> None:
@@ -541,7 +541,7 @@ class Stack(Stack):
         pvpuller.pvpullerService.createService(self, config)
 
         # Chatbotbe Service
-        chatbotbe.chatbotbeService.createService(self, config)
+        #chatbotbe.chatbotbeService.createService(self, config)
 
         # Files Service
         # files.filesService.createService(self, config)
