@@ -209,6 +209,9 @@ export type { Input as GetUserInput, Response as GetUserResp } from "./getUser";
 export { query as LIST_USERS } from "./listUsers";
 export type { Response as ListUsersResp } from "./listUsers";
 
+export { query as LIST_REOPEN_OWNERS } from "./listReopenOwners";
+export type { Response as ListReopenOwnersResp } from "./listReopenOwners";
+
 export { mutation as EDIT_USER } from "./editUser";
 export type { Input as EditUserInput, Response as EditUserResp } from "./editUser";
 

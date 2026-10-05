@@ -1,4 +1,4 @@
-from test.utils.mock_metadata_validator import create_mock_validator, default_study, create_mock_data_model
+from test.utils.metadata_validator import create_test_validator, default_study, create_test_data_model
 from common.constants import VALIDATION_RESULT, ERRORS, WARNINGS, STATUS_PASSED
 
 test_study = default_study.copy()
@@ -6,7 +6,7 @@ test_study.update({
     'dbGaPID': "dbgap_id_1",
 })
 
-validator = create_mock_validator(test_study=test_study)
+validator = create_test_validator(test_study=test_study)
 
 def test_validator():
     assert validator is not None
@@ -89,7 +89,7 @@ def test_dbgapid_set_to_empty_in_study():
         'dbGaPID': "",
     })
 
-    local_validator = create_mock_validator(test_study=test_study)
+    local_validator = create_test_validator(test_study=test_study)
     data_record = {
         "nodeType": "study",
         "props": {
@@ -105,7 +105,7 @@ def test_dbgapid_set_to_none_in_study():
         'dbGaPID': None
     })
 
-    local_validator = create_mock_validator(test_study=test_study)
+    local_validator = create_test_validator(test_study=test_study)
     data_record = {
         "nodeType": "study",
         "props": {
@@ -118,7 +118,7 @@ def test_dbgapid_set_to_none_in_study():
 def test_dbgapid_doesnt_exist_in_study():
     local_test_study = default_study.copy()
 
-    local_validator = create_mock_validator(test_study=local_test_study)
+    local_validator = create_test_validator(test_study=local_test_study)
     data_record = {
         "nodeType": "study",
         "props": {
@@ -130,8 +130,8 @@ def test_dbgapid_doesnt_exist_in_study():
 
 def test_dbgapid_not_configured_in_model():
     model_config_file = 'src/test/test_data/content-no-dbGaPID.json'
-    data_model = create_mock_data_model(model_config_file=model_config_file)
-    local_validator = create_mock_validator(data_model=data_model, test_study=test_study)
+    data_model = create_test_data_model(model_config_file=model_config_file)
+    local_validator = create_test_validator(data_model=data_model, test_study=test_study)
 
     data_record = {
         "nodeType": "study",
@@ -178,7 +178,7 @@ def test_dbgapid_v_p_present_in_study():
         'dbGaPID': "dbgap_id_1.v1.p3",
     })
 
-    local_validator = create_mock_validator(test_study=test_study)
+    local_validator = create_test_validator(test_study=test_study)
     data_record = {
         "nodeType": "study",
         "props": {
@@ -194,7 +194,7 @@ def test_dbgapid_v_present_in_study():
         'dbGaPID': "dbgap_id_1.v1",
     })
 
-    local_validator = create_mock_validator(test_study=test_study)
+    local_validator = create_test_validator(test_study=test_study)
     data_record = {
         "nodeType": "study",
         "props": {
@@ -210,7 +210,7 @@ def test_dbgapid_v_multi_digit_present_in_study():
         'dbGaPID': "dbgap_id_1.v112",
     })
 
-    local_validator = create_mock_validator(test_study=test_study)
+    local_validator = create_test_validator(test_study=test_study)
     data_record = {
         "nodeType": "study",
         "props": {
@@ -226,7 +226,7 @@ def test_dbgapid_only_v_p_different():
         'dbGaPID': "dbgap_id_1.v1.p3",
     })
 
-    local_validator = create_mock_validator(test_study=test_study)
+    local_validator = create_test_validator(test_study=test_study)
     data_record = {
         "nodeType": "study",
         "props": {
@@ -242,7 +242,7 @@ def test_dbgapid_case_different_different():
         'dbGaPID': "phs000007.v1.p3",
     })
 
-    local_validator = create_mock_validator(test_study=test_study)
+    local_validator = create_test_validator(test_study=test_study)
     data_record = {
         "nodeType": "study",
         "props": {

@@ -1,5 +1,5 @@
 # Build stage — npm is only required to install dependencies.
-FROM node:24.17.0-alpine3.24 AS builder
+FROM node:24.21.0-alpine3.24 AS builder
 WORKDIR /usr/src/app
 # Install dependencies first (cached unless package files change).
 COPY package*.json ./
@@ -15,7 +15,8 @@ COPY --chown=node:node . .
 RUN npm prune --omit=dev
 
 # Run stage
-FROM node:24.17.0-alpine3.24 AS fnl_base_image
+FROM node:24.21.0-alpine3.24 AS fnl_base_image
+RUN apk add --no-cache --upgrade openssl
 ENV PORT=8080 \
     NODE_ENV=production
 WORKDIR /usr/src/app
@@ -23,7 +24,7 @@ WORKDIR /usr/src/app
 COPY --from=builder --chown=node:node /usr/src/app .
 # Remove global npm shipped with the Node base image; only the node binary is needed at runtime.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
-    && mkdir -p logs && chown node:node logs
+    && mkdir -p logs cache/email-content && chown -R node:node logs cache
 USER node
 EXPOSE 8080
 CMD ["node", "./bin/www"]

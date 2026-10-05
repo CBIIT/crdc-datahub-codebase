@@ -42,6 +42,7 @@ const DATA_SHEET = {
     FILE_NAME: "file_name",
     MD5SUM: "md5sum"
 };
+
 class DataRecordService {
     /**
      * @param {object} dataRecordArchiveCollection Archive collection (native MongoDBCollection)
@@ -178,7 +179,23 @@ class DataRecordService {
         }
     }
 
-    async validateMetadata(submissionID, types, scope, validationID) {
+    /**
+     * 
+     * @param {*} submissionID 
+     * @param {*} types ['metadata', 'data file']
+     * @param {*} scope ['new', 'all']
+     * @param {*} validationID 
+     * @returns Promise of object with the following properties: 
+     *    {
+     *      success: boolean,
+     *      message?: string,
+     *      totalBatches?: number,
+     *      failedCount?: number,
+     *      totalFileMessages?: number,
+     *      failedFileCount?: number
+     *    }
+     */
+    async initializeDataValidation(submissionID, types, scope, validationID) {
         isValidMetadata(types, scope);
         const isMetadata = types.some(t => t === VALIDATION.TYPES.METADATA || t === VALIDATION.TYPES.CROSS_SUBMISSION);
         let errorMessages = [];
@@ -211,22 +228,35 @@ class DataRecordService {
             }
         }
         const isFile = types.some(t => (t?.toLowerCase() === VALIDATION.TYPES.DATA_FILE || t?.toLowerCase() === VALIDATION.TYPES.FILE));
+        let fileMessagesInfo = {};
         if (isFile) {
             const fileNodes = await this._getFileNodes(submissionID, scope);
+            // one message per file + extra message for orphaned file detection
+            fileMessagesInfo.totalFileMessages = fileNodes.length + 1;
+            fileMessagesInfo.failedFileCount = 0;
             if (fileNodes && fileNodes.length > 0) {
                 const fileValidationErrors = await this._sendBatchSQSMessage(fileNodes, validationID, submissionID);
-                if (fileValidationErrors.length > 0)
+                if (fileValidationErrors.length > 0) {
                     errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, ...fileValidationErrors)
+                    fileMessagesInfo.failedFileCount = fileValidationErrors.length;
+                }
             }
             const msg = Message.createFileSubmissionMessage("Validate Submission Files", submissionID, validationID);
             const fileResult = await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.fileQueueName, submissionID);
-            if (!fileResult.success)
-                errorMessages.push(fileResult.message);
+            if (!fileResult.success) {
+                errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, fileResult.message);
+                fileMessagesInfo.failedFileCount += 1;
+            }
         }
+
         const validationResult = (errorMessages.length > 0) ? ValidationHandler.handle(errorMessages) : ValidationHandler.success();
         if (metadataBatchInfo) {
             validationResult.totalBatches = metadataBatchInfo.totalBatches;
             validationResult.failedCount = metadataBatchInfo.failedCount;
+        }
+        if (fileMessagesInfo) {
+            validationResult.totalFileMessages = fileMessagesInfo.totalFileMessages;
+            validationResult.failedFileCount = fileMessagesInfo.failedFileCount;
         }
         return validationResult;
     }
@@ -483,48 +513,27 @@ class DataRecordService {
 
         return await this.dataRecordDAO.distinct("nodeType", { submissionID });
     }
-    // This MongoDB schema is optimized for performance by reducing joins and leveraging document-based structure.
+    /**
+     * Resets data-record validation status for a submission.
+     * File status is updated only where s3FileInfo.status already exists.
+     * @param {string} submissionID Submission whose records are reset
+     * @param {string} status Validation status to apply
+     * @returns {Promise<object>} Combined update result; acknowledged is true only when both writes acknowledge
+     */
     async resetDataRecords(submissionID, status) {
-        return await this.dataRecordDAO.updateManyPipeline(
-            { submissionID: submissionID },
-            [{ $set: {
-                status: status,
-                updatedAt: getCurrentTime(),
-                s3FileInfo: {
-                    $cond: [
-                        { $gt: ["$s3FileInfo.status", null] }, // only if exists
-                        { $mergeObjects: ["$s3FileInfo", { status: status }] }, // override
-                        "$s3FileInfo" // otherwise leave unchanged
-        ]}}}]
-        );
+        return await this.dataRecordDAO.resetDataRecords(submissionID, status);
     }
 
     /**
      * After one or more data files are removed from S3, set s3FileInfo.status to New on matching data records
      * (top-level data record status is not changed). Updates updatedAt.
      * @param {string} submissionID
-     * @param {string[]|null} fileNames - Names of removed data files. Pass null to match every data record
+     * @param {string[]|null} [fileNames] Names of removed data files. Null or omitted matches every data record
      *        in the submission that has s3FileInfo (e.g. delete all data files with no exclusives).
      * @returns {Promise<import('mongodb').UpdateResult>}
      */
     async resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames) {
-        if (fileNames && fileNames.length === 0) {
-            return { acknowledged: true, modifiedCount: 0, matchedCount: 0 };
-        }
-        const filter = {
-            submissionID,
-            s3FileInfo: { $exists: true, $ne: null }
-        };
-        if (fileNames != null) {
-            filter["s3FileInfo.fileName"] = { $in: fileNames };
-        }
-        return await this.dataRecordDAO.updateManyPipeline(
-            filter,
-            [{ $set: {
-                updatedAt: getCurrentTime(),
-                s3FileInfo: { $mergeObjects: ["$s3FileInfo", { status: VALIDATION_STATUS.NEW }] }
-            }}]
-        );
+        return await this.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames);
     }
 
     _getSubmissionStatQuery(submissionID, validNodeStatus) {

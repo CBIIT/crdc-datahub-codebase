@@ -13,7 +13,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     GENERATED_PROPS, FILE_ENDED, METADATA_ENDED, METADATA_STATUS, FILE_STATUS, FILE_VALIDATION, METADATA_VALIDATION, \
     CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL, \
     COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS, STATUS_DETAIL, \
-    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS
+    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION
 from common.utils import get_exception_msg, current_datetime, get_uuid_str
 from common.s3_utils import S3Service
 
@@ -93,6 +93,23 @@ class MongoDao:
             self.log.exception(f"Failed to find submission, {submissionId}: {get_exception_msg()}")
             return None
 
+
+    """
+    get SRF by id
+    """
+    def get_srf(self, srf_id):
+        db = self.client[self.db_name]
+        srf_collection = db[SRF_COLLECTION]
+        try:
+            return srf_collection.find_one({ID: srf_id})
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to find SRF, {srf_id}: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to find SRF, {srf_id}: {get_exception_msg()}")
+            return None
     """
     check node exists by node name and its value
     """
@@ -321,7 +338,7 @@ class MongoDao:
         try:
             if file_status:
                 updated_submission[FILE_VALIDATION_STATUS] = file_status if file_status != "None" else None
-                updated_submission[VALIDATION_ENDED] = submission[VALIDATION_ENDED]
+                updated_submission[VALIDATION_ENDED] = submission.get(VALIDATION_ENDED)
                 if fileErrors is not None:
                     updated_submission[FILE_ERRORS] = fileErrors if fileErrors and len(fileErrors) > 0 else []
                 else:
@@ -353,7 +370,9 @@ class MongoDao:
                 # check if all file nodes are deleted
                 if is_delete and (self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID], S3_FILE_INFO: {"$exists": True}}) == 0):
                     # if file nodes are all deleted, update file validation status to new if there are still data files in the bucket otherwise set to None
-                    updated_submission[FILE_VALIDATION_STATUS] = STATUS_NEW if self.s3_service.submissionHasDataFile(submission) else None
+                    # keep Error when submission-level file errors (e.g. orphaned files) were just recorded
+                    if not (fileErrors and len(fileErrors) > 0):
+                        updated_submission[FILE_VALIDATION_STATUS] = STATUS_NEW if self.s3_service.submissionHasDataFile(submission) else None
                 if is_delete:
                     updated_submission["deletingData"] = False
                 updated_submission[METADATA_VALIDATION_STATUS] = overall_metadata_status
@@ -1091,6 +1110,26 @@ class MongoDao:
             self.log.exception(f"Failed to increment completed batches for {log_ctx}: {get_exception_msg()}")
             return None, False, 0, None, []
 
+    """
+    Atomically update validation document
+    update_ops: dict of update operations, or pure data dict, can not contain both at the same time
+    If it is pure data dict, it will be set as $set operation, otherwise it will be the update_ops
+    return: updated validation document
+    """
+    def atomic_update_validation(self, validation_id, updates):
+        update_ops = ensure_update_ops(updates)
+
+        db = self.client[self.db_name]
+        data_collection = db[VALIDATION_COLLECTION]
+        return data_collection.find_one_and_update({ID: validation_id}, update_ops, return_document=ReturnDocument.AFTER)
+
+    def atomic_update_submission(self, submission_id: str, updates: dict):
+        update_ops = ensure_update_ops(updates)
+
+        db = self.client[self.db_name]
+        data_collection = db[SUBMISSION_COLLECTION]
+        return data_collection.find_one_and_update({ID: submission_id}, update_ops, return_document=ReturnDocument.AFTER)
+
     def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, submission_id=None):
         """Update validation status.
 
@@ -1666,3 +1705,18 @@ def remove_id (data_record):
             continue
         data[k] = data_record[k]
     return data
+
+"""
+    Return update operations wrapped in $set operation if it contains non-operation keys
+"""
+def ensure_update_ops(updates: dict) -> dict:
+    result = {}
+    set_ops = {}
+    for key, value in updates.items():
+        if key.startswith('$'):
+            result[key] = value
+        else:
+            set_ops[key] = value
+    if len(set_ops) > 0:
+        result['$set'] = set_ops
+    return result

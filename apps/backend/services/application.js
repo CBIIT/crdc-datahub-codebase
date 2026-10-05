@@ -36,11 +36,14 @@ const VALID_ORDER_BY_LIST_APPLICATIONS = [
     "studyAbbreviation",
     "status",
     "version",
+    "sequenceNumber",
     "createdAt",
     "updatedAt",
     "submittedDate"
 ];
 const TERMINAL_REVISION_STATUSES = Object.freeze([REJECTED, CANCELED, DELETED]);
+
+const INTERNAL_USERS_ROLES = Object.freeze([ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]);
 
 class Application {
     _DELETE_REVIEW_COMMENT="This Submission Request has been deleted by the system due to inactivity.";
@@ -717,6 +720,12 @@ class Application {
         return res;
     }
 
+    /**
+     * Validates listApplications filter, pagination, sort, and showAllVersions.
+     * @param {object} params GraphQL listApplications arguments
+     * @returns {{orderBy: string, sortDirection: string, showAllVersions: boolean}}
+     * @throws {Error} LIST_APPLICATIONS_INVALID_PARAMS or APPLICATION_INVALID_STATUSES
+     */
     _validateListApplicationsParams(params) {
         // Validate statuses, case insensitive
         const validStatusesLower = new Set(this._VALID_LIST_APPLICATION_STATUSES.map(s => String(s).toLowerCase()));
@@ -772,13 +781,26 @@ class Application {
                 throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
             }
         }
-        return { orderBy, sortDirection };
+        // Validate showAllVersions: omitted/null defaults to false (nextRevisionId missing or null only). Must be boolean when provided.
+        const showAllVersionsParam = params?.showAllVersions;
+        let showAllVersions = false;
+        if (showAllVersionsParam !== undefined && showAllVersionsParam !== null) {
+            if (typeof showAllVersionsParam !== "boolean") {
+                console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { showAllVersions: showAllVersionsParam });
+                throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
+            }
+            showAllVersions = showAllVersionsParam;
+        }
+        return { orderBy, sortDirection, showAllVersions };
     }
 
     /**
      * Lists submission requests with filters, pagination, and facet values.
+     * When showAllVersions is false, only SRFs with nextRevisionId missing or null are returned
+     * (Canceled/Deleted tails and superseded seq>1 rows with no successor included).
      * Computes canBeReopened and canBeRestored per row from revision-chain rules.
      * @param {object} params Filter, pagination, and sort parameters
+     * @param {boolean} [params.showAllVersions=false] When true, return every matching SRF; when false, only SRFs with nextRevisionId missing or null
      * @param {object} context Request context with userInfo
      * @returns {Promise<object>} applications, total, programs, studies, and filter facets
      */
@@ -806,7 +828,7 @@ class Application {
             };
         }
 
-        const { orderBy, sortDirection } = this._validateListApplicationsParams(params);
+        const { orderBy, sortDirection, showAllVersions } = this._validateListApplicationsParams(params);
 
         // Statuses filter: ignored if input is falsy, empty array, or contains "All" (case-insensitive).
         const statusesParam = params?.statuses;
@@ -829,6 +851,7 @@ class Application {
                 offset: params?.offset,
                 orderBy,
                 sortDirection,
+                showAllVersions,
             });
         } catch (err) {
             console.error(ERROR.LIST_APPLICATIONS_FETCH_FAILED, err);
@@ -1025,6 +1048,7 @@ class Application {
             inactiveReminder_15: false,
             inactiveReminder_30: false,
             finalInactiveReminder: false,
+            newInstitutions: [],
             // copied fields from source SRF
             questionnaireData: source.questionnaireData,
             programName: source.programName,
@@ -1039,7 +1063,6 @@ class Application {
             PI: source.PI,
             GPAName: source.GPAName,
             organization: source.organization,
-            newInstitutions: source.newInstitutions
         };
         const insertedApp = await this.applicationDAO.reopenApprovedRevision(
             source._id,
@@ -1636,90 +1659,111 @@ class Application {
     }
 
     async sendEmailAfterApproveApplication(context, application, comment, isDbGapMissing = false, isPendingModelChange, isPendingGPA = false, isPendingImageDeIdentification = false) {
-        const res = await Promise.all([
-            this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
-                [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
-            this.userService.findByID(application?.applicantID)
-        ]);
-
-        const [toBCCUsers, applicantInfo] = res;
-        const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
-        const toBCCEmails = getUserEmails(toBCCUsers)
-            ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
-        if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
-            const pendingTemplateParams = {
-                firstName: application?.applicant?.applicantName,
-                contactEmail: this.emailParams?.conditionalSubmissionContact,
-                reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                study: setDefaultIfNoName(application?.studyName),
-                submissionGuideURL: this.emailParams?.submissionGuideURL
-            };
-
-            if (!isDbGapMissing && !isPendingModelChange && !isPendingGPA && !isPendingImageDeIdentification) {
-                await this.notificationService.approveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A"
-                    },
-                    {
-                        study: studyLabelForEmailBody(application),
-                        contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
-                    }
-                );
-                return;
-            }
-
-            const pendingCount = [isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification].filter(Boolean).length;
-            if (pendingCount > 1) {
-                await this.notificationService.multipleChangesApproveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams,
-                    isDbGapMissing,
-                    isPendingModelChange,
-                    isPendingGPA,
-                    isPendingImageDeIdentification
-                );
-                return;
-            }
-
-            if (isDbGapMissing) {
-                await this.notificationService.dbGapMissingApproveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams
-                );
-                return;
-            }
-
-            if (isPendingModelChange) {
-                await this.notificationService.dataModelChangeApproveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams
-                );
-                return;
-            }
-
-            if (isPendingGPA) {
-                await this.notificationService.pendingGPANotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams
-                );
-                return;
-            }
-
-            if (isPendingImageDeIdentification) {
-                await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams
-                );
-            }
+        if (!isDbGapMissing && !isPendingModelChange && !isPendingGPA && !isPendingImageDeIdentification) {
+            await this._sendFullApprovalEmail(application, comment);
+        } else {
+            await this._sendConditionallyApprovedEmail(application, comment,isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification);
         }
+    }
+
+    async _sendFullApprovalEmail(application, comment) {
+        const applicant = await this._getApplicant(application);
+        const applicantEmail = applicant?.email;
+        const rawCCEmails = getCCEmails(applicantEmail, application);
+        const bCCUsers = await this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW], INTERNAL_USERS_ROLES)
+        const rawBCCEmails = getUserEmails(bCCUsers)
+        const [cCEmails, bCCEmails] = filterDuplicateEmails(applicantEmail, rawCCEmails, rawBCCEmails);
+
+        if (applicant?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
+            await this.notificationService.approveQuestionNotification(applicantEmail,
+                cCEmails,
+                bCCEmails,
+                {
+                    firstName: applicant?.firstName ?? 'User',
+                    reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A"
+                },
+                {
+                    study: studyLabelForEmailBody(application),
+                    contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
+                }
+            );
+        }
+    }
+
+    async _sendConditionallyApprovedEmail(application, comment, isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification) {
+        const applicant = await this._getApplicant(application);
+        const applicantEmail = applicant?.email;
+        const cCEmails = getCCEmails(applicantEmail, application);
+        const bCCUsers = await this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED], INTERNAL_USERS_ROLES)
+
+        const pendingTemplateParams = {
+            firstName: applicant?.firstName ?? 'User',
+            contactEmail: this.emailParams?.conditionalSubmissionContact,
+            reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
+            study: setDefaultIfNoName(application?.studyName),
+            submissionGuideURL: this.emailParams?.submissionGuideURL
+        };
+
+        const pendingCount = [isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification].filter(Boolean).length;
+        const bCCEmails = getEmailsBasedonConditionalApproval(bCCUsers, isDbGapMissing, isPendingModelChange, isPendingImageDeIdentification);
+        const [finalCCEmails, finalBCCmails] = filterDuplicateEmails(applicantEmail, cCEmails, bCCEmails);
+        if (pendingCount > 1) {
+            await this.notificationService.multipleChangesApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams,
+                isDbGapMissing,
+                isPendingModelChange,
+                isPendingGPA,
+                isPendingImageDeIdentification
+            );
+            return;
+        }
+
+        if (isDbGapMissing) {
+            await this.notificationService.dbGapMissingApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams
+            );
+            return;
+        }
+
+        if (isPendingModelChange) {
+            await this.notificationService.dataModelChangeApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams
+            );
+            return;
+        }
+
+        // Todo: remove pending GPA condition
+        if (isPendingGPA) {
+            await this.notificationService.pendingGPANotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams
+            );
+            return;
+        }
+
+        if (isPendingImageDeIdentification) {
+            await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams
+            );
+        }
+    }
+
+    async _getApplicant(application) {
+        return await this.userService.findByID(application?.applicantID);
     }
 
     async _cancelApplicationEmailInfo(application) {
@@ -2007,6 +2051,36 @@ const getCCEmails = (submitterEmail, application) => {
     return Array.from(emails);
 }
 
+const filterDuplicateEmails = (applicantEmail, cCEmails, bCCEmails) => {
+    const ccEmails = cCEmails ?? [];
+    const bccEmails = bCCEmails ?? [];
+    let finalCCEmails = ccEmails.filter(email => email !== applicantEmail);
+    let finalBCCmails = bccEmails.filter(email => email !== applicantEmail && !finalCCEmails.includes(email));
+    return [finalCCEmails, finalBCCmails];
+}
+
+const getEmailsBasedonConditionalApproval = (users, isDbGapMissing, isPendingModelChange, isPendingImageDeIdentification) => {
+    const emails = [];
+    for (const user of users ?? []) {
+        if (!user.notifications || !Array.isArray(user.notifications)) {
+            continue;
+        }
+        if (isDbGapMissing && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID)) {
+            emails.push(user.email);
+            continue
+        }
+        if (isPendingModelChange && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE)) {
+            emails.push(user.email);
+            continue;
+        }
+        if (isPendingImageDeIdentification && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION)) {
+            emails.push(user.email);
+            continue;
+        }
+    }
+    return emails;
+}
+
 const sendEmails = {
     inactiveApplications: async (notificationService, emailParams, email, applicantName, application, BCCEmails) => {
         try {
@@ -2119,7 +2193,7 @@ const sendEmails = {
 const getUserEmails = (users) => {
     return users
         ?.filter((aUser) => aUser?.email)
-        ?.map((aUser)=> aUser.email);
+        ?.map((aUser)=> aUser.email) ?? [];
 }
 
 const getApplicationQuestionnaire = (aApplication) => {
@@ -2151,5 +2225,7 @@ function logDaysDifference(inactiveDays, accessedAt, applicationID) {
 module.exports = {
     Application,
     VALID_ORDER_BY_LIST_APPLICATIONS,
-    getCCEmails
+    getCCEmails,
+    filterDuplicateEmails,
+    getEmailsBasedonConditionalApproval
 };

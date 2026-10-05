@@ -20,7 +20,6 @@ const {getDataCommonsDisplayNamesForApprovedStudy, getDataCommonsDisplayNamesFor
 } = require("../utility/data-commons-remapper");
 const {UserScope} = require("../domain/user-scope");
 const {replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
-const NA_PROGRAM = "NA";
 const NA = "NA";
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const {PROGRAM} = require("../crdc-datahub-database-drivers/constants/organization-constants");
@@ -32,6 +31,8 @@ const {PendingGPA} = require("../domain/pending-gpa");
 const { parseApprovedStudyStatusInput, parseApprovedStudyStatusesFilterInput } = require("../utility/study-utility");
 const { defaultStudyAbbreviationToStudyName } = require("../utility/study-abbrev-helpers");
 const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
+const {getCCEmails, filterDuplicateEmails, getEmailsBasedonConditionalApproval} = require("./application");
+const { getPendingConditionsAtApproval } = require("../utility/pending-conditions-at-approval");
 
 class ApprovedStudiesService {
     /**
@@ -141,6 +142,8 @@ class ApprovedStudiesService {
             return { ...result, _id: result._id ?? result.id };
         }
 
+        const pendingConditionsAtApproval = getPendingConditionsAtApproval(fields);
+
         const approvedStudies = ApprovedStudies.createApprovedStudies(
             fields.applicationID,
             fields.studyName,
@@ -156,7 +159,8 @@ class ApprovedStudiesService {
             fields.primaryContactID,
             pendingGPA,
             fields.programID,
-            fields.pendingImageDeIdentification
+            fields.pendingImageDeIdentification,
+            pendingConditionsAtApproval
         );
         const res = await this.approvedStudyDAO.create(approvedStudies);
 
@@ -167,7 +171,7 @@ class ApprovedStudiesService {
     }
 
     async storeApprovedStudies(applicationID, studyName, studyAbbreviation, dbGaPID, organizationName, controlledAccess, ORCID, PI, openAccess, useProgramPC, pendingModelChange, primaryContactID, pendingGPA, programID, pendingImageDeIdentification) {
-        // Validate programID and fall back to NA program if needed
+        // Validate programID and fall back to default program if needed
         const program = await this._validateProgramID(programID);
         const validatedProgramID = program?._id;
 
@@ -238,10 +242,12 @@ class ApprovedStudiesService {
         const { fields } = this._buildUpdatableStudyFieldsFromApplication(
             application, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA
         );
+        const pendingConditionsAtApproval = getPendingConditionsAtApproval(fields);
 
         const updateStudy = {
             ...existingStudy,
             ...fields,
+            pendingConditionsAtApproval,
             updatedAt: getCurrentTime(),
         };
 
@@ -447,7 +453,7 @@ class ApprovedStudiesService {
         // if the name is changing, verify that the new name is unique
         if (name !== updateStudy.studyName)
             await this._validateStudyName(name)
-        // verify the programID or use the NA program
+        // verify the programID or use the default program
         const program = await this._validateProgramID(programID);
         // verify that useProgramPC is false or primaryContactID is null
         if (useProgramPC && primaryContactID) {
@@ -621,12 +627,20 @@ class ApprovedStudiesService {
                 // internal error for the logs, this will not be displayed to the user
                 throw new Error("Unable to find submitter with ID: " + application?.applicantID);
             }
-            const BCCUsers = await this.userDAO.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_CLEARED],
+            const bCCUsers = await this.userDAO.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED],
                 [USER.ROLES.DATA_COMMONS_PERSONNEL, USER.ROLES.FEDERAL_LEAD, USER.ROLES.ADMIN]);
-            const filteredBCCUsers = BCCUsers.filter((u) => u?._id !== aSubmitter?._id);
+            const cCEmails = getCCEmails(aSubmitter?.email, application);
+            const pendingConditionsAtApproval = updateStudy.pendingConditionsAtApproval || [];
+            const bCCEmails = getEmailsBasedonConditionalApproval(
+                bCCUsers,
+                pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID),
+                pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE),
+                pendingConditionsAtApproval.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION)
+            );
+            const [finalCCEmails, finalBCCmails] = filterDuplicateEmails(aSubmitter?.email, cCEmails, bCCEmails);
 
-            if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_CLEARED)) {
-                const res = await this.notificationsService.clearPendingModelState(aSubmitter?.email, getUserEmails(filteredBCCUsers), {
+            if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED)) {
+                const res = await this.notificationsService.clearPendingModelState(aSubmitter?.email, finalCCEmails, finalBCCmails, {
                     firstName: `${aSubmitter?.firstName} ${aSubmitter?.lastName || ''}`,
                     studyName: updateStudy?.studyName || NA,
                     portalURL: this.emailParams.url || NA,
@@ -731,11 +745,11 @@ class ApprovedStudiesService {
     
     /**
      * Validates that the provided programID matches a program in the database.
-     * If the provided programID is invalid or null, falls back to the "NA" program.
+     * If the provided programID is invalid or null, falls back to the default program.
      * 
      * @param {string|null} programID The program ID to validate
      * @returns {Promise<Object>} The validated program object
-     * @throws {Error} If neither the provided programID nor the NA program can be found
+     * @throws {Error} If neither the provided programID nor the default program can be found
      */
     async _validateProgramID(programID) {
         let program = null;
@@ -743,13 +757,13 @@ class ApprovedStudiesService {
         if (programID){
             program = await this.programService.getProgramByID(programID, false);
         }
-        // if the provided programID is not valid was not provided then use the NA program as a fallback
+        // if the provided programID is not valid was not provided then use the default program as a fallback
         if (!program){
-            program = await this.programService.getProgramByName(NA_PROGRAM);
+            program = await this.programService.getDefaultProgram();
         }
         // if the program is still not valid then throw an error, this should not happen
         if (!program){
-            console.error("Unable to find a program with the provided programID then unable to find the NA program as a fallback. Please verify that the NA program has been properly initialized.");
+            console.error("Unable to find a program with the provided programID then unable to find the default program as a fallback. Please verify that the default program has been properly initialized.");
             throw new Error(ERROR.STUDY_CREATION_FAILED);
         }
         if (program?.status === PROGRAM.STATUSES.INACTIVE) {
@@ -767,5 +781,6 @@ const getUserEmails = (users) => {
 }
 
 module.exports = {
-    ApprovedStudiesService
+    ApprovedStudiesService,
+    getPendingConditionsAtApproval
 }

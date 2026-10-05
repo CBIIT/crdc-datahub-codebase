@@ -11,6 +11,7 @@ import React, { FC, ReactNode, useEffect, useId, useRef, useState } from "react"
 
 import dropdownArrowsIcon from "../../assets/icons/dropdown_arrows.svg?url";
 import { updateInputValidity } from "../../utils";
+import { useFormContext } from "../Contexts/FormContext";
 import Tooltip from "../Tooltip";
 
 const DropdownArrowsIcon = styled("div")(() => ({
@@ -172,6 +173,7 @@ const SelectInput: FC<Props> = ({
   ...rest
 }) => {
   const id = rest.id || useId();
+  const { notifyChange } = useFormContext();
 
   const [val, setVal] = useState(multiple ? [] : "");
   const [error, setError] = useState(false);
@@ -217,6 +219,7 @@ const SelectInput: FC<Props> = ({
 
     processValue(filteredVal);
     setError(false);
+    notifyChange?.();
   };
 
   const handleOpen = () => {

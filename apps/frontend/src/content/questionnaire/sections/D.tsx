@@ -142,6 +142,7 @@ const FormSectionD: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
     status,
     data: { questionnaireData: data },
     formRef,
+    notifyChange,
   } = useFormContext();
   const { readOnlyInputs } = useFormMode();
   const { D: SectionDMetadata } = SectionMetadata;
@@ -238,10 +239,12 @@ const FormSectionD: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         extension: "",
       },
     ]);
+    notifyChange?.();
   };
 
   const removeFileDataType = (key: string) => {
     setFileTypeData((prev) => prev.filter((c) => c.key !== key));
+    notifyChange?.();
   };
 
   const handleDataTypesChange = (checked: boolean, value: string) => {

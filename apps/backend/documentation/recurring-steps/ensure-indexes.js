@@ -16,6 +16,7 @@
 
 const {
     USER_COLLECTION,
+    APPLICATION_COLLECTION,
     PENDING_PVS_COLLECTION,
     BATCH_COLLECTION,
     SUBMISSIONS_COLLECTION,
@@ -132,6 +133,11 @@ const INDEXES = [
             'parents.parentIDValue': 1,
         },
         name: 'submissionID_1_nodeType_1_parents.parentType_1_parents.parentIDPropName_1_parents.parentIDValue_1',
+    },
+    {
+        collection: APPLICATION_COLLECTION,
+        keys: { nextRevisionId: 1 },
+        name: 'nextRevisionId_1',
     },
 ];
 

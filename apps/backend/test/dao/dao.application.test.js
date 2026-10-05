@@ -12,6 +12,7 @@ jest.mock('../../mongoose/models/application', () => ({
 const ApplicationDAO = require('../../dao/application');
 const ApplicationModel = require('../../mongoose/models/application');
 const MongooseGenericDAO = require('../../dao/mongoose-generic');
+const {USER_COLLECTION} = require('../../crdc-datahub-database-drivers/database-constants');
 
 /**
  * @param {*} resolvedValue
@@ -131,12 +132,88 @@ describe('ApplicationDAO', () => {
         });
     });
 
+    describe('_buildListApplicationsMatch', () => {
+        it('sets nextRevisionId null when showAllVersions is omitted', () => {
+            const {match} = dao._buildListApplicationsMatch({});
+            expect(match.nextRevisionId).toBeNull();
+            expect(match).not.toHaveProperty('status');
+            expect(match).not.toHaveProperty('sequenceNumber');
+            expect(match).not.toHaveProperty('$or');
+            expect(match).not.toHaveProperty('$and');
+        });
+
+        it('sets nextRevisionId null when showAllVersions is false', () => {
+            const {match} = dao._buildListApplicationsMatch({showAllVersions: false});
+            expect(match.nextRevisionId).toBeNull();
+            expect(match).not.toHaveProperty('status');
+            expect(match).not.toHaveProperty('sequenceNumber');
+            expect(match).not.toHaveProperty('$or');
+        });
+
+        it('combines Canceled status filter with nextRevisionId null', () => {
+            const {match} = dao._buildListApplicationsMatch({
+                statuses: ['Canceled'],
+                showAllVersions: false,
+            });
+            expect(match.status).toEqual({$in: ['Canceled']});
+            expect(match.nextRevisionId).toBeNull();
+            expect(match).not.toHaveProperty('sequenceNumber');
+        });
+
+        it('keeps study-name $or alongside nextRevisionId null', () => {
+            const {match, hasStudyFilter} = dao._buildListApplicationsMatch({
+                studyName: 'Lung',
+                showAllVersions: false,
+            });
+            expect(hasStudyFilter).toBe(true);
+            expect(match.nextRevisionId).toBeNull();
+            expect(match.$or).toEqual([
+                {studyName: {$regex: 'Lung', $options: 'i'}},
+                {studyAbbreviation: {$regex: 'Lung', $options: 'i'}},
+            ]);
+            expect(match).not.toHaveProperty('$and');
+        });
+
+        it('omits nextRevisionId when showAllVersions is true', () => {
+            const {match} = dao._buildListApplicationsMatch({showAllVersions: true});
+            expect(match).not.toHaveProperty('nextRevisionId');
+            expect(match).not.toHaveProperty('$or');
+            expect(match).not.toHaveProperty('$and');
+        });
+    });
+
     describe('listApplicationsWithFacets', () => {
         /**
          * Aggregate call order: applications, count, programs, studies, studyAbbreviations, status, submitterNames.
          * Field-facet pipelines are indices 2–5.
          */
         const fieldFacetCallIndexes = [2, 3, 4, 5];
+        const listAggregateCallCount = 7;
+
+        /**
+         * First $match stage of a listApplicationsWithFacets aggregate pipeline.
+         * @param {object[]} pipeline
+         * @returns {object}
+         */
+        function firstMatch(pipeline) {
+            return pipeline.find((stage) => stage.$match).$match;
+        }
+
+        /**
+         * @param {object[]} pipeline
+         * @returns {boolean}
+         */
+        function hasApplicantLookup(pipeline) {
+            return pipeline.some((stage) => stage.$lookup?.from === USER_COLLECTION);
+        }
+
+        /**
+         * @param {object[]} pipeline
+         * @returns {boolean}
+         */
+        function hasRevisionLookup(pipeline) {
+            return pipeline.some((stage) => stage.$lookup?.foreignField === 'nextRevisionId');
+        }
 
         it('should aggregate with applicant lookup and without $facet', async () => {
             ApplicationModel.aggregate
@@ -159,7 +236,7 @@ describe('ApplicationDAO', () => {
             expect(ApplicationModel.aggregate).toHaveBeenCalled();
             const firstPipeline = ApplicationModel.aggregate.mock.calls[0][0];
             expect(JSON.stringify(firstPipeline)).not.toContain('$facet');
-            expect(firstPipeline.some((stage) => stage.$lookup)).toBe(true);
+            expect(hasApplicantLookup(firstPipeline)).toBe(true);
             expect(result.applications).toHaveLength(1);
             expect(result.total).toBe(1);
             expect(result.programs).toEqual(['P1']);
@@ -184,7 +261,7 @@ describe('ApplicationDAO', () => {
 
             for (const index of fieldFacetCallIndexes) {
                 const pipeline = ApplicationModel.aggregate.mock.calls[index][0];
-                expect(pipeline.some((stage) => stage.$lookup)).toBe(false);
+                expect(hasApplicantLookup(pipeline)).toBe(false);
             }
         });
 
@@ -207,7 +284,79 @@ describe('ApplicationDAO', () => {
 
             for (const index of fieldFacetCallIndexes) {
                 const pipeline = ApplicationModel.aggregate.mock.calls[index][0];
-                expect(pipeline.some((stage) => stage.$lookup)).toBe(true);
+                expect(hasApplicantLookup(pipeline)).toBe(true);
+            }
+        });
+
+        // Superseded terminal seq>1 rows with no successor also match (nextRevisionId null only).
+        it('should match nextRevisionId null without a revision lookup when showAllVersions is omitted', async () => {
+            ApplicationModel.aggregate
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{count: 0}])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([]);
+
+            await dao.listApplicationsWithFacets({
+                first: 10,
+                offset: 0,
+            });
+
+            expect(ApplicationModel.distinct).not.toHaveBeenCalled();
+            expect(ApplicationModel.aggregate).toHaveBeenCalledTimes(listAggregateCallCount);
+            for (const call of ApplicationModel.aggregate.mock.calls) {
+                expect(firstMatch(call[0]).nextRevisionId).toBeNull();
+                expect(hasRevisionLookup(call[0])).toBe(false);
+            }
+        });
+
+        it('should match nextRevisionId null without a revision lookup when showAllVersions is false', async () => {
+            ApplicationModel.aggregate
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{count: 0}])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([]);
+
+            await dao.listApplicationsWithFacets({
+                showAllVersions: false,
+                first: 10,
+                offset: 0,
+            });
+
+            expect(ApplicationModel.distinct).not.toHaveBeenCalled();
+            expect(ApplicationModel.aggregate).toHaveBeenCalledTimes(listAggregateCallCount);
+            for (const call of ApplicationModel.aggregate.mock.calls) {
+                expect(firstMatch(call[0]).nextRevisionId).toBeNull();
+                expect(hasRevisionLookup(call[0])).toBe(false);
+            }
+        });
+
+        it('should omit nextRevisionId and revision lookup when showAllVersions is true', async () => {
+            ApplicationModel.aggregate
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{count: 0}])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([]);
+
+            await dao.listApplicationsWithFacets({
+                showAllVersions: true,
+                first: 10,
+                offset: 0,
+            });
+
+            expect(ApplicationModel.distinct).not.toHaveBeenCalled();
+            expect(ApplicationModel.aggregate).toHaveBeenCalledTimes(listAggregateCallCount);
+            for (const call of ApplicationModel.aggregate.mock.calls) {
+                expect(firstMatch(call[0])).not.toHaveProperty('nextRevisionId');
+                expect(hasRevisionLookup(call[0])).toBe(false);
             }
         });
     });

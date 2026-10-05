@@ -3,6 +3,7 @@ import { GraphQLError } from "graphql";
 import React, { FC } from "react";
 
 import { applicationFactory } from "@/factories/application/ApplicationFactory";
+import { piFactory } from "@/factories/application/PIFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
@@ -179,12 +180,14 @@ describe("FormContext > FormProvider Tests", () => {
           data: {
             getApplication: {
               _id: "556ac14a-f247-42e8-8878-8468060fb49a",
-              questionnaireData: JSON.stringify({
+              questionnaireData: questionnaireDataFactory.build({
                 sections: [{ name: "A", status: "In Progress" }],
-                pi: {
+                pi: piFactory.build({
+                  address: "Successfully Fetched Address",
+                  position: "Successfully Fetched Position",
                   firstName: "Successfully",
                   lastName: "Fetched",
-                },
+                }),
               }),
             },
           },
@@ -201,6 +204,44 @@ describe("FormContext > FormProvider Tests", () => {
     expect(getByTestId("app-id").textContent).toEqual("556ac14a-f247-42e8-8878-8468060fb49a");
     expect(getByTestId("pi-first-name").textContent).toEqual("Successfully");
     expect(getByTestId("pi-last-name").textContent).toEqual("Fetched");
+  });
+
+  it("should gracefully handle null questionnaireData payloads", async () => {
+    const mocks = [
+      {
+        request: {
+          query: GET_LAST_APP,
+        },
+        result: {
+          data: {
+            getMyLastApplication: null,
+          },
+        },
+      },
+      {
+        request: {
+          query: GET_APP,
+          variables: {
+            id: "556ac14a-f247-42e8-8878-8468060fb49a",
+          },
+        },
+        result: {
+          data: {
+            getApplication: {
+              _id: "556ac14a-f247-42e8-8878-8468060fb49a",
+              questionnaireData: null,
+            },
+          },
+        },
+      },
+    ];
+    const { findByTestId, getByTestId } = render(
+      <TestParent mocks={mocks} appId="556ac14a-f247-42e8-8878-8468060fb49a" />
+    );
+
+    await findByTestId("status");
+
+    expect(getByTestId("status").textContent).toEqual(FormStatus.ERROR);
   });
 
   it("should initialize local form data for the legacy 'new' route", async () => {
@@ -284,12 +325,12 @@ describe("FormContext > FormProvider Tests", () => {
           data: {
             getMyLastApplication: {
               _id: "ABC-LAST-ID-123",
-              questionnaireData: JSON.stringify({
+              questionnaireData: {
                 pi: {
                   firstName: "Test",
                   lastName: "User",
                 },
-              }),
+              },
             },
           },
         },
@@ -305,7 +346,7 @@ describe("FormContext > FormProvider Tests", () => {
           data: {
             getApplication: {
               _id: "AAA-BBB-EXISTING-APP",
-              questionnaireData: JSON.stringify({}),
+              questionnaireData: {},
             },
           },
         },
@@ -332,12 +373,12 @@ describe("FormContext > FormProvider Tests", () => {
           data: {
             getMyLastApplication: {
               _id: "ABC-LAST-ID-123",
-              questionnaireData: JSON.stringify({
+              questionnaireData: {
                 pi: {
                   firstName: "Should not be",
                   lastName: "Used or called",
                 },
-              }),
+              },
             },
           },
         },
@@ -353,9 +394,9 @@ describe("FormContext > FormProvider Tests", () => {
           data: {
             getApplication: {
               _id: "AAA-BBB-EXISTING-APP",
-              questionnaireData: JSON.stringify({
+              questionnaireData: {
                 sections: [{ name: "A", status: "In Progress" }],
-              }),
+              },
             },
           },
         },
@@ -496,11 +537,9 @@ describe("approveForm Tests", () => {
       data: {
         getApplication: {
           ...baseApplication,
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+          }),
         },
       },
     },
@@ -639,11 +678,9 @@ describe("inquireForm Tests", () => {
       data: {
         getApplication: {
           ...baseApplication,
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+          }),
         },
       },
     },
@@ -755,11 +792,9 @@ describe("rejectForm Tests", () => {
       data: {
         getApplication: {
           ...baseApplication,
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+          }),
         },
       },
     },
@@ -871,11 +906,9 @@ describe("reopenForm Tests", () => {
       data: {
         getApplication: {
           ...baseApplication,
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+          }),
         },
       },
     },
@@ -977,6 +1010,7 @@ describe("reopenForm Tests", () => {
 describe("saveApp Tests", () => {
   it("should propagate top level attributes from saveApplication response", async () => {
     const appId = "556ac14a-f247-42e8-8878-8468060fb49a";
+    const mockVariableMatcher = vi.fn().mockImplementation(() => true);
 
     const mockGetApp: MockedResponse<GetAppResp, GetAppInput> = {
       request: {
@@ -992,11 +1026,9 @@ describe("saveApp Tests", () => {
               studyAbbreviation: "original study abbreviation",
               status: "In Progress",
             }),
-            questionnaireData: JSON.stringify(
-              questionnaireDataFactory.build({
-                sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
-              })
-            ),
+            questionnaireData: questionnaireDataFactory.build({
+              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+            }),
           },
         },
       },
@@ -1006,7 +1038,7 @@ describe("saveApp Tests", () => {
       request: {
         query: SAVE_APP,
       },
-      variableMatcher: () => true,
+      variableMatcher: mockVariableMatcher,
       result: {
         data: {
           saveApplication: applicationFactory.build({
@@ -1039,6 +1071,13 @@ describe("saveApp Tests", () => {
     expect(result.current.data?.programName).toEqual("updated program name");
     expect(result.current.data?.studyAbbreviation).toEqual("updated study abbreviation");
     expect(result.current.data?.status).toEqual("New");
+    expect(mockVariableMatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        application: expect.objectContaining({
+          questionnaireData: expect.any(Object),
+        }),
+      })
+    );
   });
 
   it("should replace the temporary id after saving a new form", async () => {
@@ -1121,11 +1160,9 @@ describe("saveApp Tests", () => {
             ...applicationFactory.build({
               _id: appId,
             }),
-            questionnaireData: JSON.stringify(
-              questionnaireDataFactory.build({
-                sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
-              })
-            ),
+            questionnaireData: questionnaireDataFactory.build({
+              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+            }),
           },
         },
       },
@@ -1153,6 +1190,8 @@ describe("saveApp Tests", () => {
       expect(result.current.status).toEqual(FormStatus.LOADED);
     });
 
+    const persistedData = result.current.data;
+
     await act(async () => {
       const saveResp = await result.current.setData(questionnaireDataFactory.build());
       expect(saveResp.status).toEqual("failed");
@@ -1160,6 +1199,12 @@ describe("saveApp Tests", () => {
 
     expect(result.current.status).toEqual(FormStatus.ERROR);
     expect(result.current.error).toEqual("Test SaveApplication GraphQL error");
+
+    // The unsaved data must not become the baseline for the save
+    expect(result.current.data).toBe(persistedData);
+    expect(result.current.data.questionnaireData.sections).toEqual([
+      { name: "A", status: "In Progress" },
+    ]);
   });
 
   it("should skip the API call if opts.skipSave is set", async () => {
@@ -1176,11 +1221,9 @@ describe("saveApp Tests", () => {
             ...applicationFactory.build({
               _id: appId,
             }),
-            questionnaireData: JSON.stringify(
-              questionnaireDataFactory.build({
-                sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
-              })
-            ),
+            questionnaireData: questionnaireDataFactory.build({
+              sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+            }),
           },
         },
       },
@@ -1234,15 +1277,13 @@ describe("saveApp Tests", () => {
             ...applicationFactory.build({
               _id: appId,
             }),
-            questionnaireData: JSON.stringify(
-              questionnaireDataFactory.build({
-                study: studyFactory.build({
-                  name: "My Study Name",
-                  abbreviation: "MSN",
-                }),
-                sections: [{ name: "A", status: "In Progress" }],
-              })
-            ),
+            questionnaireData: questionnaireDataFactory.build({
+              study: studyFactory.build({
+                name: "My Study Name",
+                abbreviation: "MSN",
+              }),
+              sections: [{ name: "A", status: "In Progress" }],
+            }),
           },
         },
       },
@@ -1311,15 +1352,13 @@ describe("saveApp Tests", () => {
             ...applicationFactory.build({
               _id: appId,
             }),
-            questionnaireData: JSON.stringify(
-              questionnaireDataFactory.build({
-                study: studyFactory.build({
-                  name: "My Study Name",
-                  abbreviation: undefined,
-                }),
-                sections: [{ name: "A", status: "In Progress" }],
-              })
-            ),
+            questionnaireData: questionnaireDataFactory.build({
+              study: studyFactory.build({
+                name: "My Study Name",
+                abbreviation: undefined,
+              }),
+              sections: [{ name: "A", status: "In Progress" }],
+            }),
           },
         },
       },
@@ -1389,15 +1428,13 @@ describe("saveApp Tests", () => {
             ...applicationFactory.build({
               _id: appId,
             }),
-            questionnaireData: JSON.stringify(
-              questionnaireDataFactory.build({
-                study: studyFactory.build({
-                  name: "My Study Name",
-                  abbreviation: "",
-                }),
-                sections: [{ name: "A", status: "In Progress" }],
-              })
-            ),
+            questionnaireData: questionnaireDataFactory.build({
+              study: studyFactory.build({
+                name: "My Study Name",
+                abbreviation: "",
+              }),
+              sections: [{ name: "A", status: "In Progress" }],
+            }),
           },
         },
       },
@@ -1467,15 +1504,13 @@ describe("saveApp Tests", () => {
             ...applicationFactory.build({
               _id: appId,
             }),
-            questionnaireData: JSON.stringify(
-              questionnaireDataFactory.build({
-                study: studyFactory.build({
-                  name: "My Study Name",
-                  abbreviation: null,
-                }),
-                sections: [{ name: "A", status: "In Progress" }],
-              })
-            ),
+            questionnaireData: questionnaireDataFactory.build({
+              study: studyFactory.build({
+                name: "My Study Name",
+                abbreviation: null,
+              }),
+              sections: [{ name: "A", status: "In Progress" }],
+            }),
           },
         },
       },
@@ -1586,7 +1621,7 @@ describe("saveApp Tests", () => {
               _id: appId,
               sequenceNumber: 2,
             }),
-            questionnaireData: JSON.stringify(existingQuestionnaireData),
+            questionnaireData: existingQuestionnaireData,
           },
         },
       },
@@ -1658,5 +1693,132 @@ describe("saveApp Tests", () => {
         }),
       })
     );
+  });
+});
+
+describe("notifyChange Tests", () => {
+  const getAppMock: MockedResponse<GetAppResp, GetAppInput> = {
+    request: {
+      query: GET_APP,
+    },
+    variableMatcher: () => true,
+    result: {
+      data: {
+        getApplication: {
+          ...baseApplication,
+          questionnaireData: questionnaireDataFactory.build({
+            sections: [{ name: "A", status: "In Progress" }], // To prevent fetching lastApp
+          }),
+        },
+      },
+    },
+  };
+
+  it("should provide a notifyChange and subscribeToChanges function", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    expect(typeof result.current.notifyChange).toEqual("function");
+    expect(typeof result.current.subscribeToChanges).toEqual("function");
+  });
+
+  it("should call every subscriber when notifyChange is called", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    const firstListener = vi.fn();
+    const secondListener = vi.fn();
+
+    act(() => {
+      result.current.subscribeToChanges(firstListener);
+      result.current.subscribeToChanges(secondListener);
+      result.current.notifyChange();
+    });
+
+    expect(firstListener).toHaveBeenCalledTimes(1);
+    expect(secondListener).toHaveBeenCalledTimes(1);
+  });
+
+  it("should stop calling a subscriber after it unsubscribes", async () => {
+    const { result } = renderHook(() => useFormContext(), {
+      wrapper: ({ children }) => (
+        <TestParent mocks={[getAppMock]} appId="mock-app-id">
+          {children}
+        </TestParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    const listener = vi.fn();
+    let unsubscribe: () => void;
+
+    act(() => {
+      unsubscribe = result.current.subscribeToChanges(listener);
+      result.current.notifyChange();
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      unsubscribe();
+      result.current.notifyChange();
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("should not rerender consumers when notifyChange is called", async () => {
+    const renderSpy = vi.fn();
+
+    const { result } = renderHook(
+      () => {
+        renderSpy();
+        return useFormContext();
+      },
+      {
+        wrapper: ({ children }) => (
+          <TestParent mocks={[getAppMock]} appId="mock-app-id">
+            {children}
+          </TestParent>
+        ),
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.status).toEqual(FormStatus.LOADED);
+    });
+
+    const { notifyChange, subscribeToChanges } = result.current;
+    const rendersBeforeNotify = renderSpy.mock.calls.length;
+
+    act(() => {
+      result.current.notifyChange();
+      result.current.notifyChange();
+    });
+
+    expect(renderSpy).toHaveBeenCalledTimes(rendersBeforeNotify);
+    expect(result.current.notifyChange).toBe(notifyChange);
+    expect(result.current.subscribeToChanges).toBe(subscribeToChanges);
   });
 });

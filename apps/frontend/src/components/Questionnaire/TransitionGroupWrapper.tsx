@@ -1,6 +1,8 @@
 import { Collapse, Grid, styled } from "@mui/material";
 import { TransitionGroup } from "react-transition-group";
 
+import { useFormContext } from "../Contexts/FormContext";
+
 const StyledGridWrapper = styled(Grid)(() => ({
   marginBottom: "24px",
 }));
@@ -24,6 +26,8 @@ type Props<T extends WithKey> = {
  * @returns {JSX.Element}
  */
 const TransitionGroupWrapper = <T extends WithKey>({ items, renderItem }: Props<T>) => {
+  const { notifyChange } = useFormContext();
+
   if (!items?.length) {
     return null;
   }
@@ -33,7 +37,7 @@ const TransitionGroupWrapper = <T extends WithKey>({ items, renderItem }: Props<
       <Grid container rowSpacing={1.5} columnSpacing={0}>
         <TransitionGroup component={null} style={{ width: "100%" }}>
           {items?.map((item: T, idx: number) => (
-            <Grid key={item.key} item xs={12} component={Collapse}>
+            <Grid key={item.key} item xs={12} component={Collapse} onExited={notifyChange}>
               {renderItem(item, idx)}
             </Grid>
           ))}

@@ -1,5 +1,6 @@
 #define constants, enums, etc.
 #config 
+
 MONGO_DB = "connection-str"
 SQS_NAME = "sqs"
 RETRIES = "retries"
@@ -41,6 +42,8 @@ BATCH_STATUS_FAILED = "Failed"
 BATCH_TYPE_METADATA ="metadata"
 BATCH_STATUS_UPLOADED = "Uploaded"
 SUBMISSION_COLLECTION="submissions"
+SRF_COLLECTION="applications"
+SRF_ID="submissionRequestID"
 DATA_COMMON_NAME ="dataCommons"
 ORCID = "ORCID"
 BATCH_INTENTION = "metadataIntention"
@@ -64,6 +67,7 @@ FILE_NAME = "fileName"
 STATUS_ERROR = "Error"
 STATUS_WARNING = "Warning"
 STATUS_PASSED = "Passed"
+STATUS_FAILED = "Failed"
 STATUS_NEW = "New"
 FAILED = "Failed"
 # For batch metadata validation, statusDetail may be a list of failure message strings.
@@ -184,6 +188,9 @@ SUBMISSION_REL_STATUS_DELETED= "Deleted"
 VALIDATION_COLLECTION = "validation"
 VALIDATION_ID = "validationID"
 VALIDATION_ENDED= "validationEnded"
+STARTED = "started"
+ENDED = "ended"
+VALIDATION_STATUS = "status"
 METADATA_ENDED = "metadataEnded"
 FILE_ENDED = "fileEnded"
 METADATA_STATUS = "metadataStatus"
@@ -293,3 +300,18 @@ DEF_SEMANTICS = "semantics"
 DEF_FILE_NODES = "file-nodes"
 DEF_MAIN_NODES = "main-nodes"
 DEF_FILE_NAME_FIELD = 'name-field'
+
+SYSTEM_POPULATED_PROPS = "system-populated-props"
+SYSTEM_PROGRAM_NAME = 'ProgramName'
+SYSTEM_PROGRAM_ACRONYM = 'ProgramAcronym'
+SYSTEM_PROGRAM_DESCRIPTION = 'ProgramDescription'
+SYSTEM_STUDY_NAME = 'StudyName'
+SYSTEM_STUDY_ACRONYM = 'StudyAcronym'
+SYSTEM_STUDY_DESCRIPTION = 'StudyDescription'
+
+# property names in SRF
+SRF_PROGRAM = 'program'
+SRF_STUDY = 'study'
+SRF_NAME = 'name'
+SRF_ACRONYM = 'abbreviation'
+SRF_DESCRIPTION = 'description'

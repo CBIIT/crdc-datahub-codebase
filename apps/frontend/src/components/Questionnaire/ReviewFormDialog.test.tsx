@@ -165,6 +165,43 @@ describe("Implementation Requirements", () => {
     expect(getByTestId("review-form-dialog-confirm-button")).not.toBeDisabled();
   });
 
+  it.each<string>(["<img src='x' />", "<br />", "   "])(
+    "should disable the confirm button when no content remains after sanitization of %p",
+    async (comment) => {
+      const { getByTestId } = render(<ReviewFormDialog open header="Test" confirmText="Confirm" />);
+
+      userEvent.paste(within(getByTestId("review-comment")).getByRole("textbox"), comment);
+
+      await waitFor(() => {
+        expect(getByTestId("review-form-dialog-confirm-button")).toBeDisabled();
+      });
+    }
+  );
+
+  it("should explain why the confirm button is disabled when no content remains after sanitization", async () => {
+    const { getByTestId, queryByTestId } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" />
+    );
+
+    expect(queryByTestId("review-comment-dialog-error")).not.toBeInTheDocument();
+
+    const input = within(getByTestId("review-comment")).getByRole("textbox");
+    userEvent.paste(input, "<img src='x' />");
+
+    await waitFor(() => {
+      expect(getByTestId("review-comment-dialog-error")).toHaveTextContent(
+        "Please enter a valid comment."
+      );
+    });
+
+    userEvent.clear(input);
+    userEvent.paste(input, "A valid comment");
+
+    await waitFor(() => {
+      expect(queryByTestId("review-comment-dialog-error")).not.toBeInTheDocument();
+    });
+  });
+
   it("should show a validation error when the review comment exceeds 10,000 characters", async () => {
     const mockOnSubmit = vi.fn();
 
@@ -182,6 +219,35 @@ describe("Implementation Requirements", () => {
     });
 
     expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  it("should replace a stale validation error when the new content is invalid after sanitization", async () => {
+    const mockOnSubmit = vi.fn();
+
+    const { getByTestId } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />
+    );
+
+    const input = within(getByTestId("review-comment")).getByRole("textbox");
+    userEvent.paste(input, "X".repeat(10_050));
+    userEvent.click(getByTestId("review-form-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(getByTestId("review-comment-dialog-error")).toHaveTextContent(
+        "Maximum of 10,000 characters allowed"
+      );
+    });
+
+    userEvent.clear(input);
+    userEvent.paste(input, "<img src='x' />");
+
+    await waitFor(() => {
+      expect(getByTestId("review-comment-dialog-error")).toHaveTextContent(
+        "Please enter a valid comment."
+      );
+    });
+
+    expect(getByTestId("review-form-dialog-confirm-button")).toBeDisabled();
   });
 
   it("should display a character counter that updates as the user types", () => {
@@ -237,5 +303,147 @@ describe("Implementation Requirements", () => {
     userEvent.click(backdrop);
 
     expect(mockOnCancel).not.toHaveBeenCalled();
+  });
+
+  it("should call onSubmit only once when the confirm button is clicked multiple times", async () => {
+    const mockOnSubmit = vi.fn().mockReturnValue(new Promise(() => {}));
+
+    const { getByTestId } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />
+    );
+
+    userEvent.type(within(getByTestId("review-comment")).getByRole("textbox"), "mock-comment");
+
+    const confirmButton = getByTestId("review-form-dialog-confirm-button");
+    userEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    userEvent.click(confirmButton, null, { skipPointerEventsCheck: true });
+    userEvent.click(confirmButton, null, { skipPointerEventsCheck: true });
+
+    expect(mockOnSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("should disable the confirm button while the submission is in progress, even without the loading prop", async () => {
+    const mockOnSubmit = vi.fn().mockReturnValue(new Promise(() => {}));
+
+    const { getByTestId } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />
+    );
+
+    userEvent.type(within(getByTestId("review-comment")).getByRole("textbox"), "mock-comment");
+
+    userEvent.click(getByTestId("review-form-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    expect(getByTestId("review-form-dialog-confirm-button")).toBeDisabled();
+  });
+
+  it("should keep the confirm button disabled after the submission resolves but before the dialog closes", async () => {
+    const mockOnSubmit = vi.fn().mockResolvedValue(undefined);
+
+    const { getByTestId } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />
+    );
+
+    userEvent.type(within(getByTestId("review-comment")).getByRole("textbox"), "mock-comment");
+
+    const confirmButton = getByTestId("review-form-dialog-confirm-button");
+    userEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    expect(confirmButton).toBeDisabled();
+
+    userEvent.click(confirmButton, null, { skipPointerEventsCheck: true });
+
+    expect(mockOnSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("should stop the loading spinner once the submission resolves", async () => {
+    let resolveSubmit: () => void;
+    const mockOnSubmit = vi.fn().mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveSubmit = resolve;
+      })
+    );
+
+    const { getByTestId } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />
+    );
+
+    userEvent.type(within(getByTestId("review-comment")).getByRole("textbox"), "mock-comment");
+
+    const confirmButton = getByTestId("review-form-dialog-confirm-button");
+    userEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(within(confirmButton).getByRole("progressbar")).toBeInTheDocument();
+    });
+
+    resolveSubmit();
+
+    await waitFor(() => {
+      expect(within(confirmButton).queryByRole("progressbar")).not.toBeInTheDocument();
+    });
+
+    // Still locked until the dialog finishes closing
+    expect(confirmButton).toBeDisabled();
+  });
+
+  it("should not disable the confirm button when submission fails validation", async () => {
+    const mockOnSubmit = vi.fn();
+
+    const { getByTestId } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />
+    );
+
+    const input = within(getByTestId("review-comment")).getByRole("textbox");
+    userEvent.paste(input, "X".repeat(10_050));
+
+    userEvent.click(getByTestId("review-form-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(getByTestId("review-comment-dialog-error")).toBeInTheDocument();
+    });
+
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    expect(getByTestId("review-form-dialog-confirm-button")).not.toBeDisabled();
+  });
+
+  it("should re-enable the confirm button after the dialog is closed and reopened", async () => {
+    const mockOnSubmit = vi.fn().mockReturnValue(new Promise(() => {}));
+
+    const { getByTestId, rerender } = render(
+      <ReviewFormDialog open header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />
+    );
+
+    userEvent.type(within(getByTestId("review-comment")).getByRole("textbox"), "mock-comment");
+    userEvent.click(getByTestId("review-form-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    expect(getByTestId("review-form-dialog-confirm-button")).toBeDisabled();
+
+    rerender(
+      <ReviewFormDialog open={false} header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />
+    );
+    rerender(<ReviewFormDialog open header="Test" confirmText="Confirm" onSubmit={mockOnSubmit} />);
+
+    userEvent.type(within(getByTestId("review-comment")).getByRole("textbox"), "new-comment");
+
+    await waitFor(() => {
+      expect(getByTestId("review-form-dialog-confirm-button")).not.toBeDisabled();
+    });
   });
 });

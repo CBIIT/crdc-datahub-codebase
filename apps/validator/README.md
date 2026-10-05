@@ -59,7 +59,7 @@ Environment settings:
     3-5 key: DOCDB_DB_NAME, database name.
     3-6 key: DOCDB_TLS, optional. TLS is enabled when unset. Set false for local MongoDB without TLS.
     3-7 key: DOCDB_CA_FILE, optional CA override. When TLS is on and this is unset, defaults to resources/aws-documentdb-certificate/global-bundle.pem (downloaded in Docker images).
-    The connection URI always sets authSource=admin and retryWrites=false. When TLS is on it also sets tls=true, tlsCAFile, and authMechanism=SCRAM-SHA-1. Docker images always wget the AWS global CA bundle; a missing CA with TLS on fails startup.
+    The connection URI always sets authSource=admin and retryWrites=false. When TLS is on it also sets tls=true, tlsCAFile, and authMechanism=SCRAM-SHA-1. Docker images wget the AWS global CA bundle in the build stage and copy it into the runtime image; a missing CA with TLS on fails startup.
 4) Settings in Configuration file and/or arguments:
     4-1 key: service-type  # possible value in ["essential", "file", "metadata"]
     4-2 key: key: models-loc, value: https://raw.githubusercontent.com/CBIIT/crdc-datahub-models/  #only required for service type of essential and metadata.

@@ -606,4 +606,132 @@ describe("Implementation Requirements", () => {
     global.DataTransfer = originalDataTransfer;
     loggerSpy.mockRestore();
   });
+
+  it("should not apply or save an import that is identical to the current form", async () => {
+    const setData = vi.fn().mockReturnValue({ status: "success", id: "success-id" });
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockResolvedValue(
+      questionnaireDataFactory.build()
+    );
+
+    const { getByTestId, getByDisplayValue, queryByTestId } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    fireEvent.click(getByTestId("import-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "No changes were applied. The imported file matches the current form."
+      );
+    });
+
+    expect(setData).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(queryByTestId("import-dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("should not apply or save an import that only differs by section statuses", async () => {
+    const setData = vi.fn().mockReturnValue({ status: "success", id: "success-id" });
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockResolvedValue(
+      questionnaireDataFactory.build({ sections: [{ name: "A", status: "In Progress" }] })
+    );
+
+    const { getByTestId, getByDisplayValue } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    fireEvent.click(getByTestId("import-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "No changes were applied. The imported file matches the current form."
+      );
+    });
+
+    expect(setData).not.toHaveBeenCalled();
+  });
+
+  it("should apply and save an import that differs from the current form", async () => {
+    const setData = vi.fn().mockReturnValue({ status: "success", id: "success-id" });
+    const parsedData = questionnaireDataFactory.build({ submitterComment: "A new comment" });
+    const { QuestionnaireExcelMiddleware } = await import("@/classes/QuestionnaireExcelMiddleware");
+    (QuestionnaireExcelMiddleware.parse as Mock).mockResolvedValue(parsedData);
+
+    const { getByTestId, getByDisplayValue } = render(
+      <TestParent formCtxState={{ data: { status: "In Progress" }, setData }}>
+        <ImportApplicationButton />
+      </TestParent>
+    );
+
+    fireEvent.click(getByTestId("import-application-excel-button"));
+
+    const file = new File(["test"], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    Object.defineProperty(file, "arrayBuffer", {
+      value: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
+
+    const hiddenInput = getByTestId("import-upload-file-input") as HTMLInputElement;
+    fireEvent.change(hiddenInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(getByDisplayValue("test.xlsx")).toBeInTheDocument();
+    });
+
+    fireEvent.click(getByTestId("import-dialog-confirm-button"));
+
+    await waitFor(() => {
+      expect(setData).toHaveBeenCalledWith(parsedData, { skipSave: false, runMigrations: true });
+    });
+
+    await waitFor(() => {
+      expect(global.mockEnqueue).toHaveBeenCalledWith(
+        "Your data has been imported and all passed validation. You may proceed to Review & Submit.",
+        { variant: "success" }
+      );
+    });
+  });
 });

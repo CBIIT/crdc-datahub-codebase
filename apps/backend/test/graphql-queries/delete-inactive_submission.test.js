@@ -54,7 +54,7 @@ describe('Submission service test', () => {
             return [];
         });
         await subInterface.deleteInactiveSubmissions();
-        expect(dbService.updateMany).toBeCalledTimes(0);
+        expect(dbService.updateMany).toHaveBeenCalledTimes(0);
 
     });
 });

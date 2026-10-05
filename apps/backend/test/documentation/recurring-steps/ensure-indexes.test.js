@@ -83,6 +83,7 @@ describe('ensure-indexes', () => {
                 'parents.parentIDValue': 1,
             },
         },
+        { collection: 'applications', name: 'nextRevisionId_1', keys: { nextRevisionId: 1 } },
     ];
 
     /**
@@ -117,8 +118,8 @@ describe('ensure-indexes', () => {
         return db;
     }
 
-    it('declares all 18 catalog indexes', () => {
-        expect(INDEXES).toHaveLength(18);
+    it('declares all 19 catalog indexes', () => {
+        expect(INDEXES).toHaveLength(19);
         expect(INDEXES.map(({ collection, name, keys }) => ({ collection, name, keys }))).toEqual(expectedCatalog);
         const sessionsSpec = INDEXES.find((spec) => spec.collection === SESSION_COLLECTION && spec.name === 'expires_1');
         expect(sessionsSpec.expireAfterSeconds).toBe(0);

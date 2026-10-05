@@ -24,10 +24,13 @@ async function updateGPAName() {
                 continue;
             }
             
-            // Parse questionnaireData JSON
             let questionnaire;
             try {
-                questionnaire = JSON.parse(application.questionnaireData);
+                if (typeof application.questionnaireData === 'string') {
+                    questionnaire = JSON.parse(application.questionnaireData);
+                } else {
+                    questionnaire = application.questionnaireData;
+                }
             } catch (parseError) {
                 console.error(`❌ Failed to parse questionnaireData for application ${application._id}: ${parseError.message}`);
                 failed.push({ 

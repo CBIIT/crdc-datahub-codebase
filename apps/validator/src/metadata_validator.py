@@ -749,7 +749,7 @@ class MetaDataValidator:
     def validate_required_relationship(self, data_record, msg_prefix):
         result = {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
         node_type = data_record.get(NODE_TYPE)
-        required_relationship_columns = self.model.get_node_req_rel_columns(node_type)
+        required_relationship_columns = self.model.get_final_req_rel_columns_for_node(node_type)
         parents = {}
         for parent_node in data_record.get(PARENTS, []):
             parents[get_column_name_from_parent_obj(parent_node)] = parent_node[PARENT_ID_VAL]

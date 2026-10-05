@@ -12,6 +12,7 @@ import { publicationFactory } from "@/factories/application/PublicationFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { repositoryFactory } from "@/factories/application/RepositoryFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
+import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 
 import * as PersistentColumns from "../classes/Excel/PersistentColumns";
 import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
@@ -243,11 +244,155 @@ describe("mapObjectWithKey cases", () => {
   });
 });
 
+describe("isNotApplicableProgram", () => {
+  const systemProgram = organizationFactory.build({
+    _id: "437e864a-621b-40f5-b214-3dc368137081",
+    name: "NA",
+    abbreviation: "NA",
+    description: "This is a catch-all place for all studies without a program associated.",
+    readOnly: true,
+  });
+
+  it("should identify the system managed program", () => {
+    expect(utils.isNotApplicableProgram(systemProgram)).toBe(true);
+  });
+
+  it("should ignore surrounding whitespace on the name", () => {
+    expect(utils.isNotApplicableProgram({ name: "  NA  ", readOnly: true })).toBe(true);
+  });
+
+  it.each([
+    ["readOnly is false", { name: "NA", readOnly: false }],
+    ["readOnly is missing", { name: "NA" }],
+    ["the name is not 'NA'", { name: "NCI", readOnly: true }],
+    ["the name casing differs", { name: "na", readOnly: true }],
+    ["the name is missing", { readOnly: true }],
+  ])("should return false when %s", (_, program) => {
+    expect(utils.isNotApplicableProgram(program)).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+  ])("should return false when the program is %s", (_, program) => {
+    expect(utils.isNotApplicableProgram(program)).toBe(false);
+  });
+});
+
+describe("buildNotApplicableProgram", () => {
+  const systemProgram = organizationFactory.build({
+    _id: "437e864a-621b-40f5-b214-3dc368137081",
+    name: "NA",
+    abbreviation: "NA",
+    description: "This is a catch-all place for all studies without a program associated.",
+    readOnly: true,
+  });
+
+  it("should use the _id, name, abbreviation, and description of the system managed program", () => {
+    const programs = [
+      organizationFactory.build({ _id: "program-1", name: "Program 1", readOnly: false }),
+      systemProgram,
+    ];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual({
+      _id: "437e864a-621b-40f5-b214-3dc368137081",
+      name: "NA",
+      abbreviation: "NA",
+      description: "This is a catch-all place for all studies without a program associated.",
+    });
+  });
+
+  it("should ignore readOnly programs that are not named 'NA'", () => {
+    const programs = [
+      organizationFactory.build({ _id: "other-system", name: "System", readOnly: true }),
+    ];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual(NotApplicableProgram);
+  });
+
+  it("should ignore programs named 'NA' that are not readOnly", () => {
+    const programs = [organizationFactory.build({ _id: "fake-na", name: "NA", readOnly: false })];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual(NotApplicableProgram);
+  });
+
+  it("should use the first system managed program when multiple exist", () => {
+    const programs = [
+      organizationFactory.build({ _id: "na-1", name: "NA", readOnly: true }),
+      organizationFactory.build({ _id: "na-2", name: "NA", readOnly: true }),
+    ];
+
+    expect(utils.buildNotApplicableProgram(programs)._id).toBe("na-1");
+  });
+
+  it.each([
+    ["an empty array", []],
+    ["null", null],
+    ["undefined", undefined],
+  ])("should fall back to the static defaults when given %s", (_, programs) => {
+    expect(utils.buildNotApplicableProgram(programs)).toEqual(NotApplicableProgram);
+  });
+
+  it("should fall back to the static defaults when the system managed program has no _id", () => {
+    const programs = [organizationFactory.build({ _id: "", name: "NA", readOnly: true })];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual(NotApplicableProgram);
+  });
+
+  it("should normalize missing values on the system managed program to empty strings", () => {
+    const programs = [
+      organizationFactory.build({
+        _id: "na-1",
+        name: "NA",
+        abbreviation: undefined,
+        description: undefined,
+        readOnly: true,
+      }),
+    ];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual({
+      _id: "na-1",
+      name: "NA",
+      abbreviation: "",
+      description: "",
+    });
+  });
+
+  it("should not mutate the static NotApplicableProgram constant", () => {
+    utils.buildNotApplicableProgram([systemProgram]);
+
+    expect(NotApplicableProgram).toEqual({
+      _id: "Not Applicable",
+      name: "",
+      abbreviation: "",
+      description: "",
+    });
+  });
+});
+
 describe("findProgram", () => {
   const programOptions = [
     { _id: "program1", name: "Program 1" },
     { _id: "program2", name: "Program 2" },
   ];
+
+  const optionsWithNA = [
+    ...programOptions,
+    {
+      _id: "437e864a-621b-40f5-b214-3dc368137081",
+      name: "NA",
+      abbreviation: "NA",
+      description: "This is a catch-all place for all studies without a program associated.",
+      readOnly: true,
+    },
+  ];
+
+  const expectedNA: ProgramInput = {
+    _id: "437e864a-621b-40f5-b214-3dc368137081",
+    name: "NA",
+    abbreviation: "NA",
+    description: "This is a catch-all place for all studies without a program associated.",
+  };
 
   it("should return null if formProgram is null", () => {
     expect(utils.findProgram(null, programOptions)).toBeNull();
@@ -304,6 +449,42 @@ describe("findProgram", () => {
   it("should include additional content from formProgram when returning OtherProgram", () => {
     const formProgram: ProgramInput = { name: "Custom Program", description: "Custom Description" };
     expect(utils.findProgram(formProgram, programOptions)).toEqual({
+      ...formProgram,
+      _id: OtherProgram._id,
+    });
+  });
+
+  it("should return the system managed program for a hard-coded 'Not Applicable' _id", () => {
+    const formProgram: ProgramInput = {
+      _id: NotApplicableProgram._id,
+      name: "",
+      abbreviation: "",
+      description: "",
+    };
+    expect(utils.findProgram(formProgram, optionsWithNA)).toEqual(expectedNA);
+  });
+
+  it("should return the system managed program when its real _id matches", () => {
+    const formProgram: ProgramInput = { _id: "437e864a-621b-40f5-b214-3dc368137081" };
+    expect(utils.findProgram(formProgram, optionsWithNA)).toEqual(expectedNA);
+  });
+
+  it("should return the system managed program for legacy notApplicable input when it is available", () => {
+    const formProgram: ProgramInput & { notApplicable: boolean } = {
+      _id: "",
+      name: "",
+      abbreviation: "",
+      description: "",
+      notApplicable: true,
+    };
+    expect(utils.findProgram(formProgram, optionsWithNA)).toEqual(expectedNA);
+  });
+
+  it("should treat other readOnly programs as 'Other'", () => {
+    const options = [...optionsWithNA, { _id: "system-1", name: "System Program", readOnly: true }];
+    const formProgram: ProgramInput = { _id: "system-1", name: "System Program" };
+
+    expect(utils.findProgram(formProgram, options)).toEqual({
       ...formProgram,
       _id: OtherProgram._id,
     });
