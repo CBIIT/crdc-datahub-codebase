@@ -3,6 +3,7 @@
 import os
 from bento.common.utils import get_logger
 from bento.common.s3 import S3Bucket
+from pymongo import errors
 from common.constants import ERRORS, WARNINGS, STATUS, S3_FILE_INFO, ID, SIZE, MD5, UPDATED_AT, \
     FILE_NAME, SQS_TYPE, SQS_NAME, FILE_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, STATUS_FAILED, SUBMISSION_ID, \
     BATCH_BUCKET, SERVICE_TYPE_FILE, LAST_MODIFIED, CREATED_AT, TYPE, SUBMISSION_INTENTION, SUBMISSION_INTENTION_DELETE,\
@@ -12,12 +13,19 @@ from common.constants import ERRORS, WARNINGS, STATUS, S3_FILE_INFO, ID, SIZE, M
 
 from common.utils import get_exception_msg, current_datetime, get_s3_file_info, get_s3_file_md5, create_error, get_uuid_str
 from common.validation_closeout import (
-    FILE_PROGRESS, METADATA_PROGRESS, InvalidValidationMessage, process_validation_message, record_type_progress,
+    FILE_PROGRESS, METADATA_PROGRESS, InvalidValidationMessage, _persisted,
+    process_validation_message, record_type_progress,
 )
 from service.ecs_agent import set_scale_in_protection
 from metadata_validator import get_qc_result
 
 VISIBILITY_TIMEOUT = 20
+
+
+class _RetryableFileRead(Exception):
+    """A file-list read failed. The orphan-scan message should be retried."""
+
+
 """
 Interface for validate files via SQS
 """
@@ -57,8 +65,10 @@ def _handle_file_message(mongo_dao, log, data):
     """Validate one file queue message and record its result.
 
     Missing ids and unknown types raise InvalidValidationMessage. A missing
-    file record is recorded as an Error task. A failed file-record write
-    raises so the message can be requeued.
+    file record is recorded as an Error task. Transient file-record reads,
+    a failed file-list read, and a failed fileErrors write raise so the
+    message can be requeued. A Failed orphan scan is recorded so the run can
+    finish.
 
     @param mongo_dao MongoDao
     @param log logger
@@ -126,7 +136,8 @@ def _handle_file_message(mongo_dao, log, data):
                 orphan_errors = []
             else:
                 status, orphan_errors = validator.validate_all_files(submission_id)
-            mongo_dao.atomic_update_submission(submission_id, {FILE_ERRORS: orphan_errors})
+            if not _persisted(mongo_dao.atomic_update_submission(submission_id, {FILE_ERRORS: orphan_errors})):
+                raise Exception(f'Failed to update file errors for {submission_id}')
             log.info(f'Processed orphaned file validation for submission: {submission_id}')
             record_task_result(status, validation_id, mongo_dao, log)
         else:
@@ -180,11 +191,21 @@ class FileValidator:
         self.submission = None
 
     def validate(self, fileRecord):
-        try: 
-            #check if the file record is valid
-            if not self.validate_fileRecord(fileRecord):
-                return STATUS_ERROR
-            self.get_root_path(fileRecord[SUBMISSION_ID])
+        """Validate one file record.
+
+        A database error while loading the submission is raised so the message
+        can be retried. A missing submission, root path, or bucket is an Error
+        result. Other unexpected failures are stored as Error.
+
+        @param fileRecord data file document
+        @returns Passed, Warning, or Error
+        @raises errors.PyMongoError when a database read or write fails
+        """
+        if not self.validate_fileRecord(fileRecord):
+            return STATUS_ERROR
+        if not self.get_root_path(fileRecord[SUBMISSION_ID]):
+            return STATUS_ERROR
+        try:
             #escape file validation if submission intention is Delete
             if self.submission.get(SUBMISSION_INTENTION) == SUBMISSION_INTENTION_DELETE:
                 return STATUS_PASSED
@@ -192,6 +213,8 @@ class FileValidator:
             status, error = self.validate_file(fileRecord)
             self.save_qc_result(fileRecord, status, error)
             return status
+        except errors.PyMongoError:
+            raise
         except Exception as e: #catch all unhandled exception
             self.log.exception(e)
             msg = f"{fileRecord.get(SUBMISSION_ID)}: Failed to validate data file, {fileRecord.get(ID)}! {get_exception_msg()}!"
@@ -366,12 +389,17 @@ class FileValidator:
             })
         return errors
 
-    """
-    Validate all file in a submission:
-    1. Extra files, validate if there are files in files folder of the submission that are not specified in any manifests of the submission. 
-    This may happen if submitter uploaded files (via CLI) but forgot to upload the manifest. (error) included in total count.
-    """
     def validate_all_files(self, submission_id):
+        """Find files in the submission folder that no manifest lists.
+
+        A failed file-list read raises so the message can be retried. Any other
+        unexpected exception is returned as Failed and recorded as a finished task.
+
+        @param submission_id submission document id
+        @returns (status, orphan errors)
+        @raises _RetryableFileRead when the file list cannot be loaded
+        @raises errors.PyMongoError when a database read fails
+        """
         self.get_root_path(submission_id)
 
         try:
@@ -386,7 +414,9 @@ class FileValidator:
             # get manifest info for the submission
             manifest_info_list = self.mongo_dao.get_files_by_submission(submission_id) if submission_intention != SUBMISSION_INTENTION_DELETE else []
             if manifest_info_list is None:
-                return STATUS_FAILED, []
+                raise _RetryableFileRead(
+                    f'Failed to load file records for submission {submission_id}'
+                )
             manifest_file_names = [manifest_info[S3_FILE_INFO][FILE_NAME] for manifest_info in manifest_info_list]
             extra_errors = self._collect_extra_s3_file_errors(submission_id, manifest_file_names)
             if extra_errors:
@@ -398,7 +428,9 @@ class FileValidator:
             else:
                 # All files are validated
                 return STATUS_PASSED, []
-   
+
+        except (errors.PyMongoError, _RetryableFileRead):
+            raise
         except Exception as e:
             self.log.exception(e)
             msg = f"{submission_id}: Failed to validate data files! {get_exception_msg()}!"

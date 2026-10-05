@@ -1,8 +1,9 @@
 import pytest
 from unittest.mock import MagicMock, patch, call
 from datetime import datetime, timedelta
+from pymongo import errors
 
-from file_validator import record_task_result, _handle_file_message
+from file_validator import FileValidator, record_task_result, _handle_file_message
 from common.validation_closeout import (
     updates_to_mark_task_done, updates_to_consolidate, validation_status_from_value,
     updates_to_mark_type_done, FILE_PROGRESS, METADATA_PROGRESS,
@@ -12,7 +13,7 @@ from common.validation_closeout import (
 )
 from common.constants import FILE_ENDED, FILE_STATUS, VALIDATION_ENDED, FILE_VALIDATION_STATUS, VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA, \
     ENDED, VALIDATION_STATUS, METADATA_STATUS, METADATA_ENDED, WORST_BATCH_STATUS, SUBMISSION_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, \
-    STATUS_FAILED, METADATA_VALIDATION_STATUS, CROSS_SUBMISSION_VALIDATION_STATUS, SCOPE, FILE_ID, SQS_TYPE
+    STATUS_FAILED, METADATA_VALIDATION_STATUS, CROSS_SUBMISSION_VALIDATION_STATUS, SCOPE, FILE_ID, SQS_TYPE, FILE_ERRORS
 from common.mongo_dao import ensure_update_ops
 
 log = MagicMock()
@@ -202,6 +203,7 @@ failed_update_test_data = [
 @pytest.mark.parametrize("updated_validation", failed_update_test_data)
 def test_record_validation_progress_raises_when_atomic_update_fails(updated_validation):
     mongo_dao = MagicMock()
+    mongo_dao.get_validation.return_value = _validation_doc()
     mongo_dao.atomic_update_validation.return_value = updated_validation
 
     with pytest.raises(Exception, match=f'Failed to update validation record for {VALIDATION_ID}'):
@@ -220,9 +222,9 @@ incomplete_progress_test_data = [
 @pytest.mark.parametrize("status, worst_file_status", incomplete_progress_test_data)
 def test_record_validation_progress_does_not_finalize_incomplete_validation(status, worst_file_status):
     mongo_dao = MagicMock()
-    mongo_dao.atomic_update_validation.return_value = _validation_doc(
-        **{WORST_FILE_STATUS: worst_file_status}
-    )
+    validation = _validation_doc(**{WORST_FILE_STATUS: worst_file_status})
+    mongo_dao.get_validation.return_value = validation
+    mongo_dao.atomic_update_validation.return_value = validation
 
     record_task_result(status, VALIDATION_ID, mongo_dao, MagicMock())
 
@@ -275,6 +277,8 @@ finalize_progress_test_data = [
             {
                 FILE_ENDED: progress_ended_at,
                 FILE_STATUS: 'Error',
+            },
+            {
                 ENDED: progress_ended_at,
                 VALIDATION_STATUS: 'Error',
             },
@@ -315,7 +319,12 @@ def test_record_validation_progress_finalizes_last_file_message(status, updated_
     literal update payloads so the assertions do not reuse production helpers.
     """
     mongo_dao = MagicMock()
+    mongo_dao.get_validation.return_value = updated_validation
     mongo_dao.atomic_update_validation.return_value = updated_validation
+    mongo_dao.get_submission.return_value = {
+        FILE_VALIDATION_STATUS: STATUS_VALIDATING,
+        METADATA_VALIDATION_STATUS: STATUS_VALIDATING,
+    }
     progress_log = MagicMock()
 
     with patch('file_validator.current_datetime', return_value=progress_ended_at):
@@ -344,13 +353,15 @@ def test_ensure_update_ops(updates: dict, expected: dict):
 
 def test_new_scope_keeps_worse_submission_file_status():
     mongo_dao = MagicMock()
-    mongo_dao.atomic_update_validation.return_value = _validation_doc(**{
+    validation = _validation_doc(**{
         TOTAL_FILE_MESSAGES: 1,
         COMPLETED_FILE_MESSAGES: 1,
         WORST_FILE_STATUS: 0,
         FILE_ENDED: progress_ended_at,
         SCOPE: 'New',
     })
+    mongo_dao.get_validation.return_value = validation
+    mongo_dao.atomic_update_validation.return_value = validation
     mongo_dao.get_submission.return_value = {FILE_VALIDATION_STATUS: STATUS_ERROR}
     mongo_dao.submission_file_status_from_records.return_value = STATUS_PASSED
     mongo_dao.atomic_update_submission.return_value = {'_id': SUBMISSION}
@@ -361,7 +372,6 @@ def test_new_scope_keeps_worse_submission_file_status():
     mongo_dao.atomic_update_submission.assert_called_once_with(
         SUBMISSION,
         {
-            FILE_VALIDATION_STATUS: STATUS_ERROR,
             VALIDATION_ENDED: progress_ended_at,
         },
     )
@@ -374,12 +384,14 @@ def test_record_validation_progress_does_not_overwrite_failed_validation():
     or submission write follows it.
     """
     mongo_dao = MagicMock()
-    mongo_dao.atomic_update_validation.return_value = _validation_doc(**{
+    validation = _validation_doc(**{
         TOTAL_FILE_MESSAGES: 1,
         COMPLETED_FILE_MESSAGES: 1,
         WORST_FILE_STATUS: 0,
         VALIDATION_STATUS: STATUS_FAILED,
     })
+    mongo_dao.get_validation.return_value = validation
+    mongo_dao.atomic_update_validation.return_value = validation
 
     record_task_result('Passed', VALIDATION_ID, mongo_dao, MagicMock())
 
@@ -471,13 +483,15 @@ def test_new_scope_rescans_files_when_submission_is_validating():
     file records as Error and persist that on both documents.
     """
     mongo_dao = MagicMock()
-    mongo_dao.atomic_update_validation.return_value = _validation_doc(**{
+    validation = _validation_doc(**{
         TOTAL_FILE_MESSAGES: 1,
         COMPLETED_FILE_MESSAGES: 1,
         WORST_FILE_STATUS: 0,
         FILE_ENDED: progress_ended_at,
         SCOPE: 'New',
     })
+    mongo_dao.get_validation.return_value = validation
+    mongo_dao.atomic_update_validation.return_value = validation
     mongo_dao.get_submission.return_value = {FILE_VALIDATION_STATUS: STATUS_VALIDATING}
     mongo_dao.submission_file_status_from_records.return_value = STATUS_ERROR
     mongo_dao.atomic_update_submission.return_value = {'_id': SUBMISSION}
@@ -509,11 +523,13 @@ def test_missing_file_record_records_error_progress():
     """A missing file record counts as Error so the file counter can finish."""
     mongo_dao = MagicMock()
     mongo_dao.get_file.return_value = None
-    mongo_dao.atomic_update_validation.return_value = _validation_doc(**{
+    validation = _validation_doc(**{
         TOTAL_FILE_MESSAGES: 2,
         COMPLETED_FILE_MESSAGES: 1,
         WORST_FILE_STATUS: 2,
     })
+    mongo_dao.get_validation.return_value = validation
+    mongo_dao.atomic_update_validation.return_value = validation
 
     _handle_file_message(mongo_dao, MagicMock(), {
         'validationID': VALIDATION_ID,
@@ -533,7 +549,7 @@ def test_missing_file_record_finalizes_combined_run_as_error():
     """The last missing-file task closes a combined run as Error, not Failed."""
     mongo_dao = MagicMock()
     mongo_dao.get_file.return_value = None
-    mongo_dao.atomic_update_validation.return_value = _validation_doc(**{
+    validation = _validation_doc(**{
         TOTAL_FILE_MESSAGES: 2,
         COMPLETED_FILE_MESSAGES: 2,
         WORST_FILE_STATUS: 2,
@@ -543,6 +559,9 @@ def test_missing_file_record_finalizes_combined_run_as_error():
         METADATA_ENDED: metadata_ended_at,
         FILE_ENDED: progress_ended_at,
     })
+    mongo_dao.get_validation.return_value = validation
+    mongo_dao.atomic_update_validation.return_value = validation
+    mongo_dao.get_submission.return_value = {FILE_VALIDATION_STATUS: STATUS_VALIDATING}
     mongo_dao.atomic_update_submission.return_value = {'_id': SUBMISSION}
 
     with patch('file_validator.current_datetime', return_value=progress_ended_at):
@@ -558,6 +577,12 @@ def test_missing_file_record_finalizes_combined_run_as_error():
         {
             FILE_ENDED: progress_ended_at,
             FILE_STATUS: STATUS_ERROR,
+        },
+        expected_status=STATUS_VALIDATING,
+    )
+    assert mongo_dao.atomic_update_validation.call_args_list[2] == call(
+        VALIDATION_ID,
+        {
             ENDED: progress_ended_at,
             VALIDATION_STATUS: STATUS_ERROR,
         },
@@ -591,3 +616,314 @@ def test_fail_validation_fast_updates_only_file_status():
         SUBMISSION,
         {FILE_VALIDATION_STATUS: STATUS_ERROR},
     )
+
+
+def test_missing_stored_total_raises_before_increment():
+    """File close-out waits for totalFileMessages instead of finalizing after one task."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_validation.return_value = {
+        'type': [VALIDATION_TYPE_FILE],
+        SUBMISSION_ID: SUBMISSION,
+    }
+
+    with pytest.raises(Exception, match='totalFileMessages'):
+        record_task_result('Passed', VALIDATION_ID, mongo_dao, MagicMock())
+
+    mongo_dao.atomic_update_validation.assert_not_called()
+    mongo_dao.atomic_update_submission.assert_not_called()
+
+
+def test_consolidate_from_type_closeout_write_result():
+    """Overall status is composed from the type write result, not the pre-write snapshot."""
+    increment_doc = _validation_doc(**{
+        TOTAL_FILE_MESSAGES: 1,
+        COMPLETED_FILE_MESSAGES: 1,
+        WORST_FILE_STATUS: 0,
+        'type': [VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA],
+        WORST_BATCH_STATUS: 0,
+    })
+    type_write_doc = dict(increment_doc)
+    type_write_doc[FILE_ENDED] = progress_ended_at
+    type_write_doc[FILE_STATUS] = STATUS_PASSED
+    type_write_doc[METADATA_ENDED] = metadata_ended_at
+    type_write_doc[METADATA_STATUS] = STATUS_PASSED
+    overall_doc = dict(type_write_doc)
+    overall_doc[ENDED] = progress_ended_at
+    overall_doc[VALIDATION_STATUS] = STATUS_PASSED
+
+    mongo_dao = MagicMock()
+    mongo_dao.get_validation.return_value = increment_doc
+    mongo_dao.atomic_update_validation.side_effect = [
+        increment_doc,
+        type_write_doc,
+        overall_doc,
+    ]
+    mongo_dao.get_submission.return_value = {FILE_VALIDATION_STATUS: STATUS_VALIDATING}
+    mongo_dao.atomic_update_submission.return_value = {'_id': SUBMISSION}
+
+    with patch('file_validator.current_datetime', return_value=progress_ended_at):
+        record_task_result('Passed', VALIDATION_ID, mongo_dao, MagicMock())
+
+    assert mongo_dao.atomic_update_validation.call_args_list[1] == call(
+        VALIDATION_ID,
+        {FILE_ENDED: progress_ended_at, FILE_STATUS: STATUS_PASSED},
+        expected_status=STATUS_VALIDATING,
+    )
+    assert mongo_dao.atomic_update_validation.call_args_list[2] == call(
+        VALIDATION_ID,
+        {ENDED: progress_ended_at, VALIDATION_STATUS: STATUS_PASSED},
+        expected_status=STATUS_VALIDATING,
+    )
+    mongo_dao.atomic_update_submission.assert_called_once_with(
+        SUBMISSION,
+        {
+            FILE_VALIDATION_STATUS: STATUS_PASSED,
+            VALIDATION_ENDED: progress_ended_at,
+        },
+    )
+
+
+def test_overall_status_cas_miss_writes_type_status_without_end_time():
+    """A missed overall-status write still stores the type status and omits validationEnded."""
+    increment_doc = _validation_doc(**{
+        TOTAL_FILE_MESSAGES: 1,
+        COMPLETED_FILE_MESSAGES: 1,
+        WORST_FILE_STATUS: 0,
+        'type': [VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA],
+        WORST_BATCH_STATUS: 0,
+    })
+    type_write_doc = dict(increment_doc)
+    type_write_doc[FILE_ENDED] = progress_ended_at
+    type_write_doc[FILE_STATUS] = STATUS_PASSED
+    type_write_doc[METADATA_ENDED] = metadata_ended_at
+    type_write_doc[METADATA_STATUS] = STATUS_PASSED
+
+    mongo_dao = MagicMock()
+    mongo_dao.get_validation.return_value = increment_doc
+    mongo_dao.atomic_update_validation.side_effect = [
+        increment_doc,
+        type_write_doc,
+        None,
+    ]
+    mongo_dao.get_submission.return_value = {FILE_VALIDATION_STATUS: STATUS_VALIDATING}
+    mongo_dao.atomic_update_submission.return_value = {'_id': SUBMISSION}
+
+    with patch('file_validator.current_datetime', return_value=progress_ended_at):
+        record_task_result('Passed', VALIDATION_ID, mongo_dao, MagicMock())
+
+    assert mongo_dao.atomic_update_validation.call_count == 3
+    mongo_dao.atomic_update_submission.assert_called_once_with(
+        SUBMISSION,
+        {FILE_VALIDATION_STATUS: STATUS_PASSED},
+    )
+
+
+def test_file_record_read_failure_does_not_record_error_progress():
+    """A transient get_file failure is retried instead of counted as a missing file."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_file.side_effect = Exception('database unavailable')
+
+    with pytest.raises(Exception, match='database unavailable'):
+        _handle_file_message(mongo_dao, MagicMock(), {
+            'validationID': VALIDATION_ID,
+            SUBMISSION_ID: SUBMISSION,
+            SQS_TYPE: 'Validate File',
+            FILE_ID: 'file-1',
+        })
+
+    mongo_dao.atomic_update_validation.assert_not_called()
+
+
+def test_orphan_failed_status_records_task_result():
+    """A non-retryable orphan scan failure is recorded as Failed so the run can finish.
+
+    The S3 listing raises, and the task increment stores Failed as the worst file status.
+    """
+    mongo_dao = MagicMock()
+    mongo_dao.get_submission.return_value = {
+        '_id': SUBMISSION,
+        'rootPath': 'root',
+        'bucketName': 'bucket',
+    }
+    mongo_dao.get_files_by_submission.return_value = [{
+        's3FileInfo': {'fileName': 'a.txt'},
+    }]
+    validation = _validation_doc(**{
+        TOTAL_FILE_MESSAGES: 1,
+        COMPLETED_FILE_MESSAGES: 1,
+        WORST_FILE_STATUS: 3,
+    })
+    mongo_dao.get_validation.return_value = validation
+    mongo_dao.atomic_update_validation.return_value = validation
+    mongo_dao.atomic_update_submission.return_value = {'_id': SUBMISSION}
+    s3 = MagicMock()
+    s3.bucket.objects.filter.side_effect = RuntimeError('s3 down')
+
+    with patch('file_validator.S3Bucket', return_value=s3):
+        _handle_file_message(mongo_dao, MagicMock(), {
+            'validationID': VALIDATION_ID,
+            SUBMISSION_ID: SUBMISSION,
+            SQS_TYPE: 'Validate Submission Files',
+        })
+
+    assert mongo_dao.atomic_update_validation.call_args_list[0] == call(
+        VALIDATION_ID,
+        {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 3}},
+    )
+    file_errors = mongo_dao.atomic_update_submission.call_args_list[0][0][1][FILE_ERRORS]
+    assert file_errors[0]['code'] == 'F011'
+
+
+def test_orphan_file_list_read_failure_does_not_record_task_result():
+    """A failed file-list read is retried instead of counted as a finished scan."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_submission.return_value = {
+        '_id': SUBMISSION,
+        'rootPath': 'root',
+        'bucketName': 'bucket',
+    }
+    mongo_dao.get_files_by_submission.return_value = None
+
+    with patch('file_validator.S3Bucket'):
+        with pytest.raises(Exception, match='Failed to load file records'):
+            _handle_file_message(mongo_dao, MagicMock(), {
+                'validationID': VALIDATION_ID,
+                SUBMISSION_ID: SUBMISSION,
+                SQS_TYPE: 'Validate Submission Files',
+            })
+
+    mongo_dao.atomic_update_validation.assert_not_called()
+    mongo_dao.atomic_update_submission.assert_not_called()
+
+
+def test_orphan_file_errors_write_failure_does_not_record_task_result():
+    """A failed fileErrors write is retried before counting the orphan task."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_submission.return_value = {'_id': SUBMISSION}
+    mongo_dao.atomic_update_submission.return_value = None
+
+    with patch('file_validator.FileValidator') as validator_cls:
+        validator = validator_cls.return_value
+        validator.get_root_path.return_value = True
+        validator.validate_all_files.return_value = (STATUS_PASSED, [])
+        with pytest.raises(Exception, match='Failed to update file errors'):
+            _handle_file_message(mongo_dao, MagicMock(), {
+                'validationID': VALIDATION_ID,
+                SUBMISSION_ID: SUBMISSION,
+                SQS_TYPE: 'Validate Submission Files',
+            })
+
+    mongo_dao.atomic_update_submission.assert_called_once_with(SUBMISSION, {FILE_ERRORS: []})
+    mongo_dao.atomic_update_validation.assert_not_called()
+
+
+def test_file_submission_read_failure_does_not_record_error_progress():
+    """A transient get_submission failure during per-file validation is retried."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_file.return_value = {
+        '_id': 'file-1',
+        SUBMISSION_ID: SUBMISSION,
+        's3FileInfo': {
+            'fileName': 'a.txt',
+            'size': 1,
+            'md5': 'abc',
+        },
+    }
+    mongo_dao.get_submission.side_effect = Exception('database unavailable')
+
+    with pytest.raises(Exception, match='database unavailable'):
+        _handle_file_message(mongo_dao, MagicMock(), {
+            'validationID': VALIDATION_ID,
+            SUBMISSION_ID: SUBMISSION,
+            SQS_TYPE: 'Validate File',
+            FILE_ID: 'file-1',
+        })
+
+    mongo_dao.atomic_update_validation.assert_not_called()
+
+
+def test_orphan_file_list_database_error_does_not_record_task_result():
+    """A database error while loading the file list is retried instead of stored as Failed."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_submission.return_value = {
+        '_id': SUBMISSION,
+        'rootPath': 'root',
+        'bucketName': 'bucket',
+    }
+    mongo_dao.get_files_by_submission.side_effect = errors.PyMongoError('db down')
+
+    with patch('file_validator.S3Bucket'):
+        with pytest.raises(errors.PyMongoError):
+            _handle_file_message(mongo_dao, MagicMock(), {
+                'validationID': VALIDATION_ID,
+                SUBMISSION_ID: SUBMISSION,
+                SQS_TYPE: 'Validate Submission Files',
+            })
+
+    mongo_dao.atomic_update_validation.assert_not_called()
+    mongo_dao.atomic_update_submission.assert_not_called()
+
+
+def test_orphan_submission_read_failure_does_not_record_task_result():
+    """A transient get_submission on the orphan scan is retried instead of treated as a missing submission."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_submission.side_effect = Exception('database unavailable')
+
+    with pytest.raises(Exception, match='database unavailable'):
+        _handle_file_message(mongo_dao, MagicMock(), {
+            'validationID': VALIDATION_ID,
+            SUBMISSION_ID: SUBMISSION,
+            SQS_TYPE: 'Validate Submission Files',
+        })
+
+    mongo_dao.atomic_update_validation.assert_not_called()
+
+
+def _validator_ready_to_check_md5(mongo_dao):
+    """FileValidator with submission loading and the bucket stubbed so no S3 client is built."""
+    validator = FileValidator(mongo_dao)
+    validator.get_root_path = MagicMock(return_value=True)
+    validator.submission = {'_id': SUBMISSION, 'intention': 'Update'}
+    validator.rootPath = 'root'
+    validator.bucket_name = 'bucket'
+    validator.bucket = MagicMock()
+    validator.bucket.file_exists_on_s3.return_value = True
+    return validator
+
+
+def _file_record_for_md5_check():
+    """File document that passes the record check and reaches the MD5 lookup."""
+    return {
+        '_id': 'file-1',
+        SUBMISSION_ID: SUBMISSION,
+        'batchIDs': ['batch-1'],
+        'latestBatchID': 'batch-1',
+        's3FileInfo': {
+            'fileName': 'a.txt',
+            'size': 1,
+            'md5': 'abc',
+        },
+    }
+
+
+def test_pymongo_error_during_file_validate_is_reraised():
+    """A database error inside file validation propagates so the message can be retried."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_file_md5.side_effect = errors.PyMongoError('db down')
+    validator = _validator_ready_to_check_md5(mongo_dao)
+
+    with patch('file_validator.get_s3_file_info', return_value=(1, datetime(2026, 1, 1))):
+        with pytest.raises(errors.PyMongoError):
+            validator.validate(_file_record_for_md5_check())
+
+
+def test_unexpected_file_validate_error_is_stored_as_error():
+    """A non-database failure inside file validation is stored as Error and does not propagate."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_file_md5.side_effect = RuntimeError('boom')
+    validator = _validator_ready_to_check_md5(mongo_dao)
+
+    with patch('file_validator.get_s3_file_info', return_value=(1, datetime(2026, 1, 1))):
+        status = validator.validate(_file_record_for_md5_check())
+
+    assert status == STATUS_ERROR

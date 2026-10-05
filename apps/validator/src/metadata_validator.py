@@ -175,6 +175,7 @@ def _process_cross_submission(mongo_dao, data):
     @param data parsed message body
     @returns CrossSubmissionValidator
     @raises InvalidValidationMessage when the submission id is missing or the submission does not exist
+    @raises Exception when the cross-submission status write does not persist
     """
     submission_id = data.get(SUBMISSION_ID)
     validation_id = data.get(VALIDATION_ID)
@@ -195,7 +196,8 @@ def _process_cross_submission(mongo_dao, data):
     validator = CrossSubmissionValidator(mongo_dao)
     status = validator.validate(submission_id)
     if validator.submission:
-        mongo_dao.set_cross_submission_status(validator.submission, status)
+        if not mongo_dao.set_cross_submission_status(validator.submission, status):
+            raise Exception(f'Failed to update cross-submission status for {submission_id}')
     return validator
 
 

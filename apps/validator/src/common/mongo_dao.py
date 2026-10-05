@@ -78,6 +78,10 @@ class MongoDao:
 
     """
     get submission by id
+
+    @param submissionId submission document id
+    @returns submission document, or None when it does not exist
+    @raises Exception when the database read fails
     """   
     def get_submission(self, submissionId):
         db = self.client[self.db_name]
@@ -87,11 +91,32 @@ class MongoDao:
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to find submission, {submissionId}: {get_exception_msg()}")
-            return None
+            raise
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to find submission, {submissionId}: {get_exception_msg()}")
-            return None
+            raise
+
+    """
+    get validation by id
+
+    @param validation_id validation document id
+    @returns validation document, or None when it does not exist
+    @raises Exception when the database read fails
+    """
+    def get_validation(self, validation_id):
+        db = self.client[self.db_name]
+        validation_collection = db[VALIDATION_COLLECTION]
+        try:
+            return validation_collection.find_one({ID: validation_id})
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to find validation, {validation_id}: {get_exception_msg()}")
+            raise
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to find validation, {validation_id}: {get_exception_msg()}")
+            raise
 
 
     """
@@ -196,6 +221,10 @@ class MongoDao:
 
     """
     get file in dataRecord collection by fileId
+
+    @param fileId dataRecord document id
+    @returns file document, or None when it does not exist
+    @raises Exception when the database read fails
     """ 
     def get_file(self, fileId):
         db = self.client[self.db_name]
@@ -205,11 +234,11 @@ class MongoDao:
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to find data file, {fileId}: {get_exception_msg()}")
-            return None
+            raise
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to find data file, {fileId}: {get_exception_msg()}")
-            return None
+            raise
 
     """
     get file in dataRecord collection by fileName
@@ -380,6 +409,7 @@ class MongoDao:
         @param submission submission document
         @param status cross-submission result
         @returns True when a submission document matched
+        @raises Exception when the database write fails
         """
         if not submission or not submission.get(ID) or not status:
             return False
@@ -395,11 +425,11 @@ class MongoDao:
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to update cross-submission status, {submission[ID]}: {get_exception_msg()}")
-            return False
+            raise
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to update cross-submission status, {submission[ID]}: {get_exception_msg()}")
-            return False
+            raise
 
     def set_submission_validation_status(self, submission, file_status, metadata_status, file_errors=None, is_delete=False, status_detail=None, scope=None):
         """Update submission fields for metadata upload and delete.

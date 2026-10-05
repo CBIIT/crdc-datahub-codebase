@@ -9,7 +9,7 @@ _this_dir = os.path.dirname(os.path.abspath(__file__))
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(_this_dir)))
 sys.path.insert(0, os.path.join(_project_root, 'src'))
 
-from metadata_validator import metadataValidate, MetaDataValidator
+from metadata_validator import metadataValidate, MetaDataValidator, _process_cross_submission
 from common import constants
 from common.validation_closeout import METADATA_PROGRESS
 from pymongo import errors
@@ -596,3 +596,32 @@ class TestBatchHandler:
         assert record.call_args[0][0] == constants.FAILED
         assert 'no datacommon found' in record.call_args[1]['status_detail']
         msg.delete.assert_called_once()
+
+    def test_submission_read_failure_is_retried(self, mock_configs, mock_model_store, mock_mongo_dao):
+        """A transient get_submission error is not treated as a missing submission."""
+        mock_mongo_dao.get_submission.side_effect = Exception('database unavailable')
+        msg = self._make_batch_msg()
+
+        with patch('metadata_validator.record_type_progress') as record:
+            self._run_one_message(mock_configs, mock_model_store, mock_mongo_dao, msg)
+
+        record.assert_not_called()
+        mock_mongo_dao.atomic_update_validation.assert_not_called()
+        msg.delete.assert_not_called()
+
+
+def test_cross_submission_status_write_failure_raises():
+    """A false set_cross_submission_status result is a retryable write failure."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_submission.return_value = {'_id': 'sub-1'}
+    mongo_dao.set_cross_submission_status.return_value = False
+
+    with patch('metadata_validator.CrossSubmissionValidator') as validator_cls:
+        validator = validator_cls.return_value
+        validator.submission = {'_id': 'sub-1'}
+        validator.validate.return_value = constants.STATUS_PASSED
+        with pytest.raises(Exception, match='Failed to update cross-submission status'):
+            _process_cross_submission(mongo_dao, {
+                constants.SUBMISSION_ID: 'sub-1',
+                constants.VALIDATION_ID: 'val-1',
+            })

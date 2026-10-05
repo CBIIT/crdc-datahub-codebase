@@ -1,6 +1,7 @@
 """Unit tests for MongoDao.set_submission_validation_status, especially scope='new' only-update-if-worse behavior."""
 import pytest
 from unittest.mock import MagicMock, patch
+from pymongo import errors
 
 from common.mongo_dao import MongoDao
 from common.constants import (
@@ -165,6 +166,68 @@ def test_atomic_update_validation_matches_expected_status(mock_client_class):
     )
     query = mock_validation_collection.find_one_and_update.call_args[0][0]
     assert query == {ID: "val_1", VALIDATION_STATUS: "Validating"}
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_get_submission_reraises_read_errors(mock_client_class):
+    """A submission read exception is not converted into a missing submission."""
+    mock_submission_collection = _setup_mock_db(mock_client_class)
+    mock_submission_collection.find_one.side_effect = errors.PyMongoError("db error")
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    with pytest.raises(errors.PyMongoError):
+        dao.get_submission("sub_1")
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_get_file_reraises_read_errors(mock_client_class):
+    """A file read exception is not converted into a missing file."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_db = MagicMock()
+    mock_client.__getitem__.return_value = mock_db
+    mock_file_collection = MagicMock()
+    mock_file_collection.find_one.side_effect = errors.PyMongoError("db error")
+
+    def db_getitem(key):
+        if key == DATA_COLLECTION:
+            return mock_file_collection
+        return MagicMock()
+
+    mock_db.__getitem__.side_effect = db_getitem
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    with pytest.raises(errors.PyMongoError):
+        dao.get_file("file_1")
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_get_validation_reraises_read_errors(mock_client_class):
+    """A validation read exception is not converted into a missing validation."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_db = MagicMock()
+    mock_client.__getitem__.return_value = mock_db
+    mock_validation_collection = MagicMock()
+    mock_validation_collection.find_one.side_effect = errors.PyMongoError("db error")
+
+    def db_getitem(key):
+        if key == VALIDATION_COLLECTION:
+            return mock_validation_collection
+        return MagicMock()
+
+    mock_db.__getitem__.side_effect = db_getitem
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    with pytest.raises(errors.PyMongoError):
+        dao.get_validation("val_1")
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_set_cross_submission_status_reraises_write_errors(mock_client_class):
+    """A cross-submission write exception is not converted into a false result."""
+    mock_submission_collection = _setup_mock_db(mock_client_class)
+    mock_submission_collection.update_one.side_effect = errors.PyMongoError("db error")
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    with pytest.raises(errors.PyMongoError):
+        dao.set_cross_submission_status({ID: "sub_1"}, STATUS_ERROR)
 
 
 @patch("common.mongo_dao.MongoClient")
