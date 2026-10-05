@@ -17,17 +17,7 @@ def readFile(file_name):
 def setVersions(parsed_file):
     for svc in parsed_file['services']:
         envVarName = svc.upper() + '_IMAGE'
-        new_version = os.environ.get(envVarName)
-
-        if new_version is None:
-            # Env var wasn't exported this run (e.g. commented out in the
-            # workflow because this service isn't being deployed). Leave
-            # its existing version untouched instead of crashing.
-            print("Skipping '{}': {} not set, keeping existing version ({})".format(
-                svc, envVarName, parsed_file['services'][svc].get('version')))
-            continue
-
-        parsed_file['services'][svc]['version'] = new_version
+        parsed_file['services'][svc]['version'] = os.environ[envVarName]
 
     return parsed_file
 
