@@ -109,7 +109,7 @@ def essentialValidate(configs, job_queue, mongo_dao):
                                 batch[ERRORS] = batch[ERRORS][:BATCH_ERROR_LIMIT]
                             mongo_dao.update_batch(batch)
                             if validator.submission and submission_meta_status == STATUS_NEW:
-                                mongo_dao.set_submission_validation_status(validator.submission, None, submission_meta_status, None, None)
+                                mongo_dao.set_submission_validation_status(validator.submission, None, submission_meta_status, None)
                     
                     elif data.get(SQS_TYPE) == TYPE_DELETE and data.get(SUBMISSION_ID) and data.get(NODE_TYPE):
                         # if both nodeIDs and deleteAll are not provided, raise error
@@ -146,7 +146,7 @@ def essentialValidate(configs, job_queue, mongo_dao):
                                 status = STATUS_PASSED if status in [STATUS_ERROR, STATUS_WARNING] else status
                                 file_status = STATUS_ERROR if combined_file_errors else None
                                 mongo_dao.set_submission_validation_status(
-                                    submission_for_update, file_status, status, None, combined_file_errors, True
+                                    submission_for_update, file_status, status, combined_file_errors, True
                                 )
                     else:
                         log.error(f'Invalid message: {data}!')
