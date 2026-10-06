@@ -51,7 +51,7 @@ describe("user info verifier test", () => {
     test("verify role - valid role", () => {
         session.userInfo.role = ROLES.USER;
         const sessionVerifier = verifySession(session);
-        expect(() => {sessionVerifier.verifyRole([ROLES.ADMIN, ROLES.USER])}).not.toThrowError();
+        expect(() => {sessionVerifier.verifyRole([ROLES.ADMIN, ROLES.USER])}).not.toThrow();
     });
 
 

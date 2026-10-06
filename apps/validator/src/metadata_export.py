@@ -157,7 +157,7 @@ class ExportMetadata:
             submitter = {"name": submitter.get("firstName") + " " + submitter.get("lastName"), "email": submitter.get("email"), "institution": submitter.get("institution", {}).get("name")}                                      
         self.release_manifest_data = {"submission ID": submission_id, "submission creation date": convert_date_time(self.submission.get(CREATED_AT), "%Y-%m-%d %H:%M:%S"), 
                                       "submission release date": get_date_time("%Y-%m-%d %H:%M:%S"), "study": study, "submitter": submitter,
-                                      "data concierge": {"name": self.submission.get("conciergeName"), "email": self.submission.get("conciergeEmail")},
+                                      "data concierge": self._resolve_concierge(),
                                       "data model version": self.submission.get("modelVersion"), "intention": self.submission.get(SUBMISSION_INTENTION),
                                       "submission type": self.submission_type,
                                       "metadata files": {"number of metadata files": 0, "metadata files": []},
@@ -189,7 +189,19 @@ class ExportMetadata:
         #5 export release manifest file as release-info.json
         self.upload_release_manifest()
 
+    def _resolve_concierge(self):
+        """Resolves the concierge information block based on available information"""
+        concierge_id = self.submission.get("conciergeID")
+        if not concierge_id:
+            return {"name": None, "email": None}
         
+        concierge = self.mongo_dao.find_user_by_id(concierge_id)
+        if not concierge:
+            return {"name": None, "email": None}
+        
+        name = " ".join(part for part in (concierge.get("firstName"), concierge.get("lastName")) if part) or None
+        return {"name": name, "email": concierge.get("email")}
+
     def export(self, submission_id, node_type):
         start_index = 0
         rows = []

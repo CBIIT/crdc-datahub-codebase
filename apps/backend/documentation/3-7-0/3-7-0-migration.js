@@ -8,6 +8,7 @@
  * - ensure-indexes-migration.js: Create catalog indexes (recurring step)
  * - sync-pbac-defaults-migration.js: Sync PBAC defaults from JSON (recurring step)
  * - backfill-application-sequence-number.js: Backfill Application.sequenceNumber where missing
+ * - backfill-application-questionnaire-data.js: Convert Application.questionnaireData from JSON string to object
  * - backfill-submission-submission-request-id.js: Backfill Submission.submissionRequestID from study.applicationID
  * - backfill-getPendingConditionsAtApproval.js: Backfill ApprovedStudy.pendingConditionsAtApproval where missing
  * - dedupe-review-comments.js: Clear review comments copied onto "In Revision" events (CRDCDH-3894)
@@ -22,6 +23,7 @@ const {
 const { executeEnsureIndexes } = require('./ensure-indexes-migration');
 const { executeSyncPbacDefaults } = require('./sync-pbac-defaults-migration');
 const { executeBackfillApplicationSequenceNumber } = require('./backfill-application-sequence-number');
+const { executeBackfillApplicationQuestionnaireData } = require('./backfill-application-questionnaire-data');
 const { executeBackfillSubmissionRequestID } = require('./backfill-submission-submission-request-id');
 const { executeBackfillGetPendingConditionsAtApproval } = require('./backfill-getPendingConditionsAtApproval');
 const { executeDedupeReviewComments } = require('./dedupe-review-comments');
@@ -53,6 +55,11 @@ async function orchestrateMigration() {
                 name: 'Backfill Application.sequenceNumber',
                 file: 'backfill-application-sequence-number.js',
                 execute: () => executeBackfillApplicationSequenceNumber(db)
+            },
+            {
+                name: 'Convert Application.questionnaireData to object',
+                file: 'backfill-application-questionnaire-data.js',
+                execute: () => executeBackfillApplicationQuestionnaireData(db)
             },
             {
                 name: 'Backfill Submission.submissionRequestID',

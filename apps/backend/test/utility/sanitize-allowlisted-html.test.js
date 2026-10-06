@@ -133,12 +133,17 @@ describe('PRESET_NOTIFICATION_TEXT_HTML via sanitizeAllowlistedHtml', () => {
         expect(out).toContain('<u>underlined</u>');
     });
 
-    it('strips anchor tags but keeps inner text', () => {
-        const html = 'Contact <a href="https://evil.com">Click Here</a> for info.';
+    it('allows https hyperlinks with forced rel', () => {
+        const html = '<a href="https://example.com">Click Here</a>';
         const out = sanitize(html);
-        expect(out).not.toMatch(/<a[\s>]/);
-        expect(out).not.toContain('href');
+        expect(out).toContain('https://example.com');
         expect(out).toContain('Click Here');
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
+
+    it('strips javascript: URLs', () => {
+        const out = sanitize('<a href="javascript:alert(1)">bad</a>');
+        expect(out).not.toMatch(/javascript:/i);
     });
 
     it('strips script tags completely', () => {
@@ -155,26 +160,26 @@ describe('PRESET_NOTIFICATION_TEXT_HTML via sanitizeAllowlistedHtml', () => {
         expect(out).toContain('Normal text');
     });
 
-    it('strips block-level tags like p, div, span', () => {
-        const html = '<p>paragraph</p><div>div</div><span>span</span>';
+    it('preserves paragraphs, spans, and lists', () => {
+        const html = '<p>paragraph</p><span>span</span><ul><li>item</li></ul>';
         const out = sanitize(html);
-        expect(out).not.toMatch(/<p>/);
+        expect(out).toContain('<p>paragraph</p>');
+        expect(out).toContain('<span>span</span>');
+        expect(out).toContain('<ul>');
+        expect(out).toContain('<li>item</li>');
         expect(out).not.toMatch(/<div>/);
-        expect(out).not.toMatch(/<span>/);
-        expect(out).toContain('paragraph');
-        expect(out).toContain('div');
-        expect(out).toContain('span');
     });
 
-    it('strips list tags', () => {
-        const html = '<ul><li>item</li></ul>';
+    it('preserves a list with a safe https link', () => {
+        const html = '<ul><li><a href="https://datacommons.cancer.gov">Portal</a></li></ul>';
         const out = sanitize(html);
-        expect(out).not.toMatch(/<ul>/);
-        expect(out).not.toMatch(/<li>/);
-        expect(out).toContain('item');
+        expect(out).toContain('<ul>');
+        expect(out).toContain('<li>');
+        expect(out).toMatch(/href="https:\/\/datacommons\.cancer\.gov"/);
+        expect(out).toMatch(/rel="noopener noreferrer"/);
     });
 
-    it('strips all attributes from allowed tags', () => {
+    it('strips class, style, and onclick from allowed tags', () => {
         const html = '<b class="highlight" style="color:red" onclick="alert(1)">bold</b>';
         const out = sanitize(html);
         expect(out).toBe('<b>bold</b>');
@@ -186,11 +191,12 @@ describe('PRESET_NOTIFICATION_TEXT_HTML via sanitizeAllowlistedHtml', () => {
         expect(out).toBe(html);
     });
 
-    it('strips injected anchor from user-controlled study name', () => {
-        const html = 'The Data Submission for the <b><a href="https://evil.com">Fake Study</a></b> study has been completed.';
+    it('keeps nested bold around a sanitized javascript link', () => {
+        const html = 'The Data Submission for the <b><a href="javascript:alert(1)">Fake Study</a></b> study has been completed.';
         const out = sanitize(html);
-        expect(out).not.toMatch(/<a[\s>]/);
-        expect(out).toContain('<b>Fake Study</b>');
+        expect(out).not.toMatch(/javascript:/i);
+        expect(out).toContain('<b>');
+        expect(out).toContain('Fake Study');
     });
 });
 

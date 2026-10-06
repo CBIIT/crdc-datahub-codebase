@@ -75,19 +75,17 @@ describe("run", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                firstName: "Bob",
-                lastName: "Smith",
-                email: "some.mock@example.com",
-                address: "756 A Mock Address, Apt 1",
-                position: "Mock Position",
-                ORCID: "Some ORCID which isn't actually valid",
-                institution: "Missing ID", // This will be updated
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              firstName: "Bob",
+              lastName: "Smith",
+              email: "some.mock@example.com",
+              address: "756 A Mock Address, Apt 1",
+              position: "Mock Position",
+              ORCID: "Some ORCID which isn't actually valid",
+              institution: "Missing ID", // This will be updated
+            }),
+          }),
         },
       },
     });
@@ -147,13 +145,11 @@ describe("run", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                institution: "I was populated without an ID!!!", // This will be updated
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              institution: "I was populated without an ID!!!", // This will be updated
+            }),
+          }),
         },
       },
     });
@@ -198,14 +194,12 @@ describe("run", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                institution: "an outdated value from an old form", // This will be updated
-                institutionID: mockInstitutions[0]._id,
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              institution: "an outdated value from an old form", // This will be updated
+              institutionID: mockInstitutions[0]._id,
+            }),
+          }),
         },
       },
     });
@@ -254,14 +248,12 @@ describe("run", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                firstName: "PreviousApp",
-                lastName: "PI",
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              firstName: "PreviousApp",
+              lastName: "PI",
+            }),
+          }),
         },
       },
     });
@@ -335,7 +327,7 @@ describe("_migrateLastApp", () => {
       mockGetLastApplication.mockResolvedValue({
         data: {
           getMyLastApplication: {
-            questionnaireData: JSON.stringify(lastAppData),
+            questionnaireData: lastAppData,
           },
         },
       });
@@ -380,14 +372,12 @@ describe("_migrateLastApp", () => {
     mockGetLastApplication.mockResolvedValue({
       data: {
         getMyLastApplication: {
-          questionnaireData: JSON.stringify(
-            questionnaireDataFactory.build({
-              pi: piFactory.build({
-                firstName: "SHOULD NOT POPULATE",
-                lastName: "NOT CALLED BY API",
-              }),
-            })
-          ),
+          questionnaireData: questionnaireDataFactory.build({
+            pi: piFactory.build({
+              firstName: "SHOULD NOT POPULATE",
+              lastName: "NOT CALLED BY API",
+            }),
+          }),
         },
       },
     });
@@ -1866,6 +1856,173 @@ describe("_migrateInactiveProgram", () => {
     const result = migrator.getData();
 
     expect(result.program).toBeNull();
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+});
+
+describe("_migrateNotApplicableProgram", () => {
+  const systemProgram = {
+    _id: "437e864a-621b-40f5-b214-3dc368137081",
+    name: "NA",
+    abbreviation: "NA",
+    description: "This is a catch-all place for all studies without a program associated.",
+    readOnly: true,
+  };
+
+  const buildMigrator = (data: QuestionnaireData, activePrograms) =>
+    new QuestionnaireDataMigrator(data, {
+      getInstitutions: mockGetInstitutions,
+      newInstitutions: [],
+      getLastApplication: mockGetLastApplication,
+      activePrograms,
+    });
+
+  const expectedProgram = {
+    _id: "437e864a-621b-40f5-b214-3dc368137081",
+    name: "NA",
+    abbreviation: "NA",
+    description: "This is a catch-all place for all studies without a program associated.",
+  };
+
+  it("should migrate a hard-coded 'Not Applicable' program onto the system managed program", async () => {
+    const data = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: "Not Applicable",
+        name: "",
+        abbreviation: "",
+        description: "",
+      }),
+    });
+
+    const migrator = buildMigrator(data, [{ _id: v4() }, systemProgram]);
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateNotApplicableProgram();
+
+    expect(migrator.getData().program).toEqual(expectedProgram);
+    expect(Logger.info).toHaveBeenCalledWith(
+      "_migrateNotApplicableProgram: Migrating Not Applicable program",
+      expect.objectContaining({ _id: "Not Applicable" })
+    );
+  });
+
+  it("should migrate a pre-3.2.0 program using the notApplicable flag", async () => {
+    const data = questionnaireDataFactory.build({
+      program: {
+        _id: "",
+        name: "",
+        abbreviation: "",
+        description: "",
+        notApplicable: true,
+      } as ProgramInput,
+    });
+
+    const migrator = buildMigrator(data, [systemProgram]);
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateNotApplicableProgram();
+
+    expect(migrator.getData().program).toEqual(expectedProgram);
+  });
+
+  it("should update stale values on a program already using the real _id", async () => {
+    const data = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: "437e864a-621b-40f5-b214-3dc368137081",
+        name: "Outdated NA",
+        abbreviation: "OLD",
+        description: "An outdated description",
+      }),
+    });
+
+    const migrator = buildMigrator(data, [systemProgram]);
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateNotApplicableProgram();
+
+    expect(migrator.getData().program).toEqual(expectedProgram);
+  });
+
+  it("should not migrate when the values already match", async () => {
+    const data = questionnaireDataFactory.build({
+      program: programInputFactory.build(expectedProgram),
+    });
+
+    const migrator = buildMigrator(data, [systemProgram]);
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateNotApplicableProgram();
+
+    expect(migrator.getData()).toEqual(data);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should not migrate when no system managed program is available", async () => {
+    const data = questionnaireDataFactory.build({
+      program: programInputFactory.build({
+        _id: "Not Applicable",
+        name: "",
+        abbreviation: "",
+        description: "",
+      }),
+    });
+
+    const migrator = buildMigrator(data, [{ _id: v4() }]);
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateNotApplicableProgram();
+
+    expect(migrator.getData()).toEqual(data);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it("should not migrate when a readOnly program is not named 'NA'", async () => {
+    const data = questionnaireDataFactory.build({
+      program: programInputFactory.build({ _id: "Not Applicable" }),
+    });
+
+    const migrator = buildMigrator(data, [
+      { _id: v4(), name: "Some System Program", readOnly: true },
+    ]);
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateNotApplicableProgram();
+
+    expect(migrator.getData()).toEqual(data);
+    expect(Logger.info).not.toHaveBeenCalled();
+  });
+
+  it.each(["Other", "0f1d9cbd-8b0d-4a1e-9f8a-5a2c1e3b7d90"])(
+    "should not migrate a program with _id '%s'",
+    async (programId) => {
+      const data = questionnaireDataFactory.build({
+        program: programInputFactory.build({
+          _id: programId,
+          name: "Custom Program",
+          abbreviation: "CP",
+          description: "A custom program",
+        }),
+      });
+
+      const migrator = buildMigrator(data, [systemProgram]);
+
+      // @ts-expect-error Calling private helper function
+      await migrator._migrateNotApplicableProgram();
+
+      expect(migrator.getData()).toEqual(data);
+      expect(Logger.info).not.toHaveBeenCalled();
+    }
+  );
+
+  it("should not migrate when program is null", async () => {
+    const data = questionnaireDataFactory.build({ program: null });
+
+    const migrator = buildMigrator(data, [systemProgram]);
+
+    // @ts-expect-error Calling private helper function
+    await migrator._migrateNotApplicableProgram();
+
+    expect(migrator.getData().program).toBeNull();
     expect(Logger.info).not.toHaveBeenCalled();
   });
 });

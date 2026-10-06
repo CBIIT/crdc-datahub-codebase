@@ -12,3 +12,4 @@ coverage
 dist/
 generated/prisma/
 integration-tests/
+cache/email-content/

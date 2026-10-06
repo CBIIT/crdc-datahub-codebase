@@ -54,7 +54,11 @@ const Stat = {
 jest.mock('../../utility/validation-handler', () => ({
   ValidationHandler: {
     success: jest.fn(() => ({ success: true })),
-    handle: jest.fn((errors) => ({ success: false, errors }))
+    handle: jest.fn((errors) => ({
+      success: false,
+      errors,
+      message: Array.isArray(errors) ? errors.join(', ') : errors
+    }))
   }
 }));
 
@@ -421,67 +425,60 @@ describe('DataRecordService', () => {
   });
 
   describe('resetDataRecords', () => {
-    test('should reset data records status', async () => {
-      DataRecordModel.updateMany.mockResolvedValue({ modifiedCount: 10 });
+    test('should delegate submissionID and status to the data record DAO', async () => {
+      const updateResult = { acknowledged: true, matchedCount: 10, modifiedCount: 10 };
+      dataRecordService.dataRecordDAO.resetDataRecords = jest.fn()
+        .mockResolvedValue(updateResult);
 
       const result = await dataRecordService.resetDataRecords('submission-123', 'New');
 
-      expect(result).toEqual({ modifiedCount: 10 });
-      expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
-        { submissionID: 'submission-123' },
-        expect.arrayContaining([
-          expect.objectContaining({
-            $set: expect.objectContaining({
-              status: 'New'
-            })
-          })
-        ])
+      expect(result).toEqual(updateResult);
+      expect(dataRecordService.dataRecordDAO.resetDataRecords).toHaveBeenCalledWith(
+        'submission-123',
+        'New'
       );
     });
   });
 
   describe('resetS3FileLinkedMetadataStatusToNew', () => {
-    test('should update by file names and set New only on s3FileInfo', async () => {
-      DataRecordModel.updateMany.mockResolvedValue({ modifiedCount: 2 });
+    test('should delegate selected file names to the data record DAO', async () => {
+      const updateResult = { acknowledged: true, modifiedCount: 2, matchedCount: 2 };
+      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest.fn()
+        .mockResolvedValue(updateResult);
 
       const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', ['a.txt', 'b.txt']);
 
-      expect(result).toEqual({ modifiedCount: 2 });
-        expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
-        {
-          submissionID: 'sub-1',
-          s3FileInfo: { $exists: true, $ne: null },
-          's3FileInfo.fileName': { $in: ['a.txt', 'b.txt'] }
-        },
-        expect.arrayContaining([
-          expect.objectContaining({
-            $set: expect.objectContaining({
-              s3FileInfo: { $mergeObjects: ['$s3FileInfo', { status: 'New' }] }
-            })
-          })
-        ])
+      expect(result).toEqual(updateResult);
+      expect(dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith(
+        'sub-1',
+        ['a.txt', 'b.txt']
       );
     });
 
-    test('should match all s3FileInfo records when fileNames is null', async () => {
-      DataRecordModel.updateMany.mockResolvedValue({ modifiedCount: 5 });
+    test('should delegate null to target all linked file metadata', async () => {
+      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest.fn()
+        .mockResolvedValue({ acknowledged: true, modifiedCount: 5, matchedCount: 5 });
 
       await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', null);
 
-      expect(DataRecordModel.updateMany).toHaveBeenCalledWith(
-        {
-          submissionID: 'sub-1',
-          s3FileInfo: { $exists: true, $ne: null }
-        },
-        expect.any(Array)
+      expect(dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith(
+        'sub-1',
+        null
       );
     });
 
-    test('should no-op for empty fileNames array', async () => {
+    test('should preserve the DAO no-op result for an empty fileNames array', async () => {
+      const noOpResult = { acknowledged: true, modifiedCount: 0, matchedCount: 0 };
+      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest.fn()
+        .mockResolvedValue(noOpResult);
+
       const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', []);
 
-      expect(result).toEqual({ acknowledged: true, modifiedCount: 0, matchedCount: 0 });
-      expect(DataRecordModel.updateMany).not.toHaveBeenCalled();
+      expect(result).toEqual(noOpResult);
+      expect(dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith(
+        'sub-1',
+        []
+      );
     });
   });
 
@@ -1201,6 +1198,150 @@ describe('DataRecordService', () => {
     test('returns empty array when query is an array', async () => {
       expect(await dataRecordDAO.getDistinctPropsTopLevelKeys([{ $match: {} }])).toEqual([]);
       expect(DataRecordModel.aggregate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('initializeDataValidation', () => {
+    test('sets totalFileMessages to file count plus orphan detection message', async () => {
+      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([
+        { _id: 'file-1' },
+        { _id: 'file-2' },
+      ]);
+      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue([]);
+      mockAwsService.sendSQSMessage.mockResolvedValue();
+
+      const result = await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.FILE],
+        VALIDATION.SCOPE.ALL,
+        'validation-1'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.totalFileMessages).toBe(3);
+      expect(result.failedFileCount).toBe(0);
+      expect(dataRecordService._sendBatchSQSMessage).toHaveBeenCalled();
+    });
+
+    test('sets totalFileMessages to 1 when there are no file nodes', async () => {
+      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([]);
+      mockAwsService.sendSQSMessage.mockResolvedValue();
+
+      const result = await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.DATA_FILE],
+        VALIDATION.SCOPE.NEW,
+        'validation-1'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.totalFileMessages).toBe(1);
+      expect(result.failedFileCount).toBe(0);
+    });
+
+    test('counts per-file and submission-level enqueue failures in failedFileCount', async () => {
+      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([{ _id: 'file-1' }]);
+      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue(['file send failed']);
+      mockAwsService.sendSQSMessage.mockRejectedValue(new Error('sqs error'));
+
+      const result = await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.FILE],
+        VALIDATION.SCOPE.ALL,
+        'validation-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.totalFileMessages).toBe(2);
+      expect(result.failedFileCount).toBe(2);
+    });
+
+    test('persists totalFileMessages before enqueueing file messages', async () => {
+      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([
+        { _id: 'file-1' },
+        { _id: 'file-2' },
+      ]);
+      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue([]);
+      mockAwsService.sendSQSMessage.mockResolvedValue();
+      const mockValidationDAO = { update: jest.fn().mockResolvedValue({}) };
+
+      const result = await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.FILE],
+        VALIDATION.SCOPE.ALL,
+        'validation-1',
+        mockValidationDAO
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockValidationDAO.update).toHaveBeenCalledWith('validation-1', { totalFileMessages: 3 });
+      expect(mockValidationDAO.update.mock.invocationCallOrder[0]).toBeLessThan(
+        dataRecordService._sendBatchSQSMessage.mock.invocationCallOrder[0]
+      );
+    });
+
+    // A failed totalFileMessages write is a file validation error and must not enqueue any file messages.
+    test('does not enqueue file messages when persisting totalFileMessages fails', async () => {
+      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([{ _id: 'file-1' }]);
+      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue([]);
+      const mockValidationDAO = { update: jest.fn().mockRejectedValue(new Error('db down')) };
+
+      const result = await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.FILE],
+        VALIDATION.SCOPE.ALL,
+        'validation-1',
+        mockValidationDAO
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.failedFileCount).toBe(2);
+      expect(result.fileTotalsPersisted).toBe(false);
+      expect(result.message).toContain(ERRORS.FAILED_VALIDATE_FILE);
+      expect(dataRecordService._sendBatchSQSMessage).not.toHaveBeenCalled();
+      expect(mockAwsService.sendSQSMessage).not.toHaveBeenCalled();
+    });
+
+    test('persists totalBatches before enqueueing metadata batch messages', async () => {
+      jest.spyOn(dataRecordService, '_getCount').mockResolvedValue(2);
+      jest.spyOn(dataRecordService, '_getDataRecordIds').mockResolvedValue(['r1', 'r2']);
+      mockAwsService.sendSQSMessage.mockResolvedValue();
+      const mockValidationDAO = { update: jest.fn().mockResolvedValue({}) };
+
+      await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.METADATA],
+        VALIDATION.SCOPE.ALL,
+        'validation-1',
+        mockValidationDAO
+      );
+
+      expect(mockValidationDAO.update).toHaveBeenCalledWith('validation-1', { totalBatches: 1 });
+      expect(mockValidationDAO.update.mock.invocationCallOrder[0]).toBeLessThan(
+        mockAwsService.sendSQSMessage.mock.invocationCallOrder[0]
+      );
+    });
+
+    // A failed totalBatches write counts every batch as failed and must not enqueue metadata messages.
+    test('does not enqueue metadata batches when persisting totalBatches fails', async () => {
+      jest.spyOn(dataRecordService, '_getCount').mockResolvedValue(2);
+      jest.spyOn(dataRecordService, '_getDataRecordIds').mockResolvedValue(['r1', 'r2']);
+      const mockValidationDAO = { update: jest.fn().mockRejectedValue(new Error('db down')) };
+
+      const result = await dataRecordService.initializeDataValidation(
+        'sub-1',
+        [VALIDATION.TYPES.METADATA],
+        VALIDATION.SCOPE.ALL,
+        'validation-1',
+        mockValidationDAO
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.failedCount).toBe(result.totalBatches);
+      expect(result.metadataTotalsPersisted).toBe(false);
+      expect(result.message).toContain(ERRORS.FAILED_VALIDATE_METADATA);
+      expect(result.message).toContain('Failed to persist totalBatches');
+      expect(mockAwsService.sendSQSMessage).not.toHaveBeenCalled();
     });
   });
 });

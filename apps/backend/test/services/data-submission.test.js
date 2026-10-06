@@ -2394,7 +2394,7 @@ describe('Submission.validateSubmission', () => {
         };
 
         mockDataRecordService = {
-            validateMetadata: jest.fn()
+            initializeDataValidation: jest.fn()
         };
 
         // Create submission service with mocked dependencies
@@ -2507,7 +2507,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._isCollaborator.mockReturnValue(true);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         const result = await submissionService.validateSubmission(mockParams, mockContext);
@@ -2524,7 +2524,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._getUserScope.mockResolvedValue(mockCreateScope);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         await submissionService.validateSubmission(mockParams, mockContext);
@@ -2541,7 +2541,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._getUserScope.mockResolvedValue(mockCreateScope);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         await submissionService.validateSubmission(mockParams, mockContext);
@@ -2550,6 +2550,203 @@ describe('Submission.validateSubmission', () => {
             totalBatches: 5,
             status: VALIDATION_STATUS.ERROR,
             statusDetail: ['Failed to enqueue 2 of 5 batch messages']
+        });
+    });
+
+    // validateSubmission must pass the validation DAO so totals are stored before messages are enqueued.
+    it('should write totalFileMessages to validation document on successful file validation', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = { success: true, totalFileMessages: 4, failedFileCount: 0 };
+        mockParams.types = [VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', { totalFileMessages: 4 });
+        expect(mockDataRecordService.initializeDataValidation).toHaveBeenCalledWith(
+            mockParams._id,
+            mockParams.types,
+            mockParams.scope,
+            mockValidationRecord.id,
+            mockValidationDAO
+        );
+    });
+
+    it('should skip the total write when persisting totalFileMessages failed', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate file',
+            totalFileMessages: 2,
+            failedFileCount: 2,
+            fileTotalsPersisted: false,
+        };
+        mockParams.types = [VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).not.toHaveBeenCalled();
+        expect(submissionService._updateValidationStatus).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            mockValidationRecord,
+        );
+    });
+
+    // A failed totalBatches write must not store that total, even though the count was returned.
+    it('should skip the total write when persisting totalBatches failed', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate metadata',
+            totalBatches: 3,
+            failedCount: 3,
+            metadataTotalsPersisted: false,
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).not.toHaveBeenCalled();
+    });
+
+    // When only file totals were stored, the validation update includes that count and omits totalBatches.
+    it('should write only the totals that were persisted', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: true,
+            totalBatches: 3,
+            failedCount: 0,
+            metadataTotalsPersisted: false,
+            totalFileMessages: 4,
+            failedFileCount: 0,
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA, VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', { totalFileMessages: 4 });
+    });
+
+    it('should mark validation as Error with statusDetail on partial file SQS send failure', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate file',
+            totalFileMessages: 10,
+            failedFileCount: 2
+        };
+        mockParams.types = [VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalFileMessages: 10,
+            status: VALIDATION_STATUS.ERROR,
+            statusDetail: ['Failed to enqueue 2 of 10 file messages']
+        });
+    });
+
+    it('should write totalBatches and totalFileMessages when both are returned', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: true,
+            totalBatches: 3,
+            failedCount: 0,
+            totalFileMessages: 2,
+            failedFileCount: 0
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA, VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalBatches: 3,
+            totalFileMessages: 2
+        });
+    });
+
+    it('should include batch and file statusDetail when both enqueue attempts fail', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate metadata, Failed to validate file',
+            totalBatches: 5,
+            failedCount: 2,
+            totalFileMessages: 10,
+            failedFileCount: 1
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA, VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalBatches: 5,
+            totalFileMessages: 10,
+            status: VALIDATION_STATUS.ERROR,
+            statusDetail: [
+                'Failed to enqueue 2 of 5 batch messages',
+                'Failed to enqueue 1 of 10 file messages'
+            ]
         });
     });
 
@@ -2562,7 +2759,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._getUserScope.mockResolvedValue(mockCreateScope);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         await submissionService.validateSubmission(mockParams, mockContext);
@@ -3081,5 +3278,28 @@ describe('Submission._recordSubmissionValidation and _updateValidationStatus', (
             'sub1',
             expect.objectContaining({ fileValidationStatus: VALIDATION_STATUS.VALIDATING })
         );
+    });
+
+    // When rollback changes no submission fields, the validation record is still marked Error and given an end time.
+    it('marks the validation record Error when no submission field changes', async () => {
+        const validationRecord = { id: 'validation1' };
+        submissionService.validationDAO = mockValidationDAO;
+        mockValidationDAO.update.mockResolvedValue(validationRecord);
+
+        await submissionService._updateValidationStatus(
+            [VALIDATION.TYPES.DATA_FILE],
+            { _id: 'sub1', metadataValidationStatus: VALIDATION_STATUS.NEW },
+            'NA',
+            VALIDATION_STATUS.NEW,
+            'NA',
+            new Date(),
+            validationRecord
+        );
+
+        expect(mockSubmissionDAO.update).not.toHaveBeenCalled();
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', expect.objectContaining({
+            status: 'Error',
+            ended: expect.any(Date),
+        }));
     });
 });

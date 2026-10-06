@@ -103,6 +103,6 @@ describe('getCCEmails', () => {
 
 function buildApplication(questionnaire) {
     return {
-        questionnaireData: JSON.stringify(questionnaire)
+        questionnaireData: questionnaire
     }
 }

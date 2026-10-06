@@ -52,7 +52,8 @@ describe('ApprovedStudiesService', () => {
             findByStudyID: jest.fn(),
             findOneByStudyID: jest.fn(),
             getProgramByID: jest.fn(),
-            getProgramByName: jest.fn()
+            getProgramByName: jest.fn(),
+            getDefaultProgram: jest.fn()
         };
         mockAuthorizationService = {
             getPermissionScope: jest.fn()
@@ -108,7 +109,7 @@ describe('ApprovedStudiesService', () => {
             email: 'jane.smith@test.com',
             role: USER.USER.ROLES.DATA_COMMONS_PERSONNEL
         };
-        const mockOrg = { _id: 'org-id', name: 'NA' };
+        const mockOrg = { _id: 'org-id', name: 'NA', readOnly: true };
         const mockNewStudy = { _id: 'new-study-id', studyName: 'New Study', studyAbbreviation: 'NS' };
         const mockDisplayStudy = { ...mockNewStudy, dataCommonsDisplayName: 'New Study Display Name' };
         const mockDisplayUser = { ...mockPrimaryContact, dataCommonsDisplayNames: ['Jane Smith'] };
@@ -120,7 +121,7 @@ describe('ApprovedStudiesService', () => {
             service._validateStudyName = jest.fn().mockResolvedValue(true);
             service._findUserByID = jest.fn().mockResolvedValue(mockPrimaryContact);
             service.storeApprovedStudies = jest.fn().mockResolvedValue({_id: 'new-study-id'});
-            service.programService.getProgramByName = jest.fn().mockResolvedValue(mockOrg);
+            service.programService.getDefaultProgram = jest.fn().mockResolvedValue(mockOrg);
             service.programService.storeApprovedStudies = jest.fn().mockResolvedValue();
             getDataCommonsDisplayNamesForApprovedStudy.mockReturnValue(mockDisplayStudy);
             getDataCommonsDisplayNamesForUser.mockReturnValue(mockDisplayUser);
@@ -134,7 +135,7 @@ describe('ApprovedStudiesService', () => {
             expect(service._findUserByID).toHaveBeenCalledWith('contact-id');
             expect(service.storeApprovedStudies).toHaveBeenCalledWith(
                 null, 'New Study', 'NS', 'phs001234', null, true, '0000-0002-1825-0097', 'Dr. New', false, false, false, 'contact-id', mockGPA, 'org-id', undefined);
-            expect(service.programService.getProgramByName).toHaveBeenCalledWith('NA');
+            expect(service.programService.getDefaultProgram).toHaveBeenCalled();
             expect(result).toEqual({_id: 'new-study-id'});
         });
 
@@ -340,7 +341,7 @@ describe('ApprovedStudiesService', () => {
             // Mock the organization service to return programs when finding by study ID
             service.programService.findOneByStudyID = jest.fn().mockResolvedValue(mockPrograms[0]);
             service.programService.getProgramByID = jest.fn().mockResolvedValue(mockPrograms[0]);
-            service.programService.getProgramByName = jest.fn().mockResolvedValue({_id: 'org-id', name: 'NA'});
+            service.programService.getDefaultProgram = jest.fn().mockResolvedValue({_id: 'org-id', name: 'NA', readOnly: true});
             service.submissionDAO.updateMany = jest.fn().mockResolvedValue({ count: 0 });
             service._getConcierge = jest.fn().mockReturnValue(['Concierge Name', 'concierge@email.com']);
             getDataCommonsDisplayNamesForApprovedStudy.mockReturnValue(mockDisplayStudy);
@@ -1666,11 +1667,12 @@ describe('ApprovedStudiesService', () => {
             expect(callArgs[0]).toBeNull();
         });
 
-        describe('NA program fallback behavior', () => {
-            const mockNAProgram = {
+        describe('default program fallback behavior', () => {
+            const mockDefaultProgram = {
                 _id: '437e864a-621b-40f5-b214-3dc368137081',
                 name: 'NA',
                 abbreviation: 'NA',
+                readOnly: true,
                 status: 'Active'
             };
 
@@ -1681,11 +1683,8 @@ describe('ApprovedStudiesService', () => {
                 };
             });
 
-            it('should fall back to NA program when programID is null', async () => {
-                // Mock getProgramByID to return null (no program found for provided ID)
-                mockProgramService.getProgramByID.mockResolvedValue(null);
-                // Mock getProgramByName to return the NA program
-                mockProgramService.getProgramByName.mockResolvedValue(mockNAProgram);
+            it('should fall back to default program when programID is null', async () => {
+                mockProgramService.getDefaultProgram.mockResolvedValue(mockDefaultProgram);
 
                 await service.storeApprovedStudies(
                     null, studyName, studyAbbreviation, dbGaPID, organizationName, 
@@ -1693,17 +1692,15 @@ describe('ApprovedStudiesService', () => {
                     pendingModelChange, primaryContactID, null, null, undefined // programID is null
                 );
 
-                // Should have looked up NA program by name
-                expect(mockProgramService.getProgramByName).toHaveBeenCalledWith('NA');
+                expect(mockProgramService.getDefaultProgram).toHaveBeenCalled();
+                expect(mockProgramService.getProgramByID).not.toHaveBeenCalled();
                 
-                // Should have created the study with the NA program ID
                 const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];
-                expect(callArgs[13]).toBe(mockNAProgram._id);
+                expect(callArgs[13]).toBe(mockDefaultProgram._id);
             });
 
-            it('should fall back to NA program when programID is undefined', async () => {
-                mockProgramService.getProgramByID.mockResolvedValue(null);
-                mockProgramService.getProgramByName.mockResolvedValue(mockNAProgram);
+            it('should fall back to default program when programID is undefined', async () => {
+                mockProgramService.getDefaultProgram.mockResolvedValue(mockDefaultProgram);
 
                 await service.storeApprovedStudies(
                     null, studyName, studyAbbreviation, dbGaPID, organizationName, 
@@ -1711,10 +1708,10 @@ describe('ApprovedStudiesService', () => {
                     pendingModelChange, primaryContactID, null, undefined, undefined // programID is undefined
                 );
 
-                expect(mockProgramService.getProgramByName).toHaveBeenCalledWith('NA');
+                expect(mockProgramService.getDefaultProgram).toHaveBeenCalled();
                 
                 const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];
-                expect(callArgs[13]).toBe(mockNAProgram._id);
+                expect(callArgs[13]).toBe(mockDefaultProgram._id);
             });
 
             it('should use provided programID when it is valid', async () => {
@@ -1729,10 +1726,8 @@ describe('ApprovedStudiesService', () => {
                     pendingModelChange, primaryContactID, null, validProgramID, undefined
                 );
 
-                // Should have validated the program by ID
                 expect(mockProgramService.getProgramByID).toHaveBeenCalledWith(validProgramID, false);
-                // Should NOT have fallen back to NA program
-                expect(mockProgramService.getProgramByName).not.toHaveBeenCalled();
+                expect(mockProgramService.getDefaultProgram).not.toHaveBeenCalled();
                 
                 const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];
                 expect(callArgs[13]).toBe(validProgramID);
@@ -1752,10 +1747,9 @@ describe('ApprovedStudiesService', () => {
                 ).rejects.toThrow(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
             });
 
-            it('should throw when NA fallback program is inactive', async () => {
-                const inactiveNA = { _id: 'na-id', name: 'NA', status: PROGRAM.STATUSES.INACTIVE };
-                mockProgramService.getProgramByID.mockResolvedValue(null);
-                mockProgramService.getProgramByName.mockResolvedValue(inactiveNA);
+            it('should throw when default fallback program is inactive', async () => {
+                const inactiveDefault = { _id: 'default-id', name: 'NA', readOnly: true, status: PROGRAM.STATUSES.INACTIVE };
+                mockProgramService.getDefaultProgram.mockResolvedValue(inactiveDefault);
 
                 await expect(
                     service.storeApprovedStudies(
@@ -1766,9 +1760,8 @@ describe('ApprovedStudiesService', () => {
                 ).rejects.toThrow(ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM);
             });
 
-            it('should throw error when programID is null and NA program is not found', async () => {
-                mockProgramService.getProgramByID.mockResolvedValue(null);
-                mockProgramService.getProgramByName.mockResolvedValue(null);
+            it('should throw error when programID is null and default program is not found', async () => {
+                mockProgramService.getDefaultProgram.mockResolvedValue(null);
                 
                 const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -1776,21 +1769,22 @@ describe('ApprovedStudiesService', () => {
                     null, studyName, studyAbbreviation, dbGaPID, organizationName, 
                     controlledAccess, ORCID, PI, openAccess, useProgramPC, 
                     pendingModelChange, primaryContactID, null, null, undefined
-                )).rejects.toThrow();
+                )).rejects.toThrow(ERROR.STUDY_CREATION_FAILED);
 
                 expect(consoleSpy).toHaveBeenCalledWith(
                     expect.stringContaining('Unable to find a program with the provided programID')
                 );
+                expect(consoleSpy).toHaveBeenCalledWith(
+                    expect.stringContaining('default program')
+                );
                 consoleSpy.mockRestore();
             });
 
-            it('should fall back to NA program when provided programID does not exist', async () => {
+            it('should fall back to default program when provided programID does not exist', async () => {
                 const invalidProgramID = 'non-existent-program-id';
                 
-                // First call (getProgramByID) returns null - program not found
                 mockProgramService.getProgramByID.mockResolvedValue(null);
-                // Second call (getProgramByName) returns NA program
-                mockProgramService.getProgramByName.mockResolvedValue(mockNAProgram);
+                mockProgramService.getDefaultProgram.mockResolvedValue(mockDefaultProgram);
 
                 await service.storeApprovedStudies(
                     null, studyName, studyAbbreviation, dbGaPID, organizationName, 
@@ -1799,11 +1793,52 @@ describe('ApprovedStudiesService', () => {
                 );
 
                 expect(mockProgramService.getProgramByID).toHaveBeenCalledWith(invalidProgramID, false);
-                expect(mockProgramService.getProgramByName).toHaveBeenCalledWith('NA');
+                expect(mockProgramService.getDefaultProgram).toHaveBeenCalled();
                 
                 const callArgs = ApprovedStudies.createApprovedStudies.mock.calls[0];
-                expect(callArgs[13]).toBe(mockNAProgram._id);
+                expect(callArgs[13]).toBe(mockDefaultProgram._id);
             });
+        });
+    });
+
+    describe('_validateProgramID', () => {
+        const mockDefaultProgram = {
+            _id: 'default-program-id',
+            name: 'NA',
+            readOnly: true,
+            status: PROGRAM.STATUSES.ACTIVE
+        };
+
+        it('should return default program via getDefaultProgram when programID is omitted', async () => {
+            mockProgramService.getDefaultProgram.mockResolvedValue(mockDefaultProgram);
+
+            const result = await service._validateProgramID(null);
+
+            expect(mockProgramService.getProgramByID).not.toHaveBeenCalled();
+            expect(mockProgramService.getDefaultProgram).toHaveBeenCalledTimes(1);
+            expect(result).toBe(mockDefaultProgram);
+        });
+
+        it('should return program from getProgramByID when programID is valid and skip getDefaultProgram', async () => {
+            const validProgram = { _id: 'valid-id', name: 'Custom Program', status: PROGRAM.STATUSES.ACTIVE };
+            mockProgramService.getProgramByID.mockResolvedValue(validProgram);
+
+            const result = await service._validateProgramID('valid-id');
+
+            expect(mockProgramService.getProgramByID).toHaveBeenCalledWith('valid-id', false);
+            expect(mockProgramService.getDefaultProgram).not.toHaveBeenCalled();
+            expect(result).toBe(validProgram);
+        });
+
+        it('should call getDefaultProgram when getProgramByID returns no program', async () => {
+            mockProgramService.getProgramByID.mockResolvedValue(null);
+            mockProgramService.getDefaultProgram.mockResolvedValue(mockDefaultProgram);
+
+            const result = await service._validateProgramID('missing-id');
+
+            expect(mockProgramService.getProgramByID).toHaveBeenCalledWith('missing-id', false);
+            expect(mockProgramService.getDefaultProgram).toHaveBeenCalledTimes(1);
+            expect(result).toBe(mockDefaultProgram);
         });
     });
 

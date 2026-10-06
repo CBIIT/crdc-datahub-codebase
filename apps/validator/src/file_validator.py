@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
 
-import json
 import os
-from bento.common.sqs import VisibilityExtender
 from bento.common.utils import get_logger
 from bento.common.s3 import S3Bucket
+from pymongo import errors
 from common.constants import ERRORS, WARNINGS, STATUS, S3_FILE_INFO, ID, SIZE, MD5, UPDATED_AT, \
-    FILE_NAME, SQS_TYPE, SQS_NAME, FILE_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, SUBMISSION_ID, \
+    FILE_NAME, SQS_TYPE, SQS_NAME, FILE_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, STATUS_FAILED, SUBMISSION_ID, \
     BATCH_BUCKET, SERVICE_TYPE_FILE, LAST_MODIFIED, CREATED_AT, TYPE, SUBMISSION_INTENTION, SUBMISSION_INTENTION_DELETE,\
-    VALIDATION_ID, VALIDATION_ENDED, QC_RESULT_ID, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, FILE_VALIDATION, \
-    DATA_FILE_TYPE, QC_VALIDATION_TYPE, SUBMITTED_ID, BATCH_ID, DISPLAY_ID, UPLOADED_DATE
+    VALIDATION_ID, QC_RESULT_ID, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, \
+    DATA_FILE_TYPE, QC_VALIDATION_TYPE, SUBMITTED_ID, BATCH_ID, DISPLAY_ID, UPLOADED_DATE, FILE_ERRORS, \
+    FILE_VALIDATION_STATUS
+
 from common.utils import get_exception_msg, current_datetime, get_s3_file_info, get_s3_file_md5, create_error, get_uuid_str
+from common.validation_closeout import (
+    FILE_PROGRESS, METADATA_PROGRESS, InvalidValidationMessage, _persisted,
+    process_validation_message, record_type_progress,
+)
 from service.ecs_agent import set_scale_in_protection
 from metadata_validator import get_qc_result
 
 VISIBILITY_TIMEOUT = 20
+
+
+class _RetryableFileRead(Exception):
+    """A file-list read failed. The orphan-scan message should be retried."""
+
+
 """
 Interface for validate files via SQS
 """
@@ -39,74 +50,121 @@ def fileValidate(configs, job_queue, mongo_dao):
 
             for msg in msgs:
                 log.info(f'Received a job!')
-                extender = None
-                data = None
-                validator = None
-                try:
-                    data = json.loads(msg.body)
-                    log.debug(data)
-                    # Make sure job is in correct format
-                    if data.get(SQS_TYPE) == "Validate File" and data.get(FILE_ID):
-                        extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
-                        #1 call mongo_dao to get batch by batch_id
-                        fileRecord = mongo_dao.get_file(data[FILE_ID])
-                        if fileRecord is None: 
-                            msg.delete()
-                            continue
-                        #2. validate file.
-                        validator = FileValidator(mongo_dao)
-                        status = validator.validate(fileRecord)
-                        if status == STATUS_ERROR:
-                            log.error(f'The data file record is invalid, {data[FILE_ID]}!')
-                        elif status == STATUS_WARNING:
-                            log.error(f'The data file record is valid but with warning, {data[FILE_ID]}!')
-                        else:
-                            log.info(f'The data file record passed validation, {data[FILE_ID]}.')
-                        #4. update dataRecords
-                        if not mongo_dao.update_file_info(fileRecord):
-                            log.error(f'Failed to update data file record, {data[FILE_ID]}!')
-                        else:
-                            log.info(f'The data file record is updated,{data[FILE_ID]}.')
-
-                    elif data.get(SQS_TYPE) == "Validate Submission Files" and data.get(SUBMISSION_ID) and data.get(VALIDATION_ID):
-                        extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
-                        submission_id = data[SUBMISSION_ID]
-                        validator = FileValidator(mongo_dao)
-                        status = None
-                        msgs = []
-                        if not validator.get_root_path(submission_id):
-                            log.error(f'Invalid submission, {submission_id}!')
-                            status = STATUS_ERROR
-                        else:
-                            status, msgs = validator.validate_all_files(data[SUBMISSION_ID])
-
-                        # update validation records
-                        validation_id = data[VALIDATION_ID]
-                        validation_end_at = current_datetime()
-                        update_status = mongo_dao.update_validation_status(validation_id, status, validation_end_at, FILE_VALIDATION)
-                        if update_status:
-                            validator.submission[VALIDATION_ENDED] = validation_end_at
-                        #update submission
-                        mongo_dao.set_submission_validation_status(validator.submission, status if status else "None", None, None, msgs)
-                    else:
-                        log.error(f'Invalid message: {data}!')
-                    
-                    log.info(f'Processed {SERVICE_TYPE_FILE} validation for the {"data file, "+ data.get(FILE_ID) if data.get(FILE_ID) else "submission, " + data.get(SUBMISSION_ID)}!')
+                deleted = process_validation_message(
+                    msg, log, mongo_dao,
+                    lambda data: _handle_file_message(mongo_dao, log, data),
+                    VISIBILITY_TIMEOUT,
+                )
+                if deleted:
                     file_processed += 1
-                    msg.delete()
-                except Exception as e:
-                    log.exception(e)
-                    log.critical(
-                        f'Something wrong happened while processing data file! Check debug log for details.')
-                finally:
-                    if validator:
-                        del validator
-                    if extender:
-                        extender.stop()
-                        extender = None
         except KeyboardInterrupt:
             log.info('Good bye!')
             return
+
+def _handle_file_message(mongo_dao, log, data):
+    """Validate one file queue message and record its result.
+
+    Missing ids and unknown types raise InvalidValidationMessage. A missing
+    file record is recorded as an Error task. Transient file-record reads,
+    a failed file-list read, and a failed fileErrors write raise so the
+    message can be requeued. A Failed orphan scan is recorded so the run can
+    finish.
+
+    @param mongo_dao MongoDao
+    @param log logger
+    @param data parsed message body
+    """
+    validation_id = data.get(VALIDATION_ID)
+    submission_id = data.get(SUBMISSION_ID)
+    if not validation_id:
+        raise InvalidValidationMessage(
+            f'Invalid message: {data}',
+            submission_id=submission_id,
+            submission_status_field=FILE_VALIDATION_STATUS,
+        )
+
+    validator = None
+    try:
+        msg_type = data.get(SQS_TYPE)
+        file_id = data.get(FILE_ID)
+        if msg_type == "Validate File":
+            if not file_id:
+                raise InvalidValidationMessage(
+                    f'Invalid message: {data}',
+                    validation_id=validation_id,
+                    submission_id=submission_id,
+                    submission_status_field=FILE_VALIDATION_STATUS,
+                )
+            file_record = mongo_dao.get_file(file_id)
+            if file_record is None:
+                log.error(f'The data file record is not found, {file_id}!')
+                record_task_result(STATUS_ERROR, validation_id, mongo_dao, log)
+                return
+            validator = FileValidator(mongo_dao)
+            status = validator.validate(file_record)
+            if status == STATUS_ERROR:
+                log.error(f'The data file record is invalid, {file_id}!')
+            elif status == STATUS_WARNING:
+                log.error(f'The data file record is valid but with warning, {file_id}!')
+            else:
+                log.info(f'The data file record passed validation, {file_id}.')
+            if not mongo_dao.update_file_info(file_record):
+                log.error(f'Failed to update data file record, {file_id}!')
+                raise Exception(f'Failed to update data file record, {file_id}!')
+            log.info(f'The data file record is updated,{file_id}.')
+            log.info(f'Processed validation for "data file: " {file_id}')
+            record_task_result(status, validation_id, mongo_dao, log)
+        elif msg_type == "Validate Submission Files":
+            if not submission_id:
+                raise InvalidValidationMessage(
+                    f'Invalid message: {data}',
+                    validation_id=validation_id,
+                    submission_status_field=FILE_VALIDATION_STATUS,
+                )
+            submission = mongo_dao.get_submission(submission_id)
+            if not submission:
+                raise InvalidValidationMessage(
+                    f'Invalid submission, {submission_id}!',
+                    validation_id=validation_id,
+                    submission_id=submission_id,
+                    submission_status_field=FILE_VALIDATION_STATUS,
+                )
+            validator = FileValidator(mongo_dao)
+            if not validator.get_root_path(submission_id):
+                log.error(f'Invalid submission, {submission_id}!')
+                status = STATUS_ERROR
+                orphan_errors = []
+            else:
+                status, orphan_errors = validator.validate_all_files(submission_id)
+            if not _persisted(mongo_dao.atomic_update_submission(submission_id, {FILE_ERRORS: orphan_errors})):
+                raise Exception(f'Failed to update file errors for {submission_id}')
+            log.info(f'Processed orphaned file validation for submission: {submission_id}')
+            record_task_result(status, validation_id, mongo_dao, log)
+        else:
+            raise InvalidValidationMessage(
+                f'Invalid message: {data}',
+                validation_id=validation_id,
+                submission_id=submission_id,
+                submission_status_field=FILE_VALIDATION_STATUS,
+            )
+    finally:
+        if validator:
+            del validator
+
+
+def record_task_result(status: str, validation_id: str, mongo_dao: object, log: object):
+    """Record one file-validation task using the shared close-out.
+
+    @param status file result status
+    @param validation_id validation document id
+    @param mongo_dao MongoDao
+    @param log logger
+    """
+    record_type_progress(
+        status, validation_id, mongo_dao, log, FILE_PROGRESS, METADATA_PROGRESS,
+        ended_at=current_datetime(),
+    )
+
 
 """
  Requirement for the ticket crdcdh-539
@@ -133,11 +191,21 @@ class FileValidator:
         self.submission = None
 
     def validate(self, fileRecord):
-        try: 
-            #check if the file record is valid
-            if not self.validate_fileRecord(fileRecord):
-                return STATUS_ERROR
-            self.get_root_path(fileRecord[SUBMISSION_ID])
+        """Validate one file record.
+
+        A database error while loading the submission is raised so the message
+        can be retried. A missing submission, root path, or bucket is an Error
+        result. Other unexpected failures are stored as Error.
+
+        @param fileRecord data file document
+        @returns Passed, Warning, or Error
+        @raises errors.PyMongoError when a database read or write fails
+        """
+        if not self.validate_fileRecord(fileRecord):
+            return STATUS_ERROR
+        if not self.get_root_path(fileRecord[SUBMISSION_ID]):
+            return STATUS_ERROR
+        try:
             #escape file validation if submission intention is Delete
             if self.submission.get(SUBMISSION_INTENTION) == SUBMISSION_INTENTION_DELETE:
                 return STATUS_PASSED
@@ -145,6 +213,8 @@ class FileValidator:
             status, error = self.validate_file(fileRecord)
             self.save_qc_result(fileRecord, status, error)
             return status
+        except errors.PyMongoError:
+            raise
         except Exception as e: #catch all unhandled exception
             self.log.exception(e)
             msg = f"{fileRecord.get(SUBMISSION_ID)}: Failed to validate data file, {fileRecord.get(ID)}! {get_exception_msg()}!"
@@ -282,22 +352,55 @@ class FileValidator:
             
         return STATUS_PASSED, None
     
-    """
-    Validate all file in a submission:
-    1. Extra files, validate if there are files in files folder of the submission that are not specified in any manifests of the submission. 
-    This may happen if submitter uploaded files (via CLI) but forgot to upload the manifest. (error) included in total count.
-    """
-    def validate_all_files(self, submission_id):
+    def _collect_extra_s3_file_errors(self, submission_id, manifest_file_names):
+        """
+        Build F008 submission-level errors for objects under file/ that are not listed in manifest_file_names.
+        Skips log paths and empty key suffixes (prefix placeholders).
+        """
+        if not self.bucket:
+            return []
+        manifest_names = set(manifest_file_names or [])
         errors = []
-        missing_count = 0
-        # this error will not happen anymore
-        # if not self.get_root_path(submission_id):
-        #     msg = f'Invalid submission object, no rootPath found, {submission_id}!'
-        #     self.log.error(msg)
-        #     error = create_error("Invalid submission", msg, "", "Error", SUBMISSION_ID, submission_id)
-        #     return STATUS_ERROR, [error]
+        prefix = os.path.join(os.path.join(self.rootPath, "file/"))
+        for file in self.bucket.bucket.objects.filter(Prefix=prefix):
+            if file.key.startswith(f"{prefix}log/"):
+                continue
+            file_name = file.key.split("/")[-1]
+            if not file_name or file_name in manifest_names:
+                continue
+            file_batch = self.mongo_dao.find_batch_by_file_name(submission_id, DATA_FILE_TYPE, file_name)
+            batchID = file_batch[ID] if file_batch else "-"
+            displayID = file_batch[DISPLAY_ID] if file_batch else None
+            msg = (
+                f'Data file “{file_name}”: associated metadata not found. '
+                f"Please upload associated metadata (aka. manifest) file"
+            )
+            self.log.error(msg)
+            errors.append({
+                TYPE: DATA_FILE_TYPE,
+                QC_VALIDATION_TYPE: DATA_FILE_TYPE,
+                SUBMITTED_ID: file_name,
+                BATCH_ID: batchID,
+                DISPLAY_ID: displayID,
+                QC_SEVERITY: STATUS_ERROR,
+                UPLOADED_DATE: file.last_modified,
+                QC_VALIDATE_DATE: current_datetime(),
+                ERRORS: [create_error("F008", [file_name], "file name", file_name)],
+            })
+        return errors
+
+    def validate_all_files(self, submission_id):
+        """Find files in the submission folder that no manifest lists.
+
+        A failed file-list read raises so the message can be retried. Any other
+        unexpected exception is returned as Failed and recorded as a finished task.
+
+        @param submission_id submission document id
+        @returns (status, orphan errors)
+        @raises _RetryableFileRead when the file list cannot be loaded
+        @raises errors.PyMongoError when a database read fails
+        """
         self.get_root_path(submission_id)
-        key = os.path.join(os.path.join(self.rootPath, f"file/"))
 
         try:
             if not self.submission:
@@ -305,70 +408,35 @@ class FileValidator:
             if not self.submission:
                 msg = f'Invalid submission object, no related submission object found, {submission_id}!'
                 self.log.error(msg)
-                return False
+                return STATUS_FAILED, []
             
             submission_intention = self.submission.get(SUBMISSION_INTENTION)
             # get manifest info for the submission
             manifest_info_list = self.mongo_dao.get_files_by_submission(submission_id) if submission_intention != SUBMISSION_INTENTION_DELETE else []
-            if not manifest_info_list or len(manifest_info_list) == 0:
-                msg = f"No data file records found for the submission."
-                self.log.error(msg)
-                return None, None
-            # 1: check if Extra files, validate if there are files in files folder of the submission that are not specified 
-            # in any manifests of the submission. This may happen if submitter uploaded files (via CLI) but forgot to upload 
-            # the manifest. (error) included in total count.
-            manifest_file_list = [{ID: manifest_info[ID], S3_FILE_INFO: manifest_info[S3_FILE_INFO]} for manifest_info in manifest_info_list]
+            if manifest_info_list is None:
+                raise _RetryableFileRead(
+                    f'Failed to load file records for submission {submission_id}'
+                )
             manifest_file_names = [manifest_info[S3_FILE_INFO][FILE_NAME] for manifest_info in manifest_info_list]
-
-            # get file objects info in mounted s3 bucket base on key
-            # root, dirs, files = next(os.walk(key))
-            # get file info in the s3 bucket file folder
-            files = self.bucket.bucket.objects.filter(Prefix=key)
-            for file in files:
-                # don't retrieve logs
-                if '/log' in file.key:
-                    break
-                file_name = file.key.split('/')[-1]
-               
-                if file_name not in manifest_file_names:
-                    file_batch = self.mongo_dao.find_batch_by_file_name(submission_id, DATA_FILE_TYPE, file_name)
-                    batchID = file_batch[ID] if file_batch else "-"
-                    displayID = file_batch[DISPLAY_ID] if file_batch else None
-                    msg = f'Data file “{file_name}”: associated metadata not found. Please upload associated metadata (aka. manifest) file'
-                    self.log.error(msg)
-                    error = {
-                        TYPE: DATA_FILE_TYPE,
-                        QC_VALIDATION_TYPE: DATA_FILE_TYPE,
-                        SUBMITTED_ID: file_name,
-                        BATCH_ID: batchID,
-                        DISPLAY_ID: displayID,
-                        QC_SEVERITY: STATUS_ERROR,
-                        UPLOADED_DATE: file.last_modified,
-                        QC_VALIDATE_DATE: current_datetime(),
-                        ERRORS: [create_error("F008", [file_name], "file name", file_name)]
-                    }
-                    errors.append(error)
-                    missing_count += 1
-
-            if missing_count > 0 and len(errors) > 0:
-                return STATUS_ERROR, errors
+            extra_errors = self._collect_extra_s3_file_errors(submission_id, manifest_file_names)
+            if extra_errors:
+                # Found orphaned files
+                return STATUS_ERROR, extra_errors
+            elif not manifest_info_list:
+                # No file reocrds, no orphaned files
+                return STATUS_ERROR, []
             else:
-                records =  next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_ERROR), None)
-                if records: 
-                    return STATUS_ERROR, None
-                
-                records = next((file for file in manifest_file_list if file[S3_FILE_INFO][STATUS] == STATUS_WARNING), None)
-                if records: 
-                    return STATUS_WARNING, None
-                
-                return STATUS_PASSED, None
-   
+                # All files are validated
+                return STATUS_PASSED, []
+
+        except (errors.PyMongoError, _RetryableFileRead):
+            raise
         except Exception as e:
             self.log.exception(e)
             msg = f"{submission_id}: Failed to validate data files! {get_exception_msg()}!"
             self.log.exception(msg)
             error = create_error("F011", [], "", "")
-            return None, [error]
+            return STATUS_FAILED, [error]
     
     def set_status(self, record, qc_result, status, error):
         record[S3_FILE_INFO][UPDATED_AT] = current_datetime()

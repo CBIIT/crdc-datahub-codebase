@@ -4,6 +4,8 @@ import { isEqual } from "lodash";
 import { FC, ReactNode, memo, useCallback, useMemo, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
+import { stripHtmlTags } from "@/utils";
+
 import Dialog from "../GenericDialog";
 import RichTextEditor from "../RichTextEditor";
 import type { RichTextEditorHandle } from "../RichTextEditor";
@@ -48,6 +50,17 @@ const StyledDialog = styled(Dialog)({
 
 const MAX_REVIEW_COMMENT_LIMIT = 10_000;
 
+/**
+ * Gets the visible text length that would remain after the backend sanitizes the comment.
+ *
+ * @param {string} content - The stored markdown rich-text content.
+ * @returns {number} The length of the visible text remaining after sanitization.
+ */
+const getSanitizedTextLength = (content: string): number =>
+  getPlainTextLength(stripHtmlTags(content).trim());
+
+const INVALID_COMMENT_MESSAGE = "Please enter a valid comment.";
+
 type ReviewFormFields = {
   reviewComment: string;
 };
@@ -87,7 +100,7 @@ const ReviewFormDialog: FC<Props> = ({
   });
 
   const [plainTextLength, setPlainTextLength] = useState(0);
-  const [trimmedTextLength, setTrimmedTextLength] = useState(0);
+  const [sanitizedTextLength, setSanitizedTextLength] = useState(0);
 
   const editorRef = useRef<RichTextEditorHandle>(null);
 
@@ -101,6 +114,14 @@ const ReviewFormDialog: FC<Props> = ({
 
   const submissionPending = loading || isSubmitting;
   const submitDisabled = submissionPending || isSubmitSuccessful;
+
+  const errorMessage = useMemo<string>(() => {
+    if (plainTextLength > 0 && sanitizedTextLength === 0) {
+      return INVALID_COMMENT_MESSAGE;
+    }
+
+    return errors?.reviewComment?.message || "";
+  }, [errors?.reviewComment?.message, plainTextLength, sanitizedTextLength]);
 
   const handleOnSubmit = async (data: ReviewFormFields) => {
     await onSubmit?.(data.reviewComment);
@@ -120,7 +141,7 @@ const ReviewFormDialog: FC<Props> = ({
   const handleExited = useCallback(() => {
     reset();
     setPlainTextLength(0);
-    setTrimmedTextLength(0);
+    setSanitizedTextLength(0);
     editorRef.current?.reset();
   }, [reset]);
 
@@ -143,7 +164,7 @@ const ReviewFormDialog: FC<Props> = ({
           <LoadingButton
             data-testid="review-form-dialog-confirm-button"
             onClick={handleSubmit(handleOnSubmit)}
-            disabled={!trimmedTextLength || submitDisabled}
+            disabled={!sanitizedTextLength || submitDisabled}
             loading={submissionPending}
             {...confirmButtonProps}
           >
@@ -158,7 +179,9 @@ const ReviewFormDialog: FC<Props> = ({
         control={control}
         rules={{
           validate: {
-            required: (v: string) => getPlainTextLength(v) > 0 || "This field is required",
+            required: (v: string) =>
+              getSanitizedTextLength(v) > 0 ||
+              (getPlainTextLength(v) > 0 ? INVALID_COMMENT_MESSAGE : "This field is required"),
             maxLength: (v: string) =>
               getPlainTextLength(v) <= MAX_REVIEW_COMMENT_LIMIT ||
               `Maximum of ${reviewCommentLimitLabel} characters allowed`,
@@ -170,7 +193,7 @@ const ReviewFormDialog: FC<Props> = ({
             value={field.value}
             onChange={(value) => {
               field.onChange(value);
-              setTrimmedTextLength(getPlainTextLength(value.trim()));
+              setSanitizedTextLength(getSanitizedTextLength(value));
             }}
             onTextLengthChange={setPlainTextLength}
             placeholder={`${reviewCommentLimitLabel} characters allowed`}
@@ -182,9 +205,9 @@ const ReviewFormDialog: FC<Props> = ({
       />
 
       <StyledCharacterCount>
-        {errors?.reviewComment?.message?.length > 0 && (
+        {errorMessage.length > 0 && (
           <StyledErrorText data-testid="review-comment-dialog-error">
-            {errors.reviewComment.message}
+            {errorMessage}
           </StyledErrorText>
         )}
         <StyledCountLabel data-testid="review-comment-character-count">

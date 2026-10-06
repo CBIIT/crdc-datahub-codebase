@@ -900,12 +900,27 @@ class Submission {
         if (!validationRecord) {
             throw new Error(ERROR.FAILED_INSERT_VALIDATION_OBJECT);
         }
-        const result = await this.dataRecordService.validateMetadata(params._id, params?.types, params?.scope, validationRecord.id);
-        if (result.totalBatches != null) {
-            const validationUpdate = { totalBatches: result.totalBatches };
-            if (!result.success && result.failedCount > 0) {
+        const result = await this.dataRecordService.initializeDataValidation(params._id, params?.types, params?.scope, validationRecord.id, this.validationDAO);
+        const metadataTotalsReady = result.totalBatches && result.metadataTotalsPersisted !== false;
+        const fileTotalsReady = result.totalFileMessages && result.fileTotalsPersisted !== false;
+        if (metadataTotalsReady || fileTotalsReady) {
+            let validationUpdate = {}
+            if (metadataTotalsReady) {
+                validationUpdate.totalBatches = result.totalBatches;
+            }
+            if (fileTotalsReady) {
+                validationUpdate.totalFileMessages = result.totalFileMessages;
+            }
+            if (!result.success && (result.failedCount > 0 || result.failedFileCount > 0)) {
                 validationUpdate.status = VALIDATION_STATUS.ERROR;
-                validationUpdate.statusDetail = [`Failed to enqueue ${result.failedCount} of ${result.totalBatches} batch messages`];
+                const statusDetail = [];
+                if (result.failedCount > 0) {
+                    statusDetail.push(`Failed to enqueue ${result.failedCount} of ${result.totalBatches} batch messages`);
+                }
+                if (result.failedFileCount > 0) {
+                    statusDetail.push(`Failed to enqueue ${result.failedFileCount} of ${result.totalFileMessages} file messages`);
+                }
+                validationUpdate.statusDetail = statusDetail;
             }
             await this.validationDAO.update(validationRecord.id, validationUpdate);
         }
@@ -2409,7 +2424,19 @@ class Submission {
         }
     }
 
-    // private function
+    /**
+     * Restore submission validation fields after a failed run.
+     * When a validation record is supplied and no submission field changes, that record is still marked Error.
+     * @param {string[]} types validation types requested for this run
+     * @param {object} aSubmission submission document
+     * @param {string} metaStatus metadata status to store, or "NA" to leave it unchanged
+     * @param {string} fileStatus file status to store, or "NA" to leave it unchanged
+     * @param {string} crossSubmissionStatus cross-submission status to store, or "NA" to leave it unchanged
+     * @param {Date} updatedTime previous submission updatedAt supplied by callers
+     * @param {object} [validationRecord] validation document to mark Error
+     * @returns {Promise<void>}
+     * @throws {Error} when the submission update does not persist
+     */
     async _updateValidationStatus(types, aSubmission, metaStatus, fileStatus, crossSubmissionStatus, updatedTime, validationRecord = null) {
         const typesToUpdate = {};
         // Cross validation status now only applies to submissions with same study AND data commons
@@ -2434,6 +2461,11 @@ class Submission {
         }
 
         if (Object.keys(typesToUpdate).length === 0) {
+            if (validationRecord) {
+                validationRecord["ended"] = new Date();
+                validationRecord["status"] = "Error";
+                await this.validationDAO.update(validationRecord["id"], validationRecord);
+            }
             return;
         }
 

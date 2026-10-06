@@ -128,7 +128,7 @@ const applicationSchema = new mongoose.Schema(
             type: String,
         },
         questionnaireData: {
-            type: String,
+            type: mongoose.Schema.Types.Mixed,
             required: true,
         },
         reviewComment: {

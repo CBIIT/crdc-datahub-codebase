@@ -42,6 +42,19 @@ const DEFAULT_CHARACTER_LIMITS: CharacterLimitsMap<BKeys> = {
   "study.repositories.otherDataTypesSubmitted": 100,
 };
 
+/**
+ * The column positions on the hidden program list sheet.
+ *
+ * @see QuestionnaireExcelMiddleware.createProgramsSheet
+ */
+const PROGRAM_COLUMN = {
+  id: 1,
+  name: 2,
+  abbreviation: 3,
+  description: 4,
+  label: 5,
+} as const;
+
 type SectionBDeps = {
   data: QuestionnaireData | null;
   programSheet: ExcelJS.Worksheet;
@@ -78,10 +91,9 @@ export class SectionB extends SectionBase<BKeys, SectionBDeps> {
     const rawProgramId = data?.program?._id;
     const foundProgramCell = this.findProgramById(rawProgramId);
 
-    // Use name if available
     if (rawProgramId?.length > 0) {
       foundProgramName = foundProgramCell
-        ? `${this.deps?.programSheet?.getCell(`B${foundProgramCell.row}`).value || ""}`
+        ? `${this.deps?.programSheet?.getCell(`E${foundProgramCell.row}`).value || ""}`
         : "Other";
     }
 
@@ -536,34 +548,33 @@ export class SectionB extends SectionBase<BKeys, SectionBDeps> {
       }
     });
 
-    // Match program name to get the _id
+    // Match the program label back to the hidden sheet row to recover the _id
     let programId = "";
     let programRow: Row | undefined;
     const rawProgramId = toString(data.get("program._id")?.[0]).trim();
-    if (rawProgramId === "Not Applicable" || rawProgramId === "Other") {
+    if (rawProgramId === "Other") {
       programId = rawProgramId;
     } else if (programSheet && rawProgramId?.length > 0) {
-      const programColB = programSheet.getColumn(2);
-      programColB.eachCell((cell, rowNumber) => {
-        const name = toString(cell.value).trim();
-        if (name === toString(data.get("program._id")?.[0])) {
-          programId = toString(programSheet.getCell(`A${rowNumber}`).value).trim();
-          programRow = programSheet.getRow(rowNumber);
-        }
-      });
+      programRow = SectionB.findProgramRowByLabel(programSheet, rawProgramId);
+      programId = programRow ? toString(programRow.getCell(PROGRAM_COLUMN.id).value).trim() : "";
+    }
+
+    // Templates prior to 1.9 stored this literal in the ID column
+    if (!programId && rawProgramId === "Not Applicable") {
+      programId = rawProgramId;
     }
 
     const questionnaireData: RecursivePartial<QuestionnaireData> = {
       program: {
         _id: programId,
         name: programRow
-          ? toString(programRow.getCell(2).value).trim()
+          ? toString(programRow.getCell(PROGRAM_COLUMN.name).value).trim()
           : toString(data.get("program.name")?.[0]).trim(),
         abbreviation: programRow
-          ? toString(programRow.getCell(3).value).trim()
+          ? toString(programRow.getCell(PROGRAM_COLUMN.abbreviation).value).trim()
           : toString(data.get("program.abbreviation")?.[0]).trim(),
         description: programRow
-          ? toString(programRow.getCell(4).value).trim()
+          ? toString(programRow.getCell(PROGRAM_COLUMN.description).value).trim()
           : toString(data.get("program.description")?.[0]).trim(),
       },
       study: {
@@ -578,6 +589,36 @@ export class SectionB extends SectionBase<BKeys, SectionBDeps> {
     };
 
     return questionnaireData;
+  }
+
+  /**
+   * Finds the program row whose label matches the value selected in the form.
+   *
+   * @param programSheet The hidden program list sheet.
+   * @param label The label to search for.
+   * @returns The matching row, or undefined if no row matches.
+   */
+  private static findProgramRowByLabel(
+    programSheet: ExcelJS.Worksheet,
+    label: string
+  ): Row | undefined {
+    // Templates prior to v1.9 had no label column, so fall back to the name column
+    const columnsToSearch = [PROGRAM_COLUMN.label, PROGRAM_COLUMN.name];
+
+    let matchingRow: Row | undefined;
+    columnsToSearch.forEach((column) => {
+      if (matchingRow) {
+        return;
+      }
+
+      programSheet.getColumn(column).eachCell((cell, rowNumber) => {
+        if (!matchingRow && toString(cell.value).trim() === label) {
+          matchingRow = programSheet.getRow(rowNumber);
+        }
+      });
+    });
+
+    return matchingRow;
   }
 
   /**

@@ -16,6 +16,7 @@ Startup (`bin/www.js`) runs this orchestrator unless `SKIP_STARTUP_MIGRATIONS=tr
 | `ensure-indexes-migration.js` | Create catalog indexes via `recurring-steps/ensure-indexes.js` |
 | `sync-pbac-defaults-migration.js` | Sync PBAC from JSON via `recurring-steps/sync-pbac-defaults.js` |
 | `backfill-application-sequence-number.js` | Set `sequenceNumber: 1` where missing (CRDCDH-3970) |
+| `backfill-application-questionnaire-data.js` | Parse string `questionnaireData` and store as object where still a BSON string |
 | `backfill-submission-submission-request-id.js` | Set `submissionRequestID` from the linked study's `applicationID` where missing |
 | `backfill-getPendingConditionsAtApproval.js` | Set `pendingConditionsAtApproval` on approved studies where missing |
 | `dedupe-review-comments.js` | Clear review comments that were copied onto `In Revision` events (CRDCDH-3894) |
@@ -25,9 +26,10 @@ Startup (`bin/www.js`) runs this orchestrator unless `SKIP_STARTUP_MIGRATIONS=tr
 1. `ensure-indexes-migration.js` (recurring) — creates catalog indexes when missing
 2. `sync-pbac-defaults-migration.js` (recurring) — merges PBAC defaults into `configuration`
 3. `backfill-application-sequence-number.js` (one-time)
-4. `backfill-submission-submission-request-id.js` (recurring) — only touches submissions missing `submissionRequestID`, so it also repairs records whose study gained an `applicationID` after the submission was created
-5. `backfill-getPendingConditionsAtApproval.js` (one-time) — computes and sets `pendingConditionsAtApproval` on approved studies where the field is missing
-6. `dedupe-review-comments.js` (one-time)
+4. `backfill-application-questionnaire-data.js` (one-time, idempotent) — converts string `questionnaireData` to object
+5. `backfill-submission-submission-request-id.js` (recurring) — only touches submissions missing `submissionRequestID`, so it also repairs records whose study gained an `applicationID` after the submission was created
+6. `backfill-getPendingConditionsAtApproval.js` (one-time) — computes and sets `pendingConditionsAtApproval` on approved studies where the field is missing
+7. `dedupe-review-comments.js` (one-time)
 
 ## Duplicated review comment cleanup (CRDCDH-3894)
 

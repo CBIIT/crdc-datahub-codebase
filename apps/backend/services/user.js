@@ -363,26 +363,17 @@ class UserService {
         verifySession(context)
             .verifyInitialized();
         const manageUserScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER);
-
-        let match;
-        if (!manageUserScope.isNoneScope()) {
-            const roleScope = manageUserScope.getRoleScope();
-            const roleSet = new Set(Object.values(ROLES));
-            const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
-            match = {
-                ...(!manageUserScope.isAllScope() ?
-                    { role: filteredRoles || [] } : {})
-            };
-        } else {
-            const reopenScope = await this._getUserScope(
-                context?.userInfo,
-                USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
-            );
-            if (!reopenScope.isAllScope()) {
-                throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-            }
-            match = this._buildReopenListUsersMatch();
+        if (manageUserScope.isNoneScope()) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
+
+        const roleScope = manageUserScope.getRoleScope();
+        const roleSet = new Set(Object.values(ROLES));
+        const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
+        const match = {
+            ...(!manageUserScope.isAllScope() ?
+                { role: filteredRoles || [] } : {})
+        };
 
         const result = await this.userDAO.findMany(match);
         if (!result?.length) {
@@ -390,6 +381,31 @@ class UserService {
         }
         await this._enrichUsersWithApprovedStudies(result);
         return result;
+    }
+
+    /**
+     * List the users eligible to own a reopened Submission Request.
+     * @param {Object} params Endpoint parameters
+     * @param {{ cookie: Object, userInfo: Object }} context API request context
+     * @returns {Promise<Object[]>} An array of UserInfo objects
+     */
+    async listReopenOwners(params, context) {
+        verifySession(context)
+            .verifyInitialized();
+        const reopenScope = await this._getUserScope(
+            context?.userInfo,
+            USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
+        );
+        if (!reopenScope.isAllScope()) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+
+        const owners = await this.userDAO.findMany(this._buildReopenListUsersMatch());
+        return owners?.map((owner) => ({
+            userID: owner._id,
+            firstName: owner.firstName,
+            lastName: owner.lastName,
+        })) || [];
     }
 
     isEligibleReopenOwner(user) {

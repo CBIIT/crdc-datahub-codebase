@@ -8,8 +8,8 @@ import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
 
 import {
-  LIST_USERS,
-  ListUsersResp,
+  LIST_REOPEN_OWNERS,
+  ListReopenOwnersResp,
   REOPEN_APPROVED_SR,
   ReopenApprovedSRInput,
   ReopenApprovedSRResp,
@@ -18,35 +18,17 @@ import { Context as AuthContext } from "../Contexts/AuthContext";
 
 import Button from "./index";
 
-const mockListUsers: MockedResponse<ListUsersResp> = {
+const mockListUsers: MockedResponse<ListReopenOwnersResp> = {
   request: {
-    query: LIST_USERS,
+    query: LIST_REOPEN_OWNERS,
   },
   variableMatcher: () => true,
   result: {
     data: {
-      listUsers: [
-        userFactory.build({
-          _id: "user-1",
-          firstName: "John",
-          lastName: "Doe",
-          userStatus: "Active",
-          role: "User",
-        }),
-        userFactory.build({
-          _id: "user-2",
-          firstName: "Jane",
-          lastName: "Smith",
-          userStatus: "Active",
-          role: "Submitter",
-        }),
-        userFactory.build({
-          _id: "owner-1",
-          firstName: "Current",
-          lastName: "Owner",
-          userStatus: "Active",
-          role: "Submitter",
-        }),
+      listReopenOwners: [
+        { userID: "user-1", firstName: "John", lastName: "Doe" },
+        { userID: "user-2", firstName: "Jane", lastName: "Smith" },
+        { userID: "owner-1", firstName: "Current", lastName: "Owner" },
       ],
     },
   },
