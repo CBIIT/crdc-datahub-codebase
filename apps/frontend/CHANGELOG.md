@@ -1,5 +1,79 @@
 # Release Notes
 
+## 3.7.0 (Released 10/22/2026)
+
+#### Submission Request
+
+- Approved Submission Request Forms can now be reopened for editing
+    and updating. Permission to Reopen Submission Request Forms is
+    configurable in the Manage Users page.
+- Submission Requests table can display and filter Submission Request
+    Form version number to view previous versions of reopened Submission
+    Request Forms.
+- Inactive Submission Request Form retirement deadline decreased from
+    six to two months.
+- Email communication to principal investigators and additional
+    contacts can now be declined in Submission Request Forms.
+- All Submission Request Form Review Comments now visible with
+    timestamp.
+- Submission Request Status filter now configured with role-specific
+    default selections.
+- Unedited Submission Request Forms now have Save button disabled.
+- Conditionally Approved email recipients are now configurable to send
+    data commons personnel only condition-specific emails.
+- Submission Request Form Review Comments can now be formatted with
+    bold and italic font, bulleted and numbered lists, and URL
+    hyperlinks.
+- The Submission Request Form workflow now includes an \"In Revision\"
+    status to indicate when a Submission Request Form is being edited to
+    address reviewer requests.
+- The Study Abbreviation field character limit is now increased from
+    25 to 50.
+
+#### Data Submission
+
+- Administrative Submission Comments are now visible to data commons
+    personnel.
+- Inactive account login error message now includes Helpdesk contact
+    information.
+- Program and Study fields from Submission Request Form are now
+    auto-populated into submission metadata.
+- Data submission validation now confirms dbGaP ID from Submission
+    Request Form.
+- The Data Hub Data Concierge can now generate a DCF index submission
+    sheet on-demand for confirmation of uploaded data files.
+- The Manage Studies table can now be downloaded as a CSV file.
+- Email notifications now use study name instead of study
+    abbreviation.
+- Data Submission Data Type and Data Commons default selections are
+    now unselected by default to improve accuracy of submission
+    configurations.
+- The Data Submission ID is now displayed and copyable from the Data
+    Submission list.
+
+#### Data Model Navigator
+
+- The Data Model Navigator now displays a \"Required\" column to
+    indicate the property requirements for data models.
+
+#### Operations Dashboard
+
+- The Operation Dashboard now displays the calculated
+    receipt-to-approval duration for improved Submission Request Form
+    metrics.
+
+#### MDB/STS Integration
+
+- Required relationships in MDF are now supported for metadata
+    validation.
+
+#### Research & Technical Improvements
+
+- Data Hub email content is now managed in GitHub to allow text
+    changes without deployment.
+- Data Hub has migrated from MongoDB to DocumentDB for improved
+    security.
+
 ## 3.6.1 (Released 06/29/2026)
 
 #### Submission Request
