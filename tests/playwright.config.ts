@@ -16,7 +16,8 @@ export default defineConfig({
       './reporters/release-report/index.ts',
       {
         product: 'CRDC Submission Portal',
-        outputDir: 'qa-release-report',
+        outputDir: 'test-results',
+        fileName: 'automation-report',
         areaMap: {
           'auth/': 'Authentication',
           'data-submissions/': 'Data Submissions',
@@ -25,6 +26,7 @@ export default defineConfig({
         },
       },
     ],
+    ...(process.env.CI ? [['junit', { outputFile: 'test-results/junit.xml' }] as const] : []),
   ],
   use: {
     trace: 'on-first-retry',

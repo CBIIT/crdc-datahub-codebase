@@ -1,0 +1,116 @@
+name: Playwright
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target E2E execution environment"
+        type: environment
+        required: true
+  push:
+    branches:
+      - "*"
+
+permissions:
+  contents: read
+
+run-name: "Playwright – ${{ inputs.environment }}"
+
+jobs:
+  e2e:
+    name: End-to-End Tests
+    runs-on:
+      group: cbiit-global-runners
+      labels: [nonprod-org-runner]
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+
+    permissions:
+      contents: read
+      checks: write
+
+    defaults:
+      run:
+        working-directory: tests
+
+    env:
+      CI: true
+      BASE_URL: ${{ vars.BASE_URL }}
+      AUTH_STATE_PATH: ./.auth/login-gov.json
+      LOGIN_GOV_EMAIL: ${{ secrets.LOGIN_GOV_EMAIL }}
+      LOGIN_GOV_PASSWORD: ${{ secrets.LOGIN_GOV_PASSWORD }}
+      LOGIN_GOV_OTP_SECRET: ${{ secrets.LOGIN_GOV_OTP_SECRET }}
+      QA_ENVIRONMENT: ${{ inputs.environment }}
+      QA_BASE_URL: ${{ vars.BASE_URL }}
+      QA_COMMIT_SHA: ${{ github.sha }}
+
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.x"
+          cache: "npm"
+          cache-dependency-path: tests/package-lock.json
+
+      - name: "Install Dependencies"
+        run: npm i
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Wait for Target Environment
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "BASE_URL is not configured for this environment"
+            exit 1
+          fi
+          max_attempts=15
+          attempt=0
+          until curl --silent --fail --location "$BASE_URL" > /dev/null 2>&1 || [ $attempt -eq $max_attempts ]; do
+            attempt=$((attempt + 1))
+            echo "Waiting for $BASE_URL... (attempt $attempt/$max_attempts)"
+            sleep 2
+          done
+          if [ $attempt -eq $max_attempts ]; then
+            echo "Target environment is unreachable"
+            exit 1
+          fi
+
+      - name: Run Playwright
+        run: npm test
+
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: tests/playwright-report/
+          retention-days: 0
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: tests/test-results/
+          retention-days: 0
+
+      - name: Upload Release Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-report
+          path: tests/test-results/automation-report.pdf
+          retention-days: 0
+
+      - name: Publish Report
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Test Results
+          path: "tests/test-results/junit.xml"
+          reporter: "java-junit"
+          fail-on-error: false
