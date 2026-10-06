@@ -34,9 +34,10 @@ from common.constants import (
     WORST_BATCH_STATUS,
 )
 from common.validation_closeout import (
-    FILE_PROGRESS, METADATA_PROGRESS, STATUS_VALIDATING, InvalidValidationMessage,
-    WORST_FILE_STATUS, fail_validation_fast, process_validation_message,
-    record_type_progress, updates_to_consolidate, updates_to_mark_task_done,
+    COMPLETED_FILE_MESSAGES, FILE_PROGRESS, METADATA_PROGRESS, STATUS_VALIDATING,
+    InvalidValidationMessage, WORST_FILE_STATUS, fail_validation_fast,
+    process_validation_message, record_type_progress, updates_to_consolidate,
+    updates_to_mark_task_done,
 )
 
 VALIDATION_ID = 'val-1'
@@ -353,6 +354,120 @@ def test_consolidate_prefers_persisted_type_status_over_counters():
     )
 
     assert validation_updates[VALIDATION_STATUS] == STATUS_ERROR
+
+
+def test_metadata_closeout_waits_when_type_stores_file():
+    """Combined runs store file as "file", so metadata must not finalize the run.
+
+    Finish the only metadata batch on a document whose type list uses the
+    backend value, then confirm overall status and validationEnded are absent.
+    """
+    mongo_dao = _dao(_metadata_validation(**{
+        TYPE: [VALIDATION_TYPE_METADATA, "file"],
+        COMPLETED_BATCHES: 1,
+        WORST_BATCH_STATUS: 2,
+    }))
+
+    _record(mongo_dao, STATUS_ERROR, total_count=1)
+
+    assert mongo_dao.atomic_update_validation.call_args_list[1] == call(VALIDATION_ID, {
+        METADATA_ENDED: ENDED_AT,
+        METADATA_STATUS: STATUS_ERROR,
+    }, expected_status=STATUS_VALIDATING)
+    mongo_dao.atomic_update_submission.assert_called_once_with(SUBMISSION, {
+        METADATA_VALIDATION_STATUS: STATUS_ERROR,
+    })
+
+
+def test_file_closeout_consolidates_when_type_stores_file():
+    """The last file task writes file fields, then overall status is the worse type.
+
+    Return a post-increment file document that already has metadata Error, and
+    a type-write result that includes both ended times.
+    """
+    increment_doc = {
+        TYPE: [VALIDATION_TYPE_METADATA, "file"],
+        SUBMISSION_ID: SUBMISSION,
+        COMPLETED_FILE_MESSAGES: 1,
+        WORST_FILE_STATUS: 1,
+        METADATA_STATUS: STATUS_ERROR,
+        METADATA_ENDED: ENDED_AT,
+        VALIDATION_STATUS: STATUS_VALIDATING,
+    }
+    written_doc = dict(increment_doc)
+    written_doc[FILE_STATUS] = STATUS_WARNING
+    written_doc[FILE_ENDED] = ENDED_AT
+    mongo_dao = MagicMock()
+    mongo_dao.get_validation.return_value = increment_doc
+    mongo_dao.atomic_update_validation.side_effect = [increment_doc, written_doc, written_doc]
+    mongo_dao.get_submission.return_value = {
+        FILE_VALIDATION_STATUS: STATUS_VALIDATING,
+    }
+    mongo_dao.atomic_update_submission.return_value = {'_id': SUBMISSION}
+
+    record_type_progress(
+        STATUS_WARNING, VALIDATION_ID, mongo_dao, MagicMock(), FILE_PROGRESS, METADATA_PROGRESS,
+        total_count=1, ended_at=ENDED_AT,
+    )
+
+    assert mongo_dao.atomic_update_validation.call_args_list[1] == call(VALIDATION_ID, {
+        FILE_ENDED: ENDED_AT,
+        FILE_STATUS: STATUS_WARNING,
+    }, expected_status=STATUS_VALIDATING)
+    assert mongo_dao.atomic_update_validation.call_args_list[2] == call(VALIDATION_ID, {
+        ENDED: ENDED_AT,
+        VALIDATION_STATUS: STATUS_ERROR,
+    }, expected_status=STATUS_VALIDATING)
+    mongo_dao.atomic_update_submission.assert_called_once_with(SUBMISSION, {
+        FILE_VALIDATION_STATUS: STATUS_WARNING,
+        VALIDATION_ENDED: ENDED_AT,
+    })
+
+
+def test_consolidate_recognizes_stored_file_type():
+    """Overall status includes file results when the document stores "file"."""
+    validation = {
+        TYPE: ["file", VALIDATION_TYPE_METADATA],
+        FILE_STATUS: STATUS_WARNING,
+        WORST_FILE_STATUS: 0,
+        METADATA_STATUS: STATUS_ERROR,
+        WORST_BATCH_STATUS: 0,
+        FILE_ENDED: ENDED_AT,
+        METADATA_ENDED: ENDED_AT,
+    }
+
+    validation_updates, submission_updates = updates_to_consolidate(
+        validation, METADATA_PROGRESS, FILE_PROGRESS,
+    )
+
+    assert validation_updates[VALIDATION_STATUS] == STATUS_ERROR
+    assert submission_updates[VALIDATION_ENDED] == ENDED_AT
+
+
+def test_file_only_type_file_finalizes_immediately():
+    """A file-only run stored as "file" still sets overall status when it finishes."""
+    mongo_dao = _dao({
+        TYPE: ["file"],
+        SUBMISSION_ID: SUBMISSION,
+        COMPLETED_FILE_MESSAGES: 1,
+        WORST_FILE_STATUS: 1,
+    })
+
+    record_type_progress(
+        STATUS_WARNING, VALIDATION_ID, mongo_dao, MagicMock(), FILE_PROGRESS, METADATA_PROGRESS,
+        total_count=1, ended_at=ENDED_AT,
+    )
+
+    assert mongo_dao.atomic_update_validation.call_args_list[1] == call(VALIDATION_ID, {
+        FILE_ENDED: ENDED_AT,
+        FILE_STATUS: STATUS_WARNING,
+        ENDED: ENDED_AT,
+        VALIDATION_STATUS: STATUS_WARNING,
+    }, expected_status=STATUS_VALIDATING)
+    mongo_dao.atomic_update_submission.assert_called_once_with(SUBMISSION, {
+        FILE_VALIDATION_STATUS: STATUS_WARNING,
+        VALIDATION_ENDED: ENDED_AT,
+    })
 
 
 def test_already_failed_validation_still_releases_submission_field():

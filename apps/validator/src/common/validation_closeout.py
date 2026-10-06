@@ -121,6 +121,38 @@ def _status_detail_list(detail):
     return [detail]
 
 
+def _requested_type_names(type_name):
+    """Lowercase names that count as this progress type on validation.type.
+
+    The backend stores file validation as "file". File progress uses "data file".
+    Either name means the file type was requested. Matching ignores case.
+
+    @param type_name progress type name
+    @returns aliases for that type
+    """
+    file_type_names = frozenset({VALIDATION_TYPE_FILE.lower(), "file"})
+    metadata_type_names = frozenset({VALIDATION_TYPE_METADATA.lower()})
+    normalized = str(type_name or "").strip().lower()
+    if normalized in file_type_names:
+        return file_type_names
+    if normalized in metadata_type_names:
+        return metadata_type_names
+    return frozenset({normalized}) if normalized else frozenset()
+
+
+def _type_was_requested(type_name, validation_types):
+    """True when the validation type list includes this progress type.
+
+    @param type_name progress type name
+    @param validation_types type list stored on the validation document
+    @returns True when any stored type matches, including the file alias
+    """
+    if not validation_types:
+        return False
+    requested = {str(item).strip().lower() for item in validation_types if item}
+    return bool(requested & _requested_type_names(type_name))
+
+
 def updates_to_mark_task_done(status, progress, status_detail=None):
     """Increment the completed counter and raise the worst status for this type.
 
@@ -152,8 +184,9 @@ def updates_to_mark_type_done(validation, ended_at, progress, other_progress):
     """Compose updates when every message for this type has finished.
 
     Overall status and ended time are included only when the validation did not
-    also request the other type. A record that is already Failed is not given a
-    new overall status. Failed is not written to the submission type status.
+    also request the other type. "file" and "data file" both count as file.
+    A record that is already Failed is not given a new overall status. Failed
+    is not written to the submission type status.
 
     @param validation validation document after the task increment
     @param ended_at datetime when this type finished
@@ -183,7 +216,7 @@ def updates_to_mark_type_done(validation, ended_at, progress, other_progress):
     if type_status and type_status != STATUS_FAILED:
         updated_submission[progress.submission_status_field] = type_status
 
-    if other_progress.type_name not in validation_types:
+    if not _type_was_requested(other_progress.type_name, validation_types):
         updated_validation[ENDED] = ended_at
         updated_validation[VALIDATION_STATUS] = type_status
         updated_submission[VALIDATION_ENDED] = ended_at
@@ -212,9 +245,10 @@ def updates_to_consolidate(validation, progress, other_progress):
     """Compose overall status once both requested types have an ended time.
 
     Status is the worse of the two type precedence values. Persisted type
-    status strings win over numeric worst-task fields. Cross-submission
-    status is not an input. Returns (None, None) when the other type has not
-    finished or the validation record is already Failed.
+    status strings win over numeric worst-task fields. "file" and "data file"
+    both count as a requested file type. Cross-submission status is not an
+    input. Returns (None, None) when the other type has not finished or the
+    validation record is already Failed.
 
     @param validation validation document including both type ended times
     @param progress TypeProgress for the type that just finished
@@ -228,7 +262,7 @@ def updates_to_consolidate(validation, progress, other_progress):
         return None, None
 
     validation_types = validation.get(TYPE) or []
-    if other_progress.type_name not in validation_types:
+    if not _type_was_requested(other_progress.type_name, validation_types):
         return None, None
 
     this_ended = validation.get(progress.ended_field)
