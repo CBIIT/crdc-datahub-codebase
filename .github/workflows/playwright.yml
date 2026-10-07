@@ -24,6 +24,9 @@ jobs:
       labels: [nonprod-org-runner]
     timeout-minutes: 30
     environment: ${{ inputs.environment }}
+    # Must match the @playwright/test version in tests/package-lock.json
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
 
     permissions:
       contents: read
@@ -56,10 +59,7 @@ jobs:
           cache-dependency-path: tests/package-lock.json
 
       - name: "Install Dependencies"
-        run: npm i
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npm ci
 
       - name: Wait for Target Environment
         run: |
