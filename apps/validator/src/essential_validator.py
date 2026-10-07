@@ -13,12 +13,45 @@ from common.constants import STATUS, BATCH_TYPE_METADATA, DATA_COMMON_NAME, ROOT
     BATCH_STATUS_FAILED, ID, FILE_NAME, TYPE, FILE_PREFIX, MODEL_VERSION, MODEL_FILE_DIR, \
     TIER_CONFIG, STATUS_ERROR, STATUS_NEW, SERVICE_TYPE_ESSENTIAL, SUBMISSION_ID, SUBMISSION_INTENTION_DELETE, NODE_TYPE, \
     SUBMISSION_INTENTION, TYPE_DELETE, BATCH_BUCKET, METADATA_VALIDATION_STATUS, STATUS_WARNING, DCF_PREFIX, NODE_IDS, DELETE_ALL, EXCLUSIVE_IDS, \
-    DELETE_ORPHANED_DATA_FILES, FILE_ERRORS
+    DELETE_ORPHANED_DATA_FILES, FILE_ERRORS, SUBMITTED_ID
 from common.utils import cleanup_s3_download_dir, get_exception_msg, dump_dict_to_json, removeTailingEmptyColumnsAndRows, validate_uuid_by_rex, get_date_time
 from common.model_store import ModelFactory
 from metadata_remover import MetadataRemover
 from data_loader import DataLoader
 from service.ecs_agent import set_scale_in_protection
+
+def resolve_file_validation_after_delete(existing_file_errors, orphan_errors, delete_orphaned_data_files, remaining_file_status):
+    """Choose file status and fileErrors after a metadata delete.
+
+    When associated data files are not deleted, the scan is merged onto the stored
+    list by submittedID. A scanned row replaces the stored row for the same id.
+    When they are deleted, fileErrors is the orphan scan only.
+    An empty scan uses the remaining file-node status so a previous Error is cleared.
+
+    @param existing_file_errors fileErrors already stored on the submission
+    @param orphan_errors F008 rows from the orphan scan
+    @param delete_orphaned_data_files True when associated data files were deleted
+    @param remaining_file_status status of remaining file nodes when the scan is empty
+    @returns tuple of file status and fileErrors
+    """
+    existing = existing_file_errors or []
+    orphans = orphan_errors or []
+    if delete_orphaned_data_files:
+        if orphans:
+            return STATUS_ERROR, orphans
+        return remaining_file_status, []
+    combined = []
+    index_by_id = {}
+    for row in existing + orphans:
+        submitted_id = row.get(SUBMITTED_ID) if isinstance(row, dict) else None
+        if submitted_id and submitted_id in index_by_id:
+            combined[index_by_id[submitted_id]] = row
+        else:
+            if submitted_id:
+                index_by_id[submitted_id] = len(combined)
+            combined.append(row)
+    return (STATUS_ERROR if combined else None), combined
+
 
 VISIBILITY_TIMEOUT = 20
 SEPARATOR_CHAR = '\t'
@@ -136,24 +169,36 @@ def essentialValidate(configs, job_queue, mongo_dao):
                             log.error(error)
                             orphan_errors = []
                         finally:
+                            # A scan that did not finish must not rewrite fileErrors or acknowledge the message.
+                            delete_incomplete = getattr(validator, "delete_incomplete", False) is True
                             # Only update when remove_metadata returned (result is True or False); skip if exception before return
-                            if validator.submission and result is not None:
+                            if validator.submission and result is not None and not delete_incomplete:
                                 fresh_submission = mongo_dao.get_submission(submission_id)
                                 submission_for_update = fresh_submission or validator.submission
                                 existing = (fresh_submission.get(FILE_ERRORS) or []) if fresh_submission else (validator.submission.get(FILE_ERRORS) or [])
-                                combined_file_errors = existing + (orphan_errors if result and orphan_errors else [])
+                                delete_succeeded = result == True
+                                scanned_orphans = orphan_errors if delete_succeeded and orphan_errors else []
+                                replace_with_scan = delete_orphaned_data_files and delete_succeeded
+                                remaining_file_status = None
+                                if replace_with_scan and not scanned_orphans:
+                                    remaining_file_status = mongo_dao.submission_file_status_from_records(submission_id, STATUS_PASSED)
+                                file_status, combined_file_errors = resolve_file_validation_after_delete(
+                                    existing, scanned_orphans, replace_with_scan, remaining_file_status
+                                )
                                 status = submission_for_update.get(METADATA_VALIDATION_STATUS)
                                 status = STATUS_PASSED if status in [STATUS_ERROR, STATUS_WARNING] else status
-                                file_status = STATUS_ERROR if combined_file_errors else None
                                 mongo_dao.set_submission_validation_status(
                                     submission_for_update, file_status, status, combined_file_errors, True
                                 )
                     else:
                         log.error(f'Invalid message: {data}!')
 
-                    log.info(f'Processed {SERVICE_TYPE_ESSENTIAL} validation for the batch, {data.get(BATCH_ID)}!')
-                    batches_processed += 1
-                    msg.delete()
+                    if getattr(validator, "delete_incomplete", False) is True:
+                        log.error(f'{data.get(SUBMISSION_ID)}: orphan scan did not finish; leaving the message for retry')
+                    else:
+                        log.info(f'Processed {SERVICE_TYPE_ESSENTIAL} validation for the batch, {data.get(BATCH_ID)}!')
+                        batches_processed += 1
+                        msg.delete()
                 except Exception as e:
                     log.exception(e)
                     log.critical(

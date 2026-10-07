@@ -12,7 +12,9 @@ from common.constants import (
     METADATA_VALIDATION_STATUS,
     VALIDATION_ENDED,
     FILE_ERRORS,
+    FILE_VALIDATION_STATUS,
     STATUS_ERROR,
+    STATUS_NEW,
     STATUS_PASSED,
     STATUS_WARNING,
     S3_FILE_INFO,
@@ -250,3 +252,52 @@ def test_submission_file_status_from_records_raises_when_files_cannot_load(mock_
     dao.get_files_by_submission = MagicMock(return_value=None)
     with pytest.raises(Exception, match="Failed to load file records"):
         dao.submission_file_status_from_records("sub_1", STATUS_PASSED)
+
+
+def _stub_s3_list(dao, pages):
+    """Stub the boto paginator used by submissionHasDataFile."""
+    paginator = MagicMock()
+    paginator.paginate.return_value = pages
+    dao.s3_service.s3_client.get_paginator = MagicMock(return_value=paginator)
+    return paginator
+
+
+def _delete_with_no_file_nodes(mock_client_class, pages):
+    """Write a delete close-out when no file nodes remain and fileErrors is empty."""
+    mock_submission_collection = _setup_mock_db(mock_client_class)
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    paginator = _stub_s3_list(dao, pages)
+    with patch.object(dao, "count_docs", return_value=0):
+        dao.set_submission_validation_status(
+            {
+                ID: "sub_1",
+                METADATA_VALIDATION_STATUS: STATUS_PASSED,
+                "bucketName": "bucket",
+                "rootPath": "root",
+            },
+            STATUS_PASSED,
+            STATUS_PASSED,
+            [],
+            is_delete=True,
+        )
+    set_payload = mock_submission_collection.update_one.call_args[0][1]["$set"]
+    return set_payload, paginator
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_delete_with_no_file_nodes_and_no_s3_objects_clears_file_status(mock_client_class):
+    """An empty delete scan with no remaining files stores null, not Passed."""
+    set_payload, paginator = _delete_with_no_file_nodes(mock_client_class, [{}])
+    paginator.paginate.assert_called()
+    assert set_payload[FILE_VALIDATION_STATUS] is None
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_delete_with_no_file_nodes_and_s3_objects_sets_new(mock_client_class):
+    """An empty delete scan with S3 objects still in the file folder stores New, not Passed."""
+    set_payload, paginator = _delete_with_no_file_nodes(
+        mock_client_class,
+        [{"Contents": [{"Key": "root/file/a.csv"}]}],
+    )
+    paginator.paginate.assert_called()
+    assert set_payload[FILE_VALIDATION_STATUS] == STATUS_NEW
