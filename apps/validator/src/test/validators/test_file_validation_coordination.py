@@ -13,7 +13,7 @@ from common.validation_closeout import (
 )
 from common.constants import FILE_ENDED, FILE_STATUS, VALIDATION_ENDED, FILE_VALIDATION_STATUS, VALIDATION_TYPE_FILE, VALIDATION_TYPE_METADATA, \
     ENDED, VALIDATION_STATUS, METADATA_STATUS, METADATA_ENDED, WORST_BATCH_STATUS, SUBMISSION_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, \
-    STATUS_FAILED, METADATA_VALIDATION_STATUS, CROSS_SUBMISSION_VALIDATION_STATUS, SCOPE, FILE_ID, SQS_TYPE, FILE_ERRORS
+    STATUS_FAILED, METADATA_VALIDATION_STATUS, CROSS_SUBMISSION_VALIDATION_STATUS, SCOPE, FILE_ID, SQS_TYPE
 from common.mongo_dao import ensure_update_ops
 
 log = MagicMock()
@@ -737,7 +737,8 @@ def test_file_record_read_failure_does_not_record_error_progress():
 def test_orphan_failed_status_records_task_result():
     """A non-retryable orphan scan failure is recorded as Failed so the run can finish.
 
-    The S3 listing raises, and the task increment stores Failed as the worst file status.
+    The S3 listing raises, the task increment stores Failed as the worst file status,
+    and existing F008 qcResults are left unchanged.
     """
     mongo_dao = MagicMock()
     mongo_dao.get_submission.return_value = {
@@ -755,7 +756,7 @@ def test_orphan_failed_status_records_task_result():
     })
     mongo_dao.get_validation.return_value = validation
     mongo_dao.atomic_update_validation.return_value = validation
-    mongo_dao.atomic_update_submission.return_value = {'_id': SUBMISSION}
+    mongo_dao.replace_f008_qc_results.return_value = True
     s3 = MagicMock()
     s3.bucket.objects.filter.side_effect = RuntimeError('s3 down')
 
@@ -770,8 +771,36 @@ def test_orphan_failed_status_records_task_result():
         VALIDATION_ID,
         {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 3}},
     )
-    file_errors = mongo_dao.atomic_update_submission.call_args_list[0][0][1][FILE_ERRORS]
-    assert file_errors[0]['code'] == 'F011'
+    mongo_dao.replace_f008_qc_results.assert_not_called()
+
+
+def test_orphan_failed_scan_skips_f008_replace_but_records_task():
+    """A Failed orphan scan does not replace F008 qcResults but still counts the task."""
+    mongo_dao = MagicMock()
+    mongo_dao.get_submission.return_value = {'_id': SUBMISSION}
+    validation = _validation_doc(**{
+        TOTAL_FILE_MESSAGES: 1,
+        COMPLETED_FILE_MESSAGES: 1,
+        WORST_FILE_STATUS: 3,
+    })
+    mongo_dao.get_validation.return_value = validation
+    mongo_dao.atomic_update_validation.return_value = validation
+
+    with patch('file_validator.FileValidator') as validator_cls:
+        validator = validator_cls.return_value
+        validator.get_root_path.return_value = True
+        validator.validate_all_files.return_value = (STATUS_FAILED, [])
+        _handle_file_message(mongo_dao, MagicMock(), {
+            'validationID': VALIDATION_ID,
+            SUBMISSION_ID: SUBMISSION,
+            SQS_TYPE: 'Validate Submission Files',
+        })
+
+    mongo_dao.replace_f008_qc_results.assert_not_called()
+    assert mongo_dao.atomic_update_validation.call_args_list[0] == call(
+        VALIDATION_ID,
+        {'$inc': {COMPLETED_FILE_MESSAGES: 1}, '$max': {WORST_FILE_STATUS: 3}},
+    )
 
 
 def test_orphan_file_list_read_failure_does_not_record_task_result():
@@ -793,27 +822,27 @@ def test_orphan_file_list_read_failure_does_not_record_task_result():
             })
 
     mongo_dao.atomic_update_validation.assert_not_called()
-    mongo_dao.atomic_update_submission.assert_not_called()
+    mongo_dao.replace_f008_qc_results.assert_not_called()
 
 
 def test_orphan_file_errors_write_failure_does_not_record_task_result():
-    """A failed fileErrors write is retried before counting the orphan task."""
+    """A failed F008 qcResults write is retried before counting the orphan task."""
     mongo_dao = MagicMock()
     mongo_dao.get_submission.return_value = {'_id': SUBMISSION}
-    mongo_dao.atomic_update_submission.return_value = None
+    mongo_dao.replace_f008_qc_results.return_value = False
 
     with patch('file_validator.FileValidator') as validator_cls:
         validator = validator_cls.return_value
         validator.get_root_path.return_value = True
         validator.validate_all_files.return_value = (STATUS_PASSED, [])
-        with pytest.raises(Exception, match='Failed to update file errors'):
+        with pytest.raises(Exception, match='Failed to update F008 qcResults'):
             _handle_file_message(mongo_dao, MagicMock(), {
                 'validationID': VALIDATION_ID,
                 SUBMISSION_ID: SUBMISSION,
                 SQS_TYPE: 'Validate Submission Files',
             })
 
-    mongo_dao.atomic_update_submission.assert_called_once_with(SUBMISSION, {FILE_ERRORS: []})
+    mongo_dao.replace_f008_qc_results.assert_called_once_with(SUBMISSION, [])
     mongo_dao.atomic_update_validation.assert_not_called()
 
 
@@ -861,7 +890,7 @@ def test_orphan_file_list_database_error_does_not_record_task_result():
             })
 
     mongo_dao.atomic_update_validation.assert_not_called()
-    mongo_dao.atomic_update_submission.assert_not_called()
+    mongo_dao.replace_f008_qc_results.assert_not_called()
 
 
 def test_orphan_submission_read_failure_does_not_record_task_result():
@@ -877,6 +906,7 @@ def test_orphan_submission_read_failure_does_not_record_task_result():
         })
 
     mongo_dao.atomic_update_validation.assert_not_called()
+    mongo_dao.replace_f008_qc_results.assert_not_called()
 
 
 def _validator_ready_to_check_md5(mongo_dao):

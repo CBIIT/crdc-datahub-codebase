@@ -8,12 +8,12 @@ from common.constants import ERRORS, WARNINGS, STATUS, S3_FILE_INFO, ID, SIZE, M
     FILE_NAME, SQS_TYPE, SQS_NAME, FILE_ID, STATUS_ERROR, STATUS_WARNING, STATUS_PASSED, STATUS_FAILED, SUBMISSION_ID, \
     BATCH_BUCKET, SERVICE_TYPE_FILE, LAST_MODIFIED, CREATED_AT, TYPE, SUBMISSION_INTENTION, SUBMISSION_INTENTION_DELETE,\
     VALIDATION_ID, QC_RESULT_ID, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, \
-    DATA_FILE_TYPE, QC_VALIDATION_TYPE, SUBMITTED_ID, BATCH_ID, DISPLAY_ID, UPLOADED_DATE, FILE_ERRORS, \
+    DATA_FILE_TYPE, QC_VALIDATION_TYPE, SUBMITTED_ID, BATCH_ID, DISPLAY_ID, UPLOADED_DATE, \
     FILE_VALIDATION_STATUS
 
 from common.utils import get_exception_msg, current_datetime, get_s3_file_info, get_s3_file_md5, create_error, get_uuid_str
 from common.validation_closeout import (
-    FILE_PROGRESS, METADATA_PROGRESS, InvalidValidationMessage, _persisted,
+    FILE_PROGRESS, METADATA_PROGRESS, InvalidValidationMessage,
     process_validation_message, record_type_progress,
 )
 from service.ecs_agent import set_scale_in_protection
@@ -66,9 +66,9 @@ def _handle_file_message(mongo_dao, log, data):
 
     Missing ids and unknown types raise InvalidValidationMessage. A missing
     file record is recorded as an Error task. Transient file-record reads,
-    a failed file-list read, and a failed fileErrors write raise so the
-    message can be requeued. A Failed orphan scan is recorded so the run can
-    finish.
+    a failed file-list read, and a failed F008 qcResults write (on a completed
+    orphan scan) raise so the message can be requeued. A Failed orphan scan is
+    recorded so the run can finish but does not replace F008 qcResults.
 
     @param mongo_dao MongoDao
     @param log logger
@@ -136,8 +136,9 @@ def _handle_file_message(mongo_dao, log, data):
                 orphan_errors = []
             else:
                 status, orphan_errors = validator.validate_all_files(submission_id)
-            if not _persisted(mongo_dao.atomic_update_submission(submission_id, {FILE_ERRORS: orphan_errors})):
-                raise Exception(f'Failed to update file errors for {submission_id}')
+            if status != STATUS_FAILED:
+                if mongo_dao.replace_f008_qc_results(submission_id, orphan_errors) is False:
+                    raise Exception(f'Failed to update F008 qcResults for {submission_id}')
             log.info(f'Processed orphaned file validation for submission: {submission_id}')
             record_task_result(status, validation_id, mongo_dao, log)
         else:
@@ -393,10 +394,11 @@ class FileValidator:
         """Find files in the submission folder that no manifest lists.
 
         A failed file-list read raises so the message can be retried. Any other
-        unexpected exception is returned as Failed and recorded as a finished task.
+        unexpected exception returns Failed with an empty error list; the caller
+        records the task as finished but must not replace F008 qcResults.
 
         @param submission_id submission document id
-        @returns (status, orphan errors)
+        @returns (status, orphan errors) F008 rows when status is not Failed
         @raises _RetryableFileRead when the file list cannot be loaded
         @raises errors.PyMongoError when a database read fails
         """
@@ -435,8 +437,7 @@ class FileValidator:
             self.log.exception(e)
             msg = f"{submission_id}: Failed to validate data files! {get_exception_msg()}!"
             self.log.exception(msg)
-            error = create_error("F011", [], "", "")
-            return STATUS_FAILED, [error]
+            return STATUS_FAILED, []
     
     def set_status(self, record, qc_result, status, error):
         record[S3_FILE_INFO][UPDATED_AT] = current_datetime()
