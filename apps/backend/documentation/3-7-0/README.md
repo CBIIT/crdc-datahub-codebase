@@ -13,7 +13,7 @@ Startup (`bin/www.js`) runs this orchestrator unless `SKIP_STARTUP_MIGRATIONS=tr
 | File | Purpose |
 |------|---------|
 | `3-7-0-migration.js` | Orchestrator (runs all steps below) |
-| `ensure-indexes-migration.js` | Create catalog indexes via `recurring-steps/ensure-indexes.js` |
+| `ensure-indexes-migration.js` | Create catalog indexes via `recurring-steps/ensure-indexes.js` (background builds; missing collections logged, not created) |
 | `sync-pbac-defaults-migration.js` | Sync PBAC from JSON via `recurring-steps/sync-pbac-defaults.js` |
 | `backfill-application-sequence-number.js` | Set `sequenceNumber: 1` where missing (CRDCDH-3970) |
 | `backfill-application-questionnaire-data.js` | Parse string `questionnaireData` and store as object where still a BSON string |
@@ -23,7 +23,7 @@ Startup (`bin/www.js`) runs this orchestrator unless `SKIP_STARTUP_MIGRATIONS=tr
 
 ## Execution order
 
-1. `ensure-indexes-migration.js` (recurring) — creates catalog indexes when missing
+1. `ensure-indexes-migration.js` (recurring) — creates catalog indexes when missing (`background: true`). Startup waits until the catalog is processed, then listens even if some indexes failed. Missing collections are logged and skipped (not created). Same key pattern under a different name logs a warning and skips.
 2. `sync-pbac-defaults-migration.js` (recurring) — merges PBAC defaults into `configuration`
 3. `backfill-application-sequence-number.js` (one-time)
 4. `backfill-application-questionnaire-data.js` (one-time, idempotent) — converts string `questionnaireData` to object
