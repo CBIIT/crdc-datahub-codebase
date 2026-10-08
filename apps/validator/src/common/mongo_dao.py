@@ -13,11 +13,30 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     GENERATED_PROPS, \
     CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL, \
     COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS, STATUS_DETAIL, \
-    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION, VALIDATION_STATUS
+    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION, VALIDATION_STATUS, PENDING_METADATA_DELETE, \
+    S3_LIST_ORPHANS_PAGE_SIZE, DISPLAY_ID
 from common.utils import get_exception_msg, current_datetime, get_uuid_str
 from common.s3_utils import S3Service
 
 MAX_SIZE = 10000
+WRITE_BATCH_SIZE = S3_LIST_ORPHANS_PAGE_SIZE
+
+
+def _chunks(items, size):
+    """Yield lists of at most `size` items.
+
+    @param items sequence to split
+    @param size maximum chunk length
+    @returns generator of lists
+    """
+    batch = []
+    for item in items:
+        batch.append(item)
+        if len(batch) >= size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 class MongoDao:
     def __init__(self, connectionStr, db_name):
@@ -53,7 +72,13 @@ class MongoDao:
             return None
 
     """
-    find batch for uploaded data file
+    Find the latest Uploaded batch for a data file name.
+
+    @param submissionID submission document id
+    @param batch_type batch type
+    @param file_name data file name
+    @returns the batch document, or None when no Uploaded batch matches
+    @raises Exception when the database read fails
     """
     def find_batch_by_file_name(self, submissionID, batch_type, file_name):
         db = self.client[self.db_name]
@@ -70,11 +95,11 @@ class MongoDao:
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to find batch by data file name, {submissionID}/{batch_type}/{file_name}: {get_exception_msg()}")
-            return None
+            raise
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to find batch by data file name, {submissionID}/{batch_type}/{file_name}: {get_exception_msg()}")
-            return None
+            raise
 
     """
     get submission by id
@@ -96,6 +121,33 @@ class MongoDao:
             self.log.exception(e)
             self.log.exception(f"Failed to find submission, {submissionId}: {get_exception_msg()}")
             raise
+
+    def set_pending_metadata_delete(self, submission_id, plan):
+        """Store or clear the metadata delete plan used to resume a failed delete.
+
+        @param submission_id submission document id
+        @param plan plan document, or None to clear the field
+        @returns True when a submission document matched
+        """
+        if not submission_id:
+            return False
+        db = self.client[self.db_name]
+        submission_collection = db[SUBMISSION_COLLECTION]
+        try:
+            if plan is None:
+                update = {"$unset": {PENDING_METADATA_DELETE: ""}}
+            else:
+                update = {"$set": {PENDING_METADATA_DELETE: plan, UPDATED_AT: current_datetime()}}
+            result = submission_collection.update_one({ID: submission_id}, update, False)
+            return result.matched_count > 0
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to store pending metadata delete, {submission_id}: {get_exception_msg()}")
+            return False
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to store pending metadata delete, {submission_id}: {get_exception_msg()}")
+            return False
 
     """
     get validation by id
@@ -273,6 +325,71 @@ class MongoDao:
             self.log.exception(e)
             self.log.exception(f"Failed to find data file for the submission, {submission_id}: {get_exception_msg()}")
             return None
+
+    def node_keys_by_submission(self, submission_id):
+        """Live (nodeType, nodeID) pairs for a submission.
+
+        @param submission_id submission document id
+        @returns set of pairs, or None when the read fails
+        """
+        db = self.client[self.db_name]
+        data_collection = db[DATA_COLLECTION]
+        try:
+            keys = set()
+            cursor = data_collection.find(
+                {SUBMISSION_ID: submission_id},
+                {NODE_TYPE: 1, NODE_ID: 1},
+            )
+            for doc in cursor:
+                keys.add((doc.get(NODE_TYPE), doc.get(NODE_ID)))
+            return keys
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"{submission_id}: Failed to list node keys: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"{submission_id}: Failed to list node keys: {get_exception_msg()}")
+            return None
+
+    def parent_refs_by_submission(self, submission_id):
+        """Cursor of parent lists for a submission.
+
+        @param submission_id submission document id
+        @returns cursor of {parents} documents, or None when the query cannot start
+        """
+        db = self.client[self.db_name]
+        data_collection = db[DATA_COLLECTION]
+        try:
+            return data_collection.find({SUBMISSION_ID: submission_id}, {PARENTS: 1})
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"{submission_id}: Failed to list parent refs: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"{submission_id}: Failed to list parent refs: {get_exception_msg()}")
+            return None
+
+    def delete_f008_qc_results(self, submission_id):
+        """Delete F008 qcResults for a submission.
+
+        @param submission_id submission document id
+        @returns True when the delete ran
+        """
+        db = self.client[self.db_name]
+        qc_collection = db[QC_COLLECTION]
+        try:
+            qc_collection.delete_many({SUBMISSION_ID: submission_id, "errors.code": "F008"})
+            return True
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to delete F008 qc results, {submission_id}: {get_exception_msg()}")
+            return False
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to delete F008 qc results, {submission_id}: {get_exception_msg()}")
+            return False
     
     def update_batch(self, batch):
         db = self.client[self.db_name]
@@ -485,11 +602,17 @@ class MongoDao:
         db = self.client[self.db_name]
         file_collection = db[DATA_COLLECTION]
         try:
-            result = file_collection.bulk_write([
-                ReplaceOne( {ID: m[ID]}, remove_id(m),  upsert=True)
-                    for m in list(data_records)
-                ])
-            self.log.info(f'Total {result.upserted_count} dataRecords are upserted!')
+            upserted = 0
+            wrote = False
+            for chunk in _chunks(list(data_records), WRITE_BATCH_SIZE):
+                result = file_collection.bulk_write([
+                    ReplaceOne( {ID: m[ID]}, remove_id(m),  upsert=True)
+                        for m in chunk
+                    ])
+                upserted += result.upserted_count
+                wrote = True
+            if wrote:
+                self.log.info(f'Total {upserted} dataRecords are upserted!')
             return True, None
         except errors.PyMongoError as pe:
             self.log.exception(pe)
@@ -559,15 +682,24 @@ class MongoDao:
         db = self.client[self.db_name]
         file_collection = db[DATA_COLLECTION]
         try:
-            result = file_collection.bulk_write([
-                DeleteOne( { SUBMISSION_ID: m[SUBMISSION_ID], NODE_ID: m[NODE_ID], NODE_TYPE: m[NODE_TYPE] })
-                    for m in list(nodes)
+            nodes = list(nodes)
+            deleted = 0
+            qc_ids = []
+            for chunk in _chunks(nodes, WRITE_BATCH_SIZE):
+                result = file_collection.bulk_write([
+                    DeleteOne( { SUBMISSION_ID: m[SUBMISSION_ID], NODE_ID: m[NODE_ID], NODE_TYPE: m[NODE_TYPE] })
+                        for m in chunk
+                    ])
+                deleted += result.deleted_count
+                qc_ids.extend([node[QC_RESULT_ID] for node in chunk if node.get(QC_RESULT_ID)])
+                qc_ids.extend([
+                    node[S3_FILE_INFO][QC_RESULT_ID]
+                    for node in chunk
+                    if node.get(S3_FILE_INFO) and node[S3_FILE_INFO].get(QC_RESULT_ID)
                 ])
-            self.log.info(f'Total {result.deleted_count} dataRecords are deleted!')
-            # delete related qcResults
-            qc_ids = [node[QC_RESULT_ID] for node in nodes if node.get(QC_RESULT_ID)]
-            qc_ids.extend([node[S3_FILE_INFO][QC_RESULT_ID]for node in nodes if node.get(S3_FILE_INFO) and node[S3_FILE_INFO].get(QC_RESULT_ID)])
-            if qc_ids and len(qc_ids) > 0:
+            if nodes:
+                self.log.info(f'Total {deleted} dataRecords are deleted!')
+            if qc_ids:
                 self.delete_qcRecords(qc_ids)
             return True, None
         except errors.PyMongoError as pe:
@@ -715,15 +847,41 @@ class MongoDao:
     find child node by type and id
     """
     def get_nodes_by_parents(self, parent_ids, submission_id):
+        """Find children of the given parents.
+
+        Parents are grouped by type and queried in id chunks so the filter stays
+        under the query size limit. A child parented by more than one chunk is returned once.
+
+        @param parent_ids parent nodes, each with nodeType and nodeID
+        @param submission_id submission document id
+        @returns (succeeded, child dataRecords)
+        """
         db = self.client[self.db_name]
         data_collection = db[DATA_COLLECTION]
-        query = []
-        for id in parent_ids:
-            node_type, node_id = id.get(NODE_TYPE), id.get(NODE_ID)
-            query.append({SUBMISSION_ID: submission_id, PARENTS: {"$elemMatch": {PARENT_TYPE: node_type, PARENT_ID_VAL: node_id}}})
+        grouped = {}
+        for parent in parent_ids or []:
+            node_type, node_id = parent.get(NODE_TYPE), parent.get(NODE_ID)
+            if node_type is None or node_id is None:
+                continue
+            grouped.setdefault(node_type, []).append(node_id)
+        if not grouped:
+            return True, []
         try:
-            results = list(data_collection.find({"$or": query})) if len(query) > 0 else []
-            return True, results
+            found = []
+            seen = set()
+            for node_type, node_ids in grouped.items():
+                for id_chunk in _chunks(node_ids, WRITE_BATCH_SIZE):
+                    query = {
+                        SUBMISSION_ID: submission_id,
+                        PARENTS: {"$elemMatch": {PARENT_TYPE: node_type, PARENT_ID_VAL: {"$in": id_chunk}}},
+                    }
+                    for node in data_collection.find(query):
+                        key = (node.get(NODE_TYPE), node.get(NODE_ID))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        found.append(node)
+            return True, found
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"{submission_id}: Failed to retrieve child nodes: {get_exception_msg()}")
@@ -1432,8 +1590,11 @@ class MongoDao:
         db = self.client[self.db_name]
         data_collection = db[QC_COLLECTION]
         try:
-            result = data_collection.delete_many({ID: {"$in": qc_ids}})
-            return True if result.deleted_count > 0 else False
+            deleted = 0
+            for chunk in _chunks(list(qc_ids), WRITE_BATCH_SIZE):
+                result = data_collection.delete_many({ID: {"$in": chunk}})
+                deleted += result.deleted_count
+            return True if deleted > 0 else False
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to delete qc records for {qc_ids}: {get_exception_msg()}")
@@ -1451,11 +1612,17 @@ class MongoDao:
         db = self.client[self.db_name]
         data_collection = db[QC_COLLECTION]
         try:
-            result = data_collection.bulk_write([
-                ReplaceOne({ID: m[ID]}, remove_id(m), upsert=True)
-                    for m in list(qc_list)
-                ])
-            self.log.info(f'Total {result.upserted_count} QC records are upserted!')
+            qc_list = list(qc_list)
+            if not qc_list:
+                return True, None
+            upserted = 0
+            for chunk in _chunks(qc_list, WRITE_BATCH_SIZE):
+                result = data_collection.bulk_write([
+                    ReplaceOne({ID: m[ID]}, remove_id(m), upsert=True)
+                        for m in chunk
+                    ])
+                upserted += result.upserted_count
+            self.log.info(f'Total {upserted} QC records are upserted!')
             return True, None
         except errors.PyMongoError as pe:
             self.log.exception(pe)
