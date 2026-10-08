@@ -1,6 +1,5 @@
 const ERROR = require("../constants/error-constants");
 const {VALIDATION, VALIDATION_STATUS} = require("../constants/submission-constants");
-const {getSortDirection} = require("../crdc-datahub-database-drivers/utility/mongodb-utility");
 const {replaceErrorString} = require("../utility/string-util");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {verifySession} = require("../verifier/user-info-verifier");
@@ -21,10 +20,7 @@ class QcResultService{
     }
 
     /**
-     * List QC result rows for a submission, including submission-level orphan file errors.
-     * When fileErrors is empty, or none of those rows match the request filters,
-     * paging stays in the DAO. Otherwise the full filtered collection is merged
-     * with the matching fileErrors, sorted, and paged here.
+     * List QC result rows for a submission from the qcResults collection.
      * @param {object} params GraphQL arguments, including submission _id and table filters
      * @param {object} context Request context
      * @returns {Promise<{results: object[], total: number}>}
@@ -37,104 +33,21 @@ class QcResultService{
         if (createScope.isNoneScope() && viewScope.isNoneScope()) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        // Check that the specified submissionID exists
         const submission = await this.submissionDAO.findFirst({_id: params._id});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
-        const fileErrors = submission.fileErrors;
-        if (!fileErrors || fileErrors.length === 0) {
-            return await this.qcResultDAO.submissionQCResults(params._id, params.nodeTypes, params.batchIDs, params.severities, params.issueCode, params.first, params.offset, params.orderBy, params.sortDirection);
-        }
-        const fileRows = this._filterFileErrorRows(
-            this.mapSubmissionFileErrorsToQCResults(fileErrors),
+        return await this.qcResultDAO.submissionQCResults(
+            params._id,
             params.nodeTypes,
             params.batchIDs,
             params.severities,
-            params.issueCode
+            params.issueCode,
+            params.first,
+            params.offset,
+            params.orderBy,
+            params.sortDirection
         );
-        if (fileRows.length === 0) {
-            return await this.qcResultDAO.submissionQCResults(params._id, params.nodeTypes, params.batchIDs, params.severities, params.issueCode, params.first, params.offset, params.orderBy, params.sortDirection);
-        }
-        const qcResults = await this.qcResultDAO.submissionQCResults(
-            params._id, params.nodeTypes, params.batchIDs, params.severities, params.issueCode,
-            -1, 0, params.orderBy, params.sortDirection
-        );
-        const merged = sortRows([...(qcResults?.results || []), ...fileRows], params.orderBy, params.sortDirection, "type");
-        return {
-            results: pageRows(merged, params.first, params.offset),
-            total: merged.length
-        };
-    }
-
-    /**
-     * Maps submission-level file errors onto QC result rows.
-     * @param {object[]} fileErrors Embedded submission.fileErrors
-     * @returns {object[]} QC rows including issueCount
-     */
-    mapSubmissionFileErrorsToQCResults(fileErrors) {
-        return (fileErrors || []).map((fileError) => {
-            const errors = fileError?.errors || [];
-            const warnings = fileError?.warnings || [];
-            return {
-                submissionID: fileError?.submissionID,
-                dataRecordID: fileError?.dataRecordID,
-                validationType: fileError?.validationType,
-                batchID: fileError?.batchID,
-                displayID: fileError?.displayID,
-                type: fileError?.type,
-                submittedID: fileError?.submittedID,
-                severity: fileError?.severity,
-                uploadedDate: fileError?.uploadedDate,
-                validatedDate: fileError?.validatedDate,
-                errors,
-                warnings,
-                issueCount: errors.length + warnings.length
-            };
-        });
-    }
-
-    /**
-     * Applies the same node, batch, severity, and issue-code filters as submissionQCResults.
-     * Only the first batch ID is used. Error and Warning filters set issueCount from that array.
-     * @param {object[]} rows Mapped file-error QC rows
-     * @param {string[]} nodeTypes Node type filter
-     * @param {string[]} batchIDs Batch ID filter
-     * @param {string} severities Error, Warning, or All
-     * @param {string} issueCode Issue code filter
-     * @returns {object[]}
-     */
-    _filterFileErrorRows(rows, nodeTypes, batchIDs, severities, issueCode) {
-        const batchID = batchIDs?.length > 0 ? batchIDs[0] : null;
-        return (rows || []).filter((row) => {
-            const errors = row.errors || [];
-            const warnings = row.warnings || [];
-            if (severities === VALIDATION_STATUS.ERROR && errors.length === 0) {
-                return false;
-            }
-            if (severities === VALIDATION_STATUS.WARNING && warnings.length === 0) {
-                return false;
-            }
-            if (nodeTypes?.length > 0 && !nodeTypes.includes(row.type)) {
-                return false;
-            }
-            if (batchID && row.batchID !== batchID) {
-                return false;
-            }
-            if (issueCode) {
-                const matchesCode = errors.some((error) => error?.code === issueCode)
-                    || warnings.some((warning) => warning?.code === issueCode);
-                if (!matchesCode) {
-                    return false;
-                }
-            }
-            if (severities === VALIDATION_STATUS.ERROR) {
-                row.issueCount = errors.length;
-            } else if (severities === VALIDATION_STATUS.WARNING) {
-                row.issueCount = warnings.length;
-            }
-            return true;
-        });
     }
 
     /**
@@ -213,10 +126,7 @@ class QcResultService{
     }
 
     /**
-     * Aggregate QC issues for a submission, including orphan file errors on the submission.
-     * When fileErrors is empty, or none of those rows contribute issues for the requested
-     * severity, paging stays in the DAO. Otherwise the full filtered collection is merged
-     * with matching file-error groups, sorted, and paged here.
+     * Aggregate QC issues for a submission from the qcResults collection.
      * @param {object} params GraphQL arguments, including submissionID and severity
      * @param {object} context Request context
      * @returns {Promise<{results: object[], total: number}>}
@@ -229,33 +139,18 @@ class QcResultService{
         if (createScope.isNoneScope() && viewScope.isNoneScope()) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        // Check that the specified submissionID exists
         const submission = await this.submissionDAO.findFirst({_id: params.submissionID});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
-        const fileErrors = submission.fileErrors;
-        if (!fileErrors || fileErrors.length === 0) {
-            return await this.qcResultDAO.aggregatedSubmissionQCResults(params.submissionID, params.severity, params.first, params.offset, params.orderBy, params.sortDirection);
-        }
-        const fileErrorGroups = aggregatedGroupsFromFileErrors(fileErrors, params.severity);
-        if (fileErrorGroups.length === 0) {
-            return await this.qcResultDAO.aggregatedSubmissionQCResults(params.submissionID, params.severity, params.first, params.offset, params.orderBy, params.sortDirection);
-        }
-        const aggregated = await this.qcResultDAO.aggregatedSubmissionQCResults(
-            params.submissionID, params.severity, -1, 0, params.orderBy, params.sortDirection
-        );
-        const merged = mergeAggregatedGroups(aggregated?.results || [], fileErrors, params.severity);
-        const sorted = sortRows(
-            merged,
+        return await this.qcResultDAO.aggregatedSubmissionQCResults(
+            params.submissionID,
+            params.severity,
+            params.first,
+            params.offset,
             params.orderBy,
-            params.sortDirection,
-            ["title", "severity", "code", "property", "value"]
+            params.sortDirection
         );
-        return {
-            results: pageRows(sorted, params.first, params.offset),
-            total: sorted.length
-        };
     }
 
     async retrieveSubmissionQCComparisonsAPI(params, context) {
@@ -427,173 +322,6 @@ class QCResultError {
     static create(title, description, severity, code) {
         return new QCResultError(title, description, severity, code);
     }
-}
-
-/**
- * Compare two sort values. Nulls sort first.
- * @param {*} left Left value
- * @param {*} right Right value
- * @returns {number}
- */
-function compareValues(left, right) {
-    if (left == null && right == null) {
-        return 0;
-    }
-    if (left == null) {
-        return -1;
-    }
-    if (right == null) {
-        return 1;
-    }
-    if (left > right) {
-        return 1;
-    }
-    if (left < right) {
-        return -1;
-    }
-    return 0;
-}
-
-/**
- * Sort rows by orderBy, then by secondary fields ascending.
- * @param {object[]} rows Rows to sort
- * @param {string} orderBy Primary sort field
- * @param {string} sortDirection asc or desc
- * @param {string|string[]} [secondaryField] Tie-break field or fields, each sorted ascending
- * @returns {object[]}
- */
-function sortRows(rows, orderBy, sortDirection, secondaryField) {
-    const direction = getSortDirection(sortDirection);
-    const primary = orderBy || "uploadedDate";
-    const secondaryFields = Array.isArray(secondaryField)
-        ? secondaryField
-        : (secondaryField ? [secondaryField] : []);
-    return [...(rows || [])].sort((left, right) => {
-        const primaryCompare = compareValues(left?.[primary], right?.[primary]) * direction;
-        if (primaryCompare !== 0) {
-            return primaryCompare;
-        }
-        for (const field of secondaryFields) {
-            if (field === primary) {
-                continue;
-            }
-            const secondaryCompare = compareValues(left?.[field], right?.[field]);
-            if (secondaryCompare !== 0) {
-                return secondaryCompare;
-            }
-        }
-        return 0;
-    });
-}
-
-/**
- * Apply offset and limit. A first value below 1 returns the remainder of the list.
- * @param {object[]} rows Sorted rows
- * @param {number} first Page size
- * @param {number} offset Page offset
- * @returns {object[]}
- */
-function pageRows(rows, first, offset) {
-    const start = offset > 0 ? offset : 0;
-    if (first > 0) {
-        return rows.slice(start, start + first);
-    }
-    return rows.slice(start);
-}
-
-/**
- * Identity for an aggregated QC issue group.
- * @param {object} group Aggregated issue
- * @returns {string}
- */
-function aggregatedGroupKey(group) {
-    return JSON.stringify({
-        title: group?.title,
-        severity: group?.severity,
-        code: group?.code,
-        property: group?.property ?? "N/A",
-        value: group?.value ?? "N/A"
-    });
-}
-
-/**
- * Count orphan file-error issues using the same group key as aggregated QC results.
- * Identical issues on one file-error row count once.
- * @param {object[]} fileErrors Embedded submission.fileErrors
- * @param {string} severity error, warning, or all
- * @returns {object[]} Aggregated groups
- */
-function aggregatedGroupsFromFileErrors(fileErrors, severity) {
-    const normalized = typeof severity === "string" ? severity.toLowerCase() : "";
-    const includeErrors = normalized !== VALIDATION_STATUS.WARNING.toLowerCase();
-    const includeWarnings = normalized !== VALIDATION_STATUS.ERROR.toLowerCase();
-    const counts = new Map();
-    for (const fileError of fileErrors || []) {
-        const seen = new Set();
-        const issues = [];
-        if (includeErrors) {
-            for (const error of fileError?.errors || []) {
-                issues.push([error, VALIDATION_STATUS.ERROR]);
-            }
-        }
-        if (includeWarnings) {
-            for (const warning of fileError?.warnings || []) {
-                issues.push([warning, VALIDATION_STATUS.WARNING]);
-            }
-        }
-        for (const [issue, issueSeverity] of issues) {
-            const group = {
-                title: issue?.title,
-                severity: issueSeverity,
-                code: issue?.code,
-                property: issue?.offendingProperty ?? "N/A",
-                value: issue?.offendingValue ?? "N/A",
-                count: 0
-            };
-            const key = aggregatedGroupKey(group);
-            if (seen.has(key)) {
-                continue;
-            }
-            seen.add(key);
-            const current = counts.get(key) || group;
-            current.count += 1;
-            counts.set(key, current);
-        }
-    }
-    return [...counts.values()];
-}
-
-/**
- * Add file-error issue counts onto aggregated QC groups.
- * The first group for each key is indexed so merging stays linear.
- * DAO rows that share a displayed key stay separate. A matching file-error count is added to the first of them.
- * @param {object[]} daoGroups Groups from the QC results collection
- * @param {object[]} fileErrors Embedded submission.fileErrors
- * @param {string} severity error, warning, or all
- * @returns {object[]}
- */
-function mergeAggregatedGroups(daoGroups, fileErrors, severity) {
-    const mergedGroups = [];
-    const firstIndexByKey = new Map();
-    for (const daoGroup of daoGroups || []) {
-        const copy = { ...daoGroup };
-        const index = mergedGroups.push(copy) - 1;
-        const key = aggregatedGroupKey(copy);
-        if (!firstIndexByKey.has(key)) {
-            firstIndexByKey.set(key, index);
-        }
-    }
-    for (const fileErrorGroup of aggregatedGroupsFromFileErrors(fileErrors, severity)) {
-        const key = aggregatedGroupKey(fileErrorGroup);
-        const existingIndex = firstIndexByKey.get(key);
-        if (existingIndex !== undefined) {
-            mergedGroups[existingIndex].count += fileErrorGroup.count;
-        } else {
-            const index = mergedGroups.push({ ...fileErrorGroup }) - 1;
-            firstIndexByKey.set(key, index);
-        }
-    }
-    return mergedGroups;
 }
 
 module.exports = {
