@@ -1867,11 +1867,11 @@ class Submission {
 
                 const [submissionDataFiles, dataFileSize, _logResult, _metadataReset, _qcDeletionResult] = await Promise.all(promises);
 
-                const refreshedSubmission = await this._findByID(aSubmission._id);
+                const fileIssues = await this.qcResultsService.getQCResultsForNodeType(aSubmission._id, VALIDATION.TYPES.DATA_FILE); 
                 const fileValidationStatus = submissionDataFiles?.length > 0
                     ? await this.dataRecordService.recalculateFileValidationStatus(
                         aSubmission._id,
-                        refreshedSubmission?.fileErrors
+                        fileIssues
                     )
                     : null;
                 // update submission data file info

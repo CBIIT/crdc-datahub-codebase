@@ -320,6 +320,11 @@ class QCResultDAO extends MongooseGenericDAO {
         ]);
         return result || [];
     }
+
+    async getQCResultsForNodeType(submissionID, nodeType) {
+        const result = await this.model.find({ submissionID, type: nodeType });
+        return result || [];
+    }
 }
 
 

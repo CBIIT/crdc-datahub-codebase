@@ -27,10 +27,20 @@ const FILE = "file";
  * @param {string[]} s3FileInfoStatuses Collected s3FileInfo.status values for the submission
  * @returns {string} One of VALIDATION_STATUS values
  */
-function deriveFileValidationStatus(fileErrors, s3FileInfoStatuses) {
-    if (fileErrors && fileErrors.length > 0) {
-        return VALIDATION_STATUS.ERROR;
+function deriveFileValidationStatus(fileIssues, s3FileInfoStatuses) {
+    if (fileIssues && fileIssues.length > 0) {
+        for (const issue of fileIssues) {
+            if (issue.severity === VALIDATION_STATUS.ERROR) {
+                return VALIDATION_STATUS.ERROR;
+            }
+            if (issue.severity === VALIDATION_STATUS.WARNING) {
+                return VALIDATION_STATUS.WARNING;
+            }
+        }
+        console.error("Invalid file issues, not severity found!");
     }
+
+    // No file issues, use s3FileInfo.status to derive file validation status
     const statuses = s3FileInfoStatuses || [];
     if (statuses.includes(VALIDATION_STATUS.NEW)) {
         return VALIDATION_STATUS.NEW;
@@ -618,9 +628,9 @@ class DataRecordService {
      * @param {object[]|null|undefined} fileErrors
      * @returns {Promise<string>}
      */
-    async recalculateFileValidationStatus(submissionID, fileErrors) {
+    async recalculateFileValidationStatus(submissionID, fileIssues) {
         const s3FileInfoStatuses = await this.getS3FileInfoStatusesForSubmission(submissionID);
-        return deriveFileValidationStatus(fileErrors, s3FileInfoStatuses);
+        return deriveFileValidationStatus(fileIssues, s3FileInfoStatuses);
     }
 
     _getSubmissionStatQuery(submissionID, validNodeStatus) {

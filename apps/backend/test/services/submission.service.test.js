@@ -930,7 +930,8 @@ describe('Submission Service - getSubmission', () => {
             jest.clearAllMocks();
 
             mockQcResultsService = {
-                deleteQCResultBySubmissionID: jest.fn()
+                deleteQCResultBySubmissionID: jest.fn(),
+                getQCResultsForNodeType: jest.fn().mockResolvedValue([])
             };
 
             // Update submissionService to include qcResultsService
@@ -1105,7 +1106,7 @@ describe('Submission Service - getSubmission', () => {
                 expect(mockDataRecordService.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith('sub-123', deletedFiles);
             });
 
-            it('recalculates fileValidationStatus from fileErrors and s3FileInfo after data file delete', async () => {
+            it('recalculates fileValidationStatus from QC file issues and s3FileInfo after data file delete', async () => {
                 const mockSubmission = {
                     _id: 'sub-123',
                     status: NEW,
@@ -1114,12 +1115,10 @@ describe('Submission Service - getSubmission', () => {
                     rootPath: 'test/path',
                     fileErrors: []
                 };
-                const refreshedSubmission = { ...mockSubmission, fileErrors: [{ submittedID: 'orphan.txt' }] };
+                const fileIssues = [{ submittedID: 'orphan.txt', severity: "Error" }];
                 const deletedFiles = ['file1.txt'];
 
-                submissionService._findByID
-                    .mockResolvedValueOnce(mockSubmission)
-                    .mockResolvedValueOnce(refreshedSubmission);
+                submissionService._findByID.mockResolvedValue(mockSubmission);
                 submissionService._getUserScope.mockResolvedValue({
                     isOwnScope: () => true,
                     isStudyScope: () => false,
@@ -1130,6 +1129,7 @@ describe('Submission Service - getSubmission', () => {
                 submissionService._deleteDataFiles.mockResolvedValue(deletedFiles);
                 submissionService._getAllSubmissionDataFiles.mockResolvedValue(['file2.txt']);
                 submissionService._getS3DirectorySize.mockResolvedValue({ size: 0 });
+                mockQcResultsService.getQCResultsForNodeType.mockResolvedValue(fileIssues);
                 mockDataRecordService.recalculateFileValidationStatus.mockResolvedValue('Error');
                 mockSubmissionDAO.update.mockResolvedValue(mockSubmission);
                 ValidationHandler.success = jest.fn((msg) => ({ success: true, message: msg }));
@@ -1143,9 +1143,13 @@ describe('Submission Service - getSubmission', () => {
                     { userInfo: { _id: 'user-123' } }
                 );
 
+                expect(mockQcResultsService.getQCResultsForNodeType).toHaveBeenCalledWith(
+                    'sub-123',
+                    VALIDATION.TYPES.DATA_FILE
+                );
                 expect(mockDataRecordService.recalculateFileValidationStatus).toHaveBeenCalledWith(
                     'sub-123',
-                    refreshedSubmission.fileErrors
+                    fileIssues
                 );
                 expect(mockSubmissionDAO.update).toHaveBeenCalledWith(
                     'sub-123',
