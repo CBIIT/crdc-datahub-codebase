@@ -204,6 +204,10 @@ class QcResultService{
         return this.qcResultDAO.getQCResultsErrors(submissionID, errorType);
     }
 
+    async getQCResultsForNodeType(submissionID, nodeType) {
+        return this.qcResultDAO.getQCResultsForNodeType(submissionID, nodeType);
+    }
+
     async resetQCResultData(submissionID) {
         return await this.qcResultDAO.deleteMany({submissionID});
     }

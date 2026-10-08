@@ -1347,7 +1347,7 @@ describe('DataRecordService', () => {
 
   describe('deriveFileValidationStatus', () => {
     it('returns Error when submission fileErrors remain', () => {
-      expect(deriveFileValidationStatus([{ submittedID: 'extra.txt' }], ['Passed'])).toBe(VALIDATION_STATUS.ERROR);
+      expect(deriveFileValidationStatus([{ submittedID: 'extra.txt', severity: VALIDATION_STATUS.ERROR }], ['Passed'])).toBe(VALIDATION_STATUS.ERROR);
     });
 
     it('prioritizes New over Error and Warning on s3FileInfo statuses', () => {
