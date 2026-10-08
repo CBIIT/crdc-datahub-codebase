@@ -217,7 +217,8 @@ function specError(spec, detail) {
  * Creates catalog indexes when missing. Property-first idempotency: skips when an index with
  * the same keys (and TTL when declared) already exists; warns when only the name differs.
  * Creates under a suffixed name when the planned name is taken by a different index.
- * The chosen create name is fixed for each catalog spec across createIndex retries.
+ * The chosen create name is fixed for each catalog spec across in-progress createIndex retries.
+ * After an already-exists error, the index list is refreshed and the create name is re-resolved.
  * expireAfterSeconds mismatch on the same name and keys is an error (no drop/recreate).
  * Continues after createIndex errors and missing collections (does not create collections).
  * Concurrent builds and equivalent-index-exists errors refresh the index cache and retry.
@@ -344,6 +345,8 @@ async function ensureIndexes(db) {
                         if (isIndexAlreadyExists(createError.message)
                             && attempt < CREATE_INDEX_MAX_ATTEMPTS) {
                             state.indexes = [...await state.collection.indexes()];
+                            pendingCreateIndexName = undefined;
+                            suffixedNameWarned = false;
                             continue;
                         }
                         console.error(`❌ Error ensuring ${spec.collection}.${spec.name}:`, createError.message);

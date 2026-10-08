@@ -245,6 +245,64 @@ describe('ensure-indexes', () => {
         expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('already used'));
     });
 
+    it('reallocates suffixed name after createIndex already exists and index list refresh', async () => {
+        const userSpec = INDEXES.find(
+            (spec) => spec.collection === USER_COLLECTION && spec.name === 'institution_id_role'
+        );
+        const firstSuffix = `institution_id_role_${Math.floor(0.111 * 1e9)}`;
+        const secondSuffix = `institution_id_role_${Math.floor(0.222 * 1e9)}`;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.111)
+            .mockReturnValueOnce(0.222);
+        const baseUserIndexes = [
+            { name: 'institution_id_role', key: { role: 1 } },
+        ];
+        let userIndexesList = [...baseUserIndexes];
+        let userKeyCreateAttempts = 0;
+        const userCreateIndex = jest.fn().mockImplementation(async (keys, options) => {
+            if (keys['institution._id'] === userSpec.keys['institution._id']
+                && keys.role === userSpec.keys.role) {
+                userKeyCreateAttempts += 1;
+                if (userKeyCreateAttempts === 1) {
+                    userIndexesList = [
+                        ...baseUserIndexes,
+                        { name: options.name, key: { wrong: 1 } },
+                    ];
+                    throw new Error('Index already exists');
+                }
+            }
+            return 'ok';
+        });
+        const otherCreateIndex = jest.fn().mockResolvedValue('ok');
+        const userCollection = {
+            indexes: jest.fn().mockImplementation(async () => userIndexesList),
+            createIndex: userCreateIndex,
+        };
+        const { db } = mockDb();
+        db.collection = jest.fn((name) => {
+            if (name === USER_COLLECTION) {
+                return userCollection;
+            }
+            return {
+                indexes: jest.fn().mockResolvedValue([]),
+                createIndex: otherCreateIndex,
+            };
+        });
+
+        const result = await ensureIndexes(db);
+
+        randomSpy.mockRestore();
+        expect(result.success).toBe(true);
+        const userCreateCalls = userCreateIndex.mock.calls.filter(
+            (call) => call[0]['institution._id'] === userSpec.keys['institution._id']
+                && call[0].role === userSpec.keys.role
+        );
+        expect(userCreateCalls).toHaveLength(2);
+        expect(userCreateCalls[0][1].name).toBe(firstSuffix);
+        expect(userCreateCalls[1][1].name).toBe(secondSuffix);
+        expect(firstSuffix).not.toBe(secondSuffix);
+    });
+
     it('reuses the same suffixed name when createIndex retries after index build in progress', async () => {
         const userSpec = INDEXES.find(
             (spec) => spec.collection === USER_COLLECTION && spec.name === 'institution_id_role'
