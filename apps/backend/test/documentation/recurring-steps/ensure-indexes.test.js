@@ -6,7 +6,8 @@ const {
 } = require('../../../crdc-datahub-database-drivers/database-constants');
 const {
     INDEXES,
-    ensureIndexes
+    ensureIndexes,
+    resolveCreateIndexName,
 } = require('../../../documentation/recurring-steps/ensure-indexes');
 
 describe('ensure-indexes', () => {
@@ -185,18 +186,19 @@ describe('ensure-indexes', () => {
             .toBe(false);
         expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('CRDC_ID'));
         expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('CRDC_ID_1'));
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('same properties'));
     });
 
     it('returns success false when createIndex rejects but continues remaining specs', async () => {
         const createIndex = jest.fn()
-            .mockRejectedValueOnce(new Error('index name conflict'))
+            .mockRejectedValueOnce(new Error('catalog build failed'))
             .mockResolvedValue('ok');
         const { db } = mockDb(catalogCollectionNames, { createIndex });
 
         const result = await ensureIndexes(db);
 
         expect(result.success).toBe(false);
-        expect(result.error).toBe(`${USER_COLLECTION}.institution_id_role: index name conflict`);
+        expect(result.error).toBe(`${USER_COLLECTION}.institution_id_role: catalog build failed`);
         expect(result.created).toBe(INDEXES.length - 1);
         expect(createIndex).toHaveBeenCalledTimes(INDEXES.length);
     });
@@ -216,7 +218,10 @@ describe('ensure-indexes', () => {
         expect(collection).not.toHaveBeenCalledWith(DATA_RECORDS_COLLECTION);
     });
 
-    it('returns success false when the same name exists with different keys and does not createIndex', async () => {
+    it('creates under a suffixed name when the planned name exists with different keys', async () => {
+        const userSpec = INDEXES.find(
+            (spec) => spec.collection === USER_COLLECTION && spec.name === 'institution_id_role'
+        );
         const indexesByCollection = new Map();
         indexesByCollection.set(USER_COLLECTION, [
             { name: 'institution_id_role', key: { role: 1 } },
@@ -226,12 +231,107 @@ describe('ensure-indexes', () => {
 
         const result = await ensureIndexes(db);
 
-        expect(result.success).toBe(false);
-        expect(result.error).toEqual(expect.stringContaining(`${USER_COLLECTION}.institution_id_role:`));
-        expect(result.error).toEqual(expect.stringContaining('different keys'));
-        expect(createIndex.mock.calls.some((call) => call[0]['institution._id'] === 1)).toBe(false);
+        expect(result.success).toBe(true);
+        expect(result.created).toBe(INDEXES.length);
+        expect(createIndex).toHaveBeenCalledTimes(INDEXES.length);
+        const userCreateCall = createIndex.mock.calls.find(
+            (call) => call[0]['institution._id'] === userSpec.keys['institution._id']
+                && call[0].role === userSpec.keys.role
+        );
+        expect(userCreateCall).toBeDefined();
+        expect(userCreateCall[1].name).not.toBe('institution_id_role');
+        expect(userCreateCall[1].name).toMatch(/^institution_id_role_\d+$/);
         expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('institution_id_role'));
-        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('role'));
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('already used'));
+    });
+
+    it('reuses the same suffixed name when createIndex retries after index build in progress', async () => {
+        const userSpec = INDEXES.find(
+            (spec) => spec.collection === USER_COLLECTION && spec.name === 'institution_id_role'
+        );
+        const indexesByCollection = new Map();
+        indexesByCollection.set(USER_COLLECTION, [
+            { name: 'institution_id_role', key: { role: 1 } },
+        ]);
+        let userIndexCreateAttempts = 0;
+        const createIndex = jest.fn().mockImplementation(async (keys) => {
+            if (keys['institution._id'] === userSpec.keys['institution._id'] && keys.role === userSpec.keys.role) {
+                userIndexCreateAttempts += 1;
+                if (userIndexCreateAttempts === 1) {
+                    throw new Error('index build already in progress');
+                }
+            }
+            return 'ok';
+        });
+        const db = dbWithIndexesByCollection(indexesByCollection, createIndex);
+
+        const result = await ensureIndexes(db);
+
+        expect(result.success).toBe(true);
+        const userCreateCalls = createIndex.mock.calls.filter(
+            (call) => call[0]['institution._id'] === userSpec.keys['institution._id']
+                && call[0].role === userSpec.keys.role
+        );
+        expect(userCreateCalls).toHaveLength(2);
+        expect(userCreateCalls[0][1].name).toBe(userCreateCalls[1][1].name);
+        expect(userCreateCalls[0][1].name).toMatch(/^institution_id_role_\d+$/);
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('already used'));
+        const alreadyUsedWarns = console.warn.mock.calls.filter(
+            (args) => args[0].includes('already used') && args[0].includes('institution_id_role')
+        );
+        expect(alreadyUsedWarns).toHaveLength(1);
+    });
+
+    it('creates with the planned name when the name is free and keys are missing', async () => {
+        const userSpec = INDEXES.find(
+            (spec) => spec.collection === USER_COLLECTION && spec.name === 'institution_id_role'
+        );
+        const indexesByCollection = new Map();
+        indexesByCollection.set(USER_COLLECTION, []);
+        const createIndex = jest.fn().mockResolvedValue('ok');
+        const db = dbWithIndexesByCollection(indexesByCollection, createIndex);
+
+        await ensureIndexes(db);
+
+        expect(createIndex).toHaveBeenCalledWith(
+            userSpec.keys,
+            { name: userSpec.name, background: true }
+        );
+    });
+
+    it('skips on a second run when a suffixed index from a prior create matches catalog properties', async () => {
+        const userSpec = INDEXES.find(
+            (spec) => spec.collection === USER_COLLECTION && spec.name === 'institution_id_role'
+        );
+        const suffixedName = 'institution_id_role_123456789';
+        const indexesByCollection = new Map();
+        indexesByCollection.set(USER_COLLECTION, [
+            { name: 'institution_id_role', key: { role: 1 } },
+            { name: suffixedName, key: userSpec.keys },
+        ]);
+        for (const spec of INDEXES) {
+            if (spec.collection === USER_COLLECTION) {
+                continue;
+            }
+            const list = indexesByCollection.get(spec.collection) || [];
+            const entry = { name: spec.name, key: spec.keys };
+            if (spec.expireAfterSeconds !== undefined) {
+                entry.expireAfterSeconds = spec.expireAfterSeconds;
+            }
+            list.push(entry);
+            indexesByCollection.set(spec.collection, list);
+        }
+        const createIndex = jest.fn();
+        const db = dbWithIndexesByCollection(indexesByCollection, createIndex);
+
+        const result = await ensureIndexes(db);
+
+        expect(result.success).toBe(true);
+        expect(result.skipped).toBe(INDEXES.length);
+        expect(result.created).toBe(0);
+        expect(createIndex).not.toHaveBeenCalled();
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(suffixedName));
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('institution_id_role'));
     });
 
     it('returns success false when expireAfterSeconds differs and does not createIndex', async () => {
@@ -275,6 +375,27 @@ describe('ensure-indexes', () => {
         } finally {
             INDEXES.pop();
         }
+    });
+
+    describe('resolveCreateIndexName', () => {
+        it('returns the planned name when it is unused', () => {
+            const spec = { name: 'institution_id_role' };
+            expect(resolveCreateIndexName(spec, [])).toBe('institution_id_role');
+        });
+
+        it('throws when no suffixed name can be allocated', () => {
+            const spec = { name: 'institution_id_role' };
+            const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.123456789);
+            const blockedSuffix = `institution_id_role_${Math.floor(0.123456789 * 1e9)}`;
+            const indexes = [
+                { name: 'institution_id_role' },
+                { name: blockedSuffix },
+            ];
+            expect(() => resolveCreateIndexName(spec, indexes)).toThrow(
+                'could not allocate index name for planned name institution_id_role'
+            );
+            randomSpy.mockRestore();
+        });
     });
 
     it('retries when createIndex reports an index build in progress and then succeeds', async () => {

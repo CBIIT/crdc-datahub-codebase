@@ -1,10 +1,10 @@
 /**
  * Recurring step: create DocumentDB indexes declared in INDEXES.
  * Awaits each createIndex so startup does not listen until the catalog is processed.
- * Idempotent: skips when the same name and key pattern already exist.
- * Same key pattern under a different name: logs a warning with both names and skips.
- * Same name with different keys, or expireAfterSeconds mismatch: logs an error, does not
- * drop/recreate, continues remaining specs, and returns success: false.
+ * Idempotent: matches on index properties (keys and optional expireAfterSeconds), not name alone.
+ * Same properties and same name: skip. Same properties, different name: warning and skip.
+ * Planned name taken by an index with different keys: warning and create under a suffixed name.
+ * Same name and keys with expireAfterSeconds mismatch: error, skip (no drop/recreate).
  * createIndex errors are logged; remaining catalog entries still run.
  * Concurrent index builds and equivalent-index-exists errors refresh the cached index list
  * and retry that spec a limited number of times.
@@ -31,6 +31,7 @@ const {
 
 const CREATE_INDEX_MAX_ATTEMPTS = 3;
 const CREATE_INDEX_RETRY_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 500;
+const ALLOCATE_INDEX_NAME_MAX_ATTEMPTS = 20;
 
 /**
  * Indexes to ensure. Add new entries here in a later change.
@@ -151,6 +152,41 @@ function keysEqual(left, right) {
 }
 
 /**
+ * True when an existing index matches the catalog spec (keys and optional TTL).
+ * @param {{ keys: object, expireAfterSeconds?: number }} spec
+ * @param {{ key: object, expireAfterSeconds?: number }} existingIndex
+ * @returns {boolean}
+ */
+function indexPropertiesEqual(spec, existingIndex) {
+    if (!keysEqual(spec.keys, existingIndex.key)) {
+        return false;
+    }
+    if (spec.expireAfterSeconds !== undefined) {
+        return existingIndex.expireAfterSeconds === spec.expireAfterSeconds;
+    }
+    return true;
+}
+
+/**
+ * Picks the catalog name when free; otherwise a random suffixed name unused in the collection.
+ * @param {{ name: string }} spec
+ * @param {{ name: string }[]} indexes
+ * @returns {string}
+ */
+function resolveCreateIndexName(spec, indexes) {
+    if (!indexes.some((idx) => idx.name === spec.name)) {
+        return spec.name;
+    }
+    for (let attempt = 0; attempt < ALLOCATE_INDEX_NAME_MAX_ATTEMPTS; attempt += 1) {
+        const candidate = `${spec.name}_${Math.floor(Math.random() * 1e9)}`;
+        if (!indexes.some((idx) => idx.name === candidate)) {
+            return candidate;
+        }
+    }
+    throw new Error(`could not allocate index name for planned name ${spec.name}`);
+}
+
+/**
  * @param {string} [message]
  * @returns {boolean}
  */
@@ -178,11 +214,13 @@ function specError(spec, detail) {
 }
 
 /**
- * Creates catalog indexes when missing. Skips when name and keys already match, or when
- * the same keys exist under a different name (warning). Same name with different keys or
- * expireAfterSeconds mismatch is an error (no drop/recreate). Continues after createIndex
- * errors and missing collections (does not create collections). Concurrent builds and
- * equivalent-index-exists errors refresh the index cache and retry that spec.
+ * Creates catalog indexes when missing. Property-first idempotency: skips when an index with
+ * the same keys (and TTL when declared) already exists; warns when only the name differs.
+ * Creates under a suffixed name when the planned name is taken by a different index.
+ * The chosen create name is fixed for each catalog spec across createIndex retries.
+ * expireAfterSeconds mismatch on the same name and keys is an error (no drop/recreate).
+ * Continues after createIndex errors and missing collections (does not create collections).
+ * Concurrent builds and equivalent-index-exists errors refresh the index cache and retry.
  * @param {import('mongodb').Db} db
  * @returns {Promise<{success: boolean, created: number, skipped: number, error?: string}>}
  */
@@ -211,6 +249,8 @@ async function ensureIndexes(db) {
                 }
 
                 let resolved = false;
+                let pendingCreateIndexName;
+                let suffixedNameWarned = false;
                 for (let attempt = 1; attempt <= CREATE_INDEX_MAX_ATTEMPTS && !resolved; attempt += 1) {
                     let state = collectionState.get(spec.collection);
                     if (!state) {
@@ -220,57 +260,76 @@ async function ensureIndexes(db) {
                     }
 
                     const byName = state.indexes.find((idx) => idx.name === spec.name);
-                    const byKeys = state.indexes.find((idx) => keysEqual(idx.key, spec.keys));
+                    const byProperties = state.indexes.find((idx) => indexPropertiesEqual(spec, idx));
 
-                    if (byName && keysEqual(byName.key, spec.keys)) {
-                        if (
-                            spec.expireAfterSeconds !== undefined
-                            && byName.expireAfterSeconds !== spec.expireAfterSeconds
-                        ) {
-                            const detail = `exists with different expireAfterSeconds `
-                                + `(catalog ${spec.expireAfterSeconds}, existing ${byName.expireAfterSeconds}); skipping`;
-                            console.warn(`   ⚠️  ${spec.collection}.${spec.name} ${detail}`);
-                            errors.push(specError(spec, detail));
-                        } else {
-                            console.log(`   ⏭️  ${spec.collection}.${spec.name} already exists`);
-                        }
+                    if (byProperties && byProperties.name === spec.name) {
+                        console.log(`   ⏭️  ${spec.collection}.${spec.name} already exists`);
                         skipped += 1;
                         resolved = true;
                         continue;
                     }
 
-                    if (byName) {
-                        const detail = `exists with different keys `
-                            + `(catalog ${JSON.stringify(spec.keys)}, existing ${JSON.stringify(byName.key)})`;
-                        console.warn(`   ⚠️  ${spec.collection}.${spec.name} ${detail}`);
-                        errors.push(specError(spec, detail));
-                        resolved = true;
-                        continue;
-                    }
-
-                    if (byKeys) {
+                    if (byProperties) {
                         console.warn(
-                            `   ⚠️  ${spec.collection}: catalog index ${spec.name} matches existing index ${byKeys.name} `
-                            + '(same keys); skipping'
+                            `   ⚠️  ${spec.collection}: catalog index ${spec.name} matches existing index `
+                            + `${byProperties.name} (same properties); skipping`
                         );
                         skipped += 1;
                         resolved = true;
                         continue;
                     }
 
-                    const createIndexOptions = { name: spec.name, background: true };
+                    if (
+                        byName
+                        && keysEqual(byName.key, spec.keys)
+                        && spec.expireAfterSeconds !== undefined
+                        && byName.expireAfterSeconds !== spec.expireAfterSeconds
+                    ) {
+                        const detail = `exists with different expireAfterSeconds `
+                            + `(catalog ${spec.expireAfterSeconds}, existing ${byName.expireAfterSeconds}); skipping`;
+                        console.warn(`   ⚠️  ${spec.collection}.${spec.name} ${detail}`);
+                        errors.push(specError(spec, detail));
+                        skipped += 1;
+                        resolved = true;
+                        continue;
+                    }
+
+                    try {
+                        if (pendingCreateIndexName === undefined) {
+                            pendingCreateIndexName = resolveCreateIndexName(spec, state.indexes);
+                            if (pendingCreateIndexName !== spec.name && !suffixedNameWarned) {
+                                console.warn(
+                                    `   ⚠️  ${spec.collection}: planned index name ${spec.name} is already used; `
+                                    + `creating as ${pendingCreateIndexName}`
+                                );
+                                suffixedNameWarned = true;
+                            }
+                        }
+                    } catch (nameError) {
+                        console.error(`❌ Error ensuring ${spec.collection}.${spec.name}:`, nameError.message);
+                        errors.push(specError(spec, nameError.message));
+                        resolved = true;
+                        continue;
+                    }
+
+                    const createIndexName = pendingCreateIndexName;
+
+                    const createIndexOptions = { name: createIndexName, background: true };
                     if (spec.expireAfterSeconds !== undefined) {
                         createIndexOptions.expireAfterSeconds = spec.expireAfterSeconds;
                     }
                     try {
                         await state.collection.createIndex(spec.keys, createIndexOptions);
-                        const recorded = { name: spec.name, key: spec.keys };
+                        const recorded = { name: createIndexName, key: spec.keys };
                         if (spec.expireAfterSeconds !== undefined) {
                             recorded.expireAfterSeconds = spec.expireAfterSeconds;
                         }
                         state.indexes.push(recorded);
                         created += 1;
-                        console.log(`   ✅ Created ${spec.collection}.${spec.name}`);
+                        const createdLabel = createIndexName === spec.name
+                            ? spec.name
+                            : `${createIndexName} (planned ${spec.name})`;
+                        console.log(`   ✅ Created ${spec.collection}.${createdLabel}`);
                         resolved = true;
                     } catch (createError) {
                         const canRetryBuild = isIndexBuildInProgress(createError.message)
@@ -315,4 +374,5 @@ async function ensureIndexes(db) {
 module.exports = {
     INDEXES,
     ensureIndexes,
+    resolveCreateIndexName,
 };
