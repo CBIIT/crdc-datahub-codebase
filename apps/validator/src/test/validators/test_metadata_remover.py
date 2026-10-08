@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(_project_root, "src"))
 
 from common import constants
 from metadata_remover import MetadataRemover
+from test.utils.mock_mongo_dao import wire_mock_dao_replace_f008_qc_results
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +151,7 @@ def test_remove_metadata_success_returns_true_and_orphan_errors():
     mock_dao.check_metadata_ids.return_value = [{constants.NODE_ID: "n1", constants.NODE_TYPE: "Subject"}]
     mock_dao.get_nodes_by_parents.return_value = (True, [])
     mock_dao.delete_data_records.return_value = True
+    wire_mock_dao_replace_f008_qc_results(mock_dao)
 
     mock_bucket = MagicMock()
     with patch("metadata_remover.S3Bucket", return_value=mock_bucket):
@@ -308,6 +310,7 @@ def test_remove_metadata_passes_delete_orphaned_data_files_to_find_orphans():
     mock_dao.get_nodes_by_parents.return_value = (True, [])
     call_order = []
     mock_dao.delete_data_records.side_effect = lambda records: call_order.append("delete") or True
+    wire_mock_dao_replace_f008_qc_results(mock_dao)
 
     with patch("metadata_remover.S3Bucket"):
         remover = MetadataRemover(mock_dao, mock_store)
@@ -558,6 +561,7 @@ def _associated_delete_remover(delete_orphaned_data_files):
         {constants.S3_FILE_INFO: {constants.FILE_NAME: "shared.tsv"}},
     ]
     mock_dao.find_batch_by_file_name.return_value = None
+    wire_mock_dao_replace_f008_qc_results(mock_dao)
 
     def get_nodes_by_parents(parents, submission_id):
         found = []
@@ -707,8 +711,7 @@ def test_checkbox_off_reports_file_parented_by_study_and_its_sample():
     mock_dao.get_files_by_submission.side_effect = get_files
     mock_dao.find_batch_by_file_name.return_value = None
     mock_dao.set_pending_metadata_delete.return_value = True
-    mock_dao.delete_f008_qc_results.return_value = True
-    mock_dao.save_qc_results.return_value = (True, None)
+    wire_mock_dao_replace_f008_qc_results(mock_dao)
 
     def get_nodes_by_parents(parents, submission_id):
         found = []
@@ -799,6 +802,7 @@ def _delete_study_then_scan(
         mock_dao.find_batch_by_file_name.side_effect = find_batch
     else:
         mock_dao.find_batch_by_file_name.return_value = find_batch
+    wire_mock_dao_replace_f008_qc_results(mock_dao)
 
     mock_store = MagicMock()
     mock_model = MagicMock()
@@ -975,8 +979,7 @@ def test_remove_metadata_persists_post_cascade_orphan_scan():
     mock_dao.get_files_by_submission.return_value = []
     mock_dao.find_batch_by_file_name.return_value = None
     mock_dao.set_pending_metadata_delete.return_value = True
-    mock_dao.delete_f008_qc_results.return_value = True
-    mock_dao.save_qc_results.return_value = (True, None)
+    wire_mock_dao_replace_f008_qc_results(mock_dao)
 
     mock_store = MagicMock()
     mock_model = MagicMock()
