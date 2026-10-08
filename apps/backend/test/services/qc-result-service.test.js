@@ -1536,6 +1536,61 @@ describe('QcResultService', () => {
             expect(f008Only.total).toBe(1);
         });
 
+        it('pages in the DAO when stored fileErrors are excluded by filters', async () => {
+            mockDetail([fileError], { results: [subjectRow], total: 1 });
+            await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, nodeTypes: ["Subject"] },
+                mockContext
+            );
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                ["Subject"],
+                null,
+                "All",
+                null,
+                10,
+                0,
+                "uploadedDate",
+                "asc"
+            );
+
+            mockDetail([fileError], { results: [subjectRow], total: 1 });
+            await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, severities: VALIDATION_STATUS.ERROR, issueCode: "E001" },
+                mockContext
+            );
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenLastCalledWith(
+                "test_submission_id",
+                null,
+                null,
+                VALIDATION_STATUS.ERROR,
+                "E001",
+                10,
+                0,
+                "uploadedDate",
+                "asc"
+            );
+        });
+
+        it('keeps the unpaged merge when a fileError matches the filter', async () => {
+            mockDetail([fileError], { results: [], total: 0 });
+            await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, nodeTypes: ["data file"] },
+                mockContext
+            );
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                ["data file"],
+                null,
+                "All",
+                null,
+                -1,
+                0,
+                "uploadedDate",
+                "asc"
+            );
+        });
+
         it('sets issueCount from the filtered severity on a mixed fileErrors row', async () => {
             const mixedFileError = {
                 ...fileError,
@@ -1693,6 +1748,55 @@ describe('QcResultService', () => {
                     { title: "A warning", severity: "Warning", code: "W001", count: 1, property: "N/A", value: "N/A" }
                 ]
             });
+            expect(qcResultService.qcResultDAO.aggregatedSubmissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                "warning",
+                10,
+                0,
+                "count",
+                "desc"
+            );
+        });
+
+        it('pages in the DAO when fileErrors are excluded by severity', async () => {
+            qcResultService.qcResultDAO = {
+                aggregatedSubmissionQCResults: jest.fn().mockResolvedValue({
+                    total: 1,
+                    results: [
+                        { title: "A warning", severity: "Warning", code: "W001", count: 1, property: "N/A", value: "N/A" }
+                    ]
+                })
+            };
+            qcResultService.submissionDAO = {
+                findFirst: jest.fn().mockResolvedValue({
+                    _id: "test_submission_id",
+                    fileErrors: [fileError]
+                })
+            };
+            await qcResultService.aggregatedSubmissionQCResultsAPI({
+                submissionID: "test_submission_id",
+                severity: "warning",
+                first: 10,
+                offset: 0,
+                orderBy: "count",
+                sortDirection: "desc"
+            }, mockContext);
+            expect(qcResultService.qcResultDAO.aggregatedSubmissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                "warning",
+                10,
+                0,
+                "count",
+                "desc"
+            );
+            expect(qcResultService.qcResultDAO.aggregatedSubmissionQCResults).not.toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                -1,
+                expect.anything(),
+                expect.anything(),
+                expect.anything()
+            );
         });
 
         it('leaves aggregated results unchanged when fileErrors is missing', async () => {

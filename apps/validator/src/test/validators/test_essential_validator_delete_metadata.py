@@ -35,15 +35,8 @@ def _make_delete_message(overrides=None):
 
 
 def _use_real_file_status_from_records(mock_mongo_dao, file_records):
-    """Resolve file status with MongoDao.submission_file_status_from_records."""
-    from common.mongo_dao import MongoDao
-
+    """Resolve file status from remaining file records."""
     mock_mongo_dao.get_files_by_submission.return_value = file_records
-    mock_mongo_dao.submission_file_status_from_records.side_effect = (
-        lambda submission_id, run_status: MongoDao.submission_file_status_from_records(
-            mock_mongo_dao, submission_id, run_status
-        )
-    )
 
 
 def _run_checkbox_on_delete(mock_configs, mock_mongo_dao, existing_error, remove_result, file_validation_status):
@@ -180,12 +173,12 @@ class TestDeleteMessageDeleteOrphanedDataFiles:
 
 
 class TestDeleteSuccessAppendsOrphanErrors:
-    """set_submission_validation_status receives combined fileErrors (existing + orphan F008)."""
+    """A successful delete clears embedded fileErrors. F008 rows are qcResults."""
 
     def test_set_submission_validation_status_called_with_combined_file_errors(
         self, mock_configs, mock_mongo_dao
     ):
-        """On successful delete with orphan_errors, set_submission_validation_status is called with fileErrors = existing + orphan_errors."""
+        """On successful delete with orphan_errors, file status is Error and fileErrors is empty."""
         msg = _make_delete_message()
         job_queue = MagicMock()
         job_queue.receiveMsgs.side_effect = [[msg], KeyboardInterrupt]
@@ -219,14 +212,13 @@ class TestDeleteSuccessAppendsOrphanErrors:
         call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
         # set_submission_validation_status(submission, file_status, metadata_status, file_errors, is_delete, ...)
         assert call_args[1] == constants.STATUS_ERROR
-        file_errors = call_args[3]
-        assert file_errors == [existing_error, orphan_error]
+        assert call_args[3] == []
         assert call_args[4] is True
 
     def test_set_submission_validation_status_with_no_existing_file_errors(
         self, mock_configs, mock_mongo_dao
     ):
-        """When submission has no fileErrors, combined is just orphan_errors."""
+        """When the scan finds an orphan, file status is Error and fileErrors is empty."""
         msg = _make_delete_message()
         job_queue = MagicMock()
         job_queue.receiveMsgs.side_effect = [[msg], KeyboardInterrupt]
@@ -252,13 +244,12 @@ class TestDeleteSuccessAppendsOrphanErrors:
 
         call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
         assert call_args[1] == constants.STATUS_ERROR
-        file_errors = call_args[3]
-        assert file_errors == [orphan_error]
+        assert call_args[3] == []
 
     def test_set_submission_validation_status_no_orphan_errors_keeps_existing_only(
         self, mock_configs, mock_mongo_dao
     ):
-        """When remove_metadata returns no orphan_errors, fileErrors is only existing."""
+        """When the scan finds nothing, embedded fileErrors are cleared and file status is left unset."""
         msg = _make_delete_message()
         job_queue = MagicMock()
         job_queue.receiveMsgs.side_effect = [[msg], KeyboardInterrupt]
@@ -287,9 +278,8 @@ class TestDeleteSuccessAppendsOrphanErrors:
                         pass
 
         call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
-        assert call_args[1] == constants.STATUS_ERROR
-        file_errors = call_args[3]
-        assert file_errors == [existing_error]
+        assert call_args[1] is None
+        assert call_args[3] == []
 
 
 class TestResolveFileValidationAfterDelete:
@@ -373,7 +363,7 @@ class TestDeleteAssociatedFilesUpdatesFileValidation:
 
         call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
         assert call_args[1] == constants.STATUS_ERROR
-        assert call_args[3] == [unrelated_error]
+        assert call_args[3] == []
 
     def test_checkbox_on_empty_scan_sets_remaining_file_status_and_clears_file_errors(
         self, mock_configs, mock_mongo_dao
@@ -388,7 +378,9 @@ class TestDeleteAssociatedFilesUpdatesFileValidation:
             constants.METADATA_VALIDATION_STATUS: constants.STATUS_PASSED,
             constants.FILE_ERRORS: [deleted_error],
         }
-        mock_mongo_dao.submission_file_status_from_records.return_value = constants.STATUS_PASSED
+        mock_mongo_dao.get_files_by_submission.return_value = [{
+            constants.S3_FILE_INFO: {constants.STATUS: constants.STATUS_PASSED},
+        }]
 
         with patch("essential_validator.ModelFactory"):
             with patch("essential_validator.set_scale_in_protection"):
@@ -406,8 +398,6 @@ class TestDeleteAssociatedFilesUpdatesFileValidation:
                     except KeyboardInterrupt:
                         pass
 
-        mock_mongo_dao.submission_file_status_from_records.assert_called_once()
-        assert mock_mongo_dao.submission_file_status_from_records.call_args[0][0] == "sub-1"
         call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
         assert call_args[1] == constants.STATUS_PASSED
         assert call_args[3] == []
@@ -430,6 +420,26 @@ class TestDeleteAssociatedFilesUpdatesFileValidation:
 
         call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
         assert call_args[1] == constants.STATUS_PASSED
+        assert call_args[3] == []
+
+    def test_checkbox_on_empty_scan_keeps_new_from_remaining_file_nodes(
+        self, mock_configs, mock_mongo_dao
+    ):
+        """An empty scan must not mark unvalidated New file nodes as Passed."""
+        deleted_error = {"submittedID": "associated.tsv", "errors": [{"code": "F008"}]}
+        _use_real_file_status_from_records(mock_mongo_dao, [{
+            constants.S3_FILE_INFO: {constants.STATUS: constants.STATUS_NEW},
+        }])
+        _run_checkbox_on_delete(
+            mock_configs,
+            mock_mongo_dao,
+            deleted_error,
+            (True, []),
+            constants.STATUS_ERROR,
+        )
+
+        call_args = mock_mongo_dao.set_submission_validation_status.call_args[0]
+        assert call_args[1] == constants.STATUS_NEW
         assert call_args[3] == []
 
     def test_checkbox_on_empty_scan_keeps_warning_from_remaining_file_nodes(
@@ -519,7 +529,16 @@ def _s3_list(names):
     }
 
 
-def _run_real_delete(monkeypatch, list_page, file_errors=None, nodes_found=True, delete_orphaned=False, delete_records=True):
+def _run_real_delete(
+    monkeypatch,
+    list_page,
+    file_errors=None,
+    nodes_found=True,
+    delete_orphaned=False,
+    delete_records=(True, None),
+    plan_clear_fails=False,
+    get_files_by_submission=None,
+):
     """Run one delete through the real MetadataRemover.
 
     Mongo DAO methods and S3Bucket are mocked. requests.get serves the test model.
@@ -528,7 +547,9 @@ def _run_real_delete(monkeypatch, list_page, file_errors=None, nodes_found=True,
     @param file_errors stored submission fileErrors
     @param nodes_found False when check_metadata_ids finds nothing
     @param delete_orphaned checkbox value
-    @param delete_records delete_data_records return value
+    @param delete_records delete_data_records return value, (succeeded, message)
+    @param plan_clear_fails True when the pending-plan unset returns False
+    @param get_files_by_submission optional side_effect for get_files_by_submission
     @returns message, dao, and bucket
     """
     monkeypatch.delenv("ECS_AGENT_URI", raising=False)
@@ -548,8 +569,15 @@ def _run_real_delete(monkeypatch, list_page, file_errors=None, nodes_found=True,
     )
     dao.delete_data_records.return_value = delete_records
     dao.get_nodes_by_parents.return_value = (True, [])
-    dao.get_files_by_submission.return_value = []
+    if get_files_by_submission is not None:
+        dao.get_files_by_submission.side_effect = get_files_by_submission
+    else:
+        dao.get_files_by_submission.return_value = []
     dao.find_batch_by_file_name.return_value = None
+    dao.node_keys_by_submission.return_value = set()
+    dao.parent_refs_by_submission.return_value = []
+    if plan_clear_fails:
+        dao.set_pending_metadata_delete.side_effect = [True, False]
 
     bucket = MagicMock()
     bucket.bucket_name = "test-bucket"
@@ -595,7 +623,9 @@ class TestRealDeleteScanFailure:
 
     def test_failed_delete_keeps_the_message_and_does_not_update_status(self, monkeypatch):
         """A failed metadata delete is not acknowledged and does not rewrite validation status."""
-        msg, dao, bucket = _run_real_delete(monkeypatch, _s3_list([]), delete_records=False)
+        msg, dao, bucket = _run_real_delete(
+            monkeypatch, _s3_list([]), delete_records=(False, "db error")
+        )
 
         msg.delete.assert_not_called()
         dao.delete_data_records.assert_called()
@@ -611,8 +641,156 @@ class TestRealDeleteScanFailure:
         dao.delete_data_records.assert_not_called()
 
 
+def _run_interrupted_delete(monkeypatch, passes, child=None):
+    """Delete a study, fail while loading its child, and optionally redeliver.
+
+    The first pass removes the study, then the child lookup fails.
+    A second pass finds no study. The child and an unreferenced S3 object remain.
+    @param monkeypatch pytest monkeypatch
+    @param passes 1 or 2 deliveries of the same message
+    @param child optional child document used instead of the default sample
+    @returns submission, message, dao, and bucket
+    """
+    monkeypatch.delenv("ECS_AGENT_URI", raising=False)
+    study = {constants.NODE_TYPE: "study", constants.NODE_ID: "study_a"}
+    if child is None:
+        child = {
+            constants.NODE_TYPE: "sample",
+            constants.NODE_ID: "file_1",
+            constants.PARENTS: [{
+                constants.PARENT_TYPE: "study",
+                constants.PARENT_ID_VAL: "study_a",
+            }],
+        }
+    live = {"study_a": study}
+    submission = {
+        constants.ID: "sub-1",
+        constants.DATA_COMMON_NAME: "CRDC",
+        constants.MODEL_VERSION: "1.0.0",
+        constants.BATCH_BUCKET: "test-bucket",
+        constants.ROOT_PATH: "root",
+        constants.METADATA_VALIDATION_STATUS: constants.STATUS_PASSED,
+        constants.FILE_ERRORS: [],
+    }
+    parent_lookups = [
+        (True, [child]),
+        (True, []),
+        (False, None),
+    ]
+
+    dao = MagicMock()
+    dao.get_submission.return_value = submission
+
+    def check_metadata_ids(node_type, node_ids, submission_id):
+        return [
+            live[node_id] for node_id in node_ids
+            if live.get(node_id, {}).get(constants.NODE_TYPE) == node_type
+        ]
+
+    def delete_data_records(nodes):
+        for node in nodes:
+            live.pop(node.get(constants.NODE_ID), None)
+        return (True, None)
+
+    def get_nodes_by_parents(parents, submission_id):
+        if parent_lookups:
+            return parent_lookups.pop(0)
+        found = [child] if any(
+            parent.get(constants.NODE_ID) == "study_a" for parent in parents
+        ) else []
+        return True, found
+
+    dao.check_metadata_ids.side_effect = check_metadata_ids
+    dao.delete_data_records.side_effect = delete_data_records
+    dao.get_nodes_by_parents.side_effect = get_nodes_by_parents
+    dao.get_files_by_submission.return_value = []
+    dao.find_batch_by_file_name.return_value = None
+    dao.node_keys_by_submission.return_value = set()
+    dao.parent_refs_by_submission.return_value = []
+    dao.update_data_records.return_value = (True, None)
+
+    bucket = MagicMock()
+    bucket.bucket_name = "test-bucket"
+    bucket.client.list_objects_v2.return_value = _s3_list(["orphan.csv"])
+
+    msg = _make_delete_message({
+        constants.NODE_TYPE: "study",
+        constants.NODE_IDS: ["study_a"],
+        constants.DELETE_ORPHANED_DATA_FILES: False,
+    })
+    deliveries = [[msg] for _ in range(passes)]
+    job_queue = MagicMock()
+    job_queue.receiveMsgs.side_effect = deliveries + [KeyboardInterrupt]
+
+    with tempfile.TemporaryDirectory() as model_root:
+        _install_model_cache(model_root)
+        configs = {
+            constants.SQS_NAME: "test-queue",
+            constants.MODEL_FILE_DIR: model_root,
+            constants.TIER_CONFIG: "local",
+        }
+        with patch("common.utils.requests.get", side_effect=_model_download):
+            with patch("metadata_remover.S3Bucket", return_value=bucket):
+                try:
+                    essentialValidate(configs, job_queue, dao)
+                except KeyboardInterrupt:
+                    pass
+    return submission, msg, dao, bucket
+
+
+class TestPartialDeleteRedelivery:
+    """A delete that removes roots and then fails is finished when the message returns."""
+
+    def test_partial_delete_stores_plan_and_keeps_the_message(self, monkeypatch):
+        """The first pass keeps the message and records the nodes still to delete."""
+        submission, msg, dao, _bucket = _run_interrupted_delete(monkeypatch, passes=1)
+
+        msg.delete.assert_not_called()
+        dao.set_submission_validation_status.assert_not_called()
+        plan = submission.get("pendingMetadataDelete")
+        assert isinstance(plan, dict)
+        assert plan["nodeType"] == "study"
+        assert plan["nodeIDs"] == ["study_a"]
+        assert plan["deleteAll"] is False
+        assert plan["deleteOrphanedDataFiles"] is False
+        assert "nodes" not in plan
+        assert "s3FileNames" not in plan
+        assert "removedFileNames" not in plan
+
+    def test_redelivery_finishes_cleanup_and_writes_file_errors(self, monkeypatch):
+        """Redelivery deletes the remaining child, writes the orphan qcResult, and then acknowledges."""
+        child = {
+            constants.NODE_TYPE: "sample",
+            constants.NODE_ID: "file_1",
+            constants.QC_RESULT_ID: "qc-node",
+            constants.S3_FILE_INFO: {constants.QC_RESULT_ID: "qc-file"},
+            constants.PARENTS: [{
+                constants.PARENT_TYPE: "study",
+                constants.PARENT_ID_VAL: "study_a",
+            }],
+        }
+        _submission, msg, dao, _bucket = _run_interrupted_delete(monkeypatch, passes=2, child=child)
+
+        deleted_children = [
+            node for call in dao.delete_data_records.call_args_list
+            for node in call.args[0]
+            if node.get(constants.NODE_ID) == "file_1"
+        ]
+        assert deleted_children
+        assert deleted_children[-1].get(constants.QC_RESULT_ID) == "qc-node"
+        assert deleted_children[-1][constants.S3_FILE_INFO][constants.QC_RESULT_ID] == "qc-file"
+        assert dao.set_submission_validation_status.call_args[0][3] == []
+        saved = [
+            row for call in dao.save_qc_results.call_args_list
+            for row in call.args[0]
+        ]
+        assert [row.get("submittedID") for row in saved] == ["orphan.csv"]
+        assert saved[0]["_id"]
+        msg.delete.assert_called_once()
+
+
 class TestCheckboxOffDedupesFileErrors:
-    """Checkbox off unions fileErrors by submittedID using the real orphan scan."""
+    """Checkbox off writes the scan to qcResults and clears embedded fileErrors."""
 
     def test_repeated_orphan_is_replaced_by_the_scan(self, monkeypatch):
         stored = {
@@ -630,15 +808,14 @@ class TestCheckboxOffDedupesFileErrors:
         msg.delete.assert_called_once()
         call_args = dao.set_submission_validation_status.call_args[0]
         assert call_args[1] == constants.STATUS_ERROR
-        file_errors = call_args[3]
-        by_id = {}
-        for row in file_errors:
-            assert row["submittedID"] not in by_id
-            by_id[row["submittedID"]] = row
-        assert set(by_id) == {"orphan.csv", "new.csv"}
-        assert by_id["orphan.csv"]["validatedDate"] != "stored-date"
+        assert call_args[3] == []
+        dao.delete_f008_qc_results.assert_called_once_with("sub-1")
+        saved = dao.save_qc_results.call_args[0][0]
+        assert {row["submittedID"] for row in saved} == {"orphan.csv", "new.csv"}
+        assert all(row["_id"] for row in saved)
+        assert all(row["submittedID"] != "orphan.csv" or row["validatedDate"] != "stored-date" for row in saved)
 
-    def test_empty_listing_keeps_the_stored_list(self, monkeypatch):
+    def test_empty_listing_clears_embedded_file_errors(self, monkeypatch):
         stored = {
             "submittedID": "old.csv",
             "validatedDate": "stored-date",
@@ -652,10 +829,11 @@ class TestCheckboxOffDedupesFileErrors:
         )
 
         call_args = dao.set_submission_validation_status.call_args[0]
-        assert call_args[1] == constants.STATUS_ERROR
-        assert call_args[3] == [stored]
+        assert call_args[1] is None
+        assert call_args[3] == []
+        dao.save_qc_results.assert_not_called()
 
-    def test_new_orphan_is_appended_and_the_stored_row_stays(self, monkeypatch):
+    def test_new_orphan_is_a_qc_result_and_embedded_errors_are_cleared(self, monkeypatch):
         stored = {
             "submittedID": "old.csv",
             "validatedDate": "stored-date",
@@ -670,6 +848,257 @@ class TestCheckboxOffDedupesFileErrors:
 
         call_args = dao.set_submission_validation_status.call_args[0]
         assert call_args[1] == constants.STATUS_ERROR
-        file_errors = call_args[3]
-        assert [row["submittedID"] for row in file_errors] == ["old.csv", "new.csv"]
-        assert file_errors[0]["validatedDate"] == "stored-date"
+        assert call_args[3] == []
+        saved = dao.save_qc_results.call_args[0][0]
+        assert [row["submittedID"] for row in saved] == ["new.csv"]
+
+
+class TestConflictingPendingPlan:
+    """A mismatched delete message must not overwrite pendingMetadataDelete."""
+
+    def test_conflicting_pending_plan_keeps_the_message(self, monkeypatch):
+        monkeypatch.delenv("ECS_AGENT_URI", raising=False)
+        submission = {
+            constants.ID: "sub-1",
+            constants.DATA_COMMON_NAME: "CRDC",
+            constants.MODEL_VERSION: "1.0.0",
+            constants.BATCH_BUCKET: "test-bucket",
+            constants.ROOT_PATH: "root",
+            constants.METADATA_VALIDATION_STATUS: constants.STATUS_PASSED,
+            constants.FILE_ERRORS: [],
+            "pendingMetadataDelete": {
+                constants.NODE_TYPE: "study",
+                constants.NODE_IDS: ["study_a"],
+                constants.DELETE_ALL: False,
+                constants.EXCLUSIVE_IDS: [],
+                constants.DELETE_ORPHANED_DATA_FILES: False,
+            },
+        }
+        dao = MagicMock()
+        dao.get_submission.return_value = submission
+        msg = _make_delete_message({
+            constants.NODE_TYPE: "study",
+            constants.NODE_IDS: ["study_b"],
+            constants.DELETE_ORPHANED_DATA_FILES: False,
+        })
+        job_queue = MagicMock()
+        job_queue.receiveMsgs.side_effect = [[msg], KeyboardInterrupt]
+        with tempfile.TemporaryDirectory() as model_root:
+            _install_model_cache(model_root)
+            configs = {
+                constants.SQS_NAME: "test-queue",
+                constants.MODEL_FILE_DIR: model_root,
+                constants.TIER_CONFIG: "local",
+            }
+            with patch("common.utils.requests.get", side_effect=_model_download):
+                with patch("metadata_remover.S3Bucket", return_value=MagicMock()):
+                    try:
+                        essentialValidate(configs, job_queue, dao)
+                    except KeyboardInterrupt:
+                        pass
+
+        msg.delete.assert_not_called()
+        dao.delete_data_records.assert_not_called()
+        dao.set_pending_metadata_delete.assert_not_called()
+        assert submission["pendingMetadataDelete"]["nodeIDs"] == ["study_a"]
+
+
+class TestFileRecordsReloadAfterDelete:
+    """Checkbox-on status update fails closed when the file manifest cannot be reloaded."""
+
+    def test_none_manifest_after_delete_keeps_the_message(self, monkeypatch):
+        manifest_reads = []
+
+        def get_files(_submission_id):
+            manifest_reads.append(1)
+            if len(manifest_reads) <= 2:
+                return []
+            return None
+
+        msg, dao, _bucket = _run_real_delete(
+            monkeypatch,
+            _s3_list([]),
+            delete_orphaned=True,
+            get_files_by_submission=get_files,
+        )
+
+        msg.delete.assert_not_called()
+        dao.set_submission_validation_status.assert_not_called()
+
+
+class TestDeleteAllResumeAndPlanClear:
+    """deleteAll resume does not depend on an expanded id list."""
+
+    def test_delete_all_redelivery_finishes_without_stored_id_list(self, monkeypatch):
+        """Redelivery resolves remaining roots in memory; the child is still deleted."""
+        monkeypatch.delenv("ECS_AGENT_URI", raising=False)
+        study = {constants.NODE_TYPE: "study", constants.NODE_ID: "study_a"}
+        child = {
+            constants.NODE_TYPE: "sample",
+            constants.NODE_ID: "file_1",
+            constants.PARENTS: [{
+                constants.PARENT_TYPE: "study",
+                constants.PARENT_ID_VAL: "study_a",
+            }],
+        }
+        submission = {
+            constants.ID: "sub-1",
+            constants.DATA_COMMON_NAME: "CRDC",
+            constants.MODEL_VERSION: "1.0.0",
+            constants.BATCH_BUCKET: "test-bucket",
+            constants.ROOT_PATH: "root",
+            constants.METADATA_VALIDATION_STATUS: constants.STATUS_PASSED,
+            constants.FILE_ERRORS: [],
+        }
+        search_ids = [["study_a"], ["study_a"], []]
+        parent_lookups = [
+            (True, [child]),
+            (True, []),
+            (False, None),
+        ]
+        dao = MagicMock()
+        dao.get_submission.return_value = submission
+
+        def search_nodes(node_type, submission_id, exclusive_ids=None):
+            return search_ids.pop(0) if search_ids else []
+
+        def get_nodes_by_parents(parents, submission_id):
+            if parent_lookups:
+                return parent_lookups.pop(0)
+            found = [child] if any(parent.get(constants.NODE_ID) == "study_a" for parent in parents) else []
+            return True, found
+
+        dao.search_nodes_by_type_and_submission.side_effect = search_nodes
+        dao.check_metadata_ids.return_value = [study]
+        dao.get_nodes_by_parents.side_effect = get_nodes_by_parents
+        dao.delete_data_records.return_value = (True, None)
+        dao.update_data_records.return_value = (True, None)
+        dao.get_files_by_submission.return_value = []
+        dao.find_batch_by_file_name.return_value = None
+        dao.node_keys_by_submission.return_value = {("sample", "file_1")}
+        dao.parent_refs_by_submission.return_value = [{
+            constants.PARENTS: child[constants.PARENTS],
+        }]
+        bucket = MagicMock()
+        bucket.bucket_name = "test-bucket"
+        bucket.client.list_objects_v2.return_value = _s3_list(["orphan.csv"])
+        msg = _make_delete_message({
+            constants.NODE_TYPE: "study",
+            constants.NODE_IDS: [],
+            constants.DELETE_ALL: True,
+            constants.EXCLUSIVE_IDS: ["keep_me"],
+            constants.DELETE_ORPHANED_DATA_FILES: False,
+        })
+        job_queue = MagicMock()
+        job_queue.receiveMsgs.side_effect = [[msg], [msg], KeyboardInterrupt]
+        with tempfile.TemporaryDirectory() as model_root:
+            _install_model_cache(model_root)
+            configs = {
+                constants.SQS_NAME: "test-queue",
+                constants.MODEL_FILE_DIR: model_root,
+                constants.TIER_CONFIG: "local",
+            }
+            with patch("common.utils.requests.get", side_effect=_model_download):
+                with patch("metadata_remover.S3Bucket", return_value=bucket):
+                    try:
+                        essentialValidate(configs, job_queue, dao)
+                    except KeyboardInterrupt:
+                        pass
+
+        assert dao.search_nodes_by_type_and_submission.call_count >= 2
+        stored_plan = dao.set_pending_metadata_delete.call_args_list[0].args[1]
+        assert stored_plan["nodeIDs"] == []
+        assert stored_plan["deleteAll"] is True
+        assert "nodes" not in stored_plan
+        deleted_ids = [
+            node.get(constants.NODE_ID)
+            for call in dao.delete_data_records.call_args_list
+            for node in call.args[0]
+        ]
+        assert "file_1" in deleted_ids
+        msg.delete.assert_called_once()
+
+    def test_resume_deletes_file_whose_parent_record_is_gone(self, monkeypatch):
+        """A file that only points at an already-deleted parent is removed on resume."""
+        monkeypatch.delenv("ECS_AGENT_URI", raising=False)
+        orphan_file = {
+            constants.NODE_TYPE: "CDSFile",
+            constants.NODE_ID: "file_orphan",
+            constants.QC_RESULT_ID: "qc-node",
+            constants.S3_FILE_INFO: {constants.FILE_NAME: "gone.tsv", constants.QC_RESULT_ID: "qc-file"},
+            constants.PARENTS: [{
+                constants.PARENT_TYPE: "sample",
+                constants.PARENT_ID_VAL: "sample_1",
+            }],
+        }
+        submission = {
+            constants.ID: "sub-1",
+            constants.DATA_COMMON_NAME: "CRDC",
+            constants.MODEL_VERSION: "1.0.0",
+            constants.BATCH_BUCKET: "test-bucket",
+            constants.ROOT_PATH: "root",
+            constants.METADATA_VALIDATION_STATUS: constants.STATUS_PASSED,
+            constants.FILE_ERRORS: [],
+            "pendingMetadataDelete": {
+                "nodeType": "study",
+                "nodeIDs": ["study_a"],
+                "deleteAll": False,
+                "exclusiveIDs": [],
+                "deleteOrphanedDataFiles": False,
+            },
+        }
+        dao = MagicMock()
+        dao.get_submission.return_value = submission
+        dao.check_metadata_ids.return_value = []
+        dao.get_files_by_submission.return_value = []
+        dao.find_batch_by_file_name.return_value = None
+        dao.node_keys_by_submission.return_value = {("CDSFile", "file_orphan")}
+        dao.parent_refs_by_submission.return_value = [{constants.PARENTS: orphan_file[constants.PARENTS]}]
+        dao.delete_data_records.return_value = (True, None)
+        dao.update_data_records.return_value = (True, None)
+
+        def get_nodes_by_parents(parents, submission_id):
+            if any(parent.get(constants.NODE_ID) == "sample_1" for parent in parents):
+                return True, [orphan_file]
+            return True, []
+
+        dao.get_nodes_by_parents.side_effect = get_nodes_by_parents
+        bucket = MagicMock()
+        bucket.bucket_name = "test-bucket"
+        bucket.client.list_objects_v2.return_value = _s3_list([])
+        msg = _make_delete_message({
+            constants.NODE_TYPE: "study",
+            constants.NODE_IDS: ["study_a"],
+            constants.DELETE_ORPHANED_DATA_FILES: False,
+        })
+        job_queue = MagicMock()
+        job_queue.receiveMsgs.side_effect = [[msg], KeyboardInterrupt]
+        with tempfile.TemporaryDirectory() as model_root:
+            _install_model_cache(model_root)
+            configs = {
+                constants.SQS_NAME: "test-queue",
+                constants.MODEL_FILE_DIR: model_root,
+                constants.TIER_CONFIG: "local",
+            }
+            with patch("common.utils.requests.get", side_effect=_model_download):
+                with patch("metadata_remover.S3Bucket", return_value=bucket):
+                    try:
+                        essentialValidate(configs, job_queue, dao)
+                    except KeyboardInterrupt:
+                        pass
+
+        deleted = [
+            node for call in dao.delete_data_records.call_args_list
+            for node in call.args[0]
+        ]
+        deleted_orphan = next(node for node in deleted if node.get(constants.NODE_ID) == "file_orphan")
+        assert deleted_orphan.get(constants.QC_RESULT_ID) == "qc-node"
+        assert deleted_orphan[constants.S3_FILE_INFO][constants.QC_RESULT_ID] == "qc-file"
+        msg.delete.assert_called_once()
+
+    def test_failed_plan_clear_does_not_acknowledge(self, monkeypatch):
+        """A failed unset leaves the message and does not rewrite validation status."""
+        msg, dao, _bucket = _run_real_delete(monkeypatch, _s3_list([]), plan_clear_fails=True)
+
+        msg.delete.assert_not_called()
+        dao.set_submission_validation_status.assert_not_called()

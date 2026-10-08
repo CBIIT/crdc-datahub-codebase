@@ -5,8 +5,14 @@ from pymongo import errors
 
 from common.mongo_dao import MongoDao
 from common.constants import (
+    BATCH_COLLECTION,
     SUBMISSION_COLLECTION,
     DATA_COLLECTION,
+    NODE_TYPE,
+    NODE_ID,
+    PARENTS,
+    PARENT_TYPE,
+    PARENT_ID_VAL,
     ID,
     SUBMISSION_ID,
     METADATA_VALIDATION_STATUS,
@@ -290,6 +296,96 @@ def test_delete_with_no_file_nodes_and_no_s3_objects_clears_file_status(mock_cli
     set_payload, paginator = _delete_with_no_file_nodes(mock_client_class, [{}])
     paginator.paginate.assert_called()
     assert set_payload[FILE_VALIDATION_STATUS] is None
+
+
+def _batch_collection(mock_client_class):
+    """Return the batch collection behind a MongoDao whose client is mocked."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_db = MagicMock()
+    mock_client.__getitem__.return_value = mock_db
+    batch_collection = MagicMock()
+
+    def db_getitem(key):
+        if key == BATCH_COLLECTION:
+            return batch_collection
+        return MagicMock()
+
+    mock_db.__getitem__.side_effect = db_getitem
+    return batch_collection
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_find_batch_by_file_name_reraises_query_errors(mock_client_class):
+    """A batch lookup database error is not reported as a missing batch."""
+    batch_collection = _batch_collection(mock_client_class)
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.limit.side_effect = errors.PyMongoError("db error")
+    batch_collection.find.return_value = cursor
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    with pytest.raises(errors.PyMongoError):
+        dao.find_batch_by_file_name("sub_1", "data file", "a.csv")
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_find_batch_by_file_name_returns_none_when_no_batch(mock_client_class):
+    """No Uploaded batch for the file name is None."""
+    batch_collection = _batch_collection(mock_client_class)
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.limit.return_value = []
+    batch_collection.find.return_value = cursor
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    assert dao.find_batch_by_file_name("sub_1", "data file", "a.csv") is None
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_get_nodes_by_parents_chunks_ids_and_returns_each_child_once(mock_client_class):
+    """More than 1000 parents use more than one $in query, and a child is returned once."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_db = MagicMock()
+    mock_client.__getitem__.return_value = mock_db
+    data_collection = MagicMock()
+    mock_db.__getitem__.return_value = data_collection
+    child = {NODE_TYPE: "sample", NODE_ID: "child_1"}
+    data_collection.find.return_value = [child]
+    parents = [{NODE_TYPE: "study", NODE_ID: f"p{i}"} for i in range(1001)]
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+
+    ok, nodes = dao.get_nodes_by_parents(parents, "sub_1")
+
+    assert ok is True
+    assert nodes == [child]
+    assert data_collection.find.call_count == 2
+    first_ids = data_collection.find.call_args_list[0].args[0][PARENTS]["$elemMatch"][PARENT_ID_VAL]["$in"]
+    second_ids = data_collection.find.call_args_list[1].args[0][PARENTS]["$elemMatch"][PARENT_ID_VAL]["$in"]
+    assert len(first_ids) == 1000
+    assert len(second_ids) == 1
+    assert data_collection.find.call_args_list[0].args[0][PARENTS]["$elemMatch"][PARENT_TYPE] == "study"
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_delete_data_records_chunks_bulk_writes(mock_client_class):
+    """More than 1000 nodes use more than one bulk_write."""
+    mock_client = MagicMock()
+    mock_client_class.return_value = mock_client
+    mock_db = MagicMock()
+    mock_client.__getitem__.return_value = mock_db
+    data_collection = MagicMock()
+    mock_db.__getitem__.return_value = data_collection
+    data_collection.bulk_write.return_value = MagicMock(deleted_count=1)
+    nodes = [
+        {SUBMISSION_ID: "sub_1", NODE_TYPE: "study", NODE_ID: f"n{i}"}
+        for i in range(1001)
+    ]
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+
+    assert dao.delete_data_records(nodes) == (True, None)
+    assert data_collection.bulk_write.call_count == 2
+    assert len(data_collection.bulk_write.call_args_list[0].args[0]) == 1000
+    assert len(data_collection.bulk_write.call_args_list[1].args[0]) == 1
 
 
 @patch("common.mongo_dao.MongoClient")

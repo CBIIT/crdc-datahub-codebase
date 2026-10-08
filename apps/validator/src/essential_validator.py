@@ -13,7 +13,7 @@ from common.constants import STATUS, BATCH_TYPE_METADATA, DATA_COMMON_NAME, ROOT
     BATCH_STATUS_FAILED, ID, FILE_NAME, TYPE, FILE_PREFIX, MODEL_VERSION, MODEL_FILE_DIR, \
     TIER_CONFIG, STATUS_ERROR, STATUS_NEW, SERVICE_TYPE_ESSENTIAL, SUBMISSION_ID, SUBMISSION_INTENTION_DELETE, NODE_TYPE, \
     SUBMISSION_INTENTION, TYPE_DELETE, BATCH_BUCKET, METADATA_VALIDATION_STATUS, STATUS_WARNING, DCF_PREFIX, NODE_IDS, DELETE_ALL, EXCLUSIVE_IDS, \
-    DELETE_ORPHANED_DATA_FILES, FILE_ERRORS, SUBMITTED_ID
+    DELETE_ORPHANED_DATA_FILES, FILE_ERRORS, SUBMITTED_ID, S3_FILE_INFO, STATUS_PRECEDENCE
 from common.utils import cleanup_s3_download_dir, get_exception_msg, dump_dict_to_json, removeTailingEmptyColumnsAndRows, validate_uuid_by_rex, get_date_time
 from common.model_store import ModelFactory
 from metadata_remover import MetadataRemover
@@ -51,6 +51,36 @@ def resolve_file_validation_after_delete(existing_file_errors, orphan_errors, de
                 index_by_id[submitted_id] = len(combined)
             combined.append(row)
     return (STATUS_ERROR if combined else None), combined
+
+
+def file_status_after_metadata_delete(file_records):
+    """Worst remaining file status after a delete. Pending statuses such as New are kept.
+
+    Passed, Warning, Error, and Failed use the usual precedence. Any other stored
+    status is pending. Pending wins over Passed, and over an empty set of ranked
+    statuses. Warning, Error, and Failed still win over pending.
+
+    @param file_records remaining file dataRecords; None means the load failed
+    @returns file validation status
+    @raises Exception when file records could not be loaded
+    """
+    if file_records is None:
+        raise Exception("Failed to load file records after metadata delete")
+    worst_status = None
+    worst_prec = -1
+    pending = False
+    for file_record in file_records:
+        file_status = (file_record.get(S3_FILE_INFO) or {}).get(STATUS)
+        file_prec = STATUS_PRECEDENCE.get(file_status)
+        if file_prec is None:
+            pending = True
+            continue
+        if file_prec > worst_prec:
+            worst_status = file_status
+            worst_prec = file_prec
+    if pending and (worst_status is None or worst_status == STATUS_PASSED):
+        return STATUS_NEW
+    return worst_status if worst_status is not None else STATUS_PASSED
 
 
 VISIBILITY_TIMEOUT = 20
@@ -159,11 +189,10 @@ def essentialValidate(configs, job_queue, mongo_dao):
                         orphan_errors = []
                         result = None
                         try:
-                            if delete_all:
-                                # get all node ids for the node type in the submission
-                                node_type_ids = mongo_dao.search_nodes_by_type_and_submission(node_type, submission_id, exclusive_ids)
-                                node_ids = node_type_ids
-                            result, orphan_errors = validator.remove_metadata(submission_id, node_type, node_ids, delete_orphaned_data_files)
+                            result, orphan_errors = validator.remove_metadata(
+                                submission_id, node_type, node_ids, delete_orphaned_data_files,
+                                delete_all, exclusive_ids,
+                            )
                         except Exception:
                             error = f'{submission_id}: Failed to delete metadata, {get_exception_msg()}!'
                             log.error(error)
@@ -177,19 +206,33 @@ def essentialValidate(configs, job_queue, mongo_dao):
                                 submission_for_update = fresh_submission or validator.submission
                                 existing = (fresh_submission.get(FILE_ERRORS) or []) if fresh_submission else (validator.submission.get(FILE_ERRORS) or [])
                                 delete_succeeded = result == True
-                                scanned_orphans = orphan_errors if delete_succeeded and orphan_errors else []
-                                replace_with_scan = delete_orphaned_data_files and delete_succeeded
-                                remaining_file_status = None
-                                if replace_with_scan and not scanned_orphans:
-                                    remaining_file_status = mongo_dao.submission_file_status_from_records(submission_id, STATUS_PASSED)
-                                file_status, combined_file_errors = resolve_file_validation_after_delete(
-                                    existing, scanned_orphans, replace_with_scan, remaining_file_status
-                                )
-                                status = submission_for_update.get(METADATA_VALIDATION_STATUS)
-                                status = STATUS_PASSED if status in [STATUS_ERROR, STATUS_WARNING] else status
-                                mongo_dao.set_submission_validation_status(
-                                    submission_for_update, file_status, status, combined_file_errors, True
-                                )
+                                # F008 rows are stored as qcResults. Do not also embed them.
+                                if delete_succeeded:
+                                    if orphan_errors:
+                                        file_status = STATUS_ERROR
+                                    elif delete_orphaned_data_files:
+                                        file_records = mongo_dao.get_files_by_submission(submission_id)
+                                        if file_records is None:
+                                            log.error(
+                                                f'{submission_id}: Failed to load file records after metadata delete'
+                                            )
+                                            validator.delete_incomplete = True
+                                            file_status = None
+                                        else:
+                                            file_status = file_status_after_metadata_delete(file_records)
+                                    else:
+                                        file_status = None
+                                    combined_file_errors = []
+                                else:
+                                    file_status, combined_file_errors = resolve_file_validation_after_delete(
+                                        existing, [], False, None
+                                    )
+                                if getattr(validator, "delete_incomplete", False) is not True:
+                                    status = submission_for_update.get(METADATA_VALIDATION_STATUS)
+                                    status = STATUS_PASSED if status in [STATUS_ERROR, STATUS_WARNING] else status
+                                    mongo_dao.set_submission_validation_status(
+                                        submission_for_update, file_status, status, combined_file_errors, True
+                                    )
                     else:
                         log.error(f'Invalid message: {data}!')
 

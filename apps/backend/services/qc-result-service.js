@@ -22,8 +22,9 @@ class QcResultService{
 
     /**
      * List QC result rows for a submission, including submission-level orphan file errors.
-     * When fileErrors is empty, paging stays in the DAO. Otherwise the full filtered
-     * collection is merged with fileErrors, sorted, and paged here.
+     * When fileErrors is empty, or none of those rows match the request filters,
+     * paging stays in the DAO. Otherwise the full filtered collection is merged
+     * with the matching fileErrors, sorted, and paged here.
      * @param {object} params GraphQL arguments, including submission _id and table filters
      * @param {object} context Request context
      * @returns {Promise<{results: object[], total: number}>}
@@ -45,16 +46,19 @@ class QcResultService{
         if (!fileErrors || fileErrors.length === 0) {
             return await this.qcResultDAO.submissionQCResults(params._id, params.nodeTypes, params.batchIDs, params.severities, params.issueCode, params.first, params.offset, params.orderBy, params.sortDirection);
         }
-        const qcResults = await this.qcResultDAO.submissionQCResults(
-            params._id, params.nodeTypes, params.batchIDs, params.severities, params.issueCode,
-            -1, 0, params.orderBy, params.sortDirection
-        );
         const fileRows = this._filterFileErrorRows(
             this.mapSubmissionFileErrorsToQCResults(fileErrors),
             params.nodeTypes,
             params.batchIDs,
             params.severities,
             params.issueCode
+        );
+        if (fileRows.length === 0) {
+            return await this.qcResultDAO.submissionQCResults(params._id, params.nodeTypes, params.batchIDs, params.severities, params.issueCode, params.first, params.offset, params.orderBy, params.sortDirection);
+        }
+        const qcResults = await this.qcResultDAO.submissionQCResults(
+            params._id, params.nodeTypes, params.batchIDs, params.severities, params.issueCode,
+            -1, 0, params.orderBy, params.sortDirection
         );
         const merged = sortRows([...(qcResults?.results || []), ...fileRows], params.orderBy, params.sortDirection, "type");
         return {
@@ -206,7 +210,9 @@ class QcResultService{
 
     /**
      * Aggregate QC issues for a submission, including orphan file errors on the submission.
-     * When fileErrors is empty, paging stays in the DAO.
+     * When fileErrors is empty, or none of those rows contribute issues for the requested
+     * severity, paging stays in the DAO. Otherwise the full filtered collection is merged
+     * with matching file-error groups, sorted, and paged here.
      * @param {object} params GraphQL arguments, including submissionID and severity
      * @param {object} context Request context
      * @returns {Promise<{results: object[], total: number}>}
@@ -226,6 +232,10 @@ class QcResultService{
         }
         const fileErrors = submission.fileErrors;
         if (!fileErrors || fileErrors.length === 0) {
+            return await this.qcResultDAO.aggregatedSubmissionQCResults(params.submissionID, params.severity, params.first, params.offset, params.orderBy, params.sortDirection);
+        }
+        const fileErrorGroups = aggregatedGroupsFromFileErrors(fileErrors, params.severity);
+        if (fileErrorGroups.length === 0) {
             return await this.qcResultDAO.aggregatedSubmissionQCResults(params.submissionID, params.severity, params.first, params.offset, params.orderBy, params.sortDirection);
         }
         const aggregated = await this.qcResultDAO.aggregatedSubmissionQCResults(
@@ -551,6 +561,7 @@ function aggregatedGroupsFromFileErrors(fileErrors, severity) {
 
 /**
  * Add file-error issue counts onto aggregated QC groups.
+ * The first group for each key is indexed so merging stays linear.
  * DAO rows that share a displayed key stay separate. A matching file-error count is added to the first of them.
  * @param {object[]} daoGroups Groups from the QC results collection
  * @param {object[]} fileErrors Embedded submission.fileErrors
@@ -559,16 +570,23 @@ function aggregatedGroupsFromFileErrors(fileErrors, severity) {
  */
 function mergeAggregatedGroups(daoGroups, fileErrors, severity) {
     const mergedGroups = [];
+    const firstIndexByKey = new Map();
     for (const daoGroup of daoGroups || []) {
-        mergedGroups.push({ ...daoGroup });
+        const copy = { ...daoGroup };
+        const index = mergedGroups.push(copy) - 1;
+        const key = aggregatedGroupKey(copy);
+        if (!firstIndexByKey.has(key)) {
+            firstIndexByKey.set(key, index);
+        }
     }
     for (const fileErrorGroup of aggregatedGroupsFromFileErrors(fileErrors, severity)) {
         const key = aggregatedGroupKey(fileErrorGroup);
-        const matchingGroup = mergedGroups.find((group) => aggregatedGroupKey(group) === key);
-        if (matchingGroup) {
-            matchingGroup.count += fileErrorGroup.count;
+        const existingIndex = firstIndexByKey.get(key);
+        if (existingIndex !== undefined) {
+            mergedGroups[existingIndex].count += fileErrorGroup.count;
         } else {
-            mergedGroups.push({ ...fileErrorGroup });
+            const index = mergedGroups.push({ ...fileErrorGroup }) - 1;
+            firstIndexByKey.set(key, index);
         }
     }
     return mergedGroups;
