@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(_project_root, "src"))
 
 from common import constants
 from essential_validator import essentialValidate
+from test.utils.mock_mongo_dao import wire_mock_dao_replace_f008_qc_results
 
 
 def _make_delete_message(overrides=None):
@@ -594,6 +595,8 @@ def _run_real_delete(
     job_queue = MagicMock()
     job_queue.receiveMsgs.side_effect = [[msg], KeyboardInterrupt]
 
+    wire_mock_dao_replace_f008_qc_results(dao)
+
     with tempfile.TemporaryDirectory() as model_root:
         _install_model_cache(model_root)
         configs = {
@@ -721,6 +724,8 @@ def _run_interrupted_delete(monkeypatch, passes, child=None):
     deliveries = [[msg] for _ in range(passes)]
     job_queue = MagicMock()
     job_queue.receiveMsgs.side_effect = deliveries + [KeyboardInterrupt]
+
+    wire_mock_dao_replace_f008_qc_results(dao)
 
     with tempfile.TemporaryDirectory() as model_root:
         _install_model_cache(model_root)

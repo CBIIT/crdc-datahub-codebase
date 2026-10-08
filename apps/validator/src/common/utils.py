@@ -49,6 +49,19 @@ def get_exception_msg():
     return f'{ex_type.__name__}: {ex_value}'
 
 
+def dao_write_succeeded(result):
+    """True when a MongoDao write succeeded.
+
+    MongoDao methods return (succeeded, message). A bare boolean is also accepted.
+
+    @param result DAO write result
+    @returns True when the write succeeded
+    """
+    if isinstance(result, tuple):
+        return bool(result) and result[0] is True
+    return bool(result)
+
+
 """
 Dump list of dictionary to TSV file, caller needs handle exception.
 :param: dict_list as list of dictionary

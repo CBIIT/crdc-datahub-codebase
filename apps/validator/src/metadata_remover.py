@@ -11,11 +11,10 @@ from common.constants import (
     SUBMISSION_ID, NODE_TYPE, S3_FILE_INFO, BATCH_BUCKET, PARENT_TYPE, PARENT_ID_VAL, PARENTS, ID, TYPE,
     DATA_FILE_TYPE, S3_LIST_ORPHANS_PAGE_SIZE,
     SUBMITTED_ID, QC_VALIDATION_TYPE, BATCH_ID, DISPLAY_ID, QC_SEVERITY,
-    UPLOADED_DATE, QC_VALIDATE_DATE, ERRORS, STATUS_ERROR, WARNINGS,
+    UPLOADED_DATE, QC_VALIDATE_DATE, ERRORS, STATUS_ERROR,
     NODE_IDS, DELETE_ALL, EXCLUSIVE_IDS, DELETE_ORPHANED_DATA_FILES, PENDING_METADATA_DELETE,
-    LATEST_BATCH_ID,
 )
-from common.utils import get_exception_msg, create_error, current_datetime, get_uuid_str
+from common.utils import get_exception_msg, create_error, current_datetime, dao_write_succeeded
 
 
 def _chunks(items, size):
@@ -34,18 +33,6 @@ def _chunks(items, size):
     if batch:
         yield batch
 
-
-def _dao_write_ok(result):
-    """True when a dataRecords write succeeded.
-
-    MongoDao returns (succeeded, message). A bare boolean is also accepted.
-
-    @param result DAO write result
-    @returns True when the write succeeded
-    """
-    if isinstance(result, tuple):
-        return bool(result) and result[0] is True
-    return bool(result)
 
 """
 Process delete metadata requests.
@@ -368,25 +355,13 @@ class MetadataRemover:
     def _persist_orphan_errors(self, submission_id, orphan_errors):
         """Replace this submission's F008 qcResults with the latest scan.
 
+        Delegates to mongo_dao.replace_f008_qc_results.
+
         @param submission_id submission document id
         @param orphan_errors F008 rows from the orphan scan
-        @returns True when the qcResults write succeeded
+        @returns True when F008 delete succeeded and qcResults write succeeded (or delete-only when orphan_errors is empty)
         """
-        if self.mongo_dao.delete_f008_qc_results(submission_id) is False:
-            return False
-        if not orphan_errors:
-            return True
-        rows = []
-        for error in orphan_errors:
-            row = dict(error)
-            row[ID] = get_uuid_str()
-            row[SUBMISSION_ID] = submission_id
-            row.setdefault(WARNINGS, [])
-            batch_id = row.get(BATCH_ID)
-            if batch_id and batch_id != "-":
-                row[LATEST_BATCH_ID] = batch_id
-            rows.append(row)
-        return _dao_write_ok(self.mongo_dao.save_qc_results(rows))
+        return self.mongo_dao.replace_f008_qc_results(submission_id, orphan_errors)
 
     def validate_data(self, submission_id, node_type, node_ids):
         """
@@ -425,7 +400,7 @@ class MetadataRemover:
         try:
             if delete_orphaned_data_files and not self.delete_files_in_s3(deleted_file_nodes):
                 return False
-            if not _dao_write_ok(self.mongo_dao.delete_data_records(existed_nodes)):
+            if not dao_write_succeeded(self.mongo_dao.delete_data_records(existed_nodes)):
                 self.errors.append(f'deleting metadata failed with database error.  Please try again and contact the helpdesk if this error persists.')
                 return False
             return self.process_children(existed_nodes, delete_orphaned_data_files)
@@ -473,7 +448,7 @@ class MetadataRemover:
         updated_results = True
         deleted_results = True
         if len(updated_child_nodes) > 0:
-            updated_results = _dao_write_ok(self.mongo_dao.update_data_records(updated_child_nodes))
+            updated_results = dao_write_succeeded(self.mongo_dao.update_data_records(updated_child_nodes))
             if not updated_results:
                 self.errors.append(f'deleting metadata failed with database error.  Please try again and contact the helpdesk if this error persists.')
                 rtn_val = rtn_val and False
@@ -481,7 +456,7 @@ class MetadataRemover:
         if len(deleted_child_nodes) > 0:
             if delete_orphaned_data_files and not self.delete_files_in_s3(file_nodes):
                 return False
-            deleted_results = _dao_write_ok(self.mongo_dao.delete_data_records(deleted_child_nodes))
+            deleted_results = dao_write_succeeded(self.mongo_dao.delete_data_records(deleted_child_nodes))
             if updated_results and deleted_results:
                 if not self.process_children(deleted_child_nodes, delete_orphaned_data_files):
                     self.errors.append(f'deleting metadata failed with database error.  Please try again and contact the helpdesk if this error persists.')

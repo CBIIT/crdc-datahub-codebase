@@ -14,8 +14,8 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL, \
     COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS, STATUS_DETAIL, \
     STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION, VALIDATION_STATUS, PENDING_METADATA_DELETE, \
-    S3_LIST_ORPHANS_PAGE_SIZE, DISPLAY_ID
-from common.utils import get_exception_msg, current_datetime, get_uuid_str
+    S3_LIST_ORPHANS_PAGE_SIZE, DISPLAY_ID, BATCH_ID, WARNINGS, LATEST_BATCH_ID
+from common.utils import get_exception_msg, current_datetime, get_uuid_str, dao_write_succeeded
 from common.s3_utils import S3Service
 
 MAX_SIZE = 10000
@@ -390,7 +390,30 @@ class MongoDao:
             self.log.exception(e)
             self.log.exception(f"Failed to delete F008 qc results, {submission_id}: {get_exception_msg()}")
             return False
-    
+
+    def replace_f008_qc_results(self, submission_id, orphan_rows):
+        """Replace this submission's F008 qcResults with the latest scan.
+
+        @param submission_id submission document id
+        @param orphan_rows F008 rows from the orphan scan
+        @returns True when delete and qcResults write succeeded
+        """
+        if self.delete_f008_qc_results(submission_id) is False:
+            return False
+        if not orphan_rows:
+            return True
+        rows = []
+        for error in orphan_rows:
+            row = dict(error)
+            row[ID] = get_uuid_str()
+            row[SUBMISSION_ID] = submission_id
+            row.setdefault(WARNINGS, [])
+            batch_id = row.get(BATCH_ID)
+            if batch_id and batch_id != "-":
+                row[LATEST_BATCH_ID] = batch_id
+            rows.append(row)
+        return dao_write_succeeded(self.save_qc_results(rows))
+
     def update_batch(self, batch):
         db = self.client[self.db_name]
         batch_collection = db[BATCH_COLLECTION]
