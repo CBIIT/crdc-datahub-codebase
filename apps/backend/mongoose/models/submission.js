@@ -105,6 +105,7 @@ const submissionSchema = new mongoose.Schema(
         dataType: { type: String, required: true },
         dbGaPID: { type: String },
         deletingData: { type: Boolean },
+        pendingMetadataDelete: { type: mongoose.Schema.Types.Mixed },
         fileErrors: { type: [fileErrorSchema], default: undefined },
         // Legacy docs may store Boolean; prefer String going forward
         fileValidationStatus: { type: mongoose.Schema.Types.Mixed },

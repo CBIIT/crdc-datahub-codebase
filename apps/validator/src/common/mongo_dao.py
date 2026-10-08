@@ -10,14 +10,33 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     BATCH_BUCKET, CDE_COLLECTION, CDE_CODE, CDE_VERSION, ENTITY_TYPE, QC_COLLECTION, QC_RESULT_ID, CONFIG_TYPE, \
     SYNONYM_COLLECTION, PV_TERM, SYNONYM_TERM, CDE_FULL_NAME, CDE_PERMISSIVE_VALUES, PROPERTY_PERMISSIBLE_VALUES, CREATED_AT, PROPERTIES, \
     STUDY_COLLECTION, ORGANIZATION_COLLECTION, USER_COLLECTION, PV_CONCEPT_CODE_COLLECTION, CONCEPT_CODE, PERMISSIBLE_VALUE, \
-    GENERATED_PROPS, FILE_ENDED, METADATA_ENDED, METADATA_STATUS, FILE_STATUS, FILE_VALIDATION, METADATA_VALIDATION, \
+    GENERATED_PROPS, \
     CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL, \
     COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS, STATUS_DETAIL, \
-    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION
+    STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION, VALIDATION_STATUS, PENDING_METADATA_DELETE, \
+    S3_LIST_ORPHANS_PAGE_SIZE, DISPLAY_ID
 from common.utils import get_exception_msg, current_datetime, get_uuid_str
 from common.s3_utils import S3Service
 
 MAX_SIZE = 10000
+WRITE_BATCH_SIZE = S3_LIST_ORPHANS_PAGE_SIZE
+
+
+def _chunks(items, size):
+    """Yield lists of at most `size` items.
+
+    @param items sequence to split
+    @param size maximum chunk length
+    @returns generator of lists
+    """
+    batch = []
+    for item in items:
+        batch.append(item)
+        if len(batch) >= size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 class MongoDao:
     def __init__(self, connectionStr, db_name):
@@ -53,7 +72,13 @@ class MongoDao:
             return None
 
     """
-    find batch for uploaded data file
+    Find the latest Uploaded batch for a data file name.
+
+    @param submissionID submission document id
+    @param batch_type batch type
+    @param file_name data file name
+    @returns the batch document, or None when no Uploaded batch matches
+    @raises Exception when the database read fails
     """
     def find_batch_by_file_name(self, submissionID, batch_type, file_name):
         db = self.client[self.db_name]
@@ -70,14 +95,18 @@ class MongoDao:
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to find batch by data file name, {submissionID}/{batch_type}/{file_name}: {get_exception_msg()}")
-            return None
+            raise
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to find batch by data file name, {submissionID}/{batch_type}/{file_name}: {get_exception_msg()}")
-            return None
+            raise
 
     """
     get submission by id
+
+    @param submissionId submission document id
+    @returns submission document, or None when it does not exist
+    @raises Exception when the database read fails
     """   
     def get_submission(self, submissionId):
         db = self.client[self.db_name]
@@ -87,11 +116,59 @@ class MongoDao:
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to find submission, {submissionId}: {get_exception_msg()}")
-            return None
+            raise
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to find submission, {submissionId}: {get_exception_msg()}")
-            return None
+            raise
+
+    def set_pending_metadata_delete(self, submission_id, plan):
+        """Store or clear the metadata delete plan used to resume a failed delete.
+
+        @param submission_id submission document id
+        @param plan plan document, or None to clear the field
+        @returns True when a submission document matched
+        """
+        if not submission_id:
+            return False
+        db = self.client[self.db_name]
+        submission_collection = db[SUBMISSION_COLLECTION]
+        try:
+            if plan is None:
+                update = {"$unset": {PENDING_METADATA_DELETE: ""}}
+            else:
+                update = {"$set": {PENDING_METADATA_DELETE: plan, UPDATED_AT: current_datetime()}}
+            result = submission_collection.update_one({ID: submission_id}, update, False)
+            return result.matched_count > 0
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to store pending metadata delete, {submission_id}: {get_exception_msg()}")
+            return False
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to store pending metadata delete, {submission_id}: {get_exception_msg()}")
+            return False
+
+    """
+    get validation by id
+
+    @param validation_id validation document id
+    @returns validation document, or None when it does not exist
+    @raises Exception when the database read fails
+    """
+    def get_validation(self, validation_id):
+        db = self.client[self.db_name]
+        validation_collection = db[VALIDATION_COLLECTION]
+        try:
+            return validation_collection.find_one({ID: validation_id})
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to find validation, {validation_id}: {get_exception_msg()}")
+            raise
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to find validation, {validation_id}: {get_exception_msg()}")
+            raise
 
 
     """
@@ -196,6 +273,10 @@ class MongoDao:
 
     """
     get file in dataRecord collection by fileId
+
+    @param fileId dataRecord document id
+    @returns file document, or None when it does not exist
+    @raises Exception when the database read fails
     """ 
     def get_file(self, fileId):
         db = self.client[self.db_name]
@@ -205,11 +286,11 @@ class MongoDao:
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to find data file, {fileId}: {get_exception_msg()}")
-            return None
+            raise
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to find data file, {fileId}: {get_exception_msg()}")
-            return None
+            raise
 
     """
     get file in dataRecord collection by fileName
@@ -244,6 +325,71 @@ class MongoDao:
             self.log.exception(e)
             self.log.exception(f"Failed to find data file for the submission, {submission_id}: {get_exception_msg()}")
             return None
+
+    def node_keys_by_submission(self, submission_id):
+        """Live (nodeType, nodeID) pairs for a submission.
+
+        @param submission_id submission document id
+        @returns set of pairs, or None when the read fails
+        """
+        db = self.client[self.db_name]
+        data_collection = db[DATA_COLLECTION]
+        try:
+            keys = set()
+            cursor = data_collection.find(
+                {SUBMISSION_ID: submission_id},
+                {NODE_TYPE: 1, NODE_ID: 1},
+            )
+            for doc in cursor:
+                keys.add((doc.get(NODE_TYPE), doc.get(NODE_ID)))
+            return keys
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"{submission_id}: Failed to list node keys: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"{submission_id}: Failed to list node keys: {get_exception_msg()}")
+            return None
+
+    def parent_refs_by_submission(self, submission_id):
+        """Cursor of parent lists for a submission.
+
+        @param submission_id submission document id
+        @returns cursor of {parents} documents, or None when the query cannot start
+        """
+        db = self.client[self.db_name]
+        data_collection = db[DATA_COLLECTION]
+        try:
+            return data_collection.find({SUBMISSION_ID: submission_id}, {PARENTS: 1})
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"{submission_id}: Failed to list parent refs: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"{submission_id}: Failed to list parent refs: {get_exception_msg()}")
+            return None
+
+    def delete_f008_qc_results(self, submission_id):
+        """Delete F008 qcResults for a submission.
+
+        @param submission_id submission document id
+        @returns True when the delete ran
+        """
+        db = self.client[self.db_name]
+        qc_collection = db[QC_COLLECTION]
+        try:
+            qc_collection.delete_many({SUBMISSION_ID: submission_id, "errors.code": "F008"})
+            return True
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to delete F008 qc results, {submission_id}: {get_exception_msg()}")
+            return False
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to delete F008 qc results, {submission_id}: {get_exception_msg()}")
+            return False
     
     def update_batch(self, batch):
         db = self.client[self.db_name]
@@ -318,70 +464,128 @@ class MongoDao:
             self.log.exception(f"Failed to update data file, {file_record[ID]}: {get_exception_msg()}")
             return False
 
-    def set_submission_validation_status(self, submission, file_status, metadata_status, cross_submission_status, fileErrors, is_delete = False, status_detail=None, scope=None):
-        """Update validation/errors in submissions collection (incl. batch status_detail).
+    def _metadata_status_from_nodes(self, submission, metadata_status):
+        """Resolve submission metadata status, recounting nodes unless the status is Error or New.
 
-        FAILED is only for the validation record; it is not a valid submission status.
-        When metadata_status is FAILED, the submission's metadata status is not updated.
+        @param submission submission document
+        @param metadata_status status proposed by the caller
+        @returns status to store on the submission
+        """
+        if metadata_status in (STATUS_ERROR, STATUS_NEW):
+            return metadata_status
+        submission_id = submission[ID]
+        if self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission_id, STATUS: STATUS_ERROR}) > 0:
+            return STATUS_ERROR
+        if self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission_id, STATUS: STATUS_WARNING}) > 0:
+            return STATUS_WARNING
+        return metadata_status
 
-        When scope is 'new' (case-insensitive), submission metadata status is only updated
-        if the new result is worse than or equal to the existing (Error > Warning > Passed).
+    def _delete_cleanup_updates(self, submission, file_errors):
+        """Build delete-metadata fields: clearing deletingData and file status when no file nodes remain.
+
+        @param submission submission document
+        @param file_errors file errors recorded by the delete, when any
+        @returns dict of submission fields to set
+        """
+        updates = {"deletingData": False}
+        file_nodes_remain = self.count_docs(
+            DATA_COLLECTION, {SUBMISSION_ID: submission[ID], S3_FILE_INFO: {"$exists": True}},
+        )
+        if file_nodes_remain == 0 and not (file_errors and len(file_errors) > 0):
+            updates[FILE_VALIDATION_STATUS] = STATUS_NEW if self.s3_service.submissionHasDataFile(submission) else None
+        return updates
+
+    def submission_file_status_from_records(self, submission_id, run_status):
+        """Resolve file status from leftover file records and this run's worst status.
+
+        @param submission_id submission id
+        @param run_status worst file status from the current validation run
+        @returns worse of the run status and stored file-node statuses
+        @raises Exception when file records cannot be loaded
+        """
+        file_records = self.get_files_by_submission(submission_id)
+        if file_records is None:
+            raise Exception(f'Failed to load file records for submission {submission_id}')
+        worst_status = run_status
+        worst_prec = STATUS_PRECEDENCE.get(run_status, 0)
+        for file_record in file_records:
+            file_status = (file_record.get(S3_FILE_INFO) or {}).get(STATUS)
+            file_prec = STATUS_PRECEDENCE.get(file_status)
+            if file_prec is not None and file_prec > worst_prec:
+                worst_status = file_status
+                worst_prec = file_prec
+                if worst_status == STATUS_ERROR:
+                    break
+        return worst_status
+
+    def set_cross_submission_status(self, submission, status):
+        """Write crossSubmissionStatus only.
+
+        File and metadata close-out does not call this.
+
+        @param submission submission document
+        @param status cross-submission result
+        @returns True when a submission document matched
+        @raises Exception when the database write fails
+        """
+        if not submission or not submission.get(ID) or not status:
+            return False
+        updated_submission = {
+            UPDATED_AT: current_datetime(),
+            CROSS_SUBMISSION_VALIDATION_STATUS: status,
+        }
+        db = self.client[self.db_name]
+        submission_collection = db[SUBMISSION_COLLECTION]
+        try:
+            result = submission_collection.update_one({ID: submission[ID]}, {"$set": updated_submission}, False)
+            return result.matched_count > 0
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to update cross-submission status, {submission[ID]}: {get_exception_msg()}")
+            raise
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to update cross-submission status, {submission[ID]}: {get_exception_msg()}")
+            raise
+
+    def set_submission_validation_status(self, submission, file_status, metadata_status, file_errors=None, is_delete=False, status_detail=None, scope=None):
+        """Update submission fields for metadata upload and delete.
+
+        File and metadata validation close-out does not use this method.
+        Failed is not a submission metadata status and is not written.
+        When scope is New, metadata status is kept when the current status is worse.
+
+        @param submission submission document
+        @param file_status file validation status to store, or None to leave it unchanged
+        @param metadata_status metadata validation status to store, or None to leave it unchanged
+        @param file_errors submission file errors; None leaves existing errors unchanged unless file_status is set
+        @param is_delete True when this update follows a metadata delete
+        @param status_detail optional status detail stored on the submission
+        @param scope validation scope; New does not replace a worse metadata status
+        @returns True when a submission document matched
         """
         if metadata_status == FAILED:
             metadata_status = None
         updated_submission = {UPDATED_AT: current_datetime()}
         if status_detail is not None:
             updated_submission[STATUS_DETAIL] = status_detail
+        updated_submission.update(_file_validation_updates(file_status, file_errors, submission.get(VALIDATION_ENDED)))
         db = self.client[self.db_name]
-        file_collection = db[SUBMISSION_COLLECTION]
-        overall_metadata_status = None
+        submission_collection = db[SUBMISSION_COLLECTION]
         try:
-            if file_status:
-                updated_submission[FILE_VALIDATION_STATUS] = file_status if file_status != "None" else None
-                updated_submission[VALIDATION_ENDED] = submission.get(VALIDATION_ENDED)
-                if fileErrors is not None:
-                    updated_submission[FILE_ERRORS] = fileErrors if fileErrors and len(fileErrors) > 0 else []
-                else:
-                    updated_submission[FILE_ERRORS] = []
-            elif fileErrors is not None:
-                updated_submission[FILE_ERRORS] = fileErrors if fileErrors and len(fileErrors) > 0 else []
             if metadata_status:
-                if not ((is_delete and self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID]}) == 0)):
-                    if metadata_status in (STATUS_ERROR, STATUS_NEW):
-                        overall_metadata_status = metadata_status
-                    else:
-                        error_nodes = self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID], STATUS: STATUS_ERROR})
-                        if error_nodes > 0:
-                            overall_metadata_status = STATUS_ERROR
-                        else:
-                            warning_nodes = self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID], STATUS: STATUS_WARNING})
-                            if warning_nodes > 0:
-                                overall_metadata_status = STATUS_WARNING
-                            else:
-                                overall_metadata_status = metadata_status
-                # When scope is "new", only update submission metadata status if new result is worse than or equal to existing
-                if scope and str(scope).lower() == "new" and overall_metadata_status is not None:
-                    current_status = submission.get(METADATA_VALIDATION_STATUS)
-                    # Treat missing/None current status as Passed (precedence 0) so we only update when new result is worse or equal
-                    new_prec = STATUS_PRECEDENCE.get(overall_metadata_status, 0)
-                    current_prec = STATUS_PRECEDENCE.get(current_status, 0)
-                    if new_prec < current_prec:
-                        overall_metadata_status = current_status
-                # check if all file nodes are deleted
-                if is_delete and (self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID], S3_FILE_INFO: {"$exists": True}}) == 0):
-                    # if file nodes are all deleted, update file validation status to new if there are still data files in the bucket otherwise set to None
-                    # keep Error when submission-level file errors (e.g. orphaned files) were just recorded
-                    if not (fileErrors and len(fileErrors) > 0):
-                        updated_submission[FILE_VALIDATION_STATUS] = STATUS_NEW if self.s3_service.submissionHasDataFile(submission) else None
+                overall_metadata_status = None
+                if not (is_delete and self.count_docs(DATA_COLLECTION, {SUBMISSION_ID: submission[ID]}) == 0):
+                    overall_metadata_status = self._metadata_status_from_nodes(submission, metadata_status)
+                    overall_metadata_status = _apply_new_scope_metadata_status(
+                        overall_metadata_status, submission, scope,
+                    )
                 if is_delete:
-                    updated_submission["deletingData"] = False
+                    updated_submission.update(self._delete_cleanup_updates(submission, file_errors))
                 updated_submission[METADATA_VALIDATION_STATUS] = overall_metadata_status
                 updated_submission[VALIDATION_ENDED] = submission.get(VALIDATION_ENDED)
-                
-            if cross_submission_status:
-                updated_submission[CROSS_SUBMISSION_VALIDATION_STATUS] = cross_submission_status
-            result = file_collection.update_one({ID : submission[ID]}, {"$set": updated_submission}, False)
-            return result.matched_count > 0 
+            result = submission_collection.update_one({ID: submission[ID]}, {"$set": updated_submission}, False)
+            return result.matched_count > 0
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to update submission, {submission[ID]}: {get_exception_msg()}")
@@ -398,11 +602,17 @@ class MongoDao:
         db = self.client[self.db_name]
         file_collection = db[DATA_COLLECTION]
         try:
-            result = file_collection.bulk_write([
-                ReplaceOne( {ID: m[ID]}, remove_id(m),  upsert=True)
-                    for m in list(data_records)
-                ])
-            self.log.info(f'Total {result.upserted_count} dataRecords are upserted!')
+            upserted = 0
+            wrote = False
+            for chunk in _chunks(list(data_records), WRITE_BATCH_SIZE):
+                result = file_collection.bulk_write([
+                    ReplaceOne( {ID: m[ID]}, remove_id(m),  upsert=True)
+                        for m in chunk
+                    ])
+                upserted += result.upserted_count
+                wrote = True
+            if wrote:
+                self.log.info(f'Total {upserted} dataRecords are upserted!')
             return True, None
         except errors.PyMongoError as pe:
             self.log.exception(pe)
@@ -472,15 +682,24 @@ class MongoDao:
         db = self.client[self.db_name]
         file_collection = db[DATA_COLLECTION]
         try:
-            result = file_collection.bulk_write([
-                DeleteOne( { SUBMISSION_ID: m[SUBMISSION_ID], NODE_ID: m[NODE_ID], NODE_TYPE: m[NODE_TYPE] })
-                    for m in list(nodes)
+            nodes = list(nodes)
+            deleted = 0
+            qc_ids = []
+            for chunk in _chunks(nodes, WRITE_BATCH_SIZE):
+                result = file_collection.bulk_write([
+                    DeleteOne( { SUBMISSION_ID: m[SUBMISSION_ID], NODE_ID: m[NODE_ID], NODE_TYPE: m[NODE_TYPE] })
+                        for m in chunk
+                    ])
+                deleted += result.deleted_count
+                qc_ids.extend([node[QC_RESULT_ID] for node in chunk if node.get(QC_RESULT_ID)])
+                qc_ids.extend([
+                    node[S3_FILE_INFO][QC_RESULT_ID]
+                    for node in chunk
+                    if node.get(S3_FILE_INFO) and node[S3_FILE_INFO].get(QC_RESULT_ID)
                 ])
-            self.log.info(f'Total {result.deleted_count} dataRecords are deleted!')
-            # delete related qcResults
-            qc_ids = [node[QC_RESULT_ID] for node in nodes if node.get(QC_RESULT_ID)]
-            qc_ids.extend([node[S3_FILE_INFO][QC_RESULT_ID]for node in nodes if node.get(S3_FILE_INFO) and node[S3_FILE_INFO].get(QC_RESULT_ID)])
-            if qc_ids and len(qc_ids) > 0:
+            if nodes:
+                self.log.info(f'Total {deleted} dataRecords are deleted!')
+            if qc_ids:
                 self.delete_qcRecords(qc_ids)
             return True, None
         except errors.PyMongoError as pe:
@@ -628,15 +847,41 @@ class MongoDao:
     find child node by type and id
     """
     def get_nodes_by_parents(self, parent_ids, submission_id):
+        """Find children of the given parents.
+
+        Parents are grouped by type and queried in id chunks so the filter stays
+        under the query size limit. A child parented by more than one chunk is returned once.
+
+        @param parent_ids parent nodes, each with nodeType and nodeID
+        @param submission_id submission document id
+        @returns (succeeded, child dataRecords)
+        """
         db = self.client[self.db_name]
         data_collection = db[DATA_COLLECTION]
-        query = []
-        for id in parent_ids:
-            node_type, node_id = id.get(NODE_TYPE), id.get(NODE_ID)
-            query.append({SUBMISSION_ID: submission_id, PARENTS: {"$elemMatch": {PARENT_TYPE: node_type, PARENT_ID_VAL: node_id}}})
+        grouped = {}
+        for parent in parent_ids or []:
+            node_type, node_id = parent.get(NODE_TYPE), parent.get(NODE_ID)
+            if node_type is None or node_id is None:
+                continue
+            grouped.setdefault(node_type, []).append(node_id)
+        if not grouped:
+            return True, []
         try:
-            results = list(data_collection.find({"$or": query})) if len(query) > 0 else []
-            return True, results
+            found = []
+            seen = set()
+            for node_type, node_ids in grouped.items():
+                for id_chunk in _chunks(node_ids, WRITE_BATCH_SIZE):
+                    query = {
+                        SUBMISSION_ID: submission_id,
+                        PARENTS: {"$elemMatch": {PARENT_TYPE: node_type, PARENT_ID_VAL: {"$in": id_chunk}}},
+                    }
+                    for node in data_collection.find(query):
+                        key = (node.get(NODE_TYPE), node.get(NODE_ID))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        found.append(node)
+            return True, found
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"{submission_id}: Failed to retrieve child nodes: {get_exception_msg()}")
@@ -1110,18 +1355,22 @@ class MongoDao:
             self.log.exception(f"Failed to increment completed batches for {log_ctx}: {get_exception_msg()}")
             return None, False, 0, None, []
 
-    """
-    Atomically update validation document
-    update_ops: dict of update operations, or pure data dict, can not contain both at the same time
-    If it is pure data dict, it will be set as $set operation, otherwise it will be the update_ops
-    return: updated validation document
-    """
-    def atomic_update_validation(self, validation_id, updates):
+    def atomic_update_validation(self, validation_id, updates, expected_status=None):
+        """Atomically update a validation document.
+
+        @param validation_id validation document id
+        @param updates operator document or field dict converted to $set
+        @param expected_status when set, match only a document with this status
+        @returns updated validation document, or None when no document matched
+        """
         update_ops = ensure_update_ops(updates)
+        query = {ID: validation_id}
+        if expected_status is not None:
+            query[VALIDATION_STATUS] = expected_status
 
         db = self.client[self.db_name]
         data_collection = db[VALIDATION_COLLECTION]
-        return data_collection.find_one_and_update({ID: validation_id}, update_ops, return_document=ReturnDocument.AFTER)
+        return data_collection.find_one_and_update(query, update_ops, return_document=ReturnDocument.AFTER)
 
     def atomic_update_submission(self, submission_id: str, updates: dict):
         update_ops = ensure_update_ops(updates)
@@ -1129,68 +1378,6 @@ class MongoDao:
         db = self.client[self.db_name]
         data_collection = db[SUBMISSION_COLLECTION]
         return data_collection.find_one_and_update({ID: submission_id}, update_ops, return_document=ReturnDocument.AFTER)
-
-    def update_validation_status(self, validation_id, status, validation_end_at, validation_type=None, status_detail=None, submission_id=None):
-        """Update validation status.
-
-        submission_id is optional; when provided (e.g. by batched metadata validation),
-        it is included in log messages.
-        """
-        db = self.client[self.db_name]
-        data_collection = db[VALIDATION_COLLECTION]
-        update_status = True
-        update_status_value = status
-        update_validation_end_at_value = validation_end_at
-        log_ctx = f'validation_id={validation_id}'
-        if submission_id is not None:
-            log_ctx += f' submission_id={submission_id}'
-        try:
-            validation_document = data_collection.find_one({ID: validation_id})
-            if validation_document is None:
-                self.log.error(f"No validation document found for {log_ctx}")
-                return False
-            validation_update_dict = {}
-            if status_detail is not None:
-                validation_update_dict[STATUS_DETAIL] = status_detail
-            if validation_type:
-                if validation_type == METADATA_VALIDATION:
-                    validation_update_dict[METADATA_ENDED] = update_validation_end_at_value
-                    validation_update_dict[METADATA_STATUS] = update_status_value
-                    validation_document[METADATA_ENDED] = update_validation_end_at_value
-                    validation_document[METADATA_STATUS] = update_status_value
-                elif validation_type == FILE_VALIDATION:
-                    validation_update_dict[FILE_ENDED] = update_validation_end_at_value
-                    validation_update_dict[FILE_STATUS] = update_status_value
-                    validation_document[FILE_ENDED] = update_validation_end_at_value
-                    validation_document[FILE_STATUS] = update_status_value
-            # for validation with both metadata and file, only update status when both validation ended
-            # will use the latest end time if both metadata and file validation have been finished
-            if len(validation_document[TYPE]) > 1 and update_status_value in [STATUS_ERROR, STATUS_PASSED, STATUS_WARNING]:
-                metadata_ended = validation_document.get(METADATA_ENDED)
-                file_ended = validation_document.get(FILE_ENDED)
-                metadata_status = validation_document.get(METADATA_STATUS)
-                file_status = validation_document.get(FILE_STATUS)
-                if not (file_ended and metadata_ended):
-                    update_status = False
-                elif metadata_status and file_status:
-                    if STATUS_ERROR in [metadata_status, file_status]:
-                        update_status_value = STATUS_ERROR
-                    elif STATUS_WARNING in [metadata_status, file_status]:
-                        update_status_value = STATUS_WARNING
-                    update_validation_end_at_value = max(metadata_ended, file_ended)
-            if update_status:
-                validation_update_dict[STATUS] = update_status_value
-                validation_update_dict["ended"] = update_validation_end_at_value
-            result = data_collection.update_one({ID: validation_id}, {"$set": validation_update_dict})
-            return True if result.modified_count > 0 and update_status else False
-        except errors.PyMongoError as pe:
-            self.log.exception(pe)
-            self.log.exception(f"Failed to update validation status for {log_ctx}: {get_exception_msg()}")
-            return False
-        except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to update validation status for {log_ctx}: {get_exception_msg()}")
-            return False
 
     """
     get bucket name based on dataCommons and type
@@ -1403,8 +1590,11 @@ class MongoDao:
         db = self.client[self.db_name]
         data_collection = db[QC_COLLECTION]
         try:
-            result = data_collection.delete_many({ID: {"$in": qc_ids}})
-            return True if result.deleted_count > 0 else False
+            deleted = 0
+            for chunk in _chunks(list(qc_ids), WRITE_BATCH_SIZE):
+                result = data_collection.delete_many({ID: {"$in": chunk}})
+                deleted += result.deleted_count
+            return True if deleted > 0 else False
         except errors.PyMongoError as pe:
             self.log.exception(pe)
             self.log.exception(f"Failed to delete qc records for {qc_ids}: {get_exception_msg()}")
@@ -1422,11 +1612,17 @@ class MongoDao:
         db = self.client[self.db_name]
         data_collection = db[QC_COLLECTION]
         try:
-            result = data_collection.bulk_write([
-                ReplaceOne({ID: m[ID]}, remove_id(m), upsert=True)
-                    for m in list(qc_list)
-                ])
-            self.log.info(f'Total {result.upserted_count} QC records are upserted!')
+            qc_list = list(qc_list)
+            if not qc_list:
+                return True, None
+            upserted = 0
+            for chunk in _chunks(qc_list, WRITE_BATCH_SIZE):
+                result = data_collection.bulk_write([
+                    ReplaceOne({ID: m[ID]}, remove_id(m), upsert=True)
+                        for m in chunk
+                    ])
+                upserted += result.upserted_count
+            self.log.info(f'Total {upserted} QC records are upserted!')
             return True, None
         except errors.PyMongoError as pe:
             self.log.exception(pe)
@@ -1696,6 +1892,47 @@ class MongoDao:
             self.log.exception(e)
             self.log.exception(f"Failed to get grandparent for {parentIDValue}: {get_exception_msg()}")
             return None
+
+def _file_validation_updates(file_status, file_errors, validation_ended):
+    """Build submission fields for a file status or fileErrors update.
+
+    @param file_status file validation status, or None when only errors are updated
+    @param file_errors file error list; None leaves errors unchanged unless file_status is set
+    @param validation_ended validation ended time copied when file status is set
+    @returns dict of submission fields
+    """
+    updated = {}
+    if file_status:
+        updated[FILE_VALIDATION_STATUS] = None if file_status == "None" else file_status
+        updated[VALIDATION_ENDED] = validation_ended
+        updated[FILE_ERRORS] = file_errors if file_errors else []
+    elif file_errors is not None:
+        updated[FILE_ERRORS] = file_errors if file_errors else []
+    return updated
+
+
+def _apply_new_scope_metadata_status(overall_metadata_status, submission, scope):
+    """Keep a worse existing metadata status when scope is New.
+
+    Validating and New are transient and are not treated as a prior result.
+    Missing current status is treated as Passed.
+
+    @param overall_metadata_status status about to be written
+    @param submission submission document
+    @param scope validation scope
+    @returns status to write
+    """
+    if not (scope and str(scope).lower() == "new" and overall_metadata_status is not None):
+        return overall_metadata_status
+    current_status = submission.get(METADATA_VALIDATION_STATUS)
+    if current_status in (STATUS_NEW, None, "Validating"):
+        return overall_metadata_status
+    new_prec = STATUS_PRECEDENCE.get(overall_metadata_status, 0)
+    current_prec = STATUS_PRECEDENCE.get(current_status, 0)
+    if new_prec < current_prec:
+        return current_status
+    return overall_metadata_status
+
 
 def remove_id (data_record):
     """Remove _id from records for update."""

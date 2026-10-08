@@ -1371,5 +1371,579 @@ describe('QcResultService', () => {
         });
     });
 
+    describe('submission fileErrors in the QC table', () => {
+        const f008 = {
+            code: "F008",
+            title: "Orphaned file",
+            description: "associated metadata not found",
+            offendingProperty: "file name",
+            offendingValue: "orphan.csv",
+            severity: "Error"
+        };
+        const fileError = {
+            submissionID: "test_submission_id",
+            type: "data file",
+            validationType: "data file",
+            submittedID: "orphan.csv",
+            batchID: "batch-9",
+            displayID: 4,
+            severity: "Error",
+            uploadedDate: "2024-01-15",
+            validatedDate: "2024-01-16",
+            errors: [f008],
+            warnings: []
+        };
+        const subjectRow = {
+            type: "Subject",
+            submittedID: "s1",
+            uploadedDate: "2024-02-01",
+            errors: [{ code: "E001", title: "Missing required field" }],
+            warnings: []
+        };
+        const sampleRow = {
+            type: "Sample",
+            submittedID: "s2",
+            uploadedDate: "2024-01-01",
+            errors: [{ code: "E002", title: "Invalid data format" }],
+            warnings: []
+        };
+
+        const detailParams = {
+            _id: "test_submission_id",
+            nodeTypes: null,
+            batchIDs: null,
+            severities: "All",
+            issueCode: null,
+            first: 10,
+            offset: 0,
+            orderBy: "uploadedDate",
+            sortDirection: "asc"
+        };
+
+        function mockDetail(fileErrors, daoResult) {
+            qcResultService.qcResultDAO = {
+                submissionQCResults: jest.fn().mockResolvedValue(daoResult)
+            };
+            qcResultService.submissionDAO = {
+                findFirst: jest.fn().mockResolvedValue({
+                    _id: "test_submission_id",
+                    fileErrors
+                })
+            };
+        }
+
+        it('maps submission fileErrors onto QC rows', () => {
+            const rows = qcResultService.mapSubmissionFileErrorsToQCResults([fileError]);
+            expect(rows).toEqual([
+                expect.objectContaining({
+                    batchID: "batch-9",
+                    type: "data file",
+                    severity: "Error",
+                    submittedID: "orphan.csv",
+                    errors: [f008],
+                    warnings: [],
+                    issueCount: 1
+                })
+            ]);
+        });
+
+        it('includes an F008 fileErrors row with collection rows and counts it in total', async () => {
+            mockDetail([fileError], { results: [subjectRow], total: 1 });
+            const result = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, first: 10, offset: 0 },
+                mockContext
+            );
+            expect(result.total).toBe(2);
+            expect(result.results.map((row) => row.submittedID)).toEqual(["orphan.csv", "s1"]);
+            expect(result.results[0].issueCount).toBe(1);
+            expect(result.results[0].batchID).toBe("batch-9");
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                null,
+                null,
+                "All",
+                null,
+                -1,
+                0,
+                "uploadedDate",
+                "asc"
+            );
+        });
+
+        it('pages the merged QC rows after sorting', async () => {
+            mockDetail([fileError], { results: [subjectRow, sampleRow], total: 2 });
+            const result = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, first: 2, offset: 1 },
+                mockContext
+            );
+            expect(result.total).toBe(3);
+            expect(result.results.map((row) => row.submittedID)).toEqual(["orphan.csv", "s1"]);
+        });
+
+        it('applies node type, batch, severity, and issue code filters to fileErrors', async () => {
+            mockDetail([fileError], { results: [subjectRow], total: 1 });
+
+            const byNode = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, nodeTypes: ["Subject"] },
+                mockContext
+            );
+            expect(byNode.results.map((row) => row.submittedID)).toEqual(["s1"]);
+            expect(byNode.total).toBe(1);
+
+            mockDetail([fileError], { results: [], total: 0 });
+            const dataFileNodes = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, nodeTypes: ["data file"] },
+                mockContext
+            );
+            expect(dataFileNodes.results.map((row) => row.submittedID)).toEqual(["orphan.csv"]);
+
+            mockDetail([fileError], { results: [], total: 0 });
+            const otherBatch = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, batchIDs: ["other-batch"] },
+                mockContext
+            );
+            expect(otherBatch.results).toEqual([]);
+            expect(otherBatch.total).toBe(0);
+
+            mockDetail([fileError], { results: [], total: 0 });
+            const matchingBatch = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, batchIDs: ["batch-9", "ignored"] },
+                mockContext
+            );
+            expect(matchingBatch.results.map((row) => row.submittedID)).toEqual(["orphan.csv"]);
+
+            mockDetail([fileError], { results: [], total: 0 });
+            const warningsOnly = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, severities: VALIDATION_STATUS.WARNING },
+                mockContext
+            );
+            expect(warningsOnly.results).toEqual([]);
+
+            mockDetail([fileError], { results: [subjectRow], total: 1 });
+            const otherCode = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, severities: VALIDATION_STATUS.ERROR, issueCode: "E001" },
+                mockContext
+            );
+            expect(otherCode.results.map((row) => row.submittedID)).toEqual(["s1"]);
+            expect(otherCode.total).toBe(1);
+
+            mockDetail([fileError], { results: [], total: 0 });
+            const f008Only = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, severities: VALIDATION_STATUS.ERROR, issueCode: "F008" },
+                mockContext
+            );
+            expect(f008Only.results.map((row) => row.submittedID)).toEqual(["orphan.csv"]);
+            expect(f008Only.total).toBe(1);
+        });
+
+        it('pages in the DAO when stored fileErrors are excluded by filters', async () => {
+            mockDetail([fileError], { results: [subjectRow], total: 1 });
+            await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, nodeTypes: ["Subject"] },
+                mockContext
+            );
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                ["Subject"],
+                null,
+                "All",
+                null,
+                10,
+                0,
+                "uploadedDate",
+                "asc"
+            );
+
+            mockDetail([fileError], { results: [subjectRow], total: 1 });
+            await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, severities: VALIDATION_STATUS.ERROR, issueCode: "E001" },
+                mockContext
+            );
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenLastCalledWith(
+                "test_submission_id",
+                null,
+                null,
+                VALIDATION_STATUS.ERROR,
+                "E001",
+                10,
+                0,
+                "uploadedDate",
+                "asc"
+            );
+        });
+
+        it('keeps the unpaged merge when a fileError matches the filter', async () => {
+            mockDetail([fileError], { results: [], total: 0 });
+            await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, nodeTypes: ["data file"] },
+                mockContext
+            );
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                ["data file"],
+                null,
+                "All",
+                null,
+                -1,
+                0,
+                "uploadedDate",
+                "asc"
+            );
+        });
+
+        it('sets issueCount from the filtered severity on a mixed fileErrors row', async () => {
+            const mixedFileError = {
+                ...fileError,
+                warnings: [{ code: "W001", title: "A warning" }]
+            };
+            mockDetail([mixedFileError], { results: [], total: 0 });
+
+            const errorsOnly = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, severities: VALIDATION_STATUS.ERROR },
+                mockContext
+            );
+            expect(errorsOnly.results).toHaveLength(1);
+            expect(errorsOnly.results[0].issueCount).toBe(1);
+
+            mockDetail([mixedFileError], { results: [], total: 0 });
+            const warningsOnly = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, severities: VALIDATION_STATUS.WARNING },
+                mockContext
+            );
+            expect(warningsOnly.results).toHaveLength(1);
+            expect(warningsOnly.results[0].issueCount).toBe(1);
+
+            mockDetail([mixedFileError], { results: [], total: 0 });
+            const allSeverities = await qcResultService.submissionQCResultsAPI(
+                { ...detailParams, severities: "All" },
+                mockContext
+            );
+            expect(allSeverities.results).toHaveLength(1);
+            expect(allSeverities.results[0].issueCount).toBe(2);
+        });
+
+        it('leaves the DAO page unchanged when fileErrors is empty', async () => {
+            mockDetail([], { results: [subjectRow], total: 5 });
+            const result = await qcResultService.submissionQCResultsAPI(detailParams, mockContext);
+            expect(result).toEqual({ results: [subjectRow], total: 5 });
+            expect(qcResultService.qcResultDAO.submissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                null,
+                null,
+                "All",
+                null,
+                10,
+                0,
+                "uploadedDate",
+                "asc"
+            );
+        });
+
+        it('adds F008 groups from fileErrors to aggregated results, then sorts and pages', async () => {
+            const duplicateOrphan = { ...fileError, submittedID: "duplicate.csv" };
+            const otherOrphan = {
+                ...fileError,
+                submittedID: "other.csv",
+                errors: [{ ...f008, offendingValue: "other.csv" }]
+            };
+            qcResultService.qcResultDAO = {
+                aggregatedSubmissionQCResults: jest.fn().mockResolvedValue({
+                    total: 1,
+                    results: [
+                        { title: "Missing required field", severity: "Error", code: "E001", count: 1, property: "N/A", value: "N/A" }
+                    ]
+                })
+            };
+            qcResultService.submissionDAO = {
+                findFirst: jest.fn().mockResolvedValue({
+                    _id: "test_submission_id",
+                    fileErrors: [fileError, duplicateOrphan, otherOrphan]
+                })
+            };
+
+            const params = {
+                submissionID: "test_submission_id",
+                severity: "error",
+                first: 1,
+                offset: 0,
+                orderBy: "count",
+                sortDirection: "desc"
+            };
+            const result = await qcResultService.aggregatedSubmissionQCResultsAPI(params, mockContext);
+
+            expect(qcResultService.qcResultDAO.aggregatedSubmissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                "error",
+                -1,
+                0,
+                "count",
+                "desc"
+            );
+            expect(result.total).toBe(3);
+            expect(result.results).toEqual([
+                {
+                    title: "Orphaned file",
+                    severity: "Error",
+                    code: "F008",
+                    count: 2,
+                    property: "file name",
+                    value: "orphan.csv"
+                }
+            ]);
+        });
+
+        it('adds fileError counts onto an existing aggregated F008 group', async () => {
+            qcResultService.qcResultDAO = {
+                aggregatedSubmissionQCResults: jest.fn().mockResolvedValue({
+                    total: 1,
+                    results: [
+                        { title: "Orphaned file", severity: "Error", code: "F008", count: 1, property: "file name", value: "orphan.csv" }
+                    ]
+                })
+            };
+            qcResultService.submissionDAO = {
+                findFirst: jest.fn().mockResolvedValue({
+                    _id: "test_submission_id",
+                    fileErrors: [fileError]
+                })
+            };
+            const result = await qcResultService.aggregatedSubmissionQCResultsAPI({
+                submissionID: "test_submission_id",
+                severity: "error",
+                first: 10,
+                offset: 0,
+                orderBy: "count",
+                sortDirection: "desc"
+            }, mockContext);
+            expect(result.total).toBe(1);
+            expect(result.results[0].count).toBe(2);
+        });
+
+        it('omits error fileErrors from aggregated warning results', async () => {
+            qcResultService.qcResultDAO = {
+                aggregatedSubmissionQCResults: jest.fn().mockResolvedValue({
+                    total: 1,
+                    results: [
+                        { title: "A warning", severity: "Warning", code: "W001", count: 1, property: "N/A", value: "N/A" }
+                    ]
+                })
+            };
+            qcResultService.submissionDAO = {
+                findFirst: jest.fn().mockResolvedValue({
+                    _id: "test_submission_id",
+                    fileErrors: [fileError]
+                })
+            };
+            const result = await qcResultService.aggregatedSubmissionQCResultsAPI({
+                submissionID: "test_submission_id",
+                severity: "warning",
+                first: 10,
+                offset: 0,
+                orderBy: "count",
+                sortDirection: "desc"
+            }, mockContext);
+            expect(result).toEqual({
+                total: 1,
+                results: [
+                    { title: "A warning", severity: "Warning", code: "W001", count: 1, property: "N/A", value: "N/A" }
+                ]
+            });
+            expect(qcResultService.qcResultDAO.aggregatedSubmissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                "warning",
+                10,
+                0,
+                "count",
+                "desc"
+            );
+        });
+
+        it('pages in the DAO when fileErrors are excluded by severity', async () => {
+            qcResultService.qcResultDAO = {
+                aggregatedSubmissionQCResults: jest.fn().mockResolvedValue({
+                    total: 1,
+                    results: [
+                        { title: "A warning", severity: "Warning", code: "W001", count: 1, property: "N/A", value: "N/A" }
+                    ]
+                })
+            };
+            qcResultService.submissionDAO = {
+                findFirst: jest.fn().mockResolvedValue({
+                    _id: "test_submission_id",
+                    fileErrors: [fileError]
+                })
+            };
+            await qcResultService.aggregatedSubmissionQCResultsAPI({
+                submissionID: "test_submission_id",
+                severity: "warning",
+                first: 10,
+                offset: 0,
+                orderBy: "count",
+                sortDirection: "desc"
+            }, mockContext);
+            expect(qcResultService.qcResultDAO.aggregatedSubmissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                "warning",
+                10,
+                0,
+                "count",
+                "desc"
+            );
+            expect(qcResultService.qcResultDAO.aggregatedSubmissionQCResults).not.toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                -1,
+                expect.anything(),
+                expect.anything(),
+                expect.anything()
+            );
+        });
+
+        it('leaves aggregated results unchanged when fileErrors is missing', async () => {
+            const daoResult = {
+                total: 1,
+                results: [
+                    { title: "Missing required field", severity: "Error", code: "E001", count: 2, property: "N/A", value: "N/A" }
+                ]
+            };
+            qcResultService.qcResultDAO = {
+                aggregatedSubmissionQCResults: jest.fn().mockResolvedValue(daoResult)
+            };
+            qcResultService.submissionDAO = {
+                findFirst: jest.fn().mockResolvedValue({ _id: "test_submission_id" })
+            };
+            const params = {
+                submissionID: "test_submission_id",
+                severity: "error",
+                first: 10,
+                offset: 0,
+                orderBy: "count",
+                sortDirection: "desc"
+            };
+            const result = await qcResultService.aggregatedSubmissionQCResultsAPI(params, mockContext);
+            expect(result).toEqual(daoResult);
+            expect(qcResultService.qcResultDAO.aggregatedSubmissionQCResults).toHaveBeenCalledWith(
+                "test_submission_id",
+                "error",
+                10,
+                0,
+                "count",
+                "desc"
+            );
+        });
+
+        function mockAggregated(fileErrors, daoResults) {
+            qcResultService.qcResultDAO = {
+                aggregatedSubmissionQCResults: jest.fn().mockResolvedValue({
+                    total: daoResults.length,
+                    results: daoResults
+                })
+            };
+            qcResultService.submissionDAO = {
+                findFirst: jest.fn().mockResolvedValue({
+                    _id: "test_submission_id",
+                    fileErrors
+                })
+            };
+        }
+
+        const aggregatedParams = {
+            submissionID: "test_submission_id",
+            severity: "all",
+            first: 10,
+            offset: 0,
+            orderBy: "count",
+            sortDirection: "desc"
+        };
+
+        it('keeps DAO groups that display the same N/A key', async () => {
+            const shared = {
+                title: "Missing",
+                severity: "Error",
+                code: "E001",
+                property: "N/A",
+                value: "N/A"
+            };
+            mockAggregated([fileError], [
+                { ...shared, count: 5 },
+                { ...shared, count: 3 }
+            ]);
+
+            const result = await qcResultService.aggregatedSubmissionQCResultsAPI(aggregatedParams, mockContext);
+
+            expect(result.total).toBe(3);
+            expect(result.results.map((row) => ({ code: row.code, count: row.count }))).toEqual([
+                { code: "E001", count: 5 },
+                { code: "E001", count: 3 },
+                { code: "F008", count: 1 }
+            ]);
+        });
+
+        it('adds a matching fileError count to the first N/A group only', async () => {
+            const shared = {
+                title: "Missing",
+                severity: "Error",
+                code: "E001",
+                property: "N/A",
+                value: "N/A"
+            };
+            const matching = {
+                ...fileError,
+                errors: [{ code: "E001", title: "Missing", description: "required" }]
+            };
+            mockAggregated([matching], [
+                { ...shared, count: 5 },
+                { ...shared, count: 3 }
+            ]);
+
+            const result = await qcResultService.aggregatedSubmissionQCResultsAPI({
+                ...aggregatedParams,
+                severity: "error"
+            }, mockContext);
+
+            expect(result.total).toBe(2);
+            expect(result.results.map((row) => row.count)).toEqual([6, 3]);
+        });
+
+        it('orders equal counts by title, severity, code, property, then value', async () => {
+            const middleA = {
+                ...fileError,
+                submittedID: "middle-a.csv",
+                errors: [{ code: "M001", title: "Middle", description: "middle" }]
+            };
+            const middleB = {
+                ...fileError,
+                submittedID: "middle-b.csv",
+                errors: [{ code: "M001", title: "Middle", description: "middle" }]
+            };
+            mockAggregated([middleA, middleB], [
+                { title: "Zebra", severity: "Error", code: "E001", count: 2, property: "N/A", value: "N/A" },
+                { title: "Alpha", severity: "Warning", code: "E002", count: 2, property: "a", value: "v" },
+                { title: "Alpha", severity: "Error", code: "E002", count: 2, property: "z", value: "v" },
+                { title: "Alpha", severity: "Error", code: "E009", count: 2, property: "N/A", value: "N/A" },
+                { title: "Alpha", severity: "Error", code: "E002", count: 2, property: "a", value: "b" },
+                { title: "Alpha", severity: "Error", code: "E002", count: 2, property: "a", value: "a" }
+            ]);
+
+            const result = await qcResultService.aggregatedSubmissionQCResultsAPI(aggregatedParams, mockContext);
+
+            expect(result.results.map((row) => ({
+                title: row.title,
+                severity: row.severity,
+                code: row.code,
+                property: row.property,
+                value: row.value
+            }))).toEqual([
+                { title: "Alpha", severity: "Error", code: "E002", property: "a", value: "a" },
+                { title: "Alpha", severity: "Error", code: "E002", property: "a", value: "b" },
+                { title: "Alpha", severity: "Error", code: "E002", property: "z", value: "v" },
+                { title: "Alpha", severity: "Error", code: "E009", property: "N/A", value: "N/A" },
+                { title: "Alpha", severity: "Warning", code: "E002", property: "a", value: "v" },
+                { title: "Middle", severity: "Error", code: "M001", property: "N/A", value: "N/A" },
+                { title: "Zebra", severity: "Error", code: "E001", property: "N/A", value: "N/A" }
+            ]);
+        });
+    });
+
 
 }); 

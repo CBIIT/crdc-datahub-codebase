@@ -342,6 +342,24 @@ class Stack(Stack):
             ssl_policy=elbv2.SslPolicy.RECOMMENDED_TLS                                               
         )
 
+        # Enforce security response headers at the ALB so every backend target
+        # receives the same protection without relying on application code.
+        cfn_listener = self.listener.node.default_child
+        cfn_listener.add_property_override("ListenerAttributes", [
+            {
+                "Key": "routing.http.response.strict_transport_security.header_value",
+                "Value": "max-age=31536000; includeSubDomains; preload"
+            },
+            {
+                "Key": "routing.http.response.x_content_type_options.header_value",
+                "Value": "nosniff"
+            },
+            {
+                "Key": "routing.http.response.server.enabled",
+                "Value": "false"
+            }
+        ])
+
         ### ALB Access log
         log_bucket = s3.Bucket.from_bucket_name(self, "AlbAccessLogsBucket", config['main']['alb_log_bucket_name'])
         log_prefix = f"{config['main']['program']}/{config['main']['tier']}/{config['main']['resource_prefix']}/alb-access-logs"
