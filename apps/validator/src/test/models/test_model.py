@@ -8,7 +8,7 @@ from common.constants import SYSTEM_STUDY_NAME, SYSTEM_STUDY_ACRONYM, SYSTEM_STU
 data_model = create_test_data_model()
 
 def test_node_with_required_relationships():
-    rels = data_model.get_final_req_rel_columns_for_node('file')
+    rels = data_model.get_req_rel_columns_for_node('file')
     assert isinstance(rels, list)
     assert len(rels) == 2
     assert 'diagnosis.diagnosis_id' in rels
