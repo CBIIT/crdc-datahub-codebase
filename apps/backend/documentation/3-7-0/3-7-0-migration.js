@@ -1,8 +1,7 @@
 /**
  * 3.7.0 Migration Script
  *
- * Usage: npm run migrate:3.7.0
- *         (or startup via bin/www.js)
+ * Usage: node documentation/3-7-0/3-7-0-migration.js (manual; startup uses 3-7-1-migration.js)
  *
  * Migration files:
  * - ensure-indexes-migration.js: Create catalog indexes (recurring step)

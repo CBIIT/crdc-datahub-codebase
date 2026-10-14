@@ -6,7 +6,7 @@
 npm run migrate:3.7.0
 ```
 
-Startup (`bin/www.js`) runs this orchestrator unless `SKIP_STARTUP_MIGRATIONS=true`.
+Startup runs the **current** orchestrator ([`documentation/3-7-1/3-7-1-migration.js`](../3-7-1/3-7-1-migration.js) via [`bin/www.js`](../../bin/www.js)), unless `SKIP_STARTUP_MIGRATIONS=true`. This 3.7.0 suite is for **one-time backfills and historical reference**, not startup.
 
 ## Migration files
 

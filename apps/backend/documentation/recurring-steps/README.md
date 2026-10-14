@@ -1,8 +1,8 @@
 # Recurring migration steps
 
-Idempotent scripts in this directory run on **every release** via the current version migration orchestrator (e.g. `documentation/3-7-0/3-7-0-migration.js` at startup).
+Idempotent scripts in this directory run on **every release** via the current version migration orchestrator (e.g. `documentation/3-7-1/3-7-1-migration.js` at startup).
 
-Do not run these scripts standalone unless debugging; use the version orchestrator or `npm run migrate:<version>`.
+Do not run these scripts standalone unless debugging; use the current orchestrator (`npm run migrate`) or `documentation/3-7-1/3-7-1-migration.js`. Older `documentation/3-x-x/` folders are legacy reference; run them manually only when needed.
 
 ## Scripts
 
@@ -15,4 +15,4 @@ Do not run these scripts standalone unless debugging; use the version orchestrat
 ## Adding a new recurring step
 
 1. Add the script under `documentation/recurring-steps/`.
-2. Register it in the **latest** version orchestrator's recurring-steps section (before one-time migrations).
+2. Register it in the **latest** version orchestrator. One-time steps that create collections required by the index catalog should run **before** recurring ensure-indexes; other recurring steps follow the order in that orchestrator.

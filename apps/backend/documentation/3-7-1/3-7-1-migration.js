@@ -1,0 +1,130 @@
+/**
+ * 3.7.1 Migration Script
+ *
+ * Usage: npm run migrate
+ *         (or startup via bin/www.js)
+ *
+ * Migration files:
+ * - create-data-sync-collection.js: Create dataSync collection if missing
+ * - ensure-indexes-migration.js: Create catalog indexes (recurring step)
+ * - sync-pbac-defaults-migration.js: Sync PBAC defaults from JSON (recurring step)
+ */
+
+const {
+    createDatabaseConnection,
+    closeDatabaseConnection
+} = require('../recurring-steps/migration-utils');
+
+const { createDataSyncCollection } = require('./create-data-sync-collection');
+const { executeEnsureIndexes } = require('../3-7-0/ensure-indexes-migration');
+const { executeSyncPbacDefaults } = require('../3-7-0/sync-pbac-defaults-migration');
+
+async function orchestrateMigration() {
+    console.log('🚀 Starting 3.7.1 migrations execution...');
+    console.log('============================================================');
+
+    const startTime = new Date();
+    let client;
+
+    try {
+        const dbConnection = await createDatabaseConnection();
+        client = dbConnection.client;
+        const db = dbConnection.db;
+
+        const availableMigrations = [
+            {
+                name: 'Create dataSync collection',
+                file: 'create-data-sync-collection.js',
+                execute: () => createDataSyncCollection(db)
+            },
+            {
+                name: 'Ensure DocumentDB indexes (recurring)',
+                file: 'ensure-indexes-migration.js',
+                execute: () => executeEnsureIndexes(db)
+            },
+            {
+                name: 'Sync PBAC defaults from JSON (recurring)',
+                file: 'sync-pbac-defaults-migration.js',
+                execute: () => executeSyncPbacDefaults(db)
+            }
+        ];
+
+        const migrations = [];
+
+        for (const migration of availableMigrations) {
+            try {
+                const result = await migration.execute();
+                migrations.push({
+                    name: migration.name,
+                    file: migration.file,
+                    success: result.success !== false,
+                    result
+                });
+            } catch (error) {
+                console.error(`❌ ${migration.name} failed: ${error.message}`);
+                migrations.push({
+                    name: migration.name,
+                    file: migration.file,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        const endTime = new Date();
+        const duration = endTime - startTime;
+        const successCount = migrations.filter((m) => m.success).length;
+        const totalCount = migrations.length;
+
+        console.log(`✅ Migration process completed: ${successCount}/${totalCount} successful (${duration}ms)`);
+
+        if (successCount !== totalCount) {
+            console.warn('⚠️  Some migrations encountered issues - see errors above');
+        }
+
+        return {
+            success: successCount === totalCount,
+            duration,
+            migrationsExecuted: totalCount,
+            migrationsSuccessful: successCount,
+            results: migrations
+        };
+    } catch (error) {
+        console.error('❌ Migration orchestration failed:', error.message);
+        return { success: false, error: error.message };
+    } finally {
+        if (client) {
+            await closeDatabaseConnection(client);
+        }
+    }
+}
+
+async function main() {
+    try {
+        const result = await orchestrateMigration();
+        process.exit(result.success ? 0 : 1);
+    } catch (error) {
+        console.error('\n❌ Fatal error:', error.message);
+        process.exit(1);
+    }
+}
+
+// Registered only for CLI runs. bin/www.js imports this module, and process-wide
+// handlers here would otherwise terminate the running server.
+if (require.main === module) {
+    process.on('unhandledRejection', (error) => {
+        console.error('❌ Unhandled rejection:', error.message);
+        process.exit(1);
+    });
+
+    process.on('SIGINT', () => {
+        console.log('\n🛑 Received SIGINT, shutting down gracefully...');
+        process.exit(0);
+    });
+
+    main();
+}
+
+module.exports = {
+    orchestrateMigration
+};
