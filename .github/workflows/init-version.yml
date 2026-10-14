@@ -1,0 +1,78 @@
+name: Initialize Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release Version (e.g. 2.4.0, 3.7.1)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  init-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Validate version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node -e 'if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(process.env.VERSION)) throw new Error("Version must be X.X.X")'
+
+      - name: Update app versions
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          for app in authn backend frontend chatbot-backend; do
+            (cd "apps/$app" && npm version "$VERSION" --no-git-tag-version)
+          done
+
+      - name: Create signed commit on new branch
+        uses: actions/github-script@v8
+        env:
+          VERSION: ${{ inputs.version }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          ACTOR_ID: ${{ github.actor_id }}
+        with:
+          script: |
+            const fs = require('fs');
+            const { execFileSync } = require('child_process');
+            const { owner, repo } = context.repo;
+            const apps = ['authn', 'backend', 'frontend', 'chatbot-backend'];
+            const version = process.env.VERSION;
+            const branch = `${process.env.TARGET_BRANCH}-init-${version}`;
+            execFileSync('git', ['check-ref-format', '--branch', branch]);
+
+            const parent = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+            const { data: base } = await github.rest.git.getCommit({ owner, repo, commit_sha: parent });
+            const tree = apps.flatMap(app => ['package.json', 'package-lock.json'].map(file => {
+              const path = `apps/${app}/${file}`;
+              return { path, mode: '100644', type: 'blob', content: fs.readFileSync(path, 'utf8') };
+            }));
+            const { data: updatedTree } = await github.rest.git.createTree({
+              owner, repo, base_tree: base.tree.sha, tree
+            });
+            if (updatedTree.sha === base.tree.sha) {
+              throw new Error(`All apps already have version ${version}`);
+            }
+
+            const message = `init: ${version}\n\nCo-authored-by: ${process.env.ACTOR} <${process.env.ACTOR_ID}+${process.env.ACTOR}@users.noreply.github.com>`;
+            const { data: commit } = await github.rest.git.createCommit({
+              owner, repo, message, tree: updatedTree.sha, parents: [parent]
+            });
+            if (!commit.verification.verified) {
+              throw new Error(`Commit was not signed: ${commit.verification.reason}`);
+            }
+            await github.rest.git.createRef({ owner, repo, ref: `refs/heads/${branch}`, sha: commit.sha });
+            await core.summary.addRaw(`Created ${branch} at ${commit.sha}`).write();
