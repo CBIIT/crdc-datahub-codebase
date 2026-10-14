@@ -4,75 +4,53 @@
 
 #### Submission Request
 
-- Approved Submission Request Forms can now be reopened for editing
-    and updating. Permission to Reopen Submission Request Forms is
-    configurable in the Manage Users page.
-- Submission Requests table can display and filter Submission Request
-    Form version number to view previous versions of reopened Submission
-    Request Forms.
-- Inactive Submission Request Form retirement deadline decreased from
-    six to two months.
-- Email communication to principal investigators and additional
-    contacts can now be declined in Submission Request Forms.
-- All Submission Request Form Review Comments now visible with
-    timestamp.
-- Submission Request Status filter now configured with role-specific
-    default selections.
-- Unedited Submission Request Forms now have Save button disabled.
-- Conditionally Approved email recipients are now configurable to send
-    data commons personnel only condition-specific emails.
-- Submission Request Form Review Comments can now be formatted with
-    bold and italic font, bulleted and numbered lists, and URL
-    hyperlinks.
-- The Submission Request Form workflow now includes an \"In Revision\"
-    status to indicate when a Submission Request Form is being edited to
-    address reviewer requests.
+- Previously approved Submission Request Forms can now be reopened for
+  editing and updating.
+- Any drafted Submission Request Form will be cancelled after two
+  months of inactivity. The inactivity time window has been decreased
+  from the previously set six-month period.
+- Users can now choose who receives the CRDC email updates regarding
+  their Submission Request Form: the Principal Investigator, other
+  points of contact, or both.
+- Users can now view all Review Comments shared by the CRDC team
+  regarding their Submission Request Form, rather than just the most
+  recent comment.
+- The Save button on the Submission Request Form is now disabled until
+  the user enters information on the form.
+- The new \"In Revision\" status indicates when a previously submitted
+  Submission Request Form is being edited.
 - The Study Abbreviation field character limit is now increased from
-    25 to 50.
+  25 to 50.
+- Email notifications now refer to the study name instead of the study
+  abbreviation.
 
 #### Data Submission
 
-- Administrative Submission Comments are now visible to data commons
-    personnel.
-- Inactive account login error message now includes Helpdesk contact
-    information.
-- Program and Study fields from Submission Request Form are now
-    auto-populated into submission metadata.
-- Data submission validation now confirms dbGaP ID from Submission
-    Request Form.
-- The Data Hub Data Concierge can now generate a DCF index submission
-    sheet on-demand for confirmation of uploaded data files.
-- The Manage Studies table can now be downloaded as a CSV file.
-- Email notifications now use study name instead of study
-    abbreviation.
-- Data Submission Data Type and Data Commons default selections are
-    now unselected by default to improve accuracy of submission
-    configurations.
-- The Data Submission ID is now displayed and copyable from the Data
-    Submission list.
+- The error message shown when an inactive account attempts to log in
+  now includes the CRDC Helpdesk contact information.
+- The Program and Study information shared on the Submission Request
+  Form are now auto-populated into the respective submission metadata
+  fields
+- Data submission validation now confirms the dbGaP ID provided from
+  the Submission Request Form.
+- The Data Submission Data Type is no longer pre-selected to
+  \"Metadata and Data Files\" by default. The Data Submission Data
+  Commons is no longer pre-selected to \"GC\" by default. The
+  submitter will need to make the appropriate selections for both
+  fields.
+- The Data Submission ID is now displayed in the Data Submission
+  table. Users can now copy the Data Submission ID to their clipboard.
 
 #### Data Model Navigator
 
 - The Data Model Navigator now displays a \"Required\" column to
-    indicate the property requirements for data models.
+  indicate the property requirements for data models.
 
-#### Operations Dashboard
+#### Metamodel Database/Simple Terminology Service Integration
 
-- The Operation Dashboard now displays the calculated
-    receipt-to-approval duration for improved Submission Request Form
-    metrics.
-
-#### MDB/STS Integration
-
-- Required relationships in MDF are now supported for metadata
-    validation.
-
-#### Research & Technical Improvements
-
-- Data Hub email content is now managed in GitHub to allow text
-    changes without deployment.
-- Data Hub has migrated from MongoDB to DocumentDB for improved
-    security.
+- Required relationships are identifier linkages between properties
+  documented in the Model Navigator for data models. Required
+  relationships are now enforced at data validation and upload.
 
 ## 3.6.1 (Released 06/29/2026)
 
