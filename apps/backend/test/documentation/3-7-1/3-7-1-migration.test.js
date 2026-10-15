@@ -1,6 +1,7 @@
 const mockCreateDatabaseConnection = jest.fn();
 const mockCloseDatabaseConnection = jest.fn();
 const mockCreateDataSyncCollection = jest.fn();
+const mockExecuteBackfillSubmissionDataSyncStatus = jest.fn();
 const mockExecuteEnsureIndexes = jest.fn();
 const mockExecuteSyncPbacDefaults = jest.fn();
 const mockExecuteBackfillSubmissionRequestID = jest.fn();
@@ -12,6 +13,10 @@ jest.mock('../../../documentation/recurring-steps/migration-utils', () => ({
 
 jest.mock('../../../documentation/3-7-1/create-data-sync-collection', () => ({
     createDataSyncCollection: (...args) => mockCreateDataSyncCollection(...args),
+}));
+
+jest.mock('../../../documentation/3-7-1/backfill-submission-data-sync-status', () => ({
+    executeBackfillSubmissionDataSyncStatus: (...args) => mockExecuteBackfillSubmissionDataSyncStatus(...args),
 }));
 
 jest.mock('../../../documentation/3-7-1/ensure-indexes-migration', () => ({
@@ -38,6 +43,10 @@ const EXPECTED_MIGRATIONS = [
         file: 'create-data-sync-collection.js',
     },
     {
+        name: 'Backfill Submission DataSync status fields (one-time)',
+        file: 'backfill-submission-data-sync-status.js',
+    },
+    {
         name: 'Ensure DocumentDB indexes (recurring)',
         file: 'ensure-indexes-migration.js',
     },
@@ -52,7 +61,7 @@ const EXPECTED_MIGRATIONS = [
 ];
 
 /**
- * Default mocks: DB connects, all four steps succeed, connection closes cleanly.
+ * Default mocks: DB connects, all steps succeed, connection closes cleanly.
  * @param {object} db
  * @param {object} client
  */
@@ -60,6 +69,7 @@ function setupHappyPathMocks(db, client) {
     mockCreateDatabaseConnection.mockResolvedValue({ client, db });
     mockCloseDatabaseConnection.mockResolvedValue(undefined);
     mockCreateDataSyncCollection.mockResolvedValue({ success: true, created: true });
+    mockExecuteBackfillSubmissionDataSyncStatus.mockResolvedValue({ success: true, modifiedCount: 0 });
     mockExecuteEnsureIndexes.mockResolvedValue({ success: true, created: 0, skipped: 0 });
     mockExecuteSyncPbacDefaults.mockResolvedValue({ success: true });
     mockExecuteBackfillSubmissionRequestID.mockResolvedValue({ success: true, modifiedCount: 0 });
@@ -79,16 +89,14 @@ describe('3-7-1-migration orchestrateMigration', () => {
     });
 
     describe('migration invocation', () => {
-        /*
-         * Ensures the orchestrator wires createDatabaseConnection to every registered
-         * step and passes the same db handle from the connection result.
-         */
-        it('invokes all four registered steps once with the DB from createDatabaseConnection', async () => {
+        it('invokes all five registered steps once with the DB from createDatabaseConnection', async () => {
             await orchestrateMigration();
 
             expect(mockCreateDatabaseConnection).toHaveBeenCalledTimes(1);
             expect(mockCreateDataSyncCollection).toHaveBeenCalledTimes(1);
             expect(mockCreateDataSyncCollection).toHaveBeenCalledWith(mockDb);
+            expect(mockExecuteBackfillSubmissionDataSyncStatus).toHaveBeenCalledTimes(1);
+            expect(mockExecuteBackfillSubmissionDataSyncStatus).toHaveBeenCalledWith(mockDb);
             expect(mockExecuteEnsureIndexes).toHaveBeenCalledTimes(1);
             expect(mockExecuteEnsureIndexes).toHaveBeenCalledWith(mockDb);
             expect(mockExecuteSyncPbacDefaults).toHaveBeenCalledTimes(1);
@@ -97,26 +105,20 @@ describe('3-7-1-migration orchestrateMigration', () => {
             expect(mockExecuteBackfillSubmissionRequestID).toHaveBeenCalledWith(mockDb);
         });
 
-        /*
-         * Ensures one-time collection creation runs before recurring steps,
-         * matching the orchestrator registration order.
-         */
-        it('runs create dataSync before ensure-indexes before sync PBAC before backfill', async () => {
+        it('runs create dataSync before DataSync status backfill before recurring steps', async () => {
             await orchestrateMigration();
 
             const createOrder = mockCreateDataSyncCollection.mock.invocationCallOrder[0];
+            const dataSyncStatusOrder = mockExecuteBackfillSubmissionDataSyncStatus.mock.invocationCallOrder[0];
             const ensureOrder = mockExecuteEnsureIndexes.mock.invocationCallOrder[0];
             const syncOrder = mockExecuteSyncPbacDefaults.mock.invocationCallOrder[0];
             const backfillOrder = mockExecuteBackfillSubmissionRequestID.mock.invocationCallOrder[0];
-            expect(createOrder).toBeLessThan(ensureOrder);
+            expect(createOrder).toBeLessThan(dataSyncStatusOrder);
+            expect(dataSyncStatusOrder).toBeLessThan(ensureOrder);
             expect(ensureOrder).toBeLessThan(syncOrder);
             expect(syncOrder).toBeLessThan(backfillOrder);
         });
 
-        /*
-         * Ensures the Mongo client from createDatabaseConnection is closed in finally
-         * after migrations finish successfully.
-         */
         it('closes the Mongo client in finally after a successful run', async () => {
             await orchestrateMigration();
 
@@ -126,18 +128,14 @@ describe('3-7-1-migration orchestrateMigration', () => {
     });
 
     describe('overall status', () => {
-        /*
-         * When every step returns success: true, the orchestrator aggregates a fully
-         * successful run with counts, duration, and per-step results metadata.
-         */
         it('reports full success when every step returns success: true', async () => {
             const result = await orchestrateMigration();
 
             expect(result.success).toBe(true);
-            expect(result.migrationsExecuted).toBe(4);
-            expect(result.migrationsSuccessful).toBe(4);
+            expect(result.migrationsExecuted).toBe(5);
+            expect(result.migrationsSuccessful).toBe(5);
             expect(typeof result.duration).toBe('number');
-            expect(result.results).toHaveLength(4);
+            expect(result.results).toHaveLength(5);
             result.results.forEach((entry, index) => {
                 expect(entry.success).toBe(true);
                 expect(entry.name).toBe(EXPECTED_MIGRATIONS[index].name);
@@ -145,15 +143,12 @@ describe('3-7-1-migration orchestrateMigration', () => {
             });
         });
 
-        /*
-         * When a step resolves with success: false (no throw), overall success is false
-         * but remaining steps still run; each failing step is reflected in results.
-         */
         it.each([
             ['createDataSyncCollection', () => mockCreateDataSyncCollection, 0],
-            ['executeEnsureIndexes', () => mockExecuteEnsureIndexes, 1],
-            ['executeSyncPbacDefaults', () => mockExecuteSyncPbacDefaults, 2],
-            ['executeBackfillSubmissionRequestID', () => mockExecuteBackfillSubmissionRequestID, 3],
+            ['executeBackfillSubmissionDataSyncStatus', () => mockExecuteBackfillSubmissionDataSyncStatus, 1],
+            ['executeEnsureIndexes', () => mockExecuteEnsureIndexes, 2],
+            ['executeSyncPbacDefaults', () => mockExecuteSyncPbacDefaults, 3],
+            ['executeBackfillSubmissionRequestID', () => mockExecuteBackfillSubmissionRequestID, 4],
         ])(
             'reports overall failure when %s returns success: false without throwing',
             async (_label, getMock, failedIndex) => {
@@ -163,38 +158,31 @@ describe('3-7-1-migration orchestrateMigration', () => {
                 const result = await orchestrateMigration();
 
                 expect(result.success).toBe(false);
-                expect(result.migrationsSuccessful).toBe(3);
-                expect(result.migrationsExecuted).toBe(4);
+                expect(result.migrationsSuccessful).toBe(4);
+                expect(result.migrationsExecuted).toBe(5);
                 expect(result.results[failedIndex].success).toBe(false);
                 expect(result.results[failedIndex].result).toEqual(stepError);
                 expect(mockCloseDatabaseConnection).toHaveBeenCalledWith(mockClient);
             }
         );
 
-        /*
-         * When a step throws, the orchestrator records the error, continues later steps,
-         * and reports partial success with overall success: false.
-         */
         it('reports overall failure when a step throws but continues remaining steps', async () => {
             mockExecuteEnsureIndexes.mockRejectedValue(new Error('indexes threw'));
 
             const result = await orchestrateMigration();
 
             expect(mockCreateDataSyncCollection).toHaveBeenCalledTimes(1);
+            expect(mockExecuteBackfillSubmissionDataSyncStatus).toHaveBeenCalledTimes(1);
             expect(mockExecuteEnsureIndexes).toHaveBeenCalledTimes(1);
             expect(mockExecuteSyncPbacDefaults).toHaveBeenCalledTimes(1);
             expect(mockExecuteBackfillSubmissionRequestID).toHaveBeenCalledTimes(1);
             expect(result.success).toBe(false);
-            expect(result.migrationsSuccessful).toBe(3);
-            expect(result.results[1].success).toBe(false);
-            expect(result.results[1].error).toBe('indexes threw');
+            expect(result.migrationsSuccessful).toBe(4);
+            expect(result.results[2].success).toBe(false);
+            expect(result.results[2].error).toBe('indexes threw');
             expect(mockCloseDatabaseConnection).toHaveBeenCalledWith(mockClient);
         });
 
-        /*
-         * When createDatabaseConnection fails, no migration steps run and the top-level
-         * catch returns only success: false and an error message (no results array).
-         */
         it('reports orchestration failure when createDatabaseConnection throws', async () => {
             mockCreateDatabaseConnection.mockRejectedValue(new Error('connect failed'));
 
@@ -202,6 +190,7 @@ describe('3-7-1-migration orchestrateMigration', () => {
 
             expect(result).toEqual({ success: false, error: 'connect failed' });
             expect(mockCreateDataSyncCollection).not.toHaveBeenCalled();
+            expect(mockExecuteBackfillSubmissionDataSyncStatus).not.toHaveBeenCalled();
             expect(mockExecuteEnsureIndexes).not.toHaveBeenCalled();
             expect(mockExecuteSyncPbacDefaults).not.toHaveBeenCalled();
             expect(mockExecuteBackfillSubmissionRequestID).not.toHaveBeenCalled();
