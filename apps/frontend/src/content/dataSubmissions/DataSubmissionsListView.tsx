@@ -10,6 +10,7 @@ import SRFLink from "@/components/SRFLink";
 import { InternalRoles } from "@/config/AuthRoles";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
+import BellIcon from "../../assets/icons/bell_icon.svg?react";
 import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/AuthContext";
 import CopyTextButton from "../../components/CopyTextButton";
 import CreateDataSubmissionDialog from "../../components/DataSubmissions/CreateDataSubmissionDialog";
@@ -111,6 +112,24 @@ const StyledTooltipValue = styled("p")(() => ({
   color: "#595959",
   margin: 0,
 }));
+
+const StyledStatusWrapper = styled(Stack)({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: "5px",
+});
+
+const StyledIconWrapper = styled("span")({
+  display: "inline-flex",
+  cursor: "pointer",
+});
+
+const StyledDataSyncErrorIcon = styled(BellIcon)({
+  width: "15.5px",
+  height: "17.05px",
+  color: "#D65219",
+  flexShrink: 0,
+});
 
 const submissionNameTextStyle = {
   fontWeight: 700,
@@ -257,14 +276,33 @@ const BASE_COLUMNS: Column<T>[] = [
 
   {
     label: "Status",
-    renderValue: (a) =>
-      a.status === "Released" && a.dataCommonsDisplayName ? (
-        <StyledTooltip title={`Released to ${a.dataCommonsDisplayName}`} placement="top" arrow>
-          <span>{a.status}</span>
-        </StyledTooltip>
-      ) : (
-        a.status
-      ),
+    renderValue: (a) => {
+      if (a.status === "Released" && a.dataCommonsDisplayName) {
+        return (
+          <StyledTooltip title={`Released to ${a.dataCommonsDisplayName}`} placement="top" arrow>
+            <span>{a.status}</span>
+          </StyledTooltip>
+        );
+      }
+
+      const dataSyncFailed =
+        a.metadataDataSyncStatus === "Failed" || a.fileDataSyncStatus === "Failed";
+
+      if (a.status === "Completed" && dataSyncFailed) {
+        return (
+          <StyledStatusWrapper>
+            <span>{a.status}</span>
+            <StyledTooltip title="DataSync failed!" placement="top" arrow>
+              <StyledIconWrapper data-testid={`data-sync-failed-icon-${a._id}`}>
+                <StyledDataSyncErrorIcon />
+              </StyledIconWrapper>
+            </StyledTooltip>
+          </StyledStatusWrapper>
+        );
+      }
+
+      return a.status;
+    },
     field: "status",
     hideable: false,
     exportValue: (a) => ({ label: "Status", value: a.status }),

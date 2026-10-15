@@ -96,6 +96,14 @@ type Submission = {
    * The total size of data files in the Submission
    */
   dataFileSize: FileSize;
+  /**
+   * The status of copying the metadata to the destination Data Commons
+   */
+  metadataDataSyncStatus: DataSyncStatus;
+  /**
+   * The status of copying the data files to the destination Data Commons
+   */
+  fileDataSyncStatus: DataSyncStatus;
   createdAt: string; // ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
   updatedAt: string; // ISO 8601 date time format with UTC or offset e.g., 2023-05-01T09:23:30Z
 };
@@ -107,6 +115,11 @@ type Submission = {
  * @note `New` indicates that the type has been uploaded but not validated yet.
  */
 type ValidationStatus = null | "New" | "Validating" | "Passed" | "Error" | "Warning";
+
+/**
+ * The status of the DataSync copy operation for a Submission.
+ */
+type DataSyncStatus = null | "In Progress" | "Completed" | "Failed";
 
 /**
  * The status of the cross-submission validation action for a Submission.
