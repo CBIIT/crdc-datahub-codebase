@@ -10,6 +10,7 @@ Do not run these scripts standalone unless debugging; use the current orchestrat
 |------|---------|
 | `ensure-indexes.js` | Create DocumentDB indexes from a catalog when missing (`background: true`). Same name and keys is a no-op; same keys under a different name logs a warning and skips. Missing collections are logged and skipped (not created). Startup waits for this step, then listens even if some indexes failed. |
 | `sync-pbac-defaults.js` | Insert or overwrite PBAC defaults from `resources/json/PBACDefaults_config.json` into Mongo `configuration` when JSON version is higher |
+| `backfill-submission-request-id.js` | Set `Submission.submissionRequestID` from the linked study's `applicationID` where missing, null, or empty (idempotent; repairs studies that gained an `applicationID` after submission creation) |
 | `migration-utils.js` | Shared MongoDB connection helpers for orchestrators |
 
 ## Adding a new recurring step

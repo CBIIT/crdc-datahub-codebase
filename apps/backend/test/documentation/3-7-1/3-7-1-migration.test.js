@@ -3,6 +3,7 @@ const mockCloseDatabaseConnection = jest.fn();
 const mockCreateDataSyncCollection = jest.fn();
 const mockExecuteEnsureIndexes = jest.fn();
 const mockExecuteSyncPbacDefaults = jest.fn();
+const mockExecuteBackfillSubmissionRequestID = jest.fn();
 
 jest.mock('../../../documentation/recurring-steps/migration-utils', () => ({
     createDatabaseConnection: (...args) => mockCreateDatabaseConnection(...args),
@@ -13,12 +14,16 @@ jest.mock('../../../documentation/3-7-1/create-data-sync-collection', () => ({
     createDataSyncCollection: (...args) => mockCreateDataSyncCollection(...args),
 }));
 
-jest.mock('../../../documentation/3-7-0/ensure-indexes-migration', () => ({
+jest.mock('../../../documentation/3-7-1/ensure-indexes-migration', () => ({
     executeEnsureIndexes: (...args) => mockExecuteEnsureIndexes(...args),
 }));
 
-jest.mock('../../../documentation/3-7-0/sync-pbac-defaults-migration', () => ({
+jest.mock('../../../documentation/3-7-1/sync-pbac-defaults-migration', () => ({
     executeSyncPbacDefaults: (...args) => mockExecuteSyncPbacDefaults(...args),
+}));
+
+jest.mock('../../../documentation/3-7-1/backfill-submission-submission-request-id', () => ({
+    executeBackfillSubmissionRequestID: (...args) => mockExecuteBackfillSubmissionRequestID(...args),
 }));
 
 const { orchestrateMigration } = require('../../../documentation/3-7-1/3-7-1-migration');
@@ -40,10 +45,14 @@ const EXPECTED_MIGRATIONS = [
         name: 'Sync PBAC defaults from JSON (recurring)',
         file: 'sync-pbac-defaults-migration.js',
     },
+    {
+        name: 'Backfill Submission.submissionRequestID (recurring)',
+        file: 'backfill-submission-submission-request-id.js',
+    },
 ];
 
 /**
- * Default mocks: DB connects, all three steps succeed, connection closes cleanly.
+ * Default mocks: DB connects, all four steps succeed, connection closes cleanly.
  * @param {object} db
  * @param {object} client
  */
@@ -53,6 +62,7 @@ function setupHappyPathMocks(db, client) {
     mockCreateDataSyncCollection.mockResolvedValue({ success: true, created: true });
     mockExecuteEnsureIndexes.mockResolvedValue({ success: true, created: 0, skipped: 0 });
     mockExecuteSyncPbacDefaults.mockResolvedValue({ success: true });
+    mockExecuteBackfillSubmissionRequestID.mockResolvedValue({ success: true, modifiedCount: 0 });
 }
 
 describe('3-7-1-migration orchestrateMigration', () => {
@@ -73,7 +83,7 @@ describe('3-7-1-migration orchestrateMigration', () => {
          * Ensures the orchestrator wires createDatabaseConnection to every registered
          * step and passes the same db handle from the connection result.
          */
-        it('invokes all three registered steps once with the DB from createDatabaseConnection', async () => {
+        it('invokes all four registered steps once with the DB from createDatabaseConnection', async () => {
             await orchestrateMigration();
 
             expect(mockCreateDatabaseConnection).toHaveBeenCalledTimes(1);
@@ -83,20 +93,24 @@ describe('3-7-1-migration orchestrateMigration', () => {
             expect(mockExecuteEnsureIndexes).toHaveBeenCalledWith(mockDb);
             expect(mockExecuteSyncPbacDefaults).toHaveBeenCalledTimes(1);
             expect(mockExecuteSyncPbacDefaults).toHaveBeenCalledWith(mockDb);
+            expect(mockExecuteBackfillSubmissionRequestID).toHaveBeenCalledTimes(1);
+            expect(mockExecuteBackfillSubmissionRequestID).toHaveBeenCalledWith(mockDb);
         });
 
         /*
-         * Ensures one-time collection creation runs before recurring index and PBAC
-         * steps, matching the orchestrator registration order.
+         * Ensures one-time collection creation runs before recurring steps,
+         * matching the orchestrator registration order.
          */
-        it('runs create dataSync before ensure-indexes before sync PBAC', async () => {
+        it('runs create dataSync before ensure-indexes before sync PBAC before backfill', async () => {
             await orchestrateMigration();
 
             const createOrder = mockCreateDataSyncCollection.mock.invocationCallOrder[0];
             const ensureOrder = mockExecuteEnsureIndexes.mock.invocationCallOrder[0];
             const syncOrder = mockExecuteSyncPbacDefaults.mock.invocationCallOrder[0];
+            const backfillOrder = mockExecuteBackfillSubmissionRequestID.mock.invocationCallOrder[0];
             expect(createOrder).toBeLessThan(ensureOrder);
             expect(ensureOrder).toBeLessThan(syncOrder);
+            expect(syncOrder).toBeLessThan(backfillOrder);
         });
 
         /*
@@ -120,10 +134,10 @@ describe('3-7-1-migration orchestrateMigration', () => {
             const result = await orchestrateMigration();
 
             expect(result.success).toBe(true);
-            expect(result.migrationsExecuted).toBe(3);
-            expect(result.migrationsSuccessful).toBe(3);
+            expect(result.migrationsExecuted).toBe(4);
+            expect(result.migrationsSuccessful).toBe(4);
             expect(typeof result.duration).toBe('number');
-            expect(result.results).toHaveLength(3);
+            expect(result.results).toHaveLength(4);
             result.results.forEach((entry, index) => {
                 expect(entry.success).toBe(true);
                 expect(entry.name).toBe(EXPECTED_MIGRATIONS[index].name);
@@ -139,6 +153,7 @@ describe('3-7-1-migration orchestrateMigration', () => {
             ['createDataSyncCollection', () => mockCreateDataSyncCollection, 0],
             ['executeEnsureIndexes', () => mockExecuteEnsureIndexes, 1],
             ['executeSyncPbacDefaults', () => mockExecuteSyncPbacDefaults, 2],
+            ['executeBackfillSubmissionRequestID', () => mockExecuteBackfillSubmissionRequestID, 3],
         ])(
             'reports overall failure when %s returns success: false without throwing',
             async (_label, getMock, failedIndex) => {
@@ -148,8 +163,8 @@ describe('3-7-1-migration orchestrateMigration', () => {
                 const result = await orchestrateMigration();
 
                 expect(result.success).toBe(false);
-                expect(result.migrationsSuccessful).toBe(2);
-                expect(result.migrationsExecuted).toBe(3);
+                expect(result.migrationsSuccessful).toBe(3);
+                expect(result.migrationsExecuted).toBe(4);
                 expect(result.results[failedIndex].success).toBe(false);
                 expect(result.results[failedIndex].result).toEqual(stepError);
                 expect(mockCloseDatabaseConnection).toHaveBeenCalledWith(mockClient);
@@ -168,8 +183,9 @@ describe('3-7-1-migration orchestrateMigration', () => {
             expect(mockCreateDataSyncCollection).toHaveBeenCalledTimes(1);
             expect(mockExecuteEnsureIndexes).toHaveBeenCalledTimes(1);
             expect(mockExecuteSyncPbacDefaults).toHaveBeenCalledTimes(1);
+            expect(mockExecuteBackfillSubmissionRequestID).toHaveBeenCalledTimes(1);
             expect(result.success).toBe(false);
-            expect(result.migrationsSuccessful).toBe(2);
+            expect(result.migrationsSuccessful).toBe(3);
             expect(result.results[1].success).toBe(false);
             expect(result.results[1].error).toBe('indexes threw');
             expect(mockCloseDatabaseConnection).toHaveBeenCalledWith(mockClient);
@@ -188,6 +204,7 @@ describe('3-7-1-migration orchestrateMigration', () => {
             expect(mockCreateDataSyncCollection).not.toHaveBeenCalled();
             expect(mockExecuteEnsureIndexes).not.toHaveBeenCalled();
             expect(mockExecuteSyncPbacDefaults).not.toHaveBeenCalled();
+            expect(mockExecuteBackfillSubmissionRequestID).not.toHaveBeenCalled();
             expect(mockCloseDatabaseConnection).not.toHaveBeenCalled();
         });
     });

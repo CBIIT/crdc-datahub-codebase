@@ -1,12 +1,16 @@
 # 3.7.0 Migration Suite
 
+**Legacy (reference only, not maintained).** Recurring behavior (indexes, PBAC, `submissionRequestID` backfill) lives in [`documentation/3-7-1/`](../3-7-1/) startup and [`documentation/recurring-steps/`](../recurring-steps/). Use this suite only for **one-time backfills** on environments that have not applied them yet.
+
 ## Running migrations
 
+From `apps/backend`:
+
 ```bash
-npm run migrate:3.7.0
+node documentation/3-7-0/3-7-0-migration.js
 ```
 
-Startup runs the **current** orchestrator ([`documentation/3-7-1/3-7-1-migration.js`](../3-7-1/3-7-1-migration.js) via [`bin/www.js`](../../bin/www.js)), unless `SKIP_STARTUP_MIGRATIONS=true`. This 3.7.0 suite is for **one-time backfills and historical reference**, not startup.
+Startup runs the **current** orchestrator ([`documentation/3-7-1/3-7-1-migration.js`](../3-7-1/3-7-1-migration.js) via [`bin/www.js`](../../bin/www.js)), unless `SKIP_STARTUP_MIGRATIONS=true`.
 
 ## Migration files
 
@@ -17,7 +21,7 @@ Startup runs the **current** orchestrator ([`documentation/3-7-1/3-7-1-migration
 | `sync-pbac-defaults-migration.js` | Sync PBAC from JSON via `recurring-steps/sync-pbac-defaults.js` |
 | `backfill-application-sequence-number.js` | Set `sequenceNumber: 1` where missing (CRDCDH-3970) |
 | `backfill-application-questionnaire-data.js` | Parse string `questionnaireData` and store as object where still a BSON string |
-| `backfill-submission-submission-request-id.js` | Set `submissionRequestID` from the linked study's `applicationID` where missing |
+| `backfill-submission-submission-request-id.js` | Wrapper for recurring `../recurring-steps/backfill-submission-request-id.js` |
 | `backfill-getPendingConditionsAtApproval.js` | Set `pendingConditionsAtApproval` on approved studies where missing |
 | `dedupe-review-comments.js` | Clear review comments that were copied onto `In Revision` events (CRDCDH-3894) |
 
@@ -41,7 +45,7 @@ left untouched.
 Preview the impact without writing:
 
 ```bash
-DEDUPE_DRY_RUN=true npm run migrate:3.7.0
+DEDUPE_DRY_RUN=true node documentation/3-7-0/3-7-0-migration.js
 ```
 
 ## Prerequisites

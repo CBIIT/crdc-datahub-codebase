@@ -8,6 +8,8 @@
  * - create-data-sync-collection.js: Create dataSync collection if missing
  * - ensure-indexes-migration.js: Create catalog indexes (recurring step)
  * - sync-pbac-defaults-migration.js: Sync PBAC defaults from JSON (recurring step)
+ * - backfill-submission-submission-request-id.js: Backfill Submission.submissionRequestID (recurring;
+ *   implementation in recurring-steps/backfill-submission-request-id.js)
  */
 
 const {
@@ -16,8 +18,9 @@ const {
 } = require('../recurring-steps/migration-utils');
 
 const { createDataSyncCollection } = require('./create-data-sync-collection');
-const { executeEnsureIndexes } = require('../3-7-0/ensure-indexes-migration');
-const { executeSyncPbacDefaults } = require('../3-7-0/sync-pbac-defaults-migration');
+const { executeEnsureIndexes } = require('./ensure-indexes-migration');
+const { executeSyncPbacDefaults } = require('./sync-pbac-defaults-migration');
+const { executeBackfillSubmissionRequestID } = require('./backfill-submission-submission-request-id');
 
 async function orchestrateMigration() {
     console.log('🚀 Starting 3.7.1 migrations execution...');
@@ -46,6 +49,11 @@ async function orchestrateMigration() {
                 name: 'Sync PBAC defaults from JSON (recurring)',
                 file: 'sync-pbac-defaults-migration.js',
                 execute: () => executeSyncPbacDefaults(db)
+            },
+            {
+                name: 'Backfill Submission.submissionRequestID (recurring)',
+                file: 'backfill-submission-submission-request-id.js',
+                execute: () => executeBackfillSubmissionRequestID(db)
             }
         ];
 
