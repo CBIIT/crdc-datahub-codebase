@@ -21,6 +21,8 @@ interface SubmissionInterface {
     metadataValidationStatus: String
     fileValidationStatus: String
     crossSubmissionStatus: String
+    metadataDataSyncStatus: String # [Not Started, In Progress, Succeeded, Failed]; API returns Not Started when stored value is missing, null, or empty
+    fileDataSyncStatus: String # [Not Started, In Progress, Succeeded, Failed]; API returns Not Started when stored value is missing, null, or empty
     fileErrors: [QCResult]
     fileWarnings: [QCResult]
     history: [Event]
@@ -206,6 +208,8 @@ type Submission implements SubmissionInterface {
     metadataValidationStatus: String # [New, Validating, Passed, Error, Warning], new successfully uploaded batch will set it to "New"
     fileValidationStatus: String # [New, Validating, Passed, Error, Warning], new successfully uploaded batch will set it to "New"
     crossSubmissionStatus: String # [New, Validating, Passed, Error, Warning]
+    metadataDataSyncStatus: String # [Not Started, In Progress, Succeeded, Failed]; API returns Not Started when stored value is missing, null, or empty
+    fileDataSyncStatus: String # [Not Started, In Progress, Succeeded, Failed]; API returns Not Started when stored value is missing, null, or empty
     fileErrors: [QCResult] # holds submission level file errors, e.g., extra files in S3 folder
     fileWarnings: [QCResult] # holds submission level file warnings
     history: [Event]
@@ -262,6 +266,8 @@ type SubmissionList implements SubmissionInterface {
     metadataValidationStatus: String # [New, Validating, Passed, Error, Warning], new successfully uploaded batch will set it to "New"
     fileValidationStatus: String # [New, Validating, Passed, Error, Warning], new successfully uploaded batch will set it to "New"
     crossSubmissionStatus: String # [New, Validating, Passed, Error, Warning]
+    metadataDataSyncStatus: String # [Not Started, In Progress, Succeeded, Failed]; API returns Not Started when stored value is missing, null, or empty
+    fileDataSyncStatus: String # [Not Started, In Progress, Succeeded, Failed]; API returns Not Started when stored value is missing, null, or empty
     fileErrors: [QCResult] # holds submission level file errors, e.g., extra files in S3 folder
     fileWarnings: [QCResult] # holds submission level file warnings
     history: [Event]

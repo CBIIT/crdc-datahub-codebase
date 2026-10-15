@@ -1,15 +1,10 @@
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const { DATA_SYNC_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
+const { DATA_SYNC_TYPE, DATA_SYNC_STATUSES } = require('../../constants/data-sync-constants');
 
 /** @type {string[]} */
-const DATA_SYNC_TYPES = ['metadata', 'file'];
-
-/**
- * App-level DataSync task statuses (constants module added in a follow-up commit).
- * @type {string[]}
- */
-const DATA_SYNC_STATUSES = ['Not Started', 'In Progress', 'Succeeded', 'Failed'];
+const DATA_SYNC_TYPES = Object.values(DATA_SYNC_TYPE);
 
 /**
  * Mongoose schema for DataSync task records in the dataSync collection.

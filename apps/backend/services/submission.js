@@ -2,6 +2,7 @@ const { NEW, IN_PROGRESS, SUBMITTED, RELEASED, COMPLETED, ARCHIVED, CANCELED,
     REJECTED, WITHDRAWN, ACTIONS, VALIDATION, VALIDATION_STATUS, INTENTION, DATA_TYPE, DELETED, DATA_FILE,
     CONSTRAINTS, COLLABORATOR_PERMISSIONS, UPLOADING_HEARTBEAT_CONFIG_TYPE, SUBMISSION_TYPE
 } = require("../constants/submission-constants");
+const { DATA_SYNC_STATUS } = require("../constants/data-sync-constants");
 const fs = require('fs');
 const path = require('path');
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
@@ -3399,6 +3400,8 @@ class DataSubmission {
         this.createdAt = this.updatedAt = getCurrentTime();
         // no metadata to be validated
         this.metadataValidationStatus = this.fileValidationStatus = this.crossSubmissionStatus = null;
+        this.metadataDataSyncStatus = DATA_SYNC_STATUS.NOT_STARTED;
+        this.fileDataSyncStatus = DATA_SYNC_STATUS.NOT_STARTED;
         this.fileErrors = [];
         this.fileWarnings = [];
         this.intention = intention;
