@@ -3,6 +3,7 @@ from configparser import ConfigParser
 from constructs import Construct
 from cdk_ec2_key_pair import KeyPair, PublicKeyFormat
 from aws_cdk import Stack
+from aws_cdk import CfnOutput
 from aws_cdk import RemovalPolicy
 from aws_cdk import SecretValue
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
@@ -198,6 +199,12 @@ class Stack(Stack):
               f"{self.namingPrefix}-docdb",
               vpc=self.VPC
             )
+            CfnOutput(
+                self,
+                "DocumentDbEndpoint",
+                value=self.docdb.cluster.attr_endpoint,
+                description="DocumentDB cluster endpoint (for manual initialization; apps use mongo_db_* until migration)",
+            )
 
         ### Secrets
         
@@ -220,31 +227,14 @@ class Stack(Stack):
             guardrail_id = config["secrets"].get("guardrail_id")
 
 
-        if create_docdb:
-            docdb_endpoint = self.docdb.cluster.attr_endpoint
-            docdb_port = self.docdb.cluster.attr_port
-            docdb_username = config.get('db', 'docdb_user')
-            docdb_password = config.get('db', 'docdb_password')
-            docdb_db_name = config.get('db', 'docdb_db_name')
-        else:
-            # config.ini [db] must supply docdb_endpoint, docdb_port, docdb_user,
-            # docdb_password, and docdb_db_name (not mongo_db_*).
-            docdb_endpoint = config['db']['docdb_endpoint']
-            docdb_port = config['db']['docdb_port']
-            docdb_username = config['db']['docdb_user']
-            docdb_password = config['db']['docdb_password']
-            docdb_db_name = config['db']['docdb_db_name']
+        # Hub secret: mongo_db_* + database_name always (ECS runtime). When create_docdb=true,
+        # also store docdb_* from the new cluster for manual post-deploy initialization.
 
         self.secret = secretsmanager.Secret(self, "Secret",
 #            secret_name="{}/{}/{}".format(config['main']['secret_prefix'], config['main']['tier'], "crdc-dh"),
             secret_name="{}/{}".format(config['main']['resource_prefix'], config['main']['tier']),
 #            secret_string_value=secretsmanager.SecretValue.unsafe_plain_text(secret_value),
             secret_object_value={
-                "docdb_endpoint": SecretValue.unsafe_plain_text(docdb_endpoint),
-                "docdb_port": SecretValue.unsafe_plain_text(docdb_port),
-                "docdb_username": SecretValue.unsafe_plain_text(docdb_username),
-                "docdb_password": SecretValue.unsafe_plain_text(docdb_password),
-                "docdb_db_name": SecretValue.unsafe_plain_text(docdb_db_name),
                 "mongo_db_user": SecretValue.unsafe_plain_text(config['db']['mongo_db_user']),
                 "mongo_db_password": SecretValue.unsafe_plain_text(config['db']['mongo_db_password']),
                 "mongo_db_host": SecretValue.unsafe_plain_text(config['db']['mongo_db_host']),
@@ -295,6 +285,17 @@ class Stack(Stack):
                         "rds_password": self.rds.rds.secret.secret_value_from_json("password"),
                     }
                     if config.getboolean('db', 'create_rds', fallback=False)
+                    else {}
+                ),
+                **(
+                    {
+                        "docdb_endpoint": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_endpoint),
+                        "docdb_port": SecretValue.unsafe_plain_text(self.docdb.cluster.attr_port),
+                        "docdb_username": SecretValue.unsafe_plain_text(config.get('db', 'docdb_user')),
+                        "docdb_password": SecretValue.unsafe_plain_text(config.get('db', 'docdb_password')),
+                        "docdb_db_name": SecretValue.unsafe_plain_text(config.get('db', 'docdb_db_name')),
+                    }
+                    if create_docdb
                     else {}
                 ),
 #                "newrelic_license_key": SecretValue.unsafe_plain_text(config['secrets']['newrelic_license_key'])
