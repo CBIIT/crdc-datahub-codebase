@@ -134,6 +134,8 @@ Relationships:
       - Src: participant
         Dst: study
         Req: true
+      - Src: file
+        Dst: study
     Props: null
 
 UniversalNodeProperties:
