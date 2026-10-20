@@ -5,44 +5,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test-utils";
 
-import * as useChatDrawerModule from "../hooks/useChatDrawer";
+import { FloatingWindowProvider, useFloatingWindowContext } from "./FloatingWindowContext";
+import * as useFloatingWindowModule from "./useFloatingWindow";
 
-import { ChatConversationProvider } from "./ChatConversationContext";
-import { ChatDrawerProvider, useChatDrawerContext } from "./ChatDrawerContext";
-
-vi.mock("../hooks/useChatDrawer", () => ({
-  useChatDrawer: vi.fn(),
+vi.mock("./useFloatingWindow", () => ({
+  useFloatingWindow: vi.fn(),
 }));
 
-vi.mock("./ChatBotContext", () => ({
-  useChatBotContext: vi.fn(() => ({
-    isChatEnabled: true,
-  })),
-}));
+const mockUseFloatingWindow = vi.mocked(useFloatingWindowModule.useFloatingWindow);
 
-vi.mock("./ChatConversationContext", () => ({
-  ChatConversationProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  useChatConversationContext: vi.fn(() => ({
-    messages: [],
-    inputValue: "",
-    isBotTyping: false,
-    setInputValue: vi.fn(),
-    sendMessage: vi.fn(),
-    handleKeyDown: vi.fn(),
-    endConversation: vi.fn(),
-    greetingTimestamp: new Date(),
-  })),
-}));
+const MOCK_CONFIG = {
+  height: { collapsed: 368, min: 368 },
+  width: { default: 400, min: 400, expanded: 420 },
+};
 
-const mockUseChatDrawer = vi.mocked(useChatDrawerModule.useChatDrawer);
+const mockOnClose = vi.fn();
 
 type TestParentProps = {
-  onRender?: (context: ReturnType<typeof useChatDrawerContext>) => void;
+  onRender?: (context: ReturnType<typeof useFloatingWindowContext>) => void;
   children?: React.ReactNode;
 };
 
 const TestParent = ({ onRender, children }: TestParentProps) => {
-  const context = useChatDrawerContext();
+  const context = useFloatingWindowContext();
 
   if (onRender) {
     onRender(context);
@@ -55,8 +40,8 @@ const TestParent = ({ onRender, children }: TestParentProps) => {
       <div data-testid="height-px">{context.heightPx}</div>
       <div data-testid="is-minimized">{context.isMinimized.toString()}</div>
       <div data-testid="is-fullscreen">{context.isFullscreen.toString()}</div>
-      <div data-testid="is-confirming">{context.isConfirmingEndConversation.toString()}</div>
-      <button type="button" data-testid="open-drawer" onClick={context.openDrawer}>
+      <div data-testid="is-confirming">{context.isConfirmingClose.toString()}</div>
+      <button type="button" data-testid="open-window" onClick={context.openWindow}>
         Open
       </button>
       <button type="button" data-testid="minimize" onClick={context.onMinimize}>
@@ -68,21 +53,21 @@ const TestParent = ({ onRender, children }: TestParentProps) => {
       <button type="button" data-testid="toggle-expand" onClick={context.onToggleExpand}>
         Toggle Expand
       </button>
-      <button type="button" data-testid="request-end" onClick={context.onRequestEndConversation}>
-        Request End
+      <button type="button" data-testid="request-close" onClick={context.onRequestClose}>
+        Request Close
       </button>
-      <button type="button" data-testid="confirm-end" onClick={context.onConfirmEndConversation}>
-        Confirm End
+      <button type="button" data-testid="confirm-close" onClick={context.onConfirmClose}>
+        Confirm Close
       </button>
-      <button type="button" data-testid="cancel-end" onClick={context.onCancelEndConversation}>
-        Cancel End
+      <button type="button" data-testid="cancel-close" onClick={context.onCancelClose}>
+        Cancel Close
       </button>
       {children}
     </div>
   );
 };
 
-const defaultChatDrawerHook = {
+const defaultHookResult = {
   drawerRef: { current: null },
   isOpen: false,
   isExpanded: true,
@@ -98,16 +83,23 @@ const defaultChatDrawerHook = {
 };
 
 const Wrapper = ({ children }: { children: React.ReactNode }) => (
-  <ChatConversationProvider>
-    <ChatDrawerProvider>{children}</ChatDrawerProvider>
-  </ChatConversationProvider>
+  <FloatingWindowProvider config={MOCK_CONFIG} confirmBeforeClose onClose={mockOnClose}>
+    {children}
+  </FloatingWindowProvider>
 );
 
-describe("ChatDrawerContext > ChatDrawerProvider", () => {
+const NoConfirmWrapper = ({ children }: { children: React.ReactNode }) => (
+  <FloatingWindowProvider config={MOCK_CONFIG} onClose={mockOnClose}>
+    {children}
+  </FloatingWindowProvider>
+);
+
+describe("FloatingWindowContext > FloatingWindowProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseChatDrawer.mockReturnValue(defaultChatDrawerHook);
+    mockUseFloatingWindow.mockReturnValue(defaultHookResult);
   });
+
   it("should render children without crashing", () => {
     const { getByText } = render(
       <Wrapper>
@@ -116,6 +108,16 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     );
 
     expect(getByText("Test Child")).toBeInTheDocument();
+  });
+
+  it("should pass the config to useFloatingWindow", () => {
+    render(
+      <Wrapper>
+        <TestParent />
+      </Wrapper>
+    );
+
+    expect(mockUseFloatingWindow).toHaveBeenCalledWith(MOCK_CONFIG);
   });
 
   it("should provide default values from hooks", () => {
@@ -133,9 +135,9 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     expect(getByTestId("is-confirming")).toHaveTextContent("false");
   });
 
-  it("should provide drawer state from useChatDrawer hook", () => {
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+  it("should provide window state from useFloatingWindow hook", () => {
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       isOpen: true,
       isExpanded: false,
       drawerHeightPx: 800,
@@ -152,10 +154,10 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     expect(getByTestId("height-px")).toHaveTextContent("800");
   });
 
-  it("should call openDrawer from hook when handleOpenDrawer is called", () => {
+  it("should call openDrawer from hook when openWindow is called", () => {
     const openDrawer = vi.fn();
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       isOpen: false,
       openDrawer,
     });
@@ -166,16 +168,15 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const button = getByTestId("open-drawer");
-    userEvent.click(button);
+    userEvent.click(getByTestId("open-window"));
 
     expect(openDrawer).toHaveBeenCalled();
   });
 
   it("should not call openDrawer when already open", () => {
     const openDrawer = vi.fn();
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       isOpen: true,
       openDrawer,
     });
@@ -186,16 +187,15 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const button = getByTestId("open-drawer");
-    userEvent.click(button);
+    userEvent.click(getByTestId("open-window"));
 
     expect(openDrawer).not.toHaveBeenCalled();
   });
 
-  it("should reset minimized and confirming state when opening drawer", async () => {
+  it("should reset minimized and confirming state when opening window", async () => {
     const openDrawer = vi.fn();
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       isOpen: true,
       openDrawer,
     });
@@ -206,19 +206,16 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const minimizeButton = getByTestId("minimize");
-    const requestEndButton = getByTestId("request-end");
-
-    userEvent.click(minimizeButton);
-    userEvent.click(requestEndButton);
+    userEvent.click(getByTestId("minimize"));
+    userEvent.click(getByTestId("request-close"));
 
     await waitFor(() => {
       expect(getByTestId("is-minimized")).toHaveTextContent("true");
       expect(getByTestId("is-confirming")).toHaveTextContent("true");
     });
 
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       isOpen: false,
       openDrawer,
     });
@@ -229,8 +226,7 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const openButton = getByTestId("open-drawer");
-    userEvent.click(openButton);
+    userEvent.click(getByTestId("open-window"));
 
     await waitFor(() => {
       expect(getByTestId("is-minimized")).toHaveTextContent("false");
@@ -239,8 +235,8 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
   });
 
   it("should set isMinimized to true when onMinimize is called", async () => {
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       isOpen: true,
     });
 
@@ -252,17 +248,16 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
 
     expect(getByTestId("is-minimized")).toHaveTextContent("false");
 
-    const button = getByTestId("minimize");
-    userEvent.click(button);
+    userEvent.click(getByTestId("minimize"));
 
     await waitFor(() => {
       expect(getByTestId("is-minimized")).toHaveTextContent("true");
     });
   });
 
-  it("should not minimize when drawer is not open", () => {
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+  it("should not minimize when window is not open", () => {
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       isOpen: false,
     });
 
@@ -272,8 +267,7 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const button = getByTestId("minimize");
-    userEvent.click(button);
+    userEvent.click(getByTestId("minimize"));
 
     expect(getByTestId("is-minimized")).toHaveTextContent("false");
   });
@@ -326,26 +320,22 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     });
   });
 
-  it("should restore page scrollbar when conversation ends", async () => {
+  it("should restore page scrollbar when the window closes", async () => {
     const { getByTestId } = render(
       <Wrapper>
         <TestParent />
       </Wrapper>
     );
 
-    const toggleFullscreenButton = getByTestId("toggle-fullscreen");
-    userEvent.click(toggleFullscreenButton);
+    userEvent.click(getByTestId("toggle-fullscreen"));
 
     await waitFor(() => {
       expect(getByTestId("is-fullscreen")).toHaveTextContent("true");
       expect(document.body.style.overflow).toBe("hidden");
     });
 
-    const requestEndButton = getByTestId("request-end");
-    userEvent.click(requestEndButton);
-
-    const confirmEndButton = getByTestId("confirm-end");
-    userEvent.click(confirmEndButton);
+    userEvent.click(getByTestId("request-close"));
+    userEvent.click(getByTestId("confirm-close"));
 
     await waitFor(() => {
       expect(getByTestId("is-fullscreen")).toHaveTextContent("false");
@@ -360,8 +350,7 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const button = getByTestId("toggle-fullscreen");
-    userEvent.click(button);
+    userEvent.click(getByTestId("toggle-fullscreen"));
 
     await waitFor(() => {
       expect(document.body.style.overflow).toBe("hidden");
@@ -372,7 +361,7 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     expect(document.body.style.overflow).toBe("");
   });
 
-  it("should set isConfirmingEndConversation to true when onRequestEndConversation is called", async () => {
+  it("should set isConfirmingClose to true when onRequestClose is called", async () => {
     const { getByTestId } = render(
       <Wrapper>
         <TestParent />
@@ -381,41 +370,40 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
 
     expect(getByTestId("is-confirming")).toHaveTextContent("false");
 
-    const button = getByTestId("request-end");
-    userEvent.click(button);
+    userEvent.click(getByTestId("request-close"));
 
     await waitFor(() => {
       expect(getByTestId("is-confirming")).toHaveTextContent("true");
     });
+    expect(mockOnClose).not.toHaveBeenCalled();
   });
 
-  it("should set isConfirmingEndConversation to false when onCancelEndConversation is called", async () => {
+  it("should set isConfirmingClose to false when onCancelClose is called", async () => {
     const { getByTestId } = render(
       <Wrapper>
         <TestParent />
       </Wrapper>
     );
 
-    const requestButton = getByTestId("request-end");
-    userEvent.click(requestButton);
+    userEvent.click(getByTestId("request-close"));
 
     await waitFor(() => {
       expect(getByTestId("is-confirming")).toHaveTextContent("true");
     });
 
-    const cancelButton = getByTestId("cancel-end");
-    userEvent.click(cancelButton);
+    userEvent.click(getByTestId("cancel-close"));
 
     await waitFor(() => {
       expect(getByTestId("is-confirming")).toHaveTextContent("false");
     });
+    expect(mockOnClose).not.toHaveBeenCalled();
   });
 
-  it("should call endConversation and reset all state when onConfirmEndConversation is called", async () => {
+  it("should call onClose and reset all state when onConfirmClose is called", async () => {
     const closeDrawer = vi.fn();
 
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       closeDrawer,
     });
 
@@ -425,19 +413,15 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const toggleFullscreenButton = getByTestId("toggle-fullscreen");
-    userEvent.click(toggleFullscreenButton);
-
-    const requestEndButton = getByTestId("request-end");
-    userEvent.click(requestEndButton);
+    userEvent.click(getByTestId("toggle-fullscreen"));
+    userEvent.click(getByTestId("request-close"));
 
     await waitFor(() => {
       expect(getByTestId("is-fullscreen")).toHaveTextContent("true");
       expect(getByTestId("is-confirming")).toHaveTextContent("true");
     });
 
-    const confirmEndButton = getByTestId("confirm-end");
-    userEvent.click(confirmEndButton);
+    userEvent.click(getByTestId("confirm-close"));
 
     await waitFor(() => {
       expect(closeDrawer).toHaveBeenCalled();
@@ -445,12 +429,57 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       expect(getByTestId("is-minimized")).toHaveTextContent("false");
       expect(getByTestId("is-fullscreen")).toHaveTextContent("false");
     });
+    expect(mockOnClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("should close immediately when confirmBeforeClose is false", async () => {
+    const closeDrawer = vi.fn();
+
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
+      closeDrawer,
+    });
+
+    const { getByTestId } = render(
+      <NoConfirmWrapper>
+        <TestParent />
+      </NoConfirmWrapper>
+    );
+
+    userEvent.click(getByTestId("request-close"));
+
+    await waitFor(() => {
+      expect(closeDrawer).toHaveBeenCalled();
+    });
+    expect(mockOnClose).toHaveBeenCalledTimes(1);
+    expect(getByTestId("is-confirming")).toHaveTextContent("false");
+  });
+
+  it("should not throw when onClose is not provided", async () => {
+    const closeDrawer = vi.fn();
+
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
+      closeDrawer,
+    });
+
+    const { getByTestId } = render(
+      <FloatingWindowProvider config={MOCK_CONFIG}>
+        <TestParent />
+      </FloatingWindowProvider>
+    );
+
+    userEvent.click(getByTestId("request-close"));
+
+    await waitFor(() => {
+      expect(closeDrawer).toHaveBeenCalled();
+    });
   });
 
   it("should call toggleExpand when onToggleExpand is called", () => {
     const toggleExpand = vi.fn();
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       toggleExpand,
     });
 
@@ -460,15 +489,14 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const button = getByTestId("toggle-expand");
-    userEvent.click(button);
+    userEvent.click(getByTestId("toggle-expand"));
 
     expect(toggleExpand).toHaveBeenCalled();
   });
 
   it("should exit fullscreen when toggle expand is called while fullscreen and expanded", async () => {
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       isOpen: true,
       isExpanded: true,
     });
@@ -479,15 +507,13 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const fullscreenButton = getByTestId("toggle-fullscreen");
-    userEvent.click(fullscreenButton);
+    userEvent.click(getByTestId("toggle-fullscreen"));
 
     await waitFor(() => {
       expect(getByTestId("is-fullscreen")).toHaveTextContent("true");
     });
 
-    const expandButton = getByTestId("toggle-expand");
-    userEvent.click(expandButton);
+    userEvent.click(getByTestId("toggle-expand"));
 
     await waitFor(() => {
       expect(getByTestId("is-fullscreen")).toHaveTextContent("false");
@@ -496,8 +522,8 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
 
   it("should exit fullscreen and toggle expand when toggle expand is called while fullscreen but not expanded", async () => {
     const toggleExpand = vi.fn();
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       isOpen: true,
       isExpanded: false,
       toggleExpand,
@@ -509,15 +535,13 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       </Wrapper>
     );
 
-    const fullscreenButton = getByTestId("toggle-fullscreen");
-    userEvent.click(fullscreenButton);
+    userEvent.click(getByTestId("toggle-fullscreen"));
 
     await waitFor(() => {
       expect(getByTestId("is-fullscreen")).toHaveTextContent("true");
     });
 
-    const expandButton = getByTestId("toggle-expand");
-    userEvent.click(expandButton);
+    userEvent.click(getByTestId("toggle-expand"));
 
     await waitFor(() => {
       expect(getByTestId("is-fullscreen")).toHaveTextContent("false");
@@ -525,12 +549,12 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
     expect(toggleExpand).toHaveBeenCalled();
   });
 
-  it("should provide drawerRef from hook", () => {
+  it("should provide windowRef from hook", () => {
     const mockRef = { current: document.createElement("div") };
     let capturedRef: React.RefObject<HTMLElement> | null = null;
 
-    mockUseChatDrawer.mockReturnValue({
-      ...defaultChatDrawerHook,
+    mockUseFloatingWindow.mockReturnValue({
+      ...defaultHookResult,
       drawerRef: mockRef,
     });
 
@@ -538,7 +562,7 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
       <Wrapper>
         <TestParent
           onRender={(context) => {
-            capturedRef = context.drawerRef;
+            capturedRef = context.windowRef;
           }}
         />
       </Wrapper>
@@ -548,23 +572,24 @@ describe("ChatDrawerContext > ChatDrawerProvider", () => {
   });
 });
 
-describe("ChatDrawerContext > useChatDrawerContext", () => {
+describe("FloatingWindowContext > useFloatingWindowContext", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseChatDrawer.mockReturnValue(defaultChatDrawerHook);
+    mockUseFloatingWindow.mockReturnValue(defaultHookResult);
   });
+
   it("should throw error when used outside provider", () => {
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     expect(() => {
       render(<TestParent />);
-    }).toThrow("useChatDrawerContext must be used within ChatDrawerProvider");
+    }).toThrow("useFloatingWindowContext must be used within FloatingWindowProvider");
 
     consoleErrorSpy.mockRestore();
   });
 
   it("should return context value when used inside provider", () => {
-    let capturedContext: ReturnType<typeof useChatDrawerContext> | null = null;
+    let capturedContext: ReturnType<typeof useFloatingWindowContext> | null = null;
 
     render(
       <Wrapper>
@@ -577,9 +602,10 @@ describe("ChatDrawerContext > useChatDrawerContext", () => {
     );
 
     expect(capturedContext).toBeDefined();
+    expect(capturedContext).toHaveProperty("config", MOCK_CONFIG);
     expect(capturedContext).toHaveProperty("isOpen");
-    expect(capturedContext).toHaveProperty("openDrawer");
-    expect(capturedContext).toHaveProperty("drawerRef");
+    expect(capturedContext).toHaveProperty("openWindow");
+    expect(capturedContext).toHaveProperty("windowRef");
     expect(capturedContext).toHaveProperty("heightPx");
     expect(capturedContext).toHaveProperty("isExpanded");
     expect(capturedContext).toHaveProperty("isMinimized");
@@ -589,9 +615,9 @@ describe("ChatDrawerContext > useChatDrawerContext", () => {
     expect(capturedContext).toHaveProperty("onToggleExpand");
     expect(capturedContext).toHaveProperty("onToggleFullscreen");
     expect(capturedContext).toHaveProperty("onMinimize");
-    expect(capturedContext).toHaveProperty("isConfirmingEndConversation");
-    expect(capturedContext).toHaveProperty("onRequestEndConversation");
-    expect(capturedContext).toHaveProperty("onConfirmEndConversation");
-    expect(capturedContext).toHaveProperty("onCancelEndConversation");
+    expect(capturedContext).toHaveProperty("isConfirmingClose");
+    expect(capturedContext).toHaveProperty("onRequestClose");
+    expect(capturedContext).toHaveProperty("onConfirmClose");
+    expect(capturedContext).toHaveProperty("onCancelClose");
   });
 });

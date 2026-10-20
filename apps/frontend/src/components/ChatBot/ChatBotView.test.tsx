@@ -13,25 +13,26 @@ vi.mock("./FloatingChatButton", () => ({
   ),
 }));
 
-vi.mock("./ChatDrawer", () => ({
-  default: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="chat-drawer">{children}</div>
+const mockUseChatBotContext = vi.fn();
+const mockUseFloatingWindowContext = vi.fn();
+
+vi.mock("@/components/FloatingWindow", () => ({
+  FloatingWindow: ({ id, children }: { id: string; children: React.ReactNode }) => (
+    <div data-testid={id}>{children}</div>
   ),
+  useFloatingWindowContext: () => mockUseFloatingWindowContext(),
 }));
 
 vi.mock("./ChatPanel", () => ({
   default: () => <div data-testid="chat-panel">Chat Panel</div>,
 }));
 
-const mockUseChatBotContext = vi.fn();
-const mockUseChatDrawerContext = vi.fn();
+vi.mock("./EndConversationConfirm", () => ({
+  default: () => <div data-testid="end-conversation-confirm" />,
+}));
 
 vi.mock("./context/ChatBotContext", () => ({
   useChatBotContext: () => mockUseChatBotContext(),
-}));
-
-vi.mock("./context/ChatDrawerContext", () => ({
-  useChatDrawerContext: () => mockUseChatDrawerContext(),
 }));
 
 describe("Accessibility", () => {
@@ -44,10 +45,10 @@ describe("Accessibility", () => {
   });
 
   it("should have no accessibility violations when drawer is closed", async () => {
-    mockUseChatDrawerContext.mockReturnValue({
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: false,
       isMinimized: false,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     const { container } = render(<ChatBotView />);
@@ -56,10 +57,10 @@ describe("Accessibility", () => {
   });
 
   it("should have no accessibility violations when drawer is open", async () => {
-    mockUseChatDrawerContext.mockReturnValue({
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: true,
       isMinimized: false,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     const { container } = render(<ChatBotView />);
@@ -78,20 +79,20 @@ describe("Basic Functionality", () => {
   });
 
   it("should render without crashing", () => {
-    mockUseChatDrawerContext.mockReturnValue({
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: false,
       isMinimized: false,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     expect(() => render(<ChatBotView />)).not.toThrow();
   });
 
   it("should render FloatingChatButton when drawer is closed", () => {
-    mockUseChatDrawerContext.mockReturnValue({
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: false,
       isMinimized: false,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     const { getByTestId } = render(<ChatBotView />);
@@ -99,11 +100,11 @@ describe("Basic Functionality", () => {
     expect(getByTestId("floating-chat-button")).toBeInTheDocument();
   });
 
-  it("should not render ChatDrawer when drawer is closed", () => {
-    mockUseChatDrawerContext.mockReturnValue({
+  it("should not render the chat window when drawer is closed", () => {
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: false,
       isMinimized: false,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     const { queryByTestId } = render(<ChatBotView />);
@@ -111,11 +112,11 @@ describe("Basic Functionality", () => {
     expect(queryByTestId("chat-drawer")).not.toBeInTheDocument();
   });
 
-  it("should render ChatDrawer when drawer is open", () => {
-    mockUseChatDrawerContext.mockReturnValue({
+  it("should render the chat window when drawer is open", () => {
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: true,
       isMinimized: false,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     const { getByTestId } = render(<ChatBotView />);
@@ -123,23 +124,23 @@ describe("Basic Functionality", () => {
     expect(getByTestId("chat-drawer")).toBeInTheDocument();
   });
 
-  it("should render ChatPanel inside ChatDrawer when open", () => {
-    mockUseChatDrawerContext.mockReturnValue({
+  it("should render ChatPanel inside the chat window when open", () => {
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: true,
       isMinimized: false,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     const { getByTestId } = render(<ChatBotView />);
 
-    expect(getByTestId("chat-panel")).toBeInTheDocument();
+    expect(getByTestId("chat-drawer")).toContainElement(getByTestId("chat-panel"));
   });
 
   it("should not render FloatingChatButton when drawer is open", () => {
-    mockUseChatDrawerContext.mockReturnValue({
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: true,
       isMinimized: false,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     const { queryByTestId } = render(<ChatBotView />);
@@ -152,9 +153,9 @@ describe("Basic Functionality", () => {
       label: "Help Me",
       knowledgeBaseUrl: "https://example.com",
     });
-    mockUseChatDrawerContext.mockReturnValue({
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: false,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     const { getByText } = render(<ChatBotView />);
@@ -162,12 +163,12 @@ describe("Basic Functionality", () => {
     expect(getByText("Help Me")).toBeInTheDocument();
   });
 
-  it("should call openDrawer when FloatingChatButton is clicked", () => {
-    const openDrawer = vi.fn();
-    mockUseChatDrawerContext.mockReturnValue({
+  it("should call openWindow when FloatingChatButton is clicked", () => {
+    const openWindow = vi.fn();
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: false,
       isMinimized: false,
-      openDrawer,
+      openWindow,
     });
 
     const { getByTestId } = render(<ChatBotView />);
@@ -175,14 +176,14 @@ describe("Basic Functionality", () => {
     const button = getByTestId("floating-chat-button");
     button.click();
 
-    expect(openDrawer).toHaveBeenCalledTimes(1);
+    expect(openWindow).toHaveBeenCalledTimes(1);
   });
 
-  it("should render both FloatingChatButton and ChatDrawer when minimized", () => {
-    mockUseChatDrawerContext.mockReturnValue({
+  it("should render both FloatingChatButton and the chat window when minimized", () => {
+    mockUseFloatingWindowContext.mockReturnValue({
       isOpen: true,
       isMinimized: true,
-      openDrawer: vi.fn(),
+      openWindow: vi.fn(),
     });
 
     const { getByTestId } = render(<ChatBotView />);

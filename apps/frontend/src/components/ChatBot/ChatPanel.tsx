@@ -1,8 +1,9 @@
 import { Container, Stack, styled } from "@mui/material";
 import React, { useCallback, useMemo } from "react";
 
+import { useFloatingWindowContext } from "@/components/FloatingWindow";
+
 import { useChatConversationContext } from "./context/ChatConversationContext";
-import { useChatDrawerContext } from "./context/ChatDrawerContext";
 import ChatComposer from "./panel/ChatComposer";
 import MessageList from "./panel/MessageList";
 
@@ -49,7 +50,7 @@ const StyledContainer = styled(Container, {
  * Renders the main chat interface with message history and user input composer.
  */
 const ChatPanel = (): JSX.Element => {
-  const { isExpanded, isFullscreen } = useChatDrawerContext();
+  const { isExpanded, isFullscreen } = useFloatingWindowContext();
   const { messages, inputValue, isBotTyping, setInputValue, sendMessage, handleKeyDown } =
     useChatConversationContext();
 

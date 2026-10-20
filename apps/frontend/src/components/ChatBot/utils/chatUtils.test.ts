@@ -6,57 +6,6 @@ vi.mock("uuid", () => ({
   v4: vi.fn(() => "mock-uuid-1234"),
 }));
 
-describe("getViewportHeightPx", () => {
-  it("should return window.innerHeight when window is available", () => {
-    const originalInnerHeight = window.innerHeight;
-    Object.defineProperty(window, "innerHeight", {
-      writable: true,
-      configurable: true,
-      value: 1024,
-    });
-
-    const result = utils.getViewportHeightPx(500);
-
-    expect(result).toBe(1024);
-
-    Object.defineProperty(window, "innerHeight", {
-      writable: true,
-      configurable: true,
-      value: originalInnerHeight,
-    });
-  });
-
-  it("should return fallback value when different window height is set", () => {
-    const originalInnerHeight = window.innerHeight;
-    Object.defineProperty(window, "innerHeight", {
-      writable: true,
-      configurable: true,
-      value: 768,
-    });
-
-    const result = utils.getViewportHeightPx(500);
-
-    expect(result).toBe(768);
-
-    Object.defineProperty(window, "innerHeight", {
-      writable: true,
-      configurable: true,
-      value: originalInnerHeight,
-    });
-  });
-
-  it("should return fallback value when window is undefined", () => {
-    const originalWindow = global.window;
-    delete global.window;
-
-    const result = utils.getViewportHeightPx(500);
-
-    expect(result).toBe(500);
-
-    global.window = originalWindow;
-  });
-});
-
 describe("isAbortError", () => {
   it("should return true for AbortError", () => {
     const error = new Error("Aborted");

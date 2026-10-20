@@ -2,21 +2,23 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
+import * as FloatingWindowModule from "@/components/FloatingWindow";
 import { fireEvent, render, waitFor } from "@/test-utils";
 
-import * as ChatDrawerContextModule from "../context/ChatDrawerContext";
+import chatConfig from "../config/chatConfig";
 
 import ChatComposer from "./ChatComposer";
 
-vi.mock("../context/ChatDrawerContext", () => ({
-  useChatDrawerContext: vi.fn(),
+vi.mock("@/components/FloatingWindow", () => ({
+  useFloatingWindowContext: vi.fn(),
 }));
 
-const mockUseChatDrawerContext = vi.mocked(ChatDrawerContextModule.useChatDrawerContext);
+const mockUseFloatingWindowContext = vi.mocked(FloatingWindowModule.useFloatingWindowContext);
 
 const defaultContext = {
+  config: chatConfig,
   isFullscreen: false,
-  drawerRef: { current: null },
+  windowRef: { current: null },
   heightPx: 600,
   widthPx: 384,
   x: 0,
@@ -29,11 +31,11 @@ const defaultContext = {
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
-  openDrawer: vi.fn(),
-  isConfirmingEndConversation: false,
-  onRequestEndConversation: vi.fn(),
-  onConfirmEndConversation: vi.fn(),
-  onCancelEndConversation: vi.fn(),
+  openWindow: vi.fn(),
+  isConfirmingClose: false,
+  onRequestClose: vi.fn(),
+  onConfirmClose: vi.fn(),
+  onCancelClose: vi.fn(),
 };
 
 const defaultProps = {
@@ -47,7 +49,7 @@ const defaultProps = {
 describe("Accessibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+    mockUseFloatingWindowContext.mockReturnValue(defaultContext);
   });
 
   it("should have no accessibility violations", async () => {
@@ -60,7 +62,7 @@ describe("Accessibility", () => {
 describe("Basic Functionality", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+    mockUseFloatingWindowContext.mockReturnValue(defaultContext);
   });
 
   it("should render without crashing", () => {

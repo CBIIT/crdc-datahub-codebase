@@ -1,21 +1,23 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { axe } from "vitest-axe";
 
+import * as FloatingWindowModule from "@/components/FloatingWindow";
 import { render } from "@/test-utils";
 
-import * as ChatDrawerContextModule from "../context/ChatDrawerContext";
+import chatConfig from "../config/chatConfig";
 
 import ChatMessageItem, { formatMessageTime } from "./ChatMessageItem";
 
-vi.mock("../context/ChatDrawerContext", () => ({
-  useChatDrawerContext: vi.fn(),
+vi.mock("@/components/FloatingWindow", () => ({
+  useFloatingWindowContext: vi.fn(),
 }));
 
-const mockUseChatDrawerContext = vi.mocked(ChatDrawerContextModule.useChatDrawerContext);
+const mockUseFloatingWindowContext = vi.mocked(FloatingWindowModule.useFloatingWindowContext);
 
 const defaultContext = {
+  config: chatConfig,
   isFullscreen: false,
-  drawerRef: { current: null },
+  windowRef: { current: null },
   heightPx: 600,
   widthPx: 384,
   x: 0,
@@ -28,11 +30,11 @@ const defaultContext = {
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
-  openDrawer: vi.fn(),
-  isConfirmingEndConversation: false,
-  onRequestEndConversation: vi.fn(),
-  onConfirmEndConversation: vi.fn(),
-  onCancelEndConversation: vi.fn(),
+  openWindow: vi.fn(),
+  isConfirmingClose: false,
+  onRequestClose: vi.fn(),
+  onConfirmClose: vi.fn(),
+  onCancelClose: vi.fn(),
 };
 
 const createMockMessage = (overrides?: Partial<ChatMessage>): ChatMessage => ({
@@ -48,7 +50,7 @@ const createMockMessage = (overrides?: Partial<ChatMessage>): ChatMessage => ({
 describe("Accessibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+    mockUseFloatingWindowContext.mockReturnValue(defaultContext);
   });
 
   it("should have no accessibility violations with bot message", async () => {
@@ -76,7 +78,7 @@ describe("Accessibility", () => {
 describe("Basic Functionality", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+    mockUseFloatingWindowContext.mockReturnValue(defaultContext);
   });
 
   it("should render without crashing", () => {
@@ -438,7 +440,7 @@ describe("Markdown Formatting", () => {
   });
 
   it("should apply larger font size and padding to message bubble when in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
+    mockUseFloatingWindowContext.mockReturnValue({
       ...defaultContext,
       isFullscreen: true,
     });
@@ -453,7 +455,7 @@ describe("Markdown Formatting", () => {
   });
 
   it("should apply smaller font size and padding to message bubble when not in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
+    mockUseFloatingWindowContext.mockReturnValue({
       ...defaultContext,
       isFullscreen: false,
     });
@@ -516,7 +518,7 @@ describe("Markdown Formatting", () => {
 describe("PreComponent - Copy to Clipboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseChatDrawerContext.mockReturnValue(defaultContext);
+    mockUseFloatingWindowContext.mockReturnValue(defaultContext);
 
     Object.assign(navigator, {
       clipboard: {

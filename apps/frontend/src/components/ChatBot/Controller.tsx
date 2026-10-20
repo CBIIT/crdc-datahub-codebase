@@ -1,15 +1,33 @@
-import { FC, memo } from "react";
+import { FC, ReactNode, memo } from "react";
 
+import { FloatingWindowProvider } from "@/components/FloatingWindow";
 import env from "@/env";
 
 import ChatBotView from "./ChatBotView";
+import chatConfig from "./config/chatConfig";
 import { ChatBotProvider } from "./context/ChatBotContext";
-import { ChatConversationProvider } from "./context/ChatConversationContext";
-import { ChatDrawerProvider } from "./context/ChatDrawerContext";
+import {
+  ChatConversationProvider,
+  useChatConversationContext,
+} from "./context/ChatConversationContext";
 
 const MemoizedChatBotProvider = memo(ChatBotProvider);
 const MemoizedChatConversationProvider = memo(ChatConversationProvider);
-const MemoizedChatDrawerProvider = memo(ChatDrawerProvider);
+
+/**
+ * Provides the floating window state, ending the conversation when the window closes.
+ */
+const ChatWindowProvider: FC<{ children: ReactNode }> = ({ children }) => {
+  const { endConversation } = useChatConversationContext();
+
+  return (
+    <FloatingWindowProvider config={chatConfig} confirmBeforeClose onClose={endConversation}>
+      {children}
+    </FloatingWindowProvider>
+  );
+};
+
+const MemoizedChatWindowProvider = memo(ChatWindowProvider);
 
 type Props = {
   /**
@@ -27,9 +45,9 @@ const ChatController: FC<Props> = ({ label }) => {
   return (
     <MemoizedChatBotProvider label={label} knowledgeBaseUrl={VITE_CHATBOT_API_BASE_URL}>
       <MemoizedChatConversationProvider>
-        <MemoizedChatDrawerProvider>
+        <MemoizedChatWindowProvider>
           <ChatBotView />
-        </MemoizedChatDrawerProvider>
+        </MemoizedChatWindowProvider>
       </MemoizedChatConversationProvider>
     </MemoizedChatBotProvider>
   );

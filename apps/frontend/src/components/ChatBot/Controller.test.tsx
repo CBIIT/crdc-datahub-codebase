@@ -8,12 +8,19 @@ vi.mock("./context/ChatBotContext", () => ({
   ChatBotProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+const mockEndConversation = vi.fn();
+const mockFloatingWindowProvider = vi.fn();
+
 vi.mock("./context/ChatConversationContext", () => ({
   ChatConversationProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  useChatConversationContext: () => ({ endConversation: mockEndConversation }),
 }));
 
-vi.mock("./context/ChatDrawerContext", () => ({
-  ChatDrawerProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+vi.mock("@/components/FloatingWindow", () => ({
+  FloatingWindowProvider: ({ children, ...props }: { children: React.ReactNode }) => {
+    mockFloatingWindowProvider(props);
+    return <div>{children}</div>;
+  },
 }));
 
 describe("ChatController", () => {
@@ -49,5 +56,22 @@ describe("ChatController", () => {
     const { getByTestId } = render(<Controller />);
 
     expect(getByTestId("chatbot-view")).toBeInTheDocument();
+  });
+
+  it("should end the conversation when the window closes and require confirmation", async () => {
+    vi.doMock("@/env", () => ({
+      default: { VITE_CHATBOT_API_BASE_URL: "/api/chat" },
+    }));
+
+    const { default: Controller } = await import("./Controller");
+
+    render(<Controller />);
+
+    expect(mockFloatingWindowProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        confirmBeforeClose: true,
+        onClose: mockEndConversation,
+      })
+    );
   });
 });

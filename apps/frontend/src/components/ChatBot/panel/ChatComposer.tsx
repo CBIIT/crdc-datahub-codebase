@@ -2,10 +2,10 @@ import { East } from "@mui/icons-material";
 import { Box, IconButton, InputAdornment, styled } from "@mui/material";
 import React, { useCallback } from "react";
 
+import { useFloatingWindowContext } from "@/components/FloatingWindow";
 import StyledOutlinedInput from "@/components/StyledFormComponents/StyledOutlinedInput";
 
 import chatConfig from "../config/chatConfig";
-import { useChatDrawerContext } from "../context/ChatDrawerContext";
 
 const StyledBox = styled(Box, {
   shouldForwardProp: (prop) => prop !== "isFullscreen",
@@ -113,7 +113,7 @@ const ChatComposer = ({
   onKeyDown,
   isSendDisabled,
 }: Props): JSX.Element => {
-  const { isFullscreen } = useChatDrawerContext();
+  const { isFullscreen } = useFloatingWindowContext();
   /**
    * Handles input value changes and propagates them to the parent.
    */

@@ -1,9 +1,11 @@
 import { Meta, StoryObj } from "@storybook/react";
 
+import { FloatingWindowProvider } from "@/components/FloatingWindow";
+
 import ChatBotView from "./ChatBotView";
+import chatConfig from "./config/chatConfig";
 import { ChatBotProvider } from "./context/ChatBotContext";
 import { ChatConversationProvider } from "./context/ChatConversationContext";
-import { ChatDrawerProvider } from "./context/ChatDrawerContext";
 
 type StoryArgs = {
   label: string;
@@ -23,9 +25,9 @@ const meta: Meta<StoryArgs> = {
         knowledgeBaseUrl={context.args.endpointUrl}
       >
         <ChatConversationProvider>
-          <ChatDrawerProvider>
+          <FloatingWindowProvider config={chatConfig} confirmBeforeClose>
             <Story />
-          </ChatDrawerProvider>
+          </FloatingWindowProvider>
         </ChatConversationProvider>
       </ChatBotProvider>
     ),

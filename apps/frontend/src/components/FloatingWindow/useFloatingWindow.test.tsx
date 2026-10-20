@@ -2,25 +2,22 @@ import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { DraggableData } from "react-draggable";
 
-import * as chatUtils from "../utils/chatUtils";
+import * as utils from "@/utils";
 
-import type { useChatDrawerResult } from "./useChatDrawer";
-import { useChatDrawer } from "./useChatDrawer";
+import type { UseFloatingWindowResult } from "./useFloatingWindow";
+import { useFloatingWindow } from "./useFloatingWindow";
 
-const MOCK_CONFIG = vi.hoisted(() => ({
+const MOCK_CONFIG = {
   height: { collapsed: 368, min: 368 },
   width: { default: 400, min: 400, expanded: 420 },
-}));
+};
 
-vi.mock("../config/chatConfig", () => ({
-  default: MOCK_CONFIG,
-}));
-
-vi.mock("../utils/chatUtils", () => ({
+vi.mock("@/utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/utils")>()),
   getViewportHeightPx: vi.fn(),
 }));
 
-const mockGetViewportHeightPx = vi.mocked(chatUtils.getViewportHeightPx);
+const mockGetViewportHeightPx = vi.mocked(utils.getViewportHeightPx);
 
 const mockDragData = (x: number, y: number): DraggableData => ({
   x,
@@ -33,11 +30,11 @@ const mockDragData = (x: number, y: number): DraggableData => ({
 });
 
 type TestParentProps = {
-  onRender?: (hook: useChatDrawerResult) => void;
+  onRender?: (hook: UseFloatingWindowResult) => void;
 };
 
 const TestParent = ({ onRender }: TestParentProps) => {
-  const hook = useChatDrawer();
+  const hook = useFloatingWindow(MOCK_CONFIG);
 
   if (onRender) {
     onRender(hook);
@@ -64,7 +61,7 @@ const TestParent = ({ onRender }: TestParentProps) => {
   );
 };
 
-describe("useChatDrawer", () => {
+describe("useFloatingWindow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetViewportHeightPx.mockReturnValue(800);
@@ -109,7 +106,7 @@ describe("useChatDrawer", () => {
     });
 
     it("should provide a drawerRef", () => {
-      let hookResult: useChatDrawerResult | null = null;
+      let hookResult: UseFloatingWindowResult | null = null;
 
       render(
         <TestParent
@@ -276,7 +273,7 @@ describe("useChatDrawer", () => {
 
   describe("handleDragStop", () => {
     it("should update position on drag stop", () => {
-      let hookResult: useChatDrawerResult | null = null;
+      let hookResult: UseFloatingWindowResult | null = null;
 
       const { getByTestId } = render(
         <TestParent
@@ -301,7 +298,7 @@ describe("useChatDrawer", () => {
 
   describe("handleResizeStop", () => {
     it("should update position and dimensions on resize stop", () => {
-      let hookResult: useChatDrawerResult | null = null;
+      let hookResult: UseFloatingWindowResult | null = null;
 
       const { getByTestId } = render(
         <TestParent
@@ -330,7 +327,7 @@ describe("useChatDrawer", () => {
 
   describe("viewport resize", () => {
     it("should clamp position when viewport shrinks", () => {
-      let hookResult: useChatDrawerResult | null = null;
+      let hookResult: UseFloatingWindowResult | null = null;
       const { getByTestId } = render(
         <TestParent
           onRender={(hook) => {
@@ -366,7 +363,7 @@ describe("useChatDrawer", () => {
     });
 
     it("should update expanded position on viewport resize", () => {
-      let hookResult: useChatDrawerResult | null = null;
+      let hookResult: UseFloatingWindowResult | null = null;
       const { getByTestId } = render(
         <TestParent
           onRender={(hook) => {
@@ -397,7 +394,7 @@ describe("useChatDrawer", () => {
     });
 
     it("should not adjust position when already within bounds", () => {
-      let hookResult: useChatDrawerResult | null = null;
+      let hookResult: UseFloatingWindowResult | null = null;
       const { getByTestId } = render(
         <TestParent
           onRender={(hook) => {
@@ -422,7 +419,7 @@ describe("useChatDrawer", () => {
     });
 
     it("should remove resize listener when drawer is closed", () => {
-      let hookResult: useChatDrawerResult | null = null;
+      let hookResult: UseFloatingWindowResult | null = null;
       const { getByTestId } = render(
         <TestParent
           onRender={(hook) => {
@@ -458,7 +455,7 @@ describe("useChatDrawer", () => {
     });
 
     it("should clamp width and height when viewport shrinks below drawer size", () => {
-      let hookResult: useChatDrawerResult | null = null;
+      let hookResult: UseFloatingWindowResult | null = null;
       const { getByTestId } = render(
         <TestParent
           onRender={(hook) => {
@@ -495,7 +492,7 @@ describe("useChatDrawer", () => {
 
   describe("function reference stability", () => {
     it("should maintain stable function references across renders", () => {
-      const references: useChatDrawerResult[] = [];
+      const references: UseFloatingWindowResult[] = [];
 
       const { rerender } = render(
         <TestParent

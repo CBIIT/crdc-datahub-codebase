@@ -17,3 +17,4 @@ export * from "./fetchUtils";
 export * from "./dashboardUtils";
 export * from "./studyUtils";
 export * from "./excelUtils";
+export * from "./viewportUtils";

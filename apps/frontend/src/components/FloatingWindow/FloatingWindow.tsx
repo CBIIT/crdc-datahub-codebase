@@ -1,18 +1,17 @@
 import CloseIcon from "@mui/icons-material/Close";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
-import { Button, IconButton, Paper, Typography, styled } from "@mui/material";
+import { IconButton, Paper, styled } from "@mui/material";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Rnd } from "react-rnd";
 
-import DraggableHandleSvg from "./assets/draggable-handle.svg?react";
-import DrawerViewIcon from "./assets/drawer-view-icon.svg?react";
-import ExitFullScreenIcon from "./assets/exit-full-screen-icon.svg?react";
-import FullScreenIcon from "./assets/full-screen-icon.svg?react";
-import ChatBotLogo from "./components/ChatBotLogo";
-import chatConfig from "./config/chatConfig";
-import { useChatDrawerContext } from "./context/ChatDrawerContext";
+import DraggableHandleSvg from "@/assets/icons/draggable_handle_icon.svg?react";
+import DrawerViewIcon from "@/assets/icons/drawer_view_icon.svg?react";
+import ExitFullScreenIcon from "@/assets/icons/exit_full_screen_icon.svg?react";
+import FullScreenIcon from "@/assets/icons/full_screen_icon.svg?react";
 
-const StyledChatDrawer = styled(Paper)({
+import { useFloatingWindowContext } from "./FloatingWindowContext";
+
+const StyledWindow = styled(Paper)({
   position: "relative",
   width: "100% !important",
   height: "100% !important",
@@ -31,7 +30,7 @@ const StyledChatDrawer = styled(Paper)({
   },
 });
 
-const StyledChatHeader = styled("div")({
+const StyledHeader = styled("div")({
   display: "flex !important",
   alignItems: "center !important",
   justifyContent: "flex-end !important",
@@ -81,7 +80,7 @@ const StyledHeaderActions = styled("div")({
   },
 });
 
-const StyledChatBody = styled("div")({
+const StyledBody = styled("div")({
   flex: "1 !important",
   display: "flex !important",
   flexDirection: "column !important" as never,
@@ -93,116 +92,6 @@ const StyledChatBody = styled("div")({
   borderRadius: "0 0 8px 8px !important",
   '&[data-expanded="true"], &[data-fullscreen="true"]': {
     borderRadius: "0 !important",
-  },
-});
-
-const ConfirmOverlay = styled("div")({
-  position: "absolute",
-  inset: 0,
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "18px 36px !important",
-  backgroundColor: "#E3E9F2 !important",
-  border: "2px solid #2982D7 !important",
-  borderRadius: "10px !important",
-  zIndex: 3,
-  '&[data-fullscreen="true"], &[data-expanded="true"]': {
-    border: "none !important",
-    borderRadius: "0 !important",
-  },
-});
-
-const ConfirmTitle = styled(Typography)({
-  fontFamily: "Inter !important",
-  fontStyle: "normal",
-  fontWeight: "500 !important",
-  fontSize: "15px !important",
-  lineHeight: "22px !important",
-  textAlign: "center !important" as never,
-  color: "#334B5A !important",
-  marginTop: "30px !important",
-});
-
-const ConfirmActions = styled("div")({
-  display: "flex",
-  gap: "12px !important",
-  justifyContent: "center !important",
-  marginTop: "30px !important",
-});
-
-const StyledBaseButton = styled(Button)({
-  fontFamily: "Nunito, sans-serif !important",
-  fontSize: "0.875rem !important",
-  lineHeight: "1.75 !important",
-  letterSpacing: "normal !important",
-  display: "flex !important",
-  justifyContent: "center !important",
-  alignItems: "center !important",
-  color: "#FFF !important",
-  borderRadius: "8px !important",
-  textTransform: "none !important" as never,
-  textAlign: "center !important" as never,
-  zIndex: 3,
-  "&.Mui-disabled": {
-    "&.MuiButton-containedPrimary": {
-      fontWeight: "700 !important",
-      color: "#FFF !important",
-      border: "1.5px solid #08596C !important",
-      background: "#1A8199 !important",
-      opacity: "0.4 !important",
-    },
-    "&.MuiButton-containedError": {
-      fontWeight: "700 !important",
-      color: "#FFF !important",
-      border: "1.5px solid #6C2110 !important",
-      background: "#B34C36 !important",
-      opacity: "0.4 !important",
-    },
-    "&.MuiButton-containedInfo": {
-      fontWeight: "700 !important",
-      color: "#EDEDED !important",
-      background: "#B1B1B1 !important",
-      border: "1.5px solid #6B7294 !important",
-    },
-    "& .MuiButton-startIcon, & .MuiButton-endIcon": {
-      color: "#EDEDED !important",
-    },
-  },
-  "&.MuiButton-containedInfo": {
-    color: "#000 !important",
-  },
-  "& .MuiButton-startIcon": {
-    position: "absolute !important" as never,
-    left: "11px !important",
-    color: "#6B7294 !important",
-  },
-  "& .MuiButton-endIcon": {
-    position: "absolute !important" as never,
-    right: "11px !important",
-    color: "#6B7294 !important",
-  },
-});
-
-const StyledPrimaryButton = styled(StyledBaseButton)({
-  border: "1.5px solid #08596C !important",
-  fontWeight: "700 !important",
-  background: "#1A8199 !important",
-  "&:hover": {
-    border: "1.5px solid #08596C !important",
-    background: "#1A8199 !important",
-    backgroundImage: "linear-gradient(rgb(0 0 0/15%) 0 0) !important",
-  },
-});
-
-const StyledInfoButton = styled(StyledBaseButton)({
-  border: "1.5px solid #6B7294 !important",
-  fontWeight: "700 !important",
-  background: "white !important",
-  "&:hover": {
-    border: "1.5px solid #6B7294 !important",
-    background: "#C0DAF3 !important",
   },
 });
 
@@ -263,19 +152,50 @@ const StyledDraggableBorder = styled("div", {
   ...(edge === "left" && { top: 21, left: 0, bottom: 0, width: 10 }),
 }));
 
+export type FloatingWindowLabels = {
+  expand: string;
+  collapse: string;
+  enterFullscreen: string;
+  exitFullscreen: string;
+  minimize: string;
+  close: string;
+};
+
+const DEFAULT_LABELS: FloatingWindowLabels = {
+  expand: "Expand window",
+  collapse: "Collapse window",
+  enterFullscreen: "Enter full screen",
+  exitFullscreen: "Exit full screen",
+  minimize: "Minimize window",
+  close: "Close window",
+};
+
 export type Props = {
   /**
-   * Child content rendered in the drawer body.
+   * The id of the window element. The body element receives `${id}-body`.
+   */
+  id: string;
+  /**
+   * Optional overrides for the header button aria-labels.
+   */
+  labels?: Partial<FloatingWindowLabels>;
+  /**
+   * Content rendered over the body while a close confirmation is pending.
+   */
+  confirmCloseContent?: React.ReactNode;
+  /**
+   * Child content rendered in the window body.
    */
   children: React.ReactNode;
 };
 
 /**
- * ChatDrawer component provides a resizable, draggable chat interface with fullscreen and minimize capabilities.
+ * FloatingWindow provides a resizable, draggable window with expand, fullscreen and minimize capabilities.
  */
-const ChatDrawer = ({ children }: Props): JSX.Element => {
+const FloatingWindow = ({ id, labels, confirmCloseContent, children }: Props): JSX.Element => {
   const {
-    drawerRef,
+    config,
+    windowRef,
     heightPx,
     widthPx,
     x,
@@ -288,11 +208,14 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
     onMinimize,
     onDragStop,
     onResizeStop,
-    isConfirmingEndConversation,
-    onRequestEndConversation,
-    onConfirmEndConversation,
-    onCancelEndConversation,
-  } = useChatDrawerContext();
+    isConfirmingClose,
+    onRequestClose,
+  } = useFloatingWindowContext();
+
+  const resolvedLabels = useMemo<FloatingWindowLabels>(
+    () => ({ ...DEFAULT_LABELS, ...labels }),
+    [labels]
+  );
 
   const [viewportSize, setViewportSize] = useState({
     width: window.innerWidth,
@@ -324,13 +247,13 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
     }
     if (isExpanded) {
       return {
-        width: Math.max(chatConfig.width.expanded, chatConfig.width.min),
+        width: Math.max(config.width.expanded, config.width.min),
         height: viewportSize.height,
       };
     }
 
     return { width: widthPx, height: heightPx };
-  }, [isFullscreen, isExpanded, widthPx, heightPx, viewportSize]);
+  }, [isFullscreen, isExpanded, widthPx, heightPx, viewportSize, config]);
 
   const disableInteraction = useMemo(
     () => isExpanded || isFullscreen || isMinimized,
@@ -356,8 +279,8 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
         }}
         onDragStop={onDragStop}
         onResizeStop={onResizeStop}
-        minWidth={chatConfig.width.min}
-        minHeight={chatConfig.height.min}
+        minWidth={config.width.min}
+        minHeight={config.height.min}
         enableResizing={disableInteraction ? false : { topLeft: true }}
         disableDragging={disableInteraction}
         dragHandleClassName="rnd-drag-handle"
@@ -384,9 +307,9 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
           pointerEvents: isMinimized ? "none" : "auto",
         }}
       >
-        <StyledChatDrawer
-          ref={drawerRef}
-          id="chat-drawer"
+        <StyledWindow
+          ref={windowRef}
+          id={id}
           {...dataAttrs}
           aria-hidden={isMinimized ? "true" : "false"}
         >
@@ -409,36 +332,42 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
               />
             </>
           )}
-          <StyledChatHeader {...dataAttrs}>
+          <StyledHeader {...dataAttrs}>
             <StyledHeaderActions {...dataAttrs}>
               <DrawerViewIconButton
                 size="small"
                 onClick={onToggleExpand}
-                aria-label={isExpanded ? "Collapse chat drawer" : "Expand chat drawer"}
+                aria-label={isExpanded ? resolvedLabels.collapse : resolvedLabels.expand}
               >
                 <DrawerViewIcon />
               </DrawerViewIconButton>
               <FullScreenIconButton
                 size="small"
                 onClick={onToggleFullscreen}
-                aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+                aria-label={
+                  isFullscreen ? resolvedLabels.exitFullscreen : resolvedLabels.enterFullscreen
+                }
               >
                 {isFullscreen ? <ExitFullScreenIcon /> : <FullScreenIcon />}
               </FullScreenIconButton>
-              <MinimizeIconButton size="small" onClick={onMinimize} aria-label="Minimize chat">
+              <MinimizeIconButton
+                size="small"
+                onClick={onMinimize}
+                aria-label={resolvedLabels.minimize}
+              >
                 <HorizontalRuleIcon />
               </MinimizeIconButton>
               <CloseIconButton
                 size="small"
-                onClick={onRequestEndConversation}
-                aria-label="End conversation"
+                onClick={onRequestClose}
+                aria-label={resolvedLabels.close}
               >
                 <CloseIcon />
               </CloseIconButton>
             </StyledHeaderActions>
-          </StyledChatHeader>
+          </StyledHeader>
 
-          <StyledChatBody id="chat-body" {...dataAttrs}>
+          <StyledBody id={`${id}-body`} {...dataAttrs}>
             {!disableInteraction && (
               <StyledDraggableBorder
                 edge="top"
@@ -448,43 +377,12 @@ const ChatDrawer = ({ children }: Props): JSX.Element => {
             )}
             {children}
 
-            {isConfirmingEndConversation ? (
-              <ConfirmOverlay role="alertdialog" aria-label="End Conversation" {...dataAttrs}>
-                <ChatBotLogo ariaLabel="CRDC Assistant Logo" variant="square" />
-                <ConfirmTitle>End Conversation</ConfirmTitle>
-
-                <ConfirmActions>
-                  <StyledPrimaryButton
-                    variant="contained"
-                    color="primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onConfirmEndConversation();
-                    }}
-                    aria-label="Yes"
-                  >
-                    Yes
-                  </StyledPrimaryButton>
-
-                  <StyledInfoButton
-                    variant="contained"
-                    color="info"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCancelEndConversation();
-                    }}
-                    aria-label="No"
-                  >
-                    No
-                  </StyledInfoButton>
-                </ConfirmActions>
-              </ConfirmOverlay>
-            ) : null}
-          </StyledChatBody>
-        </StyledChatDrawer>
+            {isConfirmingClose ? confirmCloseContent : null}
+          </StyledBody>
+        </StyledWindow>
       </Rnd>
     </StyledRndContainer>
   );
 };
 
-export default React.memo(ChatDrawer);
+export default React.memo(FloatingWindow);

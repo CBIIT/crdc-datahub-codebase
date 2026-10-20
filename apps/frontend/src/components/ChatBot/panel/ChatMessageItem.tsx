@@ -4,7 +4,7 @@ import React, { CSSProperties, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { useChatDrawerContext } from "../context/ChatDrawerContext";
+import { useFloatingWindowContext } from "@/components/FloatingWindow";
 
 const MessageRow = styled(Box)({
   display: "flex !important",
@@ -393,7 +393,7 @@ const LinkComponent = ({
  * Custom pre component for ReactMarkdown that includes a copy to clipboard button for code blocks.
  */
 const PreComponent = ({ children }: { children: React.ReactNode }) => {
-  const { isFullscreen } = useChatDrawerContext();
+  const { isFullscreen } = useFloatingWindowContext();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -467,7 +467,7 @@ type Props = {
  * Renders a single chat message with sender info, timestamp, and styled bubble.
  */
 const ChatMessageItem = ({ message, isFirstMessage = false }: Props): JSX.Element => {
-  const { isFullscreen } = useChatDrawerContext();
+  const { isFullscreen } = useFloatingWindowContext();
 
   if (!message) {
     return null;

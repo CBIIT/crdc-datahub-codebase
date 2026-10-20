@@ -2,28 +2,30 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
+import * as FloatingWindowModule from "@/components/FloatingWindow";
 import { render } from "@/test-utils";
 
 import ChatPanel from "./ChatPanel";
+import chatConfig from "./config/chatConfig";
 import * as ChatConversationContextModule from "./context/ChatConversationContext";
-import * as ChatDrawerContextModule from "./context/ChatDrawerContext";
 
-vi.mock("./context/ChatDrawerContext", () => ({
-  useChatDrawerContext: vi.fn(),
+vi.mock("@/components/FloatingWindow", () => ({
+  useFloatingWindowContext: vi.fn(),
 }));
 
 vi.mock("./context/ChatConversationContext", () => ({
   useChatConversationContext: vi.fn(),
 }));
 
-const mockUseChatDrawerContext = vi.mocked(ChatDrawerContextModule.useChatDrawerContext);
+const mockUseFloatingWindowContext = vi.mocked(FloatingWindowModule.useFloatingWindowContext);
 const mockUseChatConversationContext = vi.mocked(
   ChatConversationContextModule.useChatConversationContext
 );
 
-const defaultChatDrawerContext = {
+const defaultFloatingWindowContext = {
+  config: chatConfig,
   isFullscreen: false,
-  drawerRef: { current: null },
+  windowRef: { current: null },
   heightPx: 600,
   widthPx: 384,
   x: 0,
@@ -36,11 +38,11 @@ const defaultChatDrawerContext = {
   onToggleExpand: vi.fn(),
   onToggleFullscreen: vi.fn(),
   onMinimize: vi.fn(),
-  openDrawer: vi.fn(),
-  isConfirmingEndConversation: false,
-  onRequestEndConversation: vi.fn(),
-  onConfirmEndConversation: vi.fn(),
-  onCancelEndConversation: vi.fn(),
+  openWindow: vi.fn(),
+  isConfirmingClose: false,
+  onRequestClose: vi.fn(),
+  onConfirmClose: vi.fn(),
+  onCancelClose: vi.fn(),
 };
 
 const defaultConversationState = {
@@ -56,7 +58,7 @@ const defaultConversationState = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockUseChatDrawerContext.mockReturnValue(defaultChatDrawerContext);
+  mockUseFloatingWindowContext.mockReturnValue(defaultFloatingWindowContext);
   mockUseChatConversationContext.mockReturnValue(defaultConversationState);
 });
 
@@ -88,17 +90,11 @@ vi.mock("./panel/ChatComposer", () => ({
         data-testid="composer-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
         aria-label="Chat message input"
       />
       <button type="button" data-testid="composer-send" onClick={onSend} disabled={isSendDisabled}>
         Send
-      </button>
-      <button
-        type="button"
-        data-testid="composer-keydown"
-        onKeyDown={onKeyDown as React.KeyboardEventHandler<HTMLButtonElement>}
-      >
-        KeyDown
       </button>
     </div>
   ),
@@ -270,7 +266,7 @@ describe("Basic Functionality", () => {
 
     const { getByTestId } = render(<ChatPanel />);
 
-    const keyDownInput = getByTestId("composer-keydown");
+    const keyDownInput = getByTestId("composer-input");
     keyDownInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 
     expect(handleKeyDown).toHaveBeenCalled();
@@ -339,8 +335,8 @@ describe("Basic Functionality", () => {
   });
 
   it("should render content inside fullscreen container when in fullscreen mode", () => {
-    mockUseChatDrawerContext.mockReturnValue({
-      ...defaultChatDrawerContext,
+    mockUseFloatingWindowContext.mockReturnValue({
+      ...defaultFloatingWindowContext,
       isExpanded: true,
       isFullscreen: true,
     });

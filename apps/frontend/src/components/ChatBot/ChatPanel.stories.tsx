@@ -1,14 +1,16 @@
 import { Meta, StoryObj } from "@storybook/react";
 import React from "react";
 
+import { FloatingWindowProvider } from "@/components/FloatingWindow";
+
 import ChatPanel from "./ChatPanel";
+import chatConfig from "./config/chatConfig";
 import { ChatBotProvider } from "./context/ChatBotContext";
 import {
   ChatConversationContext,
   ChatConversationProvider,
   useChatConversationContext,
 } from "./context/ChatConversationContext";
-import { ChatDrawerProvider } from "./context/ChatDrawerContext";
 import { createChatMessage } from "./utils/chatUtils";
 import {
   clearConversationMessages,
@@ -73,11 +75,11 @@ const meta: Meta<StoryArgs> = {
         <ChatBotProvider label="Ask a question" knowledgeBaseUrl={endpointUrl}>
           <ChatConversationProvider>
             <TypingWrapper>
-              <ChatDrawerProvider>
+              <FloatingWindowProvider config={chatConfig} confirmBeforeClose>
                 <div style={{ height: "600px", width: "100%" }}>
                   <Story />
                 </div>
-              </ChatDrawerProvider>
+              </FloatingWindowProvider>
             </TypingWrapper>
           </ChatConversationProvider>
         </ChatBotProvider>

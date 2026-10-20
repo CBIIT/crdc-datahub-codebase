@@ -1,9 +1,10 @@
 import { Box, Button, Stack, Typography, styled } from "@mui/material";
 import React, { useEffect, useRef } from "react";
 
+import { useFloatingWindowContext } from "@/components/FloatingWindow";
+
 import ChatBotLogo from "../components/ChatBotLogo";
 import chatConfig from "../config/chatConfig";
-import { useChatDrawerContext } from "../context/ChatDrawerContext";
 
 import BotTypingIndicator from "./BotTypingIndicator";
 import ChatMessageItem from "./ChatMessageItem";
@@ -123,7 +124,7 @@ export type Props = {
  * Displays a scrollable list of chat messages with automatic scrolling to the latest message.
  */
 const MessageList = ({ messages, isBotTyping, onQuestionClick }: Props): JSX.Element => {
-  const { isExpanded, isFullscreen } = useChatDrawerContext();
+  const { isExpanded, isFullscreen } = useFloatingWindowContext();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const lastMessage = messages?.length > 0 ? messages[messages.length - 1] : null;
