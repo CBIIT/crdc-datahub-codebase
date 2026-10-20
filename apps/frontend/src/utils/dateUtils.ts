@@ -44,3 +44,31 @@ export const FormatDate = (
  */
 export const secondsToMinuteString = (seconds: number) =>
   dayjs.duration(seconds, "seconds").format("mm:ss");
+
+/**
+ * Formats a date object into a localized time string.
+ *
+ * @param date - The date to format
+ * @return Formatted time string in 12-hour format
+ * @example "02:30 PM"
+ */
+export const formatMessageTime = (date: Date): string =>
+  new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+
+/**
+ * Formats a date object into a full date string.
+ *
+ * @param date - The date to format
+ * @return Formatted date string
+ * @example "February 19, 2026"
+ */
+export const formatMessageDate = (date: Date): string =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
