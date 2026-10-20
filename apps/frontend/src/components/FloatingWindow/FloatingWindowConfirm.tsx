@@ -1,9 +1,7 @@
 import { Button, Typography, styled } from "@mui/material";
 import React from "react";
 
-import { useFloatingWindowContext } from "@/components/FloatingWindow";
-
-import ChatBotLogo from "./components/ChatBotLogo";
+import { useFloatingWindowContext } from "./FloatingWindowContext";
 
 const ConfirmOverlay = styled("div")({
   position: "absolute",
@@ -115,21 +113,49 @@ const StyledInfoButton = styled(StyledBaseButton)({
   },
 });
 
+export type Props = {
+  /**
+   * The confirmation title.
+   */
+  title: string;
+  /**
+   * Optional icon or logo rendered above the title.
+   */
+  icon?: React.ReactNode;
+  /**
+   * Label for the confirm button.
+   *
+   * @default "Yes"
+   */
+  confirmLabel?: string;
+  /**
+   * Label for the cancel button.
+   *
+   * @default "No"
+   */
+  cancelLabel?: string;
+};
+
 /**
- * Confirmation overlay shown before ending a chatbot conversation.
+ * Confirmation overlay shown inside a FloatingWindow before it closes.
  */
-const EndConversationConfirm = (): JSX.Element => {
+const FloatingWindowConfirm = ({
+  title,
+  icon,
+  confirmLabel = "Yes",
+  cancelLabel = "No",
+}: Props): JSX.Element => {
   const { isExpanded, isFullscreen, onConfirmClose, onCancelClose } = useFloatingWindowContext();
 
   return (
     <ConfirmOverlay
       role="alertdialog"
-      aria-label="End Conversation"
+      aria-label={title}
       data-expanded={String(isExpanded)}
       data-fullscreen={String(isFullscreen)}
     >
-      <ChatBotLogo ariaLabel="CRDC Assistant Logo" variant="square" />
-      <ConfirmTitle>End Conversation</ConfirmTitle>
+      {icon}
+      <ConfirmTitle>{title}</ConfirmTitle>
 
       <ConfirmActions>
         <StyledPrimaryButton
@@ -139,9 +165,9 @@ const EndConversationConfirm = (): JSX.Element => {
             e.stopPropagation();
             onConfirmClose();
           }}
-          aria-label="Yes"
+          aria-label={confirmLabel}
         >
-          Yes
+          {confirmLabel}
         </StyledPrimaryButton>
 
         <StyledInfoButton
@@ -151,13 +177,13 @@ const EndConversationConfirm = (): JSX.Element => {
             e.stopPropagation();
             onCancelClose();
           }}
-          aria-label="No"
+          aria-label={cancelLabel}
         >
-          No
+          {cancelLabel}
         </StyledInfoButton>
       </ConfirmActions>
     </ConfirmOverlay>
   );
 };
 
-export default React.memo(EndConversationConfirm);
+export default React.memo<Props>(FloatingWindowConfirm);

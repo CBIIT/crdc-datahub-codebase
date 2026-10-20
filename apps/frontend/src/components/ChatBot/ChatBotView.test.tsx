@@ -17,18 +17,28 @@ const mockUseChatBotContext = vi.fn();
 const mockUseFloatingWindowContext = vi.fn();
 
 vi.mock("@/components/FloatingWindow", () => ({
-  FloatingWindow: ({ id, children }: { id: string; children: React.ReactNode }) => (
-    <div data-testid={id}>{children}</div>
+  FloatingWindow: ({
+    id,
+    confirmCloseContent,
+    children,
+  }: {
+    id: string;
+    confirmCloseContent?: React.ReactNode;
+    children: React.ReactNode;
+  }) => (
+    <div data-testid={id}>
+      {confirmCloseContent}
+      {children}
+    </div>
+  ),
+  FloatingWindowConfirm: ({ title }: { title: string }) => (
+    <div data-testid="floating-window-confirm">{title}</div>
   ),
   useFloatingWindowContext: () => mockUseFloatingWindowContext(),
 }));
 
 vi.mock("./ChatPanel", () => ({
   default: () => <div data-testid="chat-panel">Chat Panel</div>,
-}));
-
-vi.mock("./EndConversationConfirm", () => ({
-  default: () => <div data-testid="end-conversation-confirm" />,
 }));
 
 vi.mock("./context/ChatBotContext", () => ({
@@ -134,6 +144,18 @@ describe("Basic Functionality", () => {
     const { getByTestId } = render(<ChatBotView />);
 
     expect(getByTestId("chat-drawer")).toContainElement(getByTestId("chat-panel"));
+  });
+
+  it("should pass the End Conversation confirmation to the chat window", () => {
+    mockUseFloatingWindowContext.mockReturnValue({
+      isOpen: true,
+      isMinimized: false,
+      openWindow: vi.fn(),
+    });
+
+    const { getByTestId } = render(<ChatBotView />);
+
+    expect(getByTestId("floating-window-confirm")).toHaveTextContent("End Conversation");
   });
 
   it("should not render FloatingChatButton when drawer is open", () => {

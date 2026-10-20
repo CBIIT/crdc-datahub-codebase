@@ -1,11 +1,15 @@
 import React, { useMemo } from "react";
 
-import { FloatingWindow, useFloatingWindowContext } from "@/components/FloatingWindow";
+import {
+  FloatingWindow,
+  FloatingWindowConfirm,
+  useFloatingWindowContext,
+} from "@/components/FloatingWindow";
 import type { FloatingWindowLabels } from "@/components/FloatingWindow";
 
 import ChatPanel from "./ChatPanel";
+import ChatBotLogo from "./components/ChatBotLogo";
 import { useChatBotContext } from "./context/ChatBotContext";
-import EndConversationConfirm from "./EndConversationConfirm";
 import FloatingChatButton from "./FloatingChatButton";
 
 const WINDOW_LABELS: FloatingWindowLabels = {
@@ -34,7 +38,12 @@ const ChatBot = (): JSX.Element => {
         <FloatingWindow
           id="chat-drawer"
           labels={WINDOW_LABELS}
-          confirmCloseContent={<EndConversationConfirm />}
+          confirmCloseContent={
+            <FloatingWindowConfirm
+              title="End Conversation"
+              icon={<ChatBotLogo ariaLabel="CRDC Assistant Logo" variant="square" />}
+            />
+          }
         >
           <ChatPanel />
         </FloatingWindow>

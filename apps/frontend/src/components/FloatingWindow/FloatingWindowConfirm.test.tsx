@@ -2,16 +2,18 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
-import * as FloatingWindowModule from "@/components/FloatingWindow";
 import { render } from "@/test-utils";
 
-import EndConversationConfirm from "./EndConversationConfirm";
+import FloatingWindowConfirm from "./FloatingWindowConfirm";
+import * as FloatingWindowContextModule from "./FloatingWindowContext";
 
-vi.mock("@/components/FloatingWindow", () => ({
+vi.mock("./FloatingWindowContext", () => ({
   useFloatingWindowContext: vi.fn(),
 }));
 
-const mockUseFloatingWindowContext = vi.mocked(FloatingWindowModule.useFloatingWindowContext);
+const mockUseFloatingWindowContext = vi.mocked(
+  FloatingWindowContextModule.useFloatingWindowContext
+);
 
 const mockOnConfirmClose = vi.fn();
 const mockOnCancelClose = vi.fn();
@@ -49,7 +51,7 @@ describe("Accessibility", () => {
   });
 
   it("should have no accessibility violations", async () => {
-    const { container } = render(<EndConversationConfirm />);
+    const { container } = render(<FloatingWindowConfirm title="Discard draft?" />);
 
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -61,26 +63,45 @@ describe("Basic Functionality", () => {
     mockUseFloatingWindowContext.mockReturnValue(defaultContext);
   });
 
-  it("should render the confirmation dialog", () => {
-    const { getByRole, getByText } = render(<EndConversationConfirm />);
+  it("should use the title as the dialog name", () => {
+    const { getByRole, getByText } = render(<FloatingWindowConfirm title="Discard draft?" />);
 
-    expect(getByRole("alertdialog", { name: "End Conversation" })).toBeInTheDocument();
-    expect(getByText("End Conversation")).toBeInTheDocument();
+    expect(getByRole("alertdialog", { name: "Discard draft?" })).toBeInTheDocument();
+    expect(getByText("Discard draft?")).toBeInTheDocument();
   });
 
-  it("should call onConfirmClose when Yes is clicked", async () => {
-    const { getByRole } = render(<EndConversationConfirm />);
+  it("should render the icon when provided", () => {
+    const { getByTestId } = render(
+      <FloatingWindowConfirm title="Confirm" icon={<span data-testid="confirm-icon" />} />
+    );
 
-    userEvent.click(getByRole("button", { name: "Yes" }));
+    expect(getByTestId("confirm-icon")).toBeInTheDocument();
+  });
+
+  it("should default the button labels to Yes and No", () => {
+    const { getByRole } = render(<FloatingWindowConfirm title="Confirm" />);
+
+    expect(getByRole("button", { name: "Yes" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "No" })).toBeInTheDocument();
+  });
+
+  it("should call onConfirmClose when the confirm button is clicked", async () => {
+    const { getByRole } = render(
+      <FloatingWindowConfirm title="Confirm" confirmLabel="Discard" cancelLabel="Keep" />
+    );
+
+    await userEvent.click(getByRole("button", { name: "Discard" }));
 
     expect(mockOnConfirmClose).toHaveBeenCalledTimes(1);
     expect(mockOnCancelClose).not.toHaveBeenCalled();
   });
 
-  it("should call onCancelClose when No is clicked", async () => {
-    const { getByRole } = render(<EndConversationConfirm />);
+  it("should call onCancelClose when the cancel button is clicked", async () => {
+    const { getByRole } = render(
+      <FloatingWindowConfirm title="Confirm" confirmLabel="Discard" cancelLabel="Keep" />
+    );
 
-    userEvent.click(getByRole("button", { name: "No" }));
+    await userEvent.click(getByRole("button", { name: "Keep" }));
 
     expect(mockOnCancelClose).toHaveBeenCalledTimes(1);
     expect(mockOnConfirmClose).not.toHaveBeenCalled();
@@ -92,13 +113,9 @@ describe("Basic Functionality", () => {
   ])(
     "should reflect the window state in data attributes (expanded: $isExpanded, fullscreen: $isFullscreen)",
     ({ isExpanded, isFullscreen }) => {
-      mockUseFloatingWindowContext.mockReturnValue({
-        ...defaultContext,
-        isExpanded,
-        isFullscreen,
-      });
+      mockUseFloatingWindowContext.mockReturnValue({ ...defaultContext, isExpanded, isFullscreen });
 
-      const { getByRole } = render(<EndConversationConfirm />);
+      const { getByRole } = render(<FloatingWindowConfirm title="Confirm" />);
 
       const dialog = getByRole("alertdialog");
       expect(dialog).toHaveAttribute("data-expanded", String(isExpanded));
