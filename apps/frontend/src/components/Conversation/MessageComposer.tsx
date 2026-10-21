@@ -5,8 +5,6 @@ import React, { useCallback } from "react";
 import { useFloatingWindowContext } from "@/components/FloatingWindow";
 import StyledOutlinedInput from "@/components/StyledFormComponents/StyledOutlinedInput";
 
-import chatConfig from "../config/chatConfig";
-
 const StyledBox = styled(Box, {
   shouldForwardProp: (prop) => prop !== "isFullscreen",
 })<{ isFullscreen?: boolean }>(({ isFullscreen }) => ({
@@ -101,17 +99,29 @@ export type Props = {
    * Indicates whether the send button should be disabled.
    */
   isSendDisabled: boolean;
+  /**
+   * Maximum number of characters allowed.
+   */
+  maxLength: number;
+  /**
+   * Input placeholder text.
+   *
+   * @default "Type your message..."
+   */
+  placeholder?: string;
 };
 
 /**
- * Input field and send button for composing and sending chat messages.
+ * Input field and send button for composing and sending messages.
  */
-const ChatComposer = ({
+const MessageComposer = ({
   value,
   onChange,
   onSend,
   onKeyDown,
   isSendDisabled,
+  maxLength,
+  placeholder = "Type your message...",
 }: Props): JSX.Element => {
   const { isFullscreen } = useFloatingWindowContext();
   /**
@@ -120,22 +130,22 @@ const ChatComposer = ({
   const handleInputChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const newValue = event.target.value;
-      if (newValue.length <= chatConfig.maxInputTextLength) {
+      if (newValue.length <= maxLength) {
         onChange(newValue);
       }
     },
-    [onChange]
+    [onChange, maxLength]
   );
 
   return (
     <StyledBox isFullscreen={isFullscreen}>
       <StyledTextField
         size="small"
-        placeholder="Type your message..."
+        placeholder={placeholder}
         value={value}
         onChange={handleInputChange}
         onKeyDown={onKeyDown}
-        inputProps={{ "aria-label": "Type your message..." }}
+        inputProps={{ "aria-label": placeholder }}
         fullWidth
         endAdornment={
           <InputAdornment position="end">
@@ -151,4 +161,4 @@ const ChatComposer = ({
   );
 };
 
-export default React.memo<Props>(ChatComposer);
+export default React.memo<Props>(MessageComposer);

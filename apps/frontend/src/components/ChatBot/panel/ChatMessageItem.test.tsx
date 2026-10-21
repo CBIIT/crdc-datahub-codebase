@@ -3,10 +3,11 @@ import { axe } from "vitest-axe";
 
 import * as FloatingWindowModule from "@/components/FloatingWindow";
 import { render } from "@/test-utils";
+import { formatMessageTime } from "@/utils";
 
 import chatConfig from "../config/chatConfig";
 
-import ChatMessageItem, { formatMessageTime } from "./ChatMessageItem";
+import ChatMessageItem from "./ChatMessageItem";
 
 vi.mock("@/components/FloatingWindow", () => ({
   useFloatingWindowContext: vi.fn(),

@@ -1,6 +1,7 @@
 import { Box, Button, Stack, Typography, styled } from "@mui/material";
-import React, { useEffect, useRef } from "react";
+import React from "react";
 
+import { MessageList as ConversationMessageList } from "@/components/Conversation";
 import { useFloatingWindowContext } from "@/components/FloatingWindow";
 
 import ChatBotLogo from "../components/ChatBotLogo";
@@ -8,30 +9,6 @@ import chatConfig from "../config/chatConfig";
 
 import BotTypingIndicator from "./BotTypingIndicator";
 import ChatMessageItem from "./ChatMessageItem";
-
-const MessagesContainer = styled(Box, {
-  shouldForwardProp: (prop) => prop !== "isExpanded" && prop !== "isFullscreen",
-})<{ isExpanded?: boolean; isFullscreen?: boolean }>(({ isExpanded, isFullscreen }) => ({
-  flex: isFullscreen ? "none" : 1,
-  overflowY: isFullscreen ? "visible" : "auto",
-  paddingInline: "24.5px",
-  paddingTop: isExpanded ? "25px" : 0,
-  marginTop: 0,
-  marginRight: isFullscreen ? 0 : "10px",
-  overscrollBehavior: "contain",
-  ...(!isFullscreen && {
-    "&::-webkit-scrollbar": {
-      width: "7px",
-    },
-    "&::-webkit-scrollbar-track": {
-      background: "transparent",
-    },
-    "&::-webkit-scrollbar-thumb": {
-      background: "#7C7C7C",
-      borderRadius: "4px",
-    },
-  }),
-}));
 
 const ChatHeader = styled(Box, {
   shouldForwardProp: (prop) => prop !== "isExpanded",
@@ -124,8 +101,7 @@ export type Props = {
  * Displays a scrollable list of chat messages with automatic scrolling to the latest message.
  */
 const MessageList = ({ messages, isBotTyping, onQuestionClick }: Props): JSX.Element => {
-  const { isExpanded, isFullscreen } = useFloatingWindowContext();
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const { isExpanded } = useFloatingWindowContext();
 
   const lastMessage = messages?.length > 0 ? messages[messages.length - 1] : null;
   const lastMessageText = lastMessage?.text || "";
@@ -133,50 +109,10 @@ const MessageList = ({ messages, isBotTyping, onQuestionClick }: Props): JSX.Ele
     messages?.flatMap((m) => m?.citations?.map((c) => c?.documentLink) ?? [])
   ).size;
 
-  /**
-   * Gets the current scroll container based on view mode.
-   */
-  const getScrollContainer = (): HTMLElement | null => {
-    const element = messagesContainerRef.current;
-    if (!element) {
-      return null;
-    }
-
-    if (isFullscreen) {
-      return element.parentElement?.parentElement ?? null;
-    }
-    return element;
-  };
-
-  useEffect(() => {
-    const container = getScrollContainer();
-    if (!container) {
-      return;
-    }
-
-    container.scrollTop = container.scrollHeight;
-  }, [isFullscreen, isExpanded]);
-
-  useEffect(() => {
-    const container = getScrollContainer();
-    if (!container) {
-      return;
-    }
-
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [lastMessageText, citationsCount, isBotTyping]);
-
   const hasMessages = messages.length > 1;
 
   return (
-    <MessagesContainer
-      ref={messagesContainerRef}
-      isExpanded={isExpanded}
-      isFullscreen={isFullscreen}
-    >
+    <ConversationMessageList scrollDependencies={[lastMessageText, citationsCount, isBotTyping]}>
       <ChatHeader isExpanded={isExpanded}>
         <StyledLogoWrapper>
           <ChatBotLogo ariaLabel="CRDC Assistant Logo" />
@@ -207,7 +143,7 @@ const MessageList = ({ messages, isBotTyping, onQuestionClick }: Props): JSX.Ele
         ))}
 
       {isBotTyping ? <BotTypingIndicator /> : null}
-    </MessagesContainer>
+    </ConversationMessageList>
   );
 };
 

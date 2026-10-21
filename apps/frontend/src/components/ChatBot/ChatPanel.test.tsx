@@ -71,21 +71,24 @@ vi.mock("./panel/MessageList", () => ({
   ),
 }));
 
-vi.mock("./panel/ChatComposer", () => ({
-  default: ({
+vi.mock("@/components/Conversation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/Conversation")>()),
+  MessageComposer: ({
     value,
     onChange,
     onSend,
     onKeyDown,
     isSendDisabled,
+    maxLength,
   }: {
     value: string;
     onChange: (value: string) => void;
     onSend: () => void;
     onKeyDown: React.KeyboardEventHandler<HTMLInputElement>;
     isSendDisabled: boolean;
+    maxLength: number;
   }) => (
-    <div data-testid="chat-composer">
+    <div data-testid="message-composer" data-max-length={maxLength}>
       <input
         data-testid="composer-input"
         value={value}
@@ -140,10 +143,19 @@ describe("Basic Functionality", () => {
     expect(getByTestId("message-list")).toBeInTheDocument();
   });
 
-  it("should render ChatComposer component", () => {
+  it("should render MessageComposer component", () => {
     const { getByTestId } = render(<ChatPanel />);
 
-    expect(getByTestId("chat-composer")).toBeInTheDocument();
+    expect(getByTestId("message-composer")).toBeInTheDocument();
+  });
+
+  it("should pass the configured max input length to MessageComposer", () => {
+    const { getByTestId } = render(<ChatPanel />);
+
+    expect(getByTestId("message-composer")).toHaveAttribute(
+      "data-max-length",
+      String(chatConfig.maxInputTextLength)
+    );
   });
 
   it("should pass messages to MessageList", () => {
@@ -169,7 +181,7 @@ describe("Basic Functionality", () => {
     expect(getByTestId("bot-typing")).toHaveTextContent("true");
   });
 
-  it("should pass input value to ChatComposer", () => {
+  it("should pass input value to MessageComposer", () => {
     mockUseChatConversationContext.mockReturnValue({
       ...defaultConversationState,
       inputValue: "Hello world",
@@ -257,7 +269,7 @@ describe("Basic Functionality", () => {
     expect(getByTestId("composer-send")).toBeDisabled();
   });
 
-  it("should pass handleKeyDown to ChatComposer", () => {
+  it("should pass handleKeyDown to MessageComposer", () => {
     const handleKeyDown = vi.fn();
     mockUseChatConversationContext.mockReturnValue({
       ...defaultConversationState,
@@ -344,7 +356,7 @@ describe("Basic Functionality", () => {
     const { getByTestId, container } = render(<ChatPanel />);
 
     expect(getByTestId("message-list")).toBeInTheDocument();
-    expect(getByTestId("chat-composer")).toBeInTheDocument();
+    expect(getByTestId("message-composer")).toBeInTheDocument();
     expect(container.querySelector(".MuiContainer-root")).toBeInTheDocument();
   });
 });
