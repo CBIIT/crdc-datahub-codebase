@@ -52,6 +52,11 @@
   documented in the Model Navigator for data models. Required
   relationships are now enforced at data validation and upload.
 
+#### Known Issues
+
+- The Data Explorer display incorrectly omits data. Nodes other than
+    program are not visible in the Data Explorer.
+
 ## 3.6.1 (Released 06/29/2026)
 
 #### Submission Request
