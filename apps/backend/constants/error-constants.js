@@ -292,6 +292,19 @@ const ERROR = {
     FAILED_DOWNLOAD_ALL_RELEASED_NODES: "Failed to download all released nodes",
     STUDY_NOT_EXIST: "The requested study does not exist.",
     INTERNAL_ERROR: "An internal error occurred, please ask the Admins to check the logs for more information",
+    // Data Sync
+    CREATE_DATA_SYNC_MISSING_FIELD: "The $item$ field is required to create a data sync record.",
+    CREATE_DATA_SYNC_EMPTY_FIELD: "The $item$ field cannot be empty.",
+    CREATE_DATA_SYNC_INVALID_TYPE: "The $item$ field has an invalid type for a data sync record.",
+    CREATE_DATA_SYNC_INVALID_ENUM: "The $item$ field has an invalid value for a data sync record.",
+    UPDATE_DATA_SYNC_MISSING_FIELD: "The $item$ field is required to update a data sync record.",
+    UPDATE_DATA_SYNC_EMPTY_FIELD: "The $item$ field cannot be empty.",
+    UPDATE_DATA_SYNC_INVALID_TYPE: "The $item$ field has an invalid type for a data sync update.",
+    UPDATE_DATA_SYNC_INVALID_ENUM: "The $item$ field has an invalid value for a data sync update.",
+    UPDATE_DATA_SYNC_NO_FIELDS: "At least one field is required to update a data sync record.",
+    FIND_DATA_SYNC_MISSING_FIELD: "The $item$ field is required to find data sync records.",
+    FIND_DATA_SYNC_INVALID_TYPE: "The $item$ field has an invalid type for a data sync search.",
+    FIND_DATA_SYNC_INVALID_ENUM: "The $item$ field has an invalid value for a data sync search.",
     // Tooltip Service
     TOOLTIP_SERVICE: {
         INITIALIZATION_FAILED: "Failed to initialize TooltipService: ",
