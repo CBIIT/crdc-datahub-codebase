@@ -305,6 +305,11 @@ const ERROR = {
     FIND_DATA_SYNC_MISSING_FIELD: "The $item$ field is required to find data sync records.",
     FIND_DATA_SYNC_INVALID_TYPE: "The $item$ field has an invalid type for a data sync search.",
     FIND_DATA_SYNC_INVALID_ENUM: "The $item$ field has an invalid value for a data sync search.",
+    UPDATE_SUBMISSION_DATA_SYNC_MISSING_FIELD: "The $item$ field is required to update a submission data sync status.",
+    UPDATE_SUBMISSION_DATA_SYNC_INVALID_TYPE: "The $item$ field has an invalid type for a submission data sync status.",
+    UPDATE_SUBMISSION_DATA_SYNC_EMPTY_FIELD: "The $item$ field cannot be empty.",
+    UPDATE_SUBMISSION_DATA_SYNC_INVALID_ENUM: "The $item$ field has an invalid value for a submission data sync status.",
+    UPDATE_SUBMISSION_DATA_SYNC_NO_FIELDS: "At least one data sync status is required to update a submission.",
     // Tooltip Service
     TOOLTIP_SERVICE: {
         INITIALIZATION_FAILED: "Failed to initialize TooltipService: ",

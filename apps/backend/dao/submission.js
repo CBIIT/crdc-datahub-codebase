@@ -3,8 +3,9 @@ const SubmissionModel = require("../mongoose/models/submission");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {SUBMISSION_ORDER_BY_MAP} = require("../constants/submission-constants");
 const {DELETED, CANCELED, NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, COMPLETED, ARCHIVED,
-    COLLABORATOR_PERMISSIONS
+    COLLABORATOR_PERMISSIONS, DATA_TYPE
 } = require("../constants/submission-constants");
+const { DATA_SYNC_STATUS } = require("../constants/data-sync-constants");
 const ERROR = require("../constants/error-constants");
 const {replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
 const {formatNestedOrganization, formatNestedOrganizations} = require("../utility/organization-transformer");
@@ -649,9 +650,68 @@ class SubmissionDAO extends MongooseGenericDAO {
     }
 
     /**
+     * Rejects an empty, mistyped, or out-of-enum submission data sync status.
+     * @param {*} value Status value to check
+     * @param {string} field metadataDataSyncStatus or fileDataSyncStatus
+     * @throws {Error} When the value is empty, the wrong type, or outside its enum
+     */
+    _assertDataSyncRollupStatus(value, field) {
+        if (value == null || value === "") {
+            throw new Error(replaceErrorString(ERROR.UPDATE_SUBMISSION_DATA_SYNC_EMPTY_FIELD, field));
+        }
+        const schemaPath = this.model.schema.path(field);
+        const typeMatches = schemaPath.instance === "Date"
+            ? value instanceof Date
+            : typeof value === schemaPath.instance.toLowerCase();
+        if (!typeMatches) {
+            throw new Error(replaceErrorString(ERROR.UPDATE_SUBMISSION_DATA_SYNC_INVALID_TYPE, field));
+        }
+        if (schemaPath.enumValues?.length && !schemaPath.enumValues.includes(value)) {
+            throw new Error(replaceErrorString(ERROR.UPDATE_SUBMISSION_DATA_SYNC_INVALID_ENUM, field));
+        }
+    }
+
+    /**
+     * Sets a submission's data sync rollup statuses.
+     * submissionID is required. Each status is optional; undefined is omitted.
+     * At least one status must be present. This write does not bump updatedAt,
+     * so archival retention stays anchored to the previous submission update.
+     * @param {string} submissionID Submission ID
+     * @param {string} [metadataDataSyncStatus] Metadata rollup status
+     * @param {string} [fileDataSyncStatus] File rollup status
+     * @returns {Promise<object>} The updated submission
+     * @throws {Error} When submissionID is missing or the wrong type, a status is empty, the wrong type, or outside its enum, or neither status is provided
+     */
+    async updateDataSyncStatus(submissionID, metadataDataSyncStatus, fileDataSyncStatus) {
+        if (submissionID == null || submissionID === "") {
+            throw new Error(replaceErrorString(ERROR.UPDATE_SUBMISSION_DATA_SYNC_MISSING_FIELD, "submissionID"));
+        }
+        if (typeof submissionID !== "string") {
+            throw new Error(replaceErrorString(ERROR.UPDATE_SUBMISSION_DATA_SYNC_INVALID_TYPE, "submissionID"));
+        }
+        const updates = {};
+        const statusValues = {
+            metadataDataSyncStatus,
+            fileDataSyncStatus,
+        };
+        for (const field of Object.keys(statusValues)) {
+            if (statusValues[field] === undefined) {
+                continue;
+            }
+            this._assertDataSyncRollupStatus(statusValues[field], field);
+            updates[field] = statusValues[field];
+        }
+        if (Object.keys(updates).length === 0) {
+            throw new Error(ERROR.UPDATE_SUBMISSION_DATA_SYNC_NO_FIELDS);
+        }
+        return this.update(submissionID, updates, false);
+    }
+
+    /**
      * Finds completed submissions past the retention window for archival.
+     * Metadata-only submissions are included. Other submissions must have a succeeded file DataSync.
      * @param {number} completedSubmissionDays Retention days after completion
-     * @returns {Promise<object[]>}
+     * @returns {Promise<object[]>} Matching submissions, or an empty array when the query fails
      */
     async getToBeArchivedSubmissions(completedSubmissionDays) {
         try {
@@ -661,7 +721,11 @@ class SubmissionDAO extends MongooseGenericDAO {
                 status: COMPLETED,
                 updatedAt: {
                     $lte: targetRetentionDate
-                }
+                },
+                $or: [
+                    { dataType: DATA_TYPE.METADATA_ONLY },
+                    { fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED },
+                ],
             });
         } catch (error) {
             console.error('Error getting archiveCompletedSubmissions:', error);
