@@ -74,7 +74,18 @@ def download_file_from_s3(bucket: str, key: str, local_file_name: str):
         print(e)
 
 def upload_file_to_s3(bucket: str, key: str, local_file_name: str):
-    return
+    try:
+        if not bucket or not key:
+            print('bucket or key not provided')
+            return
+        s3_client = boto3.client('s3')
+        s3_client.upload_file(
+            Filename=local_file_name,
+            Bucket=bucket,
+            Key=key
+        )
+    except Exception as e:
+        print(e)
 
 def get_result_recorder(file_name: str):
     with open(file_name, 'w') as csv_file:
