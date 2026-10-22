@@ -7,4 +7,4 @@ pymongo
 python-dateutil
 pandas~=3.0.5
 pytest~=9.0.3
-bento-mdf~=0.13.2
+bento-mdf~=0.13.6
