@@ -35,6 +35,7 @@ import BaseSelect from "../../components/StyledFormComponents/StyledSelect";
 import SuspenseLoader from "../../components/SuspenseLoader";
 import Tooltip from "../../components/Tooltip";
 import options from "../../config/AccessTypesConfig";
+import { CHARACTER_LIMITS } from "../../config/CharacterLimitsConfig";
 import {
   CREATE_APPROVED_STUDY,
   CreateApprovedStudyInput,
@@ -49,7 +50,13 @@ import {
   UpdateApprovedStudyResp,
 } from "../../graphql";
 import usePageTitle from "../../hooks/usePageTitle";
-import { formatORCIDInput, isValidORCID, isValidDbGaPID, validateUTF8 } from "../../utils";
+import {
+  formatCharacterLimitPlaceholder,
+  formatORCIDInput,
+  isValidORCID,
+  isValidDbGaPID,
+  validateUTF8,
+} from "../../utils";
 
 const UncheckedIcon = styled("div")<{ readOnly?: boolean }>(({ readOnly }) => ({
   outline: "2px solid #1D91AB",
@@ -542,14 +549,14 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                     setValueAs: (val) => val?.trim(),
                     validate: { utf8: validateUTF8 },
                   })}
-                  placeholder="1,000 characters allowed"
+                  placeholder={formatCharacterLimitPlaceholder(CHARACTER_LIMITS.study.name.max)}
                   size="small"
                   required
                   disabled={retrievingStudy}
                   readOnly={saving}
                   error={!!errors.studyName}
                   inputProps={{
-                    maxLength: 1000,
+                    maxLength: CHARACTER_LIMITS.study.name.max,
                     "aria-labelledby": "studyNameLabel",
                     "data-testid": "studyName-input",
                   }}
@@ -559,11 +566,15 @@ const StudyView: FC<Props> = ({ _id }: Props) => {
                 <StyledLabel id="studyAbbreviationLabel">Acronym</StyledLabel>
                 <StyledTextField
                   {...register("studyAbbreviation", { setValueAs: (val) => val?.trim() })}
+                  placeholder={formatCharacterLimitPlaceholder(
+                    CHARACTER_LIMITS.study.abbreviation.max
+                  )}
                   size="small"
                   disabled={retrievingStudy}
                   readOnly={saving}
                   error={!!errors.studyAbbreviation}
                   inputProps={{
+                    maxLength: CHARACTER_LIMITS.study.abbreviation.max,
                     "aria-labelledby": "studyAbbreviationLabel",
                     "data-testid": "studyAbbreviation-input",
                   }}

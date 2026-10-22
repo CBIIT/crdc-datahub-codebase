@@ -1,9 +1,10 @@
 import { LazyQueryExecFunction } from "@apollo/client";
-import { cloneDeep, unset } from "lodash";
+import { cloneDeep, isEqual, unset } from "lodash";
 import { validate as validateUUID } from "uuid";
 
+import { NotApplicableProgram } from "@/config/ProgramConfig";
 import { LastAppResp, ListInstitutionsResp } from "@/graphql";
-import { safeParse } from "@/utils";
+import { buildNotApplicableProgram, isNotApplicableProgram } from "@/utils";
 import { Logger } from "@/utils/logger";
 
 /**
@@ -13,7 +14,9 @@ type MigratorDependencies = {
   getInstitutions: LazyQueryExecFunction<ListInstitutionsResp, unknown>;
   newInstitutions: Array<{ id: string; name: string }>;
   getLastApplication: LazyQueryExecFunction<LastAppResp, unknown>;
-  activePrograms: Pick<Organization, "_id">[];
+  activePrograms: Array<
+    Partial<Pick<Organization, "_id" | "name" | "abbreviation" | "description" | "readOnly">>
+  >;
 };
 
 /**
@@ -59,6 +62,8 @@ export class QuestionnaireDataMigrator {
     await this._migrateGPA();
     await this._migrateRepositoryOtherDataTypes();
     await this._migrateInactiveProgram();
+    await this._migrateNotApplicableProgram();
+    await this._migrateReceivesEmails();
 
     return this.data;
   }
@@ -94,12 +99,15 @@ export class QuestionnaireDataMigrator {
     if (!sectionA || sectionA?.status === "Not Started") {
       const { data: lastAppData } = await getLastApplication();
       const { getMyLastApplication: lastApp } = lastAppData || {};
-      const parsedLastAppData = safeParse<QuestionnaireData>(lastApp?.questionnaireData);
 
-      Logger.info("_migrateLastApp: Migrating last app", { ...this.data }, parsedLastAppData);
+      Logger.info(
+        "_migrateLastApp: Migrating last app",
+        { ...this.data },
+        lastApp?.questionnaireData
+      );
       this.data.pi = {
         ...this.data.pi,
-        ...parsedLastAppData.pi,
+        ...lastApp?.questionnaireData?.pi,
       };
     }
   }
@@ -266,6 +274,36 @@ export class QuestionnaireDataMigrator {
   }
 
   /**
+   * Migrates a "Not Applicable" program onto the system managed program record from the API.
+   */
+  private async _migrateNotApplicableProgram(): Promise<void> {
+    const { program } = this.data;
+    const { activePrograms } = this.dependencies;
+
+    if (!activePrograms?.some(isNotApplicableProgram)) {
+      return;
+    }
+
+    const notApplicableProgram = buildNotApplicableProgram(activePrograms);
+
+    // In 3.2.0, the notApplicable property was replaced by the "Not Applicable" program ID
+    const isLegacyNAProgram =
+      !!program && "notApplicable" in program && program.notApplicable === true;
+
+    const isNAProgram =
+      isLegacyNAProgram ||
+      program?._id === NotApplicableProgram._id ||
+      program?._id === notApplicableProgram._id;
+
+    if (!isNAProgram || isEqual(program, notApplicableProgram)) {
+      return;
+    }
+
+    Logger.info("_migrateNotApplicableProgram: Migrating Not Applicable program", { ...program });
+    this.data.program = notApplicableProgram;
+  }
+
+  /**
    * Migrates the outdated GPA field to new location in the questionnaireData.
    */
   private async _migrateGPA(): Promise<void> {
@@ -292,5 +330,34 @@ export class QuestionnaireDataMigrator {
 
     // Remove outdated nciGPA fields
     this.data.study.funding.forEach((f) => unset(f, "nciGPA"));
+  }
+
+  /**
+   * Backfills the receivesEmails field on contacts.
+   */
+  private async _migrateReceivesEmails(): Promise<void> {
+    const { pi, primaryContact, additionalContacts } = this.data;
+
+    if (pi && typeof pi.receivesEmails !== "boolean") {
+      Logger.info("_migrateReceivesEmails: Backfilling Principal Investigator receivesEmails");
+      pi.receivesEmails = this.data.piAsPrimaryContact === true;
+    }
+
+    if (primaryContact && typeof primaryContact.receivesEmails !== "boolean") {
+      Logger.info("_migrateReceivesEmails: Backfilling Primary Contact receivesEmails");
+      primaryContact.receivesEmails = true;
+    }
+
+    let acMigrated = false;
+    additionalContacts?.forEach((contact) => {
+      if (typeof contact.receivesEmails !== "boolean") {
+        contact.receivesEmails = false;
+        acMigrated = true;
+      }
+    });
+
+    if (acMigrated) {
+      Logger.info("_migrateReceivesEmails: Backfilling Additional Contacts receivesEmails");
+    }
   }
 }

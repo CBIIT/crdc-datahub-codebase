@@ -3,7 +3,8 @@ type SubmissionRequestPermissions =
   | "submission_request:create"
   | "submission_request:review"
   | "submission_request:submit"
-  | "submission_request:cancel";
+  | "submission_request:cancel"
+  | "submission_request:reopen";
 
 type DataSubmissionPermissions =
   | "data_submission:view"
@@ -96,6 +97,8 @@ type PBACDefault<T = AuthNotifications | AuthPermissions> = {
   inherited: T[];
   /**
    * The sort order of the PBAC object within its group.
+   *
+   * Nested PBAC options will be demarcated by a sequentially ordered decimal value.
    */
   order: number;
   /**

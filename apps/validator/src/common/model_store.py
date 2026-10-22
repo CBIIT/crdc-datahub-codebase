@@ -2,15 +2,12 @@ import os
 from bento.common.utils import get_logger
 from common.model_reader import YamlModelParser
 from common.model import DataModel
-from common.constants import MODELS_DEFINITION_FILE, LIST_DELIMITER_PROP, DEF_MAIN_NODES, PROPERTY_NAMES, OMIT_DCF_PREFIX
+from common.constants import MODELS_DEFINITION_FILE, LIST_DELIMITER_PROP, PROPERTY_NAMES, OMIT_DCF_PREFIX, DEF_MODEL_FILES, DEF_VERSION, DEF_SEMANTICS, DEF_FILE_NODES, DEF_MAIN_NODES
 from common.utils import download_file_to_dict, get_exception_msg
+from common.mdf_reader import get_model_from_mdf_files
 
 YML_FILE_EXT = ".yml"
-DEF_MODEL_FILES = "model-files"
-DEF_VERSION = "current-version"
-MODE_ID_FIELDS = "id_fields"
-DEF_SEMANTICS = "semantics"
-DEF_FILE_NODES = "file-nodes"
+
 class ModelFactory:
     
     def __init__(self, model_def_loc, tier):
@@ -31,18 +28,17 @@ class ModelFactory:
     """
     def create_model(self, data_common, version):
         dc = data_common
-        v = self.models_def[dc]
+        model_config = self.models_def[dc]
         model_dir = os.path.join(self.model_def_dir, os.path.join(dc, version))
         #process model files for the data common
-        file_names = [os.path.join(model_dir, file) for file in v[DEF_MODEL_FILES]]
+        file_names = [os.path.join(model_dir, file) for file in model_config[DEF_MODEL_FILES]]
         # props_file_name = os.path.join(model_dir, v[DEF_MODEL_PROP_FILE])
-        delimiter = v.get(LIST_DELIMITER_PROP)
+        delimiter = model_config.get(LIST_DELIMITER_PROP)
         #process model files for the data common
         try:
+            mdf_model = get_model_from_mdf_files(file_names, handle=dc)
             model_reader = YamlModelParser(file_names, dc, delimiter, version)
-            model_reader.model.update({DEF_FILE_NODES: v[DEF_SEMANTICS][DEF_FILE_NODES], DEF_MAIN_NODES: v[DEF_SEMANTICS][DEF_MAIN_NODES], 
-                                       PROPERTY_NAMES: v[DEF_SEMANTICS][PROPERTY_NAMES], OMIT_DCF_PREFIX: v.get(OMIT_DCF_PREFIX, False)})
-            return model_reader.model
+            return DataModel(model_reader.model, mdf_model, model_config)
         except Exception as e:
             self.log.exception(e)
             msg = f"Failed to create data model: {data_common}/{version}!"
@@ -64,12 +60,11 @@ class ModelFactory:
         if not version:
             version = self.get_current_version_by_datacommon(data_common)
         try:
-            model = self.create_model(data_common, version)
+            return self.create_model(data_common, version)
         except Exception as e:
             self.log.exception(e)
             msg = f"Failed to create data model: {data_common}/{version}!"
             self.log.exception(f"{msg} {get_exception_msg()}")
-        return DataModel(model) if model else None  
 
 def model_key(data_common, version):
     return f"{data_common}_{version}"

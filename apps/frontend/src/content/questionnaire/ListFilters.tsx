@@ -2,7 +2,9 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import {
   Backdrop,
   Box,
+  Checkbox,
   FormControl,
+  FormControlLabel,
   Grid,
   IconButton,
   InputAdornment,
@@ -16,6 +18,7 @@ import { memo, useCallback, useMemo, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
 import ClearButton from "../../components/ClearButton";
+import { useAuthContext } from "../../components/Contexts/AuthContext";
 import { useSearchParamsContext } from "../../components/Contexts/SearchParamsContext";
 import StyledAutocompleteFormComponent from "../../components/StyledFormComponents/StyledAutocomplete";
 import StyledTextFieldFormComponent from "../../components/StyledFormComponents/StyledOutlinedInput";
@@ -27,7 +30,7 @@ import { isStringLengthBetween } from "../../utils";
 
 export type FilterForm = Pick<
   ListApplicationsInput,
-  "programName" | "studyName" | "statuses" | "submitterName"
+  "programName" | "studyName" | "statuses" | "submitterName" | "showAllVersions"
 >;
 
 export type FilterProps = {
@@ -54,16 +57,29 @@ const StyledInlineLabel = styled("label")({
   textAlign: "right",
 });
 
+const StyledShowAllVersions = styled(FormControlLabel)({
+  whiteSpace: "nowrap",
+  marginTop: "8px",
+  "& .MuiFormControlLabel-label": {
+    color: "#083A50",
+    fontWeight: "700",
+    userSelect: "none",
+  },
+  "& .MuiCheckbox-root:not(.Mui-disabled)": {
+    color: "#005EA2 !important",
+  },
+});
+
 const StyledSelect = styled(StyledSelectFormComponent)({
-  width: "298.25px",
+  width: "252px",
 });
 
 const StyledTextField = styled(StyledTextFieldFormComponent)({
-  width: "298.25px",
+  width: "252px",
 });
 
 const StyledAutocomplete = styled(StyledAutocompleteFormComponent)({
-  width: "298.25px",
+  width: "252px",
 });
 
 const StyledRefreshIcon = styled(RefreshIcon)({
@@ -102,6 +118,7 @@ type TouchedState = { [K in FilterFormKey]: boolean };
 
 const initialTouchedFields: TouchedState = {
   programName: false,
+  showAllVersions: false,
   statuses: false,
   studyName: false,
   submitterName: false,
@@ -113,14 +130,26 @@ export const DEFAULT_STATUSES_SELECTED: ApplicationStatus[] = [
   "Submitted",
   "In Review",
   "Inquired",
+  "In Revision",
+  "Reopened",
 ];
 
-export const defaultValues: FilterForm = {
+export const FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED: ApplicationStatus[] = [
+  "Submitted",
+  "In Review",
+  "Inquired",
+  "In Revision",
+  "Reopened",
+];
+
+export const getDefaultFilterValues = (role?: UserRole | null): FilterForm => ({
   programName: "All",
+  showAllVersions: false,
   studyName: "",
-  statuses: DEFAULT_STATUSES_SELECTED,
+  statuses:
+    role === "Federal Lead" ? FEDERAL_LEAD_DEFAULT_STATUSES_SELECTED : DEFAULT_STATUSES_SELECTED,
   submitterName: "",
-};
+});
 
 const FIELDS_TO_DEBOUNCE: (keyof FilterForm)[] = [
   "studyName",
@@ -133,6 +162,7 @@ const MIN_LENGTHS: { [K in keyof FilterForm]: number } = {
   studyName: 3,
   submitterName: 3,
   programName: 0,
+  showAllVersions: 0,
   statuses: 0,
 };
 
@@ -142,6 +172,8 @@ const statusValues: ApplicationStatus[] = [
   "Submitted",
   "In Review",
   "Inquired",
+  "In Revision",
+  "Reopened",
   "Approved",
   "Rejected",
   "Canceled",
@@ -154,7 +186,11 @@ const statusValues: ApplicationStatus[] = [
  * @see {@link FilterProps} for the props
  */
 const ListFilters = ({ applicationData, onChange }: FilterProps) => {
+  const { user } = useAuthContext();
   const { searchParams, setSearchParams } = useSearchParamsContext();
+
+  const defaultValues = useMemo<FilterForm>(() => getDefaultFilterValues(user?.role), [user?.role]);
+
   const { watch, setValue, control, register, reset, getValues } = useForm<FilterForm>({
     defaultValues,
   });
@@ -185,21 +221,30 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
     onChange: handleFormChange,
   });
 
-  const [programNameFilter, studyNameFilter, statusesFilter, submitterNameFilter] = watch([
-    "programName",
-    "studyName",
-    "statuses",
-    "submitterName",
-  ]);
+  const [
+    programNameFilter,
+    showAllVersionsFilter,
+    studyNameFilter,
+    statusesFilter,
+    submitterNameFilter,
+  ] = watch(["programName", "showAllVersions", "studyName", "statuses", "submitterName"]);
 
   useEffect(() => {
+    if (Object.values(touchedFilters).some((filter) => filter)) {
+      return;
+    }
+
     const programName = searchParams.get("programName");
+    const showAllVersions = searchParams.get("showAllVersions") === "true";
     const studyName = searchParams.get("studyName");
     const statuses = searchParams.getAll("statuses");
     const submitterName = searchParams.get("submitterName");
 
     if (programName && programName !== getValues("programName")) {
       setValue("programName", programName);
+    }
+    if (showAllVersions !== getValues("showAllVersions")) {
+      setValue("showAllVersions", showAllVersions);
     }
     if (studyName && studyName !== getValues("studyName")) {
       setValue("studyName", studyName);
@@ -216,15 +261,25 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
     if (Object.values(touchedFilters).every((filter) => !filter)) {
       handleFormChange(getValues());
     }
-  }, [applicationData?.programs, applicationData?.studies, searchParams?.toString()]);
+  }, [searchParams?.toString()]);
 
   useEffect(() => {
+    if (Object.values(touchedFilters).every((filter) => !filter)) {
+      return;
+    }
+
     const newSearchParams = new URLSearchParams(searchParams);
 
     if (programNameFilter && programNameFilter !== "All") {
       newSearchParams.set("programName", programNameFilter);
     } else {
       newSearchParams.delete("programName");
+    }
+
+    if (showAllVersionsFilter) {
+      newSearchParams.set("showAllVersions", "true");
+    } else {
+      newSearchParams.delete("showAllVersions");
     }
 
     if (statusesFilter && statusesFilter.length > 0) {
@@ -255,9 +310,11 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
     }
   }, [
     programNameFilter,
+    showAllVersionsFilter,
     studyNameFilter,
     statusesFilter,
     submitterNameFilter,
+    defaultValues.statuses,
     searchParams,
     setSearchParams,
   ]);
@@ -270,6 +327,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
   const handleResetFilters = () => {
     const newSearchParams = new URLSearchParams(searchParams);
     newSearchParams.delete("programName");
+    newSearchParams.delete("showAllVersions");
     newSearchParams.delete("studyName");
     newSearchParams.delete("statuses");
     newSearchParams.delete("submitterName");
@@ -288,7 +346,31 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
     <StyledContainer>
       <Stack direction="row" alignItems="center">
         <Grid container>
-          <Grid item xs={3}>
+          <Grid item xs sx={{ maxWidth: "198px !important" }}>
+            <Controller
+              name="showAllVersions"
+              control={control}
+              render={({ field }) => (
+                <StyledShowAllVersions
+                  label="Show All Versions"
+                  control={
+                    <Checkbox
+                      {...field}
+                      checked={field.value}
+                      data-testid="show-all-versions-checkbox"
+                      onChange={(event) => {
+                        const showAllVersions = event.target.checked;
+                        field.onChange(showAllVersions);
+                        handleFilterChange("showAllVersions");
+                        handleFormChange({ ...getValues(), showAllVersions });
+                      }}
+                    />
+                  }
+                />
+              )}
+            />
+          </Grid>
+          <Grid item xs>
             <StyledFormControl>
               <StyledInlineLabel htmlFor="submitter-name-filter">Submitter Name</StyledInlineLabel>
               <StyledTextField
@@ -309,7 +391,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
             </StyledFormControl>
           </Grid>
 
-          <Grid item xs={3}>
+          <Grid item xs>
             <StyledFormControl>
               <StyledInlineLabel htmlFor="programName-filter">Program</StyledInlineLabel>
               <Controller
@@ -349,7 +431,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
             </StyledFormControl>
           </Grid>
 
-          <Grid item xs={3}>
+          <Grid item xs>
             <StyledFormControl>
               <StyledInlineLabel htmlFor="study-name-filter">Study</StyledInlineLabel>
               <StyledTextField
@@ -370,7 +452,7 @@ const ListFilters = ({ applicationData, onChange }: FilterProps) => {
             </StyledFormControl>
           </Grid>
 
-          <Grid item xs={3}>
+          <Grid item xs>
             <StyledFormControl>
               <StyledInlineLabel htmlFor="status-filter">Status</StyledInlineLabel>
               <Controller

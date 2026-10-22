@@ -32,7 +32,7 @@ describe('ReleaseService.getPropsForNodeType', () => {
         mockGetUserScope = jest.fn();
         mockGetPropsByStudyDataCommonNodeType = jest.fn();
 
-        releaseService = new Release({}, {}, {});
+        releaseService = new Release({}, {}, {}, {});
         releaseService._getUserScope = mockGetUserScope;
         releaseService._getPropsByStudyDataCommonNodeType = mockGetPropsByStudyDataCommonNodeType;
     });
@@ -80,14 +80,12 @@ describe('ReleaseService.getPropsForNodeType', () => {
 describe('_getPropsByStudyDataCommonNodeType', () => {
     let releaseService;
     let mockDataModelService;
-    let mockReleaseCollection;
 
     beforeEach(() => {
         mockDataModelService = {
             getDefinedPropsByDataCommonAndType: jest.fn()
         };
-        mockReleaseCollection = {}; // not used directly in this method
-        releaseService = new Release();
+        releaseService = new Release({}, mockDataModelService, {}, {});
         releaseService.dataModelService = mockDataModelService;
         // Patch PROP_GROUPS on the instance for test
         releaseService.PROP_GROUPS = PROP_GROUPS;

@@ -20,6 +20,40 @@ const NODE_RELATION_TYPE_PARENT="parent";
 const NODE_RELATION_TYPE_CHILD="child";
 const NODE_RELATION_TYPES = [NODE_RELATION_TYPE_PARENT, NODE_RELATION_TYPE_CHILD];
 const FILE = "file";
+
+/**
+ * Derives submission.fileValidationStatus from submission-level file errors and per-record s3FileInfo.status.
+ * @param {object[]|null|undefined} fileErrors Submission fileErrors array
+ * @param {string[]} s3FileInfoStatuses Collected s3FileInfo.status values for the submission
+ * @returns {string} One of VALIDATION_STATUS values
+ */
+function deriveFileValidationStatus(fileIssues, s3FileInfoStatuses) {
+    if (fileIssues && fileIssues.length > 0) {
+        for (const issue of fileIssues) {
+            if (issue.severity === VALIDATION_STATUS.ERROR) {
+                return VALIDATION_STATUS.ERROR;
+            }
+            if (issue.severity === VALIDATION_STATUS.WARNING) {
+                return VALIDATION_STATUS.WARNING;
+            }
+        }
+        console.error("Invalid file issues, not severity found!");
+    }
+
+    // No file issues, use s3FileInfo.status to derive file validation status
+    const statuses = s3FileInfoStatuses || [];
+    if (statuses.includes(VALIDATION_STATUS.NEW)) {
+        return VALIDATION_STATUS.NEW;
+    }
+    if (statuses.includes(VALIDATION_STATUS.ERROR)) {
+        return VALIDATION_STATUS.ERROR;
+    }
+    if (statuses.includes(VALIDATION_STATUS.WARNING)) {
+        return VALIDATION_STATUS.WARNING;
+    }
+    return VALIDATION_STATUS.PASSED;
+}
+
 const DATA_SHEET = {
     SUBJECT_ID: "participant_id",
     SAMPLE_ID: "sample_id",
@@ -42,9 +76,19 @@ const DATA_SHEET = {
     FILE_NAME: "file_name",
     MD5SUM: "md5sum"
 };
+
 class DataRecordService {
-    constructor(dataRecordsCollection, dataRecordArchiveCollection, releaseCollection, fileQueueName, metadataQueueName, awsService, s3Service, qcResultsService, exportQueue, configurationService) {
-        this.dataRecordsCollection = dataRecordsCollection;
+    /**
+     * @param {object} dataRecordArchiveCollection Archive collection (native MongoDBCollection)
+     * @param {string} fileQueueName
+     * @param {string} metadataQueueName
+     * @param {object} awsService
+     * @param {object} s3Service
+     * @param {object} qcResultsService
+     * @param {string} exportQueue
+     * @param {object} configurationService
+     */
+    constructor(dataRecordArchiveCollection, fileQueueName, metadataQueueName, awsService, s3Service, qcResultsService, exportQueue, configurationService) {
         this.fileQueueName = fileQueueName;
         this.metadataQueueName = metadataQueueName;
         this.awsService = awsService;
@@ -52,9 +96,8 @@ class DataRecordService {
         this.dataRecordArchiveCollection = dataRecordArchiveCollection;
         this.qcResultsService = qcResultsService;
         this.exportQueue = exportQueue;
-        this.releaseCollection = releaseCollection;
         this.configurationService = configurationService;
-        this.dataRecordDAO = new DataRecordDAO(this.dataRecordsCollection);
+        this.dataRecordDAO = new DataRecordDAO();
         this.releaseDAO = new ReleaseDAO();
 
     }
@@ -72,29 +115,33 @@ class DataRecordService {
             .replace(/\.\./g, '_');
     }
 
+    /**
+     * Builds submission validation stats including data-file orphan/missing counts.
+     * File records are loaded via a projected aggregate (s3FileInfo.status/fileName only).
+     * @param {object} aSubmission Submission document
+     * @returns {Promise<object>} Submission stats payload
+     */
     async submissionStats(aSubmission) {
         const validNodeStatus = [VALIDATION_STATUS.NEW, VALIDATION_STATUS.PASSED, VALIDATION_STATUS.WARNING, VALIDATION_STATUS.ERROR];
         const res = await Promise.all([
             this.dataRecordDAO.getStats(aSubmission?._id, validNodeStatus),
-            this.dataRecordDAO.findMany(
+            this.dataRecordDAO.aggregate([
                 {
-                    submissionID: aSubmission._id,
-                    s3FileInfo: {
-                        is: {
-                            status: { in: validNodeStatus }
-                        }
-                    }
+                    $match: {
+                        submissionID: aSubmission._id,
+                        's3FileInfo.status': { $in: validNodeStatus },
+                    },
                 },
                 {
-                    select: {
+                    $project: {
+                        _id: 0,
                         s3FileInfo: {
-                            select: {
-                                status: true,
-                                fileName: true
-                            }
-                        }
-                    }
-            }),
+                            status: '$s3FileInfo.status',
+                            fileName: '$s3FileInfo.fileName',
+                        },
+                    },
+                },
+            ]),
             // submission's root path should be matched, otherwise the other file node count return wrong
             this.s3Service.listFileInDir(aSubmission.bucketName, `${aSubmission.rootPath}/${FILE}/`),
             // search for the orphaned file errors
@@ -166,7 +213,26 @@ class DataRecordService {
         }
     }
 
-    async validateMetadata(submissionID, types, scope, validationID) {
+    /**
+     * 
+     * @param {*} submissionID 
+     * @param {*} types ['metadata', 'data file']
+     * @param {*} scope ['new', 'all']
+     * @param {*} validationID
+     * @param {object} [validationDAO] DAO used to persist message totals before enqueue
+     * @returns Promise of object with the following properties: 
+     *    {
+     *      success: boolean,
+     *      message?: string,
+     *      totalBatches?: number,
+     *      failedCount?: number,
+     *      totalFileMessages?: number,
+     *      failedFileCount?: number,
+     *      fileTotalsPersisted?: boolean,
+     *      metadataTotalsPersisted?: boolean
+     *    }
+     */
+    async initializeDataValidation(submissionID, types, scope, validationID, validationDAO) {
         isValidMetadata(types, scope);
         const isMetadata = types.some(t => t === VALIDATION.TYPES.METADATA || t === VALIDATION.TYPES.CROSS_SUBMISSION);
         let errorMessages = [];
@@ -190,7 +256,7 @@ class DataRecordService {
                         errorMessages.push(ERRORS.FAILED_VALIDATE_METADATA, noRecordsError);
                     } else {
                         metadataBatchInfo = await this._sendMetadataBatchMessages(
-                            dataRecordIds, submissionID, scope, validationID
+                            dataRecordIds, submissionID, scope, validationID, validationDAO
                         );
                         if (metadataBatchInfo.errors.length > 0)
                             errorMessages.push(ERRORS.FAILED_VALIDATE_METADATA, ...metadataBatchInfo.errors);
@@ -199,22 +265,55 @@ class DataRecordService {
             }
         }
         const isFile = types.some(t => (t?.toLowerCase() === VALIDATION.TYPES.DATA_FILE || t?.toLowerCase() === VALIDATION.TYPES.FILE));
+        let fileMessagesInfo = {};
         if (isFile) {
             const fileNodes = await this._getFileNodes(submissionID, scope);
-            if (fileNodes && fileNodes.length > 0) {
-                const fileValidationErrors = await this._sendBatchSQSMessage(fileNodes, validationID, submissionID);
-                if (fileValidationErrors.length > 0)
-                    errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, ...fileValidationErrors)
+            // one message per file + extra message for orphaned file detection
+            fileMessagesInfo.totalFileMessages = fileNodes.length + 1;
+            fileMessagesInfo.failedFileCount = 0;
+            let fileTotalsPersisted = true;
+            if (validationDAO) {
+                try {
+                    await validationDAO.update(validationID, { totalFileMessages: fileMessagesInfo.totalFileMessages });
+                } catch (e) {
+                    console.error('Failed to persist totalFileMessages:', e?.message);
+                    errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, e?.message);
+                    fileTotalsPersisted = false;
+                    fileMessagesInfo.failedFileCount = fileMessagesInfo.totalFileMessages;
+                }
             }
-            const msg = Message.createFileSubmissionMessage("Validate Submission Files", submissionID, validationID);
-            const fileResult = await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.fileQueueName, submissionID);
-            if (!fileResult.success)
-                errorMessages.push(fileResult.message);
+            if (fileTotalsPersisted) {
+                if (fileNodes && fileNodes.length > 0) {
+                    const fileValidationErrors = await this._sendBatchSQSMessage(fileNodes, validationID, submissionID);
+                    if (fileValidationErrors.length > 0) {
+                        errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, ...fileValidationErrors)
+                        fileMessagesInfo.failedFileCount = fileValidationErrors.length;
+                    }
+                }
+                const msg = Message.createFileSubmissionMessage("Validate Submission Files", submissionID, validationID);
+                const fileResult = await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.fileQueueName, submissionID);
+                if (!fileResult.success) {
+                    errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, fileResult.message);
+                    fileMessagesInfo.failedFileCount += 1;
+                }
+            }
+            fileMessagesInfo.fileTotalsPersisted = fileTotalsPersisted;
         }
+
         const validationResult = (errorMessages.length > 0) ? ValidationHandler.handle(errorMessages) : ValidationHandler.success();
         if (metadataBatchInfo) {
             validationResult.totalBatches = metadataBatchInfo.totalBatches;
             validationResult.failedCount = metadataBatchInfo.failedCount;
+            if (metadataBatchInfo.metadataTotalsPersisted === false) {
+                validationResult.metadataTotalsPersisted = false;
+            }
+        }
+        if (fileMessagesInfo) {
+            validationResult.totalFileMessages = fileMessagesInfo.totalFileMessages;
+            validationResult.failedFileCount = fileMessagesInfo.failedFileCount;
+            if (fileMessagesInfo.fileTotalsPersisted === false) {
+                validationResult.fileTotalsPersisted = false;
+            }
         }
         return validationResult;
     }
@@ -237,7 +336,16 @@ class DataRecordService {
         return fileValidationErrors;
     }
 
-    async _sendMetadataBatchMessages(dataRecordIds, submissionID, scope, validationID) {
+    /**
+     * Persist totalBatches, then enqueue one metadata validation message per chunk.
+     * @param {string[]} dataRecordIds dataRecord ids to validate
+     * @param {string} submissionID submission id
+     * @param {string} scope validation scope
+     * @param {string} validationID validation document id
+     * @param {object} [validationDAO] DAO used to persist totalBatches before enqueue
+     * @returns {Promise<{errors: string[], totalBatches: number, failedCount: number, metadataTotalsPersisted?: boolean}>}
+     */
+    async _sendMetadataBatchMessages(dataRecordIds, submissionID, scope, validationID, validationDAO) {
         let config = null;
         try {
             config = await this.configurationService.findByType(VALIDATION.METADATA_BATCH_CONFIG_TYPE);
@@ -258,6 +366,19 @@ class DataRecordService {
             chunks.push(dataRecordIds.slice(i, i + batchSize));
         }
         const totalBatches = chunks.length;
+        if (validationDAO) {
+            try {
+                await validationDAO.update(validationID, { totalBatches });
+            } catch (e) {
+                console.error('Failed to persist totalBatches:', e?.message);
+                return {
+                    errors: [`Failed to persist totalBatches: ${e?.message}`],
+                    totalBatches,
+                    failedCount: totalBatches,
+                    metadataTotalsPersisted: false,
+                };
+            }
+        }
         const errors = [];
         for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
             const msg = Message.createMetadataBatchMessage(
@@ -283,20 +404,28 @@ class DataRecordService {
         return await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.exportQueue, submissionID);
     }
 
-    async deleteMetadataByFilter(filter){
-        return await this.dataRecordsCollection.deleteMany(filter);
+    async exportDCFManifest(submissionID) {
+        const msg = Message.createFileSubmissionMessage("Export DCF Manifest", submissionID);
+        return await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.exportQueue, submissionID);
     }
 
+    async deleteMetadataByFilter(filter){
+        return await this.dataRecordDAO.deleteManyWithResult(filter);
+    }
+
+    /**
+     * Copy matching dataRecords into the archive collection, then delete them from source.
+     * Strips the DAO-mapped `id` field so archived docs keep only `_id`.
+     * @param {object} filter Mongo filter for documents to archive
+     * @returns {Promise<*[]|null>} insert/delete results, or null when nothing matched
+     */
     async archiveMetadataByFilter(filter){
-        const dataArray = await this.dataRecordsCollection.aggregate([{"$match":filter}]);
-        if (dataArray.length === 0) return null
-        const promiseArray = [
-            await this.dataRecordArchiveCollection.insertMany(dataArray), // Insert documents into destination
-            await this.deleteMetadataByFilter(filter)      // Delete documents from source
-        ];
-        // Step 2: Execute all promises in parallel
-        return await Promise.all(promiseArray);
-        
+        const dataArray = await this.dataRecordDAO.aggregate([{"$match":filter}]);
+        if (dataArray.length === 0) return null;
+        const documentsToArchive = dataArray.map(({ id, ...doc }) => doc);
+        const insertResult = await this.dataRecordArchiveCollection.insertMany(documentsToArchive);
+        const deleteResult = await this.deleteMetadataByFilter(filter);
+        return [insertResult, deleteResult];
     }
 
     async submissionDataFiles(submissionID, s3FileNames) {
@@ -315,7 +444,7 @@ class DataRecordService {
                 status:  "$s3FileInfo.status",
             }
         });
-        return await this.dataRecordsCollection.aggregate(pipeline);
+        return await this.dataRecordDAO.aggregate(pipeline);
     }
 
     async nodeDetail(submissionID, nodeType, nodeID){
@@ -357,11 +486,43 @@ class DataRecordService {
         return convertedParents ;
     }
 
+    _parentsToComparableProps(node = {}) {
+        const baseProps = (node && typeof node.props === "object" && node.props !== null)
+            ? {...node.props}
+            : {};
+        const parents = Array.isArray(node?.parents) ? node.parents : [];
+        if (parents.length === 0) {
+            return baseProps;
+        }
+
+        const grouped = parents.reduce((acc, parent) => {
+            const parentType = parent?.parentType;
+            const parentIDPropName = parent?.parentIDPropName;
+            const parentIDValue = parent?.parentIDValue;
+            if (!parentType || !parentIDPropName || !parentIDValue) {
+                return acc;
+            }
+
+            const key = `${parentType}.${parentIDPropName}`;
+            if (!acc[key]) {
+                acc[key] = [];
+            }
+            acc[key].push(parentIDValue);
+            return acc;
+        }, {});
+
+        Object.entries(grouped).forEach(([key, values]) => {
+            baseProps[key] = values.join(" | ");
+        });
+
+        return baseProps;
+    }
+
     async _getNodeChildren(submissionID, nodeType, nodeID){
         // get children
         const children = await this.dataRecordDAO.findMany({
             parents: {
-                some: {
+                $elemMatch: {
                     parentIDValue: nodeID,
                     parentType: nodeType
                 },
@@ -429,53 +590,47 @@ class DataRecordService {
             return []
         }
 
-        const rows = await this.dataRecordDAO.findMany(
-            { submissionID },
-            {select: { nodeType: true }},
-        );
-        return [...new Set(rows.map(r => r?.nodeType).filter(Boolean))];
+        return await this.dataRecordDAO.distinct("nodeType", { submissionID });
     }
-    // This MongoDB schema is optimized for performance by reducing joins and leveraging document-based structure.
+    /**
+     * Resets data-record validation status for a submission.
+     * File status is updated only where s3FileInfo.status already exists.
+     * @param {string} submissionID Submission whose records are reset
+     * @param {string} status Validation status to apply
+     * @returns {Promise<object>} Combined update result; acknowledged is true only when both writes acknowledge
+     */
     async resetDataRecords(submissionID, status) {
-        return await this.dataRecordsCollection.updateMany(
-            { submissionID: submissionID },
-            [{ $set: {
-                status: status,
-                updatedAt: getCurrentTime(),
-                s3FileInfo: {
-                    $cond: [
-                        { $gt: ["$s3FileInfo.status", null] }, // only if exists
-                        { $mergeObjects: ["$s3FileInfo", { status: status }] }, // override
-                        "$s3FileInfo" // otherwise leave unchanged
-        ]}}}]);
+        return await this.dataRecordDAO.resetDataRecords(submissionID, status);
     }
 
     /**
      * After one or more data files are removed from S3, set s3FileInfo.status to New on matching data records
      * (top-level data record status is not changed). Updates updatedAt.
      * @param {string} submissionID
-     * @param {string[]|null} fileNames - Names of removed data files. Pass null to match every data record
+     * @param {string[]|null} [fileNames] Names of removed data files. Null or omitted matches every data record
      *        in the submission that has s3FileInfo (e.g. delete all data files with no exclusives).
      * @returns {Promise<import('mongodb').UpdateResult>}
      */
     async resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames) {
-        if (fileNames && fileNames.length === 0) {
-            return { acknowledged: true, modifiedCount: 0, matchedCount: 0 };
-        }
-        const filter = {
-            submissionID,
-            s3FileInfo: { $exists: true, $ne: null }
-        };
-        if (fileNames != null) {
-            filter["s3FileInfo.fileName"] = { $in: fileNames };
-        }
-        return await this.dataRecordsCollection.updateMany(
-            filter,
-            [{ $set: {
-                updatedAt: getCurrentTime(),
-                s3FileInfo: { $mergeObjects: ["$s3FileInfo", { status: VALIDATION_STATUS.NEW }] }
-            }}]
-        );
+        return await this.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames);
+    }
+
+    /**
+     * @param {string} submissionID
+     * @returns {Promise<string[]>}
+     */
+    async getS3FileInfoStatusesForSubmission(submissionID) {
+        return await this.dataRecordDAO.findS3FileInfoStatuses(submissionID);
+    }
+
+    /**
+     * @param {string} submissionID
+     * @param {object[]|null|undefined} fileErrors
+     * @returns {Promise<string>}
+     */
+    async recalculateFileValidationStatus(submissionID, fileIssues) {
+        const s3FileInfoStatuses = await this.getS3FileInfoStatusesForSubmission(submissionID);
+        return deriveFileValidationStatus(fileIssues, s3FileInfoStatuses);
     }
 
     _getSubmissionStatQuery(submissionID, validNodeStatus) {
@@ -548,14 +703,7 @@ class DataRecordService {
     }
 
     async countNodesBySubmissionID(submissionID) {
-        // Get distinct nodeTypes for the submission to avoid counting duplicates
-        const distinctNodes = await this.dataRecordDAO.findMany({
-            submissionID: submissionID,
-        }, {
-            select: { nodeType: true }
-        });
-
-        return distinctNodes?.length || 0;
+        return await this.dataRecordDAO.count({ submissionID });
     }
     /**
      * public function to retrieve release record from release collection
@@ -588,6 +736,81 @@ class DataRecordService {
         releaseNode.props = JSON.stringify(releaseNode.props);
         return [newNode, releaseNode]
     }
+
+    /**
+     * Batch fetch released/new node pairs for a list of submitted IDs and node types.
+     * Missing pairs are skipped so exports can continue for valid records.
+     *
+     * @param {string} submissionID
+     * @param {string} dataCommons
+     * @param {string} status
+     * @param {{submittedID: string, nodeType: string}[]} candidates
+     * @returns {Promise<{comparisons: {submittedID: string, nodeType: string, existing: Object, incoming: Object}[], skipped: number}>}
+     */
+    async getReleasedAndNewNodesByList(submissionID, dataCommons, status, candidates = []) {
+        if (!submissionID || !dataCommons || !Array.isArray(candidates) || candidates.length === 0) {
+            return {comparisons: [], skipped: 0};
+        }
+
+        const targetStatus = status || "Released";
+        const grouped = candidates.reduce((acc, row) => {
+            if (!row?.nodeType || !row?.submittedID) {
+                return acc;
+            }
+            if (!acc[row.nodeType]) {
+                acc[row.nodeType] = new Set();
+            }
+            acc[row.nodeType].add(row.submittedID);
+            return acc;
+        }, {});
+
+        let skipped = 0;
+        const comparisons = [];
+
+        const nodeTypes = Object.keys(grouped);
+        for (const nodeType of nodeTypes) {
+            const nodeIDs = Array.from(grouped[nodeType]);
+            if (nodeIDs.length === 0) {
+                continue;
+            }
+
+            const [incomingNodes, releasedNodes] = await Promise.all([
+                this.dataRecordDAO.findMany({
+                    submissionID,
+                    nodeType,
+                    nodeID: {$in: nodeIDs}
+                }),
+                this.releaseDAO.findMany({
+                    dataCommons,
+                    nodeType,
+                    nodeID: {$in: nodeIDs},
+                    status: targetStatus
+                })
+            ]);
+
+            const incomingMap = new Map((incomingNodes || []).map((node) => [node.nodeID, node]));
+            const existingMap = new Map((releasedNodes || []).map((node) => [node.nodeID, node]));
+
+            nodeIDs.forEach((nodeID) => {
+                const incoming = incomingMap.get(nodeID);
+                const existing = existingMap.get(nodeID);
+                if (!incoming || !existing) {
+                    skipped += 1;
+                    return;
+                }
+
+                comparisons.push({
+                    submittedID: nodeID,
+                    nodeType,
+                    existing: this._parentsToComparableProps(existing),
+                    incoming: this._parentsToComparableProps(incoming)
+                });
+            });
+        }
+
+        return {comparisons, skipped};
+    }
+
     /**
      * createDBGaPLoadSheetForCDS
      * @param {*} aSubmission 
@@ -604,7 +827,7 @@ class DataRecordService {
         const dbGaPDir = `dbGaP_${safeDbGaPID}_${aSubmission.name}_${getFormatDateStr(getCurrentTime())}`;
         const download_dir = path.join(tempFolder, dbGaPDir);
         // 1) create subject sample mapping sheet
-        const participants = await this.dataRecordsCollection.aggregate([{
+        const participants = await this.dataRecordDAO.aggregate([{
             $match: {
                 submissionID: aSubmission._id,
                 nodeType: "participant"
@@ -612,7 +835,7 @@ class DataRecordService {
         }]);
         if (!participants || participants.length === 0) throw new Error(ERRORS.PARTICIPANT_NOT_FOUND);
         // create subject sample mapping by sample nodes
-        const sampleNodes = await this.dataRecordsCollection.aggregate([{
+        const sampleNodes = await this.dataRecordDAO.aggregate([{
             $match: {
                 submissionID: aSubmission._id,
                 nodeType: "sample"
@@ -682,7 +905,7 @@ class DataRecordService {
         for (const sample of sampleNodes){
             const sampleID = sample.nodeID;
             const biosample_accession = sample.props?.biosample_accession? sample.props.biosample_accession: sample.nodeID;
-            const sampleFiles = await this.dataRecordsCollection.aggregate([{
+            const sampleFiles = await this.dataRecordDAO.aggregate([{
                 $match: {
                     submissionID: aSubmission._id,
                     nodeType: "file",
@@ -748,7 +971,7 @@ class DataRecordService {
      * @returns int
      */
     async _getAgeAtDiagnosisByParticipant(subjectID, submissionID){
-        const diagnosis = await this.dataRecordsCollection.aggregate([{
+        const diagnosis = await this.dataRecordDAO.aggregate([{
             $match: {
                 submissionID: submissionID,
                 nodeType: "diagnosis",
@@ -765,7 +988,7 @@ class DataRecordService {
      * @param {*} submissionID
      */
     async _getGenomicInfoByFile(fileID, submissionID){
-        const genomicInfos = await this.dataRecordsCollection.aggregate([{
+        const genomicInfos = await this.dataRecordDAO.aggregate([{
             $match: {
                 submissionID: submissionID,
                 nodeType: "genomic_info",
@@ -778,7 +1001,7 @@ class DataRecordService {
 
     async _getCount(submissionID, status = null) {
         const query = (!status)? {submissionID: submissionID} : {submissionID: submissionID, status: status} ;
-        return await this.dataRecordsCollection.countDoc(query);
+        return await this.dataRecordDAO.count(query);
     }
 
     async _getDataRecordIds(submissionID, scope) {
@@ -786,7 +1009,7 @@ class DataRecordService {
         const query = isNewScope
             ? { submissionID, status: VALIDATION_STATUS.NEW }
             : { submissionID };
-        const results = await this.dataRecordsCollection.aggregate([
+        const results = await this.dataRecordDAO.aggregate([
             { $match: query },
             { $project: { _id: 1 } }
         ]);
@@ -795,7 +1018,7 @@ class DataRecordService {
 
     async _getFileNodes(submissionID, scope) {
         const isNewScope = scope?.toLowerCase() === VALIDATION.SCOPE.NEW.toLowerCase();
-        const fileNodes = await this.dataRecordsCollection.aggregate([{
+        const fileNodes = await this.dataRecordDAO.aggregate([{
             $match: {
                 s3FileInfo: { $exists: true, $ne: null},
                 submissionID: submissionID,
@@ -997,7 +1220,8 @@ class SubmissionStats {
 }
 
 module.exports = {
-    DataRecordService, 
+    DataRecordService,
+    deriveFileValidationStatus,
     NODE_RELATION_TYPES,
     Message,
     Stat,

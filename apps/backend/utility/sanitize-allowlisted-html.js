@@ -18,11 +18,7 @@ function sanitizeAllowlistedHtml(input, options) {
     return sanitizeHtml(input, options);
 }
 
-/**
- * Preset: SR pending-condition snippets (Handlebars triple-stash / DB+YAML copy).
- * Links and basic block/inline formatting only.
- */
-const PRESET_SR_APPROVAL_PENDING_HTML = {
+const EMAIL_BODY_HTML_BASE = {
     allowedTags: ['a', 'br', 'p', 'span', 'strong', 'b', 'em', 'i', 'ul', 'ol', 'li'],
     allowedAttributes: {
         a: ['href', 'rel']
@@ -35,7 +31,7 @@ const PRESET_SR_APPROVAL_PENDING_HTML = {
     transformTags: {
         a: (tagName, attribs) => {
             const nextAttribs = {
-                rel: attribs.rel || 'noopener noreferrer'
+                rel: 'noopener noreferrer'
             };
             const href = attribs.href;
             if (href != null && String(href).trim() !== '') {
@@ -46,7 +42,27 @@ const PRESET_SR_APPROVAL_PENDING_HTML = {
     }
 };
 
+/**
+ * Preset: SR pending-condition snippets (Handlebars triple-stash / DB+YAML copy).
+ * Links and basic block/inline formatting only.
+ */
+const PRESET_SR_APPROVAL_PENDING_HTML = EMAIL_BODY_HTML_BASE;
+
+/**
+ * Preset: Notification email body text from YAML.
+ * Paragraphs, lists, links, underline, and basic inline formatting.
+ */
+const PRESET_NOTIFICATION_TEXT_HTML = {
+    ...EMAIL_BODY_HTML_BASE,
+    allowedTags: [...EMAIL_BODY_HTML_BASE.allowedTags, 'u']
+};
+
+/** Preset: markdown-rendered SRF review comment HTML injected into decision emails. */
+const PRESET_SR_REVIEW_COMMENT_HTML = EMAIL_BODY_HTML_BASE;
+
 module.exports = {
     sanitizeAllowlistedHtml,
-    PRESET_SR_APPROVAL_PENDING_HTML
+    PRESET_SR_APPROVAL_PENDING_HTML,
+    PRESET_NOTIFICATION_TEXT_HTML,
+    PRESET_SR_REVIEW_COMMENT_HTML
 };

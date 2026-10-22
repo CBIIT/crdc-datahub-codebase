@@ -1,59 +1,115 @@
-const GenericDAO = require("./generic");
-const { MODEL_NAME } = require('../constants/db-constants');
+const MongooseGenericDAO = require("./mongoose-generic");
+const ProgramModel = require("../mongoose/models/program");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {APPROVED_STUDIES_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
 const { ERROR } = require("../crdc-datahub-database-drivers/constants/error-constants");
+const {escapeRegexLiteral} = require("../utility/string-util");
 
-
-class ProgramDAO extends GenericDAO {
-    constructor(organizationCollection) {
-        super(MODEL_NAME.PROGRAM);
-        this.organizationCollection = organizationCollection;
+/**
+ * Mongoose-backed DAO for program documents (Mongo collection `organization`).
+ */
+class ProgramDAO extends MongooseGenericDAO {
+    constructor() {
+        super(ProgramModel);
     }
+
     /**
-     * @param {string} id
-     * @param {boolean} includeStudies When true, loads related approved studies via Prisma.
+     * @param {string} id Program UUID
+     * @param {boolean} includeStudies When true, loads related approved studies via $lookup.
+     * @returns {Promise<object|null>}
      */
-    async getOrganizationByID(id, includeStudies) {
+    async getProgramByID(id, includeStudies) {
         if (typeof includeStudies !== 'boolean') {
             throw new Error(ERROR.INVALID_INCLUDE_STUDIES_LIST_ARGUMENT);
         }
         if (!includeStudies) {
             return await this.findById(id);
         }
+        const results = await this.aggregate([
+            { $match: { _id: id } },
+            {
+                $lookup: {
+                    from: APPROVED_STUDIES_COLLECTION,
+                    localField: "_id",
+                    foreignField: "programID",
+                    as: "studies",
+                },
+            },
+        ]);
+        return results?.[0] || null;
+    }
+
+    /**
+     * Exact name match after trim (case-sensitive).
+     * Returns null without querying when name is null, undefined, or whitespace-only.
+     * @param {string} name
+     * @returns {Promise<object|null>}
+     */
+    async getProgramByName(name) {
+        const trimmed = name?.trim();
+        if (!trimmed) {
+            return null;
+        }
+        return await this.findFirst({ name: trimmed });
+    }
+
+    /**
+     * Case-insensitive exact name match.
+     * @param {string} programName
+     * @returns {Promise<object|null>}
+     */
+    async findOneByProgramName(programName) {
+        const trimmed = programName?.trim();
+        if (!trimmed) {
+            return null;
+        }
+        return await this.findFirst({
+            name: {
+                $regex: `^${escapeRegexLiteral(trimmed)}$`,
+                $options: 'i',
+            },
+        });
+    }
+
+    /**
+     * Upsert a program document by exact name.
+     * @param {string} name
+     * @param {object} doc Fields to set on insert/update
+     * @returns {Promise<object|null>}
+     */
+    async upsertByName(name, doc) {
         try {
-            const result = await this.model.findUnique({
-                where: { id },
-                include: { studies: true },
-            });
-            if (!result) {
-                return null;
-            }
-            const { studies, ...rest } = result;
-            return {
-                ...rest,
-                _id: result.id,
-                studies: (studies ?? []).map((s) => ({ ...s, _id: s.id })),
-            };
+            const result = await this.model.findOneAndUpdate(
+                { name },
+                { $set: doc },
+                { upsert: true, new: true, lean: true, setDefaultsOnInsert: true }
+            );
+            return this._mapDoc(result);
         } catch (error) {
-            console.error(`ProgramDAO.getOrganizationByID failed for ${this.model.name}:`, {
+            console.error(`ProgramDAO.upsertByName failed for ${this._modelName}:`, {
                 error: error.message,
-                id,
+                name,
                 stack: error.stack,
             });
-            throw new Error(`Failed to find ${this.model.name} by ID`);
+            throw new Error(`Failed to upsert ${this._modelName}`);
         }
     }
 
-    async getOrganizationByName(name) {
-        return await this.findFirst({
-            name: name?.trim()
-        });
-    }
+    /**
+     * Lists programs with related studies and pagination.
+     * Uses separate count and results queries (DocumentDB does not support $facet).
+     * @param {number} first Page size
+     * @param {number} offset Skip count
+     * @param {string} orderBy Sort field
+     * @param {string} sortDirection Sort direction
+     * @param {object} [statusCondition={}] Filter on program fields only (e.g. status); must not reference studies
+     * @returns {Promise<{total: number, results: object[]}>}
+     */
     async listPrograms(first, offset, orderBy, sortDirection, statusCondition = {}) {
+        const filter = this._normalizeFilter(statusCondition);
         const pagination = new MongoPagination(first, offset, orderBy, sortDirection);
         const paginationPipeline = pagination.getPaginationPipeline();
-        const programs = await this.organizationCollection.aggregate([
+        const resultsPipeline = [
             {
                 $lookup: {
                     from: APPROVED_STUDIES_COLLECTION,
@@ -62,25 +118,20 @@ class ProgramDAO extends GenericDAO {
                     as: "studies"
                 }
             },
-            {"$match": statusCondition},
-            {
-                $facet: {
-                    total: [{
-                        $count: "total"
-                    }],
-                    results: paginationPipeline
-                }
-            },
-            {
-                $set: {
-                    total: {
-                        $first: "$total.total",
-                    }
-                }
-            }
-        ]);
-        return programs.length > 0 ? programs[0] : {};
-    }
+            { $match: filter },
+            ...paginationPipeline,
+        ];
 
+        // Count uses the program collection filter only; results $lookup studies then $match.
+        // Safe while statusCondition is program-field-only. If filters ever include study fields,
+        // count must use the same pre-pagination pipeline as results.
+        const [total, results] = await Promise.all([
+            this.count(filter),
+            this.aggregate(resultsPipeline),
+        ]);
+
+        return { total: total || 0, results: results || [] };
+    }
 }
-module.exports = ProgramDAO
+
+module.exports = ProgramDAO;

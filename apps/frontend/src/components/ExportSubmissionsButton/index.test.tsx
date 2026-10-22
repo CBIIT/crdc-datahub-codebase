@@ -497,4 +497,30 @@ describe("Implementation Requirements", () => {
     expect(csvContent).not.toContain("Data Commons");
     expect(csvContent).not.toContain("Program");
   });
+
+  it("should include Data Submission ID as the first column in the CSV", async () => {
+    const { getByTestId } = render(
+      <ExportSubmissionsButton scope={defaultScope} hasData visibleColumns={defaultColumns} />,
+      {
+        wrapper: ({ children }) => (
+          <MockParent mocks={[listSubmissionsMock]}>{children}</MockParent>
+        ),
+      }
+    );
+
+    userEvent.click(getByTestId("export-data-submissions-button"));
+
+    await waitFor(() => {
+      expect(mockDownloadBlob).toHaveBeenCalled();
+    });
+
+    const csvContent: string = mockDownloadBlob.mock.calls[0][0];
+    const [headerRow, ...dataRows] = csvContent.split("\n");
+
+    expect(headerRow.split(",")[0]).toBe('"Data Submission ID"');
+
+    dataRows.forEach((row, idx) => {
+      expect(row.split(",")[0]).toBe(`"submission-${idx}"`);
+    });
+  });
 });

@@ -12,7 +12,7 @@ let server;
     const skipMigrations = process.env.SKIP_STARTUP_MIGRATIONS?.toLowerCase() === 'true';
     if (!skipMigrations) {
         try {
-            const { orchestrateMigration } = require('../documentation/3-6-0/3-6-0-migration');
+            const { orchestrateMigration } = require('../documentation/3-7-0/3-7-0-migration');
             const result = await orchestrateMigration();
             if (!result.success) {
                 console.error('Some data migrations failed, please check the logs for details.');

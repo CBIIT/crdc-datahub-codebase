@@ -44,8 +44,8 @@ describe("getFormMode tests based on provided requirements", () => {
       });
     });
 
-    it("should allow User to edit when form status is New, In Progress or Inquired", () => {
-      const statuses: ApplicationStatus[] = ["New", "In Progress", "Inquired"];
+    it("should allow User to edit when form status is New, In Progress, Inquired, or In Revision", () => {
+      const statuses: ApplicationStatus[] = ["New", "In Progress", "Inquired", "In Revision"];
 
       statuses.forEach((status) => {
         expect(utils.getFormMode(user, { ...baseSubmission, status })).toBe(utils.FormModes.EDIT);
@@ -90,8 +90,8 @@ describe("getFormMode tests based on provided requirements", () => {
       });
     });
 
-    it("should allow Submitter to edit when form status is New, In Progress, or Inquired", () => {
-      const statuses: ApplicationStatus[] = ["New", "In Progress", "Inquired"];
+    it("should allow Submitter to edit when form status is New, In Progress, Inquired, or In Revision", () => {
+      const statuses: ApplicationStatus[] = ["New", "In Progress", "Inquired", "In Revision"];
 
       statuses.forEach((status) => {
         expect(utils.getFormMode(user, { ...baseSubmission, status })).toBe(utils.FormModes.EDIT);
@@ -126,6 +126,7 @@ describe("getFormMode tests based on provided requirements", () => {
         "In Progress",
         "Rejected",
         "Inquired",
+        "In Revision",
         "Submitted",
       ];
 
@@ -169,6 +170,7 @@ describe("getFormMode tests based on provided requirements", () => {
         "In Progress",
         "Rejected",
         "Inquired",
+        "In Revision",
       ];
 
       statuses.forEach((status) => {
@@ -203,6 +205,7 @@ describe("getFormMode tests based on provided requirements", () => {
         "Approved",
         "Rejected",
         "Inquired",
+        "In Revision",
       ];
 
       const user: User = userFactory.build({

@@ -1,4 +1,9 @@
 require('dotenv').config();
+if (process.env.DOCDB_DB_NAME) {
+    process.env.DATABASE_NAME = process.env.DOCDB_DB_NAME;
+}
+const fs = require('fs');
+const path = require('path');
 const {readFile2Text} = require("./utility/io-util")
 const {ConfigurationService} = require("./services/configurationService");
 const {DATABASE_NAME, CONFIGURATION_COLLECTION} = require("./crdc-datahub-database-drivers/database-constants");
@@ -42,16 +47,89 @@ const SCHEDULED_JOBS = "SCHEDULED_JOBS";
 const LIST_OF_EMAIL_ADDRESS = "LIST_OF_EMAIL_ADDRESS";
 const LIST_OF_URLS = "LIST_OF_URLS";
 const TIMEOUT = "TIMEOUT";
-process.env.DATABASE_URL = `mongodb://${process.env.MONGO_DB_USER}:${process.env.MONGO_DB_PASSWORD}@${process.env.MONGO_DB_HOST}:${process.env.MONGO_DB_PORT}/${process.env.DATABASE_NAME}?authSource=admin`;
+
+/**
+ * Builds a MongoDB-compatible connection URI.
+ * Encodes user, password, and database for reserved URI characters.
+ * Query values (including tlsCAFile) are built via URLSearchParams.
+ * When caFile is set, enables TLS (tls=true + tlsCAFile) and SCRAM-SHA-1
+ * (DocumentDB / MongoDB Node driver 7.x compatibility). Always disables retryWrites.
+ * @param {string} user
+ * @param {string} password
+ * @param {string} host
+ * @param {string} port
+ * @param {string} database
+ * @param {string} [caFile]
+ * @returns {string}
+ */
+function buildConnectionString(user, password, host, port, database, caFile) {
+    const params = new URLSearchParams({
+        authSource: 'admin',
+        retryWrites: 'false',
+    });
+    if (caFile) {
+        params.set('tls', 'true');
+        params.set('tlsCAFile', caFile);
+        params.set('authMechanism', 'SCRAM-SHA-1');
+    }
+    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}?${params.toString()}`;
+}
+
+const DEFAULT_DOCUMENT_DB_CA_FILE = path.join(__dirname, 'resources/aws-documentdb-certificate/global-bundle.pem');
+const rawDocumentDbTls = process.env.DOCDB_TLS;
+const trimmedDocumentDbTls = rawDocumentDbTls == null ? '' : String(rawDocumentDbTls).trim();
+let documentDbTlsEnabled;
+if (!trimmedDocumentDbTls) {
+    documentDbTlsEnabled = true;
+} else {
+    const normalizedTls = trimmedDocumentDbTls.toLowerCase();
+    if (normalizedTls === 'true') {
+        documentDbTlsEnabled = true;
+    } else if (normalizedTls === 'false') {
+        documentDbTlsEnabled = false;
+    } else {
+        throw new Error(`DOCDB_TLS must be true or false, received: ${rawDocumentDbTls}`);
+    }
+}
+const documentDbCaFile = documentDbTlsEnabled
+    ? (process.env.DOCDB_CA_FILE || DEFAULT_DOCUMENT_DB_CA_FILE)
+    : null;
+
+/**
+ * Builds the shared DocumentDB connection URI from DOCDB_* environment
+ * variables and DATABASE_NAME (falls back to crdc-datahub via database-constants).
+ * Used by native drivers, sessions, and Mongoose.
+ * TLS is on when DOCDB_TLS is unset or true. CA defaults to
+ * resources/aws-documentdb-certificate/global-bundle.pem when DOCDB_CA_FILE
+ * is unset. Throws on first URI access if TLS is on and the CA file is missing.
+ * @returns {string}
+ * @throws {Error} When TLS is enabled and the CA file does not exist
+ */
+function buildDocumentDbConnectionString() {
+    if (documentDbTlsEnabled && !fs.existsSync(documentDbCaFile)) {
+        throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
+    }
+    return buildConnectionString(
+        process.env.DOCDB_USERNAME,
+        process.env.DOCDB_PASSWORD,
+        process.env.DOCDB_ENDPOINT,
+        process.env.DOCDB_PORT || '27017',
+        DATABASE_NAME,
+        documentDbCaFile,
+    );
+}
+
 let config = {
     //info variables
     version: process.env.VERSION || 'Version not set',
     date: process.env.DATE || new Date(),
-    //Mongo DB
-    mongo_db_user: process.env.MONGO_DB_USER,
-    mongo_db_password: process.env.MONGO_DB_PASSWORD,
-    mongo_db_host: process.env.MONGO_DB_HOST,
-    mongo_db_port: process.env.MONGO_DB_PORT,
+    // DocumentDB (shared by native drivers and Mongoose)
+    document_db_user: process.env.DOCDB_USERNAME,
+    document_db_password: process.env.DOCDB_PASSWORD,
+    document_db_host: process.env.DOCDB_ENDPOINT,
+    document_db_port: process.env.DOCDB_PORT || '27017',
+    document_db_tls: documentDbTlsEnabled,
+    document_db_ca_file: documentDbCaFile,
 
     //session
     session_secret: process.env.SESSION_SECRET,
@@ -122,7 +200,7 @@ let config = {
             ...config,
             inactive_user_days : inactiveUserDaysConf || (process.env.INACTIVE_USER_DAYS || 60),
             remind_application_days: remindApplicationDaysConf || (process.env.REMIND_APPLICATION_DAYS || 165),
-            inactive_application_days : inactiveApplicationDaysConf || (process.env.INACTIVE_APPLICATION_DAYS || 180),
+            inactive_application_days : inactiveApplicationDaysConf || (process.env.INACTIVE_APPLICATION_DAYS || 60),
             inactive_new_application_days : inactiveNewApplicationDaysConf || (process.env.INACTIVE_NEW_APPLICATION_DAYS || 30),
             // Email settings
             email_transport: getTransportConfig(emailSmtpHostConf, emailSmtpPortConf, emailSmtpUserConf, emailSmtpPasswordConf),
@@ -146,6 +224,10 @@ let config = {
             file_queue: fileQueueConf?.keys?.sqs || process.env.FILE_QUEUE,
             export_queue: exporterQueueConf?.keys?.sqs || process.env.EXPORTER_QUEUE,
             model_url: modelURLConf || getModelUrl(tierConf?.keys?.tier),
+            email_content_branch: getEmailContentBranch(tierConf?.keys?.tier),
+            email_content_base_url: getEmailContentBaseUrl(tierConf?.keys?.tier),
+            email_content_cache_dir: process.env.EMAIL_CONTENT_CACHE_DIR || 'cache/email-content',
+            email_content_refresh_seconds: getEmailContentRefreshSeconds(),
             //uploader configuration file template
             uploaderCLIConfigs: readUploaderCLIConfigTemplate(),
             dataCommonsList: dataCommonsListConf?.key || (process.env.DATA_COMMONS_LIST ? JSON.parse(process.env.DATA_COMMONS_LIST) : ["CDS", "ICDC", "CTDC", "CCDI", "PSDC", "Test MDF", "Hidden Model"]),
@@ -154,14 +236,19 @@ let config = {
             completed_submission_days: completedSubmissionDaysConf || (process.env.COMPLETED_RETENTION_DAYS || 30),
             dashboardSessionTimeout: dashboardSessionTimeoutConf || (process.env.DASHBOARD_SESSION_TIMEOUT || 3600), // 60 minutes by default
             inactiveSubmissionNotifyDays: inactiveSubmissionNotifyDaysConf || [7, 30, 60],
-            inactiveApplicationNotifyDays: inactiveApplicationNotifyDaysConf || [7, 15, 30], // 7, 15, 30 days by default
+            inactiveApplicationNotifyDays: inactiveApplicationNotifyDaysConf || [15, 30], // 15, 30 days by default
             conditionalSubmissionContact: submissionRequestEmailConf || "NCICRDC@mail.nih.gov",
             submissionGuideUrl: submissionGuideURLConf || "https://datacommons.cancer.gov/data-submission-instructions",
             scheduledJobTime: scheduledJobTime || "1 0 1 * * *"
         };
     }
 }
-config.mongo_db_connection_string = process.env.DATABASE_URL;
+Object.defineProperty(config, 'document_db_connection_string', {
+    enumerable: true,
+    get() {
+        return buildDocumentDbConnectionString();
+    },
+});
 function parseHiddenModels(hiddenModels) {
     return hiddenModels.split(',')
         .filter(item => item?.trim().length > 0)
@@ -207,6 +294,41 @@ function getModelUrl(dbTier) {
     return modelUrl.join("");
 }
 
+/**
+ * Sanitized GitHub branch from configuration TIER.
+ * @param {string} [dbTier]
+ * @returns {string}
+ */
+function getEmailContentBranch(dbTier) {
+    const tier = dbTier?.replace(/[^a-zA-Z\d]/g, '')?.trim();
+    if (tier?.length > 0) {
+        return tier.toLowerCase();
+    }
+    console.error('No tier configuration variable found, defaulting to prod email content branch');
+    return 'prod';
+}
+
+/**
+ * Raw GitHub base URL for email templates and YAML, including the TIER branch.
+ * @param {string} [dbTier]
+ * @returns {string}
+ */
+function getEmailContentBaseUrl(dbTier) {
+    return `https://raw.githubusercontent.com/CBIIT/crdc-submission-portal-email-content/${getEmailContentBranch(dbTier)}`;
+}
+
+/**
+ * Seconds to reuse a cached email file before refetching. Default 300.
+ * @returns {number}
+ */
+function getEmailContentRefreshSeconds() {
+    const parsed = Number.parseInt(process.env.EMAIL_CONTENT_REFRESH_SECONDS);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+        return parsed;
+    }
+    return 300;
+}
+
 function extractTierName(dbTier) {
     const tier = dbTier || process.env.TIER;
     return tier?.replace(/prod(uction)?/gi, '')?.replace(/[^a-zA-Z\d]/g, '')?.trim();
@@ -216,5 +338,9 @@ function getTier(dbTier) {
     const tier = extractTierName(dbTier);
     return tier?.length > 0 ? `[${tier.toUpperCase()}]` : '';
 }
+
+config.getEmailContentBranch = getEmailContentBranch;
+config.getEmailContentBaseUrl = getEmailContentBaseUrl;
+config.getEmailContentRefreshSeconds = getEmailContentRefreshSeconds;
 
 module.exports = config;

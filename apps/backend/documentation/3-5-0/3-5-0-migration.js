@@ -1,12 +1,12 @@
 /**
+ * LEGACY (reference only). Do not execute against current DocumentDB.
+ * Do not update for new compatibility issues.
+ *
  * 3.5.0 Migration Script
  * Node.js migration orchestrator that explicitly calls each migration file
- * 
- * Usage: npm run migrate:3.5.0
- *         (or directly: node documentation/3-5-0/3-5-0-migration.js)
- * 
+ *
  * Migration files:
- * - psdc-data-commons-update.js: Complete PSDC Data Commons configuration  
+ * - psdc-data-commons-update.js: Complete PSDC Data Commons configuration
  * - populate-program-id.js: Complete Program ID population migration
  */
 

@@ -1,10 +1,13 @@
-const GenericDAO = require("./generic");
-const {MODEL_NAME} = require("../constants/db-constants");
+const MongooseGenericDAO = require("./mongoose-generic");
+const ValidationModel = require("../mongoose/models/validation");
 
-class ValidationDAO extends GenericDAO {
+/**
+ * Mongoose-backed DAO for validation records.
+ */
+class ValidationDAO extends MongooseGenericDAO {
     constructor() {
-        super(MODEL_NAME.VALIDATION);
+        super(ValidationModel);
     }
 }
 
-module.exports = ValidationDAO
+module.exports = ValidationDAO;

@@ -3,7 +3,7 @@ const { USER } = require('../../crdc-datahub-database-drivers/constants/user-con
 
 describe('UserService.getDCPs', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
 
     const mockDCPs = [
         {
@@ -60,13 +60,12 @@ describe('UserService.getDCPs', () => {
 
     beforeEach(() => {
         // Mock all dependencies
-        mockUserCollection = {
-            aggregate: jest.fn()
+        mockUserDAO = {
+            findMany: jest.fn()
         };
         mockLogCollection = {};
         mockOrganizationCollection = {};
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockApprovedStudiesService = {};
         mockConfigurationService = {};
@@ -75,11 +74,9 @@ describe('UserService.getDCPs', () => {
 
         // Initialize UserService with mocked dependencies
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             'test@example.com',
             'http://test.com',
@@ -89,6 +86,7 @@ describe('UserService.getDCPs', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
     });
 
     afterEach(() => {
@@ -102,18 +100,18 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual([mockDCPs[0]]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
 
         it('should return all DCPs when dataCommons includes "All"', async () => {
@@ -124,29 +122,29 @@ describe('UserService.getDCPs', () => {
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL
             };
             
-            mockUserCollection.aggregate.mockResolvedValue(mockDCPs);
+            mockUserDAO.findMany.mockResolvedValue(mockDCPs);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual(mockDCPs);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
 
         it('should return empty array when no DCPs exist', async () => {
             // Arrange
             const dataCommons = ['commons-nonexistent'];
             
-            mockUserCollection.aggregate.mockResolvedValue([]);
+            mockUserDAO.findMany.mockResolvedValue([]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should return single DCP when only one exists', async () => {
@@ -154,14 +152,14 @@ describe('UserService.getDCPs', () => {
             const dataCommons = ['commons-1'];
             const singleDCP = [mockDCPs[0]];
             
-            mockUserCollection.aggregate.mockResolvedValue(singleDCP);
+            mockUserDAO.findMany.mockResolvedValue(singleDCP);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual(singleDCP);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
     });
 
@@ -172,17 +170,17 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: [dataCommons] }
+                "dataCommons": [dataCommons]
             };
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual([mockDCPs[0]]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
 
         it('should handle array input for dataCommons', async () => {
@@ -191,17 +189,17 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             
-            mockUserCollection.aggregate.mockResolvedValue(mockDCPs);
+            mockUserDAO.findMany.mockResolvedValue(mockDCPs);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual(mockDCPs);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
 
         it('should handle "All" as string input', async () => {
@@ -212,14 +210,14 @@ describe('UserService.getDCPs', () => {
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL
             };
             
-            mockUserCollection.aggregate.mockResolvedValue(mockDCPs);
+            mockUserDAO.findMany.mockResolvedValue(mockDCPs);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual(mockDCPs);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
 
         it('should handle "All" in array input', async () => {
@@ -230,14 +228,14 @@ describe('UserService.getDCPs', () => {
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL
             };
             
-            mockUserCollection.aggregate.mockResolvedValue(mockDCPs);
+            mockUserDAO.findMany.mockResolvedValue(mockDCPs);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual(mockDCPs);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
     });
 
@@ -246,7 +244,7 @@ describe('UserService.getDCPs', () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
@@ -254,20 +252,18 @@ describe('UserService.getDCPs', () => {
             // Assert
             expect(result).toEqual([mockDCPs[0]]);
             expect(result.every(user => user.role === USER.ROLES.DATA_COMMONS_PERSONNEL)).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                    "dataCommons": { $in: dataCommons }
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
+                "dataCommons": dataCommons
+            });
         });
 
         it('should only return users with ACTIVE status', async () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
@@ -275,52 +271,46 @@ describe('UserService.getDCPs', () => {
             // Assert
             expect(result).toEqual([mockDCPs[0]]);
             expect(result.every(user => user.userStatus === USER.STATUSES.ACTIVE)).toBe(true);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                    "dataCommons": { $in: dataCommons }
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
+                "dataCommons": dataCommons
+            });
         });
 
         it('should filter by dataCommons when not "All"', async () => {
             // Arrange
             const dataCommons = ['commons-1', 'commons-2'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockDCPs);
+            mockUserDAO.findMany.mockResolvedValue(mockDCPs);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual(mockDCPs);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                    "dataCommons": { $in: dataCommons }
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
+                "dataCommons": dataCommons
+            });
         });
 
         it('should not filter by dataCommons when "All" is included', async () => {
             // Arrange
             const dataCommons = ['commons-1', 'All'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockDCPs);
+            mockUserDAO.findMany.mockResolvedValue(mockDCPs);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual(mockDCPs);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "role": USER.ROLES.DATA_COMMONS_PERSONNEL
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "role": USER.ROLES.DATA_COMMONS_PERSONNEL
+            });
         });
     });
 
@@ -329,67 +319,65 @@ describe('UserService.getDCPs', () => {
             // Arrange
             const dataCommons = ['commons-1'];
             const dbError = new Error('Database connection failed');
-            mockUserCollection.aggregate.mockRejectedValue(dbError);
+            mockUserDAO.findMany.mockRejectedValue(dbError);
 
             // Act & Assert
             await expect(userService.getDCPs(dataCommons)).rejects.toThrow('Database connection failed');
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should handle null result from database', async () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue(null);
+            mockUserDAO.findMany.mockResolvedValue(null);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toBeNull();
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should handle undefined result from database', async () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue(undefined);
+            mockUserDAO.findMany.mockResolvedValue(undefined);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toBeUndefined();
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
     });
 
     describe('query structure validation', () => {
-        it('should use correct MongoDB aggregation pipeline', async () => {
+        it('should use correct findMany query', async () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             await userService.getDCPs(dataCommons);
 
             // Assert
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{
-                "$match": {
-                    "userStatus": USER.STATUSES.ACTIVE,
-                    "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                    "dataCommons": { $in: dataCommons }
-                }
-            }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith({
+                "userStatus": USER.STATUSES.ACTIVE,
+                "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
+                "dataCommons": dataCommons
+            });
         });
 
         it('should use correct USER constants', async () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             await userService.getDCPs(dataCommons);
@@ -398,31 +386,31 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
     });
 
     describe('performance and behavior', () => {
-        it('should call aggregate only once per invocation', async () => {
+        it('should call findMany only once per invocation', async () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             await userService.getDCPs(dataCommons);
 
             // Assert
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(1);
         });
 
         it('should return the same result on multiple calls with same data', async () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             const result1 = await userService.getDCPs(dataCommons);
@@ -430,7 +418,7 @@ describe('UserService.getDCPs', () => {
 
             // Assert
             expect(result1).toEqual(result2);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledTimes(2);
+            expect(mockUserDAO.findMany).toHaveBeenCalledTimes(2);
         });
     });
 
@@ -441,17 +429,17 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             
-            mockUserCollection.aggregate.mockResolvedValue([]);
+            mockUserDAO.findMany.mockResolvedValue([]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual([]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
 
         it('should handle single element array input for dataCommons', async () => {
@@ -460,17 +448,17 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
 
             // Assert
             expect(result).toEqual([mockDCPs[0]]);
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
         });
 
         it('should handle DCPs with multiple dataCommons', async () => {
@@ -500,7 +488,7 @@ describe('UserService.getDCPs', () => {
                 }
             }];
             
-            mockUserCollection.aggregate.mockResolvedValue(dcpWithMultipleCommons);
+            mockUserDAO.findMany.mockResolvedValue(dcpWithMultipleCommons);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
@@ -520,7 +508,7 @@ describe('UserService.getDCPs', () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             await userService.getDCPs(dataCommons);
@@ -529,9 +517,9 @@ describe('UserService.getDCPs', () => {
             const expectedQuery = {
                 "userStatus": USER.STATUSES.ACTIVE,
                 "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-                "dataCommons": { $in: dataCommons }
+                "dataCommons": dataCommons
             };
-            expect(mockUserCollection.aggregate).toHaveBeenCalledWith([{ "$match": expectedQuery }]);
+            expect(mockUserDAO.findMany).toHaveBeenCalledWith(expectedQuery);
             
             // Verify it's different from getAdmin query
             expect(expectedQuery.role).toBe(USER.ROLES.DATA_COMMONS_PERSONNEL);
@@ -543,7 +531,7 @@ describe('UserService.getDCPs', () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
@@ -563,7 +551,7 @@ describe('UserService.getDCPs', () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
@@ -580,7 +568,7 @@ describe('UserService.getDCPs', () => {
             // Arrange
             const dataCommons = ['commons-1'];
             
-            mockUserCollection.aggregate.mockResolvedValue([mockDCPs[0]]);
+            mockUserDAO.findMany.mockResolvedValue([mockDCPs[0]]);
 
             // Act
             const result = await userService.getDCPs(dataCommons);
@@ -596,7 +584,7 @@ describe('UserService.getDCPs', () => {
             // Arrange
             const dataCommons = ['All'];
             
-            mockUserCollection.aggregate.mockResolvedValue(mockDCPs);
+            mockUserDAO.findMany.mockResolvedValue(mockDCPs);
 
             // Act
             const result = await userService.getDCPs(dataCommons);

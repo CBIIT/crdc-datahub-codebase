@@ -16,6 +16,7 @@ export const baseApplication: Application = {
   openAccess: false,
   ORCID: "",
   programName: "",
+  studyName: "",
   studyAbbreviation: "",
   PI: "",
   questionnaireData: undefined,
@@ -26,6 +27,10 @@ export const baseApplication: Application = {
   newInstitutions: [],
   version: "",
   GPAName: "",
+  sequenceNumber: 1,
+  nextRevisionId: null,
+  canBeReopened: false,
+  canBeRestored: false,
 };
 
 /**

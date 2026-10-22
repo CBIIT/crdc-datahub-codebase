@@ -31,6 +31,7 @@ export const query: TypedDocumentNode<Response, GetAppInput> = gql`
       questionnaireData
       conditional
       pendingConditions
+      sequenceNumber
       version
     }
   }
@@ -44,7 +45,5 @@ export type GetAppInput = {
 };
 
 export type Response = {
-  getApplication: Omit<Application, "questionnaireData"> & {
-    questionnaireData: string; // Cast to QuestionnaireData
-  };
+  getApplication: Application;
 };

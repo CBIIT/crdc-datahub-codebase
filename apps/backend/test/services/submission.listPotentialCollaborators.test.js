@@ -28,10 +28,10 @@ jest.mock('../../utility/study-utility', () => ({
 describe('Submission.listPotentialCollaborators', () => {
     let submissionService;
     let mockSubmissionCollection, mockLogCollection, mockBatchService, mockUserService, 
-        mockOrganizationService, mockNotificationService, mockDataRecordService, 
+        mockProgramService, mockNotificationService, mockDataRecordService, 
         mockFetchDataModelInfo, mockAwsService, mockMetadataQueueName, mockS3Service, 
         mockEmailParams, mockDataCommonsList, mockHiddenDataCommonsList, 
-        mockValidationCollection, mockSqsLoaderQueue, mockQcResultsService, 
+        mockSqsLoaderQueue, mockQcResultsService, 
         mockUploaderCLIConfigs, mockSubmissionBucketName, mockConfigurationService, 
         mockUploadingMonitor, mockDataCommonsBucketMap, mockAuthorizationService, 
         mockDataModelService;
@@ -138,7 +138,7 @@ describe('Submission.listPotentialCollaborators', () => {
         mockUserService = {
             getCollaboratorsByStudyID: jest.fn()
         };
-        mockOrganizationService = {};
+        mockProgramService = {};
         mockNotificationService = {};
         mockDataRecordService = {};
         mockFetchDataModelInfo = jest.fn();
@@ -148,7 +148,6 @@ describe('Submission.listPotentialCollaborators', () => {
         mockEmailParams = {};
         mockDataCommonsList = ['commons1', 'commons2'];
         mockHiddenDataCommonsList = [];
-        mockValidationCollection = {};
         mockSqsLoaderQueue = 'test-sqs-queue';
         mockQcResultsService = {};
         mockUploaderCLIConfigs = {};
@@ -172,7 +171,7 @@ describe('Submission.listPotentialCollaborators', () => {
             mockSubmissionCollection,
             mockBatchService,
             mockUserService,
-            mockOrganizationService,
+            mockProgramService,
             mockNotificationService,
             mockDataRecordService,
             mockFetchDataModelInfo,
@@ -182,7 +181,6 @@ describe('Submission.listPotentialCollaborators', () => {
             mockEmailParams,
             mockDataCommonsList,
             mockHiddenDataCommonsList,
-            mockValidationCollection,
             mockSqsLoaderQueue,
             mockQcResultsService,
             mockUploaderCLIConfigs,
@@ -194,7 +192,7 @@ describe('Submission.listPotentialCollaborators', () => {
             mockDataModelService
         );
 
-        // Override DAOs with mocks to prevent Prisma calls
+        // Override DAOs with mocks
         submissionService.pendingPVDAO = { findBySubmissionID: jest.fn(), insertOne: jest.fn() };
         submissionService.submissionDAO = { 
             update: jest.fn(), 

@@ -1,6 +1,15 @@
 import { useLazyQuery, useMutation } from "@apollo/client";
 import { merge, cloneDeep } from "lodash";
-import React, { FC, createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  FC,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { v4 } from "uuid";
 
 import { QuestionnaireDataMigrator } from "@/classes/QuestionnaireDataMigrator";
@@ -11,7 +20,7 @@ import {
   LAST_APP,
   REJECT_APP,
   INQUIRE_APP,
-  REOPEN_APP,
+  RESUME_APP,
   SAVE_APP,
   SUBMIT_APP,
   ApproveAppResp,
@@ -19,7 +28,7 @@ import {
   LastAppResp,
   InquireAppResp,
   RejectAppResp,
-  ReopenAppResp,
+  ResumeAppResp,
   SaveAppResp,
   SubmitAppResp,
   ApproveAppInput,
@@ -30,7 +39,7 @@ import {
   GetApplicationFormVersionResp,
   GET_APPLICATION_FORM_VERSION,
 } from "@/graphql";
-import { Logger } from "@/utils";
+import { Logger, preserveLockedFields, computeNextStatus } from "@/utils";
 
 import { useAuthContext } from "./AuthContext";
 import { useOrganizationListContext, Status as ProgramStatus } from "./OrganizationListContext";
@@ -49,6 +58,14 @@ export type ContextState = {
   status: Status;
   data: Application;
   formRef: React.RefObject<HTMLFormElement>;
+  /**
+   * Reports that a form field changed.
+   */
+  notifyChange?: () => void;
+  /**
+   * Registers a listener for {@link notifyChange}. Returns an unsubscribe function.
+   */
+  subscribeToChanges?: (listener: () => void) => () => void;
   submitData?: () => Promise<string | boolean>;
   reopenForm?: () => Promise<string | boolean>;
   approveForm?: (data: ApproveFormInput, wholeProgram: boolean) => Promise<SetDataReturnType>;
@@ -122,6 +139,20 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   const { user } = useAuthContext();
   const { activeOrganizations, status: programStatus } = useOrganizationListContext();
 
+  const changeListenersRef = useRef<Set<() => void>>(new Set());
+
+  const notifyChange = useCallback(() => {
+    changeListenersRef.current.forEach((listener) => listener());
+  }, []);
+
+  const subscribeToChanges = useCallback((listener: () => void) => {
+    changeListenersRef.current.add(listener);
+
+    return () => {
+      changeListenersRef.current.delete(listener);
+    };
+  }, []);
+
   const [getInstitutions] = useLazyQuery<ListInstitutionsResp, ListInstitutionsInput>(
     LIST_INSTITUTIONS,
     {
@@ -163,7 +194,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     fetchPolicy: "no-cache",
   });
 
-  const [reopenApp] = useMutation<ReopenAppResp>(REOPEN_APP, {
+  const [resumeApp] = useMutation<ResumeAppResp>(RESUME_APP, {
     variables: { id },
     context: { clientName: "backend" },
     fetchPolicy: "no-cache",
@@ -190,9 +221,14 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
     data: QuestionnaireData,
     opts?: { skipSave?: boolean; runMigrations?: boolean }
   ): Promise<SetDataReturnType> => {
-    let processedData: QuestionnaireData = data;
+    let processedData: QuestionnaireData = preserveLockedFields({
+      application: state?.data,
+      incomingData: data,
+      currentData: state?.data?.questionnaireData,
+    });
+
     if (opts?.runMigrations) {
-      const migrator = new QuestionnaireDataMigrator(data, {
+      const migrator = new QuestionnaireDataMigrator(processedData, {
         getInstitutions,
         newInstitutions: state.data?.newInstitutions || [],
         getLastApplication: lastApp,
@@ -214,11 +250,12 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       processedData?.pi?.lastName || ""
     }`.trim();
 
-    const newStatus: ApplicationStatus = processedData?.sections?.some(
-      (s) => s.status !== "Not Started"
-    )
-      ? "In Progress"
-      : "New";
+    const hasSectionActivity = processedData?.sections?.some((s) => s.status !== "Not Started");
+    const nextStatus = computeNextStatus({
+      currentStatus: state?.data?.status,
+      applicationId: state?.data?._id,
+      hasSectionActivity: !!hasSectionActivity,
+    });
 
     const newInstitutions = [...newState.data.newInstitutions];
     const { pi, primaryContact, additionalContacts } = newState.data.questionnaireData;
@@ -255,7 +292,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
           _id: newState?.data?._id === "new" ? undefined : newState?.data?._id,
           studyName: processedData?.study?.name,
           studyAbbreviation: processedData?.study?.abbreviation,
-          questionnaireData: JSON.stringify(processedData),
+          questionnaireData: processedData,
           controlledAccess: processedData?.accessTypes?.includes("Controlled Access") || false,
           openAccess: processedData?.accessTypes?.includes("Open Access") || false,
           ORCID: processedData?.pi?.ORCID,
@@ -268,7 +305,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
             .map(({ id, name }) => ({ id, name })),
           GPAName: processedData?.study?.GPAName,
         },
-        status: newStatus,
+        status: nextStatus,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 
@@ -276,11 +313,12 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       const errorMessage = errors?.[0]?.message || "An unknown GraphQL Error occurred";
 
       Logger.error("Unable to save application", errors);
-      setState({
-        ...newState,
+      // Keep the last persisted data to avoid save button disabling after failed save
+      setState((prevState) => ({
+        ...prevState,
         status: Status.ERROR,
         error: errorMessage,
-      });
+      }));
 
       return {
         status: "failed",
@@ -403,16 +441,17 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   };
 
   // Reopen a form when it has been rejected and they submit an updated form
+  // TODO: RENAME depending on API
   const reopenForm = async () => {
     setState((prevState) => ({ ...prevState, status: Status.LOADING }));
 
-    const { data: res, errors } = await reopenApp({
+    const { data: res, errors } = await resumeApp({
       variables: {
         _id: state?.data._id,
       },
     }).catch((e) => ({ data: null, errors: [e] }));
 
-    if (errors || !res?.reopenApplication?._id) {
+    if (errors || !res?.resumeInquiredApplication?._id) {
       setState((prevState) => ({ ...prevState, status: Status.ERROR }));
       return false;
     }
@@ -421,11 +460,11 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       ...prevState,
       data: {
         ...prevState?.data,
-        ...res?.reopenApplication,
+        ...res?.resumeInquiredApplication,
       },
       status: Status.LOADED,
     }));
-    return res?.reopenApplication?._id;
+    return res?.resumeInquiredApplication?._id;
   };
 
   useEffect(() => {
@@ -494,9 +533,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       }
 
       const { getApplication } = d;
-      const questionnaireData: QuestionnaireData = JSON.parse(
-        getApplication?.questionnaireData || null
-      );
+      const questionnaireData = getApplication?.questionnaireData || null;
 
       const migrator = new QuestionnaireDataMigrator(questionnaireData, {
         getInstitutions,
@@ -522,6 +559,8 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
   const value = useMemo(
     () => ({
       ...state,
+      notifyChange,
+      subscribeToChanges,
       setData,
       submitData,
       approveForm,
@@ -529,7 +568,7 @@ export const FormProvider: FC<ProviderProps> = ({ children, id }: ProviderProps)
       rejectForm,
       reopenForm,
     }),
-    [state]
+    [state, notifyChange, subscribeToChanges]
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;

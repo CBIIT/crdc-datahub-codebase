@@ -18,6 +18,24 @@ import { TestRouter, act, render, waitFor } from "../../test-utils";
 
 import ListView from "./ListView";
 
+const DEFAULT_NON_FEDERAL_STATUSES: ApplicationStatus[] = [
+  "New",
+  "In Progress",
+  "Submitted",
+  "In Review",
+  "Inquired",
+  "In Revision",
+  "Reopened",
+];
+
+const DEFAULT_FEDERAL_LEAD_STATUSES: ApplicationStatus[] = [
+  "Submitted",
+  "In Review",
+  "Inquired",
+  "In Revision",
+  "Reopened",
+];
+
 const mockUsePageTitle = vi.fn();
 vi.mock("../../hooks/usePageTitle", async () => ({
   ...(await vi.importActual("../../hooks/usePageTitle")),
@@ -542,7 +560,7 @@ describe("ListView Component", () => {
     });
   });
 
-  it("uses Last Updated Date as the default sort key", async () => {
+  it("uses non-Federal default statuses in list query", async () => {
     const variableMatcher = vi.fn().mockReturnValue(true);
 
     const listApplicationsMock: MockedResponse<ListApplicationsResp, ListApplicationsInput> = {
@@ -569,13 +587,42 @@ describe("ListView Component", () => {
     );
 
     await waitFor(() => {
-      expect(variableMatcher).toHaveBeenCalled();
+      expect(variableMatcher).toHaveBeenCalledWith(
+        expect.objectContaining({ statuses: DEFAULT_NON_FEDERAL_STATUSES })
+      );
     });
+  });
 
-    expect(variableMatcher).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderBy: "updatedAt",
-      })
+  it("uses Federal Lead default statuses in list query", async () => {
+    const variableMatcher = vi.fn().mockReturnValue(true);
+
+    const listApplicationsMock: MockedResponse<ListApplicationsResp, ListApplicationsInput> = {
+      request: {
+        query: LIST_APPLICATIONS,
+      },
+      variableMatcher,
+      result: {
+        data: {
+          listApplications: {
+            total: 0,
+            applications: [],
+            programs: [],
+            studies: [],
+          },
+        },
+      },
+    };
+
+    render(
+      <TestParent role="Federal Lead" mocks={[listApplicationsMock]}>
+        <ListView />
+      </TestParent>
     );
+
+    await waitFor(() => {
+      expect(variableMatcher).toHaveBeenCalledWith(
+        expect.objectContaining({ statuses: DEFAULT_FEDERAL_LEAD_STATUSES })
+      );
+    });
   });
 });

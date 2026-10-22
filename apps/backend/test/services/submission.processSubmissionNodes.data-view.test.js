@@ -44,13 +44,13 @@ function baseNode(overrides = {}) {
 }
 
 function buildSubmissionService() {
-  const mockOrganizationService = { organizationCollection: {} };
+  const mockProgramService = { organizationCollection: {} };
   const submissionService = new Submission(
     {},
     {},
     {},
     {},
-    mockOrganizationService,
+    mockProgramService,
     {},
     {},
     jest.fn(),
@@ -60,7 +60,6 @@ function buildSubmissionService() {
     {},
     [],
     [],
-    {},
     'test-loader',
     {},
     {},
@@ -68,7 +67,6 @@ function buildSubmissionService() {
     {},
     {},
     new Map(),
-    {},
     {},
     {}
   );

@@ -4,6 +4,7 @@ import * as z from "zod";
 import { repositoryDataTypesOptions } from "@/components/Questionnaire/Repository";
 import accessTypeOptions from "@/config/AccessTypesConfig";
 import cancerTypeOptions from "@/config/CancerTypesConfig";
+import { CHARACTER_LIMITS } from "@/config/CharacterLimitsConfig";
 import DataTypes from "@/config/DataTypesConfig";
 import { validatePHSNumber } from "@/utils";
 
@@ -130,6 +131,10 @@ export const contactSchema = z
      * @since 3.4.0
      */
     institutionID: z.union([z.uuidv4(), z.literal("")]).nullable(),
+    /**
+     * Indicates whether the contact will receive all email notifications.
+     */
+    receivesEmails: z.boolean().optional(),
   })
   .strict();
 
@@ -313,11 +318,11 @@ export const studySchema = z
     /**
      * The full study title.
      */
-    name: z.string().max(1_000).nonempty(),
+    name: z.string().max(CHARACTER_LIMITS.study.name.max).nonempty(),
     /**
      * The short study title.
      */
-    abbreviation: z.string().max(20).optional(),
+    abbreviation: z.string().max(CHARACTER_LIMITS.study.abbreviation.max).optional(),
     /**
      * A short description of the effort that these data have been collected for.
      */

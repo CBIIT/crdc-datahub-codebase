@@ -62,7 +62,7 @@ describe('Submission Service - createBatch with Status Change to In Progress', (
         };
 
         // Create mock organization service
-        const mockOrganizationService = {
+        const mockProgramService = {
             organizationCollection: {}
         };
 
@@ -70,29 +70,27 @@ describe('Submission Service - createBatch with Status Change to In Progress', (
         submissionService = new Submission(
             null, // logCollection
             null, // submissionCollection
-            mockSubmissionDAO,
-            null, // programDAO
-            mockOrganizationService, // organizationService
+            mockSubmissionDAO, // batchService (overridden below)
             null, // userService
+            mockProgramService, // programService
+            null, // notificationService
             null, // dataRecordService
-            mockBatchService,
-            null, // userInitializationService
-            null, // notifyUser
-            null, // s3Service
+            mockBatchService, // fetchDataModelInfo (batchService overridden below)
             null, // awsService
+            null, // metadataQueueName
+            null, // s3Service
+            null, // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            null, // qcResultService
-            null, // approvedStudyDAO
-            null, // validationDAO
-            null, // pendingPVDAO
+            null, // sqsLoaderQueue
+            null, // qcResultsService
+            null, // uploaderCLIConfigs
             'test-bucket', // submissionBucketName
-            null, // configService
-            null, // monitor
-            {}, // bucketMap
-            mockAuthorizationService,
-            null, // dataModelService
-            null // submissionMongoCollection
+            null, // configurationService
+            null, // uploadingMonitor
+            {}, // dataCommonsBucketMap
+            mockAuthorizationService, // authorizationService
+            null // dataModelService
         );
         
         // Override submissionDAO and batchService with our mocks after construction

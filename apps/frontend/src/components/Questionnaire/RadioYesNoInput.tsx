@@ -22,7 +22,7 @@ const GridStyled = styled(Grid, {
     marginTop: "8px",
     marginBottom: "4px",
   },
-  "& .css-hsm3ra-MuiFormLabel-root": {
+  "& .MuiFormControlLabel-label": {
     color: "rgba(0, 0, 0, 0.6) !important",
   },
   "& .MuiRadio-root": {

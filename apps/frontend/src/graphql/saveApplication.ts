@@ -30,6 +30,7 @@ export const mutation: TypedDocumentNode<Response, Input> = gql`
         name
       }
       GPAName
+      sequenceNumber
     }
   }
 `;
@@ -52,11 +53,11 @@ export type Input = {
      */
     studyAbbreviation: string | undefined;
     /**
-     * Stringified JSON Application Questionnaire Data
+     * JSON Application Questionnaire Data
      *
      * @see {@link QuestionnaireData}
      */
-    questionnaireData: string;
+    questionnaireData: QuestionnaireData;
     /**
      * Whether the data submission will contain controlled access data
      */
@@ -97,7 +98,7 @@ export type Input = {
   /**
    * The status to save the application as
    */
-  status?: Extends<ApplicationStatus, "New" | "In Progress">;
+  status?: Extends<ApplicationStatus, "New" | "In Progress" | "In Revision">;
 };
 
 export type Response = {

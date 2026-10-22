@@ -2195,6 +2195,103 @@ describe("Implementation Requirements", () => {
     ).toBeChecked();
   });
 
+  it("should support parent-child notification behavior from decimal order", async () => {
+    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
+      request: {
+        query: RETRIEVE_PBAC_DEFAULTS,
+        variables: { roles: ["All"] },
+      },
+      result: {
+        data: {
+          retrievePBACDefaults: [
+            {
+              role: "Submitter",
+              permissions: [],
+              notifications: [
+                {
+                  _id: "submission_request:reviewed",
+                  group: "Submission Request Emails",
+                  name: "When conditionally approved",
+                  inherited: [],
+                  order: 3,
+                  checked: false,
+                  disabled: false,
+                },
+                {
+                  _id: "submission_request:pending_cleared",
+                  group: "Submission Request Emails",
+                  name: "Pending on dbGaPID",
+                  inherited: [],
+                  order: 3.1,
+                  checked: false,
+                  disabled: false,
+                },
+                {
+                  _id: "submission_request:expiring",
+                  group: "Submission Request Emails",
+                  name: "Pending on model update",
+                  inherited: [],
+                  order: 3.2,
+                  checked: false,
+                  disabled: false,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const formValues: Partial<EditUserInput> = {
+      role: "Submitter",
+      permissions: [],
+      notifications: ["submission_request:pending_cleared"],
+    };
+
+    const mockWatcher = vi.fn().mockImplementation((field) => formValues[field] ?? "");
+
+    const mockSetValue = vi.fn().mockImplementation((field, value) => {
+      formValues[field] = value;
+    });
+
+    const { getByTestId, rerender } = render(<PermissionPanel readOnly={false} />, {
+      wrapper: ({ children }) => (
+        <MockParent
+          mocks={[mock, getTooltipsMock]}
+          methods={{ watch: mockWatcher, setValue: mockSetValue } as unknown as FormProviderProps}
+        >
+          {children}
+        </MockParent>
+      ),
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("notification-submission_request:reviewed")).toBeInTheDocument();
+      expect(getByTestId("notification-submission_request:pending_cleared")).toBeInTheDocument();
+      expect(getByTestId("notification-submission_request:expiring")).toBeInTheDocument();
+    });
+
+    expect(
+      within(getByTestId("notification-submission_request:reviewed")).getByRole("checkbox", {
+        hidden: true,
+      })
+    ).toHaveAttribute("data-indeterminate", "true");
+
+    userEvent.click(
+      within(getByTestId("notification-submission_request:reviewed")).getByRole("checkbox", {
+        hidden: true,
+      })
+    );
+
+    rerender(<PermissionPanel />);
+
+    expect(
+      within(getByTestId("notification-submission_request:expiring")).getByRole("checkbox", {
+        hidden: true,
+      })
+    ).toBeChecked();
+  });
+
   it("should display tooltip on permission label when hovering", async () => {
     const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
       request: {
@@ -2323,99 +2420,6 @@ describe("Implementation Requirements", () => {
         normalizeWhitespace: true,
       });
     });
-  });
-
-  it("should store tooltips as array in local storage", async () => {
-    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
-      request: {
-        query: RETRIEVE_PBAC_DEFAULTS,
-        variables: { roles: ["All"] },
-      },
-      result: {
-        data: {
-          retrievePBACDefaults: [
-            {
-              role: "Submitter",
-              permissions: [],
-              notifications: [],
-            },
-          ],
-        },
-      },
-    };
-
-    render(<PermissionPanel />, {
-      wrapper: ({ children }) => (
-        <MockParent mocks={[mock, getTooltipsMock]}>{children}</MockParent>
-      ),
-    });
-
-    await waitFor(() => {
-      expect(localStorage.getItem("profile-tooltips")).not.toBeNull();
-    });
-
-    const storedTooltips = JSON.parse(localStorage.getItem("profile-tooltips") || "[]");
-
-    expect(Array.isArray(storedTooltips)).toBe(true);
-    expect(storedTooltips.length).toBeGreaterThan(0);
-    expect(storedTooltips).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: "submission_request:view",
-          value: "View Submission Request",
-        }),
-        expect.objectContaining({ key: "data_submission:view", value: "View Data Submission" }),
-        expect.objectContaining({ key: "program:manage", value: "Manage Programs" }),
-        expect.objectContaining({ key: "access:request", value: "Request Access" }),
-        expect.objectContaining({
-          key: "submission_request:submitted",
-          value: "Submission Request submitted",
-        }),
-        expect.objectContaining({
-          key: "data_submission:created",
-          value: "Submission Request submitted",
-        }),
-        expect.objectContaining({ key: "access:requested", value: "Access Requested" }),
-      ])
-    );
-  });
-
-  it("should not call API when tooltips are already in local storage", async () => {
-    const mock: MockedResponse<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput> = {
-      request: {
-        query: RETRIEVE_PBAC_DEFAULTS,
-        variables: { roles: ["All"] },
-      },
-      result: {
-        data: {
-          retrievePBACDefaults: [
-            {
-              role: "Submitter",
-              permissions: [],
-              notifications: [],
-            },
-          ],
-        },
-      },
-    };
-
-    const storedTooltips = [
-      { key: "submission_request:view", value: "View Submission Request" },
-      { key: "data_submission:view", value: "View Data Submission" },
-      { key: "program:manage", value: "Manage Programs" },
-    ];
-    localStorage.setItem("profile-tooltips", JSON.stringify(storedTooltips));
-
-    render(<PermissionPanel />, {
-      wrapper: ({ children }) => <MockParent mocks={[mock]}>{children}</MockParent>,
-    });
-
-    await waitFor(() => {
-      expect(localStorage.getItem("profile-tooltips")).not.toBeNull();
-    });
-
-    const tooltips = JSON.parse(localStorage.getItem("profile-tooltips") || "[]");
-    expect(tooltips).toEqual(storedTooltips);
   });
 
   it("should retrieve tooltip using base key (without scope suffix)", async () => {

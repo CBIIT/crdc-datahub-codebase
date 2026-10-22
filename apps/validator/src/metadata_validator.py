@@ -2,20 +2,23 @@
 import json
 from datetime import datetime
 import re
-from bento.common.sqs import VisibilityExtender
 from bento.common.utils import get_logger, DATE_FORMATS
 from common.constants import SQS_NAME, SQS_TYPE, SCOPE, SUBMISSION_ID, ERRORS, WARNINGS, STATUS_ERROR, FAILED, ID, \
     STATUS_WARNING, STATUS_PASSED, STATUS, UPDATED_AT, MODEL_FILE_DIR, TIER_CONFIG, DATA_COMMON_NAME, MODEL_VERSION, \
     NODE_TYPE, PROPERTIES, TYPE, MIN, MAX, VALUE_EXCLUSIVE, VALUE_PROP, VALIDATION_RESULT, ORIN_FILE_NAME, \
     VALIDATED_AT, SERVICE_TYPE_METADATA, NODE_ID, PROPERTIES, PARENTS, KEY, NODE_ID, PARENT_TYPE, PARENT_ID_NAME, PARENT_ID_VAL, \
     SUBMISSION_INTENTION, SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE, TYPE_METADATA_VALIDATE, TYPE_CROSS_SUBMISSION, \
-    SUBMISSION_REL_STATUS_RELEASED, VALIDATION_ID, VALIDATION_ENDED, PROPERTY_TERM, \
+    SUBMISSION_REL_STATUS_RELEASED, VALIDATION_ID, PROPERTY_TERM, \
     QC_RESULT_ID, BATCH_IDS, VALIDATION_TYPE_METADATA, S3_FILE_INFO, VALIDATION_TYPE_FILE, QC_SEVERITY, QC_VALIDATE_DATE, QC_ORIGIN, \
     QC_ORIGIN_METADATA_VALIDATE_SERVICE, QC_ORIGIN_FILE_VALIDATE_SERVICE, DISPLAY_ID, UPLOADED_DATE, LATEST_BATCH_ID, SUBMITTED_ID, \
     LATEST_BATCH_DISPLAY_ID, QC_VALIDATION_TYPE, DATA_RECORD_ID, PV_TERM, STUDY_ID, PROPERTY_PATTERN, DELETE_COMMAND, CONCEPT_CODE, \
-    GENERATED_PROPS, METADATA_VALIDATION, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, NAME_PROP, \
-    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX
+    GENERATED_PROPS, CONSENT_CODE_NODE_TYPE, CONSENT_CODE, CONSENT_GROUP_NUMBER, NAME_PROP, \
+    TYPE_METADATA_VALIDATE_BATCH, DATA_RECORD_IDS, TOTAL_BATCHES, BATCH_INDEX, STUDY_NAME, DBGAPID, \
+    METADATA_VALIDATION_STATUS
 from common.utils import current_datetime, get_exception_msg, create_error, get_uuid_str, has_permissive_value
+from common.validation_closeout import (
+    FILE_PROGRESS, METADATA_PROGRESS, InvalidValidationMessage, process_validation_message, record_type_progress,
+)
 from common.model_store import ModelFactory
 from common.model_reader import valid_prop_types
 from service.ecs_agent import set_scale_in_protection
@@ -27,183 +30,211 @@ BATCH_SIZE = 1000
 PROPERTY_NOT_FOUND = "Permissible values not available"
 
 
-def _process_metadata_batch(mongo_dao, model_store, configs, data):
+def _content_error(message, validation_id, submission_id, submission_status_field=METADATA_VALIDATION_STATUS):
+    """Raise a content error that fails the validation run instead of requeueing.
+
+    @param message explanation stored on the validation record
+    @param validation_id validation document id, when the message has one
+    @param submission_id submission id from the message
+    @param submission_status_field submission field this error owns, if any
     """
-    Process a single batched metadata validation message.
+    raise InvalidValidationMessage(
+        message,
+        validation_id=validation_id,
+        submission_id=submission_id,
+        submission_status_field=submission_status_field,
+    )
 
-    Required message fields (camelCase JSON keys): 
-        validationID, 
-        submissionID, 
-        scope, 
-        dataRecordIds,
-        totalBatches (must be >= 1), 
-        batchIndex
-        
-    If validationID is missing or totalBatches < 1, the message is rejected without calling the DB;
-    the validation will not complete and may appear stuck. 
-    The backend must always send valid validationID and totalBatches.
 
-    Returns the MetaDataValidator instance for cleanup by the caller,
-    or None if the batch message is invalid.
+def _process_metadata_batch(mongo_dao, model_store, configs, data):
+    """Process a single batched metadata validation message.
+
+    Required message fields: validationID, submissionID, scope, dataRecordIds,
+    and totalBatches >= 1. A malformed message raises InvalidValidationMessage
+    so the run fails immediately. A database error is left to propagate so the
+    message can be requeued.
+
+    @param mongo_dao MongoDao
+    @param model_store model factory
+    @param configs service configuration
+    @param data parsed message body
+    @returns MetaDataValidator when one was created, otherwise None
     """
     log = get_logger(__name__)
     validation_id = data.get(VALIDATION_ID)
     submission_id = data.get(SUBMISSION_ID)
     data_record_ids = data.get(DATA_RECORD_IDS, [])
-    total_batches = data.get(TOTAL_BATCHES, 1)
+    total_batches = data.get(TOTAL_BATCHES)
     batch_index = data.get(BATCH_INDEX, 0)
     scope = data.get(SCOPE)
-    validated = False
-    validator = None
-    submission = None
-    batch_status = FAILED
-    status_detail = None
 
     if not validation_id:
-        log.error(f'Invalid batch message - missing validationID submission_id={submission_id}: {data}')
-        log.critical('Batch message rejected: missing validationID; validation may be stuck.')
-        return None
+        _content_error(f'Invalid batch message - missing validationID submission_id={submission_id}: {data}', None, submission_id)
 
-    if total_batches < 1:
-        log.error(f'Invalid batch message - total_batches must be >= 1, got {total_batches} submission_id={submission_id} validation_id={validation_id}: {data}')
-        log.critical(f'Batch message rejected: total_batches={total_batches}; validation may be stuck.')
-        return None
+    if not isinstance(total_batches, int) or total_batches < 1:
+        _content_error(
+            f'Invalid batch message - total_batches must be >= 1, got {total_batches} submission_id={submission_id} validation_id={validation_id}',
+            validation_id,
+            submission_id,
+        )
 
     batch_label = f'batch {batch_index + 1}/{total_batches}'
     log.info(f'Processing {batch_label} submission_id={submission_id} validation_id={validation_id} '
              f'({len(data_record_ids)} records)')
 
-    try:
-        submission = mongo_dao.get_submission(submission_id)
-        if not submission:
-            batch_status = FAILED
-            status_detail = f'Submission not found: {submission_id}'
-            log.error(f'{status_detail} validation_id={validation_id} {batch_label}')
-            return None
+    if not scope:
+        _content_error(
+            f'Missing required field: scope submission_id={submission_id} validation_id={validation_id} {batch_label}',
+            validation_id,
+            submission_id,
+        )
 
-        if not scope:
-            batch_status = FAILED
-            status_detail = 'Missing required field: scope'
-            log.error(f'Invalid batch message - missing scope submission_id={submission_id} validation_id={validation_id} {batch_label}: {data}')
-            return None
+    if not data_record_ids:
+        _content_error(
+            f'Empty dataRecordIds in batch message submission_id={submission_id} validation_id={validation_id} {batch_label}',
+            validation_id,
+            submission_id,
+        )
 
-        if not data_record_ids:
-            batch_status = FAILED
-            status_detail = 'Empty dataRecordIds in batch message'
-            log.error(f'Invalid batch message - empty dataRecordIds submission_id={submission_id} validation_id={validation_id} {batch_label}: {data}')
-            return None
+    submission = mongo_dao.get_submission(submission_id)
+    if not submission:
+        _content_error(f'Submission not found: {submission_id}', validation_id, submission_id)
 
-        data_records = mongo_dao.get_dataRecords_by_ids(data_record_ids)
-        if not data_records:
-            batch_status = FAILED
-            status_detail = f'No data records found for provided IDs in batch {batch_index}'
-            log.error(f'{status_detail} submission_id={submission_id} validation_id={validation_id} {batch_label}')
-            return None
+    data_records = mongo_dao.get_dataRecords_by_ids(data_record_ids)
+    if data_records is None:
+        raise Exception(f'Failed to load data records for validation {validation_id}')
+    if len(data_records) == 0:
+        _content_error(
+            f'No data records found for provided IDs in batch {batch_index}',
+            validation_id,
+            submission_id,
+        )
 
-        validator = MetaDataValidator(mongo_dao, model_store, configs)
-        init_error = validator._initialize_for_validation(submission, submission_id, scope)
-        if init_error:
-            batch_status, status_detail = init_error
-            return validator
+    validator = MetaDataValidator(mongo_dao, model_store, configs)
+    init_error = validator._initialize_for_validation(submission, submission_id, scope)
+    if init_error:
+        batch_status, status_detail = init_error
+        record_type_progress(
+            batch_status, validation_id, mongo_dao, log, METADATA_PROGRESS, FILE_PROGRESS,
+            total_count=total_batches, status_detail=status_detail, ended_at=current_datetime(),
+        )
+        return validator
 
-        validator.validate_nodes(data_records)
-        validated = True
-        if validator.isError:
-            batch_status = STATUS_ERROR
-        elif validator.isWarning:
-            batch_status = STATUS_WARNING
-        else:
-            batch_status = STATUS_PASSED
+    validator.validate_nodes(data_records)
+    if validator.isError:
+        batch_status = STATUS_ERROR
+    elif validator.isWarning:
+        batch_status = STATUS_WARNING
+    else:
+        batch_status = STATUS_PASSED
 
-    except Exception as ve:
-        log.exception(f'Error validating batch submission_id={submission_id} validation_id={validation_id} {batch_label}: {ve}')
-    finally:
-        try:
-            completed_count, is_last_batch, failed_count, worst_status, batch_details = \
-                mongo_dao.increment_completed_batches(
-                    validation_id, total_batches,
-                    batch_failed=(not validated),
-                    batch_status=batch_status,
-                    status_detail=status_detail if not validated else None,
-                    submission_id=submission_id,
-                    batch_index=batch_index,
-                )
-
-            if is_last_batch:
-                log.info(f'All {total_batches} batches complete submission_id={submission_id} validation_id={validation_id}')
-                final_status = worst_status
-                # statusDetail is a list of failure messages for batch runs, or None when no failures.
-                final_detail = batch_details if batch_details else None
-                if failed_count > 0:
-                    log.error(f'Validation submission_id={submission_id} validation_id={validation_id}: {failed_count} of {total_batches} batches failed')
-                validation_end_at = current_datetime()
-
-                update_ok = mongo_dao.update_validation_status(
-                    validation_id, final_status, validation_end_at, METADATA_VALIDATION,
-                    status_detail=final_detail,
-                    submission_id=submission_id,
-                )
-                if not update_ok:
-                    log.warning(
-                        f'Validation submission_id={submission_id} validation_id={validation_id}: '
-                        'status update reported no modification; validation record may be stale.'
-                    )
-
-                if submission:
-                    sub_doc = validator.submission if validator else submission
-                    sub_doc[VALIDATION_ENDED] = validation_end_at
-                    mongo_dao.set_submission_validation_status(
-                        sub_doc, None, final_status, None, None,
-                        status_detail=final_detail,
-                        scope=scope,
-                    )
-
-                log.info(f'Validation completed submission_id={submission_id} validation_id={validation_id} status={final_status}')
-            elif completed_count is not None:
-                log.info(f'{batch_label} complete submission_id={submission_id} validation_id={validation_id} '
-                         f'{total_batches - completed_count} batches remaining')
-            else:
-                log.error(f'Failed to record {batch_label} completion submission_id={submission_id} validation_id={validation_id} -- validation may be stuck')
-        except Exception as fe:
-            log.exception(f'Failed to finalize batch submission_id={submission_id} validation_id={validation_id} {batch_label}: {fe}')
-
+    record_type_progress(
+        batch_status, validation_id, mongo_dao, log, METADATA_PROGRESS, FILE_PROGRESS,
+        total_count=total_batches, ended_at=current_datetime(),
+    )
     return validator
 
 
 def _process_metadata_validation(mongo_dao, model_store, configs, data):
     """Handle a standard (non-batched) metadata validation message.
 
-    Returns the MetaDataValidator instance for cleanup by the caller,
-    or None if SCOPE or VALIDATION_ID is missing from data.
+    @param mongo_dao MongoDao
+    @param model_store model factory
+    @param configs service configuration
+    @param data parsed message body
+    @returns MetaDataValidator
+    @raises InvalidValidationMessage when required fields or the submission are missing
     """
+    log = get_logger(__name__)
     submission_id = data.get(SUBMISSION_ID)
     scope = data.get(SCOPE)
     validation_id = data.get(VALIDATION_ID)
-    if not scope or not validation_id:
-        log = get_logger(__name__)
-        log.error(f'Missing required field for metadata validation: scope={scope}, validation_id={validation_id}')
-        return None
+    if not scope or not validation_id or not submission_id:
+        _content_error(
+            f'Missing required field for metadata validation: scope={scope}, validation_id={validation_id}',
+            validation_id,
+            submission_id,
+        )
     validator = MetaDataValidator(mongo_dao, model_store, configs)
     status = validator.validate(submission_id, scope)
-    validation_end_at = current_datetime()
-    update_status = mongo_dao.update_validation_status(validation_id, status, validation_end_at, METADATA_VALIDATION, status_detail=None, submission_id=submission_id)
-    if update_status:
-        validator.submission[VALIDATION_ENDED] = validation_end_at
-    mongo_dao.set_submission_validation_status(validator.submission, None, status, None, None, status_detail=None, scope=scope)
+    if not validator.submission:
+        _content_error(f'Submission not found: {submission_id}', validation_id, submission_id)
+    record_type_progress(
+        status, validation_id, mongo_dao, log, METADATA_PROGRESS, FILE_PROGRESS,
+        total_count=1, ended_at=current_datetime(),
+    )
     return validator
 
 
 def _process_cross_submission(mongo_dao, data):
     """Handle a cross-submission validation message.
 
-    Returns the CrossSubmissionValidator instance for cleanup by the caller.
+    Writes only crossSubmissionStatus. File and metadata close-out is not used.
+
+    @param mongo_dao MongoDao
+    @param data parsed message body
+    @returns CrossSubmissionValidator
+    @raises InvalidValidationMessage when the submission id is missing or the submission does not exist
+    @raises Exception when the cross-submission status write does not persist
     """
     submission_id = data.get(SUBMISSION_ID)
+    validation_id = data.get(VALIDATION_ID)
+    if not submission_id:
+        _content_error(
+            'Missing submissionID for cross-submission validation',
+            validation_id,
+            None,
+            submission_status_field=None,
+        )
+    if not mongo_dao.get_submission(submission_id):
+        _content_error(
+            f'Submission not found: {submission_id}',
+            validation_id,
+            submission_id,
+            submission_status_field=None,
+        )
     validator = CrossSubmissionValidator(mongo_dao)
     status = validator.validate(submission_id)
     if validator.submission:
-        mongo_dao.set_submission_validation_status(validator.submission, None, None, status, None)
+        if not mongo_dao.set_cross_submission_status(validator.submission, status):
+            raise Exception(f'Failed to update cross-submission status for {submission_id}')
     return validator
+
+
+def _handle_metadata_message(mongo_dao, model_store, configs, data):
+    """Dispatch one metadata queue message.
+
+    Unknown types and missing submission ids raise InvalidValidationMessage.
+
+    @param mongo_dao MongoDao
+    @param model_store model factory
+    @param configs service configuration
+    @param data parsed message body
+    """
+    submission_id = data.get(SUBMISSION_ID)
+    validation_id = data.get(VALIDATION_ID)
+    msg_type = data.get(SQS_TYPE)
+    if msg_type == TYPE_METADATA_VALIDATE:
+        _process_metadata_validation(mongo_dao, model_store, configs, data)
+    elif msg_type == TYPE_CROSS_SUBMISSION:
+        if not submission_id:
+            _content_error(
+                'Missing submissionID for cross-submission validation',
+                validation_id,
+                None,
+                submission_status_field=None,
+            )
+        _process_cross_submission(mongo_dao, data)
+    elif msg_type == TYPE_METADATA_VALIDATE_BATCH:
+        if not submission_id:
+            _content_error(
+                f'Invalid batch message - missing submissionID validation_id={validation_id}',
+                validation_id,
+                None,
+            )
+        _process_metadata_batch(mongo_dao, model_store, configs, data)
+    else:
+        _content_error(f'Invalid message: {data}', validation_id, submission_id)
 
 
 def metadataValidate(configs, job_queue, mongo_dao):
@@ -235,37 +266,13 @@ def metadataValidate(configs, job_queue, mongo_dao):
 
             for msg in msgs:
                 log.info(f'Received a job!')
-                extender = None
-                data = None
-                validator = None
-                try:
-                    data = json.loads(msg.body)
-                    log.debug(data)
-                    extender = VisibilityExtender(msg, VISIBILITY_TIMEOUT)
-                    submission_id = data.get(SUBMISSION_ID)
-
-                    if data.get(SQS_TYPE) == TYPE_METADATA_VALIDATE and submission_id and data.get(SCOPE) and data.get(VALIDATION_ID):
-                        validator = _process_metadata_validation(mongo_dao, model_store, configs, data)
-                    elif data.get(SQS_TYPE) == TYPE_CROSS_SUBMISSION and submission_id:
-                        validator = _process_cross_submission(mongo_dao, data)
-                    elif data.get(SQS_TYPE) == TYPE_METADATA_VALIDATE_BATCH and submission_id:
-                        validator = _process_metadata_batch(mongo_dao, model_store, configs, data)
-                    # Log and skip invalid or incomplete message (wrong type or missing required fields).
-                    else:
-                        log.error(f'Invalid message: {data}!')
-                    log.info(f'Processed {SERVICE_TYPE_METADATA} validation for the submission: {data.get(SUBMISSION_ID)}!')
+                deleted = process_validation_message(
+                    msg, log, mongo_dao,
+                    lambda data: _handle_metadata_message(mongo_dao, model_store, configs, data),
+                    VISIBILITY_TIMEOUT,
+                )
+                if deleted:
                     batches_processed += 1
-                    msg.delete()
-                except Exception as e:
-                    log.exception(e)
-                    log.critical(
-                        f'Something wrong happened while processing metadata! Check debug log for details.')
-                finally:
-                    if validator:
-                        del validator
-                    if extender:
-                        extender.stop()
-                        extender = None
         except KeyboardInterrupt:
             log.info('Good bye!')
             return
@@ -288,6 +295,7 @@ class MetaDataValidator:
         self.not_found_property = False
         self.study_name = None
         self.program_names = None
+        self.dbGaPID = None
 
     def _initialize_for_validation(self, submission, submission_id, scope):
         """Shared initialization for both batch and non-batch validation paths.
@@ -323,7 +331,8 @@ class MetaDataValidator:
             self.log.error(msg)
             return FAILED, msg
 
-        self.study_name = study.get("studyName")
+        self.study_name = study.get(STUDY_NAME)
+        self.dbGaPID = get_core_dbGaPID(study.get(DBGAPID, ""))
         self.program_names = self.mongo_dao.find_organization_name_by_study_id(study_id)
         return None
 
@@ -424,17 +433,23 @@ class MetaDataValidator:
         # submission-level validation
         sub_intention = self.submission.get(SUBMISSION_INTENTION)
         try:
-            # call validate_required_props
-            result_required= self.validate_required_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix)
-            # call validate_prop_value
-            result_prop_value = self.validate_props(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
-            # call validate_relationship
-            result_rel = self.validate_relationship(data_record, msg_prefix) if sub_intention != SUBMISSION_INTENTION_DELETE else {}
+            validation_results = []
+            if sub_intention == SUBMISSION_INTENTION_DELETE: 
+                validation_results.append(self.validate_file_name(data_record, def_file_nodes, node_type, msg_prefix))
+            else:
+                validation_results.append(self.validate_required_props(data_record, msg_prefix))
+                validation_results.append(self.validate_props(data_record, msg_prefix))
+                validation_results.append(self.validate_relationship(data_record, msg_prefix))
+                validation_results.append(self.validate_required_relationship(data_record, msg_prefix))
+                validation_results.append(self.validate_dbGaPID(data_record, msg_prefix))
 
-            # concatenation of all errors
-            errors = result_required.get(ERRORS, []) +  result_prop_value.get(ERRORS, []) + result_rel.get(ERRORS, [])
-            # concatenation of all warnings
-            warnings = result_required.get(WARNINGS, []) +  result_prop_value.get(WARNINGS, []) + result_rel.get(WARNINGS, [])
+            errors = []
+            warnings = []
+
+            for result in validation_results:
+                errors += result.get(ERRORS, [])
+                warnings += result.get(WARNINGS, [])
+
             #check if existed nodes in release collection
             if sub_intention and sub_intention in [SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_INTENTION_DELETE]:
                 exist_release = self.mongo_dao.search_released_node_with_status(self.submission[DATA_COMMON_NAME], node_type, data_record[NODE_ID], [SUBMISSION_REL_STATUS_RELEASED, None])
@@ -453,20 +468,22 @@ class MetaDataValidator:
                                                         NODE_ID, self.model.get_node_id(node_type)))
                 elif sub_intention == SUBMISSION_INTENTION_DELETE and not exist_release:
                     errors.append(create_error("M019", [msg_prefix, node_type, data_record[NODE_ID]], NODE_ID, self.model.get_node_id(node_type)))
+
             # if there are any errors set the result to "Error"
             if len(errors) > 0:
                 return STATUS_ERROR, errors, warnings
             # if there are no errors but warnings,  set the result to "Warning"
             if len(warnings) > 0:
                 return STATUS_WARNING, errors, warnings
+            #  if there are neither errors nor warnings, return default values
+            else:
+                return STATUS_PASSED, errors, warnings
         except Exception as e:
             self.log.exception(e)
             msg = f'Failed to validate dataRecords for the submission, {self.submission_id} at scope, {self.scope}!'
             self.log.exception(msg) 
             error = create_error("M020", [], "", "")
             return STATUS_ERROR,[error], None
-        #  if there are neither errors nor warnings, return default values
-        return STATUS_PASSED, errors, warnings
     
     def check_difference_in_props(self, new_node, exist_node):
         """
@@ -563,7 +580,7 @@ class MetaDataValidator:
                                     else:
                                         data_record[PROPERTIES][data_key] = matched_val
                         elif entity_type == "Study":
-                            if data_key == self.model.get_configured_prop_name("studyName"):
+                            if data_key == self.model.get_configured_prop_name(STUDY_NAME):
                                 if data_value.lower() != self.study_name.lower():
                                     result[ERRORS].append(create_error("M029", [msg_prefix, self.study_name], data_key, data_value))
                                 else:
@@ -734,6 +751,40 @@ class MetaDataValidator:
 
         if len(result[ERRORS]) == 0 and len(result[WARNINGS]) == 0:
             result["result"] = STATUS_PASSED
+        return result
+
+    def validate_required_relationship(self, data_record, msg_prefix):
+        result = {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+        node_type = data_record.get(NODE_TYPE)
+        required_relationship_columns = self.model.get_final_req_rel_columns_for_node(node_type)
+        parents = {}
+        for parent_node in data_record.get(PARENTS, []):
+            parents[get_column_name_from_parent_obj(parent_node)] = parent_node[PARENT_ID_VAL]
+        for required_column in required_relationship_columns:
+            parent_id_value = parents.get(required_column)
+            if required_column not in parents.keys() or parent_id_value is None or parent_id_value == "":
+                result[VALIDATION_RESULT] = STATUS_ERROR
+                result[ERRORS].append(create_error("M037", f'{msg_prefix}:  Required relationship "{required_column}" is empty.', required_column, ""))
+
+        return result
+
+    def validate_dbGaPID(self, data_record, msg_prefix):
+        result = {}
+        node_type = data_record.get(NODE_TYPE)
+        if self.model.get_entity_type(node_type) == "Study":
+            if not self.dbGaPID:
+                return {}
+            dbGaPID_prop_name = self.model.get_configured_prop_name(DBGAPID)
+            rawDbGaPID = data_record.get(PROPERTIES, {}).get(dbGaPID_prop_name, "")
+            dbGaPID = get_core_dbGaPID(rawDbGaPID)
+            if not dbGaPID:
+                return {}
+
+            if dbGaPID == self.dbGaPID:
+                return {VALIDATION_RESULT: STATUS_PASSED, ERRORS: [], WARNINGS: []}
+            else:
+                return {VALIDATION_RESULT: STATUS_ERROR, ERRORS: [create_error("M038", [msg_prefix, dbGaPID_prop_name, dbGaPID, self.dbGaPID], dbGaPID_prop_name, dbGaPID)], WARNINGS: []}
+
         return result
 
     def get_file_consent_code(self, parent_type, parent_id_value, consent_group_parents, visited=None):
@@ -1020,3 +1071,13 @@ def create_new_qc_result(node, validation_type):
         QC_ORIGIN: QC_ORIGIN_METADATA_VALIDATE_SERVICE if validation_type == VALIDATION_TYPE_METADATA else QC_ORIGIN_FILE_VALIDATE_SERVICE
     }
     return qc_result
+
+def get_column_name_from_parent_obj(parent_obj):
+    return f'{parent_obj[PARENT_TYPE]}.{parent_obj[PARENT_ID_NAME]}'
+
+
+def get_core_dbGaPID(raw):
+    if not raw or not isinstance(raw, str):
+        return raw
+
+    return re.sub(r'\.[vV].*$', '', raw).lower()

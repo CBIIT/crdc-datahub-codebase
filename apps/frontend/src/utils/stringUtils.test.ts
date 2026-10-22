@@ -557,3 +557,43 @@ describe("coerceToString", () => {
     }
   );
 });
+
+describe("stripHtmlTags", () => {
+  it.each<unknown>([null, undefined, "", 123, {}, []])(
+    "should return an empty string when the input is %p",
+    (value) => {
+      expect(utils.stripHtmlTags(value as string)).toBe("");
+    }
+  );
+
+  it("should return plain text unchanged", () => {
+    expect(utils.stripHtmlTags("A plain comment")).toBe("A plain comment");
+  });
+
+  it("should keep the text content of stripped tags", () => {
+    expect(utils.stripHtmlTags("<strong>bold</strong> and <em>italic</em>")).toBe(
+      "bold and italic"
+    );
+  });
+
+  it.each<[string, string]>([
+    ["<title>Review</title>", "Review"],
+    ["<title>Review</title> and more", "Review and more"],
+  ])("should keep the text of head-only elements in %p", (value, expected) => {
+    expect(utils.stripHtmlTags(value)).toBe(expected);
+  });
+
+  it.each<string>([
+    "<img src='x' onerror='alert(1)' />",
+    "<script>alert(1)</script>",
+    "<style>body { color: red; }</style>",
+    "<xmp><img src=x onerror=alert(1)></xmp>",
+    "<br />",
+  ])("should leave no content remaining for %p", (value) => {
+    expect(utils.stripHtmlTags(value).trim()).toBe("");
+  });
+
+  it("should not treat unclosed comparisons as markup", () => {
+    expect(utils.stripHtmlTags("1 < 2 and 3 > 2")).toBe("1 < 2 and 3 > 2");
+  });
+});

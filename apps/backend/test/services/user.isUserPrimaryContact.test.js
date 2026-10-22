@@ -11,8 +11,8 @@ jest.mock('../../verifier/user-info-verifier', () => ({
 
 describe('UserService.isUserPrimaryContact', () => {
     let userService;
-    let mockUserCollection, mockLogCollection, mockOrganizationCollection, 
-        mockNotificationsService, mockSubmissionsCollection, mockApplicationCollection, 
+    let mockUserDAO, mockLogCollection, mockOrganizationCollection, 
+        mockNotificationsService, mockApplicationCollection, 
         mockOfficialEmail, mockAppUrl, mockApprovedStudiesService, mockInactiveUserDays, 
         mockConfigurationService, mockInstitutionService, mockAuthorizationService;
     let context, params;
@@ -59,21 +59,18 @@ describe('UserService.isUserPrimaryContact', () => {
         // Reset all mocks
         jest.clearAllMocks();
 
-        // Create mock collections and services
-        mockUserCollection = {
-            aggregate: jest.fn()
+        mockUserDAO = {
+            findMany: jest.fn()
         };
         mockLogCollection = {};
         mockOrganizationCollection = {
             aggregate: jest.fn()
         };
         mockNotificationsService = {};
-        mockSubmissionsCollection = {};
         mockApplicationCollection = {};
         mockOfficialEmail = 'test@example.com';
         mockAppUrl = 'http://test.com';
         mockApprovedStudiesService = {
-            aggregate: jest.fn(),
             approvedStudiesCollection: {
                 aggregate: jest.fn()
             }
@@ -83,13 +80,10 @@ describe('UserService.isUserPrimaryContact', () => {
         mockInstitutionService = {};
         mockAuthorizationService = {};
 
-        // Create user service instance
         userService = new UserService(
-            mockUserCollection,
             mockLogCollection,
             mockOrganizationCollection,
             mockNotificationsService,
-            mockSubmissionsCollection,
             mockApplicationCollection,
             mockOfficialEmail,
             mockAppUrl,
@@ -99,6 +93,7 @@ describe('UserService.isUserPrimaryContact', () => {
             mockInstitutionService,
             mockAuthorizationService
         );
+        userService.userDAO = mockUserDAO;
 
         // Set up context and params
         context = {

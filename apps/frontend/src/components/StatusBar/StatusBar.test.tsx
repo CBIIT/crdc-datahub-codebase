@@ -210,7 +210,7 @@ describe("StatusBar > Comments Modal Tests", () => {
     expect(() => getByText("Review Comments")).toThrow();
   });
 
-  it("renders the modal when there historical comments", async () => {
+  it("opens the review comments list dialog when there are historical comments", async () => {
     const data = applicationFactory.build({
       history: [
         historyEventFactory.build({
@@ -223,10 +223,10 @@ describe("StatusBar > Comments Modal Tests", () => {
 
     fireEvent.click(getByText("View Comments"));
 
-    expect(getByTestId("review-comments-dialog")).toBeVisible();
+    expect(getByTestId("comments-dialog")).toBeVisible();
   });
 
-  it("renders the most recent comment by date", async () => {
+  it("renders all comment events in descending order by date", async () => {
     const data = applicationFactory.build({
       history: [
         historyEventFactory.build({
@@ -248,12 +248,13 @@ describe("StatusBar > Comments Modal Tests", () => {
 
     fireEvent.click(getByText("View Comments"));
 
-    expect(getByTestId("review-comments-dialog")).toBeVisible();
-    expect(getByText(/BASED ON SUBMISSION FROM 11\/30\/2019:/i)).toBeVisible();
-    expect(getByText(data.history[2].reviewComment)).toBeVisible();
+    expect(getByTestId("comments-dialog")).toBeVisible();
+    expect(getByTestId("comments-item-0-date")).toHaveTextContent("11/30/2019");
+    expect(getByTestId("comments-item-1-date")).toHaveTextContent("11/26/2019");
+    expect(getByTestId("comments-item-2-date")).toHaveTextContent("11/23/2019");
   });
 
-  it("uses the most recent comment regardless of sorting", async () => {
+  it("opens the detail dialog for the selected review event", async () => {
     const data = applicationFactory.build({
       history: [
         historyEventFactory.build({
@@ -278,18 +279,19 @@ describe("StatusBar > Comments Modal Tests", () => {
     const { getByTestId, getByText } = render(<BaseComponent data={data} />);
 
     fireEvent.click(getByText("View Comments"));
+    fireEvent.click(getByTestId("comments-item-0-view"));
 
     expect(getByTestId("review-comments-dialog")).toBeVisible();
     expect(getByText(/BASED ON SUBMISSION FROM 12\/30\/2023:/i)).toBeVisible();
     expect(getByText(data.history[1].reviewComment)).toBeVisible();
   });
 
-  it("uses the last event with a comment", async () => {
+  it("shows only events with non-empty review comments", async () => {
     const data = applicationFactory.build({
       history: [
         historyEventFactory.build({ reviewComment: "", dateTime: "2023-11-23T14:26:01Z" }),
         historyEventFactory.build({
-          reviewComment: "not the latest, but has a comment",
+          reviewComment: "  not the latest, but has a comment  ",
           dateTime: "2023-11-26T15:36:01Z",
         }),
         historyEventFactory.build({ reviewComment: "", dateTime: "2023-11-30T01:25:45Z" }),
@@ -301,12 +303,12 @@ describe("StatusBar > Comments Modal Tests", () => {
 
     fireEvent.click(getByText("View Comments"));
 
-    expect(getByTestId("review-comments-dialog")).toBeVisible();
-    expect(getByText(/BASED ON SUBMISSION FROM 11\/26\/2023:/i)).toBeVisible();
-    expect(getByText(data.history[1].reviewComment)).toBeVisible();
+    expect(getByTestId("comments-dialog")).toBeVisible();
+    expect(getByTestId("comments-item-0-date")).toHaveTextContent("11/26/2023");
+    expect(() => getByTestId("comments-item-1")).toThrow();
   });
 
-  it("provides the unformatted review date as a title attribute", () => {
+  it("provides the unformatted review date as a title attribute in detail dialog", () => {
     const data = applicationFactory.build({
       history: [
         historyEventFactory.build({
@@ -316,9 +318,10 @@ describe("StatusBar > Comments Modal Tests", () => {
       ],
     });
 
-    const { getByText } = render(<BaseComponent data={data} />);
+    const { getByTestId, getByText } = render(<BaseComponent data={data} />);
 
     fireEvent.click(getByText("View Comments"));
+    fireEvent.click(getByTestId("comments-item-0-view"));
 
     expect(getByText(/BASED ON SUBMISSION FROM 11\/24\/2009:/i)).toHaveAttribute(
       "title",
@@ -326,7 +329,26 @@ describe("StatusBar > Comments Modal Tests", () => {
     );
   });
 
-  it("closes the modal with the Close button", async () => {
+  it("returns to the list dialog with the Back button", async () => {
+    const data = applicationFactory.build({
+      history: [
+        historyEventFactory.build({ reviewComment: "comment", dateTime: "2020-01-01T10:00:00Z" }),
+      ],
+    });
+
+    const { getByTestId, getByText } = render(<BaseComponent data={data} />);
+
+    fireEvent.click(getByText("View Comments"));
+    fireEvent.click(getByTestId("comments-item-0-view"));
+
+    expect(getByTestId("review-comments-dialog")).toBeVisible();
+
+    fireEvent.click(getByTestId("review-comments-dialog-back"));
+
+    await waitFor(() => expect(getByTestId("comments-dialog")).toBeVisible());
+  });
+
+  it("closes the list dialog with the Close button", async () => {
     const data = applicationFactory.build({
       history: [historyEventFactory.build({ reviewComment: "comment" })],
     });
@@ -335,9 +357,28 @@ describe("StatusBar > Comments Modal Tests", () => {
 
     fireEvent.click(getByText("View Comments"));
 
+    expect(queryByTestId("comments-dialog")).toBeVisible();
+
+    fireEvent.click(queryByTestId("comments-dialog-close"));
+
+    await waitFor(() => expect(queryByTestId("comments-dialog")).toBeNull());
+  });
+
+  it("closes the detail dialog with the Close button", async () => {
+    const data = applicationFactory.build({
+      history: [
+        historyEventFactory.build({ reviewComment: "comment", dateTime: "2020-01-01T10:00:00Z" }),
+      ],
+    });
+
+    const { queryByTestId, getByTestId, getByText } = render(<BaseComponent data={data} />);
+
+    fireEvent.click(getByText("View Comments"));
+    fireEvent.click(getByTestId("comments-item-0-view"));
+
     expect(queryByTestId("review-comments-dialog")).toBeVisible();
 
-    fireEvent.click(queryByTestId("review-comments-dialog-close"));
+    fireEvent.click(getByTestId("review-comments-dialog-close"));
 
     await waitFor(() => expect(queryByTestId("review-comments-dialog")).toBeNull());
   });
@@ -514,6 +555,7 @@ describe("StatusBar > History Modal Tests", () => {
     ["Approved", "The request form was reviewed and approved."],
     ["Rejected", "The request form was reviewed and rejected."],
     ["Inquired", "Additional information or clarification was requested from the submitter."],
+    ["In Revision", "The request form was reopened for additional information from the submitter."],
     ["Canceled", "The request form was manually canceled and is no longer active."],
     [
       "Deleted",

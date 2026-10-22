@@ -4,10 +4,13 @@ import React, { FC } from "react";
 import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
+import { Context as AuthContext } from "@/components/Contexts/AuthContext";
 import { OrganizationProvider } from "@/components/Contexts/OrganizationListContext";
 import { SearchParamsProvider } from "@/components/Contexts/SearchParamsContext";
 import { approvedStudyFactory } from "@/factories/approved-study/ApprovedStudyFactory";
+import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
+import { userFactory } from "@/factories/auth/UserFactory";
 import {
   LIST_APPROVED_STUDIES,
   ListApprovedStudiesResp,
@@ -52,11 +55,18 @@ const TestParent: FC<ParentProps> = ({
   children,
 }: ParentProps) => (
   <MockedProvider mocks={mocks} addTypename={false}>
-    <TestRouter initialEntries={initialEntries}>
-      <OrganizationProvider preload>
-        <SearchParamsProvider>{children}</SearchParamsProvider>
-      </OrganizationProvider>
-    </TestRouter>
+    <AuthContext.Provider
+      value={authCtxStateFactory.build({
+        isLoggedIn: true,
+        user: userFactory.build({ permissions: ["study:manage"] }),
+      })}
+    >
+      <TestRouter initialEntries={initialEntries}>
+        <OrganizationProvider preload>
+          <SearchParamsProvider>{children}</SearchParamsProvider>
+        </OrganizationProvider>
+      </TestRouter>
+    </AuthContext.Provider>
   </MockedProvider>
 );
 

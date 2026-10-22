@@ -401,6 +401,7 @@ describe("Basic Functionality", () => {
       <Button
         application={applicationFactory.build({
           status: "Canceled",
+          canBeRestored: true,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
       />,
@@ -457,6 +458,7 @@ describe("Basic Functionality", () => {
       <Button
         application={applicationFactory.build({
           status: "Canceled",
+          canBeRestored: true,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
       />,
@@ -519,6 +521,7 @@ describe("Basic Functionality", () => {
       <Button
         application={applicationFactory.build({
           status: "Canceled",
+          canBeRestored: true,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
       />,
@@ -582,6 +585,7 @@ describe("Basic Functionality", () => {
       <Button
         application={applicationFactory.build({
           status: "Canceled",
+          canBeRestored: true,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
         onCancel={onCancel}
@@ -660,6 +664,7 @@ describe("Implementation Requirements", () => {
       <Button
         application={applicationFactory.build({
           status: "Canceled",
+          canBeRestored: true,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
       />,
@@ -683,6 +688,36 @@ describe("Implementation Requirements", () => {
     await waitFor(() => {
       expect(tooltip).not.toBeInTheDocument();
     });
+  });
+
+  it("should disable the Restore button and show a tooltip when canBeRestored is false", async () => {
+    const { getByTestId, findByRole } = render(
+      <Button
+        application={applicationFactory.build({
+          status: "Canceled",
+          canBeRestored: false,
+          applicant: applicantFactory.build({ applicantID: "owner" }),
+        })}
+      />,
+      {
+        wrapper: ({ children }) => (
+          <TestParent user={{ _id: "owner", permissions: ["submission_request:cancel"] }}>
+            {children}
+          </TestParent>
+        ),
+      }
+    );
+
+    const button = getByTestId("cancel-restore-application-button");
+    expect(button).toBeDisabled();
+
+    userEvent.hover(getByTestId("cancel-restore-application-button-wrapper"));
+
+    const tooltip = await findByRole("tooltip");
+    expect(tooltip).toBeVisible();
+    expect(tooltip).toHaveTextContent(
+      "A newer version has been reopened. This submission request can no longer be restored."
+    );
   });
 
   it("should dismiss the dialog when the 'Cancel' dialog button is clicked", async () => {
@@ -793,6 +828,7 @@ describe("Implementation Requirements", () => {
       <Button
         application={applicationFactory.build({
           status: "Canceled",
+          canBeRestored: true,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
       />,
@@ -821,6 +857,7 @@ describe("Implementation Requirements", () => {
       <Button
         application={applicationFactory.build({
           status: "Deleted",
+          canBeRestored: true,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
       />,
@@ -1016,6 +1053,7 @@ describe("Implementation Requirements", () => {
       <Button
         application={applicationFactory.build({
           status,
+          canBeRestored: true,
           applicant: applicantFactory.build({ applicantID: "owner" }),
         })}
       />,

@@ -13,12 +13,75 @@ from common.constants import STATUS, BATCH_TYPE_METADATA, DATA_COMMON_NAME, ROOT
     BATCH_STATUS_FAILED, ID, FILE_NAME, TYPE, FILE_PREFIX, MODEL_VERSION, MODEL_FILE_DIR, \
     TIER_CONFIG, STATUS_ERROR, STATUS_NEW, SERVICE_TYPE_ESSENTIAL, SUBMISSION_ID, SUBMISSION_INTENTION_DELETE, NODE_TYPE, \
     SUBMISSION_INTENTION, TYPE_DELETE, BATCH_BUCKET, METADATA_VALIDATION_STATUS, STATUS_WARNING, DCF_PREFIX, NODE_IDS, DELETE_ALL, EXCLUSIVE_IDS, \
-    DELETE_ORPHANED_DATA_FILES, FILE_ERRORS
+    DELETE_ORPHANED_DATA_FILES, FILE_ERRORS, SUBMITTED_ID, S3_FILE_INFO, STATUS_PRECEDENCE
 from common.utils import cleanup_s3_download_dir, get_exception_msg, dump_dict_to_json, removeTailingEmptyColumnsAndRows, validate_uuid_by_rex, get_date_time
 from common.model_store import ModelFactory
 from metadata_remover import MetadataRemover
 from data_loader import DataLoader
 from service.ecs_agent import set_scale_in_protection
+
+def resolve_file_validation_after_delete(existing_file_errors, orphan_errors, delete_orphaned_data_files, remaining_file_status):
+    """Choose file status and fileErrors after a metadata delete.
+
+    When associated data files are not deleted, the scan is merged onto the stored
+    list by submittedID. A scanned row replaces the stored row for the same id.
+    When they are deleted, fileErrors is the orphan scan only.
+    An empty scan uses the remaining file-node status so a previous Error is cleared.
+
+    @param existing_file_errors fileErrors already stored on the submission
+    @param orphan_errors F008 rows from the orphan scan
+    @param delete_orphaned_data_files True when associated data files were deleted
+    @param remaining_file_status status of remaining file nodes when the scan is empty
+    @returns tuple of file status and fileErrors
+    """
+    existing = existing_file_errors or []
+    orphans = orphan_errors or []
+    if delete_orphaned_data_files:
+        if orphans:
+            return STATUS_ERROR, orphans
+        return remaining_file_status, []
+    combined = []
+    index_by_id = {}
+    for row in existing + orphans:
+        submitted_id = row.get(SUBMITTED_ID) if isinstance(row, dict) else None
+        if submitted_id and submitted_id in index_by_id:
+            combined[index_by_id[submitted_id]] = row
+        else:
+            if submitted_id:
+                index_by_id[submitted_id] = len(combined)
+            combined.append(row)
+    return (STATUS_ERROR if combined else None), combined
+
+
+def file_status_after_metadata_delete(file_records):
+    """Worst remaining file status after a delete. Pending statuses such as New are kept.
+
+    Passed, Warning, Error, and Failed use the usual precedence. Any other stored
+    status is pending. Pending wins over Passed, and over an empty set of ranked
+    statuses. Warning, Error, and Failed still win over pending.
+
+    @param file_records remaining file dataRecords; None means the load failed
+    @returns file validation status
+    @raises Exception when file records could not be loaded
+    """
+    if file_records is None:
+        raise Exception("Failed to load file records after metadata delete")
+    worst_status = None
+    worst_prec = -1
+    pending = False
+    for file_record in file_records:
+        file_status = (file_record.get(S3_FILE_INFO) or {}).get(STATUS)
+        file_prec = STATUS_PRECEDENCE.get(file_status)
+        if file_prec is None:
+            pending = True
+            continue
+        if file_prec > worst_prec:
+            worst_status = file_status
+            worst_prec = file_prec
+    if pending and (worst_status is None or worst_status == STATUS_PASSED):
+        return STATUS_NEW
+    return worst_status if worst_status is not None else STATUS_PASSED
+
 
 VISIBILITY_TIMEOUT = 20
 SEPARATOR_CHAR = '\t'
@@ -109,7 +172,7 @@ def essentialValidate(configs, job_queue, mongo_dao):
                                 batch[ERRORS] = batch[ERRORS][:BATCH_ERROR_LIMIT]
                             mongo_dao.update_batch(batch)
                             if validator.submission and submission_meta_status == STATUS_NEW:
-                                mongo_dao.set_submission_validation_status(validator.submission, None, submission_meta_status, None, None)
+                                mongo_dao.set_submission_validation_status(validator.submission, None, submission_meta_status, None)
                     
                     elif data.get(SQS_TYPE) == TYPE_DELETE and data.get(SUBMISSION_ID) and data.get(NODE_TYPE):
                         # if both nodeIDs and deleteAll are not provided, raise error
@@ -126,31 +189,59 @@ def essentialValidate(configs, job_queue, mongo_dao):
                         orphan_errors = []
                         result = None
                         try:
-                            if delete_all:
-                                # get all node ids for the node type in the submission
-                                node_type_ids = mongo_dao.search_nodes_by_type_and_submission(node_type, submission_id, exclusive_ids)
-                                node_ids = node_type_ids
-                            result, orphan_errors = validator.remove_metadata(submission_id, node_type, node_ids, delete_orphaned_data_files)
+                            result, orphan_errors = validator.remove_metadata(
+                                submission_id, node_type, node_ids, delete_orphaned_data_files,
+                                delete_all, exclusive_ids,
+                            )
                         except Exception:
                             error = f'{submission_id}: Failed to delete metadata, {get_exception_msg()}!'
                             log.error(error)
                             orphan_errors = []
                         finally:
+                            # A scan that did not finish must not rewrite fileErrors or acknowledge the message.
+                            delete_incomplete = getattr(validator, "delete_incomplete", False) is True
                             # Only update when remove_metadata returned (result is True or False); skip if exception before return
-                            if validator.submission and result is not None:
+                            if validator.submission and result is not None and not delete_incomplete:
                                 fresh_submission = mongo_dao.get_submission(submission_id)
                                 submission_for_update = fresh_submission or validator.submission
                                 existing = (fresh_submission.get(FILE_ERRORS) or []) if fresh_submission else (validator.submission.get(FILE_ERRORS) or [])
-                                combined_file_errors = existing + (orphan_errors if result and orphan_errors else [])
-                                status = submission_for_update.get(METADATA_VALIDATION_STATUS)
-                                status = STATUS_PASSED if status in [STATUS_ERROR, STATUS_WARNING] else status
-                                mongo_dao.set_submission_validation_status(submission_for_update, None, status, None, combined_file_errors, True)
+                                delete_succeeded = result == True
+                                # F008 rows are stored as qcResults. Do not also embed them.
+                                if delete_succeeded:
+                                    if orphan_errors:
+                                        file_status = STATUS_ERROR
+                                    elif delete_orphaned_data_files:
+                                        file_records = mongo_dao.get_files_by_submission(submission_id)
+                                        if file_records is None:
+                                            log.error(
+                                                f'{submission_id}: Failed to load file records after metadata delete'
+                                            )
+                                            validator.delete_incomplete = True
+                                            file_status = None
+                                        else:
+                                            file_status = file_status_after_metadata_delete(file_records)
+                                    else:
+                                        file_status = None
+                                    combined_file_errors = []
+                                else:
+                                    file_status, combined_file_errors = resolve_file_validation_after_delete(
+                                        existing, [], False, None
+                                    )
+                                if getattr(validator, "delete_incomplete", False) is not True:
+                                    status = submission_for_update.get(METADATA_VALIDATION_STATUS)
+                                    status = STATUS_PASSED if status in [STATUS_ERROR, STATUS_WARNING] else status
+                                    mongo_dao.set_submission_validation_status(
+                                        submission_for_update, file_status, status, combined_file_errors, True
+                                    )
                     else:
                         log.error(f'Invalid message: {data}!')
 
-                    log.info(f'Processed {SERVICE_TYPE_ESSENTIAL} validation for the batch, {data.get(BATCH_ID)}!')
-                    batches_processed += 1
-                    msg.delete()
+                    if getattr(validator, "delete_incomplete", False) is True:
+                        log.error(f'{data.get(SUBMISSION_ID)}: orphan scan did not finish; leaving the message for retry')
+                    else:
+                        log.info(f'Processed {SERVICE_TYPE_ESSENTIAL} validation for the batch, {data.get(BATCH_ID)}!')
+                        batches_processed += 1
+                        msg.delete()
                 except Exception as e:
                     log.exception(e)
                     log.critical(
@@ -288,7 +379,7 @@ class EssentialValidator:
             self.bucket.download_file(key, download_file)
             if os.path.isfile(download_file):
                 df = pd.read_csv(download_file, sep=SEPARATOR_CHAR, header=0, dtype='str', encoding=UTF8_ENCODE, keep_default_na=False, na_values=[''])
-                self.df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if x.dtype == 'object' else x) # stripe white space.
+                self.df = (df.rename(columns=lambda x: x.strip())).apply(lambda x: x.str.strip() if pd.api.types.is_string_dtype(x) else x) # strip white space.  covers both legacy object dtype and pandas' newer str dtype
                 self.download_file_list.append(download_file)
             return True # if no exception
         except ClientError as ce:
@@ -443,12 +534,17 @@ class EssentialValidator:
 
         id_field = self.model.get_node_id(type)
         # check if missing id property
-        if id_field and not id_field in columns: 
-            msg = f'“{file_info[FILE_NAME]}”: Key property “{id_field}” is required.'
-            self.log.error(msg)
-            file_info[ERRORS].append(msg)
-            self.batch[ERRORS].append(msg)
-            return False
+        system_populated_props, system_populated_relationships = self.model.get_system_populated_props_for_node(type)
+        if id_field and not id_field in columns:
+            if id_field in system_populated_props:
+                self.df[id_field] = np.nan
+            else:
+                msg = f'“{file_info[FILE_NAME]}”: Key property “{id_field}” is required.'
+                self.log.error(msg)
+                file_info[ERRORS].append(msg)
+                self.batch[ERRORS].append(msg)
+                return False
+
         #check if id property value is empty
         nan_count = self.df.isnull().sum()[id_field]
         # check if the node has composition id (user story CRDCDh-2631)
@@ -477,7 +573,7 @@ class EssentialValidator:
                     file_info[ERRORS].append(msg)
                     self.batch[ERRORS].append(msg)
                     return False
-        if nan_count > 0 and not composition_key: 
+        if nan_count > 0 and not composition_key and id_field not in system_populated_props:
             nan_rows = self.df[self.df[id_field].isnull()].to_dict("index")
             for key in nan_rows.keys():
                 msg = f'“{file_info[FILE_NAME]}:{key + 2}”:  Key property “{id_field}” value is required.'
@@ -505,17 +601,28 @@ class EssentialValidator:
             if not isValidId:
                 return False
         if self.submission_intention != SUBMISSION_INTENTION_DELETE: 
-            # check missing required proper 
-            required_props = self.model.get_node_req_props(type)
-            missed_props = [ prop for prop in required_props if prop not in columns and prop != id_field]
+            # check missing required proper
+            final_required_props = self.model.get_final_required_props_for_node(type)
+            missed_props = [ prop for prop in final_required_props if prop not in columns and prop != id_field]
             if len(missed_props) > 0:
                 msg = f'“{file_info[FILE_NAME]}”: '
                 msg += f'Properties {json.dumps(missed_props)} are required.' if len(missed_props) > 1 else f'Property "{missed_props[0]}" is required.'
                 self.log.error(msg)
                 file_info[ERRORS].append(msg)
                 self.batch[ERRORS].append(msg)
+
+            # check missing required relationship 
+            required_relationships = self.model.get_final_req_rel_columns_for_node(type)
+            missed_rels = [ rel for rel in required_relationships if rel not in columns]
+            if len(missed_rels) > 0:
+                msg = f'“{file_info[FILE_NAME]}”: '
+                msg += f'Relationship columns {json.dumps(missed_rels)} are required.' if len(missed_rels) > 1 else f'Relationship column "{missed_rels[0]}" is required.'
+                self.log.error(msg)
+                file_info[ERRORS].append(msg)
+                self.batch[ERRORS].append(msg)
+
             # check relationship
-            rel_props = [rel for rel in columns if "." in rel and not re.search('\.\d*$',rel)]
+            rel_props = [rel for rel in columns if "." in rel and not re.search(r'\.\d*$',rel)]
             rel_result, msgs = self.check_relationship(file_info, type, rel_props)
             if not rel_result:
                 self.log.error(msgs)
@@ -640,11 +747,12 @@ class EssentialValidator:
                 return False, msgs
         
         # check if has relationship
-        if len(rel_props) == 0:
+        system_populated_relationships = self.model.get_system_populated_relationships_for_node(type).keys()
+        if len(rel_props) == 0 and len(system_populated_relationships) == 0:
             return False, [f'“{file_info[FILE_NAME]}”: All relationship columns are missing. Please ensure at least one relationship column is included.']
         
         def_rel_nodes = [ key for key in def_rel.keys()]
-        rel_props_dic = {rel.split(".")[0]: rel.split(".")[1] for rel in rel_props}
+        rel_props_dic = {rel.split(".")[0].strip(): rel.split(".")[1].strip() for rel in rel_props}
         rel_props_dic_types = rel_props_dic.keys()
         
         # check if parent node is valid

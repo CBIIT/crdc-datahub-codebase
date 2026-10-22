@@ -2,8 +2,17 @@
 export { mutation as REVIEW_APP } from "./reviewApplication";
 export type { Response as ReviewAppResp, Input as ReviewAppInput } from "./reviewApplication";
 
-export { mutation as REOPEN_APP } from "./reopenApplication";
-export type { Response as ReopenAppResp } from "./reopenApplication";
+export { mutation as RESUME_APP } from "./resumeInquiredApplication";
+export type {
+  Response as ResumeAppResp,
+  Input as ResumeAppInput,
+} from "./resumeInquiredApplication";
+
+export { mutation as REOPEN_APPROVED_SR } from "./reopenApprovedSubmissionRequest";
+export type {
+  Response as ReopenApprovedSRResp,
+  Input as ReopenApprovedSRInput,
+} from "./reopenApprovedSubmissionRequest";
 
 export { mutation as APPROVE_APP } from "./approveApplication";
 export type { Input as ApproveAppInput, Response as ApproveAppResp } from "./approveApplication";
@@ -130,6 +139,12 @@ export type {
   Response as RetrieveReleasedDataResp,
 } from "./retrieveReleasedDataByID";
 
+export { query as RETRIEVE_SUBMISSION_QC_COMPARISONS } from "./retrieveSubmissionQCComparisons";
+export type {
+  RetrieveSubmissionQCComparisonsInput,
+  RetrieveSubmissionQCComparisonsResp,
+} from "./retrieveSubmissionQCComparisons";
+
 export { query as SUBMISSION_STATS } from "./submissionStats";
 export type {
   Input as SubmissionStatsInput,
@@ -175,6 +190,9 @@ export type {
 export { DOWNLOAD_DB_GAP_SHEET } from "./downloadDBGaPLoadSheet";
 export type { DownloadDbGaPSheetInput, DownloadDbGaPSheetResp } from "./downloadDBGaPLoadSheet";
 
+export { DOWNLOAD_DCF_MANIFEST } from "./downloadDCFManifest";
+export type { DownloadDCFManifestInput, DownloadDCFManifestResp } from "./downloadDCFManifest";
+
 export { GET_PENDING_PVS } from "./getPendingPVs";
 export type { GetPendingPVsInput, GetPendingPVsResponse } from "./getPendingPVs";
 
@@ -190,6 +208,9 @@ export type { Input as GetUserInput, Response as GetUserResp } from "./getUser";
 
 export { query as LIST_USERS } from "./listUsers";
 export type { Response as ListUsersResp } from "./listUsers";
+
+export { query as LIST_REOPEN_OWNERS } from "./listReopenOwners";
+export type { Response as ListReopenOwnersResp } from "./listReopenOwners";
 
 export { mutation as EDIT_USER } from "./editUser";
 export type { Input as EditUserInput, Response as EditUserResp } from "./editUser";

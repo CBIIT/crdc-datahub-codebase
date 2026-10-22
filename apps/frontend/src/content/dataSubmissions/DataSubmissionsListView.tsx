@@ -7,9 +7,11 @@ import { Link, useLocation } from "react-router-dom";
 
 import DataSubmissionListExport from "@/components/ExportSubmissionsButton";
 import SRFLink from "@/components/SRFLink";
+import { InternalRoles } from "@/config/AuthRoles";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
 import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/AuthContext";
+import CopyTextButton from "../../components/CopyTextButton";
 import CreateDataSubmissionDialog from "../../components/DataSubmissions/CreateDataSubmissionDialog";
 import DataSubmissionListFilters, {
   defaultValues,
@@ -90,19 +92,85 @@ const StyledDateTooltip = styled(StyledTooltip)(() => ({
   cursor: "pointer",
 }));
 
-const columns: Column<T>[] = [
+const StyledTooltipLabel = styled("p")(() => ({
+  fontFamily: "'Inter', sans-serif",
+  fontStyle: "normal",
+  fontWeight: 700,
+  fontSize: "14px",
+  lineHeight: "20px",
+  color: "#346798",
+  margin: 0,
+}));
+
+const StyledTooltipValue = styled("p")(() => ({
+  fontFamily: "'Nunito', sans-serif",
+  fontStyle: "normal",
+  fontWeight: 400,
+  fontSize: "16px",
+  lineHeight: "20px",
+  color: "#595959",
+  margin: 0,
+}));
+
+const submissionNameTextStyle = {
+  fontWeight: 700,
+  color: "#005999",
+};
+
+const StyledSubmissionNameWrapper = styled(Stack)(() => ({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: "5px",
+}));
+
+const BASE_COLUMNS: Column<T>[] = [
   {
     label: "Submission Name",
-    renderValue: (a) =>
-      a.status === "Deleted" || a.archived === true ? (
-        <StyledDisabledText>
-          <TruncatedText text={a.name} />
-        </StyledDisabledText>
-      ) : (
-        <Link to={`/data-submission/${a._id}/upload-activity`}>
-          <TruncatedText text={a.name} underline={false} />
-        </Link>
-      ),
+    renderValue: (a) => {
+      const isDisabled = a.status === "Deleted" || a.archived === true;
+
+      return (
+        <StyledSubmissionNameWrapper data-testid={`submission-name-cell-${a._id}`}>
+          <StyledTooltip
+            title={
+              <Stack gap="6px">
+                <Stack gap="6px">
+                  <StyledTooltipLabel>Submission Name:</StyledTooltipLabel>
+                  <StyledTooltipValue>{a.name}</StyledTooltipValue>
+                </Stack>
+                <Stack gap="6px">
+                  <StyledTooltipLabel>Data Submission ID:</StyledTooltipLabel>
+                  <StyledTooltipValue>{a._id}</StyledTooltipValue>
+                </Stack>
+              </Stack>
+            }
+            placement="top"
+            dynamic
+          >
+            {isDisabled ? (
+              <StyledDisabledText>
+                <TruncatedText text={a.name} disableHoverListener />
+              </StyledDisabledText>
+            ) : (
+              <Link to={`/data-submission/${a._id}/upload-activity`}>
+                <TruncatedText
+                  text={a.name}
+                  underline={false}
+                  disableHoverListener
+                  labelSx={submissionNameTextStyle}
+                />
+              </Link>
+            )}
+          </StyledTooltip>
+          <CopyTextButton
+            copyText={a._id}
+            title="Copy Data Submission ID to the clipboard"
+            aria-label="Copy Data Submission ID to the clipboard"
+            sx={{ color: "#005999" }}
+          />
+        </StyledSubmissionNameWrapper>
+      );
+    },
     field: "name",
     hideable: false,
     exportValue: (a) => ({ label: "Submission Name", value: a.name }),
@@ -271,27 +339,59 @@ const columns: Column<T>[] = [
       value: a.updatedAt ? FormatDate(a.updatedAt, "M/D/YYYY h:mm A") : "",
     }),
     sx: {
-      width: "108px",
+      width: "85px",
     },
   },
 ];
 
+const ADMIN_COLUMNS: Column<T>[] = [
+  {
+    label: "Admin Submit",
+    renderValue: ({ adminSubmitComment }) => {
+      if (!adminSubmitComment) {
+        return "";
+      }
+
+      return <TruncatedText text={adminSubmitComment} maxCharacters={10} />;
+    },
+    field: "adminSubmitComment",
+    sortDisabled: true,
+    hideable: true,
+    defaultHidden: true,
+    exportValue: ({ adminSubmitComment }) => ({
+      label: "Admin Submit",
+      value: adminSubmitComment || "",
+    }),
+  },
+];
+
 /**
- * View for List of Data Submissions
- *
- * @returns {JSX.Element}
+ * The Data Submissions list view component.
  */
-const ListingView: FC = () => {
+const ListingView: FC = (): JSX.Element => {
   usePageTitle("Data Submissions");
 
   const { state } = useLocation();
-  const { status: authStatus } = useAuthContext();
+  const { status: authStatus, user } = useAuthContext();
   const { enqueueSnackbar } = useSnackbar();
+
+  const isInternalUser = useMemo<boolean>(
+    () => authStatus === AuthStatus.LOADED && InternalRoles.includes(user?.role),
+    [authStatus, user?.role]
+  );
+
+  const tableColumns = useMemo<Array<Column<T>>>(() => {
+    if (isInternalUser) {
+      return [...BASE_COLUMNS, ...ADMIN_COLUMNS];
+    }
+
+    return BASE_COLUMNS;
+  }, [isInternalUser, user?.role]);
 
   const { columnVisibilityModel, setColumnVisibilityModel, visibleColumns } = useColumnVisibility<
     Column<T>
   >({
-    columns,
+    columns: tableColumns,
     getColumnKey: (c) => c.fieldKey ?? c.field,
     localStorageKey: "dataSubmissionListColumns",
   });
@@ -345,6 +445,7 @@ const ListingView: FC = () => {
           offset,
           sortDirection,
           orderBy,
+          isInternalUser,
         },
         context: { clientName: "backend" },
         fetchPolicy: "no-cache",
@@ -421,6 +522,7 @@ const ListingView: FC = () => {
     const scope = {
       ...filtersRef.current,
       ...tableRef.current?.tableParams,
+      isInternalUser,
     };
 
     return (
@@ -453,7 +555,7 @@ const ListingView: FC = () => {
         )}
         <StyledFilterTableWrapper>
           <DataSubmissionListFilters
-            columns={columns}
+            columns={tableColumns}
             organizations={organizations}
             submitterNames={submitterNames}
             dataCommons={dataCommons}

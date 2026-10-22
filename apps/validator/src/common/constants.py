@@ -1,5 +1,6 @@
 #define constants, enums, etc.
 #config 
+
 MONGO_DB = "connection-str"
 SQS_NAME = "sqs"
 RETRIES = "retries"
@@ -41,6 +42,8 @@ BATCH_STATUS_FAILED = "Failed"
 BATCH_TYPE_METADATA ="metadata"
 BATCH_STATUS_UPLOADED = "Uploaded"
 SUBMISSION_COLLECTION="submissions"
+SRF_COLLECTION="applications"
+SRF_ID="submissionRequestID"
 DATA_COMMON_NAME ="dataCommons"
 ORCID = "ORCID"
 BATCH_INTENTION = "metadataIntention"
@@ -64,6 +67,7 @@ FILE_NAME = "fileName"
 STATUS_ERROR = "Error"
 STATUS_WARNING = "Warning"
 STATUS_PASSED = "Passed"
+STATUS_FAILED = "Failed"
 STATUS_NEW = "New"
 FAILED = "Failed"
 # For batch metadata validation, statusDetail may be a list of failure message strings.
@@ -83,6 +87,7 @@ NODE_IDS = "nodeIDs"
 DELETE_ALL = "deleteAll"
 EXCLUSIVE_IDS = "exclusiveIDs"
 DELETE_ORPHANED_DATA_FILES = "deleteOrphanedDataFiles"
+PENDING_METADATA_DELETE = "pendingMetadataDelete"
 DATA_FILE_TYPE = "data file"
 S3_LIST_ORPHANS_PAGE_SIZE = 1000
 
@@ -128,7 +133,6 @@ CROSS_SUBMISSION_VALIDATION_STATUS = "crossSubmissionStatus"
 MODEL_VERSION = "modelVersion"
 KEY = "key"
 LIST_DELIMITER_PROP = "list-delimiter"
-DEF_MAIN_NODES = "main-nodes"
 #s3 download directory
 S3_DOWNLOAD_DIR = "s3_download"
 ROOT_PATH = "rootPath"
@@ -141,6 +145,7 @@ TYPE_METADATA_VALIDATE = "Validate Metadata"
 TYPE_FILE_VALIDATE = "Validate Single File"
 TYPE_FILE_VALIDATE_ALL = "Validate Submission Files"
 TYPE_EXPORT_METADATA = "Export Metadata"
+TYPE_EXPORT_DCF_MANIFEST = "Export DCF Manifest"
 TYPE_COMPLETE_SUB = "Complete Submission"
 TYPE_CROSS_SUBMISSION = "Validate Cross-submission"
 TYPE_METADATA_VALIDATE_BATCH = "Validate Metadata Batch"
@@ -164,7 +169,6 @@ STATUS_PRECEDENCE = {
 PRECEDENCE_TO_STATUS = {v: k for k, v in STATUS_PRECEDENCE.items()}
 ADDITION_ERRORS = "additionalErrors"
 STUDY_ABBREVIATION = "studyAbbreviation"
-LIST_DELIMITER_PROP = "list-delimiter"
 
 #dataRecords
 CRDC_ID = "CRDC_ID"
@@ -185,6 +189,9 @@ SUBMISSION_REL_STATUS_DELETED= "Deleted"
 VALIDATION_COLLECTION = "validation"
 VALIDATION_ID = "validationID"
 VALIDATION_ENDED= "validationEnded"
+STARTED = "started"
+ENDED = "ended"
+VALIDATION_STATUS = "status"
 METADATA_ENDED = "metadataEnded"
 FILE_ENDED = "fileEnded"
 METADATA_STATUS = "metadataStatus"
@@ -252,6 +259,8 @@ SYNONYM_TERM = "synonym_term"
 STUDY_COLLECTION = "approvedStudies"
 ORGANIZATION_COLLECTION = "organization"
 PROPERTY_NAMES = "property-names"
+STUDY_NAME = "studyName"
+DBGAPID = "dbGaPID"
 OMIT_DCF_PREFIX = "omit-DCF-prefix"
 DATA_FILE_LOCATION = "dataFileLocation"
 S3_PREFIX = "rootPath"
@@ -285,3 +294,25 @@ PROPERTY = "property"
 MODEL = "model"
 PROPERTY_PERMISSIBLE_VALUES = "PermissibleValues"
 PROPERTY_TERM = "Term"
+DEF_MODEL_FILES = "model-files"
+DEF_VERSION = "current-version"
+MODE_ID_FIELDS = "id_fields"
+DEF_SEMANTICS = "semantics"
+DEF_FILE_NODES = "file-nodes"
+DEF_MAIN_NODES = "main-nodes"
+DEF_FILE_NAME_FIELD = 'name-field'
+
+SYSTEM_POPULATED_PROPS = "system-populated-props"
+SYSTEM_PROGRAM_NAME = 'ProgramName'
+SYSTEM_PROGRAM_ACRONYM = 'ProgramAcronym'
+SYSTEM_PROGRAM_DESCRIPTION = 'ProgramDescription'
+SYSTEM_STUDY_NAME = 'StudyName'
+SYSTEM_STUDY_ACRONYM = 'StudyAcronym'
+SYSTEM_STUDY_DESCRIPTION = 'StudyDescription'
+
+# property names in SRF
+SRF_PROGRAM = 'program'
+SRF_STUDY = 'study'
+SRF_NAME = 'name'
+SRF_ACRONYM = 'abbreviation'
+SRF_DESCRIPTION = 'description'

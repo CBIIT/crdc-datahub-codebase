@@ -24,6 +24,7 @@ import {
   filterForNumbers,
   formatORCIDInput,
   isValidORCID,
+  isLockedField,
   mapObjectWithKey,
   validateEmail,
   validateUTF8,
@@ -39,6 +40,9 @@ const StyledFormControlLabel = styled(FormControlLabel)({
     color: "#083A50",
     fontWeight: "700",
     userSelect: "none",
+  },
+  "& .MuiFormControlLabel-label.Mui-disabled": {
+    color: "rgba(0, 0, 0, 0.55)",
   },
   "& .MuiCheckbox-root:not(.Mui-disabled)": {
     color: "#005EA2 !important",
@@ -56,11 +60,9 @@ const HiddenField = styled("input")({
  * @returns {JSX.Element}
  */
 const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSectionProps) => {
-  const {
-    status,
-    data: { questionnaireData: data },
-    formRef,
-  } = useFormContext();
+  const { status, data: applicationData, formRef, notifyChange } = useFormContext();
+  const data = applicationData?.questionnaireData;
+
   const { data: institutionList } = useAggregatedInstitutions();
   const location = useLocation();
   const { readOnlyInputs } = useFormMode();
@@ -71,6 +73,9 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   const [piAsPrimaryContact, setPiAsPrimaryContact] = useState<boolean>(
     data?.piAsPrimaryContact || false
   );
+  const [piReceivesEmails, setPIReceivesEmails] = useState<boolean>(
+    data?.pi?.receivesEmails || data?.piAsPrimaryContact || false
+  );
   const [additionalContacts, setAdditionalContacts] = useState<KeyedContact[]>(
     data.additionalContacts?.map(mapObjectWithKey) || []
   );
@@ -79,8 +84,10 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   const { getFormObjectRef } = refs;
 
   const togglePrimaryPI = () => {
-    setPiAsPrimaryContact(!piAsPrimaryContact);
+    const newValue = !piAsPrimaryContact;
+    setPiAsPrimaryContact(newValue);
     setPrimaryContact(cloneDeep(InitialQuestionnaire.primaryContact));
+    setPIReceivesEmails(newValue ? true : data?.pi?.receivesEmails || false);
   };
 
   const getFormObject = (): FormObject | null => {
@@ -115,12 +122,15 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         phone: "",
         institution: "",
         institutionID: "",
+        receivesEmails: false,
       },
     ]);
+    notifyChange?.();
   };
 
   const removeContact = (key: string) => {
     setAdditionalContacts((prev) => prev.filter((c) => c.key !== key));
+    notifyChange?.();
   };
 
   const handlePIInstitutionChange = (value: string) => {
@@ -155,6 +165,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
 
   useEffect(() => {
     setPi(data?.pi);
+    setPIReceivesEmails(data?.pi?.receivesEmails || data?.piAsPrimaryContact || false);
   }, [data?.pi]);
 
   useEffect(() => {
@@ -162,7 +173,11 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
   }, [data?.primaryContact]);
 
   useEffect(() => {
-    setPiAsPrimaryContact(data?.piAsPrimaryContact || false);
+    const piAsPrimaryContact = data?.piAsPrimaryContact || false;
+    setPiAsPrimaryContact(piAsPrimaryContact);
+    if (piAsPrimaryContact) {
+      setPIReceivesEmails(true);
+    }
   }, [data?.piAsPrimaryContact]);
 
   useEffect(() => {
@@ -195,7 +210,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           placeholder="Enter first name"
           maxLength={50}
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.firstName")}
         />
         <TextInput
           id="section-a-pi-last-name"
@@ -205,7 +220,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           placeholder="Enter last name"
           maxLength={50}
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.lastName")}
         />
         <TextInput
           id="section-a-pi-position"
@@ -215,7 +230,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           placeholder="Enter position"
           maxLength={100}
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.position")}
         />
         <TextInput
           id="section-a-pi-email"
@@ -227,7 +242,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           validate={validateEmail}
           errorText="Please provide a valid email address"
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.email")}
         />
         <TextInput
           id="section-a-pi-orcid"
@@ -238,7 +253,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           validate={(val) => val?.length === 0 || isValidORCID(val)}
           filter={formatORCIDInput}
           errorText="Please provide a valid ORCID"
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.ORCID")}
         />
         <AutocompleteInput
           id="section-a-pi-institution"
@@ -258,7 +273,7 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           required
           disableClearable
           freeSolo
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.institution")}
         />
         <HiddenField
           type="text"
@@ -280,8 +295,33 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           rows={4}
           multiline
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "pi.address")}
         />
+        <Grid item md={12}>
+          <StyledFormControlLabel
+            label="Receives all email communications"
+            data-testid="pi-receives-emails"
+            control={
+              <Checkbox
+                checked={piReceivesEmails}
+                onChange={() => !piAsPrimaryContact && setPIReceivesEmails((prev) => !prev)}
+                readOnly={readOnlyInputs || piAsPrimaryContact}
+              />
+            }
+            disabled={readOnlyInputs || piAsPrimaryContact}
+          />
+          <input
+            id="section-a-pi-receives-emails-checkbox"
+            style={{ display: "none" }}
+            type="checkbox"
+            name="pi[receivesEmails]"
+            data-type="boolean"
+            value={piReceivesEmails?.toString()}
+            aria-label="Receives all email communications"
+            checked
+            readOnly
+          />
+        </Grid>
       </SectionGroup>
 
       {/* Primary Contact */}
@@ -397,6 +437,25 @@ const FormSectionA: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
               maxLength={25}
               readOnly={readOnlyInputs}
             />
+            <Grid item md={12}>
+              <StyledFormControlLabel
+                label="Receives all email communications"
+                data-testid="primary-contact-receives-emails"
+                control={<Checkbox checked readOnly />}
+                disabled
+              />
+              <input
+                id="section-a-primary-contact-receives-emails-checkbox"
+                style={{ display: "none" }}
+                type="checkbox"
+                name="primaryContact[receivesEmails]"
+                data-type="boolean"
+                value="true"
+                aria-label="Receives all email communications"
+                checked
+                readOnly
+              />
+            </Grid>
           </>
         )}
       </SectionGroup>

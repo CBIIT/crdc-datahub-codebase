@@ -8,6 +8,7 @@ import ExportApplicationsButton, {
   ExportApplicationsButtonProps,
 } from "@/components/ExportApplicationsButton";
 import ExportTemplateButton from "@/components/ExportTemplateButton";
+import { EditStatuses, FormatDate, Logger } from "@/utils";
 
 import bannerSvg from "../../assets/banner/submission_banner.png";
 import BellIcon from "../../assets/icons/filled_bell_icon.svg?react";
@@ -15,6 +16,7 @@ import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/
 import CreateApplicationButton from "../../components/CreateApplicationButton";
 import GenericTable, { Column } from "../../components/GenericTable";
 import PageBanner from "../../components/PageBanner";
+import ReopenApplicationButton from "../../components/ReopenApplicationButton";
 import StyledTooltip from "../../components/StyledFormComponents/StyledTooltip";
 import TooltipList from "../../components/SummaryList/TooltipList";
 import ToggleApplicationButton from "../../components/ToggleApplicationButton";
@@ -30,10 +32,9 @@ import {
   ReviewAppResp,
 } from "../../graphql";
 import usePageTitle from "../../hooks/usePageTitle";
-import { extractVersion, FormatDate, Logger } from "../../utils";
 
 import QuestionnaireContext from "./Contexts/QuestionnaireContext";
-import ListFilters, { defaultValues, FilterForm } from "./ListFilters";
+import ListFilters, { FilterForm, getDefaultFilterValues } from "./ListFilters";
 
 type T = ListApplicationsResp["listApplications"]["applications"][number];
 
@@ -89,7 +90,7 @@ const StyledActionButton = styled(Button)(
     borderRadius: "8px",
     border: `2px solid ${border}`,
     color: `${text} !important`,
-    width: "100px",
+    width: "82px",
     height: "30px",
     textTransform: "none",
     fontWeight: 700,
@@ -160,9 +161,9 @@ const columns: Column<T>[] = [
     },
   },
   {
-    label: "Version",
-    renderValue: (a) => extractVersion(a.version) || "",
-    field: "version",
+    label: "SRF Version",
+    renderValue: (a) => a.sequenceNumber,
+    field: "sequenceNumber",
   },
   {
     label: "Submitted Date",
@@ -199,18 +200,20 @@ const columns: Column<T>[] = [
     label: "Action",
     renderValue: (a) => (
       <QuestionnaireContext.Consumer>
-        {({ user, handleOnReviewClick }) => {
+        {({ user, handleOnReviewClick, tableRef }) => {
           if (
             hasPermission(user, "submission_request", "create") &&
             a.applicant?.applicantID === user._id &&
-            ["New", "In Progress", "Inquired"].includes(a.status)
+            EditStatuses.includes(a.status)
           ) {
             return (
-              <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
-                <StyledActionButton bg="#99E3BB" text="#156071" border="#63BA90">
-                  Resume
-                </StyledActionButton>
-              </Link>
+              <Stack direction="row" alignItems="center" justifyContent="center">
+                <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
+                  <StyledActionButton bg="#99E3BB" text="#156071" border="#63BA90">
+                    Resume
+                  </StyledActionButton>
+                </Link>
+              </Stack>
             );
           }
           if (
@@ -218,23 +221,31 @@ const columns: Column<T>[] = [
             ["Submitted", "In Review"].includes(a.status)
           ) {
             return (
-              <StyledActionButton
-                onClick={() => handleOnReviewClick(a)}
-                bg="#F1C6B3"
-                text="#5F564D"
-                border="#DB9C62"
-              >
-                Review
-              </StyledActionButton>
+              <Stack direction="row" alignItems="center" justifyContent="center">
+                <StyledActionButton
+                  onClick={() => handleOnReviewClick(a)}
+                  bg="#F1C6B3"
+                  text="#5F564D"
+                  border="#DB9C62"
+                >
+                  Review
+                </StyledActionButton>
+              </Stack>
             );
           }
 
           return (
-            <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
-              <StyledActionButton bg="#89DDE6" text="#156071" border="#84B4BE">
-                View
-              </StyledActionButton>
-            </Link>
+            <Stack direction="row" alignItems="center" justifyContent="center" gap="6px">
+              <ReopenApplicationButton
+                application={a}
+                onComplete={() => tableRef.current?.refresh?.()}
+              />
+              <Link to={`/submission-request/${a?._id}`} state={{ from: "/submission-requests" }}>
+                <StyledActionButton bg="#89DDE6" text="#156071" border="#84B4BE">
+                  View
+                </StyledActionButton>
+              </Link>
+            </Stack>
           );
         }}
       </QuestionnaireContext.Consumer>
@@ -278,7 +289,7 @@ const ListingView: FC = () => {
   const [error, setError] = useState<boolean>(false);
   const [data, setData] = useState<ListApplicationsResp["listApplications"]>(null);
 
-  const filtersRef = useRef<FilterForm>({ ...defaultValues });
+  const filtersRef = useRef<FilterForm>(getDefaultFilterValues(user?.role));
   const tableRef = useRef<TableMethods>(null);
 
   const [listApplications] = useLazyQuery<ListApplicationsResp, ListApplicationsInput>(
@@ -308,7 +319,8 @@ const ListingView: FC = () => {
     try {
       setLoading(true);
 
-      const { programName, studyName, statuses, submitterName } = filtersRef.current;
+      const { programName, showAllVersions, studyName, statuses, submitterName } =
+        filtersRef.current;
 
       const { data: d, error } = await listApplications({
         variables: {
@@ -316,6 +328,7 @@ const ListingView: FC = () => {
           programName: programName || "All",
           studyName: studyName || undefined,
           statuses,
+          showAllVersions,
           first,
           offset,
           sortDirection,

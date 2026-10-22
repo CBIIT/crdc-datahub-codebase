@@ -19,9 +19,7 @@ jest.mock('../../dao/application');
 describe('ApprovedStudiesService - Notification Error Handling', () => {
     let service;
     let mockApprovedStudiesCollection;
-    let mockUserCollection;
-    let mockOrganizationService;
-    let mockSubmissionCollection;
+    let mockProgramService;
     let mockAuthorizationService;
     let mockNotificationsService;
     let mockEmailParams;
@@ -39,20 +37,11 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             insert: jest.fn(),
             update: jest.fn()
         };
-        mockUserCollection = {
-            aggregate: jest.fn()
-        };
-        mockOrganizationService = {
+        mockProgramService = {
             findByStudyID: jest.fn(),
             findOneByStudyID: jest.fn(),
-            getOrganizationByID: jest.fn(),
-            getOrganizationByName: jest.fn(),
-            organizationCollection: {
-                aggregate: jest.fn()
-            }
-        };
-        mockSubmissionCollection = {
-            updateMany: jest.fn()
+            getProgramByID: jest.fn(),
+            getProgramByName: jest.fn()
         };
         mockAuthorizationService = {
             getPermissionScope: jest.fn()
@@ -85,9 +74,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
         service = new ApprovedStudiesService(
             mockApprovedStudiesCollection,
-            mockUserCollection,
-            mockOrganizationService,
-            mockSubmissionCollection,
+            mockProgramService,
             mockAuthorizationService,
             mockNotificationsService,
             mockEmailParams
@@ -140,7 +127,10 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             useProgramPC: false,
             pendingModelChange: true, // Was pending, now cleared
             isPendingGPA: true, // Was pending, now cleared
-            applicationID: 'app-id'
+            applicationID: 'app-id',
+            pendingConditionsAtApproval: [
+                EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE
+            ]
         };
 
         const mockPrimaryContact = {
@@ -160,7 +150,8 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
         const mockApplication = {
             _id: 'app-id',
-            applicantID: 'submitter-id'
+            applicantID: 'submitter-id',
+            questionnaireData: {}
         };
 
         const mockSubmitter = {
@@ -168,13 +159,14 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             firstName: 'John',
             lastName: 'Doe',
             email: 'john.doe@test.com',
-            notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_CLEARED]
+            notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED]
         };
 
         const mockBCCUsers = [
             {
                 _id: 'bcc-user-1',
-                email: 'bcc1@test.com'
+                email: 'bcc1@test.com',
+                notifications: [EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED, EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE]
             }
         ];
 
@@ -202,7 +194,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
         describe('Requirement 1: Perform Update First', () => {
             it('should complete database updates before attempting notification', async () => {
                 // Setup mocks for successful notification
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -222,7 +214,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             });
 
             it('should commit study update to database before notification', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -241,7 +233,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             });
 
             it('should commit submission updates to database before notification', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -254,7 +246,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                 expect(submissionUpdateSpy).toHaveBeenCalledWith(
                     {
                         studyID: 'study-id',
-                        status: { in: expect.any(Array) },
+                        status: expect.any(Array),
                         conciergeID: { not: 'contact-id' }
                     },
                     {
@@ -267,7 +259,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
         describe('Requirement 2: Then Try to Send Notification', () => {
             it('should attempt notification after successful database updates', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -305,10 +297,13 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                     isPendingGPA: false,
                     dbGaPID: 'phs000000',
                     pendingImageDeIdentification: true,
-                    applicationID: 'app-id'
+                    applicationID: 'app-id',
+                    pendingConditionsAtApproval: [
+                        EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION
+                    ]
                 };
                 service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue(studyImagePending);
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -338,10 +333,11 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                     isPendingGPA: true,
                     dbGaPID: 'phs000000',
                     GPAName: '',
-                    applicationID: 'app-id'
+                    applicationID: 'app-id',
+                    pendingConditionsAtApproval: []
                 };
                 service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue(studyGpaPending);
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -372,10 +368,13 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                     isPendingGPA: false,
                     dbGaPID: null,
                     GPAName: 'Existing GPA',
-                    applicationID: 'app-id'
+                    applicationID: 'app-id',
+                    pendingConditionsAtApproval: [
+                        EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID
+                    ]
                 };
                 service.approvedStudyDAO.findFirst = jest.fn().mockResolvedValue(studyMissingDbGaP);
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -399,7 +398,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             });
 
             it('should call notification service with correct parameters', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -408,6 +407,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
                 expect(service.notificationsService.clearPendingModelState).toHaveBeenCalledWith(
                     'john.doe@test.com',
+                    [],
                     ['bcc1@test.com'],
                     {
                         firstName: 'John Doe',
@@ -422,14 +422,14 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
         describe('Requirement 3: Return Error Message if Notification Fails', () => {
             it('should throw error when application is not found', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(null);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(null);
 
                 await expect(service.editApprovedStudyAPI(mockParams, mockContext))
                     .rejects.toThrow("Failed to send notification for clearing the approved study; studyID: study-id");
             });
 
             it('should throw error when submitter is not found', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(null);
 
                 await expect(service.editApprovedStudyAPI(mockParams, mockContext))
@@ -437,7 +437,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             });
 
             it('should throw error when notification service fails', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: [] });
@@ -447,7 +447,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             });
 
             it('should throw error when notification service throws exception', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockRejectedValue(new Error('Email service down'));
@@ -457,7 +457,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             });
 
             it('should include studyID in error message', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(null);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(null);
 
                 try {
                     await service.editApprovedStudyAPI(mockParams, mockContext);
@@ -468,7 +468,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
             it('should log internal error details while throwing user-friendly error', async () => {
                 const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-                service.applicationDAO.findFirst = jest.fn().mockRejectedValue(new Error('Database connection failed'));
+                service.applicationDAO.findById = jest.fn().mockRejectedValue(new Error('Database connection failed'));
 
                 await expect(service.editApprovedStudyAPI(mockParams, mockContext))
                     .rejects.toThrow("Failed to send notification for clearing the approved study; studyID: study-id");
@@ -481,7 +481,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
         describe('Integration Test: Complete Flow', () => {
             it('should meet all three requirements in sequence', async () => {
                 // Setup successful notification
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -501,7 +501,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
             it('should meet requirements even when notification fails', async () => {
                 // Setup notification failure
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(null);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(null);
 
                 // Requirements 1 & 2: Updates completed, notification attempted
                 await expect(service.editApprovedStudyAPI(mockParams, mockContext))
@@ -523,7 +523,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
                     notifications: [] // No notification preferences
                 };
 
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(submitterNoNotifications);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue(mockBCCUsers);
 
@@ -535,7 +535,7 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
             });
 
             it('should handle case when no BCC users are found', async () => {
-                service.applicationDAO.findFirst = jest.fn().mockResolvedValue(mockApplication);
+                service.applicationDAO.findById = jest.fn().mockResolvedValue(mockApplication);
                 service.userDAO.findFirst = jest.fn().mockResolvedValue(mockSubmitter);
                 service.userDAO.getUsersByNotifications = jest.fn().mockResolvedValue([]);
                 service.notificationsService.clearPendingModelState = jest.fn().mockResolvedValue({ accepted: ['email'] });
@@ -544,8 +544,12 @@ describe('ApprovedStudiesService - Notification Error Handling', () => {
 
                 expect(service.notificationsService.clearPendingModelState).toHaveBeenCalledWith(
                     'john.doe@test.com',
-                    [], // Empty BCC list
-                    expect.any(Object)
+                    [],
+                    [],
+                    expect.objectContaining({
+                        firstName: 'John Doe',
+                        studyName: 'Updated Study'
+                    })
                 );
                 expect(result).toEqual(mockDisplayStudy);
             });

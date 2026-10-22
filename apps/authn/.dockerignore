@@ -10,3 +10,4 @@ yaml
 # Files
 .env
 *.env
+resources/aws-documentdb-certificate/

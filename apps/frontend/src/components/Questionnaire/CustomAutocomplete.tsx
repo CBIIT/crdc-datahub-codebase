@@ -10,6 +10,7 @@ import {
 import { ReactNode, SyntheticEvent, useEffect, useId, useRef, useState } from "react";
 
 import { updateInputValidity } from "../../utils";
+import { useFormContext } from "../Contexts/FormContext";
 import StyledAsterisk from "../StyledFormComponents/StyledAsterisk";
 import StyledAutocomplete from "../StyledFormComponents/StyledAutocomplete";
 import StyledHelperText from "../StyledFormComponents/StyledHelperText";
@@ -94,6 +95,7 @@ const CustomAutocomplete = ({
   ...rest
 }: CustomProps): JSX.Element => {
   const id = rest.id || useId();
+  const { notifyChange } = useFormContext();
 
   const [val, setVal] = useState<string[]>(value);
   const [error, setError] = useState<boolean>(false);
@@ -125,6 +127,7 @@ const CustomAutocomplete = ({
 
     processValue(newValue);
     setError(false);
+    notifyChange?.();
   };
 
   const handleInputBlur = () => {

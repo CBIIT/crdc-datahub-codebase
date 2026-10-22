@@ -9,7 +9,7 @@ import io
 from botocore.exceptions import ClientError
 from bento.common.sqs import VisibilityExtender
 from bento.common.utils import get_logger
-from common.constants import SQS_TYPE, SUBMISSION_ID, BATCH_BUCKET, TYPE_EXPORT_METADATA, ID, NODE_TYPE, \
+from common.constants import SQS_TYPE, SUBMISSION_ID, BATCH_BUCKET, TYPE_EXPORT_METADATA, TYPE_EXPORT_DCF_MANIFEST, ID, NODE_TYPE, \
     RELEASE, ARCHIVE_RELEASE, EXPORT_METADATA, EXPORT_ROOT_PATH, SERVICE_TYPE_EXPORT, CRDC_ID, NODE_ID,\
     DATA_COMMON_NAME, CREATED_AT, MODEL_VERSION, MODEL_FILE_DIR, TIER_CONFIG, SQS_NAME, TYPE, UPDATED_AT, \
     PARENTS, PROPERTIES, SUBMISSION_REL_STATUS, SUBMISSION_REL_STATUS_RELEASED, SUBMISSION_INTENTION, \
@@ -78,6 +78,9 @@ def metadata_export(configs, job_queue, mongo_dao):
                         export_validator.export_data_to_file()
                         # transfer metadata to destination s3 bucket if error occurred.
                         export_validator.transfer_release_metadata()
+                    elif data.get(SQS_TYPE) == TYPE_EXPORT_DCF_MANIFEST:
+                        export_validator = ExportMetadata(mongo_dao, submission, model_store, configs)
+                        export_validator.export_dcf_manifest_preview()
                     elif data.get(SQS_TYPE) == RESTORE_DELETED_DATA_FILES:
                         export_validator = ExportMetadata(mongo_dao, submission, model_store, configs)
                         export_validator.restore_deleted_file()
@@ -154,7 +157,7 @@ class ExportMetadata:
             submitter = {"name": submitter.get("firstName") + " " + submitter.get("lastName"), "email": submitter.get("email"), "institution": submitter.get("institution", {}).get("name")}                                      
         self.release_manifest_data = {"submission ID": submission_id, "submission creation date": convert_date_time(self.submission.get(CREATED_AT), "%Y-%m-%d %H:%M:%S"), 
                                       "submission release date": get_date_time("%Y-%m-%d %H:%M:%S"), "study": study, "submitter": submitter,
-                                      "data concierge": {"name": self.submission.get("conciergeName"), "email": self.submission.get("conciergeEmail")},
+                                      "data concierge": self._resolve_concierge(),
                                       "data model version": self.submission.get("modelVersion"), "intention": self.submission.get(SUBMISSION_INTENTION),
                                       "submission type": self.submission_type,
                                       "metadata files": {"number of metadata files": 0, "metadata files": []},
@@ -186,7 +189,19 @@ class ExportMetadata:
         #5 export release manifest file as release-info.json
         self.upload_release_manifest()
 
+    def _resolve_concierge(self):
+        """Resolves the concierge information block based on available information"""
+        concierge_id = self.submission.get("conciergeID")
+        if not concierge_id:
+            return {"name": None, "email": None}
         
+        concierge = self.mongo_dao.find_user_by_id(concierge_id)
+        if not concierge:
+            return {"name": None, "email": None}
+        
+        name = " ".join(part for part in (concierge.get("firstName"), concierge.get("lastName")) if part) or None
+        return {"name": name, "email": concierge.get("email")}
+
     def export(self, submission_id, node_type):
         start_index = 0
         rows = []
@@ -541,6 +556,15 @@ class ExportMetadata:
         columns.insert(1, columns.pop(old_index))
         return columns
     
+    def export_dcf_manifest_preview(self):
+        submission_id = self.submission.get(ID)
+        submission_type = self.submission.get(SUBMISSION_DATA_TYPE)
+        if submission_type == SUBMISSION_DATA_TYPE_METADATA_ONLY:
+            self.log.info(f'{submission_id}: Skipping DCF manifest preview for metadata-only submission.')
+            return
+        dcf_exporter = GenerateDCF(self.configs, self.mongo_dao, self.submission, self.s3_service, None)
+        dcf_exporter.generate_dcf_preview()
+
     def transfer_release_metadata(self):
         """
         transfer released data to cds cbiit metadata bucket by aws datasync

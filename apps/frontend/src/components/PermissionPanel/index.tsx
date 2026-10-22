@@ -17,8 +17,7 @@ import { useSnackbar } from "notistack";
 import { FC, memo, useEffect, useMemo, useRef } from "react";
 import { useFormContext } from "react-hook-form";
 
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-
+import StyledTooltip from "@/components/StyledFormComponents/StyledTooltip";
 import {
   EditUserInput,
   RetrievePBACDefaultsResp,
@@ -27,9 +26,16 @@ import {
   GetTooltipsResp,
   GetTooltipsInput,
   GET_TOOLTIPS,
-} from "../../graphql";
-import { ColumnizedPBACGroups, columnizePBACGroups, Logger } from "../../utils";
-import StyledTooltip from "../StyledFormComponents/StyledTooltip";
+} from "@/graphql";
+import {
+  ColumnizedPBACGroups,
+  columnizePBACGroups,
+  getNestedCheckState,
+  Logger,
+  nestNotificationOptions,
+  toggleChildNotification,
+  toggleParentNotification,
+} from "@/utils";
 
 const StyledBox = styled(Box)({
   width: "957px",
@@ -93,6 +99,14 @@ const StyledFormControlLabel = styled(FormControlLabel)({
   },
 });
 
+const StyledNestedFormControlLabel = styled(StyledFormControlLabel)({
+  marginLeft: "-2px",
+  paddingLeft: "12px",
+  "& .MuiTypography-root": {
+    fontSize: "15px",
+  },
+});
+
 const StyledNotice = styled(Typography)({
   marginTop: "29.5px",
   textAlign: "center",
@@ -100,6 +114,73 @@ const StyledNotice = styled(Typography)({
   color: "#6B7294",
   userSelect: "none",
 });
+
+type NotificationOptionProps = {
+  /**
+   * The notification option to render.
+   */
+  option: PBACDefault<AuthNotifications>;
+  /**
+   * The resolved checked state. For a parent this is the aggregate of its
+   * children and may differ from `option.checked`.
+   */
+  checked: boolean;
+  /**
+   * Whether the checkbox should render in the partially-selected state.
+   */
+  indeterminate?: boolean;
+  /**
+   * Whether the checkbox is disabled.
+   */
+  disabled: boolean;
+  /**
+   * Renders the option as an indented child row when true.
+   */
+  nested?: boolean;
+  /**
+   * The tooltip text for the option, or null when unavailable.
+   */
+  tooltip: string | null;
+  /**
+   * Invoked when the checkbox is toggled.
+   */
+  onChange: () => void;
+};
+
+/**
+ * Renders a single notification checkbox, used for both parent and nested child rows.
+ */
+const NotificationOption: FC<NotificationOptionProps> = ({
+  option,
+  checked,
+  indeterminate = false,
+  disabled,
+  nested = false,
+  tooltip,
+  onChange,
+}) => {
+  const Label = nested ? StyledNestedFormControlLabel : StyledFormControlLabel;
+
+  return (
+    <Label
+      label={
+        <StyledTooltip
+          title={tooltip}
+          placement="top"
+          data-testid="notification-tooltip"
+          disableInteractive
+          arrow
+        >
+          <span data-testid={`notification-${option._id}-label`}>{option.name}</span>
+        </StyledTooltip>
+      }
+      onChange={onChange}
+      control={<Checkbox name={option._id} checked={checked} indeterminate={indeterminate} />}
+      data-testid={`notification-${option._id}`}
+      disabled={disabled}
+    />
+  );
+};
 
 export type PermissionPanelProps = {
   /**
@@ -119,11 +200,6 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
   const { enqueueSnackbar } = useSnackbar();
   const { setValue, watch } = useFormContext<EditUserInput>();
 
-  const [storedTooltips, setStoredTooltips] = useLocalStorage<GetTooltipsResp["getTooltips"]>(
-    "profile-tooltips",
-    []
-  );
-
   const { data, loading } = useQuery<RetrievePBACDefaultsResp, RetrievePBACDefaultsInput>(
     RETRIEVE_PBAC_DEFAULTS,
     {
@@ -137,21 +213,13 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
     }
   );
 
-  useQuery<GetTooltipsResp, GetTooltipsInput>(GET_TOOLTIPS, {
+  const { data: storedTooltips } = useQuery<GetTooltipsResp, GetTooltipsInput>(GET_TOOLTIPS, {
     context: { clientName: "backend" },
     fetchPolicy: "cache-first",
-    onCompleted: (data) => {
-      if (!data?.getTooltips) {
-        return;
-      }
-
-      setStoredTooltips(data.getTooltips.map((t) => ({ key: t.key, value: t.value })));
-    },
     onError: (error) => {
       Logger.error("Failed to retrieve PBAC tooltips", { error });
       enqueueSnackbar("Failed to retrieve PBAC tooltips", { variant: "error" });
     },
-    skip: storedTooltips?.length > 0,
   });
 
   const selectedRole = watch("role");
@@ -247,6 +315,25 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
     }
   };
 
+  const handleParentNotificationChange = (
+    parent: PBACDefault<AuthNotifications>,
+    children: PBACDefault<AuthNotifications>[],
+    isChecked: boolean
+  ) => {
+    setValue(
+      "notifications",
+      toggleParentNotification(notificationsValue, parent, children, isChecked)
+    );
+  };
+
+  const handleChildNotificationChange = (
+    parent: PBACDefault<AuthNotifications>,
+    child: PBACDefault<AuthNotifications>,
+    siblings: PBACDefault<AuthNotifications>[]
+  ) => {
+    setValue("notifications", toggleChildNotification(notificationsValue, parent, child, siblings));
+  };
+
   const handleRoleChange = (selectedRole: UserRole) => {
     if (selectedRole === roleRef.current) {
       return;
@@ -303,12 +390,12 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
   }, [notificationsValue]);
 
   const getTooltip = (_id: string) => {
-    if (!_id || !storedTooltips?.length) {
+    if (!_id || !storedTooltips?.getTooltips?.length) {
       return null;
     }
 
     const baseKey = _id.split(":", 2)?.join(":");
-    return storedTooltips.find((t) => t.key === baseKey)?.value || null;
+    return storedTooltips?.getTooltips?.find((t) => t.key === baseKey)?.value || null;
   };
 
   return (
@@ -377,27 +464,39 @@ const PermissionPanel: FC<PermissionPanelProps> = ({ readOnly = false }) => {
                   <div key={name} data-testid={`notifications-group-${name}`}>
                     <StyledGroupTitle>{name}</StyledGroupTitle>
                     <FormGroup>
-                      {data.map(({ _id, checked, disabled, name }) => (
-                        <StyledFormControlLabel
-                          key={_id}
-                          label={
-                            <StyledTooltip
-                              key={_id}
-                              title={getTooltip(_id)}
-                              placement="top"
-                              data-testid="notification-tooltip"
-                              disableInteractive
-                              arrow
-                            >
-                              <span data-testid={`notification-${_id}-label`}>{name}</span>
-                            </StyledTooltip>
-                          }
-                          onChange={() => handleNotificationChange(_id)}
-                          control={<Checkbox name={_id} checked={checked} />}
-                          data-testid={`notification-${_id}`}
-                          disabled={readOnly || disabled}
-                        />
-                      ))}
+                      {nestNotificationOptions(data).map(({ parent, children }) => {
+                        const { checked, indeterminate } = getNestedCheckState(parent, children);
+
+                        return (
+                          <div key={parent._id}>
+                            <NotificationOption
+                              option={parent}
+                              checked={checked}
+                              indeterminate={indeterminate}
+                              disabled={readOnly || parent.disabled}
+                              tooltip={getTooltip(parent._id)}
+                              onChange={() =>
+                                children.length
+                                  ? handleParentNotificationChange(parent, children, checked)
+                                  : handleNotificationChange(parent._id)
+                              }
+                            />
+                            {children.map((child) => (
+                              <NotificationOption
+                                key={child._id}
+                                option={child}
+                                nested
+                                checked={child.checked}
+                                disabled={readOnly || child.disabled}
+                                tooltip={getTooltip(child._id)}
+                                onChange={() =>
+                                  handleChildNotificationChange(parent, child, children)
+                                }
+                              />
+                            ))}
+                          </div>
+                        );
+                      })}
                     </FormGroup>
                   </div>
                 ))}

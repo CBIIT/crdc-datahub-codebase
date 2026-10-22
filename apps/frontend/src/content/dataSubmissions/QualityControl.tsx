@@ -15,10 +15,10 @@ import React, {
 import { TOOLTIP_TEXT } from "@/config/DashboardTooltips";
 
 import { useSubmissionContext } from "../../components/Contexts/SubmissionContext";
-import { ExportValidationButton } from "../../components/DataSubmissions/ExportValidationButton";
 import QualityControlFilters from "../../components/DataSubmissions/QualityControlFilters";
 import DoubleLabelSwitch from "../../components/DoubleLabelSwitch";
 import ErrorDetailsDialog, { ErrorDetailsIssue } from "../../components/ErrorDetailsDialog/v2";
+import ExportValidationButton from "../../components/ExportValidationButton";
 import GenericTable, { Column } from "../../components/GenericTable";
 import NodeComparison from "../../components/NodeComparison";
 import PVRequestButton from "../../components/PVRequestButton";
@@ -40,7 +40,7 @@ import { FormatDate, Logger, titleCase } from "../../utils";
 
 import QCResultsContext from "./Contexts/QCResultsContext";
 
-type FilterForm = {
+export type QualityControlFilterForm = {
   issueType: string;
   /**
    * The node type to filter by.
@@ -323,33 +323,6 @@ const expandedColumns: Column<QCResult>[] = [
   },
 ];
 
-// CSV columns used for exporting table data
-export const csvColumns = {
-  "Batch ID": (d: QCResult) => d.displayID,
-  "Node Type": (d: QCResult) => d.type,
-  "Submitted Identifier": (d: QCResult) => d.submittedID,
-  Severity: (d: QCResult) => d.severity,
-  "Validated Date": (d: QCResult) => FormatDate(d?.validatedDate, "MM-DD-YYYY [at] hh:mm A", ""),
-  "Issue Count": (d: QCResult) =>
-    Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(d.issueCount || 0),
-  "Issue(s)": (d: QCResult) => {
-    const value = d.errors[0]?.description ?? d.warnings[0]?.description;
-
-    // NOTE: The ErrorMessage descriptions contain non-standard double quotes
-    // that don't render correctly in Excel. This replaces them with standard double quotes.
-    return value.replaceAll(/[“”‟〞＂]/g, `"`);
-  },
-};
-
-export const aggregatedCSVColumns = {
-  "Issue Type": (d: AggregatedQCResult) => d.title,
-  Property: (d: AggregatedQCResult) => d.property,
-  Value: (d: AggregatedQCResult) => d.value,
-  Severity: (d: AggregatedQCResult) => d.severity,
-  "Record Count": (d: AggregatedQCResult) =>
-    Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(d.count || 0),
-};
-
 const QualityControl: FC = () => {
   const { enqueueSnackbar } = useSnackbar();
   const { data: submissionData } = useSubmissionContext();
@@ -368,7 +341,7 @@ const QualityControl: FC = () => {
   const [selectedRow, setSelectedRow] = useState<RowData | null>(null);
   const [isAggregated, setIsAggregated] = useState<boolean>(true);
   const [issueType, setIssueType] = useState<string | null>("All");
-  const filtersRef: MutableRefObject<FilterForm> = useRef({
+  const filtersRef: MutableRefObject<QualityControlFilterForm> = useRef({
     issueType: "All",
     batchID: "All",
     nodeType: "All",
@@ -510,17 +483,16 @@ const QualityControl: FC = () => {
     () => (
       <Stack direction="row" alignItems="center" gap="8px" marginRight="37px">
         <ExportValidationButton
-          submission={submissionData?.getSubmission}
-          fields={isAggregated ? aggregatedCSVColumns : csvColumns}
           isAggregated={isAggregated}
+          filtersRef={filtersRef}
           disabled={totalData <= 0}
         />
       </Stack>
     ),
-    [submissionData?.getSubmission, totalData, isAggregated]
+    [totalData, isAggregated]
   );
 
-  const handleOnFiltersChange = (data: FilterForm) => {
+  const handleOnFiltersChange = (data: QualityControlFilterForm) => {
     filtersRef.current = data;
     tableRef.current?.setPage(0, true);
   };

@@ -11,6 +11,7 @@ export const baseContact: Contact = {
   phone: "",
   institution: "",
   institutionID: "",
+  receivesEmails: false,
 };
 
 /**

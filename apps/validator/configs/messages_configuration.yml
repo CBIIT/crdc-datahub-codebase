@@ -180,6 +180,16 @@ Messages:
     severity: "Error"
     message: "{} A file cannot be both controlled access and open (consent code -1)"
     description: "A file has both controlled access and open (consent code -1) consent codes associated with it."
+  M037:
+    title: "Missing required relationship"
+    severity: "Error"
+    message: '{} Required relationship "{}" is empty.'
+    description: "Empty value in a required relationship column"
+  M038:
+   title: "dbGaPID mismatch"
+   severity: "Error"
+   message: "{} {}: '{}' doesn't match the pre-approved value - '{}'."
+   description: "dbGaPID doesn't match pre-approved value"
 
   # data file validation message
   F001:

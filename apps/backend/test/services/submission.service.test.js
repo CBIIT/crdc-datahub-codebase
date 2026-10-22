@@ -33,11 +33,6 @@ jest.mock('../../verifier/user-info-verifier');
 jest.mock('../../verifier/submission-verifier');
 jest.mock('../../domain/history-event');
 jest.mock('../../domain/user-scope');
-jest.mock('../../prisma', () => ({
-    log: {
-        create: jest.fn()
-    }
-}));
 
 const SubmissionDAO = require('../../dao/submission');
 const ProgramDAO = require('../../dao/program');
@@ -164,7 +159,8 @@ describe('Submission Service - getSubmission', () => {
 
         mockDataRecordService = {
             countNodesBySubmissionID: jest.fn(),
-            resetS3FileLinkedMetadataStatusToNew: jest.fn().mockResolvedValue({ modifiedCount: 0, matchedCount: 0 })
+            resetS3FileLinkedMetadataStatusToNew: jest.fn().mockResolvedValue({ modifiedCount: 0, matchedCount: 0 }),
+            recalculateFileValidationStatus: jest.fn().mockResolvedValue('Passed')
         };
 
         mockBatchService = {
@@ -206,12 +202,13 @@ describe('Submission Service - getSubmission', () => {
         };
 
         // Create submission service instance
+        const mockLogCollection = { insert: jest.fn().mockResolvedValue({ acknowledged: true }) };
         submissionService = new Submission(
-            {}, // logCollection
+            mockLogCollection, // logCollection
             {}, // submissionCollection
             mockBatchService,
             mockUserService,
-            {}, // organizationService
+            {}, // programService
             mockNotifyUser,
             mockDataRecordService,
             jest.fn(), // fetchDataModelInfo
@@ -221,7 +218,6 @@ describe('Submission Service - getSubmission', () => {
             {}, // emailParams
             ['test-commons'], // dataCommonsList
             ['hidden-commons'], // hiddenDataCommonsList
-            {}, // validationCollection
             'sqs-loader-queue',
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -230,8 +226,7 @@ describe('Submission Service - getSubmission', () => {
             {}, // uploadingMonitor
             {}, // dataCommonsBucketMap
             mockAuthorizationService,
-            mockDataModelService,
-            {} // dataRecordsCollection
+            mockDataModelService
         );
 
         // Set mock DAOs
@@ -331,17 +326,25 @@ describe('Submission Service - getSubmission', () => {
         });
 
         it('should return dbGaPID from submission.study.dbGaPID', async () => {
-            // Use real _findByID so its precedence logic runs; DAO returns raw submission with conflicting values
+            // Use real _findByID so its precedence logic runs; study is loaded via approvedStudyDAO
             const rawSubmission = {
                 ...mockSubmission,
                 dbGaPID: 'old',
-                study: {
-                    ...mockSubmission.study,
-                    dbGaPID: 'new'
-                }
             };
-            mockSubmissionDAO.findFirst.mockResolvedValue(rawSubmission);
-            mockProgramDAO.findFirst.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
+            delete rawSubmission.study;
+            mockSubmissionDAO.findById.mockResolvedValue(rawSubmission);
+            submissionService.approvedStudyDAO = {
+                findById: jest.fn().mockResolvedValue({
+                    _id: 'study-123',
+                    studyName: 'Test Study',
+                    studyAbbreviation: 'TS',
+                    dbGaPID: 'new',
+                }),
+            };
+            submissionService.userDAO = {
+                findById: jest.fn().mockResolvedValue(null),
+            };
+            mockProgramDAO.findById.mockResolvedValue({ id: 'program-123', name: 'Test Program', abbreviation: 'TP' });
             submissionService._findByID = Submission.prototype._findByID.bind(submissionService);
             submissionService._getUserScope.mockResolvedValue(createMockUserScope(false, true));
             submissionService._getS3DirectorySize.mockResolvedValue({ size: 1024, formatted: '1 KB' });
@@ -462,8 +465,9 @@ describe('Submission Service - getSubmission', () => {
             // Verify
             expect(mockSubmissionDAO.findMany).toHaveBeenCalledWith({
                 studyID: 'study-123',
-                status: { in: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN] },
-                NOT: { id: 'sub-123' }
+                dataCommons: undefined,
+                status: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN],
+                _id: { not: 'sub-123' }
             });
             expect(result.otherSubmissions).toBeDefined();
             const parsedOtherSubs = JSON.parse(result.otherSubmissions);
@@ -926,7 +930,8 @@ describe('Submission Service - getSubmission', () => {
             jest.clearAllMocks();
 
             mockQcResultsService = {
-                deleteQCResultBySubmissionID: jest.fn()
+                deleteQCResultBySubmissionID: jest.fn(),
+                getQCResultsForNodeType: jest.fn().mockResolvedValue([])
             };
 
             // Update submissionService to include qcResultsService
@@ -1099,6 +1104,98 @@ describe('Submission Service - getSubmission', () => {
                 expect(submissionService._deleteDataFiles).toHaveBeenCalled();
                 expect(result.message).toContain('1 nodes deleted');
                 expect(mockDataRecordService.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith('sub-123', deletedFiles);
+            });
+
+            it('recalculates fileValidationStatus from QC file issues and s3FileInfo after data file delete', async () => {
+                const mockSubmission = {
+                    _id: 'sub-123',
+                    status: NEW,
+                    submitterID: 'user-123',
+                    bucketName: 'test-bucket',
+                    rootPath: 'test/path',
+                    fileErrors: []
+                };
+                const fileIssues = [{ submittedID: 'orphan.txt', severity: "Error" }];
+                const deletedFiles = ['file1.txt'];
+
+                submissionService._findByID.mockResolvedValue(mockSubmission);
+                submissionService._getUserScope.mockResolvedValue({
+                    isOwnScope: () => true,
+                    isStudyScope: () => false,
+                    isDCScope: () => false,
+                    isAllScope: () => false
+                });
+                submissionService._getExistingDataFiles.mockResolvedValue(new Map([['file1.txt', 'test/path/file/file1.txt']]));
+                submissionService._deleteDataFiles.mockResolvedValue(deletedFiles);
+                submissionService._getAllSubmissionDataFiles.mockResolvedValue(['file2.txt']);
+                submissionService._getS3DirectorySize.mockResolvedValue({ size: 0 });
+                mockQcResultsService.getQCResultsForNodeType.mockResolvedValue(fileIssues);
+                mockDataRecordService.recalculateFileValidationStatus.mockResolvedValue('Error');
+                mockSubmissionDAO.update.mockResolvedValue(mockSubmission);
+                ValidationHandler.success = jest.fn((msg) => ({ success: true, message: msg }));
+
+                await submissionService.deleteDataRecords(
+                    {
+                        submissionID: 'sub-123',
+                        nodeType: VALIDATION.TYPES.DATA_FILE,
+                        nodeIDs: ['file1.txt']
+                    },
+                    { userInfo: { _id: 'user-123' } }
+                );
+
+                expect(mockQcResultsService.getQCResultsForNodeType).toHaveBeenCalledWith(
+                    'sub-123',
+                    VALIDATION.TYPES.DATA_FILE
+                );
+                expect(mockDataRecordService.recalculateFileValidationStatus).toHaveBeenCalledWith(
+                    'sub-123',
+                    fileIssues
+                );
+                expect(mockSubmissionDAO.update).toHaveBeenCalledWith(
+                    'sub-123',
+                    expect.objectContaining({ fileValidationStatus: 'Error' })
+                );
+            });
+
+            it('sets fileValidationStatus to null when no data files remain in S3', async () => {
+                const mockSubmission = {
+                    _id: 'sub-123',
+                    status: NEW,
+                    submitterID: 'user-123',
+                    bucketName: 'test-bucket',
+                    rootPath: 'test/path',
+                    fileErrors: []
+                };
+                const deletedFiles = ['file1.txt'];
+
+                submissionService._findByID.mockResolvedValue(mockSubmission);
+                submissionService._getUserScope.mockResolvedValue({
+                    isOwnScope: () => true,
+                    isStudyScope: () => false,
+                    isDCScope: () => false,
+                    isAllScope: () => false
+                });
+                submissionService._getExistingDataFiles.mockResolvedValue(new Map([['file1.txt', 'test/path/file/file1.txt']]));
+                submissionService._deleteDataFiles.mockResolvedValue(deletedFiles);
+                submissionService._getAllSubmissionDataFiles.mockResolvedValue([]);
+                submissionService._getS3DirectorySize.mockResolvedValue({ size: 0 });
+                mockSubmissionDAO.update.mockResolvedValue(mockSubmission);
+                ValidationHandler.success = jest.fn((msg) => ({ success: true, message: msg }));
+
+                await submissionService.deleteDataRecords(
+                    {
+                        submissionID: 'sub-123',
+                        nodeType: VALIDATION.TYPES.DATA_FILE,
+                        nodeIDs: ['file1.txt']
+                    },
+                    { userInfo: { _id: 'user-123' } }
+                );
+
+                expect(mockDataRecordService.recalculateFileValidationStatus).not.toHaveBeenCalled();
+                expect(mockSubmissionDAO.update).toHaveBeenCalledWith(
+                    'sub-123',
+                    expect.objectContaining({ fileValidationStatus: null })
+                );
             });
 
             it('should throw error when collaborator has study scope but no study access', async () => {
@@ -1952,14 +2049,9 @@ describe('Submission Service - getSubmission', () => {
     });
 
     describe('_logDataRecord', () => {
-        let prisma;
-        
         beforeEach(() => {
             jest.clearAllMocks();
-            prisma = require('../../prisma');
-            // Use the existing mock from jest.mock, just reset and configure it
-            prisma.log.create.mockClear();
-            prisma.log.create.mockResolvedValue({ id: 'log-123' });
+            submissionService.logCollection.insert = jest.fn().mockResolvedValue({ acknowledged: true });
         });
 
         it('should handle array input', async () => {
@@ -1978,16 +2070,13 @@ describe('Submission Service - getSubmission', () => {
                 nodeIDs
             );
 
-            expect(prisma.log.create).toHaveBeenCalled();
-            const callArgs = prisma.log.create.mock.calls[0][0];
-            // Verify the call structure: prisma.log.create({ data: logData })
-            // The callArgs should be { data: { userID, userEmail, userName, eventType, submissionID, ... } }
+            expect(submissionService.logCollection.insert).toHaveBeenCalled();
+            const callArgs = submissionService.logCollection.insert.mock.calls[0][0];
             expect(callArgs).toBeDefined();
-            expect(callArgs).toHaveProperty('data');
-            expect(callArgs.data).toBeDefined();
-            expect(callArgs.data.submissionID).toBe('sub-123');
-            expect(callArgs.data.userID).toBe('user-123');
-            expect(callArgs.data.eventType).toBe('Delete_Data');
+            expect(callArgs.userID).toBe('user-123');
+            expect(callArgs.eventType).toBe('Delete_Data');
+            expect(callArgs.eventDetail.submissionID).toBe('sub-123');
+            expect(callArgs.submissionID).toBeUndefined();
         });
 
         it('should handle string input (deleteAll summary)', async () => {
@@ -2005,7 +2094,7 @@ describe('Submission Service - getSubmission', () => {
                 'deleteAll'
             );
 
-            expect(prisma.log.create).toHaveBeenCalled();
+            expect(submissionService.logCollection.insert).toHaveBeenCalled();
         });
     });
 });
@@ -2044,7 +2133,7 @@ describe('Submission Service - listSubmissions', () => {
             {}, // submissionCollection
             {}, // batchService
             {}, // userService
-            {}, // organizationService
+            {}, // programService
             {}, // notificationService
             {}, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -2054,7 +2143,6 @@ describe('Submission Service - listSubmissions', () => {
             {}, // emailParams
             dataCommonsList,
             hiddenDataCommonsList,
-            {}, // validationCollection
             'sqs-loader-queue', // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -2063,8 +2151,7 @@ describe('Submission Service - listSubmissions', () => {
             {}, // uploadingMonitor
             {}, // dataCommonsBucketMap
             {}, // authorizationService
-            {}, // dataModelService
-            {} // dataRecordsCollection
+            {} // dataModelService
         );
 
         // Override the submissionDAO with our mock
@@ -2112,7 +2199,7 @@ describe('Submission Service - listSubmissions', () => {
         const serviceNoHidden = new Submission(
             {}, {}, {}, {}, {}, {}, {}, jest.fn(), {}, 'queue', {}, {},
             dataCommonsListNoHidden, emptyHiddenList,
-            {}, 'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
+            'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
         );
         serviceNoHidden.submissionDAO = mockSubmissionDAO;
         serviceNoHidden._getUserScope = jest.fn().mockResolvedValue(
@@ -2135,7 +2222,7 @@ describe('Submission Service - listSubmissions', () => {
         const serviceAllHidden = new Submission(
             {}, {}, {}, {}, {}, {}, {}, jest.fn(), {}, 'queue', {}, {},
             allDataCommons, allHidden,
-            {}, 'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
+            'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
         );
         serviceAllHidden.submissionDAO = mockSubmissionDAO;
         serviceAllHidden._getUserScope = jest.fn().mockResolvedValue(
@@ -2148,5 +2235,37 @@ describe('Submission Service - listSubmissions', () => {
         const calledDataCommons = mockSubmissionDAO.listSubmissions.mock.calls[0][3];
         expect(calledDataCommons).toEqual([]);
         expect(calledDataCommons).toHaveLength(0);
+    });
+
+    it('should preserve adminSubmitComment values returned by DAO', async () => {
+        const submissions = [
+            {
+                _id: 'sub-001',
+                adminSubmitComment: 'latest admin comment',
+                history: [
+                    { status: 'Submitted', isAdminSubmit: true, reviewComment: 'older comment' },
+                    { status: 'Submitted', isAdminSubmit: true, reviewComment: 'latest admin comment' }
+                ]
+            },
+            {
+                _id: 'sub-002',
+                adminSubmitComment: null,
+                history: [
+                    { status: 'Submitted', isAdminSubmit: true, reviewComment: 'hidden for non-internal users' }
+                ]
+            }
+        ];
+        mockSubmissionDAO.listSubmissions.mockResolvedValueOnce({
+            submissions,
+            total: 2,
+            dataCommons: [],
+            submitterNames: [],
+            organizations: [],
+            statuses: () => []
+        });
+
+        const result = await submissionService.listSubmissions({}, mockContext);
+        expect(result.submissions[0].adminSubmitComment).toBe('latest admin comment');
+        expect(result.submissions[1].adminSubmitComment).toBeNull();
     });
 });

@@ -157,6 +157,30 @@ export const unpackValidationSeverities = <T extends QCResult | CrossValidationR
 };
 
 /**
+ * Filters unpacked validation results by severity and issue type (error/warning code).
+ *
+ * @param results - Array of unpacked validation results (each containing either errors or warnings, not both)
+ * @param severity - The severity to filter by ('Error', 'Warning', 'All', or undefined for all)
+ * @param issueType - The issue type (error/warning code) to filter by ('All' or undefined for all)
+ * @returns Filtered array of validation results
+ */
+export const filterValidationResults = (
+  results: QCResult[],
+  severity?: QCResult["severity"] | "All",
+  issueType?: string
+): QCResult[] =>
+  results.filter((result) => {
+    const severityMatch = !severity || severity === "All" ? true : result.severity === severity;
+
+    const issueCodeMatch =
+      !issueType || issueType === "All"
+        ? true
+        : result.errors?.[0]?.code === issueType || result.warnings?.[0]?.code === issueType;
+
+    return severityMatch && issueCodeMatch;
+  });
+
+/**
  * Build a file with data and download it
  *
  * @param content file content

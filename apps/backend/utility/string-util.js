@@ -31,7 +31,7 @@ const sanitizeMongoDBInput = (raw) => {
     return raw.trim();
 }
 
-/** Escape a string for use as a literal inside MongoDB $regex or Prisma MongoDB case-insensitive filters (which compile to regex). */
+/** Escape a string for use as a literal inside MongoDB $regex. */
 const escapeRegexLiteral = (raw) => {
     if (raw === undefined || raw === null) return "";
     return String(raw).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -53,13 +53,26 @@ const isUndefined = (p) => {
     return p === undefined;
 }
 
+/**
+ * Replaces `$key` placeholders in copy with values from messageVariables.
+ * @param {string} input Template text
+ * @param {object} [messageVariables]
+ * @returns {string} empty string when input is not a string
+ */
 const replaceMessageVariables = (input, messageVariables) => {
+    if (typeof input !== 'string') {
+        return '';
+    }
+    if (!messageVariables || typeof messageVariables !== 'object') {
+        return input;
+    }
+    let result = input;
     for (let key in messageVariables){
         // message variable must start with $
         const regex = new RegExp(`\\$${key}`, 'g');
-        input = input.replace(regex, messageVariables[key]);
+        result = result.replace(regex, messageVariables[key]);
     }
-    return input;
+    return result;
 }
 
 /**

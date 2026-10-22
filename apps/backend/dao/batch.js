@@ -1,21 +1,21 @@
-const GenericDAO = require("./generic");
-const {MODEL_NAME} = require("../constants/db-constants");
+const MongooseGenericDAO = require("./mongoose-generic");
+const BatchModel = require("../mongoose/models/batch");
 
-class BatchDAO extends GenericDAO {
+class BatchDAO extends MongooseGenericDAO {
     constructor() {
-        super(MODEL_NAME.BATCH);
+        super(BatchModel);
     }
 
     /**
-     * Delete batches by a submission
-     * @param {Object} submissionID - submissionID
-     * @returns {Promise<Object>} - Deletion result
+     * Delete batches by a submission ID.
+     * @param {string} submissionID - Submission ID
+     * @returns {Promise<{count: number}|undefined>} - Deletion result, or undefined when submissionID is falsy
      */
     async deleteBatchesBySubmissionID(submissionID) {
-
         try {
             if (submissionID) {
-                const res = await this.deleteMany({submissionID: submissionID});
+                const result = await this.model.deleteMany({ submissionID: submissionID });
+                const res = { count: result.deletedCount };
                 console.log(`deleteBySubmissionID submissionID: ${JSON.stringify(submissionID)}, ${JSON.stringify(res)}`);
                 return res;
             }
@@ -30,25 +30,25 @@ class BatchDAO extends GenericDAO {
     }
 
     /**
-     * Find batches by submission ID and status
+     * Find batches by submission ID and status.
      * @param {string} submissionID - Submission ID to filter by
      * @param {string} status - Status to filter by
-     * @returns {Promise<Array>} - Array of matching batches
+     * @returns {Promise<object[]>} - Array of matching batches (empty or single-element)
      */
     async findByStatus(submissionID, status) {
         try {
-            const result = await this.model.findFirst({
-                where: {
+            const result = this._mapDoc(
+                await this.model.findOne({
                     submissionID: submissionID,
                     status: status
-                }
-            });
-            
+                }).lean()
+            );
+
             if (!result) {
                 return [];
             }
-            
-            return [{ ...result, _id: result.id }];
+
+            return [result];
         } catch (error) {
             console.error('BatchDAO.findByStatus failed:', {
                 error: error.message,
@@ -61,18 +61,16 @@ class BatchDAO extends GenericDAO {
     }
 
     /**
-     * Get the next display ID for a submission
+     * Get the next display ID for a submission.
      * @param {string} submissionID - Submission ID to get next display ID for
      * @returns {Promise<number>} - Next display ID
      */
     async getNextDisplayID(submissionID) {
         try {
-            const count = await this.model.count({
-                where: {
-                    submissionID: submissionID
-                }
+            const count = await this.model.countDocuments({
+                submissionID: submissionID
             });
-            
+
             return count + 1;
         } catch (error) {
             console.error('BatchDAO.getNextDisplayID failed:', {
@@ -85,37 +83,30 @@ class BatchDAO extends GenericDAO {
     }
 
     /**
-     * Get the latest batch ID for a specific file in a submission
+     * Get the latest batch display ID for a specific uploaded file in a submission.
      * @param {string} submissionID - Submission ID
      * @param {string} fileName - File name to search for
-     * @param {number} maxBatches - Maximum number of batches to search through (default: 10)
+     * @param {number} [maxBatches=10] - Maximum number of batches to search through (unused; retained for callers)
      * @returns {Promise<number|null>} - Latest batch display ID or null if not found
      */
     async getLastFileBatchID(submissionID, fileName, maxBatches = 10) {
         try {
-            // Use Prisma's array operations for MongoDB-optimized queries
-            // This eliminates the need to fetch and iterate through batches in JavaScript
-            const result = await this.model.findFirst({
-                where: {
+            const result = await this.model
+                .findOne({
                     submissionID: submissionID,
                     type: "data file",
                     status: "Uploaded",
-                    // Prisma MongoDB array operator to check if files array contains matching object
                     files: {
-                        has: {
+                        $elemMatch: {
                             fileName: fileName,
                             status: 'Uploaded'
                         }
                     }
-                },
-                select: {
-                    displayID: true
-                },
-                orderBy: {
-                    displayID: 'desc'
-                }
-            });
-            
+                })
+                .select("displayID")
+                .sort({ displayID: -1 })
+                .lean();
+
             return result ? result.displayID : null;
         } catch (error) {
             console.error('BatchDAO.getLastFileBatchID failed:', {
@@ -128,8 +119,6 @@ class BatchDAO extends GenericDAO {
             throw new Error(`Failed to get last file batch ID`);
         }
     }
-
-
 }
 
-module.exports = BatchDAO
+module.exports = BatchDAO;

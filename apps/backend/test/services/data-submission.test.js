@@ -3,7 +3,7 @@ const { Submission } = require('../../services/submission');
 const {ValidationHandler} = require("../../utility/validation-handler");
 const {ROLE} = require("../../constants/permission-scope-constants");
 const {replaceErrorString} = require("../../utility/string-util");
-const {Organization} = require("../../services/organization-service");
+const {Program} = require("../../services/program-service");
 const {INTENTION, DATA_TYPE, IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN,
     NEW,
     COLLABORATOR_PERMISSIONS,
@@ -18,37 +18,7 @@ const {INTENTION, DATA_TYPE, IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRA
 const {getDataCommonsDisplayNamesForSubmission} = require("../../utility/data-commons-remapper");
 const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {USER, ROLES} = require("../../crdc-datahub-database-drivers/constants/user-constants"); // ← adjust path if needed
-const { ORGANIZATION } = require("../../crdc-datahub-database-drivers/constants/organization-constants");
-
-// Mock Prisma
-jest.mock("../../prisma", () => {
-    const mockPrismaModel = {
-        create: jest.fn(),
-        createMany: jest.fn(),
-        findUnique: jest.fn(),
-        findMany: jest.fn(),
-        findFirst: jest.fn(),
-        update: jest.fn(),
-        updateMany: jest.fn(),
-        deleteMany: jest.fn(),
-        delete: jest.fn(),
-        count: jest.fn(),
-        aggregate: jest.fn(),
-        name: 'MockModel'
-    };
-
-    return {
-        organization: mockPrismaModel,
-        submission: mockPrismaModel,
-        user: mockPrismaModel,
-        log: mockPrismaModel,
-        dataRecord: mockPrismaModel,
-        batch: mockPrismaModel,
-        qcResult: mockPrismaModel,
-        release: mockPrismaModel,
-        validation: mockPrismaModel
-    };
-});
+const { PROGRAM } = require("../../crdc-datahub-database-drivers/constants/organization-constants");
 
 jest.mock('../../verifier/user-info-verifier', () => ({
     verifySession: jest.fn(() => ({
@@ -69,19 +39,17 @@ describe('Submission.getPendingPVs', () => {
             aggregate: mockAggregate
         };
         
-        // Mock organization service using Prisma
-        const mockPrisma = require("../../prisma");
-        const organizationService = new Organization(mockPrisma.organization);
+        const programService = new Program({});
 
         // Instantiate Submission with mocked submissionCollection
         service = new Submission(
             null,                   // logCollection
-            mockSubmissionCollection, // 👈 mocked collection
-            null, null, organizationService, null,
-            null, null, null, null,
-            null, null, [], [],    // dataCommonsList, hiddenDataCommonsList
-            null, null, null, null,
-            'bucket', null, null, {}, null, // submissionBucketName, configService, monitor, bucketMap, authService, dataModelService
+            mockSubmissionCollection, // submissionCollection
+            null, null, programService, null, // batchService, userService, programService, notificationService
+            null, null, null, null, // dataRecordService, fetchDataModelInfo, awsService, metadataQueueName
+            null, null, [], [],    // s3Service, emailParams, dataCommonsList, hiddenDataCommonsList
+            null, null, null,      // sqsLoaderQueue, qcResultsService, uploaderCLIConfigs
+            'bucket', null, null, {}, null, // submissionBucketName, configurationService, uploadingMonitor, dataCommonsBucketMap, authorizationService
             {
                 getDataModelByDataCommonAndVersion: jest.fn().mockResolvedValue({
                     terms_: {
@@ -89,8 +57,7 @@ describe('Submission.getPendingPVs', () => {
                         Age: 'Age'
                     }
                 })
-            },
-            mockSubmissionCollection
+            }, // dataModelService
         );
 
         // Mock dependencies
@@ -372,7 +339,8 @@ describe('Submission.getSubmission', () => {
         };
 
         mockDataRecordService = {
-            countNodesBySubmissionID: jest.fn()
+            countNodesBySubmissionID: jest.fn(),
+            exportDCFManifest: jest.fn().mockResolvedValue({})
         };
 
         mockUserService = {
@@ -385,7 +353,7 @@ describe('Submission.getSubmission', () => {
         };
 
         // Mock all required dependencies for Submission constructor
-        const mockOrganizationService = {
+        const mockProgramService = {
             organizationCollection: jest.fn()
         };
 
@@ -394,7 +362,7 @@ describe('Submission.getSubmission', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             mockUserService, // userService
-            mockOrganizationService, // organizationService
+            mockProgramService, // programService
             jest.fn(), // notificationService
             mockDataRecordService, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -404,7 +372,6 @@ describe('Submission.getSubmission', () => {
             { remindSubmissionDay: 30 }, // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -487,12 +454,9 @@ describe('Submission.getSubmission', () => {
         });
         expect(mockSubmissionDAO.findMany).toHaveBeenCalledWith({
             studyID: 'study1',
-            status: {
-                in: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN],
-            },
-            NOT: {
-                id: 'sub1',
-            },
+            dataCommons: undefined,
+            status: [IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN],
+            _id: { not: 'sub1' },
         });
         expect(mockDataRecordService.countNodesBySubmissionID).toHaveBeenCalledWith('sub1');
         expect(mockUserService.getUsersByIDs).toHaveBeenCalledWith(['user1', 'user2']);
@@ -840,7 +804,7 @@ describe('Submission.getSubmission', () => {
 
 describe("Submission.createSubmission", () => {
     let submissionService;
-    let mockSubmissionDAO, mockUserService, mockOrganizationService;
+    let mockSubmissionDAO, mockUserService, mockProgramService;
     let mockContext, mockParams, mockApprovedStudy, mockProgram;
 
     beforeEach(() => {
@@ -852,7 +816,7 @@ describe("Submission.createSubmission", () => {
         mockUserService = {
             getUserByID: jest.fn(),
         };
-        mockOrganizationService = {
+        mockProgramService = {
             findOneByStudyID: jest.fn(),
         };
 
@@ -863,7 +827,7 @@ describe("Submission.createSubmission", () => {
             mockSubmissionDAO, // submissionCollection
             {}, // batchService
             mockUserService, // userService
-            mockOrganizationService, // organizationService
+            mockProgramService, // programService
             {}, // notificationService
             {}, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -873,7 +837,6 @@ describe("Submission.createSubmission", () => {
             {}, // emailParams
             ["commonsA"], // dataCommonsList
             [], // hiddenDataCommonsList
-            {}, // validationCollection
             {}, // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -941,8 +904,8 @@ describe("Submission.createSubmission", () => {
         // Mock _findApprovedStudies
         submissionService._findApprovedStudies = jest.fn().mockResolvedValue([mockApprovedStudy]);
 
-        // Mock organizationService.findOneByStudyID
-        mockOrganizationService.findOneByStudyID.mockResolvedValue(mockProgram);
+        // Mock programService.findOneByStudyID
+        mockProgramService.findOneByStudyID.mockResolvedValue(mockProgram);
 
         // Mock userService.getUserByID
         mockUserService.getUserByID.mockResolvedValue({ firstName: "Contact", lastName: "Person", email: "contact@person.com" });
@@ -1015,7 +978,7 @@ describe("Submission.createSubmission", () => {
             isStudyScope: () => false,
             isDCScope: () => false
         });
-        mockOrganizationService.findOneByStudyID.mockResolvedValue({ ...mockProgram, status: ORGANIZATION.STATUSES.INACTIVE });
+        mockProgramService.findOneByStudyID.mockResolvedValue({ ...mockProgram, status: PROGRAM.STATUSES.INACTIVE });
 
         await expect(submissionService.createSubmission(mockParams, mockContext)).rejects.toThrow(
             ERROR.STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM
@@ -1356,7 +1319,7 @@ describe("Submission.createSubmission", () => {
     it("should throw error if no associated program found", async () => {
         // Simulate valid intention and dataType to avoid intention/dataType errors
         submissionService._findApprovedStudies.mockResolvedValueOnce([mockApprovedStudy]);
-        mockOrganizationService.findOneByStudyID.mockResolvedValueOnce(null);
+        mockProgramService.findOneByStudyID.mockResolvedValueOnce(null);
         await expect(submissionService.createSubmission(mockParams, mockContext))
             .rejects
             .toThrow(ERROR.CREATE_SUBMISSION_NO_ASSOCIATED_PROGRAM);
@@ -1402,9 +1365,13 @@ describe("Submission.createSubmission", () => {
 
         const result = await submissionService.createSubmission(mockParams, mockContext);
 
-        // Verify that the DAO methods were called
+        // Verify that the DAO create was called with rootPath set from _id
         expect(mockSubmissionDAO.create).toHaveBeenCalled();
-        expect(mockSubmissionDAO.update).toHaveBeenCalled();
+        const createdPayload = mockSubmissionDAO.create.mock.calls[0][0];
+        expect(createdPayload._id).toBeDefined();
+        expect(createdPayload.rootPath).toBe(`submissions/${createdPayload._id}`);
+        expect(createdPayload.rootPath.trim().length).toBeGreaterThan(0);
+        expect(mockSubmissionDAO.update).not.toHaveBeenCalled();
 
         // Verify that the reminder email was sent
         expect(submissionService._remindPrimaryContactEmail).toHaveBeenCalled();
@@ -1430,7 +1397,7 @@ describe("Submission.createSubmission", () => {
         expect(result).toBeDefined();
         // The test is actually receiving a different object, so let's just verify the basic functionality
         expect(mockSubmissionDAO.create).toHaveBeenCalled();
-        expect(mockSubmissionDAO.update).toHaveBeenCalled();
+        expect(mockSubmissionDAO.update).not.toHaveBeenCalled();
     });
 
     it("should handle study with primary contact", async () => {
@@ -1466,7 +1433,7 @@ describe('Submission._remindPrimaryContactEmail', () => {
             {}, // submissionCollection
             {}, // batchService
             mockUserService, // userService
-            {}, // organizationService
+            {}, // programService
             mockNotificationService, // notificationService
             {}, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -1476,7 +1443,6 @@ describe('Submission._remindPrimaryContactEmail', () => {
             {}, // emailParams
             ["commonsA"], // dataCommonsList
             [], // hiddenDataCommonsList
-            {}, // validationCollection
             {}, // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -1596,7 +1562,7 @@ describe('Submission._sendEmailsDeletedSubmissions', () => {
             {}, // submissionCollection
             {}, // batchService
             mockUserService, // userService
-            {}, // organizationService
+            {}, // programService
             mockNotificationService, // notificationService
             {}, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -1606,7 +1572,6 @@ describe('Submission._sendEmailsDeletedSubmissions', () => {
             {}, // emailParams
             ["commonsA"], // dataCommonsList
             [], // hiddenDataCommonsList
-            {}, // validationCollection
             {}, // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -1671,7 +1636,7 @@ describe('Submission._sendEmailsDeletedSubmissions', () => {
             [USER_PERMISSION_CONSTANTS.EMAIL_NOTIFICATIONS.DATA_SUBMISSION.DELETE],
             [USER.ROLES.FEDERAL_LEAD, USER.ROLES.DATA_COMMONS_PERSONNEL, USER.ROLES.ADMIN]
         );
-        expect(mockApprovedStudyDAO.findFirst).toHaveBeenCalledWith({ id: 'study123' });
+        expect(mockApprovedStudyDAO.findFirst).toHaveBeenCalledWith({ _id: 'study123' });
         
         // The notification should be sent since the submitter has DELETE notifications enabled
         expect(mockNotificationService.deleteSubmissionNotification).toHaveBeenCalledWith(
@@ -1742,7 +1707,7 @@ describe('Submission.editSubmissionCollaborators', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
             jest.fn(), // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -1752,7 +1717,6 @@ describe('Submission.editSubmissionCollaborators', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -1833,7 +1797,7 @@ describe('Submission.editSubmissionCollaborators', () => {
         const result = await submissionService.editSubmissionCollaborators(mockParams, mockContext);
 
         expect(submissionService._findByID).toHaveBeenCalledWith('sub1');
-        expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ id: 'user2' });
+        expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ _id: 'user2' });
         expect(submissionService._verifyStudyInUserStudies).toHaveBeenCalledWith(mockUser, 'study123');
         expect(mockSubmissionDAO.update).toHaveBeenCalledWith('sub1', {
             collaborators: [
@@ -2164,9 +2128,9 @@ describe('Submission.submissionAction', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
-            jest.fn(), // dataRecordService
+            { exportDCFManifest: jest.fn().mockResolvedValue({}) }, // dataRecordService
             jest.fn(), // fetchDataModelInfo
             jest.fn(), // awsService
             jest.fn(), // metadataQueueName
@@ -2174,7 +2138,6 @@ describe('Submission.submissionAction', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2356,6 +2319,67 @@ describe('Submission.submissionAction', () => {
         const lastEvent = updatePayload.history[updatePayload.history.length - 1];
         expect(lastEvent.isAdminSubmit).toBe(true);
     });
+
+    it('should use dataCommonsDisplayName (not the raw dataCommons code) in the withdraw notification greeting', async () => {
+        const { EMAIL_NOTIFICATIONS } = require('../../crdc-datahub-database-drivers/constants/user-permission-constants');
+        const { getDataCommonsDisplayNamesForSubmission } = require('../../utility/data-commons-remapper');
+        getDataCommonsDisplayNamesForSubmission.mockImplementation((s) => ({
+            ...s,
+            dataCommonsDisplayName: 'Test Data Commons Display Name'
+        }));
+
+        const submissionUpdate = jest.fn().mockResolvedValue({ _id: 'sub1' });
+        submissionService.submissionDAO = { update: submissionUpdate };
+        submissionService._getUserScope = jest.fn().mockResolvedValue({ isNoneScope: () => false });
+        submissionService._getS3DirectorySize = jest.fn().mockResolvedValue({ size: 1, formatted: '1 B' });
+        submissionService.qcResultsService = { findBySubmissionErrorCodes: jest.fn().mockResolvedValue([]) };
+        submissionService.batchService = { findOneBatchByStatus: jest.fn().mockResolvedValue([]) };
+        submissionService._isValidReleaseAction = jest.fn().mockResolvedValue();
+        submissionService._createLogEntry = jest.fn().mockResolvedValue(null);
+
+        const withdrawSubmissionNotification = jest.fn().mockResolvedValue(null);
+        submissionService.notificationService = { withdrawSubmissionNotification };
+        submissionService.userService = {
+            getDCPs: jest.fn().mockResolvedValue([{
+                _id: 'dcp-1',
+                role: USER.ROLES.ADMIN,
+                email: 'dcp@example.com',
+                dataCommons: ['test-dc'],
+                notifications: [EMAIL_NOTIFICATIONS.DATA_SUBMISSION.WITHDRAW]
+            }]),
+            getUsersByNotifications: jest.fn().mockResolvedValue([]),
+            approvedStudiesCollection: { find: jest.fn().mockResolvedValue([{ studyName: 'Test Study' }]) }
+        };
+
+        const validSub = {
+            ...mockSubmission,
+            dataCommons: 'test-dc',
+            status: SUBMITTED
+        };
+        const afterWithdraw = {
+            ...validSub,
+            id: validSub._id,
+            status: WITHDRAWN,
+            history: []
+        };
+        let findByIdN = 0;
+        submissionService._findByID = jest.fn().mockImplementation(async () => {
+            findByIdN += 1;
+            return findByIdN === 1 ? validSub : afterWithdraw;
+        });
+
+        await submissionService.submissionAction(
+            { submissionID: 'sub1', action: ACTIONS.WITHDRAW, comment: 'Test comment' },
+            mockContext
+        );
+
+        expect(withdrawSubmissionNotification).toHaveBeenCalledWith(
+            ['dcp@example.com'],
+            [],
+            { firstName: 'Test Data Commons Display Name Data Commons Personnel' },
+            expect.objectContaining({ submissionID: 'sub1' })
+        );
+    });
 });
 
 describe('Submission.validateSubmission', () => {
@@ -2370,7 +2394,7 @@ describe('Submission.validateSubmission', () => {
         };
 
         mockDataRecordService = {
-            validateMetadata: jest.fn()
+            initializeDataValidation: jest.fn()
         };
 
         // Create submission service with mocked dependencies
@@ -2379,7 +2403,7 @@ describe('Submission.validateSubmission', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
             mockDataRecordService, // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -2389,7 +2413,6 @@ describe('Submission.validateSubmission', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            mockValidationDAO, // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2401,7 +2424,7 @@ describe('Submission.validateSubmission', () => {
             jest.fn() // dataModelService
         );
 
-        // Override DAOs with mocks to prevent Prisma calls
+        // Override DAOs with mocks
         submissionService.pendingPVDAO = { findBySubmissionID: jest.fn(), insertOne: jest.fn() };
         submissionService.submissionDAO = { update: jest.fn(), create: jest.fn(), findById: jest.fn() };
         submissionService.programDAO = { findById: jest.fn() };
@@ -2484,7 +2507,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._isCollaborator.mockReturnValue(true);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         const result = await submissionService.validateSubmission(mockParams, mockContext);
@@ -2501,7 +2524,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._getUserScope.mockResolvedValue(mockCreateScope);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         await submissionService.validateSubmission(mockParams, mockContext);
@@ -2518,7 +2541,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._getUserScope.mockResolvedValue(mockCreateScope);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         await submissionService.validateSubmission(mockParams, mockContext);
@@ -2527,6 +2550,203 @@ describe('Submission.validateSubmission', () => {
             totalBatches: 5,
             status: VALIDATION_STATUS.ERROR,
             statusDetail: ['Failed to enqueue 2 of 5 batch messages']
+        });
+    });
+
+    // validateSubmission must pass the validation DAO so totals are stored before messages are enqueued.
+    it('should write totalFileMessages to validation document on successful file validation', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = { success: true, totalFileMessages: 4, failedFileCount: 0 };
+        mockParams.types = [VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', { totalFileMessages: 4 });
+        expect(mockDataRecordService.initializeDataValidation).toHaveBeenCalledWith(
+            mockParams._id,
+            mockParams.types,
+            mockParams.scope,
+            mockValidationRecord.id,
+            mockValidationDAO
+        );
+    });
+
+    it('should skip the total write when persisting totalFileMessages failed', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate file',
+            totalFileMessages: 2,
+            failedFileCount: 2,
+            fileTotalsPersisted: false,
+        };
+        mockParams.types = [VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).not.toHaveBeenCalled();
+        expect(submissionService._updateValidationStatus).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            mockValidationRecord,
+        );
+    });
+
+    // A failed totalBatches write must not store that total, even though the count was returned.
+    it('should skip the total write when persisting totalBatches failed', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate metadata',
+            totalBatches: 3,
+            failedCount: 3,
+            metadataTotalsPersisted: false,
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).not.toHaveBeenCalled();
+    });
+
+    // When only file totals were stored, the validation update includes that count and omits totalBatches.
+    it('should write only the totals that were persisted', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: true,
+            totalBatches: 3,
+            failedCount: 0,
+            metadataTotalsPersisted: false,
+            totalFileMessages: 4,
+            failedFileCount: 0,
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA, VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', { totalFileMessages: 4 });
+    });
+
+    it('should mark validation as Error with statusDetail on partial file SQS send failure', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate file',
+            totalFileMessages: 10,
+            failedFileCount: 2
+        };
+        mockParams.types = [VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalFileMessages: 10,
+            status: VALIDATION_STATUS.ERROR,
+            statusDetail: ['Failed to enqueue 2 of 10 file messages']
+        });
+    });
+
+    it('should write totalBatches and totalFileMessages when both are returned', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: true,
+            totalBatches: 3,
+            failedCount: 0,
+            totalFileMessages: 2,
+            failedFileCount: 0
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA, VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalBatches: 3,
+            totalFileMessages: 2
+        });
+    });
+
+    it('should include batch and file statusDetail when both enqueue attempts fail', async () => {
+        const mockCreateScope = { isNoneScope: () => false };
+        const mockValidationRecord = { id: 'validation1' };
+        const mockValidationResult = {
+            success: false,
+            message: 'Failed to validate metadata, Failed to validate file',
+            totalBatches: 5,
+            failedCount: 2,
+            totalFileMessages: 10,
+            failedFileCount: 1
+        };
+        mockParams.types = [VALIDATION.TYPES.METADATA, VALIDATION.TYPES.FILE];
+
+        submissionService._findByID.mockResolvedValue(mockSubmission);
+        submissionService._getUserScope.mockResolvedValue(mockCreateScope);
+        submissionService._updateValidationStatus.mockResolvedValue();
+        mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
+        submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
+
+        await submissionService.validateSubmission(mockParams, mockContext);
+
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', {
+            totalBatches: 5,
+            totalFileMessages: 10,
+            status: VALIDATION_STATUS.ERROR,
+            statusDetail: [
+                'Failed to enqueue 2 of 5 batch messages',
+                'Failed to enqueue 1 of 10 file messages'
+            ]
         });
     });
 
@@ -2539,7 +2759,7 @@ describe('Submission.validateSubmission', () => {
         submissionService._getUserScope.mockResolvedValue(mockCreateScope);
         submissionService._updateValidationStatus.mockResolvedValue();
         mockValidationDAO.create.mockResolvedValue(mockValidationRecord);
-        mockDataRecordService.validateMetadata.mockResolvedValue(mockValidationResult);
+        mockDataRecordService.initializeDataValidation.mockResolvedValue(mockValidationResult);
         submissionService._recordSubmissionValidation.mockResolvedValue(mockSubmission);
 
         await submissionService.validateSubmission(mockParams, mockContext);
@@ -2564,7 +2784,7 @@ describe('Submission.updateSubmissionInfo', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
             jest.fn(), // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -2574,7 +2794,6 @@ describe('Submission.updateSubmissionInfo', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2835,7 +3054,7 @@ describe('Submission.editSubmission', () => {
             jest.fn(), // submissionCollection
             jest.fn(), // batchService
             jest.fn(), // userService
-            jest.fn(), // organizationService
+            jest.fn(), // programService
             jest.fn(), // notificationService
             jest.fn(), // dataRecordService
             jest.fn(), // fetchDataModelInfo
@@ -2845,7 +3064,6 @@ describe('Submission.editSubmission', () => {
             jest.fn(), // emailParams
             [], // dataCommonsList
             [], // hiddenDataCommonsList
-            jest.fn(), // validationCollection
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -3004,7 +3222,6 @@ describe('Submission._recordSubmissionValidation and _updateValidationStatus', (
             jest.fn(),
             jest.fn(),
             jest.fn(),
-            jest.fn(),
             jest.fn()
         );
         submissionService.submissionDAO = mockSubmissionDAO;
@@ -3061,5 +3278,28 @@ describe('Submission._recordSubmissionValidation and _updateValidationStatus', (
             'sub1',
             expect.objectContaining({ fileValidationStatus: VALIDATION_STATUS.VALIDATING })
         );
+    });
+
+    // When rollback changes no submission fields, the validation record is still marked Error and given an end time.
+    it('marks the validation record Error when no submission field changes', async () => {
+        const validationRecord = { id: 'validation1' };
+        submissionService.validationDAO = mockValidationDAO;
+        mockValidationDAO.update.mockResolvedValue(validationRecord);
+
+        await submissionService._updateValidationStatus(
+            [VALIDATION.TYPES.DATA_FILE],
+            { _id: 'sub1', metadataValidationStatus: VALIDATION_STATUS.NEW },
+            'NA',
+            VALIDATION_STATUS.NEW,
+            'NA',
+            new Date(),
+            validationRecord
+        );
+
+        expect(mockSubmissionDAO.update).not.toHaveBeenCalled();
+        expect(mockValidationDAO.update).toHaveBeenCalledWith('validation1', expect.objectContaining({
+            status: 'Error',
+            ended: expect.any(Date),
+        }));
     });
 });

@@ -280,8 +280,14 @@ describe('BatchService', () => {
 
             const result = await batchService.listBatches(params);
 
-            expect(mockBatchDAO.findMany).toHaveBeenCalled();
-            expect(mockBatchDAO.count).toHaveBeenCalled();
+            expect(mockBatchDAO.findMany).toHaveBeenCalledWith(
+                { submissionID: 'sub1' },
+                expect.objectContaining({
+                    sort: { createdAt: 'desc' },
+                    take: 10,
+                })
+            );
+            expect(mockBatchDAO.count).toHaveBeenCalledWith({ submissionID: 'sub1' });
             expect(result.batches).toEqual(mockBatches);
             expect(result.total).toBe(2);
         });
@@ -298,6 +304,31 @@ describe('BatchService', () => {
 
             expect(result.batches).toEqual([]);
             expect(result.total).toBe(0);
+        });
+
+        it('should return an empty page when first is 0', async () => {
+            const params = {
+                submissionID: 'sub1',
+                first: 0,
+                orderBy: 'createdAt',
+                sortDirection: 'desc'
+            };
+
+            mockBatchDAO.findMany.mockResolvedValue([]);
+            mockBatchDAO.count.mockResolvedValue(5);
+
+            const result = await batchService.listBatches(params);
+
+            expect(mockBatchDAO.findMany).toHaveBeenCalledWith(
+                { submissionID: 'sub1' },
+                expect.objectContaining({
+                    sort: { createdAt: 'desc' },
+                    take: 0,
+                })
+            );
+            expect(mockBatchDAO.count).toHaveBeenCalledWith({ submissionID: 'sub1' });
+            expect(result.batches).toEqual([]);
+            expect(result.total).toBe(5);
         });
     });
 

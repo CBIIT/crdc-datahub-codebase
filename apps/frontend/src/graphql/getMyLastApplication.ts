@@ -16,10 +16,10 @@ export type Response = {
      */
     _id: Application["_id"];
     /**
-     * A stringified JSON object containing the Questionnaire data
+     * Questionnaire data.
      *
      * @see {@link QuestionnaireData}
      */
-    questionnaireData: string;
+    questionnaireData: QuestionnaireData;
   };
 };

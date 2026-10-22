@@ -88,7 +88,7 @@ const ExportSubmissionsButton: React.FC<Props> = ({
       const filename = `crdc-data-submissions-${dayjs().format("YYYY-MM-DD-HH-mm-ss")}.csv`;
 
       const csvArray = data.map((submission) => {
-        const row: Record<string, string | number> = {};
+        const row: Record<string, string | number> = { "Data Submission ID": submission._id };
         visibleColumns?.forEach((col) => {
           if (typeof col.exportValue === "function") {
             const { label, value } = col.exportValue(submission);

@@ -2,6 +2,7 @@ import { cloneDeep } from "lodash";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
 
+import { applicationFactory } from "@/factories/application/ApplicationFactory";
 import { contactFactory } from "@/factories/application/ContactFactory";
 import { fileInfoFactory } from "@/factories/application/FileInfoFactory";
 import { fundingFactory } from "@/factories/application/FundingFactory";
@@ -11,12 +12,132 @@ import { publicationFactory } from "@/factories/application/PublicationFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { repositoryFactory } from "@/factories/application/RepositoryFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
+import { organizationFactory } from "@/factories/auth/OrganizationFactory";
 
 import * as PersistentColumns from "../classes/Excel/PersistentColumns";
 import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
 
 import * as utils from "./formUtils";
 import { Logger } from "./logger";
+
+describe("questionnaire lock helpers", () => {
+  it("locks configured fields only when sequenceNumber >= 2", () => {
+    const firstSequence = applicationFactory.build({ sequenceNumber: 1 });
+    const reopened = applicationFactory.build({ sequenceNumber: 2 });
+
+    expect(utils.isLockedField(firstSequence, "study.name")).toBe(false);
+    expect(utils.isLockedField(reopened, "study.name")).toBe(true);
+  });
+
+  it("preserves locked values and allows unlocked values for reopened sequences", () => {
+    const application = applicationFactory.build({ sequenceNumber: 3 });
+    const currentData = questionnaireDataFactory.build({
+      pi: {
+        firstName: "Locked",
+        lastName: "Principal",
+        position: "PI",
+        email: "locked@example.org",
+        ORCID: "0000-0000-0000-0001",
+        institution: "Locked Org",
+        institutionID: "11111111-1111-4111-8111-111111111111",
+        address: "Locked address",
+      },
+      program: {
+        _id: "22222222-2222-4222-8222-222222222222",
+        name: "Locked Program",
+        abbreviation: "LPG",
+        description: "Original description",
+      },
+      study: studyFactory.build({
+        name: "Locked Study",
+        abbreviation: "LST",
+        description: "Original study description",
+      }),
+    });
+
+    const incomingData = questionnaireDataFactory.build({
+      ...currentData,
+      pi: {
+        ...currentData.pi,
+        firstName: "Changed",
+      },
+      program: {
+        ...currentData.program,
+        name: "Changed Program",
+        description: "Allowed program description change",
+      },
+      study: {
+        ...currentData.study,
+        name: "Changed Study",
+        description: "Allowed study description change",
+      },
+    });
+
+    const result = utils.preserveLockedFields({
+      application,
+      incomingData,
+      currentData,
+    });
+
+    expect(result.pi.firstName).toBe("Locked");
+    expect(result.program.name).toBe("Locked Program");
+    expect(result.study.name).toBe("Locked Study");
+    expect(result.program.description).toBe("Allowed program description change");
+    expect(result.study.description).toBe("Allowed study description change");
+  });
+});
+
+describe("computeNextStatus", () => {
+  it("returns In Revision for existing In Revision applications", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "In Revision",
+      applicationId: "existing-id",
+      hasSectionActivity: false,
+    });
+
+    expect(status).toBe("In Revision");
+  });
+
+  it("returns In Progress for new applications with section activity", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "New",
+      applicationId: "new",
+      hasSectionActivity: true,
+    });
+
+    expect(status).toBe("In Progress");
+  });
+
+  it("returns New for new applications without section activity", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "New",
+      applicationId: "new",
+      hasSectionActivity: false,
+    });
+
+    expect(status).toBe("New");
+  });
+
+  it("returns In Progress for existing non-In Revision applications with section activity", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "Inquired",
+      applicationId: "existing-id",
+      hasSectionActivity: true,
+    });
+
+    expect(status).toBe("In Progress");
+  });
+
+  it("returns New for existing non-In Revision applications without section activity", () => {
+    const status = utils.computeNextStatus({
+      currentStatus: "Inquired",
+      applicationId: "existing-id",
+      hasSectionActivity: false,
+    });
+
+    expect(status).toBe("New");
+  });
+});
 
 describe("filterNonNumeric cases", () => {
   it("should filter non-numerics", () => {
@@ -123,11 +244,155 @@ describe("mapObjectWithKey cases", () => {
   });
 });
 
+describe("isNotApplicableProgram", () => {
+  const systemProgram = organizationFactory.build({
+    _id: "437e864a-621b-40f5-b214-3dc368137081",
+    name: "NA",
+    abbreviation: "NA",
+    description: "This is a catch-all place for all studies without a program associated.",
+    readOnly: true,
+  });
+
+  it("should identify the system managed program", () => {
+    expect(utils.isNotApplicableProgram(systemProgram)).toBe(true);
+  });
+
+  it("should ignore surrounding whitespace on the name", () => {
+    expect(utils.isNotApplicableProgram({ name: "  NA  ", readOnly: true })).toBe(true);
+  });
+
+  it.each([
+    ["readOnly is false", { name: "NA", readOnly: false }],
+    ["readOnly is missing", { name: "NA" }],
+    ["the name is not 'NA'", { name: "NCI", readOnly: true }],
+    ["the name casing differs", { name: "na", readOnly: true }],
+    ["the name is missing", { readOnly: true }],
+  ])("should return false when %s", (_, program) => {
+    expect(utils.isNotApplicableProgram(program)).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+  ])("should return false when the program is %s", (_, program) => {
+    expect(utils.isNotApplicableProgram(program)).toBe(false);
+  });
+});
+
+describe("buildNotApplicableProgram", () => {
+  const systemProgram = organizationFactory.build({
+    _id: "437e864a-621b-40f5-b214-3dc368137081",
+    name: "NA",
+    abbreviation: "NA",
+    description: "This is a catch-all place for all studies without a program associated.",
+    readOnly: true,
+  });
+
+  it("should use the _id, name, abbreviation, and description of the system managed program", () => {
+    const programs = [
+      organizationFactory.build({ _id: "program-1", name: "Program 1", readOnly: false }),
+      systemProgram,
+    ];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual({
+      _id: "437e864a-621b-40f5-b214-3dc368137081",
+      name: "NA",
+      abbreviation: "NA",
+      description: "This is a catch-all place for all studies without a program associated.",
+    });
+  });
+
+  it("should ignore readOnly programs that are not named 'NA'", () => {
+    const programs = [
+      organizationFactory.build({ _id: "other-system", name: "System", readOnly: true }),
+    ];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual(NotApplicableProgram);
+  });
+
+  it("should ignore programs named 'NA' that are not readOnly", () => {
+    const programs = [organizationFactory.build({ _id: "fake-na", name: "NA", readOnly: false })];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual(NotApplicableProgram);
+  });
+
+  it("should use the first system managed program when multiple exist", () => {
+    const programs = [
+      organizationFactory.build({ _id: "na-1", name: "NA", readOnly: true }),
+      organizationFactory.build({ _id: "na-2", name: "NA", readOnly: true }),
+    ];
+
+    expect(utils.buildNotApplicableProgram(programs)._id).toBe("na-1");
+  });
+
+  it.each([
+    ["an empty array", []],
+    ["null", null],
+    ["undefined", undefined],
+  ])("should fall back to the static defaults when given %s", (_, programs) => {
+    expect(utils.buildNotApplicableProgram(programs)).toEqual(NotApplicableProgram);
+  });
+
+  it("should fall back to the static defaults when the system managed program has no _id", () => {
+    const programs = [organizationFactory.build({ _id: "", name: "NA", readOnly: true })];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual(NotApplicableProgram);
+  });
+
+  it("should normalize missing values on the system managed program to empty strings", () => {
+    const programs = [
+      organizationFactory.build({
+        _id: "na-1",
+        name: "NA",
+        abbreviation: undefined,
+        description: undefined,
+        readOnly: true,
+      }),
+    ];
+
+    expect(utils.buildNotApplicableProgram(programs)).toEqual({
+      _id: "na-1",
+      name: "NA",
+      abbreviation: "",
+      description: "",
+    });
+  });
+
+  it("should not mutate the static NotApplicableProgram constant", () => {
+    utils.buildNotApplicableProgram([systemProgram]);
+
+    expect(NotApplicableProgram).toEqual({
+      _id: "Not Applicable",
+      name: "",
+      abbreviation: "",
+      description: "",
+    });
+  });
+});
+
 describe("findProgram", () => {
   const programOptions = [
     { _id: "program1", name: "Program 1" },
     { _id: "program2", name: "Program 2" },
   ];
+
+  const optionsWithNA = [
+    ...programOptions,
+    {
+      _id: "437e864a-621b-40f5-b214-3dc368137081",
+      name: "NA",
+      abbreviation: "NA",
+      description: "This is a catch-all place for all studies without a program associated.",
+      readOnly: true,
+    },
+  ];
+
+  const expectedNA: ProgramInput = {
+    _id: "437e864a-621b-40f5-b214-3dc368137081",
+    name: "NA",
+    abbreviation: "NA",
+    description: "This is a catch-all place for all studies without a program associated.",
+  };
 
   it("should return null if formProgram is null", () => {
     expect(utils.findProgram(null, programOptions)).toBeNull();
@@ -188,6 +453,42 @@ describe("findProgram", () => {
       _id: OtherProgram._id,
     });
   });
+
+  it("should return the system managed program for a hard-coded 'Not Applicable' _id", () => {
+    const formProgram: ProgramInput = {
+      _id: NotApplicableProgram._id,
+      name: "",
+      abbreviation: "",
+      description: "",
+    };
+    expect(utils.findProgram(formProgram, optionsWithNA)).toEqual(expectedNA);
+  });
+
+  it("should return the system managed program when its real _id matches", () => {
+    const formProgram: ProgramInput = { _id: "437e864a-621b-40f5-b214-3dc368137081" };
+    expect(utils.findProgram(formProgram, optionsWithNA)).toEqual(expectedNA);
+  });
+
+  it("should return the system managed program for legacy notApplicable input when it is available", () => {
+    const formProgram: ProgramInput & { notApplicable: boolean } = {
+      _id: "",
+      name: "",
+      abbreviation: "",
+      description: "",
+      notApplicable: true,
+    };
+    expect(utils.findProgram(formProgram, optionsWithNA)).toEqual(expectedNA);
+  });
+
+  it("should treat other readOnly programs as 'Other'", () => {
+    const options = [...optionsWithNA, { _id: "system-1", name: "System Program", readOnly: true }];
+    const formProgram: ProgramInput = { _id: "system-1", name: "System Program" };
+
+    expect(utils.findProgram(formProgram, options)).toEqual({
+      ...formProgram,
+      _id: OtherProgram._id,
+    });
+  });
 });
 
 describe("formatFullStudyName cases", () => {
@@ -237,6 +538,28 @@ describe("formatFullStudyName cases", () => {
     const studyName = 12345 as unknown as string;
     const result = utils.formatFullStudyName(studyName, "");
     expect(result).toBe("");
+  });
+});
+
+describe("formatCharacterLimitPlaceholder cases", () => {
+  it("should format whole numbers with correct separators", () => {
+    expect(utils.formatCharacterLimitPlaceholder(1_000)).toBe("1,000 characters allowed");
+  });
+
+  it("should format zero", () => {
+    expect(utils.formatCharacterLimitPlaceholder(0)).toBe("0 characters allowed");
+  });
+
+  it("should round decimal values to zero fraction digits", () => {
+    expect(utils.formatCharacterLimitPlaceholder(10.4)).toBe("10 characters allowed");
+  });
+
+  it.each<[number, string]>([
+    [null, "0 characters allowed"],
+    [undefined, "0 characters allowed"],
+    [NaN, "0 characters allowed"],
+  ])("should handle %s as %s", (input, expected) => {
+    expect(utils.formatCharacterLimitPlaceholder(input)).toBe(expected);
   });
 });
 

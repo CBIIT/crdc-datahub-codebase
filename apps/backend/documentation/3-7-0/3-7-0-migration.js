@@ -1,0 +1,159 @@
+/**
+ * 3.7.0 Migration Script
+ *
+ * Usage: npm run migrate:3.7.0
+ *         (or startup via bin/www.js)
+ *
+ * Migration files:
+ * - ensure-indexes-migration.js: Create catalog indexes (recurring step)
+ * - sync-pbac-defaults-migration.js: Sync PBAC defaults from JSON (recurring step)
+ * - backfill-application-sequence-number.js: Backfill Application.sequenceNumber where missing
+ * - backfill-application-questionnaire-data.js: Convert Application.questionnaireData from JSON string to object
+ * - backfill-submission-submission-request-id.js: Backfill Submission.submissionRequestID from study.applicationID
+ * - backfill-getPendingConditionsAtApproval.js: Backfill ApprovedStudy.pendingConditionsAtApproval where missing
+ * - dedupe-review-comments.js: Clear review comments copied onto "In Revision" events (CRDCDH-3894)
+ * - update-inactive-application-config.js: Set INACTIVE_APPLICATION_DAYS and INACTIVE_APPLICATION_NOTIFY_DAYS defaults
+ */
+
+const {
+    createDatabaseConnection,
+    closeDatabaseConnection
+} = require('../recurring-steps/migration-utils');
+
+const { executeEnsureIndexes } = require('./ensure-indexes-migration');
+const { executeSyncPbacDefaults } = require('./sync-pbac-defaults-migration');
+const { executeBackfillApplicationSequenceNumber } = require('./backfill-application-sequence-number');
+const { executeBackfillApplicationQuestionnaireData } = require('./backfill-application-questionnaire-data');
+const { executeBackfillSubmissionRequestID } = require('./backfill-submission-submission-request-id');
+const { executeBackfillGetPendingConditionsAtApproval } = require('./backfill-getPendingConditionsAtApproval');
+const { executeDedupeReviewComments } = require('./dedupe-review-comments');
+
+async function orchestrateMigration() {
+    console.log('🚀 Starting 3.7.0 migrations execution...');
+    console.log('============================================================');
+
+    const startTime = new Date();
+    let client;
+
+    try {
+        const dbConnection = await createDatabaseConnection();
+        client = dbConnection.client;
+        const db = dbConnection.db;
+
+        const availableMigrations = [
+            {
+                name: 'Ensure DocumentDB indexes (recurring)',
+                file: 'ensure-indexes-migration.js',
+                execute: () => executeEnsureIndexes(db)
+            },
+            {
+                name: 'Sync PBAC defaults from JSON (recurring)',
+                file: 'sync-pbac-defaults-migration.js',
+                execute: () => executeSyncPbacDefaults(db)
+            },
+            {
+                name: 'Backfill Application.sequenceNumber',
+                file: 'backfill-application-sequence-number.js',
+                execute: () => executeBackfillApplicationSequenceNumber(db)
+            },
+            {
+                name: 'Convert Application.questionnaireData to object',
+                file: 'backfill-application-questionnaire-data.js',
+                execute: () => executeBackfillApplicationQuestionnaireData(db)
+            },
+            {
+                name: 'Backfill Submission.submissionRequestID',
+                file: 'backfill-submission-submission-request-id.js',
+                execute: () => executeBackfillSubmissionRequestID(db)
+            },
+            {
+                name: 'Backfill ApprovedStudy.pendingConditionsAtApproval',
+                file: 'backfill-getPendingConditionsAtApproval.js',
+                execute: () => executeBackfillGetPendingConditionsAtApproval(db)
+            },
+            {
+                name: 'Remove duplicated "In Revision" review comments',
+                file: 'dedupe-review-comments.js',
+                execute: () => executeDedupeReviewComments(db)
+            }
+        ];
+
+        const migrations = [];
+
+        for (const migration of availableMigrations) {
+            try {
+                const result = await migration.execute();
+                migrations.push({
+                    name: migration.name,
+                    file: migration.file,
+                    success: result.success !== false,
+                    result
+                });
+            } catch (error) {
+                console.error(`❌ ${migration.name} failed: ${error.message}`);
+                migrations.push({
+                    name: migration.name,
+                    file: migration.file,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        const endTime = new Date();
+        const duration = endTime - startTime;
+        const successCount = migrations.filter((m) => m.success).length;
+        const totalCount = migrations.length;
+
+        console.log(`✅ Migration process completed: ${successCount}/${totalCount} successful (${duration}ms)`);
+
+        if (successCount !== totalCount) {
+            console.warn('⚠️  Some migrations encountered issues - see errors above');
+        }
+
+        return {
+            success: successCount === totalCount,
+            duration,
+            migrationsExecuted: totalCount,
+            migrationsSuccessful: successCount,
+            results: migrations
+        };
+    } catch (error) {
+        console.error('❌ Migration orchestration failed:', error.message);
+        return { success: false, error: error.message };
+    } finally {
+        if (client) {
+            await closeDatabaseConnection(client);
+        }
+    }
+}
+
+async function main() {
+    try {
+        const result = await orchestrateMigration();
+        process.exit(result.success ? 0 : 1);
+    } catch (error) {
+        console.error('\n❌ Fatal error:', error.message);
+        process.exit(1);
+    }
+}
+
+// Registered only for CLI runs. bin/www.js imports this module, and process-wide
+// handlers here would otherwise terminate the running server.
+if (require.main === module) {
+    process.on('unhandledRejection', (error) => {
+        console.error('❌ Unhandled rejection:', error.message);
+        process.exit(1);
+    });
+
+    process.on('SIGINT', () => {
+        console.log('\n🛑 Received SIGINT, shutting down gracefully...');
+        process.exit(0);
+    });
+
+    main();
+}
+
+module.exports = {
+    orchestrateMigration
+};

@@ -13,6 +13,7 @@ const ERROR = {
     FAILED_RESTORE_APPLICATION: "An error occurred while restoring an application",
     MISSING_PROGRAM_INFO: "The program property is required to approve the submission request.",
     INVALID_APPLICATION_RESTORE_STATE: "Failed to restore application because the application history data is invalid",
+    INVALID_APPLICATION_RESTORE_NEWER_REVISION_EXISTS: "This submission request cannot be restored because a newer revision exists.",
     COMMENT_LIMIT: "comment cannot exceed $item$ characters.",
     UPDATE_FAILED: "Update unsuccessful",
     VERIFY: {
@@ -39,7 +40,12 @@ const ERROR = {
         REJECT_ACTION_COMMENT_REQUIRED: "Reject submission action must include a comment.",
         SUBMIT_ACTION_COMMENT_REQUIRED: "Submit action must include a comment.",
         INVALID_ORGANIZATION_STATUS: "No organization assigned, or your organization is currently inactive and needs reactivation for use",
-        INVALID_PERMISSION: "You do not have permission to perform this action."
+        INVALID_PERMISSION: "You do not have permission to perform this action.",
+        REOPEN_OWNER_UNRESOLVED: "Please specify an ownerId to reopen this submission request, the original owner could not be found or is now inactive",
+        REOPEN_OWNER_NOT_ASSIGNABLE: "The specified ownerId could not be found or is inactive",
+        REOPEN_OWNER_ORIGINAL_INELIGIBLE: "Please specify an ownerId to reopen this submission request, the original owner does not meet the requirements to be the owner of this reopened submission request",
+        REOPEN_OWNER_SPECIFIED_INELIGIBLE: "The specified ownerId does not meet the requirements to be the owner of this reopened submission request",
+        REOPEN_OWNER_ROLE_INELIGIBLE: "The user associated with the specified ownerId does not have the required role to be the owner of this reopened submission request",
     },
     // Batch
     FAILED_NEW_BATCH_INSERTION: "An error occurred while creating a new batch",
@@ -65,6 +71,7 @@ const ERROR = {
     STUDIES_CANNOT_ASSIGN_TO_INACTIVE_PROGRAM: "Studies cannot be assigned to an inactive program.",
     STUDY_CREATION_FAILED: "An internal error occured while initializing a new study. Please alert the admins.",
     INVALID_APPROVED_STUDY_STATUS: "Approved study status must be Active or Inactive.",
+    MAX_STUDY_ABBREVIATION_LENGTH: "Study abbreviation cannot exceed $item$ characters.",
     LIST_APPROVED_STUDIES_STATUSES_FILTER_TOO_MANY:
         "The statuses filter may include at most $item$ value(s), matching the number of valid study statuses.",
     CREATE_SUBMISSION_INACTIVE_APPROVED_STUDY:
@@ -106,7 +113,6 @@ const ERROR = {
     INVALID_STATS_SUBMISSION_PERMISSION: "You do not have permission to see the submission stats.",
     INVALID_ROLE: "You do not have the correct role to perform this operation",
     INVALID_PERMISSION: "You do not have permission to view this application",
-    NULL_FILTER_CONDITIONS: "The filter conditions were not properly initialized, please see logs for more information",
     // Submission Notification
     NO_SUBMISSION_RECEIVER: "Submission is unable to send an email notification",
     // Validate Submission
@@ -282,6 +288,7 @@ const ERROR = {
     FAILED_CREATE_LOAD_SHEET: "An unknown error occurred while generating the dbGaP Loading Sheets. Please try again later.",
     USER_NOT_EXIST: "The user does not exist.",
     NOT_SUPPORTED_DATA_COMMONS_FOR_LOAD_SHEET: "The current data commons is not supported for generating dbGaP Loading Sheets.",
+    DCF_MANIFEST_NOT_AVAILABLE: "The DCF manifest for this submission is not yet available. Please try again shortly.",
     FAILED_DOWNLOAD_ALL_RELEASED_NODES: "Failed to download all released nodes",
     STUDY_NOT_EXIST: "The requested study does not exist.",
     INTERNAL_ERROR: "An internal error occurred, please ask the Admins to check the logs for more information",

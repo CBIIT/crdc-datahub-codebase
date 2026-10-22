@@ -19,7 +19,7 @@ import { publicationFactory } from "@/factories/application/PublicationFactory";
 import { questionnaireDataFactory } from "@/factories/application/QuestionnaireDataFactory";
 import { studyFactory } from "@/factories/application/StudyFactory";
 import { organizationFactory } from "@/factories/auth/OrganizationFactory";
-import { fireEvent, render, waitFor, within } from "@/test-utils";
+import { fireEvent, render, screen, waitFor, within } from "@/test-utils";
 
 import FormSectionB from "./B";
 
@@ -60,6 +60,13 @@ const selectablePrograms = [
     abbreviation: "TP2",
     description: "Test Program 2 Description",
   }),
+  organizationFactory.build({
+    _id: "437e864a-621b-40f5-b214-3dc368137081",
+    name: "NA",
+    abbreviation: "NA",
+    description: "This is a catch-all place for all studies without a program associated.",
+    readOnly: true,
+  }),
 ];
 
 const baseFormCtxState: FormContextState = {
@@ -89,6 +96,24 @@ const getFormElements = ({ getByTestId }: { getByTestId: (testId: string) => HTM
   addPlannedPublicationButton: () => getByTestId("section-b-add-planned-publication-button"),
   addRepositoryButton: () => getByTestId("section-b-add-repository-button"),
 });
+
+const selectNotApplicable = async () => {
+  const programSelectButton = within(screen.getByTestId("section-b-program")).getByRole("button");
+  userEvent.click(programSelectButton);
+
+  await waitFor(() => {
+    const listbox = screen
+      .getAllByRole("listbox", { hidden: true })
+      .find((el) => el.tagName === "UL");
+    expect(listbox).toBeInTheDocument();
+  });
+
+  userEvent.click(screen.getByText("Not Applicable"));
+
+  await waitFor(() => {
+    expect(programSelectButton).toHaveTextContent("Not Applicable");
+  });
+};
 
 const TestParent: FC<ParentProps> = ({
   formCtxState = baseFormCtxState,
@@ -638,6 +663,90 @@ describe("Basic Functionality", () => {
     expect(getByDisplayValue("CSN")).toBeInTheDocument();
   });
 
+  it("locks configured program/study identity fields when sequenceNumber is >= 2", () => {
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        sequenceNumber: 2,
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "program-1",
+            name: "Test Program 1",
+            abbreviation: "TP1",
+            description: "Test Program 1 Description",
+          },
+          study: studyFactory.build({
+            name: "Locked Study",
+            abbreviation: "LST",
+          }),
+        }),
+      }),
+    };
+
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId } = render(
+      <TestParent formCtxState={formCtxState} orgCtxState={orgCtxState} />
+    );
+
+    const programTitleInput = within(getByTestId("section-b-program-title")).getByRole("textbox");
+    const programAbbreviationInput = within(
+      getByTestId("section-b-program-abbreviation")
+    ).getByRole("textbox");
+    const studyTitleInput = within(getByTestId("section-b-study-title")).getByRole("textbox");
+    const studyAbbreviationInput = within(
+      getByTestId("section-b-study-abbreviation-or-acronym")
+    ).getByRole("textbox");
+
+    expect(programTitleInput).toHaveAttribute("readonly");
+    expect(programAbbreviationInput).toHaveAttribute("readonly");
+    expect(studyTitleInput).toHaveAttribute("readonly");
+    expect(studyAbbreviationInput).toHaveAttribute("readonly");
+  });
+
+  it("does not lock program/study identity fields when sequenceNumber is 1", () => {
+    const formCtxState: FormContextState = {
+      status: FormStatus.LOADED,
+      formRef: createRef<HTMLFormElement>(),
+      data: applicationFactory.build({
+        sequenceNumber: 1,
+        questionnaireData: questionnaireDataFactory.build({
+          program: {
+            _id: "Other",
+            name: "Editable Program",
+            abbreviation: "EDP",
+            description: "Editable Program Description",
+          },
+          study: studyFactory.build({
+            name: "Editable Study",
+            abbreviation: "EDS",
+          }),
+        }),
+      }),
+    };
+
+    const { getByTestId } = render(<TestParent formCtxState={formCtxState} />);
+
+    const programTitleInput = within(getByTestId("section-b-program-title")).getByRole("textbox");
+    const programAbbreviationInput = within(
+      getByTestId("section-b-program-abbreviation")
+    ).getByRole("textbox");
+    const studyTitleInput = within(getByTestId("section-b-study-title")).getByRole("textbox");
+    const studyAbbreviationInput = within(
+      getByTestId("section-b-study-abbreviation-or-acronym")
+    ).getByRole("textbox");
+
+    expect(programTitleInput).not.toHaveAttribute("readonly");
+    expect(programAbbreviationInput).not.toHaveAttribute("readonly");
+    expect(studyTitleInput).not.toHaveAttribute("readonly");
+    expect(studyAbbreviationInput).not.toHaveAttribute("readonly");
+  });
+
   it("should display program name without abbreviation when abbreviation is empty", async () => {
     const programsWithoutAbbreviation = [
       organizationFactory.build({
@@ -755,6 +864,86 @@ describe("Basic Functionality", () => {
     const { queryByText } = render(<TestParent orgCtxState={orgCtxState} />);
 
     expect(queryByText("ReadOnly Program (RP)")).not.toBeInTheDocument();
+  });
+
+  it("should populate the program fields when 'Not Applicable' is selected", async () => {
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId } = render(<TestParent orgCtxState={orgCtxState} />);
+
+    await selectNotApplicable();
+
+    const elements = getFormElements({ getByTestId });
+    await waitFor(() => {
+      expect(within(elements.programTitle()).getByRole("textbox")).toHaveValue("NA");
+    });
+    expect(within(elements.programAbbreviation()).getByRole("textbox")).toHaveValue("NA");
+    expect(within(elements.programDescription()).getByRole("textbox")).toHaveValue(
+      "This is a catch-all place for all studies without a program associated."
+    );
+  });
+
+  it("should label the system managed program as 'Not Applicable' instead of its name", async () => {
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId } = render(<TestParent orgCtxState={orgCtxState} />);
+
+    await selectNotApplicable();
+
+    const programSelectButton = within(getByTestId("section-b-program")).getByRole("button");
+    expect(programSelectButton).not.toHaveTextContent("NA (NA)");
+    expect(programSelectButton).toHaveTextContent("Not Applicable");
+  });
+
+  it("should use the real _id of the system managed program when 'Not Applicable' is selected", async () => {
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+    const getFormObjectRef: React.MutableRefObject<(() => FormObject | null) | null> = {
+      current: null,
+    };
+
+    render(<TestParent orgCtxState={orgCtxState} getFormObjectRef={getFormObjectRef} />);
+
+    await selectNotApplicable();
+
+    await waitFor(() => {
+      expect(getFormObjectRef.current().data.program).toEqual({
+        _id: "437e864a-621b-40f5-b214-3dc368137081",
+        name: "NA",
+        abbreviation: "NA",
+        description: "This is a catch-all place for all studies without a program associated.",
+      });
+    });
+  });
+
+  it("should keep the program fields read-only when 'Not Applicable' is selected", async () => {
+    const orgCtxState: OrganizationListContextState = {
+      status: OrganizationStatus.LOADED,
+      data: selectablePrograms,
+      activeOrganizations: selectablePrograms,
+    };
+
+    const { getByTestId } = render(<TestParent orgCtxState={orgCtxState} />);
+
+    await selectNotApplicable();
+
+    const elements = getFormElements({ getByTestId });
+    await waitFor(() => {
+      expect(within(elements.programTitle()).getByRole("textbox")).toHaveAttribute("readonly");
+    });
+    expect(within(elements.programAbbreviation()).getByRole("textbox")).toHaveAttribute("readonly");
+    expect(within(elements.programDescription()).getByRole("textbox")).toHaveAttribute("readonly");
   });
 
   it("should convert program abbreviation to uppercase when typing", async () => {

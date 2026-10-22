@@ -208,7 +208,13 @@ describe("Implementation Requirements", () => {
   it("should show institution suggestions as user types (dynamic filtering)", async () => {
     const { findByLabelText, findByText, queryByText } = render(
       <TestParent
-        mocks={[getUserMock, listInstitutionsMock, listApprovedStudiesMock, retrievePBACDefaults]}
+        mocks={[
+          getUserMock,
+          listInstitutionsMock,
+          listApprovedStudiesMock,
+          retrievePBACDefaults,
+          getTooltipsMock,
+        ]}
       >
         <ProfileView _id="test-id" viewType="users" />
       </TestParent>
@@ -229,7 +235,13 @@ describe("Implementation Requirements", () => {
   it("should allow selecting an institution from the full list if no search input is provided", async () => {
     const { findByLabelText, findByText } = render(
       <TestParent
-        mocks={[getUserMock, listInstitutionsMock, listApprovedStudiesMock, retrievePBACDefaults]}
+        mocks={[
+          getUserMock,
+          listInstitutionsMock,
+          listApprovedStudiesMock,
+          retrievePBACDefaults,
+          getTooltipsMock,
+        ]}
       >
         <ProfileView _id="test-id" viewType="users" />
       </TestParent>
@@ -310,7 +322,13 @@ describe("Implementation Requirements", () => {
 
     render(
       <TestParent
-        mocks={[getUserMock, activeStudiesMock, listInstitutionsMock, retrievePBACDefaults]}
+        mocks={[
+          getUserMock,
+          activeStudiesMock,
+          listInstitutionsMock,
+          retrievePBACDefaults,
+          getTooltipsMock,
+        ]}
       >
         <ProfileView _id="test-id" viewType="users" />
       </TestParent>

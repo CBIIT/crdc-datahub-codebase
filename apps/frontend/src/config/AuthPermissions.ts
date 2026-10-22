@@ -28,7 +28,7 @@ export type Permissions = {
   };
   submission_request: {
     dataType: Application | Omit<Application, "questionnaireData">;
-    action: "view" | "create" | "submit" | "review" | "cancel";
+    action: "view" | "create" | "submit" | "review" | "cancel" | "reopen";
   };
   data_submission: {
     dataType: Submission;
@@ -60,7 +60,7 @@ export const PERMISSION_MAP = {
       const { role } = user;
       const isFormOwner = application?.applicant?.applicantID === user?._id;
       const hasPermissionKey = Boolean(getUserPermissionKey(user, "submission_request:submit"));
-      const submitStatuses: ApplicationStatus[] = ["In Progress", "Inquired"];
+      const submitStatuses: ApplicationStatus[] = ["In Progress", "Inquired", "In Revision"];
 
       if (!submitStatuses?.includes(application?.status)) {
         return false;
@@ -88,15 +88,29 @@ export const PERMISSION_MAP = {
         New: ALL_ROLES,
         "In Progress": ALL_ROLES,
         Inquired: ALL_ROLES,
+        "In Revision": ALL_ROLES,
         Submitted: ["Admin", "Federal Lead", "Data Commons Personnel"],
         "In Review": ["Admin", "Federal Lead", "Data Commons Personnel"],
         Canceled: ALL_ROLES,
         Deleted: ALL_ROLES,
         Approved: [],
+        Reopened: ALL_ROLES,
         Rejected: [],
       };
 
       return statusActionMap[application?.status]?.includes(user?.role) ?? false;
+    },
+    reopen: (user, application) => {
+      const hasPermissionKey = Boolean(getUserPermissionKey(user, "submission_request:reopen"));
+      if (!hasPermissionKey) {
+        return false;
+      }
+
+      if (application?.status !== "Approved" || !!application?.nextRevisionId) {
+        return false;
+      }
+
+      return true;
     },
   },
   dashboard: {

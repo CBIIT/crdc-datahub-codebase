@@ -1,5 +1,4 @@
 const ERROR = require("../constants/error-constants");
-const {ORGANIZATION} = require("../crdc-datahub-database-drivers/constants/organization-constants");
 
 function verifySession(context){
     return new UserInfoVerifier(context);

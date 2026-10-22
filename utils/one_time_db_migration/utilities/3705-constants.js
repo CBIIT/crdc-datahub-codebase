@@ -1,0 +1,22 @@
+export const COLLECTION_NAMES_3705 = [
+    'applications',
+    'approvedStudies',
+    'batch',
+    'configuration',
+    'dataCommons',
+    'dataRecords',
+    'dataRecordsArchived',
+    'fileMD5',
+    'institutions',
+    'logs',
+    'organization',
+    'pendingPvs',
+    'propertyPVs',
+    'pvConceptCodes',
+    'qcResults',
+    'release',
+    'submissions',
+    'synonyms',
+    'users',
+    'validation'
+];

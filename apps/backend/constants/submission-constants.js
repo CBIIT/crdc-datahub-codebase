@@ -1,5 +1,5 @@
-// Submission orderBy mapping for Prisma queries
-// Note: organization filter in listSubmissions always expects organization names, not IDs
+// Submission orderBy mapping for Mongoose / aggregation sort paths after $lookup
+// Note: organization filter in listSubmissions expects organization IDs (programID), not names
 const SUBMISSION_ORDER_BY_MAP = {
     "updatedAt": "updatedAt",
     "createdAt": "createdAt",
@@ -9,7 +9,7 @@ const SUBMISSION_ORDER_BY_MAP = {
     "studyAbbreviation": "study.studyAbbreviation",
     "dbGaPID": "dbGaPID",
     "status": "status",
-    "concierge": "concierge",
+    "concierge": "concierge.fullName",
     "dataFileSize.size": "dataFileSize.size",
     "submitterName": "submitter.fullName",
     "conciergeName": "concierge.fullName",
@@ -23,8 +23,8 @@ module.exports = Object.freeze({
     RELEASED: 'Released',
     COMPLETED: 'Completed',
     ARCHIVED: 'Archived',
-    CANCELED:'Canceled',
-    REJECTED:'Rejected',
+    CANCELED: 'Canceled',
+    REJECTED: 'Rejected',
     WITHDRAWN: 'Withdrawn',
     DELETED: "Deleted",
     EXPORT: "Export metadata",
@@ -70,7 +70,10 @@ module.exports = Object.freeze({
         DEFAULT_METADATA_BATCH_SIZE: 1000,
         MIN_METADATA_BATCH_SIZE: 100,
         // SQS FIFO limit is 256KB; ~6,890 UUIDs fit per message. 5,000 provides ~27% headroom.
-        MAX_METADATA_BATCH_SIZE: 5000
+        MAX_METADATA_BATCH_SIZE: 5000,
+        CODES: {
+            UPDATE_EXISTING_DATA: "M018",
+        },
     },
     INTENTION: {
         UPDATE: "New/Update",
@@ -83,9 +86,9 @@ module.exports = Object.freeze({
     },
     CONSTRAINTS: {
         NAME_MAX_LENGTH: 25,
-        APPROVE_COMMENT_MAX_LENGTH: 10000,
-        REJECT_COMMENT_MAX_LENGTH: 10000,
-        INQUIRE_COMMENT_MAX_LENGTH: 10000,
+        APPROVE_COMMENT_MAX_LENGTH: 20000,
+        REJECT_COMMENT_MAX_LENGTH: 20000,
+        INQUIRE_COMMENT_MAX_LENGTH: 20000,
         CANCEL_COMMENT_MAX_LENGTH: 500,
         RESTORE_COMMENT_MAX_LENGTH: 500,
         REQUEST_PV_COMMENT_MAX_LENGTH: 500

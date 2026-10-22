@@ -1,5 +1,5 @@
 const ERROR = require("../constants/error-constants");
-const {VALIDATION} = require("../constants/submission-constants");
+const {VALIDATION, VALIDATION_STATUS} = require("../constants/submission-constants");
 const {replaceErrorString} = require("../utility/string-util");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const {verifySession} = require("../verifier/user-info-verifier");
@@ -8,14 +8,23 @@ const QCResultDAO = require("../dao/qcResult");
 const SubmissionDAO = require("../dao/submission");
 
 class QcResultService{
-    constructor(qcResultCollection, submissionCollection, authorizationService){
-        this.qcResultCollection = qcResultCollection;
-        this.submissionCollection = submissionCollection;
+    constructor(authorizationService){
         this.authorizationService = authorizationService;
-        this.qcResultDAO = new QCResultDAO(this.qcResultCollection);
+        this.qcResultDAO = new QCResultDAO();
         this.submissionDAO = new SubmissionDAO();
+        this.dataRecordService = null;
     }
 
+    setDataRecordService(dataRecordService) {
+        this.dataRecordService = dataRecordService;
+    }
+
+    /**
+     * List QC result rows for a submission from the qcResults collection.
+     * @param {object} params GraphQL arguments, including submission _id and table filters
+     * @param {object} context Request context
+     * @returns {Promise<{results: object[], total: number}>}
+     */
     async submissionQCResultsAPI(params, context){
         verifySession(context)
             .verifyInitialized();
@@ -24,12 +33,21 @@ class QcResultService{
         if (createScope.isNoneScope() && viewScope.isNoneScope()) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        // Check that the specified submissionID exists
-        const submission = await this.submissionDAO.findFirst({id: params._id});
+        const submission = await this.submissionDAO.findFirst({_id: params._id});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
-        return await this.qcResultDAO.submissionQCResults(params._id, params.nodeTypes, params.batchIDs, params.severities, params.issueCode, params.first, params.offset, params.orderBy, params.sortDirection);
+        return await this.qcResultDAO.submissionQCResults(
+            params._id,
+            params.nodeTypes,
+            params.batchIDs,
+            params.severities,
+            params.issueCode,
+            params.first,
+            params.offset,
+            params.orderBy,
+            params.sortDirection
+        );
     }
 
     /**
@@ -46,7 +64,7 @@ class QcResultService{
         let query = {
             submissionID: submissionID,
             validationType: isFileValidationQC
-                ? {in: [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE]}
+                ? [VALIDATION.TYPES.DATA_FILE, VALIDATION.TYPES.FILE]
                 : dataType
         };
         
@@ -62,9 +80,7 @@ class QcResultService{
         } else {
             // Normal deletion: delete specific submittedIDs
             if (submittedIDs && submittedIDs.length > 0) {
-                query.submittedID = {
-                    in: submittedIDs
-                };
+                query.submittedID = submittedIDs;
             } else {
                 // No submittedIDs provided, nothing to delete
                 return;
@@ -81,29 +97,40 @@ class QcResultService{
         }
     }
 
+    /**
+     * Find QC results for a submission that include a specific error code.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorCode Error code to match
+     * @returns {Promise<object[]>}
+     */
     async findBySubmissionErrorCodes(submissionID, errorCode) {
-        return this.qcResultDAO.findMany({
-            submissionID: submissionID, errors: {some: {code: errorCode}}},
-            {
-                select: {
-                    submittedID: true,
-                    submissionID: true
-            }
-        });
+        return this.qcResultDAO.findBySubmissionErrorCodes(submissionID, errorCode);
     }
 
+    /**
+     * Return submittedID and dataRecordID for QC results of a given type in a submission.
+     * @param {string} submissionID Submission ID
+     * @param {string} errorType Node/error type to match
+     * @returns {Promise<object[]>}
+     */
     async getQCResultsErrors(submissionID, errorType) {
-        const result = await this.qcResultCollection.aggregate([
-            {"$match": { submissionID: submissionID, type: errorType}},
-            {"$project": {submittedID: 1, dataRecordID: 1}}
-        ]);
-        return result || [];
+        return this.qcResultDAO.getQCResultsErrors(submissionID, errorType);
+    }
+
+    async getQCResultsForNodeType(submissionID, nodeType) {
+        return this.qcResultDAO.getQCResultsForNodeType(submissionID, nodeType);
     }
 
     async resetQCResultData(submissionID) {
         return await this.qcResultDAO.deleteMany({submissionID});
     }
 
+    /**
+     * Aggregate QC issues for a submission from the qcResults collection.
+     * @param {object} params GraphQL arguments, including submissionID and severity
+     * @param {object} context Request context
+     * @returns {Promise<{results: object[], total: number}>}
+     */
     async aggregatedSubmissionQCResultsAPI(params, context) {
         verifySession(context)
             .verifyInitialized();
@@ -112,12 +139,138 @@ class QcResultService{
         if (createScope.isNoneScope() && viewScope.isNoneScope()) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        // Check that the specified submissionID exists
-        const submission = await this.submissionDAO.findFirst({id: params.submissionID});
+        const submission = await this.submissionDAO.findFirst({_id: params.submissionID});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
-        return await this.qcResultDAO.aggregatedSubmissionQCResults(params.submissionID, params.severity, params.first, params.offset, params.orderBy, params.sortDirection);
+        return await this.qcResultDAO.aggregatedSubmissionQCResults(
+            params.submissionID,
+            params.severity,
+            params.first,
+            params.offset,
+            params.orderBy,
+            params.sortDirection
+        );
+    }
+
+    async retrieveSubmissionQCComparisonsAPI(params, context) {
+        verifySession(context)
+            .verifyInitialized();
+        const createScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.CREATE);
+        const viewScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.VIEW);
+        if (createScope.isNoneScope() && viewScope.isNoneScope()) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+
+        const submission = await this.submissionDAO.findFirst({_id: params.submissionID});
+        if (!submission) {
+            throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
+        }
+        if (!this.dataRecordService) {
+            throw new Error("DataRecordService is not initialized.");
+        }
+
+        const normalizedIssueCode = typeof params.issueCode === "string"
+            ? params.issueCode.trim()
+            : null;
+        const isAllIssueCode = !normalizedIssueCode || normalizedIssueCode.toLowerCase() === "all";
+        if (!isAllIssueCode && normalizedIssueCode !== VALIDATION.CODES.UPDATE_EXISTING_DATA) {
+            return {
+                total: 0,
+                skipped: 0,
+                comparisons: []
+            };
+        }
+
+        const qcResults = await this.qcResultDAO.submissionQCResults(
+            params.submissionID,
+            params.nodeTypes,
+            params.batchIDs,
+            params.severities,
+            VALIDATION.CODES.UPDATE_EXISTING_DATA,
+            -1,
+            0,
+            "uploadedDate",
+            "DESC"
+        );
+
+        const filteredResults = this._filterUnpackedValidationResults(
+            qcResults?.results || [],
+            params.severities,
+            VALIDATION.CODES.UPDATE_EXISTING_DATA
+        );
+
+        const comparisonCandidates = filteredResults
+            .filter((row) => row?.warnings?.[0]?.code === VALIDATION.CODES.UPDATE_EXISTING_DATA || row?.errors?.[0]?.code === VALIDATION.CODES.UPDATE_EXISTING_DATA)
+            .map((row) => ({
+                submittedID: row?.submittedID,
+                nodeType: row?.type
+            }));
+
+        if (comparisonCandidates.length === 0) {
+            return {
+                total: 0,
+                skipped: 0,
+                comparisons: []
+            };
+        }
+
+        const {comparisons, skipped} = await this.dataRecordService.getReleasedAndNewNodesByList(
+            params.submissionID,
+            submission?.dataCommons,
+            params.status,
+            comparisonCandidates
+        );
+
+        return {
+            total: comparisons.length,
+            skipped,
+            comparisons: comparisons.map((item) => ({
+                submittedID: item.submittedID,
+                nodeType: item.nodeType,
+                existingProps: JSON.stringify(item.existing || {}),
+                incomingProps: JSON.stringify(item.incoming || {})
+            }))
+        };
+    }
+
+    _unpackValidationSeverities(results) {
+        const unpacked = [];
+        (results || []).forEach(({errors = [], warnings = [], ...rest}) => {
+            errors.forEach((error) => {
+                unpacked.push({
+                    ...rest,
+                    severity: VALIDATION_STATUS.ERROR,
+                    errors: [error],
+                    warnings: []
+                });
+            });
+            warnings.forEach((warning) => {
+                unpacked.push({
+                    ...rest,
+                    severity: VALIDATION_STATUS.WARNING,
+                    errors: [],
+                    warnings: [warning]
+                });
+            });
+        });
+        return unpacked;
+    }
+
+    _filterUnpackedValidationResults(results, severity, issueCode) {
+        const severityFilter = typeof severity === "string" ? severity.toLowerCase() : null;
+        const targetIssueCode = typeof issueCode === "string" ? issueCode.trim() : null;
+        const normalizedIssueCode = typeof issueCode === "string" ? issueCode.trim().toLowerCase() : null;
+        return this._unpackValidationSeverities(results).filter((row) => {
+            const rowSeverity = row?.severity?.toLowerCase?.();
+            const severityMatch = !severityFilter || severityFilter === "all"
+                ? true
+                : rowSeverity === severityFilter;
+            const issueCodeMatch = !normalizedIssueCode || normalizedIssueCode === "all"
+                ? true
+                : row?.errors?.[0]?.code === targetIssueCode || row?.warnings?.[0]?.code === targetIssueCode;
+            return severityMatch && issueCodeMatch;
+        });
     }
 
 

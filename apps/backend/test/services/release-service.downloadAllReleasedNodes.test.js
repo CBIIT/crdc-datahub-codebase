@@ -6,7 +6,6 @@ class ReleaseService {
 const fs = require('fs');
 const path = require('path');
 const ERROR = require("../../constants/error-constants");
-jest.mock('../../prisma', () => ({}));
 jest.mock('fs');
 jest.mock('path');
 describe('ReleaseService.downloadAllReleasedNodes', () => {

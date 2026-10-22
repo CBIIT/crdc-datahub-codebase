@@ -357,6 +357,199 @@ describe("cleanPermissionKeys", () => {
   });
 });
 
+describe("PermissionPanel notification nesting utilities", () => {
+  const buildNotification = (
+    overrides: Partial<PBACDefault<AuthNotifications>> = {}
+  ): PBACDefault<AuthNotifications> =>
+    pbacDefaultFactory.build(overrides) as PBACDefault<AuthNotifications>;
+
+  it("should build nested notification rows from decimal order values", () => {
+    const options: PBACDefault<AuthNotifications>[] = [
+      {
+        _id: "submission_request:reviewed",
+        group: "Submission Request Emails",
+        name: "When conditionally approved",
+        inherited: [],
+        order: 4,
+        checked: false,
+        disabled: false,
+      },
+      {
+        _id: "submission_request:pending_cleared",
+        group: "Submission Request Emails",
+        name: "Pending on dbGaPID",
+        inherited: [],
+        order: 4.1,
+        checked: false,
+        disabled: false,
+      },
+      {
+        _id: "submission_request:expiring",
+        group: "Submission Request Emails",
+        name: "Pending on model update",
+        inherited: [],
+        order: 4.2,
+        checked: false,
+        disabled: false,
+      },
+    ];
+
+    const grouped = utils.nestNotificationOptions(options);
+
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].parent._id).toBe("submission_request:reviewed");
+    expect(grouped[0].children.map((child) => child._id)).toEqual([
+      "submission_request:pending_cleared",
+      "submission_request:expiring",
+    ]);
+  });
+
+  it("should derive parent checked and indeterminate states from child selections", () => {
+    const parent = buildNotification({ _id: "submission_request:reviewed", checked: false });
+    const children = [
+      buildNotification({ _id: "submission_request:pending_cleared", checked: true }),
+      buildNotification({ _id: "submission_request:expiring", checked: false }),
+    ];
+
+    const state = utils.getNestedCheckState(parent, children);
+    expect(state).toEqual({ checked: false, indeterminate: true });
+
+    children[1].checked = true;
+    expect(utils.getNestedCheckState(parent, children)).toEqual({
+      checked: true,
+      indeterminate: false,
+    });
+  });
+
+  it("should derive the parent state only from editable children the parent controls", () => {
+    const parent = buildNotification({ _id: "submission_request:reviewed", checked: false });
+    const children = [
+      buildNotification({
+        _id: "submission_request:pending_cleared",
+        checked: true,
+        disabled: false,
+      }),
+      buildNotification({
+        _id: "submission_request:expiring",
+        checked: false,
+        disabled: true,
+      }),
+    ];
+
+    // The disabled child is excluded, so a single checked editable child is fully checked.
+    expect(utils.getNestedCheckState(parent, children)).toEqual({
+      checked: true,
+      indeterminate: false,
+    });
+  });
+
+  it("should fall back to all children when every child is disabled", () => {
+    const parent = buildNotification({ _id: "submission_request:reviewed", checked: false });
+    const children = [
+      buildNotification({
+        _id: "submission_request:pending_cleared",
+        checked: true,
+        disabled: true,
+      }),
+      buildNotification({
+        _id: "submission_request:expiring",
+        checked: false,
+        disabled: true,
+      }),
+    ];
+
+    expect(utils.getNestedCheckState(parent, children)).toEqual({
+      checked: false,
+      indeterminate: true,
+    });
+  });
+
+  it("should surface a child without a matching parent as a top-level row", () => {
+    const orphan = buildNotification({ _id: "submission_request:pending_cleared", order: 4.1 });
+
+    const grouped = utils.nestNotificationOptions([orphan]);
+
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].parent._id).toBe(orphan._id);
+    expect(grouped[0].children).toEqual([]);
+  });
+
+  it("should reflect a childless parent's own checked state", () => {
+    const parent = buildNotification({ checked: true });
+
+    expect(utils.getNestedCheckState(parent, [])).toEqual({
+      checked: true,
+      indeterminate: false,
+    });
+  });
+
+  it("should return an empty tree for empty or missing input", () => {
+    expect(utils.nestNotificationOptions([])).toEqual([]);
+    expect(utils.nestNotificationOptions(undefined as never)).toEqual([]);
+  });
+
+  it("should select the parent and all editable children when toggling an unchecked parent", () => {
+    const parent = buildNotification({ _id: "submission_request:reviewed" });
+    const children = [
+      buildNotification({ _id: "submission_request:pending_cleared", disabled: false }),
+      buildNotification({ _id: "submission_request:expiring", disabled: true }),
+    ];
+
+    const result = utils.toggleParentNotification([], parent, children, false);
+
+    expect(result).toEqual(["submission_request:reviewed", "submission_request:pending_cleared"]);
+  });
+
+  it("should deselect the parent and editable children when toggling a checked parent", () => {
+    const parent = buildNotification({ _id: "submission_request:reviewed" });
+    const child = buildNotification({ _id: "submission_request:pending_cleared", disabled: false });
+
+    const result = utils.toggleParentNotification(
+      ["submission_request:reviewed", "submission_request:pending_cleared"],
+      parent,
+      [child],
+      true
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it("should keep the parent selected while any sibling remains checked", () => {
+    const parent = buildNotification({ _id: "submission_request:reviewed" });
+    const siblings = [
+      buildNotification({ _id: "submission_request:pending_cleared" }),
+      buildNotification({ _id: "submission_request:expiring" }),
+    ];
+
+    const result = utils.toggleChildNotification(
+      ["submission_request:reviewed", "submission_request:pending_cleared"],
+      parent,
+      siblings[1],
+      siblings
+    );
+
+    expect(result).toEqual([
+      "submission_request:reviewed",
+      "submission_request:pending_cleared",
+      "submission_request:expiring",
+    ]);
+  });
+
+  it("should deselect the parent when the last selected child is unchecked", () => {
+    const parent = buildNotification({ _id: "submission_request:reviewed" });
+    const child = buildNotification({ _id: "submission_request:pending_cleared" });
+
+    const result = utils.toggleChildNotification(
+      ["submission_request:reviewed", "submission_request:pending_cleared"],
+      parent,
+      child,
+      [child]
+    );
+
+    expect(result).toEqual([]);
+  });
+});
+
 describe("getUserPermissionKey", () => {
   it("returns the full raw permission string when it matches the base key", () => {
     const user = {

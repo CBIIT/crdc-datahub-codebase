@@ -1,5 +1,5 @@
-const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED} = require("../constants/application-constants");
-const {APPLICATION_COLLECTION: APPLICATION} = require("../crdc-datahub-database-drivers/database-constants");
+const {SUBMITTED, APPROVED, REJECTED, IN_PROGRESS, IN_REVIEW, DELETED, CANCELED, NEW, INQUIRED, IN_REVISION, REOPENED} = require("../constants/application-constants");
+const {STUDY_ABBREVIATION_MAX_LENGTH} = require("../crdc-datahub-database-drivers/constants/approved-study-constants");
 const {v4} = require('uuid')
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {HistoryEventBuilder} = require("../domain/history-event");
@@ -10,7 +10,7 @@ const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-
 const {CreateApplicationEvent, UpdateApplicationStateEvent} = require("../crdc-datahub-database-drivers/domain/log-events");
 const ROLES = USER_CONSTANTS.USER.ROLES;
 const {parseJsonString, isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
-const {isUndefined, replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
+const {isUndefined, replaceErrorString} = require("../utility/string-util");
 const {defaultStudyAbbreviationToStudyName, defaultStudyAbbreviationToNA} = require("../utility/study-abbrev-helpers");
 const {EMAIL_NOTIFICATIONS} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
@@ -18,13 +18,16 @@ const {UserScope} = require("../domain/user-scope");
 const {UtilityService} = require("../services/utility");
 const InstitutionDAO = require("../dao/institution");
 const ApplicationDAO = require("../dao/application");
-const {SORT: SORT_ORDER} = require("../constants/db-constants");
-const {PendingGPA} = require("../domain/pending-gpa");
-const {PrismaPagination} = require("../crdc-datahub-database-drivers/domain/prisma-pagination");
 const UserDAO = require("../dao/user");
+const {formatName} = require("../utility/format-name");
+const {PendingGPA} = require("../domain/pending-gpa");
+const {
+    REOPEN_ASSIGNABLE_ROLES,
+    hasSubmissionRequestCreatePermission,
+} = require("../utility/reopen-owner-utility");
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_INSTITUTION_NAME_LENGTH = 100;
-// Valid orderBy values for listApplications (Prisma field names). "applicant.applicantName" is accepted and mapped to "applicant.fullName".
+// Valid orderBy values for listApplications. "applicant.applicantName" is accepted and mapped to "applicant.fullName".
 const VALID_ORDER_BY_LIST_APPLICATIONS = [
     "applicant.applicantName",
     "applicant.fullName",
@@ -33,30 +36,35 @@ const VALID_ORDER_BY_LIST_APPLICATIONS = [
     "studyAbbreviation",
     "status",
     "version",
+    "sequenceNumber",
     "createdAt",
     "updatedAt",
     "submittedDate"
 ];
+const TERMINAL_REVISION_STATUSES = Object.freeze([REJECTED, CANCELED, DELETED]);
+
+const INTERNAL_USERS_ROLES = Object.freeze([ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]);
+
 class Application {
     _DELETE_REVIEW_COMMENT="This Submission Request has been deleted by the system due to inactivity.";
     _ALL_FILTER="All";
     _FINAL_INACTIVE_REMINDER = "finalInactiveReminder";
     _INACTIVE_REMINDER = "inactiveReminder";
     _CRDC_TEAM = "the CRDC team";
-    constructor(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, organizationService, institutionService, configurationService, authorizationService) {
+    constructor(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, institutionService, configurationService, authorizationService) {
         this.logCollection = logCollection;
         this.approvedStudiesService = approvedStudiesService;
         this.userService = userService;
         this.notificationService = notificationsService;
         this.emailParams = emailParams;
-        this.organizationService = organizationService;
+        this.programService = programService;
         this.institutionService = institutionService;
         this.configurationService = configurationService;
         this.authorizationService = authorizationService;
         this.institionDAO = new InstitutionDAO()
         this.applicationDAO = new ApplicationDAO();
         this.userDAO = new UserDAO();
-        this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
+        this._VALID_LIST_APPLICATION_STATUSES = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, APPROVED, INQUIRED, IN_REVISION, REOPENED, REJECTED, CANCELED, DELETED, this._ALL_FILTER];
     }
 
     _normalizeApplicationStatus(status) {
@@ -67,43 +75,200 @@ class Application {
         return this._normalizeApplicationStatus(application?.status) === this._normalizeApplicationStatus(APPROVED);
     }
 
-    async getApplication(params, context) {
-        verifySession(context)
-            .verifyInitialized()
-        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.VIEW);
-        if (userScope.isNoneScope()) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        let application = await this.getApplicationById(params._id);
-        // add logics to check if conditional approval
-        if (this._isApprovedApplication(application)) {
-            await this._checkConditionalApproval(application);
-        }
-        // populate the version with auto upgrade based on configuration
-        application.version  = await this._getApplicationVersionByStatus(application.status, application.version);
-        return application;
-    }
-
-    async _getApplicationVersionByStatus(status, version = null ) {
-        const config = await this.configurationService.findByType("APPLICATION_FORM_VERSIONS"); //get version config dynamically
-        const currentVersion = config?.current || "2.0";
-        const newStatusVersion = config?.new || "3.0";
-        // auto upgrade version based on configuration if status is NEW, IN_PROGRESS, INQUIRED
-        // for status other than NEW, IN_PROGRESS, INQUIRED, keep original version if exists, else set current version.
-        return [NEW, IN_PROGRESS, INQUIRED].includes(status) ? newStatusVersion : (!version)? currentVersion : version;
+    _isTerminalRevisionStatus(status) {
+        const normalized = this._normalizeApplicationStatus(status);
+        return TERMINAL_REVISION_STATUSES.some(
+            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === normalized
+        );
     }
 
     /**
-     * Computes conditional / pendingConditions from the approved study for this application study name.
-     * @returns {Promise<{ conditional: boolean, pendingConditions: string[] }>}
+     * Loads status for the immediate revision successor (minimal DB read).
+     * @param {string} revisionID Successor application _id
+     * @returns {Promise<{ status: string }|null>}
      */
-    async _computeConditionalApprovalFields(studyName) {
-        const studyArr = await this.approvedStudiesService.findByStudyName(studyName);
-        if (!studyArr || studyArr.length < 1) {
+    async _loadRevisionChainSuccessor(revisionID) {
+        try {
+            return await this.applicationDAO.findApplicationStatusById(revisionID);
+        } catch (err) {
+            console.error('Failed to load revision successor while checking active later revisions:', revisionID, err);
+            throw new Error(ERROR.INTERNAL_ERROR);
+        }
+    }
+
+    /**
+     * Returns true when the immediate revision successor has a non-terminal status.
+     * @param {object} application Application document that may have nextRevisionId
+     * @param {string|undefined|null} successorStatus Status of the direct successor, when known
+     * @returns {boolean}
+     */
+    _hasSuccessorWithNonTerminalStatus(application, successorStatus) {
+        const nextRevisionID = application?.nextRevisionId;
+        if (!nextRevisionID) {
+            return false;
+        }
+        if (successorStatus == null) {
+            return false;
+        }
+        return !this._isTerminalRevisionStatus(successorStatus);
+    }
+
+    /**
+     * Loads the successor and delegates to _hasSuccessorWithNonTerminalStatus.
+     * Valid chains are Approved → tail; only the direct successor is checked.
+     * @param {object} application Application document that may have nextRevisionId
+     * @returns {Promise<boolean>}
+     */
+    async _hasActiveLaterRevisions(application) {
+        const nextRevisionID = application?.nextRevisionId;
+        if (!nextRevisionID) {
+            return false;
+        }
+        const successor = await this._loadRevisionChainSuccessor(nextRevisionID);
+        return this._hasSuccessorWithNonTerminalStatus(application, successor?.status);
+    }
+
+    /**
+     * True when an Approved parent SRF links to this application via nextRevisionId.
+     * @param {object} application Candidate application
+     * @returns {Promise<boolean>}
+     */
+    async _hasApprovedParentSRF(application) {
+        const applicationID = application?._id ?? application?.id;
+        if (!applicationID) {
+            return false;
+        }
+        const parent = await this.applicationDAO.findApprovedParentSubmissionRequestByID(applicationID);
+        return Boolean(parent);
+    }
+
+    /**
+     * True when Approved and the immediate successor (if linked) is absent or terminal.
+     * Returns the existing boolean when already set on the application (response-only field).
+     * @param {object} application Application document
+     * @returns {Promise<boolean>}
+     */
+    async _computeCanBeReopened(application) {
+        if (typeof application?.canBeReopened === 'boolean') {
+            return application.canBeReopened;
+        }
+        if (!this._isApprovedApplication(application)) {
+            return false;
+        }
+        return !(await this._hasActiveLaterRevisions(application));
+    }
+
+    /**
+     * True when history supports restore (prior state exists and latest entry is Canceled/Deleted).
+     * @param {object} application Application document
+     * @returns {boolean}
+     */
+    _hasValidRestoreHistory(application) {
+        const history = application?.history;
+        if ((history?.length ?? 0) < 2) {
+            return false;
+        }
+        return [CANCELED, DELETED].includes(history.at(-1)?.status);
+    }
+
+    /**
+     * True when status is Canceled or Deleted and history supports restore.
+     * @param {object} application Application document
+     * @returns {boolean}
+     */
+    _isRestoreCandidate(application) {
+        const status = this._normalizeApplicationStatus(application?.status);
+        const isCanceledOrDeleted = [CANCELED, DELETED].some(
+            (terminalStatus) => this._normalizeApplicationStatus(terminalStatus) === status
+        );
+        return isCanceledOrDeleted && this._hasValidRestoreHistory(application);
+    }
+
+    /**
+     * True when restoreApplication would succeed for this application.
+     * @param {object} application Application document
+     * @param {boolean} hasApprovedParent Whether an Approved parent links to this application
+     * @returns {boolean}
+     */
+    _computeCanBeRestoredFromParentCheck(application, hasApprovedParent) {
+        if (typeof application?.canBeRestored === 'boolean') {
+            return application.canBeRestored;
+        }
+        if (!this._isRestoreCandidate(application)) {
+            return false;
+        }
+        const sequenceNumber = application?.sequenceNumber ?? 1;
+        if (sequenceNumber === 1) {
+            return true;
+        }
+        return hasApprovedParent;
+    }
+
+    /**
+     * True when Approved and the immediate successor (if linked) is absent or terminal.
+     * @param {object} application Application document
+     * @param {Map<string, string>} successorStatusById Prefetched successor id → status map
+     * @returns {boolean}
+     */
+    _computeCanBeReopenedFromSuccessorStatus(application, successorStatusById) {
+        if (typeof application?.canBeReopened === 'boolean') {
+            return application.canBeReopened;
+        }
+        if (!this._isApprovedApplication(application)) {
+            return false;
+        }
+        const nextRevisionID = application?.nextRevisionId;
+        const successorStatus = nextRevisionID ? successorStatusById.get(nextRevisionID) : undefined;
+        return !this._hasSuccessorWithNonTerminalStatus(application, successorStatus);
+    }
+
+    /**
+     * True when restoreApplication would succeed for this application.
+     * Returns the existing boolean when already set on the application (response-only field).
+     * @param {object} application Application document
+     * @returns {Promise<boolean>}
+     */
+    async _computeCanBeRestored(application) {
+        if (typeof application?.canBeRestored === 'boolean') {
+            return application.canBeRestored;
+        }
+        if (!this._isRestoreCandidate(application)) {
+            return false;
+        }
+        if ((application?.sequenceNumber ?? 1) === 1) {
+            return true;
+        }
+        const hasApprovedParent = await this._hasApprovedParentSRF(application);
+        return this._computeCanBeRestoredFromParentCheck(application, hasApprovedParent);
+    }
+
+    /**
+     * Computes SRF state fields for an application API response (e.g. canBeReopened, canBeRestored).
+     * @param {object} application Application document
+     * @returns {Promise<object|null>}
+     */
+    async _computeSRFStateFields(application) {
+        if (!application) {
+            return application;
+        }
+        const [canBeReopened, canBeRestored] = await Promise.all([
+            this._computeCanBeReopened(application),
+            this._computeCanBeRestored(application),
+        ]);
+        application.canBeReopened = canBeReopened;
+        application.canBeRestored = canBeRestored;
+        return application;
+    }
+
+    /**
+     * Builds conditional / pendingConditions from an approved study record.
+     * @param {object|undefined|null} study Approved study document
+     * @returns {{ conditional: boolean, pendingConditions: string[] }}
+     */
+    _resolveConditionalApprovalFields(study) {
+        if (!study) {
             return { conditional: false, pendingConditions: [] };
         }
-        const study = studyArr[0];
         const pendingConditions = [
             ...(study?.controlledAccess && !study?.dbGaPID ? [ERROR.CONTROLLED_STUDY_NO_DBGAPID] : []),
             ...(isTrue(study?.pendingModelChange) ? [ERROR.PENDING_APPROVED_STUDY] : []),
@@ -116,38 +281,238 @@ class Application {
         };
     }
 
+    /**
+     * Batch-prefetches revision-chain and approved-study data for a list page, then sets
+     * canBeReopened / canBeRestored on each application in memory.
+     * @param {object[]} applications Paginated application rows from listApplications
+     * @returns {Promise<{ studyByLowerName: Map<string, object> }>}
+     */
+    async _batchComputeListApplicationFields(applications) {
+        const studyByLowerName = new Map();
+        if (!applications?.length) {
+            return { studyByLowerName };
+        }
+
+        const successorIds = [...new Set(
+            applications
+                .filter((app) => this._isApprovedApplication(app) && app.nextRevisionId)
+                .map((app) => app.nextRevisionId)
+        )];
+
+        const restoreCandidateIds = applications
+            .filter((app) => this._isRestoreCandidate(app) && (app?.sequenceNumber ?? 1) > 1)
+            .map((app) => app._id ?? app.id)
+            .filter(Boolean);
+
+        const studyNamesByLower = new Map();
+        for (const app of applications) {
+            if (!this._isApprovedApplication(app)) {
+                continue;
+            }
+            const name = app.studyName?.trim();
+            if (!name) {
+                continue;
+            }
+            const key = name.toLowerCase();
+            if (!studyNamesByLower.has(key)) {
+                studyNamesByLower.set(key, name);
+            }
+        }
+        const studyNames = [...studyNamesByLower.values()];
+
+        // Batch database queries and perform in parallel
+        const [successors, parents, studies] = await Promise.all([
+            successorIds.length
+                ? this.applicationDAO.findApplicationStatusesByIds(successorIds)
+                : [],
+            restoreCandidateIds.length
+                ? this.applicationDAO.findApprovedApplicationsByNextRevisionIds(restoreCandidateIds)
+                : [],
+            studyNames.length
+                ? this.approvedStudiesService.findByStudyNames(studyNames)
+                : [],
+        ]);
+
+        const successorStatusById = new Map(
+            (successors ?? []).map((successor) => [successor.id ?? successor._id, successor.status])
+        );
+        const approvedParentSuccessorIds = new Set(
+            (parents ?? []).map((parent) => parent.nextRevisionId).filter(Boolean)
+        );
+
+        for (const study of studies ?? []) {
+            const key = study.studyName?.trim().toLowerCase();
+            if (key && !studyByLowerName.has(key)) {
+                studyByLowerName.set(key, study);
+            }
+        }
+
+        for (const app of applications) {
+            if (typeof app?.canBeReopened !== 'boolean') {
+                app.canBeReopened = this._computeCanBeReopenedFromSuccessorStatus(app, successorStatusById);
+            }
+            if (typeof app?.canBeRestored !== 'boolean') {
+                const applicationID = app._id ?? app.id;
+                const hasApprovedParent = applicationID
+                    ? approvedParentSuccessorIds.has(applicationID)
+                    : false;
+                app.canBeRestored = this._computeCanBeRestoredFromParentCheck(app, hasApprovedParent);
+            }
+        }
+
+        return { studyByLowerName };
+    }
+
+    /**
+     * Clears inbound nextRevisionId links (revision chain link removal).
+     * @param {string} applicationId Successor application _id whose inbound links should be cleared
+     */
+    async _pruneRevisionChainOnTerminal(applicationId) {
+        if (!applicationId) {
+            return;
+        }
+        try {
+            await this.applicationDAO.clearNextRevisionIdPointingTo(applicationId);
+        } catch (err) {
+            console.error('Failed to clear revision chain link for successor application:', applicationId, err);
+        }
+    }
+
+    /**
+     * Get the applicant display name
+     * @param {object} user The user object
+     * @returns {string} The applicant display name
+     */
+    _getUserDisplayName(user) {
+        return user?.fullName?.trim() || formatName(user) || user?.applicantName || "";
+    }
+
+    /**
+     * True when the user may view this application.
+     * Enforces submission_request:view scope rules: only all and own grant access.
+     * @param {object} userScope Resolved UserScope for SUBMISSION_REQUEST.VIEW
+     * @param {object} userInfo Session user
+     * @param {object} application Loaded application document
+     * @returns {boolean}
+     */
+    _canViewApplication(userScope, userInfo, application) {
+        if (userScope.isAllScope()) {
+            return true;
+        }
+        if (userScope.isOwnScope()) {
+            const ownerID = application?.applicant?.applicantID ?? application?.applicantID;
+            return userInfo?._id === ownerID;
+        }
+        return false;
+    }
+
+    /**
+     * Returns a single application when the caller may view it (view:all, or view:own as applicant).
+     * Non-all callers receive the same view error for missing and unauthorized records to avoid ID enumeration.
+     * @param {{ _id: string }} params Application _id
+     * @param {object} context Request context with userInfo
+     * @returns {Promise<object>} Hydrated application
+     * @throws {Error} When the application is missing or the caller cannot view it
+     */
+    async getApplication(params, context) {
+        verifySession(context)
+            .verifyInitialized();
+
+        const userScopesList = await this.authorizationService.getPermissionScope(
+            context?.userInfo,
+            USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.VIEW
+        );
+        const userScope = UserScope.create(userScopesList);
+
+        // mask application not found error for non-all-scoped callers to avoid ID enumeration
+        let application;
+        try {
+            application = await this.getApplicationById(params._id);
+        } catch (error) {
+            if (!userScope.isAllScope() && error.message?.startsWith(ERROR.APPLICATION_NOT_FOUND)) {
+                throw new Error(ERROR.INVALID_PERMISSION);
+            }
+            throw error;
+        }
+        if (!this._canViewApplication(userScope, context.userInfo, application)) {
+            throw new Error(ERROR.INVALID_PERMISSION);
+        }
+
+        // add logics to check if conditional approval
+        if (this._isApprovedApplication(application)) {
+            await this._checkConditionalApproval(application);
+        }
+        // populate the version with auto upgrade based on configuration
+        application.version = await this._getApplicationVersionByStatus(application.status, application.version);
+        return application;
+    }
+
+    async _getApplicationVersionByStatus(status, version = null ) {
+        const config = await this.configurationService.findByType("APPLICATION_FORM_VERSIONS"); //get version config dynamically
+        const currentVersion = config?.current || "2.0";
+        const newStatusVersion = config?.new || "3.0";
+        // auto upgrade version based on configuration if status is NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED
+        // for status other than NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED, keep original version if exists, else set current version.
+        return [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED].includes(status)
+            ? newStatusVersion
+            : (!version) ? currentVersion : version;
+    }
+
+    /**
+     * Computes conditional / pendingConditions from the approved study for this application study name.
+     * @returns {Promise<{ conditional: boolean, pendingConditions: string[] }>}
+     */
+    async _computeConditionalApprovalFields(studyName) {
+        const studyArr = await this.approvedStudiesService.findByStudyName(studyName);
+        if (!studyArr || studyArr.length < 1) {
+            return { conditional: false, pendingConditions: [] };
+        }
+        return this._resolveConditionalApprovalFields(studyArr[0]);
+    }
+
     async _checkConditionalApproval(application) {
         const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(application.studyName);
         application.conditional = conditional;
         application.pendingConditions = pendingConditions;
     }
 
+    /**
+     * Reformats a DB record into an application API response shape and computes response fields.
+     * @param {object} record Application document from the database
+     * @param {object} [ownerUser] Optional owner user for applicant fields
+     * @returns {Promise<object|null>}
+     */
+    async _reformatRecordForApplicationResponse(record, ownerUser) {
+        if (!record) {
+            return record;
+        }
+        const hydrated = { ...record };
+        if (ownerUser) {
+            hydrated.applicant = {
+                applicantID: ownerUser.id ?? ownerUser._id ?? "",
+                applicantName: this._getUserDisplayName(ownerUser) || "",
+                applicantEmail: ownerUser.email || "",
+            };
+        } else if (hydrated.applicant && typeof hydrated.applicant === 'object') {
+            hydrated.applicant = {
+                applicantID: hydrated.applicant?.id || hydrated.applicant?.applicantID || "",
+                applicantName: this._getUserDisplayName(hydrated.applicant) || "",
+                applicantEmail: hydrated.applicant?.email || hydrated.applicant?.applicantEmail || "",
+            };
+        }
+        if (hydrated.id && !hydrated._id) {
+            hydrated._id = hydrated.id;
+        }
+        return await this._computeSRFStateFields(hydrated);
+    }
+
     async getApplicationById(id) {
-        let result = await this.applicationDAO.findFirst({id: id,
-        }, {
-            include: {
-                applicant: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        fullName: true,
-                        email: true
-                    }
-                }
-            }
-        });
+        const result = await this.applicationDAO.findApplicationWithApplicantById(id);
         if (!result) {
             throw new Error(ERROR.APPLICATION_NOT_FOUND+id);
         }
 
-        result.applicant = {
-            applicantID: result?.applicant?.id || "",
-            applicantName: result?.applicant?.fullName || "",
-            applicantEmail: result?.applicant.email || "",
-
-        }
-        return result;
+        return await this._reformatRecordForApplicationResponse(result);
     }
     
     async reviewApplication(params, context) {
@@ -179,7 +544,7 @@ class Application {
         }
         // populate the version with auto upgrade based on configuration
         application.version  = await this._getApplicationVersionByStatus(application.status, application.version);
-        return application || null;
+        return await this._computeSRFStateFields(application) || null;
     }
 
     async createApplication(application, userInfo, status = NEW) {
@@ -208,6 +573,7 @@ class Application {
             inactiveReminder_15: false,
             inactiveReminder_30: false,
             finalInactiveReminder: false,
+            sequenceNumber: 1,
         };
 
         if (userInfo?.organization?.orgID) {
@@ -223,7 +589,7 @@ class Application {
         };
         const res = await this.applicationDAO.insert(application);
         if (res?.acknowledged) await this.logCollection.insert(CreateApplicationEvent.create(userInfo._id, userInfo.email, userInfo.IDP, application._id));
-        return application;
+        return await this._computeSRFStateFields(application);
     }
 
     /**
@@ -248,6 +614,7 @@ class Application {
             if (![NEW, IN_PROGRESS].includes(requestedStatus)) {
                 throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
             }
+            this._validateStudy(inputApplication);
             return await this.createApplication(inputApplication, context.userInfo, requestedStatus);
         }
 
@@ -256,14 +623,21 @@ class Application {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
-        if (!params?.status || ![NEW, IN_PROGRESS].includes(params.status)) {
+        const prevStatus = storedApplication?.status;
+        let targetStatus = params?.status;
+        if (prevStatus === REOPENED) {
+            targetStatus = IN_PROGRESS;
+        } else if (prevStatus === IN_REVISION) {
+            targetStatus = IN_REVISION;
+        } else if (!targetStatus || ![NEW, IN_PROGRESS].includes(targetStatus)) {
             throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         }
 
-        const prevStatus = storedApplication?.status;
-        let application = {...storedApplication, ...inputApplication, status: params.status };
+        let application = {...storedApplication, ...inputApplication, status: targetStatus };
         // auto upgrade version based on configuration
         application.version = await this._getApplicationVersionByStatus(application.status);
+
+        this._validateStudy(inputApplication);
 
         if (inputApplication?.newInstitutions?.length > 0) {
             await this._validateNewInstitution(inputApplication?.newInstitutions);
@@ -274,6 +648,12 @@ class Application {
             await logStateChange(this.logCollection, context.userInfo, application, prevStatus);
         }
         return this.getApplicationById(application?._id);
+    }
+
+    _validateStudy(application) {
+        if (application?.studyAbbreviation && application.studyAbbreviation.length > STUDY_ABBREVIATION_MAX_LENGTH) {
+            throw new Error(replaceErrorString(ERROR.MAX_STUDY_ABBREVIATION_LENGTH, STUDY_ABBREVIATION_MAX_LENGTH));
+        }
     }
 
     async _validateNewInstitution(newInstitutions) {
@@ -298,7 +678,7 @@ class Application {
 
         if (newInstitutionNames.length > 0) {
             const existingInstitutions = await this.institionDAO.findMany({
-                name: { in: newInstitutionNames },
+                name: { $in: newInstitutionNames },
             });
             if (existingInstitutions.length > 0) {
                 const existingInstitutionNames = existingInstitutions.map(i => i?.name);
@@ -312,6 +692,13 @@ class Application {
         }
     }
 
+    /**
+     * Returns the current user's most recent Approved SRF.
+     * Used when starting a new submission to auto-fill PI data from the prior approval.
+     * @param {object} params Request parameters (unused)
+     * @param {object} context Request context with userInfo
+     * @returns {Promise<object|null>} Hydrated application or null when none exist
+     */
     async getMyLastApplication(params, context) {
         verifySession(context)
             .verifyInitialized();
@@ -321,22 +708,10 @@ class Application {
         }
 
         const userID = context.userInfo._id;
-        // To remove this MongoDB query, we need to refactor the schema to move applicantID to the root level.
-        const matchApplicantIDToUser = {"$match": {"applicantID": userID, status: APPROVED}};
-        const sortCreatedAtDescending = {"$sort": {createdAt: -1}};
-        const limitReturnToOneApplication = {"$limit": 1};
-        const pipeline = [
-            matchApplicantIDToUser,
-            sortCreatedAtDescending,
-            limitReturnToOneApplication
-        ];
-        const result = await this.applicationDAO.aggregate(pipeline);
-        const application = result.length > 0 ? result[0] : null;
-        // Return null if user has no previous approved applications
+        const application = await this.applicationDAO.findLatestApprovedByApplicantID(userID);
         if (!application) {
             return null;
         }
-        // auto upgrade version
         const res = await this.getApplicationById(application._id);
         if (this._isApprovedApplication(res)) {
             await this._checkConditionalApproval(res);
@@ -345,17 +720,12 @@ class Application {
         return res;
     }
 
-    _getApplicantNameQuery(submitterName) {
-        if (submitterName != null && submitterName !== this._ALL_FILTER) {
-            return {applicant: {
-                is: {
-                    fullName: {contains: escapeRegexLiteral(submitterName.trim()), mode: "insensitive"}
-                }
-            }}
-        }
-        return {};
-    }
-
+    /**
+     * Validates listApplications filter, pagination, sort, and showAllVersions.
+     * @param {object} params GraphQL listApplications arguments
+     * @returns {{orderBy: string, sortDirection: string, showAllVersions: boolean}}
+     * @throws {Error} LIST_APPLICATIONS_INVALID_PARAMS or APPLICATION_INVALID_STATUSES
+     */
     _validateListApplicationsParams(params) {
         // Validate statuses, case insensitive
         const validStatusesLower = new Set(this._VALID_LIST_APPLICATION_STATUSES.map(s => String(s).toLowerCase()));
@@ -374,10 +744,10 @@ class Application {
                 });
             }
         }
-        // Validate orderBy parameter, case insensitive. Map legacy "applicant.applicantName" to Prisma field "applicant.fullName".
+        // Validate orderBy parameter, case insensitive. Map legacy "applicant.applicantName" to "applicant.fullName".
         const validOrderByValues = VALID_ORDER_BY_LIST_APPLICATIONS;
         const orderByInput = (params?.orderBy ?? "").toString().trim();
-        let orderByPrisma = "createdAt";
+        let orderBy = "createdAt";
         if (orderByInput) {
             const matchingKey = validOrderByValues.find((k) => k.toLowerCase() === orderByInput.toLowerCase());
             if (!matchingKey) {
@@ -385,7 +755,7 @@ class Application {
                 console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { orderBy: orderByInput, validOrderByValues: validOrderByValuesString });
                 throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS + " Valid orderBy values: " + validOrderByValuesString);
             }
-            orderByPrisma = matchingKey === "applicant.applicantName" ? "applicant.fullName" : matchingKey;
+            orderBy = matchingKey === "applicant.applicantName" ? "applicant.fullName" : matchingKey;
         }
         // Validate sortDirection parameter, case insensitive
         const sortDirection = (params?.sortDirection || "DESC").toString().toUpperCase();
@@ -411,16 +781,33 @@ class Application {
                 throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
             }
         }
-        // Return orderBy and sortDirection for pagination
-        return { orderByPrisma, sortDirection };
+        // Validate showAllVersions: omitted/null defaults to false (nextRevisionId missing or null only). Must be boolean when provided.
+        const showAllVersionsParam = params?.showAllVersions;
+        let showAllVersions = false;
+        if (showAllVersionsParam !== undefined && showAllVersionsParam !== null) {
+            if (typeof showAllVersionsParam !== "boolean") {
+                console.error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS, { showAllVersions: showAllVersionsParam });
+                throw new Error(ERROR.LIST_APPLICATIONS_INVALID_PARAMS);
+            }
+            showAllVersions = showAllVersionsParam;
+        }
+        return { orderBy, sortDirection, showAllVersions };
     }
 
+    /**
+     * Lists submission requests with filters, pagination, and facet values.
+     * When showAllVersions is false, only SRFs with nextRevisionId missing or null are returned
+     * (Canceled/Deleted tails and superseded seq>1 rows with no successor included).
+     * Computes canBeReopened and canBeRestored per row from revision-chain rules.
+     * @param {object} params Filter, pagination, and sort parameters
+     * @param {boolean} [params.showAllVersions=false] When true, return every matching SRF; when false, only SRFs with nextRevisionId missing or null
+     * @param {object} context Request context with userInfo
+     * @returns {Promise<object>} applications, total, programs, studies, and filter facets
+     */
     async listApplications(params, context) {
-        // Verify that the user is authenticated and has the necessary permissions to list applications
         verifySession(context)
             .verifyInitialized()
 
-        // Get the user information from the context
         const userInfo = context?.userInfo;
 
         // Only the all and own scopes are currently required for listing applications (per PBACDefaults_config: submission_request:view...).
@@ -441,165 +828,53 @@ class Application {
             };
         }
 
-        // Validate list applications parameters and map the orderBy parameter to the Prisma field name
-        const { orderByPrisma, sortDirection } = this._validateListApplicationsParams(params);
+        const { orderBy, sortDirection, showAllVersions } = this._validateListApplicationsParams(params);
 
-        // Build filter conditions:
         // Statuses filter: ignored if input is falsy, empty array, or contains "All" (case-insensitive).
-        // Normalize statuses to proper case (e.g. "New", "In Progress") for Prisma, since DB stores title case.
         const statusesParam = params?.statuses;
         const applyStatusesFilter = statusesParam != null && Array.isArray(statusesParam) && statusesParam.length > 0
             && !statusesParam.some((s) => typeof s === 'string' && s.toLowerCase() === 'all');
-        // Map statuses to proper case (e.g. "New", "In Progress") for Prisma, since DB stores title case.
         const statusLowerToCanonical = new Map(this._VALID_LIST_APPLICATION_STATUSES.map(s => [String(s).toLowerCase(), s]));
         const statusesForQuery = applyStatusesFilter
             ? (statusesParam || []).map(s => statusLowerToCanonical.get((s != null ? String(s) : '').toLowerCase())).filter(Boolean).filter(s => s !== this._ALL_FILTER)
             : [];
-        const statusCondition = statusesForQuery.length > 0 ? { status: { in: statusesForQuery } } : {};
-        // Submitter name filter
-        const submitterNameCondition = this._getApplicantNameQuery(params?.submitterName);
-        // Program name filter
-        const programNameCondition = (params.programName != null && params.programName !== this._ALL_FILTER) 
-            ? { programName: params.programName } 
-            : {};
-        // Study filter: search both studyName and studyAbbreviation (OR), case-insensitive partial match
-        const studySearchTerm = params.studyName?.trim();
-        const hasStudyFilter = studySearchTerm?.length > 0 && params.studyName !== this._ALL_FILTER;
-        let studyCondition = {};
-        if (hasStudyFilter) {
-            const studySearchTermSanitized = escapeRegexLiteral(studySearchTerm);
-            const containsOption = { contains: studySearchTermSanitized, mode: "insensitive" };
-            studyCondition = {
-                OR: [
-                    { studyName: containsOption },
-                    { studyAbbreviation: containsOption }
-                ]
-            };
-        }
-        // Assemble generic filter conditions, if scope is own, add applicantID filter
-        const baseConditions = { ...statusCondition, ...programNameCondition, ...studyCondition, ...submitterNameCondition };
-        const genericFilterConditions = userScope.isOwnScope()
-            ? { ...baseConditions, applicantID: userInfo?._id }
-            : baseConditions;
-        // Create pagination object
-        const pagination = new PrismaPagination(params?.first, params?.offset, orderByPrisma, sortDirection);
-        // Include query for applicant information
-        const includeQuery = {
-            include: {
-                applicant: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        fullName: true,
-                        email: true
-                    }
-                },
-            }
-        };
 
-        // Query filtered and paginated application list
-        let applications;
+        let listResult;
         try {
-            const filterConditions = { ...genericFilterConditions };
-            applications = await this.applicationDAO.findMany(filterConditions, { ...pagination.getPagination(), ...includeQuery });
-            applications = applications ?? [];
+            listResult = await this.applicationDAO.listApplicationsWithFacets({
+                statuses: statusesForQuery,
+                programName: params?.programName,
+                studyName: params?.studyName,
+                submitterName: params?.submitterName,
+                applicantID: userScope.isOwnScope() ? userInfo?._id : undefined,
+                first: params?.first,
+                offset: params?.offset,
+                orderBy,
+                sortDirection,
+                showAllVersions,
+            });
         } catch (err) {
-            console.error("List applications fetch error: application list", err);
-            throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching application list.");
-        }
-
-        // Query total application count
-        let totalCount;
-        try {
-            totalCount = await this.applicationDAO.count(genericFilterConditions);
-        } catch (err) {
-            console.error("List applications fetch error: application count", err);
-            throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: fetching application count.");
-        }
-
-        // When study filter uses OR, fetch studyName + studyAbbreviation once and derive both distinct lists in memory
-        let studyFilterDistinctRows = null;
-        if (hasStudyFilter) {
-            try {
-                studyFilterDistinctRows = await this.applicationDAO.findMany(genericFilterConditions, {
-                    select: { studyName: true, studyAbbreviation: true }
-                });
-            } catch (err) {
-                console.error("List applications fetch error: gathering distinct study values", err);
-                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Failed step: gathering distinct study values.");
-            }
-        }
-
-        // Query distinct filter options in parallel (programs, studies, studyAbbreviations, statuses, submitter names)
-        const runQuery = async (queryName, fn) => {
-            try {
-                return await fn();
-            } catch (err) {
-                console.error("List applications fetch error:", queryName, err);
-                throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED);
-            }
-        };
-        let programs, studies, studyAbbreviations, statusesList, submitterNames;
-        try {
-            [programs, studies, studyAbbreviations, statusesList, submitterNames] = await Promise.all([
-                runQuery("programs", async () => {
-                    const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.programName;
-                    const rows = await this.applicationDAO.findMany(filterConditions, { select: { programName: true }, distinct: ['programName'] });
-                    return (rows ?? []).map(item => item.programName).filter(Boolean);
-                }),
-                runQuery("studies", async () => {
-                    if (studyFilterDistinctRows !== null) {
-                        const names = (studyFilterDistinctRows ?? []).map(item => item.studyName).filter(Boolean);
-                        return Array.from(new Set(names));
-                    }
-                    const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.studyName;
-                    const rows = await this.applicationDAO.findMany(filterConditions, { select: { studyName: true }, distinct: ['studyName'] });
-                    return (rows ?? []).map(item => item.studyName).filter(Boolean);
-                }),
-                runQuery("study abbreviations", async () => {
-                    if (studyFilterDistinctRows !== null) {
-                        const abbreviations = (studyFilterDistinctRows ?? []).map(item => item.studyAbbreviation).filter(Boolean);
-                        return Array.from(new Set(abbreviations));
-                    }
-                    const filterConditions = { ...genericFilterConditions };
-                    const rows = await this.applicationDAO.findMany(filterConditions, { select: { studyAbbreviation: true }, distinct: ['studyAbbreviation'] });
-                    return (rows ?? []).map(item => item.studyAbbreviation).filter(Boolean);
-                }),
-                runQuery("statuses", async () => {
-                    const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.status;
-                    const rows = await this.applicationDAO.findMany(filterConditions, { select: { status: true }, distinct: ['status'] });
-                    return (rows ?? []).map(item => item.status).filter(Boolean);
-                }),
-                runQuery("submitter names", async () => {
-                    const filterConditions = { ...genericFilterConditions };
-                    delete filterConditions.applicant;
-                    const rows = await this.applicationDAO.findMany(filterConditions, { include: { applicant: { select: { fullName: true } } }, distinct: ['applicantID'] });
-                    const names = (rows ?? []).map(sub => sub?.applicant?.fullName).filter(Boolean).sort((a, b) => a.localeCompare(b));
-                    return Array.from(new Set(names));
-                }),
-            ]);
-        } catch (err) {
-            // If the error message includes the expected error message, it has already been logged and formatted and can be rethrown
-            if (err.message?.includes(ERROR.LIST_APPLICATIONS_FETCH_FAILED)) {
-                throw err;
-            }
-            // Log the error, format it and rethrow
             console.error(ERROR.LIST_APPLICATIONS_FETCH_FAILED, err);
             throw new Error(ERROR.LIST_APPLICATIONS_FETCH_FAILED + " Please see logs for more information.");
         }
 
-        // Hydrate conditional approval for Approved rows (sequential study lookups) and map to plain objects
-        // so GraphQL always receives conditional / pendingConditions (Prisma entities may drop ad-hoc properties).
+        let applications = listResult?.applications ?? [];
+        const totalCount = listResult?.total ?? 0;
+        const programs = listResult?.programs ?? [];
+        const studies = listResult?.studies ?? [];
+        const studyAbbreviations = listResult?.studyAbbreviations ?? [];
+        const statusesList = listResult?.status ?? [];
+        const submitterNames = listResult?.submitterNames ?? [];
+
+        // Batch-prefetch SRF state and approved-study data, then map to plain objects so GraphQL
+        // always receives conditional / pendingConditions.
+        const { studyByLowerName } = await this._batchComputeListApplicationFields(applications);
         const mappedApplications = [];
         for (const app of applications) {
             const applicant = {
-                applicantID: app?.applicant ? app?.applicant?.id : "",
-                applicantName: app?.applicant ? app?.applicant?.fullName : "",
-                applicantEmail: app?.applicant ? app?.applicant?.email : "",
+                applicantID: app?.applicant?.id || app?.applicant?._id || "",
+                applicantName: this._getUserDisplayName(app.applicant) || "",
+                applicantEmail: app?.applicant?.email || "",
             };
             if (!this._isApprovedApplication(app)) {
                 mappedApplications.push({
@@ -609,7 +884,8 @@ class Application {
                 });
                 continue;
             }
-            const { conditional, pendingConditions } = await this._computeConditionalApprovalFields(app.studyName);
+            const study = studyByLowerName.get(app.studyName?.trim().toLowerCase());
+            const { conditional, pendingConditions } = this._resolveConditionalApprovalFields(study);
             mappedApplications.push({
                 ...app,
                 applicant,
@@ -621,9 +897,8 @@ class Application {
         applications = mappedApplications;
 
         // Sort statuses in display order
-        const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, APPROVED, REJECTED, CANCELED, DELETED];
+        const statusOrder = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, IN_REVISION, REOPENED, APPROVED, REJECTED, CANCELED, DELETED];
         const statuses = (statusesList || []).sort((a, b) => statusOrder.indexOf(a) - statusOrder.indexOf(b));
-        // Return the results
         return {
             applications,
             total: totalCount,
@@ -644,7 +919,7 @@ class Application {
         }
 
         const application = await this.getApplicationById(params._id);
-        const validStatus = [IN_PROGRESS, INQUIRED]; //updated based on new requirement.
+        const validStatus = [IN_PROGRESS, INQUIRED, IN_REVISION]; // updated based on new requirement.
         verifyApplication(application)
             .notEmpty()
             .state(validStatus);
@@ -666,47 +941,207 @@ class Application {
             await this.logCollection.insert(logEvent),
             await sendEmails.submitApplication(this.notificationService, this.userService, this.emailParams, context.userInfo, application)
         ]);
-        return application;
+        return await this.getApplicationById(application._id);
     }
 
 
-    _getInProgressComment(history) {
-        const isValidComment = history?.length > 1 &&
-            ([CANCELED, DELETED].includes(history?.at(-2)?.status) // Restored Reason
-            || INQUIRED === history?.at(-1)?.status);
-        return isValidComment ? history?.at(-1)?.reviewComment : null;
-    }
-
-    async reopenApplication(document, context) {
+    async resumeInquiredApplication(params, context) {
         verifySession(context)
             .verifyInitialized();
-        const application = await this.getApplicationById(document._id);
+        const applicationId = params?._id ?? params?.id;
+        const application = await this.getApplicationById(applicationId);
         if (context?.userInfo?._id !== application?.applicant?.applicantID) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
 
+        verifyApplication(application)
+            .notEmpty()
+            .state([INQUIRED]);
+
         application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
         if (application && application.status) {
-            const reviewComment = this._getInProgressComment(application?.history);
-            const history = HistoryEventBuilder.createEvent(context.userInfo._id, IN_PROGRESS, reviewComment);
+            const history = HistoryEventBuilder.createEvent(context.userInfo._id, IN_REVISION, null);
             const updated = await this.applicationDAO.update({
                 _id: application._id,
-                status: IN_PROGRESS,
+                status: IN_REVISION,
                 updatedAt: history.dateTime,
                 version: application.version,
                 history: [...(application.history || []), history]
             });
             if (updated) {
                 const promises = [
-                    await this.getApplicationById(document._id),
-                    await this.logCollection.insert(UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, IN_PROGRESS))
+                    await this.getApplicationById(applicationId),
+                    await this.logCollection.insert(UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, IN_REVISION))
                 ];
                 return await Promise.all(promises).then(function(results) {
                     return results[0];
                 });
             }
         }
-        return application;
+        return await this._computeSRFStateFields(application);
+    }
+
+    async reopenApplication(params, context) {
+        return this.resumeInquiredApplication(params, context);
+    }
+
+    async reopenApprovedSubmissionRequest(params, context) {
+        // Verifications
+        verifySession(context)
+            .verifyInitialized();
+
+        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN);
+        if (userScope.isNoneScope()) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+
+        const source = await this.getApplicationById(params._id);
+        verifyApplication(source)
+            .notEmpty()
+            .state([APPROVED]);
+
+        if (!(await this._computeCanBeReopened(source))) {
+            throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
+        }
+
+        const replaceExistingLink = Boolean(source.nextRevisionId);
+        const sourceOwnerId = source?.applicant?.applicantID ?? source?.applicantID;
+        const isAllScope = userScope.isAllScope();
+        const isOwnScope = userScope.isOwnScope();
+
+        if (!isAllScope && !isOwnScope) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+        if (isOwnScope) {
+            if (context.userInfo._id !== sourceOwnerId) {
+                throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+            }
+            if (params?.ownerId && params.ownerId !== context.userInfo._id) {
+                throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+            }
+        }
+
+        // Get the reopened SRF owner and verify
+        const ownerUser = await this._getReopenSRFOwnerAndVerify(
+            source,
+            isAllScope ? params?.ownerId : null
+        );
+
+        // Clone the application for reopen
+        const timestamp = getCurrentTime();
+        const historyEvent = HistoryEventBuilder.createEvent(context.userInfo._id, REOPENED, null, timestamp);
+        const version = await this._getApplicationVersionByStatus(REOPENED);
+        const sourceSequence = source?.sequenceNumber ?? 1;
+        const reopenedApplication = {
+            // initialization fields 
+            _id: v4(undefined, undefined, undefined),
+            status: REOPENED,
+            sequenceNumber: sourceSequence + 1,
+            submittedDate: null,
+            version,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            applicantID: ownerUser._id ?? ownerUser.id,
+            history: [historyEvent],
+            inactiveReminder: false,
+            inactiveReminder_7: false,
+            inactiveReminder_15: false,
+            inactiveReminder_30: false,
+            finalInactiveReminder: false,
+            newInstitutions: [],
+            // copied fields from source SRF
+            questionnaireData: source.questionnaireData,
+            programName: source.programName,
+            programAbbreviation: source.programAbbreviation,
+            programDescription: source.programDescription,
+            studyName: source.studyName,
+            studyAbbreviation: source.studyAbbreviation,
+            controlledAccess: source.controlledAccess,
+            openAccess: source.openAccess,
+            wholeProgram: source.wholeProgram,
+            ORCID: source.ORCID,
+            PI: source.PI,
+            GPAName: source.GPAName,
+            organization: source.organization,
+        };
+        const insertedApp = await this.applicationDAO.reopenApprovedRevision(
+            source._id,
+            reopenedApplication,
+            replaceExistingLink
+        );
+
+        // Log the audit events
+        const { _id: actorId, email, IDP } = context.userInfo;
+        await Promise.all([
+            this.logCollection.insert(CreateApplicationEvent.create(actorId, email, IDP, insertedApp._id)),
+            this.logCollection.insert(UpdateApplicationStateEvent.create(
+                actorId, email, IDP, insertedApp._id, APPROVED, REOPENED
+            ))
+        ]);
+
+        await this._sendReopenApplicationEmail(insertedApp, ownerUser, sourceOwnerId);
+
+        // Compile API response
+        insertedApp.version = await this._getApplicationVersionByStatus(insertedApp.status, insertedApp.version);
+        return await this._reformatRecordForApplicationResponse(insertedApp, ownerUser);
+    }
+
+    _logReopenOwnerValidationFailure(details, errorCode) {
+        console.warn("Reopen owner resolution failed:", details, errorCode);
+    }
+
+    async _getReopenSRFOwnerAndVerify(source, inputOwnerID) {
+        const originalOwnerID = source?.applicant?.applicantID ?? source?.applicantID;
+        const maintainOriginalOwner = !inputOwnerID || inputOwnerID === originalOwnerID;
+        const activeStatus = USER_CONSTANTS.USER.STATUSES.ACTIVE;
+
+        let ownerUser;
+        if (!inputOwnerID) {
+            if (!originalOwnerID) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
+                this._logReopenOwnerValidationFailure({ applicationID: source._id }, error);
+                throw new Error(error);
+            }
+
+            ownerUser = await this.userDAO.findByIdAndStatus(originalOwnerID, activeStatus);
+            if (!ownerUser) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_UNRESOLVED;
+                this._logReopenOwnerValidationFailure({ ownerId: originalOwnerID }, error);
+                throw new Error(error);
+            }
+        } else {
+            ownerUser = await this.userDAO.findByIdAndStatus(inputOwnerID, activeStatus);
+            if (!ownerUser) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_NOT_ASSIGNABLE;
+                this._logReopenOwnerValidationFailure({ ownerId: inputOwnerID }, error);
+                throw new Error(error);
+            }
+        }
+
+        // Verify reopened SRF owner has create permission
+        const passPermissionCheck = hasSubmissionRequestCreatePermission(ownerUser);
+        if (!passPermissionCheck) {
+            // original owner case error response
+            if (maintainOriginalOwner) {
+                const error = ERROR.VERIFY.REOPEN_OWNER_ORIGINAL_INELIGIBLE;
+                this._logReopenOwnerValidationFailure({ ownerId: originalOwnerID }, error);
+                throw new Error(error);
+            }
+            // new owner case error response
+            const error = ERROR.VERIFY.REOPEN_OWNER_SPECIFIED_INELIGIBLE;
+            this._logReopenOwnerValidationFailure({ ownerId: inputOwnerID }, error);
+            throw new Error(error);
+        }
+
+        // Verify the reopened SRF owner is the original owner or has an assignable role
+        const passRoleCheck = maintainOriginalOwner || REOPEN_ASSIGNABLE_ROLES.includes(ownerUser?.role);
+        if (!passRoleCheck) {
+            const error = ERROR.VERIFY.REOPEN_OWNER_ROLE_INELIGIBLE;
+            this._logReopenOwnerValidationFailure({ ownerId: inputOwnerID, role: ownerUser?.role }, error);
+            throw new Error(error);
+        }
+
+        return ownerUser;
     }
 
     async _getUserScope(userInfo, permission) {
@@ -730,13 +1165,13 @@ class Application {
         }
         const aApplication = await this.getApplicationById(document._id);
         const isApplicationOwned = userScope.isOwnScope() && userInfo?._id === aApplication?.applicant?.applicantID;
-        const validApplicationStatus = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED];
+        const validApplicationStatus = [NEW, IN_PROGRESS, SUBMITTED, IN_REVIEW, INQUIRED, IN_REVISION, REOPENED];
         if (!validApplicationStatus.includes(aApplication.status)) {
             throw new Error(ERROR.VERIFY.INVALID_STATE_APPLICATION);
         }
         aApplication.version = await this._getApplicationVersionByStatus(aApplication.status, aApplication?.version);
-        const powerUserCond = [NEW, IN_PROGRESS, INQUIRED, SUBMITTED, IN_REVIEW].includes(aApplication?.status);
-        const isValidCond = [NEW, IN_PROGRESS, INQUIRED].includes(aApplication?.status) && userInfo?._id === aApplication?.applicant?.applicantID;
+        const powerUserCond = [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, SUBMITTED, IN_REVIEW, REOPENED].includes(aApplication?.status);
+        const isValidCond = [NEW, IN_PROGRESS, INQUIRED, IN_REVISION, REOPENED].includes(aApplication?.status) && userInfo?._id === aApplication?.applicant?.applicantID;
         if ((userScope.isAllScope() && !powerUserCond) || (isApplicationOwned && !isValidCond)) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
@@ -779,18 +1214,21 @@ class Application {
             .notEmpty()
             .state([CANCELED, DELETED]);
 
-        if (!aApplication?.history?.length > 2 || ![CANCELED, DELETED].includes(aApplication?.history?.at(-1)?.status)) {
-            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_STATE);
-        }
         const userInfo = context?.userInfo;
         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.CANCEL);
         if (userScope.isNoneScope() || (!userScope.isOwnScope() && !userScope.isAllScope())) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        // User owned application
         const isApplicationOwned = userInfo?._id === aApplication?.applicant?.applicantID;
         if (userScope.isOwnScope() && !isApplicationOwned) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+
+        if (!this._hasValidRestoreHistory(aApplication)) {
+            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_STATE);
+        }
+        if (!(await this._computeCanBeRestored(aApplication))) {
+            throw new Error(ERROR.INVALID_APPLICATION_RESTORE_NEWER_REVISION_EXISTS);
         }
         const prevStatus = aApplication?.history?.at(-2)?.status;
         const history = HistoryEventBuilder.createEvent(context.userInfo._id, prevStatus, document?.comment);
@@ -819,21 +1257,38 @@ class Application {
             .state([IN_REVIEW, SUBMITTED]);
 
         const questionnaire = getApplicationQuestionnaire(application);
-        const [approvedStudies, existingProgram, duplicatePrograms] = await Promise.all([
-            this.approvedStudiesService.findByStudyName(application?.studyName),
-            this.organizationService.getOrganizationByID(questionnaire?.program?._id, false),
-            this.organizationService.findOneByProgramName(application?.programName),
+        const sequenceNumber = application?.sequenceNumber ?? 1;
+        const [predecessor, existingProgram, duplicatePrograms] = await Promise.all([
+            this.applicationDAO.findApprovedParentSubmissionRequestByID(application._id),
+            this.programService.getProgramByID(questionnaire?.program?._id, false),
+            this.programService.findOneByProgramName(application?.programName),
             (async () => {
                 application.version = await this._getApplicationVersionByStatus(application.status, application?.version);
             })()
         ]);
 
-        if (approvedStudies.length > 0) {
+        const isRevisionReapproval = Boolean(predecessor && sequenceNumber > 1);
+        const duplicates = await this.approvedStudiesService.findByStudyName(application?.studyName);
+        let existingStudy = null;
+        if (isRevisionReapproval) {
+            existingStudy = await this.approvedStudiesService.findByApplicationID(
+                predecessor._id ?? predecessor.id
+            );
+            // Revision re-approval: linked via nextRevisionId from an Approved parent.
+            if (!existingStudy && duplicates.length > 0) {
+                existingStudy = duplicates[0];
+            }
+        }
+
+        // Duplicate study-name protection; exempt the existing study on revision re-approval.
+        const existingStudyID = existingStudy?._id ?? existingStudy?.id;
+        const conflict = duplicates.find((dup) => (dup?._id ?? dup?.id) !== existingStudyID);
+        if (conflict) {
             throw new Error(replaceErrorString(ERROR.DUPLICATE_APPROVED_STUDY_NAME, `'${application?.studyName}'`));
         }
 
-        // Checking for duplicate programs if no existing program ID is found
-        if (!(existingProgram?._id) && duplicatePrograms) {
+        // Duplicate program protection on first approval only; revision re-approval does not upsert programs.
+        if (!isRevisionReapproval && !(existingProgram?._id) && duplicatePrograms) {
             throw new Error(replaceErrorString(ERROR.DUPLICATE_PROGRAM_NAME, `'${application?.programName}'`));
         }
 
@@ -861,25 +1316,50 @@ class Application {
         promises.push(this.sendEmailAfterApproveApplication(context, application, document?.comment, isDbGapMissing, isTrue(document?.pendingModelChange), isPendingGPA, isPendingImageDeIdentification));
         if (updated) {
             promises.unshift(this.getApplicationById(document._id));
-            if(questionnaire) {
+            if (questionnaire && !isRevisionReapproval) {
                 const [name, abbreviation, description] = [application?.programName, application?.programAbbreviation, application?.programDescription];
                 let program = existingProgram;
                 if (name?.trim()?.length > 0 && !existingProgram?._id) {
                     // Await program creation before creating approved study to avoid race condition
-                    program = await this.organizationService.upsertByProgramName(name, abbreviation, description);
+                    program = await this.programService.upsertByProgramName(name, abbreviation, description);
                 }
-                const newApprovedStudy = await this._saveApprovedStudies(updated, questionnaire, document?.pendingModelChange, document?.pendingImageDeIdentification, isPendingGPA, program);
+                const newApprovedStudy = await this.approvedStudiesService.saveApprovedStudyFromApplication(
+                    updated,
+                    questionnaire,
+                    document?.pendingModelChange,
+                    document?.pendingImageDeIdentification,
+                    isPendingGPA,
+                    program,
+                    null
+                );
                 // added approved studies into user collection
                 const applicants = await this._findUsersByApplicantIDs([application]);
                 if (applicants?.length > 0) {
                     const applicant = applicants[0];
                     const { _id, ...updateUser } = applicant;
                     const currStudyIDs = applicant?.studies?.map((study)=> study?._id) || [];
-                    const newStudiesIDs = [newApprovedStudy?._id].concat(currStudyIDs);
+                    const approvedStudyId = newApprovedStudy?._id;
+                    if (!approvedStudyId) {
+                        throw new Error(ERROR.FAILED_APPROVED_STUDY_INSERTION);
+                    }
+                    const newStudiesIDs = currStudyIDs.includes(approvedStudyId)
+                        ? currStudyIDs
+                        : [approvedStudyId, ...currStudyIDs];
                     promises.push(this.userService.updateUserInfo(
                         applicant, updateUser, _id, applicant?.userStatus, applicant?.role, newStudiesIDs));
                 }
-
+            } else if (isRevisionReapproval && existingStudy && questionnaire) {
+                // Revision re-approval: refresh the existing approved study from the current application
+                // (and relink applicationID to this revision), without touching studyName, studyAbbreviation,
+                // or program-related fields.
+                promises.push(this.approvedStudiesService.updateReapprovedStudy(
+                    existingStudy,
+                    updated,
+                    questionnaire,
+                    document?.pendingModelChange,
+                    document?.pendingImageDeIdentification,
+                    isPendingGPA
+                ));
             }
             promises.push(this.logCollection.insert(
                 UpdateApplicationStateEvent.create(context.userInfo._id, context.userInfo.email, context.userInfo.IDP, application._id, application.status, APPROVED)
@@ -1007,16 +1487,17 @@ class Application {
             // Use Promise.allSettled to handle partial failures gracefully
             const updateResults = await Promise.allSettled(applications.map(async (app) => {
                 if (utilityService.isEmptyApplication(app) && app.status === NEW) {
-                    // permanently delete blank 'New' SRFs
-                    return await this.applicationDAO.delete(app._id);
+                    const deleted = await this.applicationDAO.delete(app._id);
+                    return deleted;
                 }
-                return await this.applicationDAO.update({
+                const result = await this.applicationDAO.update({
                     _id: app._id,
                     status: DELETED,
                     updatedAt: history.dateTime,
                     inactiveReminder: true,
                     history: [...(app.history || []), history]
                 });
+                return result;
             }));
 
             // Count successful updates
@@ -1096,9 +1577,7 @@ class Application {
                 await this._sendEmailFinalInactiveApplication(aApplication, defaultDays);
             }));
             const applicationIDs = finalDefault.map(application => application._id);
-            const query = {_id: {$in: applicationIDs}};
-            const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
-            const updatedReminder = await this.applicationDAO.updateMany(query, everyReminderDays);
+            const updatedReminder = await this.applicationDAO.markFinalRemindersSent(applicationIDs);
             if (!updatedReminder?.matchedCount) {
                 console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
             }
@@ -1113,9 +1592,7 @@ class Application {
             }));
             const applicationIDs = shortFinalToSend.map(application => application._id);
             if (applicationIDs.length > 0) {
-                const query = {_id: {$in: applicationIDs}};
-                const everyReminderDays = this._getEveryReminderQuery(this.emailParams.inactiveApplicationNotifyDays, true);
-                const updatedReminder = await this.applicationDAO.updateMany(query, everyReminderDays);
+                const updatedReminder = await this.applicationDAO.markFinalRemindersSent(applicationIDs);
                 if (!updatedReminder?.matchedCount) {
                     console.error("The email reminder flag intended to notify the inactive submission request (FINAL) is not being stored", `applicationIDs: ${applicationIDs.join(', ')}`);
                 }
@@ -1165,11 +1642,7 @@ class Application {
                 const expiredDays = entry.baseDays - pastDays;
                 const submissionReminderDays = this.emailParams.inactiveApplicationNotifyDays;
                 const reminderDays = submissionReminderDays.filter((d) => expiredDays < d || expiredDays === d);
-                const reminderFilter = reminderDays.reduce((acc, day) => {
-                    acc[`${this._INACTIVE_REMINDER}_${day}`] = true;
-                    return acc;
-                }, {});
-                const updatedReminder = await this.applicationDAO.update({_id: applicationID, ...reminderFilter});
+                const updatedReminder = await this.applicationDAO.markIntervalReminderSent(applicationID, reminderDays);
                 if (!updatedReminder) {
                     console.error("The email reminder flag intended to notify the inactive submission request is not being stored", applicationID);
                 }
@@ -1182,106 +1655,123 @@ class Application {
             ?.map((a) => a?.applicantID) // Extract applicant IDs
             ?.filter(Boolean);
 
-        return await this.userService.userCollection.aggregate([{
-            "$match": {"_id": { "$in": applicantIDs }
-            }}]);
+        return await this.userService.findByIDs(applicantIDs);
     }
 
     async sendEmailAfterApproveApplication(context, application, comment, isDbGapMissing = false, isPendingModelChange, isPendingGPA = false, isPendingImageDeIdentification = false) {
-        const res = await Promise.all([
-            this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
-                [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
-            this.userService.userCollection.find(application?.applicantID)
-        ]);
-
-        const [toBCCUsers, applicant] = res;
-        const applicantInfo = applicant?.pop();
-        const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
-        const toBCCEmails = getUserEmails(toBCCUsers)
-            ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
-        if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
-            const pendingTemplateParams = {
-                firstName: application?.applicant?.applicantName,
-                contactEmail: this.emailParams?.conditionalSubmissionContact,
-                reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
-                study: setDefaultIfNoName(application?.studyName),
-                submissionGuideURL: this.emailParams?.submissionGuideURL
-            };
-
-            if (!isDbGapMissing && !isPendingModelChange && !isPendingGPA && !isPendingImageDeIdentification) {
-                await this.notificationService.approveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    {
-                        firstName: application?.applicant?.applicantName,
-                        reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A"
-                    },
-                    {
-                        study: studyLabelForEmailBody(application),
-                        contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
-                    }
-                );
-                return;
-            }
-
-            const pendingCount = [isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification].filter(Boolean).length;
-            if (pendingCount > 1) {
-                await this.notificationService.multipleChangesApproveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams,
-                    isDbGapMissing,
-                    isPendingModelChange,
-                    isPendingGPA,
-                    isPendingImageDeIdentification
-                );
-                return;
-            }
-
-            if (isDbGapMissing) {
-                await this.notificationService.dbGapMissingApproveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams
-                );
-                return;
-            }
-
-            if (isPendingModelChange) {
-                await this.notificationService.dataModelChangeApproveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams
-                );
-                return;
-            }
-
-            if (isPendingGPA) {
-                await this.notificationService.pendingGPANotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams
-                );
-                return;
-            }
-
-            if (isPendingImageDeIdentification) {
-                await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(application?.applicant?.applicantEmail,
-                    CCEmails,
-                    toBCCEmails,
-                    pendingTemplateParams
-                );
-            }
+        if (!isDbGapMissing && !isPendingModelChange && !isPendingGPA && !isPendingImageDeIdentification) {
+            await this._sendFullApprovalEmail(application, comment);
+        } else {
+            await this._sendConditionallyApprovedEmail(application, comment,isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification);
         }
     }
 
+    async _sendFullApprovalEmail(application, comment) {
+        const applicant = await this._getApplicant(application);
+        const applicantEmail = applicant?.email;
+        const rawCCEmails = getCCEmails(applicantEmail, application);
+        const bCCUsers = await this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW], INTERNAL_USERS_ROLES)
+        const rawBCCEmails = getUserEmails(bCCUsers)
+        const [cCEmails, bCCEmails] = filterDuplicateEmails(applicantEmail, rawCCEmails, rawBCCEmails);
+
+        if (applicant?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
+            await this.notificationService.approveQuestionNotification(applicantEmail,
+                cCEmails,
+                bCCEmails,
+                {
+                    firstName: applicant?.firstName ?? 'User',
+                    reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A"
+                },
+                {
+                    study: studyLabelForEmailBody(application),
+                    contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
+                }
+            );
+        }
+    }
+
+    async _sendConditionallyApprovedEmail(application, comment, isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification) {
+        const applicant = await this._getApplicant(application);
+        const applicantEmail = applicant?.email;
+        const cCEmails = getCCEmails(applicantEmail, application);
+        const bCCUsers = await this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CONDITIONALLY_APPROVED], INTERNAL_USERS_ROLES)
+
+        const pendingTemplateParams = {
+            firstName: applicant?.firstName ?? 'User',
+            contactEmail: this.emailParams?.conditionalSubmissionContact,
+            reviewComments: comment && comment?.trim()?.length > 0 ? comment?.trim() : "N/A",
+            study: setDefaultIfNoName(application?.studyName),
+            submissionGuideURL: this.emailParams?.submissionGuideURL
+        };
+
+        const pendingCount = [isDbGapMissing, isPendingModelChange, isPendingGPA, isPendingImageDeIdentification].filter(Boolean).length;
+        const bCCEmails = getEmailsBasedonConditionalApproval(bCCUsers, isDbGapMissing, isPendingModelChange, isPendingImageDeIdentification);
+        const [finalCCEmails, finalBCCmails] = filterDuplicateEmails(applicantEmail, cCEmails, bCCEmails);
+        if (pendingCount > 1) {
+            await this.notificationService.multipleChangesApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams,
+                isDbGapMissing,
+                isPendingModelChange,
+                isPendingGPA,
+                isPendingImageDeIdentification
+            );
+            return;
+        }
+
+        if (isDbGapMissing) {
+            await this.notificationService.dbGapMissingApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams
+            );
+            return;
+        }
+
+        if (isPendingModelChange) {
+            await this.notificationService.dataModelChangeApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams
+            );
+            return;
+        }
+
+        // Todo: remove pending GPA condition
+        if (isPendingGPA) {
+            await this.notificationService.pendingGPANotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams
+            );
+            return;
+        }
+
+        if (isPendingImageDeIdentification) {
+            await this.notificationService.pendingImageDeIdentificationApproveQuestionNotification(
+                applicantEmail,
+                finalCCEmails,
+                finalBCCmails,
+                pendingTemplateParams
+            );
+        }
+    }
+
+    async _getApplicant(application) {
+        return await this.userService.findByID(application?.applicantID);
+    }
+
     async _cancelApplicationEmailInfo(application) {
-        const [applicant, BCCUsers] = await Promise.all([
-            this.userService.userCollection.find(application?.applicantID),
+        const [applicantInfo, BCCUsers] = await Promise.all([
+            this.userService.findByID(application?.applicantID),
             this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_CANCEL],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
         ]);
-        const applicantInfo = applicant?.pop();
 
         const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
         const toBCCEmails = getUserEmails(BCCUsers)
@@ -1326,6 +1816,60 @@ class Application {
 
     }
 
+    /**
+     * Sends the reopen notification email to the owner of a reopened submission request.
+     * Never throws; failures are logged so they cannot break the reopen workflow.
+     * @param {object} application Reopened application document
+     * @param {object} ownerUser Owner of the reopened application
+     * @param {string} previousOwnerId Owner of the source application before reopening
+     * @returns {Promise<void>}
+     */
+    async _sendReopenApplicationEmail(application, ownerUser, previousOwnerId) {
+        try {
+            const isOwnershipChanged = ownerUser._id !== previousOwnerId && ownerUser.id !== previousOwnerId;
+            const [ownerInfo, BCCUsers] = await Promise.all([
+                this.userService.findByID(ownerUser._id ?? ownerUser.id),
+                this.userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REOPENED],
+                    [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN])
+            ]);
+            const applicantInfo = ownerInfo ?? ownerUser;
+
+            if (!applicantInfo?.email) {
+                console.error("Reopen submission request email notification does not have any recipient", `Application ID: ${application?._id}`);
+                return;
+            }
+
+            if (!applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REOPENED)) {
+                return;
+            }
+
+            const CCEmails = getCCEmails(applicantInfo?.email, application);
+            // Include previous owner in CC if ownership changed
+            if (isOwnershipChanged && previousOwnerId) {
+                const previousOwner = await this.userService.findByID(previousOwnerId);
+                if (previousOwner?.email && EMAIL_REGEX.test(previousOwner.email) && !CCEmails.includes(previousOwner.email) && previousOwner.email !== applicantInfo.email) {
+                    CCEmails.push(previousOwner.email);
+                }
+            }
+
+            const toBCCEmails = getUserEmails(BCCUsers)
+                ?.filter((email) => !CCEmails.includes(email) && applicantInfo?.email !== email);
+
+            await this.notificationService.reopenApplicationNotification(applicantInfo.email, CCEmails, toBCCEmails, {
+                firstName: `${applicantInfo.firstName} ${applicantInfo.lastName || ""}`,
+                isOwnershipChanged
+            }, {
+                studyName: studyLabelForEmailBody(application),
+                studyAbbreviation: `${application?.studyAbbreviation?.trim() || "NA"}`,
+                programName: `${application?.programName?.trim() || "NA"}`,
+                programAbbreviation: `${application?.programAbbreviation?.trim() || "NA"}`,
+                contactEmail: `${this.emailParams.conditionalSubmissionContact}.`
+            });
+        } catch (error) {
+            console.error(`Failed to send reopen application notification email for application ${application?._id}:`, error.message);
+        }
+    }
+
     async _sendEmailFinalInactiveApplication(application, baseInactiveDays = this.emailParams.inactiveDays) {
         const [aSubmitter, BCCUsers] = await Promise.all([
             this.userService.getUserByID(application?.applicantID),
@@ -1340,7 +1884,7 @@ class Application {
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const applicant = await this.userDAO.findFirst({id: application?.applicantID});
+            const applicant = await this.userDAO.findFirst({_id: application?.applicantID});
             const CCEmails = getCCEmails(applicant?.email, application);
             const toBCCEmails = getUserEmails(filteredBCCUsers)
                 ?.filter((email) => !CCEmails.includes(email));
@@ -1370,7 +1914,7 @@ class Application {
         }
 
         if (aSubmitter?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_EXPIRING)) {
-            const applicant = await this.userDAO.findFirst({id: application?.applicantID});
+            const applicant = await this.userDAO.findFirst({_id: application?.applicantID});
             const CCEmails = getCCEmails(applicant?.email, application);
             const filteredBCCUsers = BCCUsers.filter((u) => u?._id !== aSubmitter?._id);
             const toBCCEmails = getUserEmails(filteredBCCUsers)
@@ -1387,14 +1931,6 @@ class Application {
                 });
             logDaysDifference(interval, application?.updatedAt, application?._id);
         }
-    }
-
-    // Generates a query for the status of all email notification reminder.
-    _getEveryReminderQuery(remindSubmissionDay, status) {
-        return remindSubmissionDay.reduce((acc, day) => {
-            acc[`${this._INACTIVE_REMINDER}_${day}`] = status;
-            return acc;
-        }, {[`${this._FINAL_INACTIVE_REMINDER}`]: status});
     }
 
     async _saveApprovedStudies(aApplication, questionnaire, pendingModelChange, pendingImageDeIdentification, isPendingGPA, existingProgram) {
@@ -1467,16 +2003,14 @@ const setDefaultIfNoName = (str) => {
 
 /**
  * Label for `$study`-style message variables and notification template `studyName`.
- * First resolves via `defaultStudyAbbreviationToStudyName` (trimmed abbreviation if non-empty,
- * otherwise trimmed `studyName`). Then `setDefaultIfNoName` maps empty or whitespace-only results
+ * Resolves via `setDefaultIfNoName`. This maps empty or whitespace-only results
  * to the literal string `NA`, so callers and templates always get a non-empty value (e.g. blank
  * New submission requests). Inquire/PV Study Abbreviation lines use `defaultStudyAbbreviationToNA` separately.
- * @param {{ studyAbbreviation?: string, studyName?: string }} [application]
- * @returns {string} Resolved abbreviation or study name, or `NA`
+ * @param {{ studyName?: string }} [application]
+ * @returns {string} Full study name, or `NA`
  */
 function studyLabelForEmailBody(application) {
-    const label = defaultStudyAbbreviationToStudyName(application?.studyAbbreviation, application?.studyName);
-    return setDefaultIfNoName(label);
+    return setDefaultIfNoName(application?.studyName);
 }
 
 const getCCEmails = (submitterEmail, application) => {
@@ -1484,9 +2018,67 @@ const getCCEmails = (submitterEmail, application) => {
     if (!questionnaire || !submitterEmail) {
         return [];
     }
-    const CCEmailsSet = new Set([questionnaire?.primaryContact?.email, questionnaire?.pi?.email]
-        .filter((email) => email && email !== submitterEmail && EMAIL_REGEX.test(email)));
-    return Array.from(CCEmailsSet);
+
+    const emails = new Set();
+
+    // legacy data
+    if (questionnaire?.pi?.receivesEmails === undefined) {
+        let email = null;
+        if (questionnaire?.piAsPrimaryContact) {
+            email = questionnaire?.pi?.email 
+        } else if (questionnaire?.primaryContact?.email) {
+            email = questionnaire?.primaryContact?.email;
+        }
+        if (email && email !== submitterEmail && EMAIL_REGEX.test(email)) {
+            emails.add(email);
+        }
+    } else { // new data
+        let contacts = [questionnaire?.pi];
+        if (questionnaire?.primaryContact) {
+            contacts.push(questionnaire?.primaryContact);
+        }
+        if (questionnaire?.additionalContacts && questionnaire?.additionalContacts?.length > 0) {
+            contacts.push(...questionnaire?.additionalContacts);
+        }
+
+        for (const contact of contacts) {
+            if (contact?.receivesEmails === true && contact?.email && contact?.email !== submitterEmail && EMAIL_REGEX.test(contact?.email)) {
+                emails.add(contact?.email);
+            }
+        }
+    }
+
+    return Array.from(emails);
+}
+
+const filterDuplicateEmails = (applicantEmail, cCEmails, bCCEmails) => {
+    const ccEmails = cCEmails ?? [];
+    const bccEmails = bCCEmails ?? [];
+    let finalCCEmails = ccEmails.filter(email => email !== applicantEmail);
+    let finalBCCmails = bccEmails.filter(email => email !== applicantEmail && !finalCCEmails.includes(email));
+    return [finalCCEmails, finalBCCmails];
+}
+
+const getEmailsBasedonConditionalApproval = (users, isDbGapMissing, isPendingModelChange, isPendingImageDeIdentification) => {
+    const emails = [];
+    for (const user of users ?? []) {
+        if (!user.notifications || !Array.isArray(user.notifications)) {
+            continue;
+        }
+        if (isDbGapMissing && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_DBGAPID)) {
+            emails.push(user.email);
+            continue
+        }
+        if (isPendingModelChange && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_MODEL_UPDATE)) {
+            emails.push(user.email);
+            continue;
+        }
+        if (isPendingImageDeIdentification && user.notifications.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_PENDING_IMAGE_DEIDENTIFICATION)) {
+            emails.push(user.email);
+            continue;
+        }
+    }
+    return emails;
 }
 
 const sendEmails = {
@@ -1515,7 +2107,7 @@ const sendEmails = {
         }
     },
     submitApplication: async (notificationService, userService, emailParams, userInfo, application) => {
-        const applicantInfo = (await userService.userCollection.find(application?.applicant?.applicantID))?.pop();
+        const applicantInfo = await userService.findByID(application?.applicant?.applicantID);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_SUBMIT)) {
             const BCCUsers = await userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_SUBMIT],
                 [ROLES.FEDERAL_LEAD, ROLES.DATA_COMMONS_PERSONNEL, ROLES.ADMIN]);
@@ -1558,10 +2150,9 @@ const sendEmails = {
         const res = await Promise.all([
             userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]),
-            userService.userCollection.find(application?.applicant?.applicantID)
+            userService.findByID(application?.applicant?.applicantID)
         ]);
-        const [toBCCUsers, applicant] = res;
-        const applicantInfo = (applicant)?.pop();
+        const [toBCCUsers, applicantInfo] = res;
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
             const CCEmails = getCCEmails(application?.applicant?.applicantEmail, application);
             const toBCCEmails = getUserEmails(toBCCUsers)
@@ -1579,7 +2170,7 @@ const sendEmails = {
         }
     },
     rejectApplication: async(notificationService, userService, emailParams, application, reviewComments) => {
-        const applicantInfo = (await userService.userCollection.find(application?.applicant?.applicantID))?.pop();
+        const applicantInfo = await userService.findByID(application?.applicant?.applicantID);
         if (applicantInfo?.notifications?.includes(EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW)) {
             const BCCUsers = await userService.getUsersByNotifications([EMAIL_NOTIFICATIONS.SUBMISSION_REQUEST.REQUEST_REVIEW],
                 [ROLES.DATA_COMMONS_PERSONNEL, ROLES.FEDERAL_LEAD, ROLES.ADMIN]);
@@ -1602,14 +2193,21 @@ const sendEmails = {
 const getUserEmails = (users) => {
     return users
         ?.filter((aUser) => aUser?.email)
-        ?.map((aUser)=> aUser.email);
+        ?.map((aUser)=> aUser.email) ?? [];
 }
 
 const getApplicationQuestionnaire = (aApplication) => {
-    const questionnaire = parseJsonString(aApplication?.questionnaireData);
+    let questionnaire = null;
+    if (typeof aApplication?.questionnaireData === 'string') {
+        questionnaire = parseJsonString(aApplication?.questionnaireData);
+    } else if (typeof aApplication?.questionnaireData === 'object') {
+        questionnaire = aApplication?.questionnaireData;
+    } else {
+        console.error('Invalid questionnaire data type', ` id=${aApplication?._id}`);
+    }
+
     if (!questionnaire) {
         console.error(ERROR.FAILED_STORE_APPROVED_STUDIES + ` id=${aApplication?._id}`);
-        return null;
     }
     return questionnaire;
 }
@@ -1626,5 +2224,8 @@ function logDaysDifference(inactiveDays, accessedAt, applicationID) {
 
 module.exports = {
     Application,
-    VALID_ORDER_BY_LIST_APPLICATIONS
+    VALID_ORDER_BY_LIST_APPLICATIONS,
+    getCCEmails,
+    filterDuplicateEmails,
+    getEmailsBasedonConditionalApproval
 };

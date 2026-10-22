@@ -1,0 +1,322 @@
+const MongooseGenericDAO = require('../../dao/mongoose-generic');
+
+/**
+ * Builds a thenable lean query mock that resolves to the given value.
+ * @param {*} resolvedValue
+ * @returns {{ lean: jest.Mock, sort: jest.Mock, skip: jest.Mock, limit: jest.Mock }}
+ */
+function createLeanQuery(resolvedValue) {
+    const query = {
+        lean: jest.fn().mockResolvedValue(resolvedValue),
+        sort: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+    };
+    return query;
+}
+
+describe('MongooseGenericDAO', () => {
+    let dao;
+    let model;
+
+    beforeEach(() => {
+        model = {
+            modelName: 'TestModel',
+            create: jest.fn(),
+            insertMany: jest.fn(),
+            findById: jest.fn(),
+            find: jest.fn(),
+            findOne: jest.fn(),
+            findByIdAndUpdate: jest.fn(),
+            updateMany: jest.fn(),
+            findByIdAndDelete: jest.fn(),
+            deleteMany: jest.fn(),
+            countDocuments: jest.fn(),
+            distinct: jest.fn(),
+            aggregate: jest.fn(),
+        };
+        dao = new MongooseGenericDAO(model);
+        jest.clearAllMocks();
+    });
+
+    it('should create a record and map id/_id', async () => {
+        model.create.mockResolvedValue({ _id: '1', foo: 'bar', toObject: () => ({ _id: '1', foo: 'bar' }) });
+        const res = await dao.create({ foo: 'bar' });
+        expect(res).toEqual({ id: '1', foo: 'bar', _id: '1' });
+        expect(model.create).toHaveBeenCalledWith({ foo: 'bar' });
+    });
+
+    it('should create many records', async () => {
+        model.insertMany.mockResolvedValue([{ _id: '1' }, { _id: '2' }]);
+        const res = await dao.createMany([{ foo: 1 }, { foo: 2 }]);
+        expect(res).toEqual({ count: 2 });
+    });
+
+    it('should find by id', async () => {
+        model.findById.mockReturnValue(createLeanQuery({ _id: '1', foo: 'bar' }));
+        const res = await dao.findById('1');
+        expect(res).toEqual({ id: '1', foo: 'bar', _id: '1' });
+    });
+
+    it('should return null if not found by id', async () => {
+        model.findById.mockReturnValue(createLeanQuery(null));
+        const res = await dao.findById('notfound');
+        expect(res).toBeNull();
+    });
+
+    it('should coerce ObjectId-like _id to string in findById', async () => {
+        const objectId = { toString: () => '507f1f77bcf86cd799439011' };
+        model.findById.mockReturnValue(createLeanQuery({ _id: objectId, foo: 'bar' }));
+        const res = await dao.findById('507f1f77bcf86cd799439011');
+        expect(res).toEqual({
+            id: '507f1f77bcf86cd799439011',
+            foo: 'bar',
+            _id: '507f1f77bcf86cd799439011',
+        });
+        expect(typeof res.id).toBe('string');
+        expect(typeof res._id).toBe('string');
+    });
+
+    it('should find all', async () => {
+        model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }, { _id: '2', foo: 2 }]));
+        const res = await dao.findAll();
+        expect(res).toEqual([
+            { id: '1', foo: 1, _id: '1' },
+            { id: '2', foo: 2, _id: '2' }
+        ]);
+    });
+
+    it('should find first', async () => {
+        model.findOne.mockReturnValue(createLeanQuery({ _id: '1', foo: 1 }));
+        const res = await dao.findFirst({ foo: 1 });
+        expect(res).toEqual({ id: '1', foo: 1, _id: '1' });
+    });
+
+    it('should return null if not found in findFirst', async () => {
+        model.findOne.mockReturnValue(createLeanQuery(null));
+        const res = await dao.findFirst({ foo: 1 });
+        expect(res).toBeNull();
+    });
+
+    it('should reject null where in findFirst', async () => {
+        await expect(dao.findFirst(null)).rejects.toThrow(
+            'MongooseGenericDAO.findFirst requires a filter object for TestModel'
+        );
+        expect(model.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should apply sort, skip, and limit on findFirst in order', async () => {
+        const query = createLeanQuery({ _id: '1', foo: 1 });
+        model.findOne.mockReturnValue(query);
+        const res = await dao.findFirst({ foo: 1 }, { sort: { foo: -1 }, skip: 2, limit: 1 });
+        expect(res).toEqual({ id: '1', foo: 1, _id: '1' });
+        expect(query.sort).toHaveBeenCalledWith({ foo: -1 });
+        expect(query.skip).toHaveBeenCalledWith(2);
+        expect(query.limit).toHaveBeenCalledWith(1);
+        expect(query.sort.mock.invocationCallOrder[0]).toBeLessThan(query.skip.mock.invocationCallOrder[0]);
+        expect(query.skip.mock.invocationCallOrder[0]).toBeLessThan(query.limit.mock.invocationCallOrder[0]);
+    });
+
+    it('should find many', async () => {
+        model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }, { _id: '2', foo: 2 }]));
+        const res = await dao.findMany({ foo: { $in: [1, 2] } });
+        expect(res).toEqual([
+            { id: '1', foo: 1, _id: '1' },
+            { id: '2', foo: 2, _id: '2' }
+        ]);
+        expect(model.find).toHaveBeenCalledWith({ foo: { $in: [1, 2] } });
+    });
+
+    it('should wrap plain array field values with $in in findMany', async () => {
+        model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }]));
+        await dao.findMany({ foo: [1, 2], bar: 'x' });
+        expect(model.find).toHaveBeenCalledWith({ foo: { $in: [1, 2] }, bar: 'x' });
+    });
+
+    it('should convert ORM-agnostic field operators to Mongoose operators', async () => {
+        model.find.mockReturnValue(createLeanQuery([]));
+        await dao.findMany({
+            foo: { not: 1 },
+            status: { notIn: ['a', 'b'] },
+            age: { gte: 18, lt: 65 },
+            OR: [{ name: 'x' }, { role: ['admin'] }],
+        });
+        expect(model.find).toHaveBeenCalledWith({
+            foo: { $ne: 1 },
+            status: { $nin: ['a', 'b'] },
+            age: { $gte: 18, $lt: 65 },
+            $or: [{ name: 'x' }, { role: { $in: ['admin'] } }],
+        });
+    });
+
+    it('should leave Mongoose operator objects unchanged when normalizing filters', async () => {
+        model.find.mockReturnValue(createLeanQuery([]));
+        await dao.findMany({
+            foo: { $ne: 1 },
+            $or: [{ status: ['a', 'b'] }, { name: 'x' }],
+        });
+        expect(model.find).toHaveBeenCalledWith({
+            foo: { $ne: 1 },
+            $or: [{ status: { $in: ['a', 'b'] } }, { name: 'x' }],
+        });
+    });
+
+    it('should leave RegExp field values unchanged when normalizing filters', async () => {
+        model.find.mockReturnValue(createLeanQuery([]));
+        const namePattern = /test/i;
+        await dao.findMany({ name: namePattern, status: { not: 'deleted' } });
+        expect(model.find).toHaveBeenCalledWith({
+            name: namePattern,
+            status: { $ne: 'deleted' },
+        });
+    });
+
+    it('should pass nested document values through untouched', async () => {
+        // Mongo reads an object whose first key is not $-prefixed as an exact document
+        // match, so rewriting operators inside it would build a filter matching nothing.
+        model.find.mockReturnValue(createLeanQuery([]));
+        await dao.findMany({
+            institution: {
+                name: { not: 'Old Name' },
+                status: ['Active', 'Inactive'],
+            },
+        });
+        expect(model.find).toHaveBeenCalledWith({
+            institution: {
+                name: { not: 'Old Name' },
+                status: ['Active', 'Inactive'],
+            },
+        });
+    });
+
+    it('should normalize sub-field conditions expressed as dotted paths', async () => {
+        model.find.mockReturnValue(createLeanQuery([]));
+        await dao.findMany({
+            'institution.name': { not: 'Old Name' },
+            'institution.status': ['Active', 'Inactive'],
+        });
+        expect(model.find).toHaveBeenCalledWith({
+            'institution.name': { $ne: 'Old Name' },
+            'institution.status': { $in: ['Active', 'Inactive'] },
+        });
+    });
+
+    it('should allow empty filter object in findMany', async () => {
+        model.find.mockReturnValue(createLeanQuery([{ _id: '1', foo: 1 }]));
+        const res = await dao.findMany({});
+        expect(res).toEqual([{ id: '1', foo: 1, _id: '1' }]);
+        expect(model.find).toHaveBeenCalledWith({});
+    });
+
+    it('should reject null filter in findMany', async () => {
+        await expect(dao.findMany(null)).rejects.toThrow(
+            'MongooseGenericDAO.findMany requires a filter object for TestModel'
+        );
+        expect(model.find).not.toHaveBeenCalled();
+    });
+
+    it('should apply sort, skip, and take (as limit) on findMany in order', async () => {
+        const query = createLeanQuery([{ _id: '1', foo: 1 }]);
+        model.find.mockReturnValue(query);
+        const res = await dao.findMany({ foo: 1 }, { sort: { foo: 1 }, skip: 5, take: 10 });
+        expect(res).toEqual([{ id: '1', foo: 1, _id: '1' }]);
+        expect(query.sort).toHaveBeenCalledWith({ foo: 1 });
+        expect(query.skip).toHaveBeenCalledWith(5);
+        expect(query.limit).toHaveBeenCalledWith(10);
+        expect(query.sort.mock.invocationCallOrder[0]).toBeLessThan(query.skip.mock.invocationCallOrder[0]);
+        expect(query.skip.mock.invocationCallOrder[0]).toBeLessThan(query.limit.mock.invocationCallOrder[0]);
+    });
+
+    it('should return empty array for findMany when take is 0 without querying', async () => {
+        const res = await dao.findMany({ foo: 1 }, { take: 0 });
+        expect(res).toEqual([]);
+        expect(model.find).not.toHaveBeenCalled();
+    });
+
+    it('should return empty array for findMany when limit is 0 without querying', async () => {
+        const res = await dao.findMany({ foo: 1 }, { limit: 0 });
+        expect(res).toEqual([]);
+        expect(model.find).not.toHaveBeenCalled();
+    });
+
+    it('should return null for findFirst when take is 0 without querying', async () => {
+        const res = await dao.findFirst({ foo: 1 }, { take: 0 });
+        expect(res).toBeNull();
+        expect(model.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should update a record', async () => {
+        const query = createLeanQuery({ _id: '1', foo: 'baz' });
+        model.findByIdAndUpdate.mockReturnValue(query);
+        const res = await dao.update('1', { foo: 'baz' });
+        expect(res).toEqual({ id: '1', foo: 'baz', _id: '1' });
+        expect(model.findByIdAndUpdate).toHaveBeenCalledWith('1', { $set: { foo: 'baz' } }, { new: true });
+    });
+
+    it('should update many records', async () => {
+        model.updateMany.mockResolvedValue({ modifiedCount: 2 });
+        const res = await dao.updateMany({ foo: 1 }, { foo: 2 });
+        expect(res).toEqual({ count: 2 });
+        expect(model.updateMany).toHaveBeenCalledWith({ foo: 1 }, { $set: { foo: 2 } });
+    });
+
+    it('should reject null condition in updateMany', async () => {
+        await expect(dao.updateMany(null, { foo: 2 })).rejects.toThrow(
+            'MongooseGenericDAO.updateMany requires a filter object for TestModel'
+        );
+        expect(model.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should delete a record', async () => {
+        model.findByIdAndDelete.mockReturnValue(createLeanQuery({ _id: '1', foo: 'bar' }));
+        const res = await dao.delete('1');
+        expect(res).toEqual({ id: '1', foo: 'bar', _id: '1' });
+    });
+
+    it('should delete many records', async () => {
+        model.deleteMany.mockResolvedValue({ deletedCount: 2 });
+        const res = await dao.deleteMany({ foo: 1 });
+        expect(res).toEqual({ count: 2 });
+    });
+
+    it('should reject null where in deleteMany', async () => {
+        await expect(dao.deleteMany(null)).rejects.toThrow(
+            'MongooseGenericDAO.deleteMany requires a filter object for TestModel'
+        );
+        expect(model.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('should count records', async () => {
+        model.countDocuments.mockResolvedValue(2);
+        const res = await dao.count({ foo: 'bar' });
+        expect(res).toBe(2);
+        expect(model.countDocuments).toHaveBeenCalledWith({ foo: 'bar' });
+    });
+
+    it('should allow empty filter object in count', async () => {
+        model.countDocuments.mockResolvedValue(5);
+        const res = await dao.count({});
+        expect(res).toBe(5);
+        expect(model.countDocuments).toHaveBeenCalledWith({});
+    });
+
+    it('should reject null where in count', async () => {
+        await expect(dao.count(null)).rejects.toThrow(
+            'MongooseGenericDAO.count requires a filter object for TestModel'
+        );
+        expect(model.countDocuments).not.toHaveBeenCalled();
+    });
+
+    it('should get distinct values', async () => {
+        model.distinct.mockResolvedValue([1, 2]);
+        const res = await dao.distinct('foo', {});
+        expect(res).toEqual([1, 2]);
+        expect(model.distinct).toHaveBeenCalledWith('foo', {});
+    });
+
+    it('should aggregate and map id/_id', async () => {
+        model.aggregate.mockResolvedValue([{ _id: '1', foo: 1 }]);
+        const res = await dao.aggregate([{ $match: { foo: 1 } }]);
+        expect(res).toEqual([{ id: '1', foo: 1, _id: '1' }]);
+    });
+});

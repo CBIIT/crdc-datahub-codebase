@@ -1,7 +1,13 @@
-import { cloneDeep, mergeWith, has, unset, some, values, get, isEqual } from "lodash";
+import { cloneDeep, mergeWith, has, unset, some, values, get, isEqual, set } from "lodash";
+import type { Path } from "react-hook-form";
 import type * as z from "zod";
 
 import { ColumnKey, shouldPersistColumnValue } from "@/classes/Excel/PersistentColumns";
+import {
+  LOCKED_QUESTIONNAIRE_FIELDS,
+  LOCKED_QUESTIONNAIRE_FIELDSET,
+} from "@/config/LockedFieldConfig";
+import type { SaveAppInput } from "@/graphql";
 
 import { NotApplicableProgram, OtherProgram } from "../config/ProgramConfig";
 
@@ -73,6 +79,39 @@ export const mapObjectWithKey = (obj, index: number) => ({
 });
 
 /**
+ * Determines whether a program is the system managed catch-all program.
+ *
+ * @param program The program to test
+ * @returns True when the program is the system managed "NA" program
+ */
+export const isNotApplicableProgram = (program: { name?: string; readOnly?: boolean }): boolean =>
+  program?.readOnly === true && program?.name?.trim() === "NA";
+
+/**
+ * Builds the "Not Applicable" program option from the system managed program record.
+ *
+ * @param programs The list of programs returned by the API
+ * @returns The "Not Applicable" option, falling back to {@link NotApplicableProgram}
+ */
+export const buildNotApplicableProgram = (
+  programs: Array<
+    Partial<Pick<Organization, "_id" | "name" | "abbreviation" | "description" | "readOnly">>
+  >
+): ProgramInput => {
+  const systemProgram = programs?.find(isNotApplicableProgram);
+  if (!systemProgram?._id) {
+    return { ...NotApplicableProgram };
+  }
+
+  return {
+    _id: systemProgram._id,
+    name: systemProgram.name || "",
+    abbreviation: systemProgram.abbreviation || "",
+    description: systemProgram.description || "",
+  };
+};
+
+/**
  * Given a program from a form, find either a pre-defined program,
  * 'Not Applicable' program, or 'Other' program.
  *
@@ -82,12 +121,15 @@ export const mapObjectWithKey = (obj, index: number) => ({
  */
 export const findProgram = (
   formProgram: ProgramInput,
-  programOptions: ProgramInput[]
+  programOptions: Array<
+    Partial<Pick<Organization, "_id" | "name" | "abbreviation" | "description" | "readOnly">>
+  >
 ): ProgramInput | null => {
   if (!formProgram || !programOptions?.length) {
     return null;
   }
 
+  const notApplicableProgram = buildNotApplicableProgram(programOptions);
   const hasContent =
     formProgram?._id?.length > 0 ||
     formProgram?.name?.length > 0 ||
@@ -96,14 +138,20 @@ export const findProgram = (
 
   // In 3.2.0, the notApplicable property was removed
   if (!hasContent && "notApplicable" in formProgram && formProgram?.notApplicable === true) {
-    return NotApplicableProgram;
+    return notApplicableProgram;
   }
 
   if (!hasContent) {
     return null;
   }
 
-  const allProgramOptions = [NotApplicableProgram, ...programOptions, OtherProgram];
+  // Prior to 3.7.0, "Not Applicable" was a hard-coded program option
+  if (formProgram._id === NotApplicableProgram._id) {
+    return notApplicableProgram;
+  }
+
+  const selectableOptions = programOptions.filter((program) => !program?.readOnly);
+  const allProgramOptions = [notApplicableProgram, ...selectableOptions, OtherProgram];
   const existingProgram = allProgramOptions?.find((program) => program._id === formProgram._id);
 
   if (existingProgram?._id === OtherProgram?._id) {
@@ -145,6 +193,15 @@ export const formatFullStudyName = (studyName: string, studyAbbreviation: string
 
   return studyName.trim();
 };
+
+/**
+ * Formats a character limit value into the shared UI placeholder pattern.
+ *
+ * @param max The maximum character limit
+ * @returns A formatted string indicating the character limit, e.g. "1,000 characters allowed"
+ */
+export const formatCharacterLimitPlaceholder = (max: number): string =>
+  `${Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(max || 0)} characters allowed`;
 
 /**
  * Attempts to map a study name + abbreviation combination to an approved study ID.
@@ -350,6 +407,77 @@ export const isValidInRange = (
 };
 
 /**
+ * Determines if a given field in the questionnaire data is locked based on
+ * whether the application was reopened or not.
+ *
+ * @param application - The application object containing the sequence number.
+ * @param fieldPath - The path to the field in the questionnaire data to check for locking.
+ * @returns A boolean indicating whether the field is locked (true) or not (false).
+ */
+export const isLockedField = (
+  application: Pick<Application, "sequenceNumber"> | null | undefined,
+  fieldPath: Path<QuestionnaireData>
+): boolean => application?.sequenceNumber !== 1 && LOCKED_QUESTIONNAIRE_FIELDSET.has(fieldPath);
+
+/**
+ * A utility function that preserves the values of locked fields in the questionnaire data when an application is reopened.
+ *
+ * @returns The sanitized questionnaire data with locked fields preserved.
+ */
+export const preserveLockedFields = ({
+  application,
+  incomingData,
+  currentData,
+}: {
+  application: Pick<Application, "sequenceNumber"> | null | undefined;
+  incomingData: QuestionnaireData;
+  currentData: QuestionnaireData | null | undefined;
+}): QuestionnaireData => {
+  if (application?.sequenceNumber === 1 || !currentData) {
+    return incomingData;
+  }
+
+  const sanitized = cloneDeep(incomingData);
+  for (const fieldPath of LOCKED_QUESTIONNAIRE_FIELDS) {
+    const currentValue = get(currentData, fieldPath);
+    if (currentValue !== undefined) {
+      set(sanitized, fieldPath, currentValue);
+    }
+  }
+
+  return sanitized;
+};
+
+/**
+ * Computes the next SRF status to use during a normal save operation.
+ *
+ * Rules:
+ * - Existing SRFs currently in In Revision stay in In Revision while being edited.
+ * - New SRFs (id === "new") are New until any section has activity.
+ * - All other active draft saves are In Progress when section activity exists, otherwise New.
+ *
+ * @param currentStatus The current application status from state.
+ * @param applicationId The current application id.
+ * @param hasSectionActivity Whether any questionnaire section is not Not Started.
+ * @returns The status that should be sent to saveApplication.
+ */
+export const computeNextStatus = ({
+  currentStatus,
+  applicationId,
+  hasSectionActivity,
+}: {
+  currentStatus?: ApplicationStatus | null;
+  applicationId?: string | null;
+  hasSectionActivity: boolean;
+}): SaveAppInput["status"] => {
+  if (applicationId !== "new" && currentStatus === "In Revision") {
+    return "In Revision";
+  }
+
+  return hasSectionActivity ? "In Progress" : "New";
+};
+
+/**
  * Deep-merge questionnaire base data with form values.
  *
  * Behavior:
@@ -462,14 +590,24 @@ export const sectionHasData = (
 ): boolean => {
   switch (section) {
     case "A": {
-      const hasPIFields = some(values(data?.pi), (v) => typeof v === "string" && v.trim() !== "");
-      const hasEnteredPIFields = hasPIFields && !isEqual(data?.pi, contextualData?.pi);
+      const hasPIFields =
+        some(values(data?.pi), (v) => typeof v === "string" && v.trim() !== "") ||
+        data?.pi?.receivesEmails === true;
+      const hasEnteredPIFields =
+        hasPIFields &&
+        !isEqual(
+          { ...data?.pi, receivesEmails: data?.pi?.receivesEmails ?? false },
+          { ...contextualData?.pi, receivesEmails: contextualData?.pi?.receivesEmails ?? false }
+        );
       const hasPrimaryContactFields = some(
         values(data?.primaryContact),
         (v) => typeof v === "string" && v.trim() !== ""
       );
-      const hasAdditionalContactFields = some(data?.additionalContacts || [], (contact) =>
-        some(values(contact), (v) => typeof v === "string" && v.trim() !== "")
+      const hasAdditionalContactFields = some(
+        data?.additionalContacts || [],
+        (contact) =>
+          some(values(contact), (v) => typeof v === "string" && v.trim() !== "") ||
+          contact.receivesEmails === true
       );
       const sameAsPI = data?.piAsPrimaryContact === true;
 

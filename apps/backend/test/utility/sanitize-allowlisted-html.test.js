@@ -1,6 +1,8 @@
 const {
     sanitizeAllowlistedHtml,
-    PRESET_SR_APPROVAL_PENDING_HTML
+    PRESET_SR_APPROVAL_PENDING_HTML,
+    PRESET_NOTIFICATION_TEXT_HTML,
+    PRESET_SR_REVIEW_COMMENT_HTML
 } = require('../../utility/sanitize-allowlisted-html');
 
 describe('sanitizeAllowlistedHtml', () => {
@@ -97,5 +99,173 @@ describe('PRESET_SR_APPROVAL_PENDING_HTML via sanitizeAllowlistedHtml', () => {
         expect(out).toContain('<p>');
         expect(out).toContain('<strong>');
         expect(out).toContain('<em>');
+    });
+
+    it('overrides a caller-supplied rel unconditionally', () => {
+        const out = sanitize('<a href="https://example.com" rel="opener">link</a>');
+        expect(out).not.toMatch(/rel="opener"/);
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
+});
+
+describe('PRESET_NOTIFICATION_TEXT_HTML via sanitizeAllowlistedHtml', () => {
+    const sanitize = (html) => sanitizeAllowlistedHtml(html, PRESET_NOTIFICATION_TEXT_HTML);
+
+    it('preserves <b> tags', () => {
+        const html = 'The <b>Test Study</b> has been approved.';
+        const out = sanitize(html);
+        expect(out).toBe('The <b>Test Study</b> has been approved.');
+    });
+
+    it('preserves <strong> tags', () => {
+        const out = sanitize('<strong>Important</strong> text');
+        expect(out).toContain('<strong>Important</strong>');
+    });
+
+    it('preserves <i> and <em> tags', () => {
+        const out = sanitize('<i>italic</i> and <em>emphasis</em>');
+        expect(out).toContain('<i>italic</i>');
+        expect(out).toContain('<em>emphasis</em>');
+    });
+
+    it('preserves <u> tags', () => {
+        const out = sanitize('<u>underlined</u> text');
+        expect(out).toContain('<u>underlined</u>');
+    });
+
+    it('allows https hyperlinks with forced rel', () => {
+        const html = '<a href="https://example.com">Click Here</a>';
+        const out = sanitize(html);
+        expect(out).toContain('https://example.com');
+        expect(out).toContain('Click Here');
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
+
+    it('strips javascript: URLs', () => {
+        const out = sanitize('<a href="javascript:alert(1)">bad</a>');
+        expect(out).not.toMatch(/javascript:/i);
+    });
+
+    it('strips script tags completely', () => {
+        const html = '<script>alert("xss")</script>Safe content';
+        const out = sanitize(html);
+        expect(out).not.toMatch(/script/i);
+        expect(out).toContain('Safe content');
+    });
+
+    it('strips iframe tags', () => {
+        const html = '<iframe src="https://evil.com"></iframe>Normal text';
+        const out = sanitize(html);
+        expect(out).not.toMatch(/iframe/i);
+        expect(out).toContain('Normal text');
+    });
+
+    it('preserves paragraphs, spans, and lists', () => {
+        const html = '<p>paragraph</p><span>span</span><ul><li>item</li></ul>';
+        const out = sanitize(html);
+        expect(out).toContain('<p>paragraph</p>');
+        expect(out).toContain('<span>span</span>');
+        expect(out).toContain('<ul>');
+        expect(out).toContain('<li>item</li>');
+        expect(out).not.toMatch(/<div>/);
+    });
+
+    it('preserves a list with a safe https link', () => {
+        const html = '<ul><li><a href="https://datacommons.cancer.gov">Portal</a></li></ul>';
+        const out = sanitize(html);
+        expect(out).toContain('<ul>');
+        expect(out).toContain('<li>');
+        expect(out).toMatch(/href="https:\/\/datacommons\.cancer\.gov"/);
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
+
+    it('strips class, style, and onclick from allowed tags', () => {
+        const html = '<b class="highlight" style="color:red" onclick="alert(1)">bold</b>';
+        const out = sanitize(html);
+        expect(out).toBe('<b>bold</b>');
+    });
+
+    it('handles typical notification message with <b> study name', () => {
+        const html = 'Data Submission SUB-001 / My-Sub for study <b>Cancer Research Study</b> has been canceled by user Admin.';
+        const out = sanitize(html);
+        expect(out).toBe(html);
+    });
+
+    it('keeps nested bold around a sanitized javascript link', () => {
+        const html = 'The Data Submission for the <b><a href="javascript:alert(1)">Fake Study</a></b> study has been completed.';
+        const out = sanitize(html);
+        expect(out).not.toMatch(/javascript:/i);
+        expect(out).toContain('<b>');
+        expect(out).toContain('Fake Study');
+    });
+});
+
+describe('PRESET_SR_REVIEW_COMMENT_HTML via sanitizeAllowlistedHtml', () => {
+    const sanitize = (html) => sanitizeAllowlistedHtml(html, PRESET_SR_REVIEW_COMMENT_HTML);
+
+    it('allows bold, italic, and list tags', () => {
+        const html = '<p><strong>bold</strong> and <em>italic</em></p><ul><li>item</li></ul>';
+        const out = sanitize(html);
+        expect(out).toContain('<strong>bold</strong>');
+        expect(out).toContain('<em>italic</em>');
+        expect(out).toContain('<ul>');
+        expect(out).toContain('<li>item</li>');
+    });
+
+    it('allows ordered lists', () => {
+        const html = '<ol><li>first</li><li>second</li></ol>';
+        const out = sanitize(html);
+        expect(out).toContain('<ol>');
+        expect(out).toContain('<li>first</li>');
+    });
+
+    it('allows https hyperlinks with forced rel', () => {
+        const html = '<a href="https://example.com">link</a>';
+        const out = sanitize(html);
+        expect(out).toContain('https://example.com');
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
+
+    it('omits href when anchor has no href', () => {
+        const out = sanitize('<a>plain</a>');
+        expect(out).not.toMatch(/href=/);
+        expect(out).toContain('plain');
+        expect(out).toMatch(/rel="noopener noreferrer"/);
+    });
+
+    it('strips javascript: URLs', () => {
+        const out = sanitize('<a href="javascript:alert(1)">bad</a>');
+        expect(out).not.toMatch(/javascript:/i);
+    });
+
+    it('strips heading tags', () => {
+        const out = sanitize('<h1>Heading</h1><h2>Sub</h2><p>text</p>');
+        expect(out).not.toMatch(/<h[1-6]/i);
+        expect(out).toContain('Heading');
+        expect(out).toContain('text');
+    });
+
+    it('strips script tags', () => {
+        const out = sanitize('<script>alert(1)</script><p>safe</p>');
+        expect(out).not.toMatch(/script/i);
+        expect(out).toContain('safe');
+    });
+
+    it('strips event handler attributes', () => {
+        const out = sanitize('<p onclick="alert(1)">text</p>');
+        expect(out).not.toMatch(/onclick/i);
+        expect(out).toContain('text');
+    });
+
+    it('strips img tags', () => {
+        const out = sanitize('<img src="https://evil.com/x.png"><p>text</p>');
+        expect(out).not.toMatch(/img/i);
+        expect(out).toContain('text');
+    });
+
+    it('overrides a caller-supplied rel unconditionally', () => {
+        const out = sanitize('<a href="https://example.com" rel="opener">link</a>');
+        expect(out).not.toMatch(/rel="opener"/);
+        expect(out).toMatch(/rel="noopener noreferrer"/);
     });
 });

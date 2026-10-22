@@ -34,3 +34,8 @@ export const CanDeleteOtherSubmissionRequests: UserRole[] = [
  * A set of roles that are considered external users
  */
 export const ExternalRoles: UserRole[] = ["User", "Submitter"];
+
+/**
+ * A set of roles that are considered internal users
+ */
+export const InternalRoles: UserRole[] = ["Admin", "Data Commons Personnel", "Federal Lead"];

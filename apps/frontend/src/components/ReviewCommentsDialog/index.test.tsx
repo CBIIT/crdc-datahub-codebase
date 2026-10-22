@@ -12,15 +12,17 @@ type Props<T, H> = {
   status?: T;
   lastReview: HistoryBase<H>;
   title: string;
+  onBack?: () => void;
   onClose?: () => void;
 };
 
-const BaseComponent = <T, H>({ open, status, lastReview, title, onClose }: Props<T, H>) => (
+const BaseComponent = <T, H>({ open, status, lastReview, title, onBack, onClose }: Props<T, H>) => (
   <ThemeProvider theme={theme}>
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ReviewCommentsDialog
         open={open}
         onClose={onClose}
+        onBack={onBack}
         lastReview={lastReview}
         status={status}
         preTitle={title}
@@ -193,5 +195,43 @@ describe("ReviewCommentsDialog Tests", () => {
     const { getByText } = render(<BaseComponent {...data} />);
 
     expect(getByText(customTitle)).toBeInTheDocument();
+  });
+
+  it("renders the selected review when provided", () => {
+    const selectedReview: HistoryBase<unknown> = {
+      dateTime: "2024-01-15T09:30:00Z",
+      reviewComment: "selected review comment",
+      status: undefined,
+      userID: "",
+    };
+
+    const data = {
+      open: true,
+      title: "",
+      lastReview: selectedReview,
+      onClose: () => {},
+    };
+
+    const { getByText } = render(<BaseComponent {...data} />);
+
+    expect(getByText("selected review comment")).toBeInTheDocument();
+    expect(getByText(/Based on submission from 1\/15\/2024:/i)).toBeInTheDocument();
+  });
+
+  it("renders and triggers the Back button when onBack is provided", async () => {
+    const onBack = vi.fn();
+    const data = {
+      open: true,
+      title: "",
+      lastReview: mockLastReview,
+      onBack,
+      onClose: () => {},
+    };
+
+    const { getByTestId } = render(<BaseComponent {...data} />);
+
+    fireEvent.click(getByTestId("review-comments-dialog-back"));
+
+    await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
   });
 });

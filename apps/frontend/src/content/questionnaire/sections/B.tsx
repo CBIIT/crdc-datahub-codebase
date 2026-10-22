@@ -16,14 +16,18 @@ import SectionGroup from "../../../components/Questionnaire/SectionGroup";
 import SelectInput from "../../../components/Questionnaire/SelectInput";
 import TextInput from "../../../components/Questionnaire/TextInput";
 import TransitionGroupWrapper from "../../../components/Questionnaire/TransitionGroupWrapper";
+import { CHARACTER_LIMITS } from "../../../config/CharacterLimitsConfig";
 import { InitialQuestionnaire } from "../../../config/InitialValues";
 import { NotApplicableProgram, OtherProgram } from "../../../config/ProgramConfig";
 import SectionMetadata from "../../../config/SectionMetadata";
 import useFormMode from "../../../hooks/useFormMode";
 import {
+  buildNotApplicableProgram,
   combineQuestionnaireData,
   filterAlphaNumeric,
+  formatCharacterLimitPlaceholder,
   findProgram,
+  isLockedField,
   Logger,
   mapObjectWithKey,
   validateUTF8,
@@ -52,11 +56,9 @@ export type KeyedFunding = {
  * @returns {JSX.Element}
  */
 const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSectionProps) => {
-  const {
-    status,
-    data: { questionnaireData: data },
-    formRef,
-  } = useFormContext();
+  const { status, data: applicationData, formRef, notifyChange } = useFormContext();
+  const data = applicationData?.questionnaireData;
+
   const { activeOrganizations: programs } = useOrganizationListContext();
   const { readOnlyInputs } = useFormMode();
   const { B: SectionBMetadata } = SectionMetadata;
@@ -76,7 +78,8 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
     data.study?.funding?.map(mapObjectWithKey) || []
   );
 
-  const customProgramIds: string[] = [NotApplicableProgram._id, OtherProgram._id];
+  const notApplicableProgram = useMemo(() => buildNotApplicableProgram(programs), [programs]);
+
   const programKeyRef = useRef(new Date().getTime());
   const formContainerRef = useRef<HTMLDivElement>();
   const { getFormObjectRef } = refs;
@@ -153,7 +156,6 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
       return;
     }
 
-    const allProgramOptions = [NotApplicableProgram, ...programs, OtherProgram];
     const newProgram = allProgramOptions.find((program) => program._id === value);
     if (!newProgram?._id) {
       Logger.error(`B.tsx: Unable to change program due to invalid ID.`);
@@ -161,13 +163,8 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
     }
     programKeyRef.current = new Date().getTime();
 
-    if (newProgram?._id === NotApplicableProgram._id || newProgram?._id === OtherProgram._id) {
-      setProgram({
-        _id: newProgram._id,
-        name: "",
-        abbreviation: "",
-        description: "",
-      });
+    if (newProgram?._id === OtherProgram._id) {
+      setProgram({ ...OtherProgram });
       return;
     }
 
@@ -194,6 +191,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         DOI: "",
       },
     ]);
+    notifyChange?.();
   };
 
   /**
@@ -203,6 +201,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
    */
   const removePublication = (key: string) => {
     setPublications((prev) => prev?.filter((c) => c.key !== key));
+    notifyChange?.();
   };
 
   /**
@@ -219,6 +218,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         expectedDate: dayjs().format("MM/DD/YYYY"),
       },
     ]);
+    notifyChange?.();
   };
 
   /**
@@ -228,6 +228,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
    */
   const removePlannedPublication = (key: string) => {
     setPlannedPublications((prev) => prev?.filter((c) => c.key !== key));
+    notifyChange?.();
   };
 
   /**
@@ -246,6 +247,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         otherDataTypesSubmitted: "",
       },
     ]);
+    notifyChange?.();
   };
 
   /**
@@ -255,6 +257,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
    */
   const removeRepository = (key: string) => {
     setRepositories(repositories.filter((c) => c.key !== key));
+    notifyChange?.();
   };
 
   /**
@@ -272,6 +275,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
         nciProgramOfficer: "",
       },
     ]);
+    notifyChange?.();
   };
 
   /**
@@ -281,6 +285,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
    */
   const removeFunding = (key: string) => {
     setFundings((prev) => prev?.filter((f) => f.key !== key));
+    notifyChange?.();
   };
 
   /**
@@ -293,8 +298,11 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
     if (!program) {
       return "";
     }
-    if (customProgramIds.includes(program._id)) {
-      return program._id;
+    if (program._id === notApplicableProgram._id) {
+      return NotApplicableProgram._id;
+    }
+    if (program._id === OtherProgram._id) {
+      return OtherProgram._id;
     }
 
     return `${program.name || ""}${
@@ -349,11 +357,20 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
 
   const allProgramOptions = useMemo(() => {
     // Filter out system-managed programs
-    const filteredPrograms = programs?.filter((p) => !p.readOnly);
+    const filteredPrograms = programs?.filter((p) => !p.readOnly) ?? [];
 
-    return [NotApplicableProgram, ...filteredPrograms, OtherProgram];
-  }, [NotApplicableProgram, OtherProgram, programs]);
-  const readOnlyProgram = readOnlyInputs || program?._id !== OtherProgram._id;
+    return [notApplicableProgram, ...filteredPrograms, OtherProgram];
+  }, [notApplicableProgram, OtherProgram, programs]);
+
+  const readOnlyProgramName =
+    readOnlyInputs ||
+    isLockedField(applicationData, "program.name") ||
+    program?._id !== OtherProgram._id;
+  const readOnlyProgramAbbreviation =
+    readOnlyInputs ||
+    isLockedField(applicationData, "program.abbreviation") ||
+    program?._id !== OtherProgram._id;
+  const readOnlyProgramDescription = readOnlyInputs || program?._id !== OtherProgram._id;
 
   return (
     <FormContainer ref={formContainerRef} formRef={formRef} description={SectionOption.title}>
@@ -376,7 +393,7 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           gridWidth={12}
           tooltipText="The name of the broad administrative group that manages the data collection.  Example - Clinical Proteomic Tumor Analysis Consortium."
           required
-          readOnly={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "program._id")}
           data-testid="section-b-program"
         />
         <TextInput
@@ -388,10 +405,10 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           validate={(input: string) => !validateUTF8(input)}
           maxLength={100}
           placeholder="100 characters allowed"
-          hideValidation={readOnlyProgram}
-          required
-          readOnly={readOnlyProgram}
+          hideValidation={readOnlyProgramName}
+          readOnly={readOnlyProgramName}
           data-testid="section-b-program-title"
+          required
         />
         <TextInput
           key={`program-abbreviation-${program?.abbreviation}_${programKeyRef.current}`}
@@ -405,10 +422,10 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           }}
           maxLength={100}
           placeholder="100 characters allowed"
-          hideValidation={readOnlyProgram}
-          required
-          readOnly={readOnlyProgram}
+          hideValidation={readOnlyProgramAbbreviation}
+          readOnly={readOnlyProgramAbbreviation}
           data-testid="section-b-program-abbreviation"
+          required
         />
         <TextInput
           key={`program-description-${program?.description}_${programKeyRef.current}`}
@@ -420,12 +437,12 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           maxLength={500}
           placeholder="500 characters allowed"
           rows={4}
-          hideValidation={readOnlyProgram}
+          hideValidation={readOnlyProgramDescription}
+          readOnly={readOnlyProgramDescription}
+          data-testid="section-b-program-description"
           multiline
           resize
           required
-          readOnly={readOnlyProgram}
-          data-testid="section-b-program-description"
         />
       </SectionGroup>
 
@@ -439,14 +456,14 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           label="Study Title"
           name="study[name]"
           value={study.name}
-          maxLength={1000}
-          placeholder="1,000 characters allowed"
+          maxLength={CHARACTER_LIMITS.study.name.max}
+          placeholder={formatCharacterLimitPlaceholder(CHARACTER_LIMITS.study.name.max)}
           validate={(input: string) => !validateUTF8(input)}
-          readOnly={readOnlyInputs}
-          hideValidation={readOnlyInputs}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "study.name")}
+          hideValidation={readOnlyInputs || isLockedField(applicationData, "study.name")}
           tooltipText="A descriptive name that will be used to identify the study."
-          required
           data-testid="section-b-study-title"
+          required
         />
         <TextInput
           id="section-b-study-abbreviation-or-acronym"
@@ -457,10 +474,10 @@ const FormSectionB: FC<FormSectionProps> = ({ SectionOption, refs }: FormSection
           onChange={(e) => {
             e.target.value = e.target.value.toUpperCase();
           }}
-          maxLength={20}
-          placeholder="20 characters allowed"
-          readOnly={readOnlyInputs}
-          hideValidation={readOnlyInputs}
+          maxLength={CHARACTER_LIMITS.study.abbreviation.max}
+          placeholder={formatCharacterLimitPlaceholder(CHARACTER_LIMITS.study.abbreviation.max)}
+          readOnly={readOnlyInputs || isLockedField(applicationData, "study.abbreviation")}
+          hideValidation={readOnlyInputs || isLockedField(applicationData, "study.abbreviation")}
           tooltipText="Provide a short abbreviation or acronym (e.g., NCI-MATCH) for the study."
           data-testid="section-b-study-abbreviation-or-acronym"
         />
