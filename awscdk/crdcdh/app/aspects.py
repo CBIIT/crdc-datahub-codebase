@@ -15,13 +15,18 @@ class MyAspect:
         config = ConfigParser()
         config.read('config.ini')
 #        random_name = ''.join(random.choice(string.ascii_letters) for _ in range(10))
-        if isinstance(node, iam.CfnRole):
+        # CDK providers (including S3 auto-delete) can create generic
+        # CfnResource roles rather than typed iam.CfnRole instances.
+        if isinstance(node, cdk.CfnResource) and node.cfn_resource_type == "AWS::IAM::Role":
             if config.has_option('iam', 'role_prefix'):
                 resolvedLogicalId = cdk.Stack.of(node).resolve(node.logical_id)
                 #roleName = config['iam']['role_prefix'] + '-' + config['main']['resource_prefix'] + '-' + random_name
                 roleName = config['iam']['role_prefix'] + '-' + config['main']['tier'] + '-' + resolvedLogicalId
                 roleName = roleName[:64]  # Ensure the role name is within the 64 character limit
-                node.role_name = roleName
+                if isinstance(node, iam.CfnRole):
+                    node.role_name = roleName
+                else:
+                    node.add_property_override("RoleName", roleName)
 
         # Apply the security defaults to every log group, including log groups
         # created implicitly by ECS aws_logs drivers.

@@ -19,6 +19,12 @@ class QcResultService{
         this.dataRecordService = dataRecordService;
     }
 
+    /**
+     * List QC result rows for a submission from the qcResults collection.
+     * @param {object} params GraphQL arguments, including submission _id and table filters
+     * @param {object} context Request context
+     * @returns {Promise<{results: object[], total: number}>}
+     */
     async submissionQCResultsAPI(params, context){
         verifySession(context)
             .verifyInitialized();
@@ -27,12 +33,21 @@ class QcResultService{
         if (createScope.isNoneScope() && viewScope.isNoneScope()) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        // Check that the specified submissionID exists
         const submission = await this.submissionDAO.findFirst({_id: params._id});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
-        return await this.qcResultDAO.submissionQCResults(params._id, params.nodeTypes, params.batchIDs, params.severities, params.issueCode, params.first, params.offset, params.orderBy, params.sortDirection);
+        return await this.qcResultDAO.submissionQCResults(
+            params._id,
+            params.nodeTypes,
+            params.batchIDs,
+            params.severities,
+            params.issueCode,
+            params.first,
+            params.offset,
+            params.orderBy,
+            params.sortDirection
+        );
     }
 
     /**
@@ -102,10 +117,20 @@ class QcResultService{
         return this.qcResultDAO.getQCResultsErrors(submissionID, errorType);
     }
 
+    async getQCResultsForNodeType(submissionID, nodeType) {
+        return this.qcResultDAO.getQCResultsForNodeType(submissionID, nodeType);
+    }
+
     async resetQCResultData(submissionID) {
         return await this.qcResultDAO.deleteMany({submissionID});
     }
 
+    /**
+     * Aggregate QC issues for a submission from the qcResults collection.
+     * @param {object} params GraphQL arguments, including submissionID and severity
+     * @param {object} context Request context
+     * @returns {Promise<{results: object[], total: number}>}
+     */
     async aggregatedSubmissionQCResultsAPI(params, context) {
         verifySession(context)
             .verifyInitialized();
@@ -114,12 +139,18 @@ class QcResultService{
         if (createScope.isNoneScope() && viewScope.isNoneScope()) {
             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
         }
-        // Check that the specified submissionID exists
         const submission = await this.submissionDAO.findFirst({_id: params.submissionID});
         if(!submission){
             throw new Error(ERROR.INVALID_SUBMISSION_NOT_FOUND);
         }
-        return await this.qcResultDAO.aggregatedSubmissionQCResults(params.submissionID, params.severity, params.first, params.offset, params.orderBy, params.sortDirection);
+        return await this.qcResultDAO.aggregatedSubmissionQCResults(
+            params.submissionID,
+            params.severity,
+            params.first,
+            params.offset,
+            params.orderBy,
+            params.sortDirection
+        );
     }
 
     async retrieveSubmissionQCComparisonsAPI(params, context) {

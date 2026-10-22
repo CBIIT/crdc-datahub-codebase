@@ -1,8 +1,9 @@
 /**
- * 3.7.0 Migration Script
+ * 3.7.0 Migration Script (legacy — documentation and one-time backfills only; not maintained).
  *
- * Usage: npm run migrate:3.7.0
- *         (or startup via bin/www.js)
+ * Recurring steps (indexes, PBAC, submissionRequestID backfill) run via 3.7.1 startup or `npm run migrate`.
+ *
+ * Usage: node documentation/3-7-0/3-7-0-migration.js (manual; startup uses 3-7-1-migration.js)
  *
  * Migration files:
  * - ensure-indexes-migration.js: Create catalog indexes (recurring step)

@@ -29,8 +29,8 @@ from rds import RdsInstance
 from documentdb import DocumentDbCluster
 from knowledgebase import KnowledgeBase
 from guardrail import Guardrail
-from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, chatbotbe
-#from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
+#from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, chatbotbe
+from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
 
 class Stack(Stack):
     def __init__(self, scope: Construct, **kwargs) -> None:
@@ -342,6 +342,24 @@ class Stack(Stack):
             ssl_policy=elbv2.SslPolicy.RECOMMENDED_TLS                                               
         )
 
+        # Enforce security response headers at the ALB so every backend target
+        # receives the same protection without relying on application code.
+        cfn_listener = self.listener.node.default_child
+        cfn_listener.add_property_override("ListenerAttributes", [
+            {
+                "Key": "routing.http.response.strict_transport_security.header_value",
+                "Value": "max-age=31536000; includeSubDomains; preload"
+            },
+            {
+                "Key": "routing.http.response.x_content_type_options.header_value",
+                "Value": "nosniff"
+            },
+            {
+                "Key": "routing.http.response.server.enabled",
+                "Value": "false"
+            }
+        ])
+
         ### ALB Access log
         log_bucket = s3.Bucket.from_bucket_name(self, "AlbAccessLogsBucket", config['main']['alb_log_bucket_name'])
         log_prefix = f"{config['main']['program']}/{config['main']['tier']}/{config['main']['resource_prefix']}/alb-access-logs"
@@ -541,7 +559,7 @@ class Stack(Stack):
         pvpuller.pvpullerService.createService(self, config)
 
         # Chatbotbe Service
-        chatbotbe.chatbotbeService.createService(self, config)
+        #chatbotbe.chatbotbeService.createService(self, config)
 
         # Files Service
         # files.filesService.createService(self, config)

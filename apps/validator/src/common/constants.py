@@ -87,6 +87,7 @@ NODE_IDS = "nodeIDs"
 DELETE_ALL = "deleteAll"
 EXCLUSIVE_IDS = "exclusiveIDs"
 DELETE_ORPHANED_DATA_FILES = "deleteOrphanedDataFiles"
+PENDING_METADATA_DELETE = "pendingMetadataDelete"
 DATA_FILE_TYPE = "data file"
 S3_LIST_ORPHANS_PAGE_SIZE = 1000
 

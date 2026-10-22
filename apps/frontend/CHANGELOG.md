@@ -1,5 +1,62 @@
 # Release Notes
 
+## 3.7.0 (Released 10/22/2026)
+
+#### Submission Request
+
+- Previously approved Submission Request Forms can now be reopened for
+  editing and updating.
+- Any drafted Submission Request Form will be cancelled after two
+  months of inactivity. The inactivity time window has been decreased
+  from the previously set six-month period.
+- Users can now choose who receives the CRDC email updates regarding
+  their Submission Request Form: the Principal Investigator, other
+  points of contact, or both.
+- Users can now view all Review Comments shared by the CRDC team
+  regarding their Submission Request Form, rather than just the most
+  recent comment.
+- The Save button on the Submission Request Form is now disabled until
+  the user enters information on the form.
+- The new \"In Revision\" status indicates when a previously submitted
+  Submission Request Form is being edited.
+- The Study Abbreviation field character limit is now increased from
+  25 to 50.
+- Email notifications now refer to the study name instead of the study
+  abbreviation.
+
+#### Data Submission
+
+- The error message shown when an inactive account attempts to log in
+  now includes the CRDC Helpdesk contact information.
+- The Program and Study information shared on the Submission Request
+  Form are now auto-populated into the respective submission metadata
+  fields
+- Data submission validation now confirms the dbGaP ID provided from
+  the Submission Request Form.
+- The Data Submission Data Type is no longer pre-selected to
+  \"Metadata and Data Files\" by default. The Data Submission Data
+  Commons is no longer pre-selected to \"GC\" by default. The
+  submitter will need to make the appropriate selections for both
+  fields.
+- The Data Submission ID is now displayed in the Data Submission
+  table. Users can now copy the Data Submission ID to their clipboard.
+
+#### Data Model Navigator
+
+- The Data Model Navigator now displays a \"Required\" column to
+  indicate the property requirements for data models.
+
+#### Metamodel Database/Simple Terminology Service Integration
+
+- Required relationships are identifier linkages between properties
+  documented in the Model Navigator for data models. Required
+  relationships are now enforced at data validation and upload.
+
+#### Known Issues
+
+- The Data Explorer display incorrectly omits data. Nodes other than
+    program are not visible in the Data Explorer.
+
 ## 3.6.1 (Released 06/29/2026)
 
 #### Submission Request

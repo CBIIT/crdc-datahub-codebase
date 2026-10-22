@@ -138,6 +138,29 @@ describe('DataRecordDAO', () => {
         });
     });
 
+    describe('findS3FileInfoStatuses', () => {
+        it('returns s3FileInfo.status values for records with s3FileInfo', async () => {
+            DataRecordModel.find.mockReturnValue({
+                lean: jest.fn().mockResolvedValue([
+                    { s3FileInfo: { status: VALIDATION_STATUS.PASSED } },
+                    { s3FileInfo: { status: VALIDATION_STATUS.WARNING } },
+                    { s3FileInfo: {} }
+                ])
+            });
+
+            const statuses = await dataRecordDAO.findS3FileInfoStatuses('sub-1');
+
+            expect(statuses).toEqual([VALIDATION_STATUS.PASSED, VALIDATION_STATUS.WARNING]);
+            expect(DataRecordModel.find).toHaveBeenCalledWith(
+                {
+                    submissionID: 'sub-1',
+                    s3FileInfo: { $exists: true, $ne: null }
+                },
+                { 's3FileInfo.status': 1 }
+            );
+        });
+    });
+
     describe('resetDataRecords', () => {
         const fileStatusUpdate = {
             $set: {

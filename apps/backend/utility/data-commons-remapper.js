@@ -1,4 +1,5 @@
 const DISPLAY_NAMES_MAP = require("../constants/data-commons-display-names-map");
+const { normalizeDataSyncRollupStatus } = require("../constants/data-sync-constants");
 const {isTrue} = require("../crdc-datahub-database-drivers/utility/string-utility");
 const {defaultStudyAbbreviationToStudyName} = require("./study-abbrev-helpers");
 
@@ -29,6 +30,8 @@ function getDataCommonsDisplayNamesForSubmission(submission){
     if (!submission){
         return null;
     }
+    submission.metadataDataSyncStatus = normalizeDataSyncRollupStatus(submission.metadataDataSyncStatus);
+    submission.fileDataSyncStatus = normalizeDataSyncRollupStatus(submission.fileDataSyncStatus);
     if (submission.dataCommons){
         submission.dataCommonsDisplayName = genericGetDataCommonsDisplayNames(submission.dataCommons, getDataCommonsDisplayName);
     }

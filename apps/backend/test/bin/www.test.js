@@ -35,7 +35,7 @@ describe('bin/www.js startup', () => {
             set: jest.fn()
         }));
 
-        jest.doMock('../../documentation/3-7-0/3-7-0-migration', () => ({
+        jest.doMock('../../documentation/3-7-1/3-7-1-migration', () => ({
             orchestrateMigration: mockOrchestrateMigration
         }));
     });

@@ -20,6 +20,40 @@ const NODE_RELATION_TYPE_PARENT="parent";
 const NODE_RELATION_TYPE_CHILD="child";
 const NODE_RELATION_TYPES = [NODE_RELATION_TYPE_PARENT, NODE_RELATION_TYPE_CHILD];
 const FILE = "file";
+
+/**
+ * Derives submission.fileValidationStatus from submission-level file errors and per-record s3FileInfo.status.
+ * @param {object[]|null|undefined} fileErrors Submission fileErrors array
+ * @param {string[]} s3FileInfoStatuses Collected s3FileInfo.status values for the submission
+ * @returns {string} One of VALIDATION_STATUS values
+ */
+function deriveFileValidationStatus(fileIssues, s3FileInfoStatuses) {
+    if (fileIssues && fileIssues.length > 0) {
+        for (const issue of fileIssues) {
+            if (issue.severity === VALIDATION_STATUS.ERROR) {
+                return VALIDATION_STATUS.ERROR;
+            }
+            if (issue.severity === VALIDATION_STATUS.WARNING) {
+                return VALIDATION_STATUS.WARNING;
+            }
+        }
+        console.error("Invalid file issues, not severity found!");
+    }
+
+    // No file issues, use s3FileInfo.status to derive file validation status
+    const statuses = s3FileInfoStatuses || [];
+    if (statuses.includes(VALIDATION_STATUS.NEW)) {
+        return VALIDATION_STATUS.NEW;
+    }
+    if (statuses.includes(VALIDATION_STATUS.ERROR)) {
+        return VALIDATION_STATUS.ERROR;
+    }
+    if (statuses.includes(VALIDATION_STATUS.WARNING)) {
+        return VALIDATION_STATUS.WARNING;
+    }
+    return VALIDATION_STATUS.PASSED;
+}
+
 const DATA_SHEET = {
     SUBJECT_ID: "participant_id",
     SAMPLE_ID: "sample_id",
@@ -184,7 +218,8 @@ class DataRecordService {
      * @param {*} submissionID 
      * @param {*} types ['metadata', 'data file']
      * @param {*} scope ['new', 'all']
-     * @param {*} validationID 
+     * @param {*} validationID
+     * @param {object} [validationDAO] DAO used to persist message totals before enqueue
      * @returns Promise of object with the following properties: 
      *    {
      *      success: boolean,
@@ -192,10 +227,12 @@ class DataRecordService {
      *      totalBatches?: number,
      *      failedCount?: number,
      *      totalFileMessages?: number,
-     *      failedFileCount?: number
+     *      failedFileCount?: number,
+     *      fileTotalsPersisted?: boolean,
+     *      metadataTotalsPersisted?: boolean
      *    }
      */
-    async initializeDataValidation(submissionID, types, scope, validationID) {
+    async initializeDataValidation(submissionID, types, scope, validationID, validationDAO) {
         isValidMetadata(types, scope);
         const isMetadata = types.some(t => t === VALIDATION.TYPES.METADATA || t === VALIDATION.TYPES.CROSS_SUBMISSION);
         let errorMessages = [];
@@ -219,7 +256,7 @@ class DataRecordService {
                         errorMessages.push(ERRORS.FAILED_VALIDATE_METADATA, noRecordsError);
                     } else {
                         metadataBatchInfo = await this._sendMetadataBatchMessages(
-                            dataRecordIds, submissionID, scope, validationID
+                            dataRecordIds, submissionID, scope, validationID, validationDAO
                         );
                         if (metadataBatchInfo.errors.length > 0)
                             errorMessages.push(ERRORS.FAILED_VALIDATE_METADATA, ...metadataBatchInfo.errors);
@@ -234,29 +271,49 @@ class DataRecordService {
             // one message per file + extra message for orphaned file detection
             fileMessagesInfo.totalFileMessages = fileNodes.length + 1;
             fileMessagesInfo.failedFileCount = 0;
-            if (fileNodes && fileNodes.length > 0) {
-                const fileValidationErrors = await this._sendBatchSQSMessage(fileNodes, validationID, submissionID);
-                if (fileValidationErrors.length > 0) {
-                    errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, ...fileValidationErrors)
-                    fileMessagesInfo.failedFileCount = fileValidationErrors.length;
+            let fileTotalsPersisted = true;
+            if (validationDAO) {
+                try {
+                    await validationDAO.update(validationID, { totalFileMessages: fileMessagesInfo.totalFileMessages });
+                } catch (e) {
+                    console.error('Failed to persist totalFileMessages:', e?.message);
+                    errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, e?.message);
+                    fileTotalsPersisted = false;
+                    fileMessagesInfo.failedFileCount = fileMessagesInfo.totalFileMessages;
                 }
             }
-            const msg = Message.createFileSubmissionMessage("Validate Submission Files", submissionID, validationID);
-            const fileResult = await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.fileQueueName, submissionID);
-            if (!fileResult.success) {
-                errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, fileResult.message);
-                fileMessagesInfo.failedFileCount += 1;
+            if (fileTotalsPersisted) {
+                if (fileNodes && fileNodes.length > 0) {
+                    const fileValidationErrors = await this._sendBatchSQSMessage(fileNodes, validationID, submissionID);
+                    if (fileValidationErrors.length > 0) {
+                        errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, ...fileValidationErrors)
+                        fileMessagesInfo.failedFileCount = fileValidationErrors.length;
+                    }
+                }
+                const msg = Message.createFileSubmissionMessage("Validate Submission Files", submissionID, validationID);
+                const fileResult = await sendSQSMessageWrapper(this.awsService, msg, submissionID, this.fileQueueName, submissionID);
+                if (!fileResult.success) {
+                    errorMessages.push(ERRORS.FAILED_VALIDATE_FILE, fileResult.message);
+                    fileMessagesInfo.failedFileCount += 1;
+                }
             }
+            fileMessagesInfo.fileTotalsPersisted = fileTotalsPersisted;
         }
 
         const validationResult = (errorMessages.length > 0) ? ValidationHandler.handle(errorMessages) : ValidationHandler.success();
         if (metadataBatchInfo) {
             validationResult.totalBatches = metadataBatchInfo.totalBatches;
             validationResult.failedCount = metadataBatchInfo.failedCount;
+            if (metadataBatchInfo.metadataTotalsPersisted === false) {
+                validationResult.metadataTotalsPersisted = false;
+            }
         }
         if (fileMessagesInfo) {
             validationResult.totalFileMessages = fileMessagesInfo.totalFileMessages;
             validationResult.failedFileCount = fileMessagesInfo.failedFileCount;
+            if (fileMessagesInfo.fileTotalsPersisted === false) {
+                validationResult.fileTotalsPersisted = false;
+            }
         }
         return validationResult;
     }
@@ -279,7 +336,16 @@ class DataRecordService {
         return fileValidationErrors;
     }
 
-    async _sendMetadataBatchMessages(dataRecordIds, submissionID, scope, validationID) {
+    /**
+     * Persist totalBatches, then enqueue one metadata validation message per chunk.
+     * @param {string[]} dataRecordIds dataRecord ids to validate
+     * @param {string} submissionID submission id
+     * @param {string} scope validation scope
+     * @param {string} validationID validation document id
+     * @param {object} [validationDAO] DAO used to persist totalBatches before enqueue
+     * @returns {Promise<{errors: string[], totalBatches: number, failedCount: number, metadataTotalsPersisted?: boolean}>}
+     */
+    async _sendMetadataBatchMessages(dataRecordIds, submissionID, scope, validationID, validationDAO) {
         let config = null;
         try {
             config = await this.configurationService.findByType(VALIDATION.METADATA_BATCH_CONFIG_TYPE);
@@ -300,6 +366,19 @@ class DataRecordService {
             chunks.push(dataRecordIds.slice(i, i + batchSize));
         }
         const totalBatches = chunks.length;
+        if (validationDAO) {
+            try {
+                await validationDAO.update(validationID, { totalBatches });
+            } catch (e) {
+                console.error('Failed to persist totalBatches:', e?.message);
+                return {
+                    errors: [`Failed to persist totalBatches: ${e?.message}`],
+                    totalBatches,
+                    failedCount: totalBatches,
+                    metadataTotalsPersisted: false,
+                };
+            }
+        }
         const errors = [];
         for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
             const msg = Message.createMetadataBatchMessage(
@@ -534,6 +613,24 @@ class DataRecordService {
      */
     async resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames) {
         return await this.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew(submissionID, fileNames);
+    }
+
+    /**
+     * @param {string} submissionID
+     * @returns {Promise<string[]>}
+     */
+    async getS3FileInfoStatusesForSubmission(submissionID) {
+        return await this.dataRecordDAO.findS3FileInfoStatuses(submissionID);
+    }
+
+    /**
+     * @param {string} submissionID
+     * @param {object[]|null|undefined} fileErrors
+     * @returns {Promise<string>}
+     */
+    async recalculateFileValidationStatus(submissionID, fileIssues) {
+        const s3FileInfoStatuses = await this.getS3FileInfoStatusesForSubmission(submissionID);
+        return deriveFileValidationStatus(fileIssues, s3FileInfoStatuses);
     }
 
     _getSubmissionStatQuery(submissionID, validNodeStatus) {
@@ -1123,7 +1220,8 @@ class SubmissionStats {
 }
 
 module.exports = {
-    DataRecordService, 
+    DataRecordService,
+    deriveFileValidationStatus,
     NODE_RELATION_TYPES,
     Message,
     Stat,
