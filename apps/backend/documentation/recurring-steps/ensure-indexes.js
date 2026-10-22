@@ -11,7 +11,7 @@
  * Missing collections: logs an error, does not create the collection, skips specs for
  * that collection, continues other collections, and returns success: false.
  *
- * Usage: Called by the current release migration orchestrator (e.g. 3.7.0)
+ * Usage: Called by the current release migration orchestrator (e.g. 3.7.1)
  */
 
 const {
@@ -27,6 +27,7 @@ const {
     PROPERTY_PVS_COLLECTION,
     QC_RESULTS_COLLECTION,
     DATA_RECORDS_COLLECTION,
+    DATA_SYNC_COLLECTION,
 } = require('../../crdc-datahub-database-drivers/database-constants');
 
 const CREATE_INDEX_MAX_ATTEMPTS = 3;
@@ -52,6 +53,16 @@ const INDEXES = [
         collection: BATCH_COLLECTION,
         keys: { submissionID: 1, createdAt: -1 },
         name: 'submissionID_1_createdAt_-1',
+    },
+    {
+        collection: DATA_SYNC_COLLECTION,
+        keys: { submissionID: 1, type: 1, startTime: -1 },
+        name: 'submissionID_1_type_1_startTime_-1',
+    },
+    {
+        collection: DATA_SYNC_COLLECTION,
+        keys: { submissionID: 1, type: 1, status: 1 },
+        name: 'submissionID_1_type_1_status_1',
     },
     {
         collection: SUBMISSIONS_COLLECTION,

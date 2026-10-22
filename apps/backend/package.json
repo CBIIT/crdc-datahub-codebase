@@ -11,7 +11,7 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --silent",
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
     "test:ci": "TZ=UTC CI=true NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests --coverage --maxWorkers=2 --maxConcurrent=2",
-    "migrate:3.7.0": "node documentation/3-7-0/3-7-0-migration.js"
+    "migrate": "node documentation/3-7-1/3-7-1-migration.js"
   },
   "dependencies": {
     "@graphql-tools/schema": "^10.1.3",
