@@ -50,6 +50,14 @@ const dataSyncSchema = new mongoose.Schema(
         taskExecutionArn: {
             type: String,
         },
+        sourceLocationArn: { type: String },
+        destinationLocationArn: { type: String },
+        listPending: { type: Boolean },
+        rollupPending: { type: Boolean },
+        cleanupAfter: { type: Date },
+        lastError: { type: String },
+        observationErrorSince: { type: Date },
+        lastPolledAt: { type: Date },
     },
     {
         collection: DATA_SYNC_COLLECTION,
