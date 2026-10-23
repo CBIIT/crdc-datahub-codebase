@@ -57,6 +57,7 @@ const dataSyncSchema = new mongoose.Schema(
         cleanupAfter: { type: Date },
         lastError: { type: String },
         observationErrorSince: { type: Date },
+        lastPolledAt: { type: Date },
     },
     {
         collection: DATA_SYNC_COLLECTION,
