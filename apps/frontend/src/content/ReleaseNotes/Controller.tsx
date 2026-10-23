@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useState } from "react";
 
 import SuspenseLoader from "../../components/SuspenseLoader";
 import usePageTitle from "../../hooks/usePageTitle";
@@ -16,31 +16,29 @@ const ReleaseNotesController = (): React.ReactNode => {
 
   const [document, setDocument] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const isFetchingRef = useRef<boolean>(false);
-
-  const fetchNotes = async () => {
-    if (isFetchingRef.current) {
-      return;
-    }
-
-    isFetchingRef.current = true;
-    setLoading(true);
-
-    try {
-      const result = await fetchReleaseNotes();
-      setDocument(result);
-      isFetchingRef.current = false;
-    } catch (error) {
-      Logger.error("ReleaseNotesController: Unable to fetch release notes.", error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
-    if (!document) {
-      fetchNotes();
-    }
+    const controller = new AbortController();
+
+    const fetchNotes = async () => {
+      try {
+        const result = await fetchReleaseNotes(controller.signal);
+        if (!controller.signal.aborted) {
+          setDocument(result);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          Logger.error("ReleaseNotesController: Unable to fetch release notes.", error);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchNotes();
+    return () => controller.abort();
   }, []);
 
   if (loading) {
