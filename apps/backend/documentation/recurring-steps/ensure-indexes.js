@@ -61,6 +61,11 @@ const INDEXES = [
     },
     {
         collection: DATA_SYNC_COLLECTION,
+        keys: { submissionID: 1, startTime: -1 },
+        name: 'submissionID_1_startTime_-1',
+    },
+    {
+        collection: DATA_SYNC_COLLECTION,
         keys: { submissionID: 1, type: 1, status: 1 },
         name: 'submissionID_1_type_1_status_1',
     },

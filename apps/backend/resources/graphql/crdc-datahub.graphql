@@ -343,6 +343,17 @@ type Validation {
     statusDetail: [String]
 }
 
+type DataSync {
+    _id: ID
+    submissionID: ID # parent
+    type: String # [metadata, file]
+    sourceFolder: String
+    targetFolder: String
+    startTime: Date
+    endTime: Date
+    status: String # [Not Started, In Progress, Succeeded, Failed]
+}
+
 type Batch {
     _id: ID
     submissionID: ID # parent
@@ -968,6 +979,14 @@ type Query {
         orderBy: String = "updatedAt",
         sortDirection: String = "DESC" # ["DESC", "ASC"]
     ): ListBatches
+
+    "Sorted by startTime, newest first. Omit type to return every type."
+    listDataSyncs(submissionID: ID!, type: String # [metadata, file]
+    ): [DataSync]
+
+    "Newest startTime for the submission and type. Null when none exist."
+    getLatestDataSync(submissionID: ID!, type: String! # [metadata, file]
+    ): DataSync
 
     version: String
 

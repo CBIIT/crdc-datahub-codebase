@@ -16,22 +16,18 @@ const ALL_TEST_TYPES = {
     array: [],
 };
 
-const MINIMAL_DATA_SYNC = {
+const FULL_DATA_SYNC = {
+    _id: '123',
     type: DATA_SYNC_TYPE.METADATA,
-    submissionID: '123',
+    submissionID: 'sub-1',
     sourceFolder: 'source',
     targetFolder: 'target',
     startTime: TEST_DATE,
-    status: DATA_SYNC_STATUS.IN_PROGRESS,
-}
-
-const FULL_DATA_SYNC = {
-    ...MINIMAL_DATA_SYNC,
+    endTime: TEST_DATE,
+    status: DATA_SYNC_STATUS.SUCCEEDED,
     taskArn: 'taskArn',
     taskExecutionArn: 'taskExecutionArn',
-    endTime: TEST_DATE,
-    _id: '123',
-}
+};
 
 describe('Data Sync service tests', () => {
 
@@ -46,127 +42,109 @@ describe('Data Sync service tests', () => {
         });
 
         it('should have expected methods defined', () => {
-            expect(dataSyncService.createDataSync).toBeDefined();
-            expect(dataSyncService.updateDataSync).toBeDefined();
+            expect(dataSyncService.listBySubmissionID).toBeDefined();
             expect(dataSyncService.findLatestBySubmissionIDAndType).toBeDefined();
-            expect(dataSyncService.findInProgressBySubmissionIDAndType).toBeDefined();
+        });
+
+        it('should not expose data sync writes', () => {
+            expect(dataSyncService.createDataSync).toBeUndefined();
+            expect(dataSyncService.updateDataSync).toBeUndefined();
+            expect(dataSyncService.findInProgressBySubmissionIDAndType).toBeUndefined();
         });
 
     });
 
-    describe('validate required fields before creating a record', () => {
-        
-        async function expectInvalidFieldTypesToThrowError(record, field) {
-            const invalidTypes = { ...ALL_TEST_TYPES };
-            delete invalidTypes[dataSyncService.dataSyncDAO.model.schema.path(field).instance.toLowerCase()];
-            for (const type in invalidTypes) {
-                record[field] = invalidTypes[type];
-                await expect(dataSyncService.createDataSync(record)).rejects.toThrow(
-                    replaceErrorString(ERROR.CREATE_DATA_SYNC_INVALID_TYPE, field)
-                );
-            }
-        }
+    describe('validate listBySubmissionID inputs', () => {
 
-        async function expectInvalidEnumToThrowError(record, field) {
-            const enumValues = dataSyncService.dataSyncDAO.model.schema.path(field).enumValues;
-            record[field] = `${enumValues[0]}-invalid`;
-            await expect(dataSyncService.createDataSync(record)).rejects.toThrow(
-                replaceErrorString(ERROR.CREATE_DATA_SYNC_INVALID_ENUM, field)
-            );
-        }
-
-        const requiredFields = [
-            'type',
-            'submissionID',
-            'sourceFolder',
-            'targetFolder',
-            'startTime',
-            'status',
-        ];
-
-        for (const field of requiredFields) {
-            it(`validate ${field}`, async () => {
-                const missingFieldsDataSync = {
-                    ... FULL_DATA_SYNC,
-                };
-                for (const missingValue of [undefined, null, '']) {
-                    missingFieldsDataSync[field] = missingValue;
-                    await expect(dataSyncService.createDataSync(missingFieldsDataSync)).rejects.toThrow(
-                        replaceErrorString(ERROR.CREATE_DATA_SYNC_MISSING_FIELD, field)
-                    );
-                }
-                await expectInvalidFieldTypesToThrowError(missingFieldsDataSync, field);
-                if (dataSyncService.dataSyncDAO.model.schema.path(field).enumValues?.length) {
-                    await expectInvalidEnumToThrowError(missingFieldsDataSync, field);
-                }
-            });
-        }
-    });
-
-    describe('validate updateDataSync inputs', () => {
-
-        it('validate dataSyncID', async () => {
-            for (const missingID of [undefined, null, '']) {
-                await expect(dataSyncService.updateDataSync(
-                    missingID,
-                    { status: DATA_SYNC_STATUS.SUCCEEDED }
+        it('validate submissionID', async () => {
+            for (const missingValue of [undefined, null, '']) {
+                await expect(dataSyncService.listBySubmissionID(
+                    missingValue,
+                    DATA_SYNC_TYPE.METADATA
                 )).rejects.toThrow(
-                    replaceErrorString(ERROR.UPDATE_DATA_SYNC_MISSING_FIELD, 'dataSyncID')
+                    replaceErrorString(ERROR.FIND_DATA_SYNC_MISSING_FIELD, 'submissionID')
                 );
             }
 
             const invalidTypes = { ...ALL_TEST_TYPES };
-            delete invalidTypes.string;
+            delete invalidTypes[dataSyncService.dataSyncDAO.model.schema.path('submissionID').instance.toLowerCase()];
             for (const type in invalidTypes) {
-                await expect(dataSyncService.updateDataSync(
+                await expect(dataSyncService.listBySubmissionID(
                     invalidTypes[type],
-                    { status: DATA_SYNC_STATUS.SUCCEEDED }
+                    DATA_SYNC_TYPE.METADATA
                 )).rejects.toThrow(
-                    replaceErrorString(ERROR.UPDATE_DATA_SYNC_INVALID_TYPE, 'dataSyncID')
+                    replaceErrorString(ERROR.FIND_DATA_SYNC_INVALID_TYPE, 'submissionID')
                 );
             }
         });
 
-        async function expectInvalidFieldTypesToThrowError(updates, field) {
+        it('validate type', async () => {
             const invalidTypes = { ...ALL_TEST_TYPES };
-            delete invalidTypes[dataSyncService.dataSyncDAO.model.schema.path(field).instance.toLowerCase()];
+            delete invalidTypes[dataSyncService.dataSyncDAO.model.schema.path('type').instance.toLowerCase()];
             for (const type in invalidTypes) {
-                updates[field] = invalidTypes[type];
-                await expect(dataSyncService.updateDataSync('sync-1', updates)).rejects.toThrow(
-                    replaceErrorString(ERROR.UPDATE_DATA_SYNC_INVALID_TYPE, field)
+                await expect(dataSyncService.listBySubmissionID(
+                    'sub-1',
+                    invalidTypes[type]
+                )).rejects.toThrow(
+                    replaceErrorString(ERROR.FIND_DATA_SYNC_INVALID_TYPE, 'type')
                 );
             }
-        }
 
-        async function expectInvalidEnumToThrowError(updates, field) {
-            const enumValues = dataSyncService.dataSyncDAO.model.schema.path(field).enumValues;
-            updates[field] = `${enumValues[0]}-invalid`;
-            await expect(dataSyncService.updateDataSync('sync-1', updates)).rejects.toThrow(
-                replaceErrorString(ERROR.UPDATE_DATA_SYNC_INVALID_ENUM, field)
+            const enumValues = dataSyncService.dataSyncDAO.model.schema.path('type').enumValues;
+            await expect(dataSyncService.listBySubmissionID(
+                'sub-1',
+                `${enumValues[0]}-invalid`
+            )).rejects.toThrow(
+                replaceErrorString(ERROR.FIND_DATA_SYNC_INVALID_ENUM, 'type')
             );
-        }
+        });
 
-        const updatableFields = [
-            'status',
-            'endTime',
-            'taskArn',
-            'taskExecutionArn',
-        ];
+        it('allow an omitted type', async () => {
+            const listSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'listBySubmissionID').mockResolvedValue([]);
 
-        for (const field of updatableFields) {
-            it(`validate ${field}`, async () => {
-                for (const missingValue of [null, '']) {
-                    await expect(dataSyncService.updateDataSync('sync-1', { [field]: missingValue })).rejects.toThrow(
-                        replaceErrorString(ERROR.UPDATE_DATA_SYNC_EMPTY_FIELD, field)
-                    );
-                }
-                const updates = {};
-                await expectInvalidFieldTypesToThrowError(updates, field);
-                if (dataSyncService.dataSyncDAO.model.schema.path(field).enumValues?.length) {
-                    await expectInvalidEnumToThrowError(updates, field);
-                }
-            });
-        }
+            for (const omittedType of [undefined, null, '']) {
+                await expect(dataSyncService.listBySubmissionID('sub-1', omittedType)).resolves.toEqual([]);
+                expect(listSpy).toHaveBeenLastCalledWith('sub-1', undefined);
+            }
+        });
+
+    });
+
+    describe('validate listBySubmissionID response', () => {
+
+        it('return the data sync records unchanged', async () => {
+            const secondDataSync = { ...FULL_DATA_SYNC, _id: '456', type: DATA_SYNC_TYPE.FILE };
+            const daoResult = [FULL_DATA_SYNC, secondDataSync];
+            const listSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'listBySubmissionID').mockResolvedValue(daoResult);
+
+            const dataSyncs = await dataSyncService.listBySubmissionID('sub-1');
+            expect(dataSyncs).toBe(daoResult);
+            expect(dataSyncs[0]).toBe(FULL_DATA_SYNC);
+            expect(dataSyncs[0]).toEqual(expect.objectContaining({
+                taskArn: 'taskArn',
+                taskExecutionArn: 'taskExecutionArn',
+                sourceFolder: 'source',
+                targetFolder: 'target',
+            }));
+            expect(listSpy).toHaveBeenCalledWith('sub-1', undefined);
+        });
+
+        it('forward the type filter', async () => {
+            const daoResult = [FULL_DATA_SYNC];
+            const listSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'listBySubmissionID').mockResolvedValue(daoResult);
+
+            const dataSyncs = await dataSyncService.listBySubmissionID('sub-1', DATA_SYNC_TYPE.METADATA);
+            expect(dataSyncs).toBe(daoResult);
+            expect(listSpy).toHaveBeenCalledWith('sub-1', DATA_SYNC_TYPE.METADATA);
+        });
+
+        it('return an empty array when no records match', async () => {
+            const emptyResult = [];
+            jest.spyOn(dataSyncService.dataSyncDAO, 'listBySubmissionID').mockResolvedValue(emptyResult);
+
+            const dataSyncs = await dataSyncService.listBySubmissionID('sub-1', DATA_SYNC_TYPE.FILE);
+            expect(dataSyncs).toBe(emptyResult);
+        });
 
     });
 
@@ -226,227 +204,47 @@ describe('Data Sync service tests', () => {
 
     });
 
-    describe('validate findInProgressBySubmissionIDAndType inputs', () => {
-
-        it('validate submissionID', async () => {
-            for (const missingValue of [undefined, null, '']) {
-                await expect(dataSyncService.findInProgressBySubmissionIDAndType(
-                    missingValue,
-                    DATA_SYNC_TYPE.METADATA
-                )).rejects.toThrow(
-                    replaceErrorString(ERROR.FIND_DATA_SYNC_MISSING_FIELD, 'submissionID')
-                );
-            }
-
-            const invalidTypes = { ...ALL_TEST_TYPES };
-            delete invalidTypes[dataSyncService.dataSyncDAO.model.schema.path('submissionID').instance.toLowerCase()];
-            for (const type in invalidTypes) {
-                await expect(dataSyncService.findInProgressBySubmissionIDAndType(
-                    invalidTypes[type],
-                    DATA_SYNC_TYPE.METADATA
-                )).rejects.toThrow(
-                    replaceErrorString(ERROR.FIND_DATA_SYNC_INVALID_TYPE, 'submissionID')
-                );
-            }
-        });
-
-        it('validate type', async () => {
-            for (const missingValue of [undefined, null, '']) {
-                await expect(dataSyncService.findInProgressBySubmissionIDAndType(
-                    'sub-1',
-                    missingValue
-                )).rejects.toThrow(
-                    replaceErrorString(ERROR.FIND_DATA_SYNC_MISSING_FIELD, 'type')
-                );
-            }
-
-            const invalidTypes = { ...ALL_TEST_TYPES };
-            delete invalidTypes[dataSyncService.dataSyncDAO.model.schema.path('type').instance.toLowerCase()];
-            for (const type in invalidTypes) {
-                await expect(dataSyncService.findInProgressBySubmissionIDAndType(
-                    'sub-1',
-                    invalidTypes[type]
-                )).rejects.toThrow(
-                    replaceErrorString(ERROR.FIND_DATA_SYNC_INVALID_TYPE, 'type')
-                );
-            }
-
-            const enumValues = dataSyncService.dataSyncDAO.model.schema.path('type').enumValues;
-            await expect(dataSyncService.findInProgressBySubmissionIDAndType(
-                'sub-1',
-                `${enumValues[0]}-invalid`
-            )).rejects.toThrow(
-                replaceErrorString(ERROR.FIND_DATA_SYNC_INVALID_ENUM, 'type')
-            );
-        });
-
-    });
-
-    describe('validate createDataSync response', () => {
-
-        it('return the created data sync record', async () => {
-            const createdDataSync = { ...FULL_DATA_SYNC, _id: 'from-dao' };
-            jest.spyOn(dataSyncService.dataSyncDAO, 'create').mockResolvedValue(createdDataSync);
-
-            const dataSync = await dataSyncService.createDataSync(FULL_DATA_SYNC);
-            expect(dataSync).toEqual(createdDataSync);
-        });
-
-    });
-
-    describe('validate updateDataSync response', () => {
-
-        it('return the updated data sync record', async () => {
-            const updateSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'update').mockResolvedValue(FULL_DATA_SYNC);
-            const updates = { status: DATA_SYNC_STATUS.SUCCEEDED };
-
-            const dataSync = await dataSyncService.updateDataSync('123', updates);
-            expect(dataSync).toEqual(FULL_DATA_SYNC);
-            expect(updateSpy).toHaveBeenCalledWith('123', updates, false);
-        });
-
-        it('forward only whitelisted update fields', async () => {
-            const updateSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'update').mockResolvedValue(FULL_DATA_SYNC);
-
-            await dataSyncService.updateDataSync('123', {
-                status: DATA_SYNC_STATUS.SUCCEEDED,
-                endTime: undefined,
-                submissionID: 'should-not-forward',
-            });
-            expect(updateSpy).toHaveBeenCalledWith(
-                '123',
-                { status: DATA_SYNC_STATUS.SUCCEEDED },
-                false
-            );
-        });
-
-    });
-
     describe('validate findLatestBySubmissionIDAndType response', () => {
 
-        it('return the latest data sync record', async () => {
-            const findSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findLatestBySubmissionIDAndType').mockResolvedValue(FULL_DATA_SYNC);
+        it('return the latest data sync record unchanged', async () => {
+            const latestDataSync = { ...FULL_DATA_SYNC, _id: 'latest' };
+            const findSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findLatestBySubmissionIDAndType').mockResolvedValue(latestDataSync);
 
-            const dataSync = await dataSyncService.findLatestBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA);
-            expect(dataSync).toEqual(FULL_DATA_SYNC);
-            expect(findSpy).toHaveBeenCalledWith('123', DATA_SYNC_TYPE.METADATA);
+            const dataSync = await dataSyncService.findLatestBySubmissionIDAndType('sub-1', DATA_SYNC_TYPE.FILE);
+            expect(dataSync).toBe(latestDataSync);
+            expect(dataSync).toEqual(expect.objectContaining({
+                taskArn: 'taskArn',
+                taskExecutionArn: 'taskExecutionArn',
+                sourceFolder: 'source',
+                targetFolder: 'target',
+            }));
+            expect(findSpy).toHaveBeenCalledWith('sub-1', DATA_SYNC_TYPE.FILE);
         });
 
         it('return null when no record matches', async () => {
             jest.spyOn(dataSyncService.dataSyncDAO, 'findLatestBySubmissionIDAndType').mockResolvedValue(null);
 
-            const dataSync = await dataSyncService.findLatestBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA);
+            const dataSync = await dataSyncService.findLatestBySubmissionIDAndType('sub-1', DATA_SYNC_TYPE.METADATA);
             expect(dataSync).toBeNull();
         });
 
     });
 
-    describe('validate findInProgressBySubmissionIDAndType response', () => {
-
-        it('return an array of data sync records', async () => {
-            const secondDataSync = { ...FULL_DATA_SYNC, _id: '456' };
-            const findSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findInProgressBySubmissionIDAndType').mockResolvedValue([FULL_DATA_SYNC, secondDataSync]);
-
-            const dataSyncs = await dataSyncService.findInProgressBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA);
-            expect(dataSyncs).toEqual([FULL_DATA_SYNC, secondDataSync]);
-            expect(findSpy).toHaveBeenCalledWith('123', DATA_SYNC_TYPE.METADATA);
-        });
-
-        it('return an empty array when no records match', async () => {
-            jest.spyOn(dataSyncService.dataSyncDAO, 'findInProgressBySubmissionIDAndType').mockResolvedValue([]);
-
-            const dataSyncs = await dataSyncService.findInProgressBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA);
-            expect(dataSyncs).toEqual([]);
-        });
-
-    });
-
     describe('propagate DAO failures', () => {
-        const FAILED_TO_CREATE_DATA_SYNC = 'Failed to create DataSync';
-        const FAILED_TO_UPDATE_DATA_SYNC = 'Failed to update DataSync';
+        const FAILED_TO_LIST_DATA_SYNC = 'Failed to find many DataSync';
         const FAILED_TO_FIND_LATEST_DATA_SYNC = 'Failed to find first DataSync';
-        const FAILED_TO_FIND_IN_PROGRESS_DATA_SYNC = 'Failed to find many DataSync';
 
-        it('createDataSync rejects with the generic create message', async () => {
-            jest.spyOn(dataSyncService.dataSyncDAO, 'create').mockRejectedValue(new Error(FAILED_TO_CREATE_DATA_SYNC));
+        it('listBySubmissionID rejects with the DAO error', async () => {
+            jest.spyOn(dataSyncService.dataSyncDAO, 'listBySubmissionID').mockRejectedValue(new Error(FAILED_TO_LIST_DATA_SYNC));
 
-            await expect(dataSyncService.createDataSync(FULL_DATA_SYNC)).rejects.toThrow(FAILED_TO_CREATE_DATA_SYNC);
-        });
-
-        it('updateDataSync rejects with the generic update message', async () => {
-            jest.spyOn(dataSyncService.dataSyncDAO, 'update').mockRejectedValue(new Error(FAILED_TO_UPDATE_DATA_SYNC));
-
-            await expect(dataSyncService.updateDataSync('123', { status: DATA_SYNC_STATUS.SUCCEEDED })).rejects.toThrow(FAILED_TO_UPDATE_DATA_SYNC);
+            await expect(dataSyncService.listBySubmissionID('sub-1', DATA_SYNC_TYPE.METADATA)).rejects.toThrow(FAILED_TO_LIST_DATA_SYNC);
         });
 
         it('findLatestBySubmissionIDAndType rejects with the DAO error', async () => {
             jest.spyOn(dataSyncService.dataSyncDAO, 'findLatestBySubmissionIDAndType').mockRejectedValue(new Error(FAILED_TO_FIND_LATEST_DATA_SYNC));
 
-            await expect(dataSyncService.findLatestBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA)).rejects.toThrow(FAILED_TO_FIND_LATEST_DATA_SYNC);
+            await expect(dataSyncService.findLatestBySubmissionIDAndType('sub-1', DATA_SYNC_TYPE.METADATA)).rejects.toThrow(FAILED_TO_FIND_LATEST_DATA_SYNC);
         });
-
-        it('findInProgressBySubmissionIDAndType rejects with the DAO error', async () => {
-            jest.spyOn(dataSyncService.dataSyncDAO, 'findInProgressBySubmissionIDAndType').mockRejectedValue(new Error(FAILED_TO_FIND_IN_PROGRESS_DATA_SYNC));
-
-            await expect(dataSyncService.findInProgressBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA)).rejects.toThrow(FAILED_TO_FIND_IN_PROGRESS_DATA_SYNC);
-        });
-    });
-
-    describe('validate optional create fields', () => {
-
-        const optionalFields = [
-            'taskArn',
-            'taskExecutionArn',
-            'endTime',
-            '_id',
-        ];
-
-        for (const field of optionalFields) {
-            it(`reject null or empty ${field}`, async () => {
-                for (const emptyValue of [null, '']) {
-                    const record = { ...FULL_DATA_SYNC, [field]: emptyValue };
-                    await expect(dataSyncService.createDataSync(record)).rejects.toThrow(
-                        replaceErrorString(ERROR.CREATE_DATA_SYNC_EMPTY_FIELD, field)
-                    );
-                }
-            });
-
-            it(`reject invalid type for ${field}`, async () => {
-                const invalidTypes = { ...ALL_TEST_TYPES };
-                delete invalidTypes[dataSyncService.dataSyncDAO.model.schema.path(field).instance.toLowerCase()];
-                for (const type in invalidTypes) {
-                    const record = { ...FULL_DATA_SYNC, [field]: invalidTypes[type] };
-                    await expect(dataSyncService.createDataSync(record)).rejects.toThrow(
-                        replaceErrorString(ERROR.CREATE_DATA_SYNC_INVALID_TYPE, field)
-                    );
-                }
-            });
-        }
-
-    });
-
-    describe('create payload and null writes', () => {
-
-        it('does not forward unknown keys', async () => {
-            const createdDataSync = { ...FULL_DATA_SYNC, _id: 'from-dao' };
-            const createSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'create').mockResolvedValue(createdDataSync);
-
-            await dataSyncService.createDataSync({ ...FULL_DATA_SYNC, notAField: 'ignored' });
-            expect(createSpy).toHaveBeenCalledWith(FULL_DATA_SYNC);
-        });
-
-        it('create resolving to null rejects with the generic create message', async () => {
-            jest.spyOn(dataSyncService.dataSyncDAO, 'create').mockResolvedValue(null);
-
-            await expect(dataSyncService.createDataSync(FULL_DATA_SYNC)).rejects.toThrow('Failed to create DataSync');
-        });
-
-        it('update resolving to null rejects with the generic update message', async () => {
-            jest.spyOn(dataSyncService.dataSyncDAO, 'update').mockResolvedValue(null);
-
-            await expect(dataSyncService.updateDataSync('123', { status: DATA_SYNC_STATUS.SUCCEEDED })).rejects.toThrow('Failed to update DataSync');
-        });
-
     });
 
 });
