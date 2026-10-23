@@ -18,7 +18,14 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     DATA_SYNC_COLLECTION, DATA_SYNC_SOURCE_FOLDER, DATA_SYNC_TARGET_FOLDER, DATA_SYNC_START_TIME, \
     DATA_SYNC_END_TIME, DATA_SYNC_TASK_ARN, DATA_SYNC_TASK_EXECUTION_ARN, \
     DATA_SYNC_TYPE_METADATA, DATA_SYNC_TYPE_FILE, DATA_SYNC_STATUS_IN_PROGRESS, \
-    METADATA_DATA_SYNC_STATUS, FILE_DATA_SYNC_STATUS
+    DATA_SYNC_STATUS_FAILED, DATA_SYNC_STATUS_SUCCEEDED, \
+    METADATA_DATA_SYNC_STATUS, FILE_DATA_SYNC_STATUS, \
+    METADATA_DATA_SYNC_ACTIVE, FILE_DATA_SYNC_ACTIVE, \
+    METADATA_DATA_SYNC_OVERLAP_FAILED, FILE_DATA_SYNC_OVERLAP_FAILED, \
+    DATA_SYNC_SOURCE_LOCATION_ARN, DATA_SYNC_DEST_LOCATION_ARN, \
+    DATA_SYNC_LIST_PENDING, DATA_SYNC_ROLLUP_PENDING, DATA_SYNC_CLEANUP_AFTER, DATA_SYNC_LAST_ERROR, \
+    DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE, DATA_SYNC_WRITE_ERROR, \
+    DATA_SYNC_FINISH_MAX_ATTEMPTS
 from common.utils import get_exception_msg, current_datetime, get_uuid_str, dao_write_succeeded
 from common.s3_utils import S3Service
 
@@ -1406,158 +1413,257 @@ class MongoDao:
         data_collection = db[SUBMISSION_COLLECTION]
         return data_collection.find_one_and_update({ID: submission_id}, update_ops, return_document=ReturnDocument.AFTER)
 
-    def insert_data_sync(self, submission_id, sync_type, source_folder, target_folder, status, task_arn=None, task_execution_arn=None, end_time=None):
-        """Insert a dataSync task record.
+    def _submission_data_sync_fields(self, sync_type):
+        """Map a DataSync type to its submission status, in-flight list, and overlap-failed fields.
 
-        The document _id is a string UUID. PyMongo would otherwise generate an ObjectId,
-        which does not match the backend's string _id schema for the dataSync collection.
+        @param sync_type DataSync type, "metadata" or "file"
+        @returns (status field, active list field, overlap-failed field), or None when unrecognized
+        """
+        if sync_type == DATA_SYNC_TYPE_METADATA:
+            return METADATA_DATA_SYNC_STATUS, METADATA_DATA_SYNC_ACTIVE, METADATA_DATA_SYNC_OVERLAP_FAILED
+        if sync_type == DATA_SYNC_TYPE_FILE:
+            return FILE_DATA_SYNC_STATUS, FILE_DATA_SYNC_ACTIVE, FILE_DATA_SYNC_OVERLAP_FAILED
+        return None
+
+    def _log_data_sync_db_error(self, error, message):
+        """Log a DataSync database failure with its traceback.
+
+        @param error exception that was caught
+        @param message context including the ids involved
+        """
+        self.log.exception(error)
+        self.log.exception(message)
+
+    def insert_data_sync(self, submission_id, sync_type, source_folder, target_folder, status, data_sync_id, start_time, task_arn=None, task_execution_arn=None, source_location_arn=None, destination_location_arn=None, end_time=None, rollup_pending=False, last_error=None):
+        """Insert a dataSync task record. Called only from the starting container's transfer or its recovery thread.
+
+        The document _id is the caller's string UUID. listPending is always true so the submission
+        finish write waits until this id is on the in-flight list. A duplicate key means an earlier
+        insert of the same id already landed and counts as applied.
+
+        Does not write updatedAt.
 
         @param submission_id submission document id
         @param sync_type DataSync type, "metadata" or "file"
         @param source_folder source S3 prefix passed to transfer_s3_obj
         @param target_folder destination S3 prefix passed to transfer_s3_obj
         @param status DataSync status to store
+        @param data_sync_id caller-generated document id
+        @param start_time start time chosen by the starting container
         @param task_arn AWS DataSync task ARN, when the task was created
         @param task_execution_arn AWS DataSync task execution ARN, when the task started
-        @param end_time terminal time to store, when already known (e.g. a start failure)
-        @returns the new document id, or None when the insert fails
+        @param source_location_arn AWS DataSync source location ARN, when created
+        @param destination_location_arn AWS DataSync destination location ARN, when created
+        @param end_time terminal time to store, when already known
+        @param rollup_pending True when the submission finish write is still owed
+        @param last_error diagnostic stored on the record, when already known
+        @returns DATA_SYNC_WRITE_APPLIED or DATA_SYNC_WRITE_ERROR
         """
-        data_sync_id = get_uuid_str()
         doc = {
             ID: data_sync_id,
             SUBMISSION_ID: submission_id,
             TYPE: sync_type,
             DATA_SYNC_SOURCE_FOLDER: source_folder,
             DATA_SYNC_TARGET_FOLDER: target_folder,
-            DATA_SYNC_START_TIME: current_datetime(),
+            DATA_SYNC_START_TIME: start_time,
             STATUS: status,
+            DATA_SYNC_LIST_PENDING: True,
+            DATA_SYNC_ROLLUP_PENDING: rollup_pending,
         }
-        if task_arn is not None:
-            doc[DATA_SYNC_TASK_ARN] = task_arn
-        if task_execution_arn is not None:
-            doc[DATA_SYNC_TASK_EXECUTION_ARN] = task_execution_arn
-        if end_time is not None:
-            doc[DATA_SYNC_END_TIME] = end_time
+        optional = {
+            DATA_SYNC_TASK_ARN: task_arn,
+            DATA_SYNC_TASK_EXECUTION_ARN: task_execution_arn,
+            DATA_SYNC_SOURCE_LOCATION_ARN: source_location_arn,
+            DATA_SYNC_DEST_LOCATION_ARN: destination_location_arn,
+            DATA_SYNC_END_TIME: end_time,
+            DATA_SYNC_LAST_ERROR: last_error,
+        }
+        for field, value in optional.items():
+            if value is not None:
+                doc[field] = value
         db = self.client[self.db_name]
         data_sync_collection = db[DATA_SYNC_COLLECTION]
         try:
             data_sync_collection.insert_one(doc)
-            return data_sync_id
-        except errors.PyMongoError as pe:
-            self.log.exception(pe)
-            self.log.exception(f"Failed to insert data sync record, {submission_id}/{sync_type}: {get_exception_msg()}")
-            return None
+            return DATA_SYNC_WRITE_APPLIED
+        except errors.DuplicateKeyError:
+            self.log.info(
+                f"DataSync insert already recorded "
+                f"submissionID={submission_id} type={sync_type} dataSyncID={data_sync_id}"
+            )
+            return DATA_SYNC_WRITE_APPLIED
         except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to insert data sync record, {submission_id}/{sync_type}: {get_exception_msg()}")
-            return None
+            self._log_data_sync_db_error(
+                e,
+                f"DataSync tracking failed insert submissionID={submission_id} type={sync_type} dataSyncID={data_sync_id}: {get_exception_msg()}",
+            )
+            return DATA_SYNC_WRITE_ERROR
 
-    def update_data_sync(self, data_sync_id, status, end_time=None):
-        """Update a dataSync task record's status and, when the task has finished, its end time.
+    def update_data_sync(self, data_sync_id, set_fields=None, unset_fields=None, match_fields=None):
+        """Update an existing dataSync record. Never upserts and never inserts.
 
         @param data_sync_id dataSync document id
-        @param status DataSync status to store
-        @param end_time terminal time to store, when the task has finished
-        @returns True when a document matched
+        @param set_fields fields to $set, or None
+        @param unset_fields field names to $unset, or None
+        @param match_fields extra filter fields merged with {_id: data_sync_id}, or None
+        @returns DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE when no document matches
+                 (including when match_fields does not match), or DATA_SYNC_WRITE_ERROR
         """
-        updates = {STATUS: status}
-        if end_time is not None:
-            updates[DATA_SYNC_END_TIME] = end_time
+        update = {}
+        if set_fields:
+            update["$set"] = dict(set_fields)
+        if unset_fields:
+            update["$unset"] = {field: "" for field in unset_fields}
+        if not update:
+            self.log.error(f"DataSync tracking failed update dataSyncID={data_sync_id}: no fields to write")
+            return DATA_SYNC_WRITE_ERROR
+        query = {ID: data_sync_id, **(match_fields or {})}
         db = self.client[self.db_name]
         data_sync_collection = db[DATA_SYNC_COLLECTION]
         try:
-            result = data_sync_collection.update_one({ID: data_sync_id}, {"$set": updates})
-            return result.matched_count > 0
-        except errors.PyMongoError as pe:
-            self.log.exception(pe)
-            self.log.exception(f"Failed to update data sync record, {data_sync_id}: {get_exception_msg()}")
-            return False
+            result = data_sync_collection.update_one(query, update)
+            if result.matched_count > 0:
+                return DATA_SYNC_WRITE_APPLIED
+            return DATA_SYNC_WRITE_STALE
         except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to update data sync record, {data_sync_id}: {get_exception_msg()}")
-            return False
+            self._log_data_sync_db_error(e, f"DataSync tracking failed update dataSyncID={data_sync_id}: {get_exception_msg()}")
+            return DATA_SYNC_WRITE_ERROR
 
-    def set_submission_data_sync_status(self, submission_id, sync_type, status, data_sync_id=None):
-        """Set a submission's metadata or file DataSync rollup status.
+    def add_active_submission_data_sync(self, submission_id, sync_type, data_sync_id):
+        """Add a dataSync id to the submission's in-flight list and set that type's status to In Progress.
 
-        Does not touch updatedAt. Archival retention (getToBeArchivedSubmissions on the
-        backend) is measured from updatedAt, so changing it on sync completion would push
-        a completed submission's archival date out.
-
-        When data_sync_id is given, writes only if that record is still the newest for the
-        submission and type (by startTime). When data_sync_id is None (e.g. insert failed),
-        writes unconditionally.
+        One atomic update. Does not touch updatedAt. Idempotent while the transfer is still in flight.
 
         @param submission_id submission document id
         @param sync_type DataSync type, "metadata" or "file"
-        @param status DataSync status to store
-        @param data_sync_id dataSync document id used for the stale-write guard, or None
-        @returns True when a document matched, False when sync_type is unrecognized, the
-                 write is skipped as stale, or the write fails
+        @param data_sync_id dataSync document id
+        @returns DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE when the submission is missing,
+                 or DATA_SYNC_WRITE_ERROR
         """
-        if sync_type == DATA_SYNC_TYPE_METADATA:
-            field = METADATA_DATA_SYNC_STATUS
-        elif sync_type == DATA_SYNC_TYPE_FILE:
-            field = FILE_DATA_SYNC_STATUS
-        else:
-            self.log.error(f"{submission_id}: Unrecognized DataSync type, {sync_type}; submission sync status not updated.")
-            return False
+        fields = self._submission_data_sync_fields(sync_type)
+        if not fields:
+            self.log.error(
+                f"DataSync tracking failed add submissionID={submission_id} type={sync_type} dataSyncID={data_sync_id}: unrecognized type"
+            )
+            return DATA_SYNC_WRITE_ERROR
+        status_field, active_field, _flag_field = fields
         db = self.client[self.db_name]
-        if data_sync_id is not None:
-            data_sync_collection = db[DATA_SYNC_COLLECTION]
-            try:
-                newest = data_sync_collection.find_one(
-                    {SUBMISSION_ID: submission_id, TYPE: sync_type},
-                    sort=[(DATA_SYNC_START_TIME, DESCENDING)],
-                )
-            except errors.PyMongoError as pe:
-                self.log.exception(pe)
-                self.log.exception(f"Failed to check newest data sync for rollup, {submission_id}/{sync_type}: {get_exception_msg()}")
-                return False
-            except Exception as e:
-                self.log.exception(e)
-                self.log.exception(f"Failed to check newest data sync for rollup, {submission_id}/{sync_type}: {get_exception_msg()}")
-                return False
-            if not newest or newest.get(ID) != data_sync_id:
-                self.log.info(
-                    f"{submission_id}/{sync_type}: Skipping submission rollup update for {data_sync_id}; "
-                    f"a newer dataSync record exists."
-                )
-                return False
         submission_collection = db[SUBMISSION_COLLECTION]
         try:
-            result = submission_collection.update_one({ID: submission_id}, {"$set": {field: status}})
-            return result.matched_count > 0
-        except errors.PyMongoError as pe:
-            self.log.exception(pe)
-            self.log.exception(f"Failed to set submission data sync status, {submission_id}/{sync_type}: {get_exception_msg()}")
-            return False
+            result = submission_collection.update_one(
+                {ID: submission_id},
+                {
+                    "$addToSet": {active_field: data_sync_id},
+                    "$set": {status_field: DATA_SYNC_STATUS_IN_PROGRESS},
+                },
+            )
+            if result.matched_count > 0:
+                return DATA_SYNC_WRITE_APPLIED
+            return DATA_SYNC_WRITE_STALE
         except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to set submission data sync status, {submission_id}/{sync_type}: {get_exception_msg()}")
-            return False
+            self._log_data_sync_db_error(
+                e,
+                f"DataSync tracking failed add submissionID={submission_id} type={sync_type} dataSyncID={data_sync_id}: {get_exception_msg()}",
+            )
+            return DATA_SYNC_WRITE_ERROR
 
-    def find_in_progress_data_syncs(self):
-        """Return dataSync documents that are In Progress and have a taskExecutionArn.
+    def _finish_last_submission_data_sync(self, collection, submission_id, data_sync_id, status, status_field, active_field, flag_field):
+        """Write the final status when this id is the only in-flight transfer.
 
-        Used at export-service startup to reconcile records left behind after a restart.
-        @returns list of documents, or [] on failure
+        A failed transfer always finishes Failed. A successful transfer finishes Failed when the
+        overlap flag is set, and Succeeded otherwise. Both variants are single atomic updates.
+
+        @param collection submission collection
+        @param submission_id submission document id
+        @param data_sync_id dataSync document id
+        @param status terminal status of this transfer
+        @param status_field submission status field for the type
+        @param active_field in-flight list field for the type
+        @param flag_field overlap-failed field for the type
+        @returns True when a document matched
+        """
+        clear = {"$set": {active_field: []}, "$unset": {flag_field: ""}}
+        exact = {ID: submission_id, active_field: [data_sync_id]}
+        if status == DATA_SYNC_STATUS_FAILED:
+            clear["$set"][status_field] = DATA_SYNC_STATUS_FAILED
+            return collection.update_one(exact, clear).matched_count > 0
+        failed_overlap = collection.update_one(
+            {**exact, flag_field: True},
+            {"$set": {status_field: DATA_SYNC_STATUS_FAILED, active_field: []}, "$unset": {flag_field: ""}},
+        )
+        if failed_overlap.matched_count > 0:
+            return True
+        clear["$set"][status_field] = DATA_SYNC_STATUS_SUCCEEDED
+        return collection.update_one({**exact, flag_field: {"$ne": True}}, clear).matched_count > 0
+
+    def finish_submission_data_sync(self, submission_id, sync_type, data_sync_id, status):
+        """Remove a finished transfer from the in-flight list, or set the final status when it is the last one.
+
+        Tries the last-one-out update, then a pull that only matches while another id remains, then
+        checks whether the id is still listed. A list that changed between those writes is retried.
+        Does not touch updatedAt.
+
+        @param submission_id submission document id
+        @param sync_type DataSync type, "metadata" or "file"
+        @param data_sync_id dataSync document id
+        @param status terminal status of this transfer, Succeeded or Failed
+        @returns DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE when the id is not in the list,
+                 or DATA_SYNC_WRITE_ERROR
+        """
+        fields = self._submission_data_sync_fields(sync_type)
+        if not fields:
+            self.log.error(
+                f"DataSync tracking failed finish submissionID={submission_id} type={sync_type} dataSyncID={data_sync_id}: unrecognized type"
+            )
+            return DATA_SYNC_WRITE_ERROR
+        status_field, active_field, flag_field = fields
+        db = self.client[self.db_name]
+        submission_collection = db[SUBMISSION_COLLECTION]
+        context = f"submissionID={submission_id} type={sync_type} dataSyncID={data_sync_id}"
+        try:
+            for _attempt in range(DATA_SYNC_FINISH_MAX_ATTEMPTS):
+                if self._finish_last_submission_data_sync(
+                    submission_collection, submission_id, data_sync_id, status, status_field, active_field, flag_field,
+                ):
+                    return DATA_SYNC_WRITE_APPLIED
+                pull_update = {"$pull": {active_field: data_sync_id}}
+                if status == DATA_SYNC_STATUS_FAILED:
+                    pull_update["$set"] = {flag_field: True}
+                pulled = submission_collection.update_one(
+                    {ID: submission_id, active_field: data_sync_id, f"{active_field}.1": {"$exists": True}},
+                    pull_update,
+                )
+                if pulled.matched_count > 0:
+                    return DATA_SYNC_WRITE_APPLIED
+                still_listed = submission_collection.find_one({ID: submission_id, active_field: data_sync_id}, {ID: 1})
+                if not still_listed:
+                    return DATA_SYNC_WRITE_STALE
+            self.log.error(f"DataSync tracking failed finish {context}: retries exhausted")
+            return DATA_SYNC_WRITE_ERROR
+        except Exception as e:
+            self._log_data_sync_db_error(e, f"DataSync tracking failed finish {context}: {get_exception_msg()}")
+            return DATA_SYNC_WRITE_ERROR
+
+    def find_unfinished_data_syncs(self):
+        """Return dataSync documents that still need monitoring.
+
+        Matches In Progress, a pending in-flight list add, a pending submission finish write,
+        or a cleanup time that is set (including one still in the future).
+
+        @returns list of documents, or None when the query fails
         """
         db = self.client[self.db_name]
         data_sync_collection = db[DATA_SYNC_COLLECTION]
         try:
-            return list(data_sync_collection.find({
-                STATUS: DATA_SYNC_STATUS_IN_PROGRESS,
-                DATA_SYNC_TASK_EXECUTION_ARN: {"$exists": True, "$nin": [None, ""]},
-            }))
-        except errors.PyMongoError as pe:
-            self.log.exception(pe)
-            self.log.exception(f"Failed to find in-progress data sync records: {get_exception_msg()}")
-            return []
+            return list(data_sync_collection.find({"$or": [
+                {STATUS: DATA_SYNC_STATUS_IN_PROGRESS},
+                {DATA_SYNC_LIST_PENDING: True},
+                {DATA_SYNC_ROLLUP_PENDING: True},
+                {DATA_SYNC_CLEANUP_AFTER: {"$exists": True, "$ne": None}},
+            ]}))
         except Exception as e:
-            self.log.exception(e)
-            self.log.exception(f"Failed to find in-progress data sync records: {get_exception_msg()}")
-            return []
+            self._log_data_sync_db_error(e, f"DataSync tracking failed find unfinished: {get_exception_msg()}")
+            return None
 
     """
     get bucket name based on dataCommons and type

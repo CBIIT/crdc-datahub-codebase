@@ -1,11 +1,7 @@
-"""Unit tests for DataSync tracking in metadata_export.py:
-transfer_s3_obj (insert + rollup on start, Failed on start error) and
-monitor_datasync_task (terminal update + rollup, Failed on monitor exception),
-map_aws_datasync_status, and reconcile_in_progress_data_syncs.
-"""
+"""Unit tests for DataSync tracking precedence in metadata_export.py."""
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 _this_dir = os.path.dirname(os.path.abspath(__file__))
@@ -14,14 +10,21 @@ sys.path.insert(0, os.path.join(_project_root, "src"))
 
 from botocore.exceptions import ClientError
 
+import metadata_export
 from metadata_export import (
     ExportMetadata,
     monitor_datasync_task,
-    map_aws_datasync_status,
-    reconcile_in_progress_data_syncs,
+    recover_data_sync_tracking,
+    _monitor_data_sync,
+    _next_data_sync_monitor_state,
+    _run_data_sync_monitor_pass,
+    data_sync_monitor_loop,
 )
 from common.constants import (
     ID,
+    SUBMISSION_ID,
+    TYPE,
+    STATUS,
     EXPORT_ROOT_PATH,
     BATCH_BUCKET,
     DATA_COMMON_NAME,
@@ -30,23 +33,72 @@ from common.constants import (
     DATASYNC_ROLE_ARN_CONFIG,
     DATASYNC_LOG_ARN_CONFIG,
     DM_BUCKET_CONFIG_NAME,
-    SUBMISSION_ID,
-    TYPE,
     DATA_SYNC_TYPE_METADATA,
     DATA_SYNC_TYPE_FILE,
     DATA_SYNC_STATUS_IN_PROGRESS,
     DATA_SYNC_STATUS_SUCCEEDED,
     DATA_SYNC_STATUS_FAILED,
+    DATA_SYNC_TASK_ARN,
     DATA_SYNC_TASK_EXECUTION_ARN,
+    DATA_SYNC_SOURCE_LOCATION_ARN,
+    DATA_SYNC_DEST_LOCATION_ARN,
+    DATA_SYNC_LIST_PENDING,
+    DATA_SYNC_ROLLUP_PENDING,
+    DATA_SYNC_CLEANUP_AFTER,
+    DATA_SYNC_LAST_ERROR,
+    DATA_SYNC_LAST_POLLED_AT,
+    DATA_SYNC_END_TIME,
+    DATA_SYNC_START_TIME,
+    DATA_SYNC_WRITE_APPLIED,
+    DATA_SYNC_WRITE_STALE,
+    DATA_SYNC_WRITE_ERROR,
+    DATA_SYNC_MONITOR_STATE_ACTIVE,
+    DATA_SYNC_MONITOR_STATE_WAITING,
+    DATA_SYNC_MONITOR_ACTIVE_INTERVAL_SECONDS,
+    DATA_SYNC_MONITOR_WAITING_INTERVAL_SECONDS,
+    DATA_SYNC_POLL_CLAIM_SECONDS,
+    DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE,
+    DATA_SYNC_LAST_ERROR_NOT_STARTED,
+    DATA_SYNC_LOG_TRANSFER_FAILED,
+    DATA_SYNC_LOG_EXECUTION_FAILED,
+    DATA_SYNC_LOG_TRACKING_FAILED,
+    DATA_SYNC_LOG_TRACKING_NOT_RECOVERED,
+    DATA_SYNC_LOG_CLEANUP_FAILED,
+    DATA_SYNC_LOG_CLEANUP_DEFERRED,
+    DATA_SYNC_LOG_OUTCOME_UNKNOWN,
 )
 
+
+def _finalize_set_fields(mongo_dao):
+    """Return the first update $set that writes a terminal STATUS."""
+    for call in mongo_dao.update_data_sync.call_args_list:
+        set_fields = call.args[1] if len(call.args) > 1 else None
+        if isinstance(set_fields, dict) and set_fields.get(STATUS) in (
+            DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED,
+        ):
+            return set_fields
+    return None
+
+
+def _update_without_reopen(default=DATA_SYNC_WRITE_APPLIED, reopen=DATA_SYNC_WRITE_STALE):
+    """Side effect that treats early-finalize reopen matches as STALE by default."""
+    def side_effect(_data_sync_id, set_fields=None, unset_fields=None, match_fields=None):
+        if match_fields and DATA_SYNC_LAST_ERROR in match_fields:
+            return reopen
+        return default
+    return side_effect
+
 SUBMISSION_ID_VAL = "sub-1"
+NOW = datetime(2026, 1, 1, 12, 0, 0)
 
 
 def _make_export_metadata():
-    """Build an ExportMetadata with a mocked MongoDao and S3Service (bypass __init__)."""
+    """Build an ExportMetadata with a mocked MongoDao (bypass __init__)."""
     mongo_dao = MagicMock()
-    mongo_dao.insert_data_sync.return_value = "data-sync-1"
+    mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+    mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+    mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+    mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
     mongo_dao.get_bucket_name.return_value = "metadata-bucket"
 
     export_metadata = ExportMetadata.__new__(ExportMetadata)
@@ -69,408 +121,664 @@ def _make_export_metadata():
     return export_metadata, mongo_dao
 
 
-def _mock_datasync_client(task_arn="task-arn-1", task_execution_arn="exec-arn-1"):
+def _mock_datasync_client():
     client = MagicMock()
     client.create_location_s3.side_effect = [{"LocationArn": "src-loc"}, {"LocationArn": "dest-loc"}]
-    client.create_task.return_value = {"TaskArn": task_arn}
-    client.start_task_execution.return_value = {"TaskExecutionArn": task_execution_arn}
+    client.create_task.return_value = {"TaskArn": "task-arn-1"}
+    client.start_task_execution.return_value = {"TaskExecutionArn": "exec-arn-1"}
     return client
 
 
-class TestMapAwsDatasyncStatus:
-
-    def test_success_maps_to_succeeded(self):
-        assert map_aws_datasync_status("SUCCESS") == DATA_SYNC_STATUS_SUCCEEDED
-
-    def test_error_maps_to_failed(self):
-        assert map_aws_datasync_status("ERROR") == DATA_SYNC_STATUS_FAILED
-
-    def test_other_values_map_to_in_progress(self):
-        for aws_status in ["QUEUED", "LAUNCHING", "PREPARING", "TRANSFERRING", "VERIFYING", "", None]:
-            assert map_aws_datasync_status(aws_status) == DATA_SYNC_STATUS_IN_PROGRESS
+def _aws_methods(client):
+    return [
+        call[0] for call in client.mock_calls
+        if call[0] in ("create_location_s3", "create_task", "start_task_execution")
+    ]
 
 
-class TestTransferS3ObjDataSync:
+def _not_found():
+    error = ClientError(
+        {"Error": {"Code": "InvalidRequestException", "Message": "Task execution was not found."}},
+        "DescribeTaskExecution",
+    )
+    return error
 
-    @patch("metadata_export.start_monitoring_task")
-    @patch("metadata_export.boto3")
-    def test_tracks_a_sync_on_successful_start(self, mock_boto3, mock_start_monitoring):
+
+def _record(**overrides):
+    record = {
+        ID: "sync-1",
+        SUBMISSION_ID: SUBMISSION_ID_VAL,
+        TYPE: DATA_SYNC_TYPE_FILE,
+        STATUS: DATA_SYNC_STATUS_IN_PROGRESS,
+        DATA_SYNC_START_TIME: NOW - timedelta(hours=1),
+        DATA_SYNC_LIST_PENDING: False,
+        DATA_SYNC_ROLLUP_PENDING: False,
+        DATA_SYNC_TASK_ARN: "task-arn-1",
+        DATA_SYNC_TASK_EXECUTION_ARN: "exec-arn-1",
+        DATA_SYNC_SOURCE_LOCATION_ARN: "src-loc",
+        DATA_SYNC_DEST_LOCATION_ARN: "dest-loc",
+    }
+    record.update(overrides)
+    return record
+
+
+class TestTransferPrecedence:
+    def _run(self, export_metadata, sync_type=DATA_SYNC_TYPE_FILE):
+        with patch("metadata_export.boto3") as mock_boto3, \
+                patch("metadata_export.threading.Thread") as thread_cls, \
+                patch("metadata_export.notify_data_sync_started") as notify, \
+                patch("metadata_export.get_uuid_str", return_value="sync-1"), \
+                patch("metadata_export.current_datetime", return_value=NOW):
+            client = _mock_datasync_client()
+            mock_boto3.client.return_value = client
+            export_metadata.transfer_s3_obj(
+                "bucket", "src/folder", "dest-bucket", "dest/folder", [], sync_type=sync_type,
+            )
+        return client, thread_cls, notify
+
+    def test_tracked_transfer_makes_the_original_aws_calls(self):
         export_metadata, mongo_dao = _make_export_metadata()
-        mock_boto3.client.return_value = _mock_datasync_client()
+        client, thread_cls, notify = self._run(export_metadata)
 
-        export_metadata.transfer_s3_obj(
-            "bucket", "src/folder", "dest-bucket", "dest/folder", [], sync_type=DATA_SYNC_TYPE_METADATA
-        )
-
-        mongo_dao.insert_data_sync.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_METADATA, "src/folder", "dest/folder",
-            DATA_SYNC_STATUS_IN_PROGRESS, task_arn="task-arn-1", task_execution_arn="exec-arn-1",
-        )
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_METADATA, DATA_SYNC_STATUS_IN_PROGRESS, "data-sync-1",
-        )
-        mock_start_monitoring.assert_called_once()
-        kwargs = mock_start_monitoring.call_args.kwargs
-        assert kwargs["mongo_dao"] is mongo_dao
-        assert kwargs["data_sync_id"] == "data-sync-1"
-        assert kwargs["submission_id"] == SUBMISSION_ID_VAL
-        assert kwargs["sync_type"] == DATA_SYNC_TYPE_METADATA
-
-    @patch("metadata_export.start_monitoring_task")
-    @patch("metadata_export.boto3")
-    def test_does_not_track_when_sync_type_is_not_given(self, mock_boto3, mock_start_monitoring):
-        """move_s3_objects and restore_deleted_file call transfer_s3_obj with no sync_type."""
-        export_metadata, mongo_dao = _make_export_metadata()
-        mock_boto3.client.return_value = _mock_datasync_client()
-
-        export_metadata.transfer_s3_obj("bucket", "src/folder", "dest-bucket", "dest/folder", [])
-
-        mongo_dao.insert_data_sync.assert_not_called()
-        mongo_dao.set_submission_data_sync_status.assert_not_called()
-        kwargs = mock_start_monitoring.call_args.kwargs
-        assert kwargs["data_sync_id"] is None
-        assert kwargs["sync_type"] is None
-
-    @patch("metadata_export.boto3")
-    def test_records_a_failed_sync_when_the_task_fails_to_start(self, mock_boto3):
-        export_metadata, mongo_dao = _make_export_metadata()
-        client = _mock_datasync_client()
-        client.create_task.side_effect = Exception("boom")
-        mock_boto3.client.return_value = client
-
-        export_metadata.transfer_s3_obj(
-            "bucket", "src/folder", "dest-bucket", "dest/folder", [], sync_type=DATA_SYNC_TYPE_FILE
-        )
-
+        assert _aws_methods(client) == [
+            "create_location_s3", "create_location_s3", "create_task", "start_task_execution",
+        ]
+        create_task_kwargs = client.create_task.call_args.kwargs
+        assert create_task_kwargs["Options"]["VerifyMode"] == "ONLY_FILES_TRANSFERRED"
+        assert create_task_kwargs["SourceLocationArn"] == "src-loc"
+        thread_cls.assert_not_called()
+        notify.assert_called_once()
         mongo_dao.insert_data_sync.assert_called_once()
-        call_args = mongo_dao.insert_data_sync.call_args
-        assert call_args.args == (SUBMISSION_ID_VAL, DATA_SYNC_TYPE_FILE, "src/folder", "dest/folder", DATA_SYNC_STATUS_FAILED)
-        assert isinstance(call_args.kwargs.get("end_time"), datetime)
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_FILE, DATA_SYNC_STATUS_FAILED, "data-sync-1",
-        )
-
-    @patch("metadata_export.boto3")
-    def test_client_error_before_start_records_a_failed_sync(self, mock_boto3):
-        export_metadata, mongo_dao = _make_export_metadata()
-        client = _mock_datasync_client()
-        client.create_location_s3.side_effect = ClientError(
-            {"Error": {"Code": "X", "Message": "boom"}}, "CreateLocationS3"
-        )
-        mock_boto3.client.return_value = client
-
-        export_metadata.transfer_s3_obj(
-            "bucket", "src/folder", "dest-bucket", "dest/folder", [], sync_type=DATA_SYNC_TYPE_METADATA
-        )
-
-        mongo_dao.insert_data_sync.assert_called_once()
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_METADATA, DATA_SYNC_STATUS_FAILED, "data-sync-1",
-        )
-
-    @patch("metadata_export.start_monitoring_task")
-    @patch("metadata_export.boto3")
-    def test_error_after_successful_start_does_not_record_failed_sync(self, mock_boto3, mock_start_monitoring):
-        export_metadata, mongo_dao = _make_export_metadata()
-        mock_boto3.client.return_value = _mock_datasync_client()
-        mock_start_monitoring.side_effect = Exception("monitor boom")
-
-        export_metadata.transfer_s3_obj(
-            "bucket", "src/folder", "dest-bucket", "dest/folder", [], sync_type=DATA_SYNC_TYPE_METADATA
-        )
-
-        # In Progress was recorded; a second Failed insert must not happen.
-        assert mongo_dao.insert_data_sync.call_count == 1
         assert mongo_dao.insert_data_sync.call_args.args[4] == DATA_SYNC_STATUS_IN_PROGRESS
-        failed_calls = [
-            c for c in mongo_dao.set_submission_data_sync_status.call_args_list
-            if c.args[2] == DATA_SYNC_STATUS_FAILED
+        assert mongo_dao.insert_data_sync.call_args.args[5] == "sync-1"
+
+    def test_insert_error_still_runs_the_transfer_and_starts_recovery(self):
+        export_metadata, mongo_dao = _make_export_metadata()
+        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_ERROR
+        client, thread_cls, notify = self._run(export_metadata)
+
+        assert _aws_methods(client) == [
+            "create_location_s3", "create_location_s3", "create_task", "start_task_execution",
         ]
-        assert failed_calls == []
+        notify.assert_not_called()
+        assert thread_cls.call_args.kwargs["target"] == recover_data_sync_tracking
+        client.delete_task.assert_not_called()
+        client.delete_location.assert_not_called()
 
-    def test_transfer_release_metadata_tracks_the_metadata_type(self):
+    def test_insert_exception_still_runs_the_transfer(self):
+        export_metadata, _mongo_dao = _make_export_metadata()
+        export_metadata.mongo_dao.insert_data_sync.side_effect = RuntimeError("down")
+        client, thread_cls, _notify = self._run(export_metadata)
+
+        assert "start_task_execution" in _aws_methods(client)
+        assert thread_cls.call_args.kwargs["target"] == recover_data_sync_tracking
+
+    def test_untracked_move_uses_the_original_monitor(self):
         export_metadata, mongo_dao = _make_export_metadata()
-        export_metadata.transfer_s3_obj = MagicMock()
-
-        export_metadata.transfer_release_metadata()
-
-        _, kwargs = export_metadata.transfer_s3_obj.call_args
-        assert kwargs["sync_type"] == DATA_SYNC_TYPE_METADATA
-
-    def test_transfer_released_files_tracks_the_file_type(self):
-        export_metadata, mongo_dao = _make_export_metadata()
-        export_metadata.transfer_s3_obj = MagicMock()
-
-        export_metadata.transfer_released_files()
-
-        _, kwargs = export_metadata.transfer_s3_obj.call_args
-        assert kwargs["sync_type"] == DATA_SYNC_TYPE_FILE
-
-
-class TestMoveAndRestoreDoNotTrackDataSync:
-
-    @patch("metadata_export.start_monitoring_task")
-    @patch("metadata_export.boto3")
-    def test_move_s3_objects_does_not_track_data_sync(self, mock_boto3, mock_start_monitoring):
-        export_metadata, mongo_dao = _make_export_metadata()
-        mock_boto3.client.return_value = _mock_datasync_client()
-        export_metadata.s3_service.get_file_info.return_value = {"exists": True}
-
-        export_metadata.move_s3_objects(["file1.txt"])
+        _client, thread_cls, notify = self._run(export_metadata, sync_type=None)
 
         mongo_dao.insert_data_sync.assert_not_called()
-        mongo_dao.set_submission_data_sync_status.assert_not_called()
+        notify.assert_not_called()
+        assert thread_cls.call_args.kwargs["target"] == monitor_datasync_task
 
-    @patch("metadata_export.start_monitoring_task")
-    @patch("metadata_export.boto3")
-    def test_restore_deleted_file_does_not_track_data_sync(self, mock_boto3, mock_start_monitoring):
+    def test_pre_start_error_records_failed_and_deletes_nothing(self):
         export_metadata, mongo_dao = _make_export_metadata()
-        mock_boto3.client.return_value = _mock_datasync_client()
-        export_metadata.s3_service.list_objects.return_value = ["study-1/file1.txt"]
-
-        export_metadata.restore_deleted_file()
-
-        mongo_dao.insert_data_sync.assert_not_called()
-        mongo_dao.set_submission_data_sync_status.assert_not_called()
-
-
-class TestMonitorDataSyncTask:
-
-    def _run(self, mongo_dao, status, **kwargs):
-        datasync = MagicMock()
-        datasync.describe_task_execution.return_value = {"Status": status}
-        source = {"LocationArn": "src-loc"}
-        dest = {"LocationArn": "dest-loc"}
-        log = MagicMock()
-        with patch("metadata_export.time.sleep"):
-            monitor_datasync_task(
-                "exec-arn", "task-arn", datasync, source, dest, log, "bucket", None,
-                mongo_dao=mongo_dao, **kwargs,
+        with patch("metadata_export.boto3") as mock_boto3, \
+                patch("metadata_export.threading.Thread"), \
+                patch("metadata_export.get_uuid_str", return_value="sync-1"), \
+                patch("metadata_export.current_datetime", return_value=NOW):
+            client = _mock_datasync_client()
+            client.create_task.side_effect = ClientError(
+                {"Error": {"Code": "InvalidRequestException", "Message": "boom"}},
+                "CreateTask",
             )
-        return datasync
+            mock_boto3.client.return_value = client
+            export_metadata.transfer_s3_obj(
+                "bucket", "src/folder", "dest-bucket", "dest/folder", [], sync_type=DATA_SYNC_TYPE_METADATA,
+            )
 
-    def test_marks_record_and_submission_succeeded_on_terminal_success(self):
+        client.delete_task.assert_not_called()
+        client.delete_location.assert_not_called()
+        client.start_task_execution.assert_not_called()
+        failed_update = [
+            call for call in mongo_dao.update_data_sync.call_args_list
+            if call.args and call.args[1].get(STATUS) == DATA_SYNC_STATUS_FAILED
+        ]
+        assert failed_update
+        assert DATA_SYNC_CLEANUP_AFTER not in failed_update[0].args[1]
+        assert DATA_SYNC_ROLLUP_PENDING in failed_update[0].args[1]
+        export_metadata.log.error.assert_any_call(
+            f"{DATA_SYNC_LOG_TRANSFER_FAILED} create_task boom "
+            f"submissionID={SUBMISSION_ID_VAL} type={DATA_SYNC_TYPE_METADATA} dataSyncID=sync-1 "
+            f"sourceLocationArn=src-loc destinationLocationArn=dest-loc"
+        )
+
+
+class TestMonitorPrecedence:
+    def test_failed_list_add_blocks_deletion(self):
         mongo_dao = MagicMock()
+        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_ERROR
+        datasync = MagicMock()
+        log = MagicMock()
+        record = _record(**{DATA_SYNC_LIST_PENDING: True, DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(minutes=1)})
 
-        datasync = self._run(
-            mongo_dao, "SUCCESS",
-            data_sync_id="data-sync-1", submission_id=SUBMISSION_ID_VAL, sync_type=DATA_SYNC_TYPE_METADATA,
+        _monitor_data_sync(datasync, mongo_dao, log, record)
+
+        datasync.delete_task.assert_not_called()
+        datasync.delete_location.assert_not_called()
+        datasync.describe_task_execution.assert_not_called()
+        log.error.assert_any_call(
+            f"{DATA_SYNC_LOG_CLEANUP_DEFERRED} submissionID={SUBMISSION_ID_VAL} type={DATA_SYNC_TYPE_FILE} "
+            f"dataSyncID=sync-1 taskArn=task-arn-1 taskExecutionArn=exec-arn-1 "
+            f"sourceLocationArn=src-loc destinationLocationArn=dest-loc"
         )
 
-        mongo_dao.update_data_sync.assert_called_once()
-        call_args = mongo_dao.update_data_sync.call_args
-        assert call_args.args[0] == "data-sync-1"
-        assert call_args.args[1] == DATA_SYNC_STATUS_SUCCEEDED
-        assert isinstance(call_args.args[2], datetime)
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_METADATA, DATA_SYNC_STATUS_SUCCEEDED, "data-sync-1",
+    def test_finish_error_blocks_deletion(self):
+        mongo_dao = MagicMock()
+        mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_ERROR
+        datasync = MagicMock()
+        log = MagicMock()
+        record = _record(**{
+            STATUS: DATA_SYNC_STATUS_SUCCEEDED,
+            DATA_SYNC_ROLLUP_PENDING: True,
+            DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(minutes=1),
+        })
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, log, record)
+
+        datasync.delete_task.assert_not_called()
+        assert any(DATA_SYNC_LOG_CLEANUP_DEFERRED in str(call) for call in log.error.call_args_list)
+
+    def test_delete_failure_does_not_change_tracking(self):
+        mongo_dao = MagicMock()
+        datasync = MagicMock()
+        datasync.delete_task.side_effect = RuntimeError("denied")
+        log = MagicMock()
+        record = _record(**{
+            STATUS: DATA_SYNC_STATUS_SUCCEEDED,
+            DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(minutes=1),
+        })
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, log, record)
+
+        mongo_dao.update_data_sync.assert_not_called()
+        mongo_dao.finish_submission_data_sync.assert_not_called()
+        assert record[STATUS] == DATA_SYNC_STATUS_SUCCEEDED
+        assert any(DATA_SYNC_LOG_CLEANUP_FAILED in str(call) for call in log.error.call_args_list)
+
+    def test_aws_error_records_detail_before_cleanup_is_due(self):
+        mongo_dao = MagicMock()
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        datasync = MagicMock()
+        datasync.describe_task_execution.return_value = {
+            "Status": "ERROR",
+            "Result": {"ErrorCode": "NoSuchBucket", "ErrorDetail": "missing bucket"},
+        }
+        log = MagicMock()
+        record = _record()
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, log, record)
+
+        datasync.delete_task.assert_not_called()
+        finalize = _finalize_set_fields(mongo_dao)
+        assert finalize[STATUS] == DATA_SYNC_STATUS_FAILED
+        assert finalize[DATA_SYNC_LAST_ERROR] == "NoSuchBucket: missing bucket"
+        assert finalize[DATA_SYNC_ROLLUP_PENDING] is True
+        assert DATA_SYNC_CLEANUP_AFTER in finalize
+        assert any(DATA_SYNC_LOG_EXECUTION_FAILED in str(call) for call in log.error.call_args_list)
+
+    def test_success_sets_cleanup_after_and_does_not_delete_yet(self):
+        mongo_dao = MagicMock()
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        datasync = MagicMock()
+        datasync.describe_task_execution.return_value = {"Status": "SUCCESS"}
+        record = _record()
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, MagicMock(), record)
+
+        datasync.delete_task.assert_not_called()
+        finalize = _finalize_set_fields(mongo_dao)
+        assert DATA_SYNC_CLEANUP_AFTER in finalize
+        assert DATA_SYNC_LAST_ERROR not in finalize
+        assert mongo_dao.finish_submission_data_sync.call_args.args[3] == DATA_SYNC_STATUS_SUCCEEDED
+        success_call = next(
+            call for call in mongo_dao.update_data_sync.call_args_list
+            if len(call.args) > 1 and call.args[1].get(STATUS) == DATA_SYNC_STATUS_SUCCEEDED
         )
+        assert DATA_SYNC_LAST_ERROR in success_call.kwargs.get("unset_fields", [])
+
+    def test_confirmed_missing_execution_schedules_cleanup(self):
+        mongo_dao = MagicMock()
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        datasync = MagicMock()
+        datasync.describe_task_execution.side_effect = _not_found()
+        datasync_log = MagicMock()
+        record = _record()
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, datasync_log, record)
+
+        datasync.delete_task.assert_not_called()
+        finalize = _finalize_set_fields(mongo_dao)
+        assert finalize[STATUS] == DATA_SYNC_STATUS_FAILED
+        assert DATA_SYNC_CLEANUP_AFTER in finalize
+
+    def test_unobservable_execution_is_failed_and_logged_unknown(self):
+        mongo_dao = MagicMock()
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        log = MagicMock()
+        record = _record(**{DATA_SYNC_TASK_ARN: None, DATA_SYNC_TASK_EXECUTION_ARN: None})
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(MagicMock(), mongo_dao, log, record)
+
+        finalize = _finalize_set_fields(mongo_dao)
+        assert finalize[STATUS] == DATA_SYNC_STATUS_FAILED
+        assert finalize[DATA_SYNC_LAST_ERROR] == DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE
+        assert DATA_SYNC_CLEANUP_AFTER not in finalize
+        assert any(DATA_SYNC_LOG_OUTCOME_UNKNOWN in str(call) for call in log.error.call_args_list)
+        assert any("may have succeeded" in str(call) for call in log.error.call_args_list)
+
+    def test_stale_finish_logs_info_not_error(self):
+        mongo_dao = MagicMock()
+        mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_STALE
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        log = MagicMock()
+        record = _record(**{STATUS: DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_ROLLUP_PENDING: True})
+
+        _monitor_data_sync(MagicMock(), mongo_dao, log, record)
+
+        log.error.assert_not_called()
+        assert any("already finished" in str(call) for call in log.info.call_args_list)
+
+    def test_cleanup_runs_when_due_and_treats_not_found_as_done(self):
+        mongo_dao = MagicMock()
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        datasync = MagicMock()
+        datasync.delete_task.side_effect = _not_found()
+        record = _record(**{
+            STATUS: DATA_SYNC_STATUS_SUCCEEDED,
+            DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(seconds=1),
+        })
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, MagicMock(), record)
+
         datasync.delete_task.assert_called_once()
+        assert datasync.delete_location.call_count == 2
+        unset = mongo_dao.update_data_sync.call_args.kwargs["unset_fields"]
+        assert DATA_SYNC_CLEANUP_AFTER in unset
 
-    def test_marks_record_and_submission_failed_on_terminal_error(self):
+    def test_monitor_does_not_insert_a_record(self):
         mongo_dao = MagicMock()
-
-        self._run(
-            mongo_dao, "ERROR",
-            data_sync_id="data-sync-1", submission_id=SUBMISSION_ID_VAL, sync_type=DATA_SYNC_TYPE_FILE,
-        )
-
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_FILE, DATA_SYNC_STATUS_FAILED, "data-sync-1",
-        )
-
-    def test_does_not_track_when_sync_type_is_none(self):
-        mongo_dao = MagicMock()
-
-        self._run(mongo_dao, "SUCCESS", data_sync_id=None, submission_id=None, sync_type=None)
-
-        mongo_dao.update_data_sync.assert_not_called()
-        mongo_dao.set_submission_data_sync_status.assert_not_called()
-
-    def test_client_error_while_polling_marks_failed(self):
-        mongo_dao = MagicMock()
-        datasync = MagicMock()
-        datasync.describe_task_execution.side_effect = ClientError(
-            {"Error": {"Code": "X", "Message": "boom"}}, "DescribeTaskExecution"
-        )
-        source = {"LocationArn": "src-loc"}
-        dest = {"LocationArn": "dest-loc"}
-        log = MagicMock()
-
-        monitor_datasync_task(
-            "exec-arn", "task-arn", datasync, source, dest, log, "bucket", None,
-            mongo_dao=mongo_dao, data_sync_id="data-sync-1", submission_id=SUBMISSION_ID_VAL, sync_type=DATA_SYNC_TYPE_METADATA,
-        )
-
-        mongo_dao.update_data_sync.assert_called_once()
-        assert mongo_dao.update_data_sync.call_args.args[0] == "data-sync-1"
-        assert mongo_dao.update_data_sync.call_args.args[1] == DATA_SYNC_STATUS_FAILED
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_METADATA, DATA_SYNC_STATUS_FAILED, "data-sync-1",
-        )
-
-    def test_generic_exception_while_polling_marks_failed(self):
-        mongo_dao = MagicMock()
-        datasync = MagicMock()
-        datasync.describe_task_execution.side_effect = Exception("boom")
-        source = {"LocationArn": "src-loc"}
-        dest = {"LocationArn": "dest-loc"}
-        log = MagicMock()
-
-        monitor_datasync_task(
-            "exec-arn", "task-arn", datasync, source, dest, log, "bucket", None,
-            mongo_dao=mongo_dao, data_sync_id="data-sync-1", submission_id=SUBMISSION_ID_VAL, sync_type=DATA_SYNC_TYPE_FILE,
-        )
-
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_FILE, DATA_SYNC_STATUS_FAILED, "data-sync-1",
-        )
-
-    def test_no_tracking_on_exception_when_sync_type_is_none(self):
-        mongo_dao = MagicMock()
-        datasync = MagicMock()
-        datasync.describe_task_execution.side_effect = Exception("boom")
-        source = {"LocationArn": "src-loc"}
-        dest = {"LocationArn": "dest-loc"}
-        log = MagicMock()
-
-        monitor_datasync_task(
-            "exec-arn", "task-arn", datasync, source, dest, log, "bucket", None,
-            mongo_dao=mongo_dao, data_sync_id=None, submission_id=None, sync_type=None,
-        )
-
-        mongo_dao.update_data_sync.assert_not_called()
-        mongo_dao.set_submission_data_sync_status.assert_not_called()
-
-    def test_cleanup_failure_after_success_does_not_overwrite_with_failed(self):
-        mongo_dao = MagicMock()
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
         datasync = MagicMock()
         datasync.describe_task_execution.return_value = {"Status": "SUCCESS"}
-        datasync.delete_task.side_effect = ClientError(
-            {"Error": {"Code": "X", "Message": "cleanup boom"}}, "DeleteTask"
-        )
-        source = {"LocationArn": "src-loc"}
-        dest = {"LocationArn": "dest-loc"}
-        log = MagicMock()
+        record = _record(**{DATA_SYNC_LIST_PENDING: True})
 
-        with patch("metadata_export.time.sleep"):
-            monitor_datasync_task(
-                "exec-arn", "task-arn", datasync, source, dest, log, "bucket", None,
-                mongo_dao=mongo_dao, data_sync_id="data-sync-1",
-                submission_id=SUBMISSION_ID_VAL, sync_type=DATA_SYNC_TYPE_METADATA,
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, MagicMock(), record)
+
+        mongo_dao.insert_data_sync.assert_not_called()
+        mongo_dao.add_active_submission_data_sync.assert_called_once_with(
+            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_FILE, "sync-1",
+        )
+
+    def test_per_record_exception_does_not_stop_the_pass(self):
+        mongo_dao = MagicMock()
+        broken = _record()
+        other = _record(**{ID: "sync-2"})
+        mongo_dao.find_unfinished_data_syncs.return_value = [broken, other]
+        log = MagicMock()
+        seen = []
+
+        def explode(datasync, mongo_dao, log, record):
+            seen.append(record[ID])
+            if record[ID] == "sync-1":
+                raise RuntimeError("bad record")
+            record[STATUS] = DATA_SYNC_STATUS_SUCCEEDED
+            record[DATA_SYNC_ROLLUP_PENDING] = False
+            record.pop(DATA_SYNC_CLEANUP_AFTER, None)
+
+        with patch("metadata_export._monitor_data_sync", side_effect=explode):
+            count = _run_data_sync_monitor_pass(mongo_dao, log, datasync=MagicMock())
+
+        assert seen == ["sync-1", "sync-2"]
+        assert count == 1
+        log.exception.assert_called()
+
+    def test_stale_list_add_clears_flags_and_allows_cleanup(self):
+        mongo_dao = MagicMock()
+        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_STALE
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        datasync = MagicMock()
+        log = MagicMock()
+        record = _record(**{
+            STATUS: DATA_SYNC_STATUS_SUCCEEDED,
+            DATA_SYNC_LIST_PENDING: True,
+            DATA_SYNC_ROLLUP_PENDING: True,
+            DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(minutes=1),
+        })
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, log, record)
+
+        assert record[DATA_SYNC_LIST_PENDING] is False
+        assert record[DATA_SYNC_ROLLUP_PENDING] is False
+        datasync.delete_task.assert_called_once()
+        assert any("DataSync submission not found" in str(call) for call in log.error.call_args_list)
+        mongo_dao.finish_submission_data_sync.assert_not_called()
+
+    def test_stale_finalize_does_not_finish_or_overwrite(self):
+        mongo_dao = MagicMock()
+        mongo_dao.update_data_sync.side_effect = [
+            DATA_SYNC_WRITE_APPLIED,  # poll claim
+            DATA_SYNC_WRITE_STALE,  # finalize guard miss
+        ]
+        datasync = MagicMock()
+        datasync.describe_task_execution.return_value = {"Status": "SUCCESS"}
+        log = MagicMock()
+        record = _record()
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, log, record)
+
+        assert record[STATUS] == DATA_SYNC_STATUS_IN_PROGRESS
+        mongo_dao.finish_submission_data_sync.assert_not_called()
+        finalize = mongo_dao.update_data_sync.call_args_list[1]
+        assert finalize.kwargs["match_fields"] == {STATUS: DATA_SYNC_STATUS_IN_PROGRESS}
+        assert any("already finalized" in str(call) for call in log.info.call_args_list)
+
+    def test_recent_poll_claim_skips_describe(self):
+        mongo_dao = MagicMock()
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_STALE
+        datasync = MagicMock()
+        record = _record(**{DATA_SYNC_LAST_POLLED_AT: NOW - timedelta(seconds=5)})
+
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, MagicMock(), record)
+
+        datasync.describe_task_execution.assert_not_called()
+        claim = mongo_dao.update_data_sync.call_args
+        assert claim.args[1][DATA_SYNC_LAST_POLLED_AT] == NOW
+        assert claim.kwargs["match_fields"] == {
+            STATUS: DATA_SYNC_STATUS_IN_PROGRESS,
+            "$or": [
+                {DATA_SYNC_LAST_POLLED_AT: {"$exists": False}},
+                {DATA_SYNC_LAST_POLLED_AT: {"$lt": NOW - timedelta(seconds=DATA_SYNC_POLL_CLAIM_SECONDS)}},
+            ],
+        }
+
+    def test_finish_forwards_failed_record_status(self):
+        mongo_dao = MagicMock()
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        record = _record(**{
+            STATUS: DATA_SYNC_STATUS_FAILED,
+            DATA_SYNC_LIST_PENDING: False,
+            DATA_SYNC_ROLLUP_PENDING: True,
+        })
+
+        _monitor_data_sync(MagicMock(), mongo_dao, MagicMock(), record)
+
+        assert mongo_dao.finish_submission_data_sync.call_args.args[3] == DATA_SYNC_STATUS_FAILED
+
+
+class TestRecovery:
+    def _state(self, **overrides):
+        state = {
+            "submission_id": SUBMISSION_ID_VAL,
+            "sync_type": DATA_SYNC_TYPE_FILE,
+            "data_sync_id": "sync-1",
+            "source_folder": "src",
+            "target_folder": "dest",
+            "start_time": NOW,
+            "status": DATA_SYNC_STATUS_IN_PROGRESS,
+            "inserted": False,
+            "list_added": False,
+            "pending_fields": {DATA_SYNC_TASK_ARN: "task-arn-1"},
+            "task_arn": "task-arn-1",
+            "task_execution_arn": "exec-arn-1",
+            "source_location_arn": "src-loc",
+            "destination_location_arn": "dest-loc",
+            "end_time": None,
+            "last_error": None,
+            "rollup_pending": False,
+        }
+        state.update(overrides)
+        return state
+
+    def test_retries_insert_then_hands_off_without_deleting(self):
+        mongo_dao = MagicMock()
+        mongo_dao.insert_data_sync.side_effect = [DATA_SYNC_WRITE_ERROR, DATA_SYNC_WRITE_APPLIED]
+        mongo_dao.update_data_sync.side_effect = _update_without_reopen()
+        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        log = MagicMock()
+        datasync = MagicMock()
+
+        with patch("metadata_export.notify_data_sync_started") as notify, \
+                patch("metadata_export.boto3") as mock_boto3:
+            mock_boto3.client.return_value = datasync
+            recover_data_sync_tracking(
+                mongo_dao, log, self._state(), sleep_fn=lambda _seconds: None, clock=lambda: 0, max_seconds=10,
             )
 
-        mongo_dao.update_data_sync.assert_called_once()
-        assert mongo_dao.update_data_sync.call_args.args[1] == DATA_SYNC_STATUS_SUCCEEDED
-        failed_calls = [
-            c for c in mongo_dao.set_submission_data_sync_status.call_args_list
-            if c.args[2] == DATA_SYNC_STATUS_FAILED
-        ]
-        assert failed_calls == []
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_METADATA, DATA_SYNC_STATUS_SUCCEEDED, "data-sync-1",
+        assert mongo_dao.insert_data_sync.call_count == 2
+        assert mongo_dao.insert_data_sync.call_args.args[5] == "sync-1"
+        notify.assert_called_once()
+        datasync.delete_task.assert_not_called()
+        datasync.delete_location.assert_not_called()
+
+    def test_pending_arns_are_saved_after_insert(self):
+        mongo_dao = MagicMock()
+        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.update_data_sync.side_effect = _update_without_reopen()
+        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        state = self._state()
+
+        with patch("metadata_export.notify_data_sync_started"), \
+                patch("metadata_export.boto3"):
+            recover_data_sync_tracking(
+                mongo_dao, MagicMock(), state, sleep_fn=lambda _seconds: None, clock=lambda: 0,
+                describe_status=lambda _arn: "TRANSFERRING", max_seconds=10,
+            )
+
+        assert mongo_dao.update_data_sync.call_args_list[0].args[1][DATA_SYNC_TASK_ARN] == "task-arn-1"
+
+    def test_timeout_logs_unrecovered_arns(self):
+        mongo_dao = MagicMock()
+        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_ERROR
+        log = MagicMock()
+        now = {"t": 0}
+
+        def clock():
+            return now["t"]
+
+        def sleep_fn(_seconds):
+            now["t"] += 100
+
+        recover_data_sync_tracking(
+            mongo_dao, log, self._state(), sleep_fn=sleep_fn, clock=clock, max_seconds=50,
         )
 
+        logged = " ".join(str(call) for call in log.error.call_args_list)
+        assert DATA_SYNC_LOG_TRACKING_NOT_RECOVERED in logged
+        assert "task-arn-1" in logged
+        assert "exec-arn-1" in logged
+        assert "src-loc" in logged
+        assert "dest-loc" in logged
 
-class TestReconcileInProgressDataSyncs:
-
-    def test_records_terminal_status_on_success(self):
+    def test_reopens_not_observable_record_after_saving_arns(self):
         mongo_dao = MagicMock()
-        mongo_dao.find_in_progress_data_syncs.return_value = [{
-            ID: "data-sync-1",
-            SUBMISSION_ID: SUBMISSION_ID_VAL,
-            TYPE: DATA_SYNC_TYPE_METADATA,
-            DATA_SYNC_TASK_EXECUTION_ARN: "exec-arn-1",
-        }]
+        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.update_data_sync.side_effect = _update_without_reopen(reopen=DATA_SYNC_WRITE_APPLIED)
+        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        log = MagicMock()
+
+        with patch("metadata_export.notify_data_sync_started") as notify, \
+                patch("metadata_export.boto3"):
+            recover_data_sync_tracking(
+                mongo_dao, log, self._state(inserted=True),
+                sleep_fn=lambda _seconds: None, clock=lambda: 0,
+                describe_status=lambda _arn: "TRANSFERRING", max_seconds=10,
+            )
+
+        reopen_calls = [
+            call for call in mongo_dao.update_data_sync.call_args_list
+            if call.kwargs.get("match_fields") and DATA_SYNC_LAST_ERROR in call.kwargs["match_fields"]
+        ]
+        assert len(reopen_calls) == 1
+        assert reopen_calls[0].args[1][STATUS] == DATA_SYNC_STATUS_IN_PROGRESS
+        assert reopen_calls[0].args[1][DATA_SYNC_LIST_PENDING] is True
+        assert DATA_SYNC_END_TIME in reopen_calls[0].kwargs["unset_fields"]
+        assert DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE in (
+            reopen_calls[0].kwargs["match_fields"][DATA_SYNC_LAST_ERROR]["$in"]
+        )
+        assert DATA_SYNC_LAST_ERROR_NOT_STARTED in (
+            reopen_calls[0].kwargs["match_fields"][DATA_SYNC_LAST_ERROR]["$in"]
+        )
+        assert any("reopened" in str(call) for call in log.info.call_args_list)
+        assert notify.call_count == 2
+
+    def test_normal_arn_save_does_not_reopen(self):
+        mongo_dao = MagicMock()
+        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.update_data_sync.side_effect = _update_without_reopen(reopen=DATA_SYNC_WRITE_STALE)
+        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        log = MagicMock()
+
+        with patch("metadata_export.notify_data_sync_started") as notify, \
+                patch("metadata_export.boto3"):
+            recover_data_sync_tracking(
+                mongo_dao, log, self._state(inserted=True),
+                sleep_fn=lambda _seconds: None, clock=lambda: 0,
+                describe_status=lambda _arn: "TRANSFERRING", max_seconds=10,
+            )
+
+        reopen_calls = [
+            call for call in mongo_dao.update_data_sync.call_args_list
+            if call.kwargs.get("match_fields") and DATA_SYNC_LAST_ERROR in call.kwargs["match_fields"]
+        ]
+        assert len(reopen_calls) == 1
+        assert not any("reopened" in str(call) for call in log.info.call_args_list)
+        notify.assert_called_once()
+
+    def test_stale_list_add_clears_pending_flags(self):
+        mongo_dao = MagicMock()
+        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.update_data_sync.side_effect = _update_without_reopen()
+        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_STALE
+        log = MagicMock()
+        state = self._state(inserted=True, pending_fields={})
+
+        with patch("metadata_export.notify_data_sync_started"), \
+                patch("metadata_export.boto3"):
+            recover_data_sync_tracking(
+                mongo_dao, log, state, sleep_fn=lambda _seconds: None, clock=lambda: 0,
+                describe_status=lambda _arn: "SUCCESS", max_seconds=10,
+            )
+
+        assert state["list_added"] is True
+        clear_calls = [
+            call for call in mongo_dao.update_data_sync.call_args_list
+            if isinstance(call.args[1] if len(call.args) > 1 else None, dict)
+            and call.args[1].get(DATA_SYNC_LIST_PENDING) is False
+            and call.args[1].get(DATA_SYNC_ROLLUP_PENDING) is False
+        ]
+        assert clear_calls
+        assert any("submission not found" in str(call) for call in log.error.call_args_list)
+
+
+class TestMonitorState:
+    def test_next_state(self):
+        assert _next_data_sync_monitor_state(2) == DATA_SYNC_MONITOR_STATE_ACTIVE
+        assert _next_data_sync_monitor_state(0) == DATA_SYNC_MONITOR_STATE_WAITING
+        assert _next_data_sync_monitor_state(None) is None
+
+    def test_query_failure_keeps_the_active_interval(self):
+        mongo_dao = MagicMock()
+        waits = []
+
+        def wait(interval):
+            waits.append(interval)
+            raise RuntimeError("stop")
+
+        with patch("metadata_export._run_data_sync_monitor_pass", return_value=None), \
+                patch.object(metadata_export._data_sync_wake_event, "wait", wait):
+            try:
+                data_sync_monitor_loop(mongo_dao, MagicMock())
+            except RuntimeError:
+                pass
+
+        assert waits == [DATA_SYNC_MONITOR_ACTIVE_INTERVAL_SECONDS]
+
+    def test_pass_exception_keeps_the_active_interval(self):
+        waits = []
+        log = MagicMock()
+
+        def wait(interval):
+            waits.append(interval)
+            raise RuntimeError("stop")
+
+        with patch("metadata_export._run_data_sync_monitor_pass", side_effect=RuntimeError("boom")), \
+                patch.object(metadata_export._data_sync_wake_event, "wait", wait):
+            try:
+                data_sync_monitor_loop(MagicMock(), log)
+            except RuntimeError:
+                pass
+
+        assert waits == [DATA_SYNC_MONITOR_ACTIVE_INTERVAL_SECONDS]
+        assert any(DATA_SYNC_LOG_TRACKING_FAILED in str(call) and "monitor pass" in str(call)
+                   for call in log.error.call_args_list)
+
+    def test_empty_pass_waits_the_waiting_interval(self):
+        waits = []
+
+        def wait(interval):
+            waits.append(interval)
+            raise RuntimeError("stop")
+
+        with patch("metadata_export._run_data_sync_monitor_pass", return_value=0), \
+                patch.object(metadata_export._data_sync_wake_event, "wait", wait):
+            try:
+                data_sync_monitor_loop(MagicMock(), MagicMock())
+            except RuntimeError:
+                pass
+
+        assert waits == [DATA_SYNC_MONITOR_WAITING_INTERVAL_SECONDS]
+
+    def test_notify_wakes_a_waiting_monitor_immediately(self):
+        metadata_export._data_sync_wake_event.clear()
+        metadata_export.notify_data_sync_started()
+        assert metadata_export._data_sync_wake_event.wait(0) is True
+        metadata_export._data_sync_wake_event.clear()
+
+
+class TestOriginalMonitor:
+    def test_success_deletes_source_files_then_task_and_locations(self):
         datasync = MagicMock()
         datasync.describe_task_execution.return_value = {"Status": "SUCCESS"}
         log = MagicMock()
+        source = {"LocationArn": "src-loc"}
+        dest = {"LocationArn": "dest-loc"}
 
-        with patch("metadata_export.boto3") as mock_boto3:
-            mock_boto3.client.return_value = datasync
-            reconcile_in_progress_data_syncs(mongo_dao, log)
+        with patch("metadata_export.time.sleep") as sleep, \
+                patch("metadata_export.delete_files_from_s3") as delete_files:
+            monitor_datasync_task(
+                "exec-arn-1", "task-arn-1", datasync, source, dest, log, "bucket", ["a.txt"],
+            )
 
-        mongo_dao.update_data_sync.assert_called_once()
-        assert mongo_dao.update_data_sync.call_args.args[1] == DATA_SYNC_STATUS_SUCCEEDED
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_METADATA, DATA_SYNC_STATUS_SUCCEEDED, "data-sync-1",
-        )
-        datasync.close.assert_called_once()
-
-    def test_leaves_still_running_tasks_alone(self):
-        mongo_dao = MagicMock()
-        mongo_dao.find_in_progress_data_syncs.return_value = [{
-            ID: "data-sync-1",
-            SUBMISSION_ID: SUBMISSION_ID_VAL,
-            TYPE: DATA_SYNC_TYPE_FILE,
-            DATA_SYNC_TASK_EXECUTION_ARN: "exec-arn-1",
-        }]
-        datasync = MagicMock()
-        datasync.describe_task_execution.return_value = {"Status": "TRANSFERRING"}
-        log = MagicMock()
-
-        with patch("metadata_export.boto3") as mock_boto3:
-            mock_boto3.client.return_value = datasync
-            reconcile_in_progress_data_syncs(mongo_dao, log)
-
-        mongo_dao.update_data_sync.assert_not_called()
-        mongo_dao.set_submission_data_sync_status.assert_not_called()
-
-    def test_client_error_marks_failed(self):
-        mongo_dao = MagicMock()
-        mongo_dao.find_in_progress_data_syncs.return_value = [{
-            ID: "data-sync-1",
-            SUBMISSION_ID: SUBMISSION_ID_VAL,
-            TYPE: DATA_SYNC_TYPE_METADATA,
-            DATA_SYNC_TASK_EXECUTION_ARN: "exec-arn-1",
-        }]
-        datasync = MagicMock()
-        datasync.describe_task_execution.side_effect = ClientError(
-            {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
-            "DescribeTaskExecution",
-        )
-        log = MagicMock()
-
-        with patch("metadata_export.boto3") as mock_boto3:
-            mock_boto3.client.return_value = datasync
-            reconcile_in_progress_data_syncs(mongo_dao, log)
-
-        mongo_dao.update_data_sync.assert_called_once()
-        assert mongo_dao.update_data_sync.call_args.args[1] == DATA_SYNC_STATUS_FAILED
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_METADATA, DATA_SYNC_STATUS_FAILED, "data-sync-1",
-        )
-
-    def test_generic_exception_moves_on_to_next_record(self):
-        mongo_dao = MagicMock()
-        mongo_dao.find_in_progress_data_syncs.return_value = [
-            {
-                ID: "data-sync-1",
-                SUBMISSION_ID: SUBMISSION_ID_VAL,
-                TYPE: DATA_SYNC_TYPE_METADATA,
-                DATA_SYNC_TASK_EXECUTION_ARN: "exec-arn-1",
-            },
-            {
-                ID: "data-sync-2",
-                SUBMISSION_ID: SUBMISSION_ID_VAL,
-                TYPE: DATA_SYNC_TYPE_FILE,
-                DATA_SYNC_TASK_EXECUTION_ARN: "exec-arn-2",
-            },
-        ]
-        datasync = MagicMock()
-        datasync.describe_task_execution.side_effect = [
-            Exception("boom"),
-            {"Status": "ERROR"},
-        ]
-        log = MagicMock()
-
-        with patch("metadata_export.boto3") as mock_boto3:
-            mock_boto3.client.return_value = datasync
-            reconcile_in_progress_data_syncs(mongo_dao, log)
-
-        mongo_dao.update_data_sync.assert_called_once()
-        assert mongo_dao.update_data_sync.call_args.args[0] == "data-sync-2"
-        assert mongo_dao.update_data_sync.call_args.args[1] == DATA_SYNC_STATUS_FAILED
-        mongo_dao.set_submission_data_sync_status.assert_called_once_with(
-            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_FILE, DATA_SYNC_STATUS_FAILED, "data-sync-2",
-        )
+        delete_files.assert_called_once_with("bucket", ["a.txt"], log)
+        datasync.delete_task.assert_called_once_with(TaskArn="task-arn-1")
+        assert datasync.delete_location.call_count == 2
+        assert sleep.call_args_list[0].args[0] == 300
