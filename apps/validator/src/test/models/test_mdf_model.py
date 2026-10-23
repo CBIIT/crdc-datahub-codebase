@@ -65,3 +65,17 @@ def test_mdf_model_none_req_rels():
     assert isinstance(diagnosis_participant, object)
     assert not diagnosis_participant.is_required
     assert diagnosis_participant.handle == 'of_participant'
+
+def test_should_not_require_a_relationship_only_required_on_other_nodes():
+    rels = model.edges.values()
+    assert rels is not None
+    assert isinstance(rels, object)
+
+    file_study = None
+    for rel in rels:
+        if rel.src.handle == 'file' and rel.dst.handle == 'study':
+            file_study = rel
+            break
+    assert isinstance(file_study, object)
+    assert file_study.handle == 'of_study'
+    assert file_study.is_required == False
