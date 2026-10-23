@@ -403,4 +403,95 @@ describe("Implementation Requirements", () => {
     expect(within(tooltip).getByText("Data Submission ID:")).toBeInTheDocument();
     expect(within(tooltip).getByText("sub-999")).toBeInTheDocument();
   });
+
+  it("should show the DataSync failed icon for a Completed submission whose file sync failed", async () => {
+    const submission: Submission = {
+      ...baseSubmission,
+      status: "Completed",
+      fileDataSyncStatus: "Failed",
+    };
+
+    const { findByLabelText } = render(
+      <TestParent mocks={[getListSubmissionsMock([submission])]}>
+        <ListingView />
+      </TestParent>
+    );
+
+    expect(await findByLabelText("DataSync failed!")).toBeVisible();
+  });
+
+  it("should show the DataSync failed icon for a Completed submission whose metadata sync failed", async () => {
+    const submission: Submission = {
+      ...baseSubmission,
+      status: "Completed",
+      metadataDataSyncStatus: "Failed",
+    };
+
+    const { findByLabelText } = render(
+      <TestParent mocks={[getListSubmissionsMock([submission])]}>
+        <ListingView />
+      </TestParent>
+    );
+
+    expect(await findByLabelText("DataSync failed!")).toBeVisible();
+  });
+
+  it("should not show the DataSync failed icon for a Completed submission whose syncs succeeded", async () => {
+    const submission: Submission = {
+      ...baseSubmission,
+      status: "Completed",
+      metadataDataSyncStatus: "Completed",
+      fileDataSyncStatus: "Completed",
+    };
+
+    const { findByTestId, queryByLabelText } = render(
+      <TestParent mocks={[getListSubmissionsMock([submission])]}>
+        <ListingView />
+      </TestParent>
+    );
+
+    await findByTestId("submission-name-cell-sub-123");
+
+    expect(queryByLabelText("DataSync failed!")).not.toBeInTheDocument();
+  });
+
+  it.each<SubmissionStatus>(["In Progress", "Submitted", "Released", "Canceled"])(
+    "should not show the DataSync failed icon for a %s submission even if a sync failed",
+    async (status) => {
+      const submission: Submission = {
+        ...baseSubmission,
+        status,
+        metadataDataSyncStatus: "Failed",
+        fileDataSyncStatus: "Failed",
+      };
+
+      const { findByTestId, queryByLabelText } = render(
+        <TestParent mocks={[getListSubmissionsMock([submission])]}>
+          <ListingView />
+        </TestParent>
+      );
+
+      await findByTestId("submission-name-cell-sub-123");
+
+      expect(queryByLabelText("DataSync failed!")).not.toBeInTheDocument();
+    }
+  );
+
+  it("should show the DataSync failed tooltip when hovering the icon", async () => {
+    const submission: Submission = {
+      ...baseSubmission,
+      status: "Completed",
+      fileDataSyncStatus: "Failed",
+    };
+
+    const { findByLabelText, findByRole } = render(
+      <TestParent mocks={[getListSubmissionsMock([submission])]}>
+        <ListingView />
+      </TestParent>
+    );
+
+    fireEvent.mouseOver(await findByLabelText("DataSync failed!"));
+
+    expect(await findByRole("tooltip")).toHaveTextContent("DataSync failed!");
+  });
 });
