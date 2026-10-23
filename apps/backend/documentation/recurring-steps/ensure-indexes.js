@@ -61,8 +61,33 @@ const INDEXES = [
     },
     {
         collection: DATA_SYNC_COLLECTION,
+        keys: { submissionID: 1, startTime: -1 },
+        name: 'submissionID_1_startTime_-1',
+    },
+    {
+        collection: DATA_SYNC_COLLECTION,
         keys: { submissionID: 1, type: 1, status: 1 },
         name: 'submissionID_1_type_1_status_1',
+    },
+    {
+        collection: DATA_SYNC_COLLECTION,
+        keys: { status: 1 },
+        name: 'status_1',
+    },
+    {
+        collection: DATA_SYNC_COLLECTION,
+        keys: { listPending: 1 },
+        name: 'listPending_1',
+    },
+    {
+        collection: DATA_SYNC_COLLECTION,
+        keys: { rollupPending: 1 },
+        name: 'rollupPending_1',
+    },
+    {
+        collection: DATA_SYNC_COLLECTION,
+        keys: { cleanupAfter: 1 },
+        name: 'cleanupAfter_1',
     },
     {
         collection: SUBMISSIONS_COLLECTION,
