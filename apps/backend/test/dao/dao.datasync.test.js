@@ -1,7 +1,7 @@
 const DataSyncDAO = require('../../dao/dataSync');
 const DataSyncModel = require('../../mongoose/models/data-sync');
 const MongooseGenericDAO = require('../../dao/mongoose-generic');
-const { DATA_SYNC_STATUS, DATA_SYNC_TYPE } = require('../../constants/data-sync-constants');
+const { DATA_SYNC_TYPE } = require('../../constants/data-sync-constants');
 
 describe('DataSyncDAO', () => {
     let dataSyncDAO;
@@ -17,29 +17,72 @@ describe('DataSyncDAO', () => {
             expect(dataSyncDAO.model).toBe(DataSyncModel);
             expect(dataSyncDAO.model.modelName).toBe('DataSync');
         });
+
+        it('should have expected methods defined', () => {
+            expect(dataSyncDAO.listBySubmissionID).toBeDefined();
+            expect(dataSyncDAO.findLatestBySubmissionIDAndType).toBeDefined();
+            expect(dataSyncDAO.findInProgressBySubmissionIDAndType).toBeUndefined();
+        });
     });
 
-    describe('find queries', () => {
+    describe('listBySubmissionID', () => {
+        let findManySpy;
 
-        it('finds the latest record by submission and type', async () => {
-            const findFirstSpy = jest.spyOn(dataSyncDAO, 'findFirst').mockResolvedValue(null);
-
-            await dataSyncDAO.findLatestBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA);
-            expect(findFirstSpy).toHaveBeenCalledWith(
-                { submissionID: '123', type: DATA_SYNC_TYPE.METADATA },
-                { sort: { startTime: -1 } }
-            );
+        beforeEach(() => {
+            findManySpy = jest.spyOn(dataSyncDAO, 'findMany').mockResolvedValue([]);
         });
 
-        it('finds in-progress records by submission and type', async () => {
-            const findManySpy = jest.spyOn(dataSyncDAO, 'findMany').mockResolvedValue([]);
+        it('filters by submissionID', async () => {
+            await dataSyncDAO.listBySubmissionID('123', DATA_SYNC_TYPE.FILE);
+            const [filter] = findManySpy.mock.lastCall;
+            expect(filter).toHaveProperty('submissionID', '123');
+        });
 
-            await dataSyncDAO.findInProgressBySubmissionIDAndType('123', DATA_SYNC_TYPE.FILE);
-            expect(findManySpy).toHaveBeenCalledWith({
-                submissionID: '123',
-                type: DATA_SYNC_TYPE.FILE,
-                status: DATA_SYNC_STATUS.IN_PROGRESS,
-            });
+        it('filters by type when provided', async () => {
+            await dataSyncDAO.listBySubmissionID('123', DATA_SYNC_TYPE.FILE);
+            const [filter] = findManySpy.mock.lastCall;
+            expect(filter).toHaveProperty('type', DATA_SYNC_TYPE.FILE);
+        });
+
+        it('does not filter by type when omitted', async () => {
+            for (const omittedType of [undefined, null, '']) {
+                await dataSyncDAO.listBySubmissionID('123', omittedType);
+                const [filter] = findManySpy.mock.lastCall;
+                expect(filter).not.toHaveProperty('type');
+            }
+        });
+
+        it('sorts by most recent startTime', async () => {
+            await dataSyncDAO.listBySubmissionID('123', DATA_SYNC_TYPE.FILE);
+            const [, option] = findManySpy.mock.lastCall;
+            expect(option).toHaveProperty('sort.startTime', -1);
+        });
+
+    });
+
+    describe('findLatestBySubmissionIDAndType', () => {
+        let findFirstSpy;
+
+        beforeEach(() => {
+            findFirstSpy = jest.spyOn(dataSyncDAO, 'findFirst').mockResolvedValue(null);
+        });
+
+        it('filters by submissionID', async () => {
+            await dataSyncDAO.findLatestBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA);
+            const [filter] = findFirstSpy.mock.lastCall;
+            expect(filter).toHaveProperty('submissionID', '123');
+        });
+
+        it('filters by type', async () => {
+            await dataSyncDAO.findLatestBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA);
+            const [filter] = findFirstSpy.mock.lastCall;
+            expect(filter).toHaveProperty('type', DATA_SYNC_TYPE.METADATA);
+        });
+
+        it('sorts by most recent startTime', async () => {
+            await dataSyncDAO.findLatestBySubmissionIDAndType('123', DATA_SYNC_TYPE.METADATA);
+            const [, option] = findFirstSpy.mock.lastCall;
+            expect(option).toHaveProperty('sort.startTime', -1);
         });
 
     });
