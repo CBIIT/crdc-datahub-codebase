@@ -16,7 +16,9 @@ from common.constants import SQS_TYPE, SUBMISSION_ID, BATCH_BUCKET, TYPE_EXPORT_
     SUBMISSION_INTENTION_DELETE, SUBMISSION_REL_STATUS_DELETED, TYPE_COMPLETE_SUB, ORIN_FILE_NAME,\
     STUDY_ID, DM_BUCKET_CONFIG_NAME, DATASYNC_ROLE_ARN_CONFIG, ENTITY_TYPE, SUBMISSION_HISTORY, RELEASE_AT, \
     SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_DATA_TYPE, SUBMISSION_DATA_TYPE_METADATA_ONLY, DATASYNC_LOG_ARN_CONFIG, \
-    S3_FILE_INFO, FILE_NAME, RESTORE_DELETED_DATA_FILES, DATA_FILE_LOCATION, S3_PREFIX, GENERATED_PROPS, DELETE_COMMAND
+    S3_FILE_INFO, FILE_NAME, RESTORE_DELETED_DATA_FILES, DATA_FILE_LOCATION, S3_PREFIX, GENERATED_PROPS, DELETE_COMMAND, \
+    DATA_SYNC_TYPE_METADATA, DATA_SYNC_TYPE_FILE, DATA_SYNC_STATUS_IN_PROGRESS, DATA_SYNC_STATUS_FAILED, \
+    DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_TASK_EXECUTION_ARN
 from common.utils import current_datetime, get_uuid_str, dump_dict_to_json, get_exception_msg, get_date_time, dict_exists_in_list, \
     convert_date_time, convert_file_size
 from common.model_store import ModelFactory
@@ -27,6 +29,95 @@ from service.ecs_agent import set_scale_in_protection
 
 VISIBILITY_TIMEOUT = 20
 BATCH_SIZE = 1000
+
+def map_aws_datasync_status(aws_status):
+    """Map an AWS DataSync TaskExecution status to the app's DataSync status.
+
+    @param aws_status value from describe_task_execution's Status field
+    @returns Succeeded for SUCCESS, Failed for ERROR, In Progress for anything else
+    """
+    if aws_status == "SUCCESS":
+        return DATA_SYNC_STATUS_SUCCEEDED
+    if aws_status == "ERROR":
+        return DATA_SYNC_STATUS_FAILED
+    return DATA_SYNC_STATUS_IN_PROGRESS
+
+def _record_data_sync_result(mongo_dao, data_sync_id, submission_id, sync_type, status):
+    """Write a final status to the dataSync record and, when it is still the newest, to the submission.
+
+    @param mongo_dao MongoDao instance, or None when the task is not tracked
+    @param data_sync_id dataSync document id, or None when insert_data_sync failed
+    @param submission_id submission document id
+    @param sync_type DataSync type, "metadata" or "file", or None when the task is not tracked
+    @param status DataSync status to store
+    """
+    if not (sync_type and mongo_dao):
+        return
+    if data_sync_id:
+        mongo_dao.update_data_sync(data_sync_id, status, current_datetime())
+    mongo_dao.set_submission_data_sync_status(submission_id, sync_type, status, data_sync_id)
+
+def reconcile_in_progress_data_syncs(mongo_dao, log):
+    """Reconcile dataSync records left In Progress after a container restart.
+
+    For each In Progress record with a taskExecutionArn, calls describe_task_execution.
+    Records a terminal status when AWS reports SUCCESS or ERROR, or Failed when the
+    execution no longer exists (ClientError). Leaves still-running tasks alone so another
+    container's monitor can finish them; the next startup will check again.
+
+    Does not delete leftover AWS DataSync tasks or locations.
+
+    Wrapped so failures never prevent the export service from starting.
+
+    @param mongo_dao MongoDao instance
+    @param log logger
+    """
+    datasync = None
+    try:
+        records = mongo_dao.find_in_progress_data_syncs()
+        if not records:
+            return
+        log.info(f"Reconciling {len(records)} in-progress DataSync record(s).")
+        datasync = boto3.client('datasync')
+        for record in records:
+            data_sync_id = record.get(ID)
+            submission_id = record.get(SUBMISSION_ID)
+            sync_type = record.get(TYPE)
+            task_execution_arn = record.get(DATA_SYNC_TASK_EXECUTION_ARN)
+            try:
+                response = datasync.describe_task_execution(TaskExecutionArn=task_execution_arn)
+                status = response.get('Status')
+                if status in ['SUCCESS', 'ERROR']:
+                    terminal_status = map_aws_datasync_status(status)
+                    _record_data_sync_result(
+                        mongo_dao, data_sync_id, submission_id, sync_type, terminal_status,
+                    )
+                    log.info(f"Reconciled dataSync {data_sync_id} to {terminal_status}.")
+                else:
+                    log.info(f"dataSync {data_sync_id} still {status}; leaving In Progress.")
+            except ClientError as ce:
+                log.exception(ce)
+                log.exception(
+                    f"Failed to describe DataSync execution for {data_sync_id}: "
+                    f"{ce.response['Error']['Message']}; marking Failed."
+                )
+                _record_data_sync_result(
+                    mongo_dao, data_sync_id, submission_id, sync_type, DATA_SYNC_STATUS_FAILED,
+                )
+            except Exception as e:
+                log.exception(e)
+                log.exception(
+                    f"Unexpected error reconciling dataSync {data_sync_id}: {get_exception_msg()}; skipping."
+                )
+    except Exception as e:
+        log.exception(e)
+        log.exception(f"Failed to reconcile in-progress DataSync records: {get_exception_msg()}")
+    finally:
+        if datasync:
+            try:
+                datasync.close()
+            except Exception:
+                pass
 
 """
 Interface for validate files via SQS
@@ -43,6 +134,7 @@ def metadata_export(configs, job_queue, mongo_dao):
         log.exception(e)
         log.exception(f'Error occurred when initialize metadata validation service: {get_exception_msg()}')
         return 1
+    reconcile_in_progress_data_syncs(mongo_dao, log)
     scale_in_protection_flag = False
     log.info(f'{SERVICE_TYPE_EXPORT} service started')
     while True:
@@ -577,7 +669,7 @@ class ExportMetadata:
             {"Key": "Tier", "Value": self.configs[TIER_CONFIG]},
             {"Key": "Type", "Value" : "Metadata"}
             ]
-        self.transfer_s3_obj(bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags)
+        self.transfer_s3_obj(bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags, sync_type=DATA_SYNC_TYPE_METADATA)
     
     def transfer_released_files(self):
         """
@@ -591,18 +683,41 @@ class ExportMetadata:
             {"Key": "Tier", "Value": self.configs[TIER_CONFIG]}, 
             {"Key": "Type", "Value" : "Data File"}
             ]
-        self.transfer_s3_obj(bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags)
+        self.transfer_s3_obj(bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags, sync_type=DATA_SYNC_TYPE_FILE)
 
-    def transfer_s3_obj(self, bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags, file_key_list = None):
+    def _record_data_sync_failure(self, sync_type, source_folder, target_folder):
+        """Insert a Failed dataSync record and set the submission rollup field to Failed.
+
+        Called from transfer_s3_obj's exception handlers when a task fails to start.
+
+        @param sync_type DataSync type, "metadata" or "file"
+        @param source_folder source S3 prefix passed to transfer_s3_obj
+        @param target_folder destination S3 prefix passed to transfer_s3_obj
+        """
+        submission_id = self.submission[ID]
+        data_sync_id = self.mongo_dao.insert_data_sync(
+            submission_id, sync_type, source_folder, target_folder,
+            DATA_SYNC_STATUS_FAILED, end_time=current_datetime(),
+        )
+        self.mongo_dao.set_submission_data_sync_status(
+            submission_id, sync_type, DATA_SYNC_STATUS_FAILED, data_sync_id,
+        )
+
+    def transfer_s3_obj(self, bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags, file_key_list = None, sync_type = None):
         """
         This function transfers s3 objects via AWS DataSync. 
         If file_key_list is not given (None), all files in data_file_folder will be copied to destination. 
         If file_key_list is given, only files in the list will be copied and then original files will be DELETED!
+
+        When sync_type is "metadata" or "file", a dataSync task record is inserted and the
+        submission's matching DataSync rollup field is kept up to date until the task finishes.
+        move_s3_objects and restore_deleted_file pass no sync_type, so they are not tracked.
         """
         datasync_role = self.configs.get(DATASYNC_ROLE_ARN_CONFIG)
         log_group_arn = self.configs.get(DATASYNC_LOG_ARN_CONFIG)
         datasync = boto3.client('datasync')
         file_filter = []
+        started = False
         try:
             # Create source S3 location
             source_location = None
@@ -663,16 +778,37 @@ class ExportMetadata:
                 TaskArn=task['TaskArn']
             )
             task_execution_arn = task_execution['TaskExecutionArn']
+            started = True
             self.log.info(f"Started DataSync task execution: {task_execution_arn}")
 
-            start_monitoring_task(task_execution_arn, task['TaskArn'], datasync, source_location, destination_location, self.log, bucket_name, file_key_list)
+            data_sync_id = None
+            submission_id = self.submission[ID]
+            if sync_type:
+                data_sync_id = self.mongo_dao.insert_data_sync(
+                    submission_id, sync_type, data_file_folder, dest_file_folder,
+                    DATA_SYNC_STATUS_IN_PROGRESS, task_arn=task['TaskArn'], task_execution_arn=task_execution_arn,
+                )
+                self.mongo_dao.set_submission_data_sync_status(
+                    submission_id, sync_type, DATA_SYNC_STATUS_IN_PROGRESS, data_sync_id,
+                )
+
+            start_monitoring_task(
+                task_execution_arn, task['TaskArn'], datasync, source_location, destination_location,
+                self.log, bucket_name, file_key_list,
+                mongo_dao=self.mongo_dao, data_sync_id=data_sync_id,
+                submission_id=submission_id, sync_type=sync_type,
+            )
 
         except ClientError as ce:
             self.log.exception(ce)
             self.log.exception(f"Failed to transfer files from {data_file_folder} to {dest_bucket_name}:{dest_file_folder}. {ce.response['Error']['Message']}")
+            if sync_type and not started:
+                self._record_data_sync_failure(sync_type, data_file_folder, dest_file_folder)
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to transfer files from {data_file_folder} to {dest_bucket_name}:{dest_file_folder}. {get_exception_msg()}")
+            if sync_type and not started:
+                self._record_data_sync_failure(sync_type, data_file_folder, dest_file_folder)
 
 
     def move_s3_objects(self, file_list):
@@ -754,12 +890,24 @@ class ExportMetadata:
             self.log.exception(e)
             self.log.exception(f"Failed to restore files from {data_file_folder}. {get_exception_msg()}")
 
-def start_monitoring_task(task_execution_arn, task_arn, dataSync, source, dest, log, source_bucket, file_key_list):
-            monitor_thread = threading.Thread(target=monitor_datasync_task, args=(task_execution_arn, task_arn, dataSync, source, dest, log, source_bucket, file_key_list))
+def start_monitoring_task(task_execution_arn, task_arn, dataSync, source, dest, log, source_bucket, file_key_list,
+                           mongo_dao=None, data_sync_id=None, submission_id=None, sync_type=None):
+            monitor_thread = threading.Thread(
+                target=monitor_datasync_task,
+                args=(task_execution_arn, task_arn, dataSync, source, dest, log, source_bucket, file_key_list),
+                kwargs={
+                    'mongo_dao': mongo_dao,
+                    'data_sync_id': data_sync_id,
+                    'submission_id': submission_id,
+                    'sync_type': sync_type,
+                },
+            )
             monitor_thread.start()
-    
-def monitor_datasync_task(task_execution_arn, task_arn, datasync, source, dest, log, source_bucket, file_key_list, wait_interval=30):
+
+def monitor_datasync_task(task_execution_arn, task_arn, datasync, source, dest, log, source_bucket, file_key_list,
+                           mongo_dao=None, data_sync_id=None, submission_id=None, sync_type=None, wait_interval=30):
         # Initialize the DataSync client
+        result_recorded = False
         try:
             # Poll the task status
             while True:
@@ -767,6 +915,11 @@ def monitor_datasync_task(task_execution_arn, task_arn, datasync, source, dest, 
                 status = response['Status']
                 if status in ['SUCCESS', 'ERROR']:
                     log.info(f"Task: {task_arn} completed with status: {status}")
+                    _record_data_sync_result(
+                        mongo_dao, data_sync_id, submission_id, sync_type,
+                        map_aws_datasync_status(status),
+                    )
+                    result_recorded = True
                     # delete files from source s3 bucket if the file_key_list length more than 0
                     if status == 'SUCCESS' and file_key_list and len(file_key_list) > 0:
                         delete_files_from_s3(source_bucket, file_key_list, log)
@@ -787,9 +940,17 @@ def monitor_datasync_task(task_execution_arn, task_arn, datasync, source, dest, 
         except ClientError as ce:
             log.exception(ce)
             log.exception(f"Failed to monitor DataSync task {task_arn}: {ce.response['Error']['Message']}")
+            if not result_recorded:
+                _record_data_sync_result(
+                    mongo_dao, data_sync_id, submission_id, sync_type, DATA_SYNC_STATUS_FAILED,
+                )
         except Exception as e:
             log.exception(e)
             log.exception(f"Failed to monitor DataSync task {task_arn}: {get_exception_msg()}")
+            if not result_recorded:
+                _record_data_sync_result(
+                    mongo_dao, data_sync_id, submission_id, sync_type, DATA_SYNC_STATUS_FAILED,
+                )
         finally:
             source = None
             dest = None

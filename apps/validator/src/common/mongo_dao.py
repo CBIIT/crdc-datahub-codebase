@@ -14,7 +14,11 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     CONSENT_CODE, RELEASE, VERSION, PROPERTY, MODEL, \
     COMPLETED_BATCHES, FAILED_BATCHES, BATCH_STATUS_DETAILS, WORST_BATCH_STATUS, STATUS_DETAIL, \
     STATUS_PRECEDENCE, PRECEDENCE_TO_STATUS, SRF_COLLECTION, VALIDATION_STATUS, PENDING_METADATA_DELETE, \
-    S3_LIST_ORPHANS_PAGE_SIZE, DISPLAY_ID, BATCH_ID, WARNINGS, LATEST_BATCH_ID
+    S3_LIST_ORPHANS_PAGE_SIZE, DISPLAY_ID, BATCH_ID, WARNINGS, LATEST_BATCH_ID, \
+    DATA_SYNC_COLLECTION, DATA_SYNC_SOURCE_FOLDER, DATA_SYNC_TARGET_FOLDER, DATA_SYNC_START_TIME, \
+    DATA_SYNC_END_TIME, DATA_SYNC_TASK_ARN, DATA_SYNC_TASK_EXECUTION_ARN, \
+    DATA_SYNC_TYPE_METADATA, DATA_SYNC_TYPE_FILE, DATA_SYNC_STATUS_IN_PROGRESS, \
+    METADATA_DATA_SYNC_STATUS, FILE_DATA_SYNC_STATUS
 from common.utils import get_exception_msg, current_datetime, get_uuid_str, dao_write_succeeded
 from common.s3_utils import S3Service
 
@@ -1401,6 +1405,159 @@ class MongoDao:
         db = self.client[self.db_name]
         data_collection = db[SUBMISSION_COLLECTION]
         return data_collection.find_one_and_update({ID: submission_id}, update_ops, return_document=ReturnDocument.AFTER)
+
+    def insert_data_sync(self, submission_id, sync_type, source_folder, target_folder, status, task_arn=None, task_execution_arn=None, end_time=None):
+        """Insert a dataSync task record.
+
+        The document _id is a string UUID. PyMongo would otherwise generate an ObjectId,
+        which does not match the backend's string _id schema for the dataSync collection.
+
+        @param submission_id submission document id
+        @param sync_type DataSync type, "metadata" or "file"
+        @param source_folder source S3 prefix passed to transfer_s3_obj
+        @param target_folder destination S3 prefix passed to transfer_s3_obj
+        @param status DataSync status to store
+        @param task_arn AWS DataSync task ARN, when the task was created
+        @param task_execution_arn AWS DataSync task execution ARN, when the task started
+        @param end_time terminal time to store, when already known (e.g. a start failure)
+        @returns the new document id, or None when the insert fails
+        """
+        data_sync_id = get_uuid_str()
+        doc = {
+            ID: data_sync_id,
+            SUBMISSION_ID: submission_id,
+            TYPE: sync_type,
+            DATA_SYNC_SOURCE_FOLDER: source_folder,
+            DATA_SYNC_TARGET_FOLDER: target_folder,
+            DATA_SYNC_START_TIME: current_datetime(),
+            STATUS: status,
+        }
+        if task_arn is not None:
+            doc[DATA_SYNC_TASK_ARN] = task_arn
+        if task_execution_arn is not None:
+            doc[DATA_SYNC_TASK_EXECUTION_ARN] = task_execution_arn
+        if end_time is not None:
+            doc[DATA_SYNC_END_TIME] = end_time
+        db = self.client[self.db_name]
+        data_sync_collection = db[DATA_SYNC_COLLECTION]
+        try:
+            data_sync_collection.insert_one(doc)
+            return data_sync_id
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to insert data sync record, {submission_id}/{sync_type}: {get_exception_msg()}")
+            return None
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to insert data sync record, {submission_id}/{sync_type}: {get_exception_msg()}")
+            return None
+
+    def update_data_sync(self, data_sync_id, status, end_time=None):
+        """Update a dataSync task record's status and, when the task has finished, its end time.
+
+        @param data_sync_id dataSync document id
+        @param status DataSync status to store
+        @param end_time terminal time to store, when the task has finished
+        @returns True when a document matched
+        """
+        updates = {STATUS: status}
+        if end_time is not None:
+            updates[DATA_SYNC_END_TIME] = end_time
+        db = self.client[self.db_name]
+        data_sync_collection = db[DATA_SYNC_COLLECTION]
+        try:
+            result = data_sync_collection.update_one({ID: data_sync_id}, {"$set": updates})
+            return result.matched_count > 0
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to update data sync record, {data_sync_id}: {get_exception_msg()}")
+            return False
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to update data sync record, {data_sync_id}: {get_exception_msg()}")
+            return False
+
+    def set_submission_data_sync_status(self, submission_id, sync_type, status, data_sync_id=None):
+        """Set a submission's metadata or file DataSync rollup status.
+
+        Does not touch updatedAt. Archival retention (getToBeArchivedSubmissions on the
+        backend) is measured from updatedAt, so changing it on sync completion would push
+        a completed submission's archival date out.
+
+        When data_sync_id is given, writes only if that record is still the newest for the
+        submission and type (by startTime). When data_sync_id is None (e.g. insert failed),
+        writes unconditionally.
+
+        @param submission_id submission document id
+        @param sync_type DataSync type, "metadata" or "file"
+        @param status DataSync status to store
+        @param data_sync_id dataSync document id used for the stale-write guard, or None
+        @returns True when a document matched, False when sync_type is unrecognized, the
+                 write is skipped as stale, or the write fails
+        """
+        if sync_type == DATA_SYNC_TYPE_METADATA:
+            field = METADATA_DATA_SYNC_STATUS
+        elif sync_type == DATA_SYNC_TYPE_FILE:
+            field = FILE_DATA_SYNC_STATUS
+        else:
+            self.log.error(f"{submission_id}: Unrecognized DataSync type, {sync_type}; submission sync status not updated.")
+            return False
+        db = self.client[self.db_name]
+        if data_sync_id is not None:
+            data_sync_collection = db[DATA_SYNC_COLLECTION]
+            try:
+                newest = data_sync_collection.find_one(
+                    {SUBMISSION_ID: submission_id, TYPE: sync_type},
+                    sort=[(DATA_SYNC_START_TIME, DESCENDING)],
+                )
+            except errors.PyMongoError as pe:
+                self.log.exception(pe)
+                self.log.exception(f"Failed to check newest data sync for rollup, {submission_id}/{sync_type}: {get_exception_msg()}")
+                return False
+            except Exception as e:
+                self.log.exception(e)
+                self.log.exception(f"Failed to check newest data sync for rollup, {submission_id}/{sync_type}: {get_exception_msg()}")
+                return False
+            if not newest or newest.get(ID) != data_sync_id:
+                self.log.info(
+                    f"{submission_id}/{sync_type}: Skipping submission rollup update for {data_sync_id}; "
+                    f"a newer dataSync record exists."
+                )
+                return False
+        submission_collection = db[SUBMISSION_COLLECTION]
+        try:
+            result = submission_collection.update_one({ID: submission_id}, {"$set": {field: status}})
+            return result.matched_count > 0
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to set submission data sync status, {submission_id}/{sync_type}: {get_exception_msg()}")
+            return False
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to set submission data sync status, {submission_id}/{sync_type}: {get_exception_msg()}")
+            return False
+
+    def find_in_progress_data_syncs(self):
+        """Return dataSync documents that are In Progress and have a taskExecutionArn.
+
+        Used at export-service startup to reconcile records left behind after a restart.
+        @returns list of documents, or [] on failure
+        """
+        db = self.client[self.db_name]
+        data_sync_collection = db[DATA_SYNC_COLLECTION]
+        try:
+            return list(data_sync_collection.find({
+                STATUS: DATA_SYNC_STATUS_IN_PROGRESS,
+                DATA_SYNC_TASK_EXECUTION_ARN: {"$exists": True, "$nin": [None, ""]},
+            }))
+        except errors.PyMongoError as pe:
+            self.log.exception(pe)
+            self.log.exception(f"Failed to find in-progress data sync records: {get_exception_msg()}")
+            return []
+        except Exception as e:
+            self.log.exception(e)
+            self.log.exception(f"Failed to find in-progress data sync records: {get_exception_msg()}")
+            return []
 
     """
     get bucket name based on dataCommons and type
