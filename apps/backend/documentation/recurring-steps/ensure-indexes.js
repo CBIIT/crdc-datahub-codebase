@@ -70,6 +70,11 @@ const INDEXES = [
         name: 'submissionID_1_type_1_status_1',
     },
     {
+        collection: DATA_SYNC_COLLECTION,
+        keys: { status: 1 },
+        name: 'status_1',
+    },
+    {
         collection: SUBMISSIONS_COLLECTION,
         keys: { studyID: 1, dataCommons: 1, status: 1 },
         name: 'studyID_1_dataCommons_1_status_1',
