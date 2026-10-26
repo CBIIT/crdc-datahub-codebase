@@ -74,29 +74,29 @@ describe("Basic Functionality", () => {
     expect(getByRole("button", { name: "Messages" })).toBeInTheDocument();
   });
 
-  it("should call the item's onClick when clicked and keep the launcher open", async () => {
+  it("should call the item's onClick when clicked", async () => {
     const onClick = vi.fn();
     const { getByRole } = render(<TestParent items={[{ ...chatItem, onClick }]} />);
 
-    userEvent.click(getByRole("button", { name: "Chat with us" }));
+    await userEvent.click(getByRole("button", { name: "Chat with us" }));
 
     expect(onClick).toHaveBeenCalledTimes(1);
-    expect(getByRole("complementary", { name: "Feature launcher" })).toBeInTheDocument();
-    expect(getByRole("button", { name: "Chat with us" })).toBeInTheDocument();
   });
 
-  it("should show an item as active while its feature is open", () => {
-    const { getByRole, rerender } = render(<TestParent items={[chatItem]} />);
+  it("should hide the launcher while a feature is open", () => {
+    const { getByRole, queryByRole, rerender } = render(
+      <TestParent items={[chatItem, messagesItem]} />
+    );
 
-    expect(getByRole("button", { name: "Chat with us" })).toHaveAttribute("aria-pressed", "false");
+    expect(getByRole("complementary", { name: "Feature launcher" })).toBeInTheDocument();
 
-    rerender(<TestParent items={[{ ...chatItem, isActive: true }]} />);
+    rerender(<TestParent items={[{ ...chatItem, isActive: true }, messagesItem]} />);
 
-    expect(getByRole("button", { name: "Chat with us" })).toHaveAttribute("aria-pressed", "true");
+    expect(queryByRole("complementary", { name: "Feature launcher" })).not.toBeInTheDocument();
 
-    rerender(<TestParent items={[{ ...chatItem, isActive: false }]} />);
+    rerender(<TestParent items={[{ ...chatItem, isActive: false }, messagesItem]} />);
 
-    expect(getByRole("button", { name: "Chat with us" })).toHaveAttribute("aria-pressed", "false");
+    expect(getByRole("complementary", { name: "Feature launcher" })).toBeInTheDocument();
   });
 
   it("should remove an item when its component unmounts", () => {

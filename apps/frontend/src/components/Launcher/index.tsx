@@ -47,7 +47,7 @@ const StyledItemButton = styled(IconButton, {
     maxWidth: "36px",
     maxHeight: "36px",
   },
-  "&:hover, &.Mui-focusVisible, &[aria-pressed='true']": {
+  "&:hover, &.Mui-focusVisible": {
     background: gradient,
   },
   "&.Mui-focusVisible": {
@@ -76,26 +76,25 @@ const StyledTooltip = styled(({ className, ...props }: TooltipProps) => (
 });
 
 /**
- * A floating column of buttons that open features.
+ * A floating column of buttons that open features. Hidden while any feature is open.
  *
- * @returns {JSX.Element | null} The launcher, or nothing when there are no items.
+ * @returns {JSX.Element | null} The launcher, or nothing when there are no items or a feature is open.
  */
 const Launcher: FC = () => {
   const items = useLauncherItems();
 
-  if (!items?.length) {
+  if (!items?.length || items.some((item) => item.isActive)) {
     return null;
   }
 
   return (
     <StyledLauncher aria-label="Feature launcher">
       <StyledList>
-        {items.map(({ id, label, icon: Icon, gradient, isActive = false, onClick }) => (
+        {items.map(({ id, label, icon: Icon, gradient, onClick }) => (
           <StyledListItem key={id}>
             <StyledTooltip title={label} placement="left">
               <StyledItemButton
                 aria-label={label}
-                aria-pressed={isActive}
                 gradient={gradient}
                 onClick={onClick}
                 disableRipple
