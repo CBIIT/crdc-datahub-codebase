@@ -4,6 +4,8 @@ import { Outlet, ScrollRestoration } from "react-router-dom";
 
 import ChatBot from "@/components/ChatBot";
 import ChatBotGate from "@/components/ChatBotGate";
+import { LauncherProvider } from "@/components/Contexts/LauncherContext";
+import Launcher from "@/components/Launcher";
 
 import { SearchParamsProvider } from "../components/Contexts/SearchParamsContext";
 import Footer from "../components/Footer";
@@ -22,18 +24,22 @@ type LayoutProps = {
 
 const Layout: FC<LayoutProps> = ({ children }) => (
   <SearchParamsProvider>
-    <ScrollRestoration />
-    <Header />
-    <StyledWrapper>
-      <OverlayWindow />
-      {children || <Outlet />}
-      <ScrollButton />
-    </StyledWrapper>
-    <Footer />
-    <InactivityDialog />
-    <ChatBotGate>
-      <ChatBot />
-    </ChatBotGate>
+    <LauncherProvider>
+      <ScrollRestoration />
+      <Header />
+      <StyledWrapper>
+        <OverlayWindow />
+        {children || <Outlet />}
+        <ScrollButton />
+      </StyledWrapper>
+      <Footer />
+      <InactivityDialog />
+      <ChatBotGate>
+        <ChatBot />
+      </ChatBotGate>
+
+      <Launcher />
+    </LauncherProvider>
   </SearchParamsProvider>
 );
 
