@@ -1,5 +1,7 @@
 import { useParams } from "react-router-dom";
 
+import { SRFMessaging } from "@/components/Messaging/adapters/SRFMessaging";
+
 import { FormProvider } from "../../components/Contexts/FormContext";
 import { InstitutionProvider } from "../../components/Contexts/InstitutionListContext";
 import { OrganizationProvider } from "../../components/Contexts/OrganizationListContext";
@@ -22,6 +24,7 @@ const QuestionnaireController = () => {
         <InstitutionProvider filterInactive>
           <FormProvider id={appId}>
             <FormView section={section} />
+            <SRFMessaging />
           </FormProvider>
         </InstitutionProvider>
       </OrganizationProvider>
