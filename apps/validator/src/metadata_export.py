@@ -3,6 +3,7 @@ import pandas as pd
 import csv
 import json
 import os, io, boto3
+import re
 import time
 import threading
 import io
@@ -21,7 +22,9 @@ from common.constants import SQS_TYPE, SUBMISSION_ID, BATCH_BUCKET, TYPE_EXPORT_
     DATA_SYNC_TYPE_METADATA, DATA_SYNC_TYPE_FILE, DATA_SYNC_STATUS_IN_PROGRESS, DATA_SYNC_STATUS_FAILED, \
     DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_TASK_ARN, DATA_SYNC_TASK_EXECUTION_ARN, \
     DATA_SYNC_SOURCE_LOCATION_ARN, DATA_SYNC_DEST_LOCATION_ARN, DATA_SYNC_LIST_PENDING, \
-    DATA_SYNC_ROLLUP_PENDING, DATA_SYNC_CLEANUP_AFTER, DATA_SYNC_LAST_ERROR, DATA_SYNC_OBSERVATION_ERROR_SINCE, \
+    DATA_SYNC_ROLLUP_PENDING, DATA_SYNC_CLEANUP_AFTER, DATA_SYNC_CLEANUP_STARTED_AT, \
+    DATA_SYNC_CLEANED_AT, DATA_SYNC_CLEANUP_REASON, DATA_SYNC_CLEANUP_ERROR, \
+    DATA_SYNC_LAST_ERROR, DATA_SYNC_OBSERVATION_ERROR_SINCE, \
     DATA_SYNC_LAST_POLLED_AT, DATA_SYNC_START_TIME, DATA_SYNC_END_TIME, STATUS, \
     DATA_SYNC_MONITOR_ACTIVE_INTERVAL_SECONDS, DATA_SYNC_MONITOR_WAITING_INTERVAL_SECONDS, \
     DATA_SYNC_START_GRACE_SECONDS, DATA_SYNC_CLEANUP_DELAY_SECONDS, DATA_SYNC_POLL_CLAIM_SECONDS, \
@@ -30,7 +33,9 @@ from common.constants import SQS_TYPE, SUBMISSION_ID, BATCH_BUCKET, TYPE_EXPORT_
     DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE, DATA_SYNC_LAST_ERROR_NOT_STARTED, \
     DATA_SYNC_LOG_TRANSFER_FAILED, DATA_SYNC_LOG_EXECUTION_FAILED, DATA_SYNC_LOG_TRACKING_FAILED, \
     DATA_SYNC_LOG_TRACKING_NOT_RECOVERED, DATA_SYNC_LOG_OBSERVATION_ERROR, DATA_SYNC_LOG_CLEANUP_FAILED, \
-    DATA_SYNC_LOG_OUTCOME_UNKNOWN, DATA_SYNC_LOG_CLEANUP_DEFERRED
+    DATA_SYNC_LOG_OUTCOME_UNKNOWN, DATA_SYNC_LOG_CLEANUP_DEFERRED, DATA_SYNC_LOG_ORPHAN, \
+    DATA_SYNC_TASK_NAME_PREFIX, DATA_SYNC_SWEEP_INTERVAL_SECONDS, DATA_SYNC_SWEEP_GRACE_SECONDS, \
+    DATA_SYNC_SWEEP_DRY_RUN_CONFIG, DATA_SYNC_SWEEP_CLEANUP_REASON, DATA_SYNC_SWEEP_LOCK_TTL_SECONDS
 from common.utils import current_datetime, get_uuid_str, dump_dict_to_json, get_exception_msg, get_date_time, dict_exists_in_list, \
     convert_date_time, convert_file_size
 from common.model_store import ModelFactory
@@ -105,6 +110,20 @@ def notify_data_sync_started():
     """Wake a waiting monitor so it polls the new dataSync record immediately."""
     _data_sync_wake_event.set()
 
+def _data_sync_task_name(tier, data_sync_id=None):
+    """Build the DataSync task Name used for discovery by the orphan sweep.
+
+    Tracked transfers include dataSyncID; untracked transfers use tier only.
+    Legacy bare Data_Hub_SyncTask names remain discoverable via the sweep's legacy rules.
+
+    @param tier deployment tier string
+    @param data_sync_id dataSync document id when tracking, or None for untracked
+    @returns task Name string
+    """
+    if data_sync_id:
+        return f"{DATA_SYNC_TASK_NAME_PREFIX}-{tier}-{data_sync_id}"
+    return f"{DATA_SYNC_TASK_NAME_PREFIX}-{tier}"
+
 def _next_data_sync_monitor_state(unfinished_count):
     """Choose the monitor state from how many unfinished records a pass found.
 
@@ -120,16 +139,35 @@ def _next_data_sync_monitor_state(unfinished_count):
 def _client_error_not_found(error):
     """True when a DataSync ClientError reports that the resource does not exist.
 
-    Matches InvalidRequestException / ResourceNotFoundException whose message contains
-    "not found" (AWS wording for describe_task_execution, delete_task, and delete_location,
-    e.g. "Task execution was not found.", "Resource ... was not found").
+    ResourceNotFoundException is treated as not-found by code alone. InvalidRequestException
+    is also used for validation failures, so it counts as not-found only when a structured
+    DataSync error-code field indicates a missing resource, or as a last resort when the
+    message matches a narrow not-found pattern (DataSync historically returns
+    InvalidRequestException for describe/delete of missing tasks and locations).
 
     @param error botocore ClientError
-    @returns True when the error is a not-found InvalidRequestException or ResourceNotFoundException
+    @returns True when the error indicates the resource does not exist
     """
-    code = error.response.get("Error", {}).get("Code", "")
-    message = error.response.get("Error", {}).get("Message", "")
-    return code in ("InvalidRequestException", "ResourceNotFoundException") and "not found" in message.lower()
+    err = error.response.get("Error", {}) if getattr(error, "response", None) else {}
+    code = err.get("Code", "")
+    if code == "ResourceNotFoundException":
+        return True
+    if code != "InvalidRequestException":
+        return False
+    # Prefer structured codes when present (botocore may expose them under Error or response root).
+    structured = (
+        err.get("datasyncErrorCode")
+        or err.get("errorCode")
+        or error.response.get("datasyncErrorCode")
+        or error.response.get("errorCode")
+        or ""
+    )
+    if structured in ("ResourceNotFoundException", "NotFound", "TaskNotFound", "LocationNotFound"):
+        return True
+    # Last resort: DataSync reuses InvalidRequestException for both not-found and invalid
+    # parameters; only treat clear absence wording as not-found.
+    message = err.get("Message", "") or ""
+    return bool(re.search(r"\bnot found\b|does not exist", message, re.IGNORECASE))
 
 def _execution_error_detail(response):
     """Read the AWS Result error from a describe_task_execution response.
@@ -165,7 +203,9 @@ def _reopen_early_finalized_record(mongo_dao, log, state, context_fn):
     """Reopen a record finalized as not-observable or not-started once ARNs are saved.
 
     If the submission was already finished Failed, the list add briefly sets it back to
-    In Progress until the monitor observes the real AWS result.
+    In Progress until the monitor observes the real AWS result. Refuses to reopen when
+    cleanup has already started or finished, and clears any scheduled cleanupAfter so
+    the monitor cannot delete resources of a reopened transfer.
 
     @param mongo_dao MongoDao instance
     @param log logger
@@ -187,12 +227,14 @@ def _reopen_early_finalized_record(mongo_dao, log, state, context_fn):
         set_fields[DATA_SYNC_DEST_LOCATION_ARN] = state["destination_location_arn"]
     outcome = _track(
         log, mongo_dao.update_data_sync, state["data_sync_id"], set_fields,
-        unset_fields=[DATA_SYNC_END_TIME, DATA_SYNC_LAST_ERROR],
+        unset_fields=[DATA_SYNC_END_TIME, DATA_SYNC_LAST_ERROR, DATA_SYNC_CLEANUP_AFTER],
         match_fields={
             STATUS: DATA_SYNC_STATUS_FAILED,
             DATA_SYNC_LAST_ERROR: {
                 "$in": [DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE, DATA_SYNC_LAST_ERROR_NOT_STARTED],
             },
+            DATA_SYNC_CLEANUP_STARTED_AT: {"$exists": False},
+            DATA_SYNC_CLEANED_AT: {"$exists": False},
         },
     )
     if outcome == DATA_SYNC_WRITE_APPLIED:
@@ -411,12 +453,17 @@ def _finish_record_submission(mongo_dao, log, record):
 def _cleanup_due(record, now):
     """True when this record's AWS cleanup is allowed to run.
 
+    Requires a terminal status so a reopened In Progress record is never cleaned up from
+    a stale snapshot that still has cleanupAfter set.
+
     @param record dataSync document
     @param now current datetime
-    @returns True when cleanupAfter is set, due, and tracking writes are done
+    @returns True when cleanupAfter is set, due, status is terminal, and tracking writes are done
     """
     cleanup_after = record.get(DATA_SYNC_CLEANUP_AFTER)
     if not cleanup_after or record.get(DATA_SYNC_LIST_PENDING) or record.get(DATA_SYNC_ROLLUP_PENDING):
+        return False
+    if record.get(STATUS) not in (DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED):
         return False
     return cleanup_after <= now
 
@@ -428,7 +475,8 @@ def _delete_data_sync_resources(datasync, log, record):
     @param datasync boto3 DataSync client
     @param log logger
     @param record dataSync document
-    @returns True when every delete succeeded or was already gone
+    @returns (True, None) when every delete succeeded or was already gone;
+             (False, error_message) on the first failure
     """
     context = _context_from_record(record)
     deletes = (
@@ -444,20 +492,22 @@ def _delete_data_sync_resources(datasync, log, record):
         except ClientError as ce:
             if _client_error_not_found(ce):
                 continue
+            message = ce.response['Error']['Message']
             log.exception(ce)
             log.error(
                 f"{DATA_SYNC_LOG_CLEANUP_FAILED} {label} {arn} {context}. "
-                f"Tracking is already recorded and is not affected. {ce.response['Error']['Message']}"
+                f"Tracking is already recorded and is not affected. {message}"
             )
-            return False
+            return False, f"{label} {arn}: {message}"
         except Exception as e:
+            message = get_exception_msg()
             log.exception(e)
             log.error(
                 f"{DATA_SYNC_LOG_CLEANUP_FAILED} {label} {arn} {context}. "
-                f"Tracking is already recorded and is not affected. {get_exception_msg()}"
+                f"Tracking is already recorded and is not affected. {message}"
             )
-            return False
-    return True
+            return False, f"{label} {arn}: {message}"
+    return True, None
 
 def _record_observation_error(mongo_dao, log, record, message):
     """Remember a transient AWS read failure and log it, louder after an hour.
@@ -483,6 +533,9 @@ def _record_observation_error(mongo_dao, log, record, message):
 def _resolve_task_execution_arn(datasync, mongo_dao, log, record):
     """Return the execution ARN from the record, or from list_task_executions when only the task ARN is saved.
 
+    When more than one execution exists, describes each and picks the latest StartTime.
+    A task normally starts exactly once; multiple executions are unexpected and logged.
+
     @param datasync boto3 DataSync client
     @param mongo_dao MongoDao instance
     @param log logger
@@ -492,11 +545,32 @@ def _resolve_task_execution_arn(datasync, mongo_dao, log, record):
     execution_arn = record.get(DATA_SYNC_TASK_EXECUTION_ARN)
     if execution_arn or not record.get(DATA_SYNC_TASK_ARN):
         return execution_arn
-    response = datasync.list_task_executions(TaskArn=record[DATA_SYNC_TASK_ARN])
-    executions = response.get("TaskExecutions") or []
+    task_arn = record[DATA_SYNC_TASK_ARN]
+    executions = []
+    paginator = datasync.get_paginator("list_task_executions")
+    for page in paginator.paginate(TaskArn=task_arn):
+        executions.extend(page.get("TaskExecutions") or [])
     if not executions:
         return None
-    execution_arn = executions[0].get("TaskExecutionArn")
+    if len(executions) == 1:
+        execution_arn = executions[0].get("TaskExecutionArn")
+    else:
+        context = _context_from_record(record)
+        log.warning(
+            f"DataSync task has {len(executions)} executions; selecting the latest StartTime {context}"
+        )
+        best_arn = None
+        best_start = None
+        for entry in executions:
+            candidate = entry.get("TaskExecutionArn")
+            if not candidate:
+                continue
+            described = datasync.describe_task_execution(TaskExecutionArn=candidate)
+            start_time = described.get("StartTime")
+            if best_arn is None or (start_time is not None and (best_start is None or start_time > best_start)):
+                best_arn = candidate
+                best_start = start_time
+        execution_arn = best_arn
     if execution_arn:
         record[DATA_SYNC_TASK_EXECUTION_ARN] = execution_arn
         _track(log, mongo_dao.update_data_sync, record.get(ID), {DATA_SYNC_TASK_EXECUTION_ARN: execution_arn})
@@ -672,14 +746,49 @@ def _monitor_data_sync(datasync, mongo_dao, log, record):
     if record.get(STATUS) == DATA_SYNC_STATUS_IN_PROGRESS:
         _monitor_in_progress_data_sync(datasync, mongo_dao, log, record)
     _finish_record_submission(mongo_dao, log, record)
-    if _cleanup_due(record, current_datetime()):
-        if _delete_data_sync_resources(datasync, log, record):
-            cleared = _track(log, mongo_dao.update_data_sync, record.get(ID), unset_fields=[DATA_SYNC_CLEANUP_AFTER])
+    now = current_datetime()
+    if _cleanup_due(record, now):
+        # Claim before delete so reopen loses the race (match_fields mirror finalize).
+        claim = _track(
+            log, mongo_dao.update_data_sync, record.get(ID),
+            {DATA_SYNC_CLEANUP_STARTED_AT: now},
+            match_fields={
+                STATUS: {"$in": [DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED]},
+                DATA_SYNC_CLEANUP_AFTER: {"$lte": now},
+                DATA_SYNC_LIST_PENDING: {"$ne": True},
+                DATA_SYNC_ROLLUP_PENDING: {"$ne": True},
+                DATA_SYNC_CLEANED_AT: {"$exists": False},
+            },
+        )
+        if claim != DATA_SYNC_WRITE_APPLIED:
+            log.info(f"DataSync cleanup claim stale {context}")
+            return
+        record[DATA_SYNC_CLEANUP_STARTED_AT] = now
+        deleted_ok, delete_error = _delete_data_sync_resources(datasync, log, record)
+        if deleted_ok:
+            cleared = _track(
+                log, mongo_dao.update_data_sync, record.get(ID),
+                {DATA_SYNC_CLEANED_AT: now},
+                unset_fields=[DATA_SYNC_CLEANUP_AFTER],
+            )
             if cleared == DATA_SYNC_WRITE_APPLIED:
                 record.pop(DATA_SYNC_CLEANUP_AFTER, None)
+                record[DATA_SYNC_CLEANED_AT] = now
                 log.info(f"DataSync cleanup done {context}")
             else:
                 log.error(f"{DATA_SYNC_LOG_CLEANUP_FAILED} clear cleanupAfter outcome={cleared} {context}. Tracking is already recorded and is not affected.")
+        else:
+            _track(
+                log, mongo_dao.update_data_sync, record.get(ID),
+                {DATA_SYNC_CLEANUP_ERROR: delete_error or "delete failed"},
+            )
+            log.error(
+                f"{DATA_SYNC_LOG_CLEANUP_FAILED} manual cleanup needed {context} "
+                f"taskArn={record.get(DATA_SYNC_TASK_ARN)} "
+                f"sourceLocationArn={record.get(DATA_SYNC_SOURCE_LOCATION_ARN)} "
+                f"destinationLocationArn={record.get(DATA_SYNC_DEST_LOCATION_ARN)} "
+                f"error={delete_error}"
+            )
 
 def _run_data_sync_monitor_pass(mongo_dao, log, datasync=None):
     """Process every unfinished dataSync record once.
@@ -744,6 +853,592 @@ def start_data_sync_monitor(mongo_dao, log):
     monitor_thread.start()
     return monitor_thread
 
+def _parse_data_sync_id_from_task_name(name, tier):
+    """Extract dataSyncID from a tier-qualified task name, or None.
+
+    @param name DataSync task Name
+    @param tier deployment tier
+    @returns dataSyncID string, or None when the name is not the new tracked format
+    """
+    if not name or not tier:
+        return None
+    prefix = f"{DATA_SYNC_TASK_NAME_PREFIX}-{tier}-"
+    if name.startswith(prefix) and len(name) > len(prefix):
+        return name[len(prefix):]
+    return None
+
+def _is_legacy_bare_task_name(name):
+    """True when a task Name is the legacy bare Data_Hub_SyncTask (no tier).
+
+    @param name DataSync task Name
+    @returns True when the name is the bare legacy name
+    """
+    return name == DATA_SYNC_TASK_NAME_PREFIX
+
+def _is_our_task_name(name, tier):
+    """True when a task Name was created by this system for this tier.
+
+    Legacy bare Data_Hub_SyncTask names are excluded; the sweep only logs them.
+
+    @param name DataSync task Name
+    @param tier deployment tier
+    @returns True when the name is ours for this tier
+    """
+    if not name:
+        return False
+    if name == f"{DATA_SYNC_TASK_NAME_PREFIX}-{tier}":
+        return True
+    return _parse_data_sync_id_from_task_name(name, tier) is not None
+
+def _task_has_active_execution(datasync, task_arn):
+    """True when list_task_executions reports a non-terminal execution.
+
+    @param datasync boto3 DataSync client
+    @param task_arn AWS task ARN
+    @returns True when an execution is still running
+    """
+    paginator = datasync.get_paginator("list_task_executions")
+    for page in paginator.paginate(TaskArn=task_arn):
+        for entry in page.get("TaskExecutions") or []:
+            status = entry.get("Status")
+            if status and status not in ("SUCCESS", "ERROR"):
+                return True
+    return False
+
+def _task_execution_count(datasync, task_arn):
+    """Count executions for a task.
+
+    @param datasync boto3 DataSync client
+    @param task_arn AWS task ARN
+    @returns number of executions
+    """
+    count = 0
+    paginator = datasync.get_paginator("list_task_executions")
+    for page in paginator.paginate(TaskArn=task_arn):
+        count += len(page.get("TaskExecutions") or [])
+    return count
+
+def _document_protected_from_sweep(doc):
+    """True when a matching dataSync document must not be touched by the orphan sweep.
+
+    @param doc dataSync document
+    @returns True when In Progress, flagged, or in an active cleanup window
+    """
+    if not doc:
+        return False
+    if doc.get(STATUS) == DATA_SYNC_STATUS_IN_PROGRESS:
+        return True
+    if doc.get(DATA_SYNC_LIST_PENDING) or doc.get(DATA_SYNC_ROLLUP_PENDING):
+        return True
+    if doc.get(DATA_SYNC_CLEANUP_AFTER) is not None:
+        return True
+    if doc.get(DATA_SYNC_CLEANUP_STARTED_AT) is not None:
+        return True
+    return False
+
+def _age_seconds(creation_time, now):
+    """Seconds between an AWS CreationTime and now.
+
+    @param creation_time datetime from AWS, or None
+    @param now current datetime
+    @returns age in seconds, or None when creation_time is missing
+    """
+    if not creation_time:
+        return None
+    # AWS datetimes are typically timezone-aware; convert then drop tz for subtraction.
+    if getattr(creation_time, "tzinfo", None) is not None and getattr(now, "tzinfo", None) is None:
+        creation_time = creation_time.astimezone().replace(tzinfo=None)
+    elif getattr(creation_time, "tzinfo", None) is None and getattr(now, "tzinfo", None) is not None:
+        now = now.astimezone().replace(tzinfo=None)
+    return (now - creation_time).total_seconds()
+
+def _age_text(age):
+    """Format an age in seconds for orphan-sweep log lines.
+
+    @param age age in seconds, or None
+    @returns human-readable age string
+    """
+    return "unknown" if age is None else f"{int(age)}s"
+
+def _match_docs_for_resource(docs_by_arn, docs_by_id, arn, data_sync_id=None):
+    """Collect documents that match a resource ARN or embedded dataSyncID.
+
+    @param docs_by_arn map of ARN -> list of docs
+    @param docs_by_id map of id -> doc
+    @param arn resource ARN
+    @param data_sync_id optional id from the task name
+    @returns list of matching documents
+    """
+    matched = list(docs_by_arn.get(arn) or [])
+    if data_sync_id and data_sync_id in docs_by_id:
+        doc = docs_by_id[data_sync_id]
+        if doc not in matched:
+            matched.append(doc)
+    return matched
+
+def _sweep_eligible_docs(matched, fallback_creation_time, now, grace, recovery_wait, require_no_task=False):
+    """Filter matched dataSync docs that are safe for the orphan sweep to clean.
+
+    @param matched documents that reference the resource
+    @param fallback_creation_time AWS CreationTime used when endTime is missing
+    @param now current datetime
+    @param grace grace period in seconds for terminal records
+    @param recovery_wait longer wait for not-started / not-observable failures
+    @param require_no_task when True, skip docs that still have a taskArn
+    @returns list of eligible documents
+    """
+    eligible = []
+    for doc in matched:
+        if doc.get(STATUS) not in (DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED):
+            continue
+        if doc.get(DATA_SYNC_CLEANUP_AFTER) is not None:
+            continue
+        if doc.get(DATA_SYNC_CLEANED_AT) is not None:
+            continue
+        if doc.get(DATA_SYNC_LIST_PENDING) or doc.get(DATA_SYNC_ROLLUP_PENDING):
+            continue
+        if require_no_task and doc.get(DATA_SYNC_TASK_ARN):
+            continue
+        end_time = doc.get(DATA_SYNC_END_TIME) or fallback_creation_time
+        end_age = _age_seconds(end_time, now)
+        last_error = doc.get(DATA_SYNC_LAST_ERROR)
+        wait = recovery_wait if last_error in (
+            DATA_SYNC_LAST_ERROR_NOT_STARTED, DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE,
+        ) else grace
+        if end_age is None or end_age < wait:
+            continue
+        eligible.append(doc)
+    return eligible
+
+def _sweep_cleanup_doc(datasync, mongo_dao, log, doc, resource_arn, age_text, dry_run, label, now):
+    """Claim, delete AWS resources, and mark a dataSync document cleaned.
+
+    On delete failure, writes cleanupError and leaves cleanupStartedAt set so the
+    record stays protected and is not retried automatically.
+
+    @param datasync boto3 DataSync client
+    @param mongo_dao MongoDao instance
+    @param log logger
+    @param doc dataSync document
+    @param resource_arn primary ARN being cleaned (task or location)
+    @param age_text formatted age for logs
+    @param dry_run when True, only log
+    @param label short resource label for log lines (task/location)
+    @param now current datetime used for claim and cleanedAt
+    @returns "would_delete", "deleted", "skipped", or "failed"
+    """
+    doc_id = doc.get(ID)
+    if dry_run:
+        log.info(
+            f"{DATA_SYNC_LOG_ORPHAN} would delete document {label} "
+            f"dataSyncID={doc_id} arn={resource_arn} "
+            f"reason=pre-start-or-terminal-no-cleanup age={age_text}"
+        )
+        return "would_delete"
+    claim = _track(
+        log, mongo_dao.update_data_sync, doc_id,
+        {DATA_SYNC_CLEANUP_STARTED_AT: now},
+        match_fields={
+            STATUS: {"$in": [DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED]},
+            DATA_SYNC_LIST_PENDING: {"$ne": True},
+            DATA_SYNC_ROLLUP_PENDING: {"$ne": True},
+            DATA_SYNC_CLEANUP_AFTER: {"$exists": False},
+            DATA_SYNC_CLEANED_AT: {"$exists": False},
+            DATA_SYNC_CLEANUP_STARTED_AT: {"$exists": False},
+        },
+    )
+    if claim != DATA_SYNC_WRITE_APPLIED:
+        return "skipped"
+    deleted_ok, delete_error = _delete_data_sync_resources(datasync, log, doc)
+    if not deleted_ok:
+        _track(
+            log, mongo_dao.update_data_sync, doc_id,
+            {DATA_SYNC_CLEANUP_ERROR: delete_error or "delete failed"},
+        )
+        log.error(
+            f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed dataSyncID={doc_id} "
+            f"taskArn={doc.get(DATA_SYNC_TASK_ARN)} "
+            f"sourceLocationArn={doc.get(DATA_SYNC_SOURCE_LOCATION_ARN)} "
+            f"destinationLocationArn={doc.get(DATA_SYNC_DEST_LOCATION_ARN)} "
+            f"arn={resource_arn} reason={DATA_SYNC_SWEEP_CLEANUP_REASON} "
+            f"age={age_text} error={delete_error}"
+        )
+        return "failed"
+    cleared = _track(
+        log, mongo_dao.update_data_sync, doc_id,
+        {
+            DATA_SYNC_CLEANED_AT: now,
+            DATA_SYNC_CLEANUP_REASON: DATA_SYNC_SWEEP_CLEANUP_REASON,
+        },
+        unset_fields=[DATA_SYNC_CLEANUP_AFTER],
+    )
+    if cleared != DATA_SYNC_WRITE_APPLIED:
+        log.error(
+            f"{DATA_SYNC_LOG_ORPHAN} cleanedAt write failed outcome={cleared} "
+            f"dataSyncID={doc_id} arn={resource_arn} age={age_text}. "
+            f"AWS resources were deleted; manual cleanup needed for tracking."
+        )
+        return "failed"
+    log.info(
+        f"{DATA_SYNC_LOG_ORPHAN} deleted document {label} "
+        f"dataSyncID={doc_id} arn={resource_arn} "
+        f"reason={DATA_SYNC_SWEEP_CLEANUP_REASON} age={age_text}"
+    )
+    return "deleted"
+
+def _sweep_delete_resource(datasync, log, record, arn, reason, age, dry_run):
+    """Delete one AWS resource via the not-found-tolerant path, or log in dry-run.
+
+    Used for tier-named tasks with no matching tracking document. Locations without
+    a matching document are never deleted this way (ownership cannot be proven).
+
+    @param datasync boto3 DataSync client
+    @param log logger
+    @param record minimal dataSync-shaped dict for _delete_data_sync_resources
+    @param arn resource ARN being considered
+    @param reason human-readable deletion reason
+    @param age age in seconds, or None
+    @param dry_run when True, only log
+    @returns "would_delete", "deleted", or "failed"
+    """
+    age_text = _age_text(age)
+    if dry_run:
+        log.info(f"{DATA_SYNC_LOG_ORPHAN} would delete arn={arn} reason={reason} age={age_text}")
+        return "would_delete"
+    deleted_ok, delete_error = _delete_data_sync_resources(datasync, log, record)
+    if not deleted_ok:
+        log.error(
+            f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed arn={arn} reason={reason} "
+            f"age={age_text} error={delete_error}"
+        )
+        return "failed"
+    log.info(f"{DATA_SYNC_LOG_ORPHAN} deleted arn={arn} reason={reason} age={age_text}")
+    return "deleted"
+
+def _run_data_sync_orphan_sweep(mongo_dao, log, configs, datasync=None, now=None, dry_run=None):
+    """Enumerate this system's DataSync tasks/locations and delete eligible orphans.
+
+    Identifies tasks by Name and locations by BucketAccessRoleArn (no ListTagsForResource).
+    Locations referenced by any task in the account are never deleted. Legacy bare-named
+    tasks and locations without a matching tracking document are logged only.
+    A failed tracking lookup (None) skips every delete for the pass. An empty list still
+    means no matching documents.
+    Ships dark: dry_run defaults to True.
+
+    @param mongo_dao MongoDao instance
+    @param log logger
+    @param configs service config dict
+    @param datasync optional boto3 DataSync client
+    @param now optional current datetime
+    @param dry_run optional override; defaults to configs[data_sync_sweep_dry_run] or True
+    @returns dict with found/deleted/wouldDelete/skipped counts
+    """
+    now = now or current_datetime()
+    if dry_run is None:
+        dry_run = configs.get(DATA_SYNC_SWEEP_DRY_RUN_CONFIG, True)
+        if isinstance(dry_run, str):
+            dry_run = dry_run.strip().lower() not in ("false", "0", "no")
+    tier = configs.get(TIER_CONFIG)
+    role_arn = configs.get(DATASYNC_ROLE_ARN_CONFIG)
+    found = 0
+    deleted = 0
+    would_delete = 0
+    skipped = 0
+    owns_client = datasync is None
+    if owns_client:
+        datasync = boto3.client("datasync")
+    try:
+        tasks = []
+        referenced_locations = set()
+        listed_task_arns = set()
+        locations_unsafe = False
+        task_paginator = datasync.get_paginator("list_tasks")
+        for page in task_paginator.paginate():
+            for summary in page.get("Tasks") or []:
+                task_arn = summary.get("TaskArn")
+                try:
+                    described = datasync.describe_task(TaskArn=task_arn)
+                except Exception as e:
+                    log.exception(e)
+                    locations_unsafe = True
+                    log.error(
+                        f"{DATA_SYNC_LOG_ORPHAN} describe_task failed arn={task_arn}; "
+                        f"skipping all location deletes this pass"
+                    )
+                    continue
+                listed_task_arns.add(described.get("TaskArn") or task_arn)
+                for key in ("SourceLocationArn", "DestinationLocationArn"):
+                    if described.get(key):
+                        referenced_locations.add(described[key])
+                name = described.get("Name") or summary.get("Name") or ""
+                age = _age_seconds(described.get("CreationTime"), now)
+                if _is_legacy_bare_task_name(name):
+                    log.warning(
+                        f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed arn={task_arn} "
+                        f"reason=legacy bare task name age={_age_text(age)}"
+                    )
+                    skipped += 1
+                    continue
+                if _is_our_task_name(name, tier):
+                    tasks.append(described)
+
+        locations = []
+        loc_paginator = datasync.get_paginator("list_locations")
+        for page in loc_paginator.paginate():
+            for summary in page.get("Locations") or []:
+                if summary.get("LocationType") and summary.get("LocationType") != "S3":
+                    continue
+                described = datasync.describe_location_s3(LocationArn=summary["LocationArn"])
+                if described.get("S3Config", {}).get("BucketAccessRoleArn") != role_arn:
+                    continue
+                locations.append(described)
+
+        arns = []
+        data_sync_ids = []
+        for task in tasks:
+            arns.append(task.get("TaskArn"))
+            if task.get("SourceLocationArn"):
+                arns.append(task["SourceLocationArn"])
+            if task.get("DestinationLocationArn"):
+                arns.append(task["DestinationLocationArn"])
+            data_sync_id = _parse_data_sync_id_from_task_name(task.get("Name"), tier)
+            if data_sync_id:
+                data_sync_ids.append(data_sync_id)
+        for location in locations:
+            arns.append(location.get("LocationArn"))
+
+        docs = mongo_dao.find_data_syncs_by_arns(arns, data_sync_ids)
+        if docs is None:
+            log.error(f"{DATA_SYNC_LOG_ORPHAN} tracking lookup failed; skipping deletes this pass")
+            return {
+                "found": found,
+                "deleted": deleted,
+                "wouldDelete": would_delete,
+                "skipped": skipped,
+                "dryRun": dry_run,
+            }
+        docs_by_id = {doc.get(ID): doc for doc in docs if doc.get(ID)}
+        docs_by_arn = {}
+        for doc in docs:
+            for field in (DATA_SYNC_TASK_ARN, DATA_SYNC_SOURCE_LOCATION_ARN, DATA_SYNC_DEST_LOCATION_ARN):
+                arn = doc.get(field)
+                if arn:
+                    docs_by_arn.setdefault(arn, []).append(doc)
+
+        grace = DATA_SYNC_SWEEP_GRACE_SECONDS
+        recovery_wait = DATA_SYNC_RECOVERY_MAX_SECONDS + grace
+        processed_doc_ids = set()
+
+        def _count_outcome(outcome):
+            nonlocal deleted, would_delete, skipped
+            if outcome == "deleted":
+                deleted += 1
+            elif outcome == "would_delete":
+                would_delete += 1
+            else:
+                skipped += 1
+
+        for task in tasks:
+            task_arn = task.get("TaskArn")
+            name = task.get("Name")
+            data_sync_id = _parse_data_sync_id_from_task_name(name, tier)
+            source_arn = task.get("SourceLocationArn")
+            source_ours = any(loc.get("LocationArn") == source_arn for loc in locations)
+            matched = _match_docs_for_resource(docs_by_arn, docs_by_id, task_arn, data_sync_id)
+            age = _age_seconds(task.get("CreationTime"), now)
+            if source_arn and not source_ours:
+                matched_ids = ",".join(
+                    str(doc.get(ID)) for doc in matched if doc.get(ID)
+                ) or "none"
+                log.warning(
+                    f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed arn={task_arn} "
+                    f"sourceLocationArn={source_arn} dataSyncID={matched_ids} "
+                    f"reason=source location not in role-filtered list age={_age_text(age)}"
+                )
+                skipped += 1
+                continue
+            if any(_document_protected_from_sweep(doc) for doc in matched):
+                skipped += 1
+                continue
+            try:
+                if _task_has_active_execution(datasync, task_arn):
+                    skipped += 1
+                    continue
+            except Exception as e:
+                log.exception(e)
+                skipped += 1
+                continue
+
+            if matched:
+                eligible = _sweep_eligible_docs(
+                    matched, task.get("CreationTime"), now, grace, recovery_wait,
+                )
+                if not eligible:
+                    skipped += 1
+                    continue
+                found += 1
+                for doc in eligible:
+                    doc_id = doc.get(ID)
+                    if doc_id in processed_doc_ids:
+                        continue
+                    processed_doc_ids.add(doc_id)
+                    end_time = doc.get(DATA_SYNC_END_TIME) or task.get("CreationTime")
+                    _count_outcome(_sweep_cleanup_doc(
+                        datasync, mongo_dao, log, doc, task_arn,
+                        _age_text(_age_seconds(end_time, now)), dry_run, "resources", now,
+                    ))
+                continue
+
+            # No matching document — tier-named tasks can still be deleted.
+            try:
+                exec_count = _task_execution_count(datasync, task_arn)
+            except Exception as e:
+                log.exception(e)
+                skipped += 1
+                continue
+            required_age = grace if exec_count == 0 else recovery_wait
+            if age is None or age < required_age:
+                skipped += 1
+                continue
+            found += 1
+            record = {
+                DATA_SYNC_TASK_ARN: task_arn,
+                DATA_SYNC_SOURCE_LOCATION_ARN: task.get("SourceLocationArn"),
+                DATA_SYNC_DEST_LOCATION_ARN: task.get("DestinationLocationArn"),
+            }
+            _count_outcome(_sweep_delete_resource(
+                datasync, log, record, task_arn,
+                "no document" if exec_count == 0 else "no document after recovery window",
+                age, dry_run,
+            ))
+
+        if locations_unsafe:
+            log.error(
+                f"{DATA_SYNC_LOG_ORPHAN} skipping all location deletes: "
+                f"describe_task failed earlier this pass"
+            )
+            skipped += len(locations)
+        else:
+            for location in locations:
+                location_arn = location.get("LocationArn")
+                if location_arn in referenced_locations:
+                    skipped += 1
+                    continue
+                matched = _match_docs_for_resource(docs_by_arn, docs_by_id, location_arn)
+                if any(_document_protected_from_sweep(doc) for doc in matched):
+                    skipped += 1
+                    continue
+                age = _age_seconds(location.get("CreationTime"), now)
+                if matched:
+                    for doc in matched:
+                        task_arn = doc.get(DATA_SYNC_TASK_ARN)
+                        if task_arn and task_arn not in listed_task_arns:
+                            log.warning(
+                                f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed "
+                                f"dataSyncID={doc.get(ID)} locationArn={location_arn} "
+                                f"taskArn={task_arn} "
+                                f"reason=recorded task gone location unreferenced "
+                                f"age={_age_text(age)}"
+                            )
+                    eligible = _sweep_eligible_docs(
+                        matched, location.get("CreationTime"), now, grace, recovery_wait,
+                        require_no_task=True,
+                    )
+                    if not eligible:
+                        skipped += 1
+                        continue
+                    found += 1
+                    for doc in eligible:
+                        doc_id = doc.get(ID)
+                        if doc_id in processed_doc_ids:
+                            continue
+                        processed_doc_ids.add(doc_id)
+                        end_time = doc.get(DATA_SYNC_END_TIME) or location.get("CreationTime")
+                        _count_outcome(_sweep_cleanup_doc(
+                            datasync, mongo_dao, log, doc, location_arn,
+                            _age_text(_age_seconds(end_time, now)), dry_run, "locations", now,
+                        ))
+                    continue
+                # No matching document — ownership cannot be proven; log only.
+                if age is None or age < grace:
+                    skipped += 1
+                    continue
+                found += 1
+                log.warning(
+                    f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed arn={location_arn} "
+                    f"subdirectory={location.get('Subdirectory')} "
+                    f"reason=orphaned location no document age={_age_text(age)}"
+                )
+                skipped += 1
+
+        log.info(
+            f"DataSync orphan sweep found={found} deleted={deleted} "
+            f"wouldDelete={would_delete} skipped={skipped} dryRun={dry_run}"
+        )
+        return {
+            "found": found,
+            "deleted": deleted,
+            "wouldDelete": would_delete,
+            "skipped": skipped,
+            "dryRun": dry_run,
+        }
+    finally:
+        if owns_client and datasync:
+            try:
+                datasync.close()
+            except Exception:
+                pass
+
+def data_sync_sweep_loop(mongo_dao, log, configs, sleep_fn=None, clock=None):
+    """Run the orphan sweep on an interval with a Mongo run-lock across containers.
+
+    @param mongo_dao MongoDao instance
+    @param log logger
+    @param configs service config dict
+    @param sleep_fn sleep between runs; defaults to time.sleep
+    @param clock epoch-seconds clock; defaults to time.time
+    """
+    sleep_fn = sleep_fn or time.sleep
+    clock = clock or time.time
+    owner = f"{get_uuid_str()}-{threading.get_ident()}"
+    while True:
+        started = clock()
+        now = current_datetime()
+        acquired = False
+        try:
+            acquired = mongo_dao.try_acquire_data_sync_sweep_lock(
+                owner, now, DATA_SYNC_SWEEP_LOCK_TTL_SECONDS,
+            )
+            if acquired:
+                _run_data_sync_orphan_sweep(mongo_dao, log, configs)
+            else:
+                log.info("DataSync orphan sweep skipped: lock held by another container")
+        except Exception as e:
+            log.exception(e)
+            log.error(f"{DATA_SYNC_LOG_ORPHAN} sweep pass failed: {get_exception_msg()}")
+        finally:
+            if acquired:
+                try:
+                    mongo_dao.release_data_sync_sweep_lock(owner, current_datetime())
+                except Exception as e:
+                    log.exception(e)
+        elapsed = clock() - started
+        sleep_fn(max(1, DATA_SYNC_SWEEP_INTERVAL_SECONDS - elapsed))
+
+def start_data_sync_sweep(mongo_dao, log, configs):
+    """Start the orphan-sweep daemon thread.
+
+    @param mongo_dao MongoDao instance
+    @param log logger
+    @param configs service config dict
+    @returns the daemon thread
+    """
+    sweep_thread = threading.Thread(
+        target=data_sync_sweep_loop, args=(mongo_dao, log, configs), daemon=True,
+    )
+    sweep_thread.start()
+    return sweep_thread
+
 """
 Interface for validate files via SQS
 """
@@ -760,6 +1455,7 @@ def metadata_export(configs, job_queue, mongo_dao):
         log.exception(f'Error occurred when initialize metadata validation service: {get_exception_msg()}')
         return 1
     start_data_sync_monitor(mongo_dao, log)
+    start_data_sync_sweep(mongo_dao, log, configs)
     scale_in_protection_flag = False
     log.info(f'{SERVICE_TYPE_EXPORT} service started')
     while True:
@@ -1452,10 +2148,18 @@ class ExportMetadata:
         ).start()
 
     def transfer_s3_obj(self, bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags, file_key_list = None, sync_type = None):
-        """
-        This function transfers s3 objects via AWS DataSync. 
-        If file_key_list is not given (None), all files in data_file_folder will be copied to destination. 
-        If file_key_list is given, only files in the list will be copied and then original files will be DELETED!
+        """Transfer s3 objects via AWS DataSync.
+
+        If file_key_list is not given (None), all files in data_file_folder are copied.
+        If file_key_list is given, only those files are copied; after SUCCESS the untracked
+        monitor deletes source keys that verify at the destination (size, and ETag when
+        neither is multipart).
+
+        Call-path source-deletion guarantee:
+        - move_s3_objects: deletes source keys after a verified move into to_be_deleted.
+        - restore_deleted_file: deletes the to_be_deleted copies after a verified copy back.
+        - Tracked transfers (transfer_release_metadata, transfer_released_files) pass
+          sync_type and never delete source keys.
 
         When sync_type is "metadata" or "file", tracking is written around the same AWS calls.
         A tracking failure never skips or changes those calls. move_s3_objects and
@@ -1474,20 +2178,31 @@ class ExportMetadata:
         try:
             # Create source S3 location
             source_location = None
-            # add include filter for moving files from source to destination
+            # Include filter uses paths relative to the source subdirectory so nested keys match.
             if file_key_list and len(file_key_list) > 0:
-                value = "|".join(["/" + key.split("/")[-1] for key in file_key_list if key])
-                file_filter = [
-                    {
-                        'FilterType': 'SIMPLE_PATTERN',
-                        'Value': value
-                    }
-                ]
+                folder_prefix = data_file_folder.rstrip("/") + "/"
+                relative_paths = []
+                for key in file_key_list:
+                    if not key:
+                        continue
+                    if key.startswith(folder_prefix):
+                        relative_paths.append("/" + key[len(folder_prefix):])
+                    else:
+                        relative_paths.append("/" + key.split("/")[-1])
+                if relative_paths:
+                    file_filter = [
+                        {
+                            'FilterType': 'SIMPLE_PATTERN',
+                            'Value': "|".join(relative_paths),
+                        }
+                    ]
 
+            location_tags = tags or []
             source_location = datasync.create_location_s3(
                 S3BucketArn=f'arn:aws:s3:::{bucket_name}',
                 S3Config={'BucketAccessRoleArn': datasync_role},
                 Subdirectory=f'{data_file_folder}',
+                Tags=location_tags,
             )
             if tracking:
                 self._save_data_sync_field(
@@ -1499,7 +2214,8 @@ class ExportMetadata:
             destination_location = datasync.create_location_s3(
                 S3BucketArn=f'arn:aws:s3:::{dest_bucket_name}',
                 S3Config={'BucketAccessRoleArn': datasync_role},
-                Subdirectory=f'{dest_file_folder}'
+                Subdirectory=f'{dest_file_folder}',
+                Tags=location_tags,
             )
             if tracking:
                 self._save_data_sync_field(
@@ -1508,31 +2224,24 @@ class ExportMetadata:
 
             # Create DataSync task
             step = "create_task"
-            if file_filter and len(file_filter) > 0:
-                task = datasync.create_task(
-                    SourceLocationArn=source_location['LocationArn'],
-                    DestinationLocationArn=destination_location['LocationArn'],
-                    Name='Data_Hub_SyncTask',
-                    CloudWatchLogGroupArn=log_group_arn,
-                    Options={
-                        'VerifyMode': 'ONLY_FILES_TRANSFERRED',
-                        "LogLevel": "TRANSFER",
-                    },
-                    Includes=file_filter, 
-                    Tags = tags, 
-                )
-            else: 
-                task = datasync.create_task(
-                    SourceLocationArn=source_location['LocationArn'],
-                    DestinationLocationArn=destination_location['LocationArn'],
-                    Name='Data_Hub_SyncTask',
-                    CloudWatchLogGroupArn=log_group_arn,
-                    Options={
-                        'VerifyMode': 'ONLY_FILES_TRANSFERRED',
-                        "LogLevel": "TRANSFER",
-                    },
-                    Tags = tags, 
-                )
+            task_name = _data_sync_task_name(
+                self.configs.get(TIER_CONFIG),
+                tracking["data_sync_id"] if tracking else None,
+            )
+            create_task_kwargs = {
+                "SourceLocationArn": source_location["LocationArn"],
+                "DestinationLocationArn": destination_location["LocationArn"],
+                "Name": task_name,
+                "CloudWatchLogGroupArn": log_group_arn,
+                "Options": {
+                    "VerifyMode": "ONLY_FILES_TRANSFERRED",
+                    "LogLevel": "TRANSFER",
+                },
+                "Tags": tags,
+            }
+            if file_filter:
+                create_task_kwargs["Includes"] = file_filter
+            task = datasync.create_task(**create_task_kwargs)
 
             self.log.info(f"DataSync task {task['TaskArn']} created to transfer files from {data_file_folder} to {dest_bucket_name}:{dest_file_folder}.")
             if tracking:
@@ -1554,7 +2263,7 @@ class ExportMetadata:
             else:
                 start_monitoring_task(
                     task_execution_arn, task['TaskArn'], datasync, source_location, destination_location,
-                    self.log, bucket_name, file_key_list,
+                    self.log, bucket_name, file_key_list, dest_bucket_name, dest_file_folder, data_file_folder,
                 )
                 handed_to_monitor = True
 
@@ -1636,13 +2345,20 @@ class ExportMetadata:
         bucket_name = self.configs.get(DM_BUCKET_CONFIG_NAME) #nci data management account s3 bucket
         data_file_folder = f'to_be_deleted/{id}/{study_id}'
         try:
-            # get contents in the folder and loop through and put file kay in a file_key_list
-            file_key_list = self.s3_service.list_objects(bucket_name, data_file_folder)
+            # Trailing slash keeps sibling prefixes (e.g. study-1-extra) out of the list.
+            folder_prefix = data_file_folder.rstrip("/") + "/"
+            file_key_list = self.s3_service.list_objects(bucket_name, folder_prefix)
             if not file_key_list or len(file_key_list) == 0:
                 self.log.error(f"Failed to restore files from {data_file_folder}. No files found!")
                 return
-            # remove folder and empty key from the list
-            file_key_list = [item for item in file_key_list if item and not item.endswith("/")]
+            # Keep only keys under the folder; drop folder markers and empty keys.
+            file_key_list = [
+                item for item in file_key_list
+                if item and not item.endswith("/") and item.startswith(folder_prefix)
+            ]
+            if not file_key_list:
+                self.log.error(f"Failed to restore files from {data_file_folder}. No files found!")
+                return
             # Move files back to the original location with dataSync
             dest_file_folder = study_id
             tags = [
@@ -1657,49 +2373,232 @@ class ExportMetadata:
             self.log.exception(e)
             self.log.exception(f"Failed to restore files from {data_file_folder}. {get_exception_msg()}")
 
-def start_monitoring_task(task_execution_arn, task_arn, dataSync, source, dest, log, source_bucket, file_key_list):
-            monitor_thread = threading.Thread(target=monitor_datasync_task, args=(task_execution_arn, task_arn, dataSync, source, dest, log, source_bucket, file_key_list))
-            monitor_thread.start()
+def start_monitoring_task(task_execution_arn, task_arn, dataSync, source, dest, log, source_bucket, file_key_list, dest_bucket=None, dest_file_folder=None, source_file_folder=None):
+    """Start the untracked per-transfer monitor thread.
 
-def monitor_datasync_task(task_execution_arn, task_arn, datasync, source, dest, log, source_bucket, file_key_list, wait_interval=30):
-        # Initialize the DataSync client
+    @param task_execution_arn AWS task execution ARN
+    @param task_arn AWS task ARN
+    @param dataSync boto3 DataSync client
+    @param source create_location_s3 response for the source
+    @param dest create_location_s3 response for the destination
+    @param log logger
+    @param source_bucket source S3 bucket name
+    @param file_key_list source keys to delete after a verified copy, or None/empty for copy-only
+    @param dest_bucket destination S3 bucket name used for copy verification
+    @param dest_file_folder destination subdirectory used for copy verification
+    @param source_file_folder source subdirectory used to map source keys to dest keys
+    """
+    monitor_thread = threading.Thread(
+        target=monitor_datasync_task,
+        args=(
+            task_execution_arn, task_arn, dataSync, source, dest, log, source_bucket, file_key_list,
+            30, dest_bucket, dest_file_folder, source_file_folder,
+        ),
+    )
+    monitor_thread.start()
+
+def _destination_key_for_source(source_key, source_file_folder, dest_file_folder):
+    """Map a source object key to its destination key under dest_file_folder.
+
+    @param source_key full source object key
+    @param source_file_folder source subdirectory
+    @param dest_file_folder destination subdirectory
+    @returns destination object key
+    """
+    folder_prefix = (source_file_folder or "").rstrip("/")
+    if folder_prefix and source_key.startswith(folder_prefix + "/"):
+        relative = source_key[len(folder_prefix) + 1:]
+    else:
+        relative = source_key.split("/")[-1]
+    dest_prefix = (dest_file_folder or "").rstrip("/")
+    if dest_prefix:
+        return f"{dest_prefix}/{relative}"
+    return relative
+
+def _is_multipart_etag(etag):
+    """True when an S3 ETag looks like a multipart upload ETag (contains '-').
+
+    @param etag ETag string, possibly quoted
+    @returns True when the ETag should not be compared
+    """
+    if not etag:
+        return True
+    return "-" in etag.strip('"')
+
+def _verified_source_keys_to_delete(s3_service, log, source_bucket, file_key_list, dest_bucket, dest_file_folder, source_file_folder):
+    """Return source keys whose destination copy matches size (and ETag when comparable).
+
+    On any verification error or mismatch the source key is retained (duplicates preferred
+    over data loss) and logged for manual cleanup.
+
+    @param s3_service S3Service instance
+    @param log logger
+    @param source_bucket source S3 bucket
+    @param file_key_list source keys considered for deletion
+    @param dest_bucket destination S3 bucket
+    @param dest_file_folder destination subdirectory
+    @param source_file_folder source subdirectory
+    @returns list of source keys safe to delete
+    """
+    verified = []
+    for source_key in file_key_list or []:
+        if not source_key:
+            continue
+        dest_key = _destination_key_for_source(source_key, source_file_folder, dest_file_folder)
         try:
-            # Poll the task status
-            while True:
-                response = datasync.describe_task_execution(TaskExecutionArn=task_execution_arn)
-                status = response['Status']
-                if status in ['SUCCESS', 'ERROR']:
-                    log.info(f"Task: {task_arn} completed with status: {status}")
-                    # delete files from source s3 bucket if the file_key_list length more than 0
-                    if status == 'SUCCESS' and file_key_list and len(file_key_list) > 0:
-                        delete_files_from_s3(source_bucket, file_key_list, log)
-                    # wait 5 min or 300 sec for SNS to send notification before delete the tasks.
-                    log.info(f"Wait 5min before deleting task and locations.")
-                    time.sleep(300)
-                    datasync.delete_task(TaskArn=task_arn)
-                    log.info(f"Task: {task_arn} deleted.")
-                    datasync.delete_location(LocationArn=source['LocationArn'])
-                    log.info(f"Source location: {source['LocationArn']} is deleted.")
-                    datasync.delete_location(LocationArn=dest['LocationArn'])
-                    log.info(f"Destination location: {dest['LocationArn']} is deleted.")
-                    
-                    break
-                else:
-                    log.debug(f"Current status for task {task_arn}: {status}. Waiting for {wait_interval} seconds before next check...")
-                    time.sleep(wait_interval)
-        except ClientError as ce:
-            log.exception(ce)
-            log.exception(f"Failed to monitor DataSync task {task_arn}: {ce.response['Error']['Message']}")
+            source_head = s3_service.head_object(source_bucket, source_key)
+            dest_head = s3_service.head_object(dest_bucket, dest_key) if dest_bucket else None
         except Exception as e:
             log.exception(e)
-            log.exception(f"Failed to monitor DataSync task {task_arn}: {get_exception_msg()}")
-        finally:
-            source = None
-            dest = None
-            datasync.close()
-            datasync = None
+            log.error(
+                f"Skipping source delete for {source_bucket}/{source_key}: "
+                f"verification error for dest {dest_bucket}/{dest_key}; "
+                f"source retained; manual cleanup needed. {get_exception_msg()}"
+            )
+            continue
+        if not source_head:
+            log.error(
+                f"Skipping source delete for {source_bucket}/{source_key}: "
+                f"source object not found; source retained; manual cleanup needed."
+            )
+            continue
+        if not dest_head:
+            log.error(
+                f"Skipping source delete for {source_bucket}/{source_key}: "
+                f"destination {dest_bucket}/{dest_key} not found; "
+                f"source retained; manual cleanup needed."
+            )
+            continue
+        if source_head.get("ContentLength") != dest_head.get("ContentLength"):
+            log.error(
+                f"Skipping source delete for {source_bucket}/{source_key}: size mismatch "
+                f"source={source_head.get('ContentLength')} dest={dest_head.get('ContentLength')} "
+                f"dest={dest_bucket}/{dest_key}; source retained; manual cleanup needed."
+            )
+            continue
+        source_etag = source_head.get("ETag")
+        dest_etag = dest_head.get("ETag")
+        if not _is_multipart_etag(source_etag) and not _is_multipart_etag(dest_etag):
+            if source_etag != dest_etag:
+                log.error(
+                    f"Skipping source delete for {source_bucket}/{source_key}: ETag mismatch "
+                    f"source={source_etag} dest={dest_etag} dest={dest_bucket}/{dest_key}; "
+                    f"source retained; manual cleanup needed."
+                )
+                continue
+        verified.append(source_key)
+    return verified
+
+def monitor_datasync_task(task_execution_arn, task_arn, datasync, source, dest, log, source_bucket, file_key_list, wait_interval=30, dest_bucket=None, dest_file_folder=None, source_file_folder=None):
+    """Poll one untracked DataSync execution; after SUCCESS delete only verified source keys.
+
+    Source deletion is reserved for move/restore workflows that pass file_key_list.
+    Tracked transfers never call this path. Task/location deletes each run independently
+    so one failure does not block the others.
+
+    @param task_execution_arn AWS task execution ARN
+    @param task_arn AWS task ARN
+    @param datasync boto3 DataSync client
+    @param source create_location_s3 response for the source
+    @param dest create_location_s3 response for the destination
+    @param log logger
+    @param source_bucket source S3 bucket name
+    @param file_key_list source keys to consider for deletion after SUCCESS
+    @param wait_interval seconds between status polls
+    @param dest_bucket destination S3 bucket for copy verification
+    @param dest_file_folder destination subdirectory for copy verification
+    @param source_file_folder source subdirectory for mapping keys
+    """
+    try:
+        while True:
+            response = datasync.describe_task_execution(TaskExecutionArn=task_execution_arn)
+            status = response['Status']
+            if status in ['SUCCESS', 'ERROR']:
+                log.info(f"Task: {task_arn} completed with status: {status}")
+                if status == 'SUCCESS' and file_key_list and len(file_key_list) > 0:
+                    try:
+                        s3_service = S3Service()
+                        try:
+                            verified = _verified_source_keys_to_delete(
+                                s3_service, log, source_bucket, file_key_list,
+                                dest_bucket, dest_file_folder, source_file_folder,
+                            )
+                            if verified:
+                                delete_files_from_s3(source_bucket, verified, log)
+                            skipped = len(file_key_list) - len(verified)
+                            if skipped > 0:
+                                log.error(
+                                    f"Skipped deleting {skipped} of {len(file_key_list)} source keys "
+                                    f"because destination verification failed; "
+                                    f"source retained; manual cleanup needed."
+                                )
+                        finally:
+                            s3_service.close(log)
+                    except Exception as e:
+                        log.exception(e)
+                        log.error(
+                            f"Source verification/delete failed for task {task_arn}; "
+                            f"source retained; manual cleanup needed. {get_exception_msg()}"
+                        )
+                # wait 5 min or 300 sec for SNS to send notification before delete the tasks.
+                log.info(f"Wait 5min before deleting task and locations.")
+                time.sleep(300)
+                try:
+                    datasync.delete_task(TaskArn=task_arn)
+                    log.info(f"Task: {task_arn} deleted.")
+                except Exception as e:
+                    log.exception(e)
+                    log.error(
+                        f"Failed to delete task {task_arn}; manual cleanup needed. "
+                        f"{get_exception_msg()}"
+                    )
+                source_arn = source.get("LocationArn") if source else None
+                try:
+                    if source_arn:
+                        datasync.delete_location(LocationArn=source_arn)
+                        log.info(f"Source location: {source_arn} is deleted.")
+                except Exception as e:
+                    log.exception(e)
+                    log.error(
+                        f"Failed to delete source location {source_arn}; "
+                        f"manual cleanup needed. {get_exception_msg()}"
+                    )
+                dest_arn = dest.get("LocationArn") if dest else None
+                try:
+                    if dest_arn:
+                        datasync.delete_location(LocationArn=dest_arn)
+                        log.info(f"Destination location: {dest_arn} is deleted.")
+                except Exception as e:
+                    log.exception(e)
+                    log.error(
+                        f"Failed to delete destination location {dest_arn}; "
+                        f"manual cleanup needed. {get_exception_msg()}"
+                    )
+
+                break
+            else:
+                log.debug(f"Current status for task {task_arn}: {status}. Waiting for {wait_interval} seconds before next check...")
+                time.sleep(wait_interval)
+    except ClientError as ce:
+        log.exception(ce)
+        log.exception(f"Failed to monitor DataSync task {task_arn}: {ce.response['Error']['Message']}")
+    except Exception as e:
+        log.exception(e)
+        log.exception(f"Failed to monitor DataSync task {task_arn}: {get_exception_msg()}")
+    finally:
+        source = None
+        dest = None
+        datasync.close()
+        datasync = None
 
 def delete_files_from_s3(bucket_name, file_key_list, log):
+    """Delete the given keys from an S3 bucket.
+
+    @param bucket_name S3 bucket name
+    @param file_key_list object keys to delete
+    @param log logger
+    """
+    s3_service = None
     try:
         s3_service = S3Service()
         s3_service.delete_files(bucket_name, file_key_list)
@@ -1711,7 +2610,8 @@ def delete_files_from_s3(bucket_name, file_key_list, log):
         log.exception(e)
         log.exception(f"Failed to delete files {file_key_list} from {bucket_name}. {get_exception_msg()}")
     finally:
-        s3_service.close(log)
+        if s3_service:
+            s3_service.close(log)
     
 # Private class
 class ValidationDirectory:

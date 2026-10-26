@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pymongo import MongoClient, errors, ReplaceOne, UpdateOne, DeleteOne, DESCENDING, InsertOne, ReturnDocument
 from bento.common.utils import get_logger
 from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLECTION, ID, UPDATED_AT, \
@@ -25,7 +26,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     DATA_SYNC_SOURCE_LOCATION_ARN, DATA_SYNC_DEST_LOCATION_ARN, \
     DATA_SYNC_LIST_PENDING, DATA_SYNC_ROLLUP_PENDING, DATA_SYNC_CLEANUP_AFTER, DATA_SYNC_LAST_ERROR, \
     DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE, DATA_SYNC_WRITE_ERROR, \
-    DATA_SYNC_FINISH_MAX_ATTEMPTS
+    DATA_SYNC_FINISH_MAX_ATTEMPTS, DATA_SYNC_SWEEP_LOCK_COLLECTION
 from common.utils import get_exception_msg, current_datetime, get_uuid_str, dao_write_succeeded
 from common.s3_utils import S3Service
 
@@ -1664,6 +1665,84 @@ class MongoDao:
         except Exception as e:
             self._log_data_sync_db_error(e, f"DataSync tracking failed find unfinished: {get_exception_msg()}")
             return None
+
+    def find_data_syncs_by_arns(self, arns, data_sync_ids=None):
+        """Return dataSync documents matching any of the given ARNs or document ids.
+
+        @param arns task/source/destination location ARNs to match
+        @param data_sync_ids optional document ids extracted from task names
+        @returns list of documents, or None when the query fails
+        """
+        clauses = []
+        arn_list = [arn for arn in (arns or []) if arn]
+        id_list = [doc_id for doc_id in (data_sync_ids or []) if doc_id]
+        if arn_list:
+            clauses.append({DATA_SYNC_TASK_ARN: {"$in": arn_list}})
+            clauses.append({DATA_SYNC_SOURCE_LOCATION_ARN: {"$in": arn_list}})
+            clauses.append({DATA_SYNC_DEST_LOCATION_ARN: {"$in": arn_list}})
+        if id_list:
+            clauses.append({ID: {"$in": id_list}})
+        if not clauses:
+            return []
+        db = self.client[self.db_name]
+        data_sync_collection = db[DATA_SYNC_COLLECTION]
+        try:
+            return list(data_sync_collection.find({"$or": clauses}))
+        except Exception as e:
+            self._log_data_sync_db_error(e, f"DataSync tracking failed find by ARNs: {get_exception_msg()}")
+            return None
+
+    def try_acquire_data_sync_sweep_lock(self, owner, now, ttl_seconds):
+        """Acquire the coarse orphan-sweep run lock if it is free or expired.
+
+        Ensures a single lock document exists, then claims it when lockedUntil is in the past.
+
+        @param owner identifier for the acquiring container/thread
+        @param now current datetime
+        @param ttl_seconds how long the lock is held
+        @returns True when this caller acquired the lock
+        """
+        lock_id = "dataSyncSweep"
+        db = self.client[self.db_name]
+        lock_collection = db[DATA_SYNC_SWEEP_LOCK_COLLECTION]
+        try:
+            try:
+                lock_collection.insert_one({ID: lock_id, "lockedUntil": now - timedelta(seconds=1)})
+            except errors.DuplicateKeyError:
+                pass
+            result = lock_collection.find_one_and_update(
+                {ID: lock_id, "lockedUntil": {"$lt": now}},
+                {"$set": {
+                    "lockedUntil": now + timedelta(seconds=ttl_seconds),
+                    "lockedAt": now,
+                    "owner": owner,
+                }},
+                return_document=ReturnDocument.AFTER,
+            )
+            return result is not None
+        except Exception as e:
+            self._log_data_sync_db_error(e, f"DataSync sweep lock acquire failed: {get_exception_msg()}")
+            return False
+
+    def release_data_sync_sweep_lock(self, owner, now):
+        """Release the orphan-sweep run lock when held by owner.
+
+        @param owner identifier that acquired the lock
+        @param now current datetime used as the new lockedUntil (immediately free)
+        @returns True when the lock was released
+        """
+        lock_id = "dataSyncSweep"
+        db = self.client[self.db_name]
+        lock_collection = db[DATA_SYNC_SWEEP_LOCK_COLLECTION]
+        try:
+            result = lock_collection.update_one(
+                {ID: lock_id, "owner": owner},
+                {"$set": {"lockedUntil": now}},
+            )
+            return result.matched_count > 0
+        except Exception as e:
+            self._log_data_sync_db_error(e, f"DataSync sweep lock release failed: {get_exception_msg()}")
+            return False
 
     """
     get bucket name based on dataCommons and type
