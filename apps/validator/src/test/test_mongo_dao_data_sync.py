@@ -15,16 +15,14 @@ from common.constants import (
     DATA_SYNC_ROLLUP_PENDING,
     DATA_SYNC_CLEANUP_AFTER,
     DATA_SYNC_TASK_ARN,
-    DATA_SYNC_SOURCE_LOCATION_ARN,
-    DATA_SYNC_DEST_LOCATION_ARN,
     DATA_SYNC_COLLECTION,
-    DATA_SYNC_SWEEP_LOCK_COLLECTION,
     SUBMISSION_COLLECTION,
     DATA_SYNC_TYPE_METADATA,
     DATA_SYNC_TYPE_FILE,
     DATA_SYNC_STATUS_IN_PROGRESS,
     DATA_SYNC_STATUS_SUCCEEDED,
     DATA_SYNC_STATUS_FAILED,
+    DATA_SYNC_STATUS_STALE,
     METADATA_DATA_SYNC_STATUS,
     FILE_DATA_SYNC_STATUS,
     METADATA_DATA_SYNC_ACTIVE,
@@ -310,6 +308,30 @@ def test_finish_unrecognized_type_makes_no_database_call(mock_client_class):
 
 
 @patch("common.mongo_dao.MongoClient")
+def test_find_data_sync_by_id_returns_the_document(mock_client_class):
+    """find_one by _id returns the stored dataSync document."""
+    collections = _setup_mock_collections(mock_client_class, DATA_SYNC_COLLECTION)
+    stored = {ID: SYNC_ID, STATUS: DATA_SYNC_STATUS_SUCCEEDED}
+    collections[DATA_SYNC_COLLECTION].find_one.return_value = stored
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+
+    assert dao.find_data_sync_by_id(SYNC_ID) == stored
+    assert collections[DATA_SYNC_COLLECTION].find_one.call_args.args[0] == {ID: SYNC_ID}
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_find_data_sync_by_id_returns_none_when_missing_or_on_error(mock_client_class):
+    """A missing document or a query exception returns None."""
+    collections = _setup_mock_collections(mock_client_class, DATA_SYNC_COLLECTION)
+    collections[DATA_SYNC_COLLECTION].find_one.return_value = None
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+    assert dao.find_data_sync_by_id(SYNC_ID) is None
+
+    collections[DATA_SYNC_COLLECTION].find_one.side_effect = Exception("down")
+    assert dao.find_data_sync_by_id(SYNC_ID) is None
+
+
+@patch("common.mongo_dao.MongoClient")
 def test_find_unfinished_data_syncs_includes_list_pending(mock_client_class):
     """The unfinished query ORs In Progress, listPending, rollupPending, and a cleanupAfter that is set."""
     collections = _setup_mock_collections(mock_client_class, DATA_SYNC_COLLECTION)
@@ -336,55 +358,33 @@ def test_find_unfinished_data_syncs_returns_none_on_error(mock_client_class):
 
 
 @patch("common.mongo_dao.MongoClient")
-def test_find_data_syncs_by_arns_builds_or_query(mock_client_class):
-    """Lookup ORs task, source, and destination location ARNs plus optional document ids from task names."""
-    collections = _setup_mock_collections(mock_client_class, DATA_SYNC_COLLECTION)
-    collections[DATA_SYNC_COLLECTION].find.return_value = [{ID: SYNC_ID}]
+def test_finish_stale_last_one_out_sets_failed(mock_client_class):
+    """A Stale terminal status on the last in-flight copy rolls the submission up to Failed."""
+    collections = _setup_mock_collections(mock_client_class, SUBMISSION_COLLECTION)
+    collections[SUBMISSION_COLLECTION].update_one.return_value = _matched(1)
     dao = MongoDao("mongodb://localhost:27017", "test_db")
 
-    docs = dao.find_data_syncs_by_arns(["task-1", "loc-1"], [SYNC_ID])
+    outcome = dao.finish_submission_data_sync("sub_1", DATA_SYNC_TYPE_FILE, SYNC_ID, DATA_SYNC_STATUS_STALE)
 
-    assert docs == [{ID: SYNC_ID}]
-    filt = collections[DATA_SYNC_COLLECTION].find.call_args.args[0]
-    assert {DATA_SYNC_TASK_ARN: {"$in": ["task-1", "loc-1"]}} in filt["$or"]
-    assert {DATA_SYNC_SOURCE_LOCATION_ARN: {"$in": ["task-1", "loc-1"]}} in filt["$or"]
-    assert {DATA_SYNC_DEST_LOCATION_ARN: {"$in": ["task-1", "loc-1"]}} in filt["$or"]
-    assert {ID: {"$in": [SYNC_ID]}} in filt["$or"]
+    assert outcome == DATA_SYNC_WRITE_APPLIED
+    filt, update = collections[SUBMISSION_COLLECTION].update_one.call_args.args
+    assert filt[FILE_DATA_SYNC_ACTIVE] == [SYNC_ID]
+    assert update["$set"][FILE_DATA_SYNC_STATUS] == DATA_SYNC_STATUS_FAILED
+    assert update["$set"][FILE_DATA_SYNC_ACTIVE] == []
 
 
 @patch("common.mongo_dao.MongoClient")
-def test_try_acquire_data_sync_sweep_lock_succeeds(mock_client_class):
-    """Inserts the lock document, then find_one_and_update claims it when lockedUntil is in the past and records the owner."""
-    collections = _setup_mock_collections(mock_client_class, DATA_SYNC_SWEEP_LOCK_COLLECTION)
-    collections[DATA_SYNC_SWEEP_LOCK_COLLECTION].find_one_and_update.return_value = {ID: "dataSyncSweep"}
+def test_finish_stale_not_last_sets_overlap_flag(mock_client_class):
+    """A Stale finish while another copy remains sets the overlap-failed flag and pulls the id."""
+    collections = _setup_mock_collections(mock_client_class, SUBMISSION_COLLECTION)
+    collections[SUBMISSION_COLLECTION].update_one.side_effect = [_matched(0), _matched(1)]
     dao = MongoDao("mongodb://localhost:27017", "test_db")
 
-    assert dao.try_acquire_data_sync_sweep_lock("owner-1", START, 7200) is True
-    collections[DATA_SYNC_SWEEP_LOCK_COLLECTION].insert_one.assert_called_once()
-    filt, update = collections[DATA_SYNC_SWEEP_LOCK_COLLECTION].find_one_and_update.call_args.args
-    assert filt[ID] == "dataSyncSweep"
-    assert update["$set"]["owner"] == "owner-1"
+    outcome = dao.finish_submission_data_sync("sub_1", DATA_SYNC_TYPE_METADATA, SYNC_ID, DATA_SYNC_STATUS_STALE)
 
-
-@patch("common.mongo_dao.MongoClient")
-def test_try_acquire_data_sync_sweep_lock_fails_when_held(mock_client_class):
-    """A duplicate insert plus a missed claim (lock still held) returns False."""
-    collections = _setup_mock_collections(mock_client_class, DATA_SYNC_SWEEP_LOCK_COLLECTION)
-    collections[DATA_SYNC_SWEEP_LOCK_COLLECTION].insert_one.side_effect = DuplicateKeyError("dup")
-    collections[DATA_SYNC_SWEEP_LOCK_COLLECTION].find_one_and_update.return_value = None
-    dao = MongoDao("mongodb://localhost:27017", "test_db")
-
-    assert dao.try_acquire_data_sync_sweep_lock("owner-2", START, 7200) is False
-
-
-@patch("common.mongo_dao.MongoClient")
-def test_release_data_sync_sweep_lock(mock_client_class):
-    """Release matches the owner and sets lockedUntil to now so the lock is immediately free."""
-    collections = _setup_mock_collections(mock_client_class, DATA_SYNC_SWEEP_LOCK_COLLECTION)
-    collections[DATA_SYNC_SWEEP_LOCK_COLLECTION].update_one.return_value = _matched(1)
-    dao = MongoDao("mongodb://localhost:27017", "test_db")
-
-    assert dao.release_data_sync_sweep_lock("owner-1", START) is True
-    filt, update = collections[DATA_SYNC_SWEEP_LOCK_COLLECTION].update_one.call_args.args
-    assert filt == {ID: "dataSyncSweep", "owner": "owner-1"}
-    assert update["$set"]["lockedUntil"] == START
+    assert outcome == DATA_SYNC_WRITE_APPLIED
+    filt, update = collections[SUBMISSION_COLLECTION].update_one.call_args.args
+    assert filt[METADATA_DATA_SYNC_ACTIVE] == SYNC_ID
+    assert filt[f"{METADATA_DATA_SYNC_ACTIVE}.1"] == {"$exists": True}
+    assert update["$pull"] == {METADATA_DATA_SYNC_ACTIVE: SYNC_ID}
+    assert update["$set"] == {METADATA_DATA_SYNC_OVERLAP_FAILED: True}

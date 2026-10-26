@@ -20,22 +20,21 @@ from common.constants import SQS_TYPE, SUBMISSION_ID, BATCH_BUCKET, TYPE_EXPORT_
     SUBMISSION_INTENTION_NEW_UPDATE, SUBMISSION_DATA_TYPE, SUBMISSION_DATA_TYPE_METADATA_ONLY, DATASYNC_LOG_ARN_CONFIG, \
     S3_FILE_INFO, FILE_NAME, RESTORE_DELETED_DATA_FILES, DATA_FILE_LOCATION, S3_PREFIX, GENERATED_PROPS, DELETE_COMMAND, \
     DATA_SYNC_TYPE_METADATA, DATA_SYNC_TYPE_FILE, DATA_SYNC_STATUS_IN_PROGRESS, DATA_SYNC_STATUS_FAILED, \
-    DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_TASK_ARN, DATA_SYNC_TASK_EXECUTION_ARN, \
+    DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_STALE, DATA_SYNC_TASK_ARN, DATA_SYNC_TASK_EXECUTION_ARN, \
     DATA_SYNC_SOURCE_LOCATION_ARN, DATA_SYNC_DEST_LOCATION_ARN, DATA_SYNC_LIST_PENDING, \
     DATA_SYNC_ROLLUP_PENDING, DATA_SYNC_CLEANUP_AFTER, DATA_SYNC_CLEANUP_STARTED_AT, \
-    DATA_SYNC_CLEANED_AT, DATA_SYNC_CLEANUP_REASON, DATA_SYNC_CLEANUP_ERROR, \
+    DATA_SYNC_CLEANED_AT, DATA_SYNC_CLEANUP_ERROR, \
     DATA_SYNC_LAST_ERROR, DATA_SYNC_OBSERVATION_ERROR_SINCE, \
     DATA_SYNC_LAST_POLLED_AT, DATA_SYNC_START_TIME, DATA_SYNC_END_TIME, STATUS, \
     DATA_SYNC_MONITOR_ACTIVE_INTERVAL_SECONDS, DATA_SYNC_MONITOR_WAITING_INTERVAL_SECONDS, \
     DATA_SYNC_START_GRACE_SECONDS, DATA_SYNC_CLEANUP_DELAY_SECONDS, DATA_SYNC_POLL_CLAIM_SECONDS, \
-    DATA_SYNC_RECOVERY_MAX_SECONDS, DATA_SYNC_OBSERVATION_ALERT_SECONDS, DATA_SYNC_MONITOR_STATE_ACTIVE, \
+    DATA_SYNC_WRITE_MAX_ATTEMPTS, DATA_SYNC_WRITE_RETRY_DELAY_SECONDS, \
+    DATA_SYNC_OBSERVATION_ALERT_SECONDS, DATA_SYNC_MONITOR_STATE_ACTIVE, \
     DATA_SYNC_MONITOR_STATE_WAITING, DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE, DATA_SYNC_WRITE_ERROR, \
-    DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE, DATA_SYNC_LAST_ERROR_NOT_STARTED, \
+    DATA_SYNC_LAST_ERROR_NOT_STARTED, DATA_SYNC_LAST_ERROR_STALE_NO_TASK, DATA_SYNC_LAST_ERROR_STALE_NOT_FOUND, \
     DATA_SYNC_LOG_TRANSFER_FAILED, DATA_SYNC_LOG_EXECUTION_FAILED, DATA_SYNC_LOG_TRACKING_FAILED, \
-    DATA_SYNC_LOG_TRACKING_NOT_RECOVERED, DATA_SYNC_LOG_OBSERVATION_ERROR, DATA_SYNC_LOG_CLEANUP_FAILED, \
-    DATA_SYNC_LOG_OUTCOME_UNKNOWN, DATA_SYNC_LOG_CLEANUP_DEFERRED, DATA_SYNC_LOG_ORPHAN, \
-    DATA_SYNC_TASK_NAME_PREFIX, DATA_SYNC_SWEEP_INTERVAL_SECONDS, DATA_SYNC_SWEEP_GRACE_SECONDS, \
-    DATA_SYNC_SWEEP_DRY_RUN_CONFIG, DATA_SYNC_SWEEP_CLEANUP_REASON, DATA_SYNC_SWEEP_LOCK_TTL_SECONDS
+    DATA_SYNC_LOG_OBSERVATION_ERROR, DATA_SYNC_LOG_CLEANUP_FAILED, \
+    DATA_SYNC_LOG_CLEANUP_DEFERRED, DATA_SYNC_LOG_STALE, DATA_SYNC_TASK_NAME_PREFIX
 from common.utils import current_datetime, get_uuid_str, dump_dict_to_json, get_exception_msg, get_date_time, dict_exists_in_list, \
     convert_date_time, convert_file_size
 from common.model_store import ModelFactory
@@ -49,23 +48,37 @@ BATCH_SIZE = 1000
 
 _data_sync_wake_event = threading.Event()
 
-def _track(log, fn, *args, **kwargs):
-    """Call a tracking write and keep any exception from reaching an AWS step.
+def _track(log, fn, *args, sleep_fn=None, **kwargs):
+    """Call a tracking write, retrying error outcomes up to DATA_SYNC_WRITE_MAX_ATTEMPTS times.
+
+    Waits DATA_SYNC_WRITE_RETRY_DELAY_SECONDS between attempts. A stale outcome is returned
+    immediately and is never retried. Exceptions are treated as error outcomes.
 
     @param log logger
     @param fn callable, usually a MongoDao method
-    @returns the callable's write outcome, or DATA_SYNC_WRITE_ERROR when it raises
+    @param sleep_fn sleep used between attempts; defaults to time.sleep
+    @returns the callable's write outcome, or DATA_SYNC_WRITE_ERROR when every attempt fails
     """
+    sleep_fn = sleep_fn or time.sleep
     try:
-        return fn(*args, **kwargs)
-    except Exception as e:
-        log.exception(e)
+        name = fn.__name__
+    except Exception:
+        name = "tracking write"
+    last_outcome = DATA_SYNC_WRITE_ERROR
+    for attempt in range(DATA_SYNC_WRITE_MAX_ATTEMPTS):
         try:
-            name = fn.__name__
-        except Exception:
-            name = "tracking write"
-        log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} {name} raised: {get_exception_msg()}")
-        return DATA_SYNC_WRITE_ERROR
+            outcome = fn(*args, **kwargs)
+        except Exception as e:
+            log.exception(e)
+            log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} {name} raised: {get_exception_msg()}")
+            outcome = DATA_SYNC_WRITE_ERROR
+        if outcome != DATA_SYNC_WRITE_ERROR:
+            return outcome
+        last_outcome = outcome
+        if attempt + 1 < DATA_SYNC_WRITE_MAX_ATTEMPTS:
+            sleep_fn(DATA_SYNC_WRITE_RETRY_DELAY_SECONDS)
+    log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} {name} failed after {DATA_SYNC_WRITE_MAX_ATTEMPTS} attempts")
+    return last_outcome
 
 def _data_sync_context(submission_id, sync_type, data_sync_id, task_arn=None, task_execution_arn=None, source_location_arn=None, destination_location_arn=None):
     """Format the ids and ARNs included on every DataSync log line.
@@ -199,158 +212,6 @@ def _clear_submission_gone_flags(mongo_dao, log, data_sync_id, context):
     )
     return outcome == DATA_SYNC_WRITE_APPLIED
 
-def _reopen_early_finalized_record(mongo_dao, log, state, context_fn):
-    """Reopen a record finalized as not-observable or not-started once ARNs are saved.
-
-    If the submission was already finished Failed, the list add briefly sets it back to
-    In Progress until the monitor observes the real AWS result. Refuses to reopen when
-    cleanup has already started or finished, and clears any scheduled cleanupAfter so
-    the monitor cannot delete resources of a reopened transfer.
-
-    @param mongo_dao MongoDao instance
-    @param log logger
-    @param state tracking state with known ARNs
-    @param context_fn callable returning the log context string
-    """
-    set_fields = {
-        STATUS: DATA_SYNC_STATUS_IN_PROGRESS,
-        DATA_SYNC_LIST_PENDING: True,
-        DATA_SYNC_ROLLUP_PENDING: False,
-    }
-    if state.get("task_arn"):
-        set_fields[DATA_SYNC_TASK_ARN] = state["task_arn"]
-    if state.get("task_execution_arn"):
-        set_fields[DATA_SYNC_TASK_EXECUTION_ARN] = state["task_execution_arn"]
-    if state.get("source_location_arn"):
-        set_fields[DATA_SYNC_SOURCE_LOCATION_ARN] = state["source_location_arn"]
-    if state.get("destination_location_arn"):
-        set_fields[DATA_SYNC_DEST_LOCATION_ARN] = state["destination_location_arn"]
-    outcome = _track(
-        log, mongo_dao.update_data_sync, state["data_sync_id"], set_fields,
-        unset_fields=[DATA_SYNC_END_TIME, DATA_SYNC_LAST_ERROR, DATA_SYNC_CLEANUP_AFTER],
-        match_fields={
-            STATUS: DATA_SYNC_STATUS_FAILED,
-            DATA_SYNC_LAST_ERROR: {
-                "$in": [DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE, DATA_SYNC_LAST_ERROR_NOT_STARTED],
-            },
-            DATA_SYNC_CLEANUP_STARTED_AT: {"$exists": False},
-            DATA_SYNC_CLEANED_AT: {"$exists": False},
-        },
-    )
-    if outcome == DATA_SYNC_WRITE_APPLIED:
-        log.info(f"DataSync tracking reopened {context_fn()}")
-        notify_data_sync_started()
-
-def recover_data_sync_tracking(mongo_dao, log, state, sleep_fn=None, clock=None, describe_status=None, max_seconds=None):
-    """Retry tracking writes for one transfer. Never deletes AWS resources.
-
-    Hands off to the shared monitor once the record exists and every known ARN is saved.
-    A list add that is still pending is left for the monitor, except STALE (submission gone),
-    which clears the pending flags. When ARNs are saved onto a record already finalized as
-    not-observable or not-started, reopens it so the monitor can observe the real AWS result.
-
-    @param mongo_dao MongoDao instance
-    @param log logger
-    @param state mutable tracking state for this transfer
-    @param sleep_fn sleep used between attempts; defaults to time.sleep
-    @param clock epoch-seconds clock; defaults to time.time
-    @param describe_status optional callable returning the AWS execution status, for logging only
-    @param max_seconds how long to keep retrying; defaults to DATA_SYNC_RECOVERY_MAX_SECONDS
-    """
-    sleep_fn = sleep_fn or time.sleep
-    clock = clock or time.time
-    deadline = clock() + (DATA_SYNC_RECOVERY_MAX_SECONDS if max_seconds is None else max_seconds)
-
-    def context():
-        return _data_sync_context(
-            state.get("submission_id"), state.get("sync_type"), state.get("data_sync_id"),
-            state.get("task_arn"), state.get("task_execution_arn"),
-            state.get("source_location_arn"), state.get("destination_location_arn"),
-        )
-
-    datasync = None
-    try:
-        while clock() < deadline:
-            missing = []
-            if not state.get("inserted"):
-                outcome = _track(
-                    log, mongo_dao.insert_data_sync,
-                    state["submission_id"], state["sync_type"], state["source_folder"], state["target_folder"],
-                    state["status"], state["data_sync_id"], state["start_time"],
-                    task_arn=state.get("task_arn"), task_execution_arn=state.get("task_execution_arn"),
-                    source_location_arn=state.get("source_location_arn"),
-                    destination_location_arn=state.get("destination_location_arn"),
-                    end_time=state.get("end_time"), rollup_pending=state.get("rollup_pending", False),
-                    last_error=state.get("last_error"),
-                )
-                if outcome == DATA_SYNC_WRITE_APPLIED:
-                    state["inserted"] = True
-                else:
-                    missing.append("insert")
-            saved_arns = False
-            if state.get("inserted") and state.get("pending_fields"):
-                had_arn_fields = any(
-                    field in state["pending_fields"]
-                    for field in (DATA_SYNC_TASK_ARN, DATA_SYNC_TASK_EXECUTION_ARN)
-                )
-                outcome = _track(log, mongo_dao.update_data_sync, state["data_sync_id"], dict(state["pending_fields"]))
-                if outcome == DATA_SYNC_WRITE_APPLIED:
-                    state["pending_fields"] = {}
-                    saved_arns = had_arn_fields
-                else:
-                    missing.append("arn save")
-            if saved_arns and (state.get("task_arn") or state.get("task_execution_arn")):
-                _reopen_early_finalized_record(mongo_dao, log, state, context)
-            if state.get("inserted") and not state.get("list_added"):
-                added = _track(
-                    log, mongo_dao.add_active_submission_data_sync,
-                    state["submission_id"], state["sync_type"], state["data_sync_id"],
-                )
-                if added == DATA_SYNC_WRITE_APPLIED:
-                    cleared = _track(
-                        log, mongo_dao.update_data_sync, state["data_sync_id"], {DATA_SYNC_LIST_PENDING: False},
-                    )
-                    if cleared == DATA_SYNC_WRITE_APPLIED:
-                        state["list_added"] = True
-                    else:
-                        missing.append("listPending clear")
-                elif added == DATA_SYNC_WRITE_STALE:
-                    if _clear_submission_gone_flags(mongo_dao, log, state["data_sync_id"], context()):
-                        state["list_added"] = True
-                    else:
-                        missing.append("submission-gone clear")
-                else:
-                    missing.append("add")
-            if state.get("task_execution_arn"):
-                try:
-                    if describe_status:
-                        aws_status = describe_status(state["task_execution_arn"])
-                    else:
-                        if datasync is None:
-                            datasync = boto3.client("datasync")
-                        aws_status = datasync.describe_task_execution(
-                            TaskExecutionArn=state["task_execution_arn"],
-                        ).get("Status")
-                    log.info(f"DataSync recovery observed {aws_status} {context()}")
-                except Exception as e:
-                    log.exception(e)
-                    log.warning(f"{DATA_SYNC_LOG_OBSERVATION_ERROR} {context()}: {get_exception_msg()}")
-            if state.get("inserted") and not state.get("pending_fields"):
-                notify_data_sync_started()
-                log.info(f"DataSync tracking recovered {context()}")
-                return
-            log.error(
-                f"{DATA_SYNC_LOG_TRACKING_FAILED} recovery missing {', '.join(missing) or 'fields'} {context()}"
-            )
-            sleep_fn(DATA_SYNC_MONITOR_ACTIVE_INTERVAL_SECONDS)
-        log.error(f"{DATA_SYNC_LOG_TRACKING_NOT_RECOVERED} {context()}")
-    finally:
-        if datasync is not None:
-            try:
-                datasync.close()
-            except Exception:
-                pass
-
 def _defer_cleanup(log, context):
     """Log that AWS cleanup is waiting on a tracking write.
 
@@ -360,8 +221,8 @@ def _defer_cleanup(log, context):
     log.error(f"{DATA_SYNC_LOG_CLEANUP_DEFERRED} {context}")
 
 def _finalize_data_sync_record(mongo_dao, log, record, status, end_time, last_error, schedule_cleanup):
-    """Write a terminal dataSync status. Sets cleanupAfter for confirmed AWS terminal results
-    and for confirmed not-found / not-started failures that still have ARNs to delete.
+    """Write a terminal dataSync status. Sets cleanupAfter for Succeeded/Failed results that still
+    have ARNs to delete. Stale records pass schedule_cleanup=False for manual cleanup.
 
     Only matches while status is still In Progress so a stale monitor snapshot cannot overwrite
     a record another container already finalized.
@@ -369,7 +230,7 @@ def _finalize_data_sync_record(mongo_dao, log, record, status, end_time, last_er
     @param mongo_dao MongoDao instance
     @param log logger
     @param record dataSync document, updated in place on success
-    @param status Succeeded or Failed
+    @param status Succeeded, Failed, or Stale
     @param end_time terminal time
     @param last_error diagnostic to store, or None
     @param schedule_cleanup True when AWS resources should be deleted after the delay
@@ -453,12 +314,11 @@ def _finish_record_submission(mongo_dao, log, record):
 def _cleanup_due(record, now):
     """True when this record's AWS cleanup is allowed to run.
 
-    Requires a terminal status so a reopened In Progress record is never cleaned up from
-    a stale snapshot that still has cleanupAfter set.
+    Requires a terminal Succeeded or Failed status (Stale records are never auto-cleaned).
 
     @param record dataSync document
     @param now current datetime
-    @returns True when cleanupAfter is set, due, status is terminal, and tracking writes are done
+    @returns True when cleanupAfter is set, due, status is Succeeded or Failed, and tracking writes are done
     """
     cleanup_after = record.get(DATA_SYNC_CLEANUP_AFTER)
     if not cleanup_after or record.get(DATA_SYNC_LIST_PENDING) or record.get(DATA_SYNC_ROLLUP_PENDING):
@@ -614,10 +474,30 @@ def _claim_data_sync_poll(mongo_dao, log, record, now):
         return True
     return False
 
+def _finalize_stale_record(mongo_dao, log, record, now, last_error):
+    """Mark a record Stale with no automatic cleanup and log ARNs for manual cleanup.
+
+    @param mongo_dao MongoDao instance
+    @param log logger
+    @param record dataSync document
+    @param now current datetime
+    @param last_error diagnostic stored on the record
+    @returns True when the record was finalized
+    """
+    context = _context_from_record(record)
+    finalized = _finalize_data_sync_record(
+        mongo_dao, log, record, DATA_SYNC_STATUS_STALE, now, last_error, False,
+    )
+    if finalized:
+        log.error(f"{DATA_SYNC_LOG_STALE} manual cleanup needed {context}")
+    return finalized
+
 def _monitor_in_progress_data_sync(datasync, mongo_dao, log, record):
     """Poll one In Progress record and finalize it only on a confirmed AWS result.
 
     Skips the AWS calls when another container polled the record within DATA_SYNC_POLL_CLAIM_SECONDS.
+    Records with no task ARN, or whose task/execution AWS reports as not found after the start
+    grace, are finalized as Stale for manual cleanup.
 
     @param datasync boto3 DataSync client
     @param mongo_dao MongoDao instance
@@ -632,10 +512,7 @@ def _monitor_in_progress_data_sync(datasync, mongo_dao, log, record):
         execution_arn = _resolve_task_execution_arn(datasync, mongo_dao, log, record)
     except ClientError as ce:
         if _client_error_not_found(ce) and _past_start_grace(record, now):
-            log.error(f"{DATA_SYNC_LOG_EXECUTION_FAILED} execution not found {context}")
-            _finalize_data_sync_record(
-                mongo_dao, log, record, DATA_SYNC_STATUS_FAILED, now, "execution not found", True,
-            )
+            _finalize_stale_record(mongo_dao, log, record, now, DATA_SYNC_LAST_ERROR_STALE_NOT_FOUND)
             return
         _record_observation_error(mongo_dao, log, record, ce.response["Error"]["Message"])
         return
@@ -652,22 +529,13 @@ def _monitor_in_progress_data_sync(datasync, mongo_dao, log, record):
                 mongo_dao, log, record, DATA_SYNC_STATUS_FAILED, now, DATA_SYNC_LAST_ERROR_NOT_STARTED, True,
             )
             return
-        log.error(
-            f"{DATA_SYNC_LOG_OUTCOME_UNKNOWN} {context}. "
-            f"{DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE}. The transfer may have succeeded."
-        )
-        _finalize_data_sync_record(
-            mongo_dao, log, record, DATA_SYNC_STATUS_FAILED, now, DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE, False,
-        )
+        _finalize_stale_record(mongo_dao, log, record, now, DATA_SYNC_LAST_ERROR_STALE_NO_TASK)
         return
     try:
         response = datasync.describe_task_execution(TaskExecutionArn=execution_arn)
     except ClientError as ce:
         if _client_error_not_found(ce):
-            log.error(f"{DATA_SYNC_LOG_EXECUTION_FAILED} execution not found {context}")
-            _finalize_data_sync_record(
-                mongo_dao, log, record, DATA_SYNC_STATUS_FAILED, now, "execution not found", True,
-            )
+            _finalize_stale_record(mongo_dao, log, record, now, DATA_SYNC_LAST_ERROR_STALE_NOT_FOUND)
             return
         _record_observation_error(mongo_dao, log, record, ce.response["Error"]["Message"])
         return
@@ -711,7 +579,8 @@ def _record_still_unfinished(record):
 def _monitor_data_sync(datasync, mongo_dao, log, record):
     """Advance one dataSync record: list add, then AWS result, then submission status, then cleanup.
 
-    Cleanup runs only after the tracking writes have been applied and cleanupAfter is due.
+    Cleanup runs only after the tracking writes have been applied, cleanupAfter is due,
+    and a fresh read shows the stored status is Succeeded or Failed.
     A STALE list add (submission gone) clears the pending flags so cleanup can still run.
 
     @param datasync boto3 DataSync client
@@ -748,7 +617,6 @@ def _monitor_data_sync(datasync, mongo_dao, log, record):
     _finish_record_submission(mongo_dao, log, record)
     now = current_datetime()
     if _cleanup_due(record, now):
-        # Claim before delete so reopen loses the race (match_fields mirror finalize).
         claim = _track(
             log, mongo_dao.update_data_sync, record.get(ID),
             {DATA_SYNC_CLEANUP_STARTED_AT: now},
@@ -764,6 +632,14 @@ def _monitor_data_sync(datasync, mongo_dao, log, record):
             log.info(f"DataSync cleanup claim stale {context}")
             return
         record[DATA_SYNC_CLEANUP_STARTED_AT] = now
+        stored = mongo_dao.find_data_sync_by_id(record.get(ID))
+        stored_status = stored.get(STATUS) if stored else None
+        if stored_status not in (DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED):
+            log.error(
+                f"{DATA_SYNC_LOG_CLEANUP_FAILED} skipped delete; stored status is "
+                f"{stored_status or 'missing'} {context}"
+            )
+            return
         deleted_ok, delete_error = _delete_data_sync_resources(datasync, log, record)
         if deleted_ok:
             cleared = _track(
@@ -853,592 +729,6 @@ def start_data_sync_monitor(mongo_dao, log):
     monitor_thread.start()
     return monitor_thread
 
-def _parse_data_sync_id_from_task_name(name, tier):
-    """Extract dataSyncID from a tier-qualified task name, or None.
-
-    @param name DataSync task Name
-    @param tier deployment tier
-    @returns dataSyncID string, or None when the name is not the new tracked format
-    """
-    if not name or not tier:
-        return None
-    prefix = f"{DATA_SYNC_TASK_NAME_PREFIX}-{tier}-"
-    if name.startswith(prefix) and len(name) > len(prefix):
-        return name[len(prefix):]
-    return None
-
-def _is_legacy_bare_task_name(name):
-    """True when a task Name is the legacy bare Data_Hub_SyncTask (no tier).
-
-    @param name DataSync task Name
-    @returns True when the name is the bare legacy name
-    """
-    return name == DATA_SYNC_TASK_NAME_PREFIX
-
-def _is_our_task_name(name, tier):
-    """True when a task Name was created by this system for this tier.
-
-    Legacy bare Data_Hub_SyncTask names are excluded; the sweep only logs them.
-
-    @param name DataSync task Name
-    @param tier deployment tier
-    @returns True when the name is ours for this tier
-    """
-    if not name:
-        return False
-    if name == f"{DATA_SYNC_TASK_NAME_PREFIX}-{tier}":
-        return True
-    return _parse_data_sync_id_from_task_name(name, tier) is not None
-
-def _task_has_active_execution(datasync, task_arn):
-    """True when list_task_executions reports a non-terminal execution.
-
-    @param datasync boto3 DataSync client
-    @param task_arn AWS task ARN
-    @returns True when an execution is still running
-    """
-    paginator = datasync.get_paginator("list_task_executions")
-    for page in paginator.paginate(TaskArn=task_arn):
-        for entry in page.get("TaskExecutions") or []:
-            status = entry.get("Status")
-            if status and status not in ("SUCCESS", "ERROR"):
-                return True
-    return False
-
-def _task_execution_count(datasync, task_arn):
-    """Count executions for a task.
-
-    @param datasync boto3 DataSync client
-    @param task_arn AWS task ARN
-    @returns number of executions
-    """
-    count = 0
-    paginator = datasync.get_paginator("list_task_executions")
-    for page in paginator.paginate(TaskArn=task_arn):
-        count += len(page.get("TaskExecutions") or [])
-    return count
-
-def _document_protected_from_sweep(doc):
-    """True when a matching dataSync document must not be touched by the orphan sweep.
-
-    @param doc dataSync document
-    @returns True when In Progress, flagged, or in an active cleanup window
-    """
-    if not doc:
-        return False
-    if doc.get(STATUS) == DATA_SYNC_STATUS_IN_PROGRESS:
-        return True
-    if doc.get(DATA_SYNC_LIST_PENDING) or doc.get(DATA_SYNC_ROLLUP_PENDING):
-        return True
-    if doc.get(DATA_SYNC_CLEANUP_AFTER) is not None:
-        return True
-    if doc.get(DATA_SYNC_CLEANUP_STARTED_AT) is not None:
-        return True
-    return False
-
-def _age_seconds(creation_time, now):
-    """Seconds between an AWS CreationTime and now.
-
-    @param creation_time datetime from AWS, or None
-    @param now current datetime
-    @returns age in seconds, or None when creation_time is missing
-    """
-    if not creation_time:
-        return None
-    # AWS datetimes are typically timezone-aware; convert then drop tz for subtraction.
-    if getattr(creation_time, "tzinfo", None) is not None and getattr(now, "tzinfo", None) is None:
-        creation_time = creation_time.astimezone().replace(tzinfo=None)
-    elif getattr(creation_time, "tzinfo", None) is None and getattr(now, "tzinfo", None) is not None:
-        now = now.astimezone().replace(tzinfo=None)
-    return (now - creation_time).total_seconds()
-
-def _age_text(age):
-    """Format an age in seconds for orphan-sweep log lines.
-
-    @param age age in seconds, or None
-    @returns human-readable age string
-    """
-    return "unknown" if age is None else f"{int(age)}s"
-
-def _match_docs_for_resource(docs_by_arn, docs_by_id, arn, data_sync_id=None):
-    """Collect documents that match a resource ARN or embedded dataSyncID.
-
-    @param docs_by_arn map of ARN -> list of docs
-    @param docs_by_id map of id -> doc
-    @param arn resource ARN
-    @param data_sync_id optional id from the task name
-    @returns list of matching documents
-    """
-    matched = list(docs_by_arn.get(arn) or [])
-    if data_sync_id and data_sync_id in docs_by_id:
-        doc = docs_by_id[data_sync_id]
-        if doc not in matched:
-            matched.append(doc)
-    return matched
-
-def _sweep_eligible_docs(matched, fallback_creation_time, now, grace, recovery_wait, require_no_task=False):
-    """Filter matched dataSync docs that are safe for the orphan sweep to clean.
-
-    @param matched documents that reference the resource
-    @param fallback_creation_time AWS CreationTime used when endTime is missing
-    @param now current datetime
-    @param grace grace period in seconds for terminal records
-    @param recovery_wait longer wait for not-started / not-observable failures
-    @param require_no_task when True, skip docs that still have a taskArn
-    @returns list of eligible documents
-    """
-    eligible = []
-    for doc in matched:
-        if doc.get(STATUS) not in (DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED):
-            continue
-        if doc.get(DATA_SYNC_CLEANUP_AFTER) is not None:
-            continue
-        if doc.get(DATA_SYNC_CLEANED_AT) is not None:
-            continue
-        if doc.get(DATA_SYNC_LIST_PENDING) or doc.get(DATA_SYNC_ROLLUP_PENDING):
-            continue
-        if require_no_task and doc.get(DATA_SYNC_TASK_ARN):
-            continue
-        end_time = doc.get(DATA_SYNC_END_TIME) or fallback_creation_time
-        end_age = _age_seconds(end_time, now)
-        last_error = doc.get(DATA_SYNC_LAST_ERROR)
-        wait = recovery_wait if last_error in (
-            DATA_SYNC_LAST_ERROR_NOT_STARTED, DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE,
-        ) else grace
-        if end_age is None or end_age < wait:
-            continue
-        eligible.append(doc)
-    return eligible
-
-def _sweep_cleanup_doc(datasync, mongo_dao, log, doc, resource_arn, age_text, dry_run, label, now):
-    """Claim, delete AWS resources, and mark a dataSync document cleaned.
-
-    On delete failure, writes cleanupError and leaves cleanupStartedAt set so the
-    record stays protected and is not retried automatically.
-
-    @param datasync boto3 DataSync client
-    @param mongo_dao MongoDao instance
-    @param log logger
-    @param doc dataSync document
-    @param resource_arn primary ARN being cleaned (task or location)
-    @param age_text formatted age for logs
-    @param dry_run when True, only log
-    @param label short resource label for log lines (task/location)
-    @param now current datetime used for claim and cleanedAt
-    @returns "would_delete", "deleted", "skipped", or "failed"
-    """
-    doc_id = doc.get(ID)
-    if dry_run:
-        log.info(
-            f"{DATA_SYNC_LOG_ORPHAN} would delete document {label} "
-            f"dataSyncID={doc_id} arn={resource_arn} "
-            f"reason=pre-start-or-terminal-no-cleanup age={age_text}"
-        )
-        return "would_delete"
-    claim = _track(
-        log, mongo_dao.update_data_sync, doc_id,
-        {DATA_SYNC_CLEANUP_STARTED_AT: now},
-        match_fields={
-            STATUS: {"$in": [DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED]},
-            DATA_SYNC_LIST_PENDING: {"$ne": True},
-            DATA_SYNC_ROLLUP_PENDING: {"$ne": True},
-            DATA_SYNC_CLEANUP_AFTER: {"$exists": False},
-            DATA_SYNC_CLEANED_AT: {"$exists": False},
-            DATA_SYNC_CLEANUP_STARTED_AT: {"$exists": False},
-        },
-    )
-    if claim != DATA_SYNC_WRITE_APPLIED:
-        return "skipped"
-    deleted_ok, delete_error = _delete_data_sync_resources(datasync, log, doc)
-    if not deleted_ok:
-        _track(
-            log, mongo_dao.update_data_sync, doc_id,
-            {DATA_SYNC_CLEANUP_ERROR: delete_error or "delete failed"},
-        )
-        log.error(
-            f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed dataSyncID={doc_id} "
-            f"taskArn={doc.get(DATA_SYNC_TASK_ARN)} "
-            f"sourceLocationArn={doc.get(DATA_SYNC_SOURCE_LOCATION_ARN)} "
-            f"destinationLocationArn={doc.get(DATA_SYNC_DEST_LOCATION_ARN)} "
-            f"arn={resource_arn} reason={DATA_SYNC_SWEEP_CLEANUP_REASON} "
-            f"age={age_text} error={delete_error}"
-        )
-        return "failed"
-    cleared = _track(
-        log, mongo_dao.update_data_sync, doc_id,
-        {
-            DATA_SYNC_CLEANED_AT: now,
-            DATA_SYNC_CLEANUP_REASON: DATA_SYNC_SWEEP_CLEANUP_REASON,
-        },
-        unset_fields=[DATA_SYNC_CLEANUP_AFTER],
-    )
-    if cleared != DATA_SYNC_WRITE_APPLIED:
-        log.error(
-            f"{DATA_SYNC_LOG_ORPHAN} cleanedAt write failed outcome={cleared} "
-            f"dataSyncID={doc_id} arn={resource_arn} age={age_text}. "
-            f"AWS resources were deleted; manual cleanup needed for tracking."
-        )
-        return "failed"
-    log.info(
-        f"{DATA_SYNC_LOG_ORPHAN} deleted document {label} "
-        f"dataSyncID={doc_id} arn={resource_arn} "
-        f"reason={DATA_SYNC_SWEEP_CLEANUP_REASON} age={age_text}"
-    )
-    return "deleted"
-
-def _sweep_delete_resource(datasync, log, record, arn, reason, age, dry_run):
-    """Delete one AWS resource via the not-found-tolerant path, or log in dry-run.
-
-    Used for tier-named tasks with no matching tracking document. Locations without
-    a matching document are never deleted this way (ownership cannot be proven).
-
-    @param datasync boto3 DataSync client
-    @param log logger
-    @param record minimal dataSync-shaped dict for _delete_data_sync_resources
-    @param arn resource ARN being considered
-    @param reason human-readable deletion reason
-    @param age age in seconds, or None
-    @param dry_run when True, only log
-    @returns "would_delete", "deleted", or "failed"
-    """
-    age_text = _age_text(age)
-    if dry_run:
-        log.info(f"{DATA_SYNC_LOG_ORPHAN} would delete arn={arn} reason={reason} age={age_text}")
-        return "would_delete"
-    deleted_ok, delete_error = _delete_data_sync_resources(datasync, log, record)
-    if not deleted_ok:
-        log.error(
-            f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed arn={arn} reason={reason} "
-            f"age={age_text} error={delete_error}"
-        )
-        return "failed"
-    log.info(f"{DATA_SYNC_LOG_ORPHAN} deleted arn={arn} reason={reason} age={age_text}")
-    return "deleted"
-
-def _run_data_sync_orphan_sweep(mongo_dao, log, configs, datasync=None, now=None, dry_run=None):
-    """Enumerate this system's DataSync tasks/locations and delete eligible orphans.
-
-    Identifies tasks by Name and locations by BucketAccessRoleArn (no ListTagsForResource).
-    Locations referenced by any task in the account are never deleted. Legacy bare-named
-    tasks and locations without a matching tracking document are logged only.
-    A failed tracking lookup (None) skips every delete for the pass. An empty list still
-    means no matching documents.
-    Ships dark: dry_run defaults to True.
-
-    @param mongo_dao MongoDao instance
-    @param log logger
-    @param configs service config dict
-    @param datasync optional boto3 DataSync client
-    @param now optional current datetime
-    @param dry_run optional override; defaults to configs[data_sync_sweep_dry_run] or True
-    @returns dict with found/deleted/wouldDelete/skipped counts
-    """
-    now = now or current_datetime()
-    if dry_run is None:
-        dry_run = configs.get(DATA_SYNC_SWEEP_DRY_RUN_CONFIG, True)
-        if isinstance(dry_run, str):
-            dry_run = dry_run.strip().lower() not in ("false", "0", "no")
-    tier = configs.get(TIER_CONFIG)
-    role_arn = configs.get(DATASYNC_ROLE_ARN_CONFIG)
-    found = 0
-    deleted = 0
-    would_delete = 0
-    skipped = 0
-    owns_client = datasync is None
-    if owns_client:
-        datasync = boto3.client("datasync")
-    try:
-        tasks = []
-        referenced_locations = set()
-        listed_task_arns = set()
-        locations_unsafe = False
-        task_paginator = datasync.get_paginator("list_tasks")
-        for page in task_paginator.paginate():
-            for summary in page.get("Tasks") or []:
-                task_arn = summary.get("TaskArn")
-                try:
-                    described = datasync.describe_task(TaskArn=task_arn)
-                except Exception as e:
-                    log.exception(e)
-                    locations_unsafe = True
-                    log.error(
-                        f"{DATA_SYNC_LOG_ORPHAN} describe_task failed arn={task_arn}; "
-                        f"skipping all location deletes this pass"
-                    )
-                    continue
-                listed_task_arns.add(described.get("TaskArn") or task_arn)
-                for key in ("SourceLocationArn", "DestinationLocationArn"):
-                    if described.get(key):
-                        referenced_locations.add(described[key])
-                name = described.get("Name") or summary.get("Name") or ""
-                age = _age_seconds(described.get("CreationTime"), now)
-                if _is_legacy_bare_task_name(name):
-                    log.warning(
-                        f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed arn={task_arn} "
-                        f"reason=legacy bare task name age={_age_text(age)}"
-                    )
-                    skipped += 1
-                    continue
-                if _is_our_task_name(name, tier):
-                    tasks.append(described)
-
-        locations = []
-        loc_paginator = datasync.get_paginator("list_locations")
-        for page in loc_paginator.paginate():
-            for summary in page.get("Locations") or []:
-                if summary.get("LocationType") and summary.get("LocationType") != "S3":
-                    continue
-                described = datasync.describe_location_s3(LocationArn=summary["LocationArn"])
-                if described.get("S3Config", {}).get("BucketAccessRoleArn") != role_arn:
-                    continue
-                locations.append(described)
-
-        arns = []
-        data_sync_ids = []
-        for task in tasks:
-            arns.append(task.get("TaskArn"))
-            if task.get("SourceLocationArn"):
-                arns.append(task["SourceLocationArn"])
-            if task.get("DestinationLocationArn"):
-                arns.append(task["DestinationLocationArn"])
-            data_sync_id = _parse_data_sync_id_from_task_name(task.get("Name"), tier)
-            if data_sync_id:
-                data_sync_ids.append(data_sync_id)
-        for location in locations:
-            arns.append(location.get("LocationArn"))
-
-        docs = mongo_dao.find_data_syncs_by_arns(arns, data_sync_ids)
-        if docs is None:
-            log.error(f"{DATA_SYNC_LOG_ORPHAN} tracking lookup failed; skipping deletes this pass")
-            return {
-                "found": found,
-                "deleted": deleted,
-                "wouldDelete": would_delete,
-                "skipped": skipped,
-                "dryRun": dry_run,
-            }
-        docs_by_id = {doc.get(ID): doc for doc in docs if doc.get(ID)}
-        docs_by_arn = {}
-        for doc in docs:
-            for field in (DATA_SYNC_TASK_ARN, DATA_SYNC_SOURCE_LOCATION_ARN, DATA_SYNC_DEST_LOCATION_ARN):
-                arn = doc.get(field)
-                if arn:
-                    docs_by_arn.setdefault(arn, []).append(doc)
-
-        grace = DATA_SYNC_SWEEP_GRACE_SECONDS
-        recovery_wait = DATA_SYNC_RECOVERY_MAX_SECONDS + grace
-        processed_doc_ids = set()
-
-        def _count_outcome(outcome):
-            nonlocal deleted, would_delete, skipped
-            if outcome == "deleted":
-                deleted += 1
-            elif outcome == "would_delete":
-                would_delete += 1
-            else:
-                skipped += 1
-
-        for task in tasks:
-            task_arn = task.get("TaskArn")
-            name = task.get("Name")
-            data_sync_id = _parse_data_sync_id_from_task_name(name, tier)
-            source_arn = task.get("SourceLocationArn")
-            source_ours = any(loc.get("LocationArn") == source_arn for loc in locations)
-            matched = _match_docs_for_resource(docs_by_arn, docs_by_id, task_arn, data_sync_id)
-            age = _age_seconds(task.get("CreationTime"), now)
-            if source_arn and not source_ours:
-                matched_ids = ",".join(
-                    str(doc.get(ID)) for doc in matched if doc.get(ID)
-                ) or "none"
-                log.warning(
-                    f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed arn={task_arn} "
-                    f"sourceLocationArn={source_arn} dataSyncID={matched_ids} "
-                    f"reason=source location not in role-filtered list age={_age_text(age)}"
-                )
-                skipped += 1
-                continue
-            if any(_document_protected_from_sweep(doc) for doc in matched):
-                skipped += 1
-                continue
-            try:
-                if _task_has_active_execution(datasync, task_arn):
-                    skipped += 1
-                    continue
-            except Exception as e:
-                log.exception(e)
-                skipped += 1
-                continue
-
-            if matched:
-                eligible = _sweep_eligible_docs(
-                    matched, task.get("CreationTime"), now, grace, recovery_wait,
-                )
-                if not eligible:
-                    skipped += 1
-                    continue
-                found += 1
-                for doc in eligible:
-                    doc_id = doc.get(ID)
-                    if doc_id in processed_doc_ids:
-                        continue
-                    processed_doc_ids.add(doc_id)
-                    end_time = doc.get(DATA_SYNC_END_TIME) or task.get("CreationTime")
-                    _count_outcome(_sweep_cleanup_doc(
-                        datasync, mongo_dao, log, doc, task_arn,
-                        _age_text(_age_seconds(end_time, now)), dry_run, "resources", now,
-                    ))
-                continue
-
-            # No matching document — tier-named tasks can still be deleted.
-            try:
-                exec_count = _task_execution_count(datasync, task_arn)
-            except Exception as e:
-                log.exception(e)
-                skipped += 1
-                continue
-            required_age = grace if exec_count == 0 else recovery_wait
-            if age is None or age < required_age:
-                skipped += 1
-                continue
-            found += 1
-            record = {
-                DATA_SYNC_TASK_ARN: task_arn,
-                DATA_SYNC_SOURCE_LOCATION_ARN: task.get("SourceLocationArn"),
-                DATA_SYNC_DEST_LOCATION_ARN: task.get("DestinationLocationArn"),
-            }
-            _count_outcome(_sweep_delete_resource(
-                datasync, log, record, task_arn,
-                "no document" if exec_count == 0 else "no document after recovery window",
-                age, dry_run,
-            ))
-
-        if locations_unsafe:
-            log.error(
-                f"{DATA_SYNC_LOG_ORPHAN} skipping all location deletes: "
-                f"describe_task failed earlier this pass"
-            )
-            skipped += len(locations)
-        else:
-            for location in locations:
-                location_arn = location.get("LocationArn")
-                if location_arn in referenced_locations:
-                    skipped += 1
-                    continue
-                matched = _match_docs_for_resource(docs_by_arn, docs_by_id, location_arn)
-                if any(_document_protected_from_sweep(doc) for doc in matched):
-                    skipped += 1
-                    continue
-                age = _age_seconds(location.get("CreationTime"), now)
-                if matched:
-                    for doc in matched:
-                        task_arn = doc.get(DATA_SYNC_TASK_ARN)
-                        if task_arn and task_arn not in listed_task_arns:
-                            log.warning(
-                                f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed "
-                                f"dataSyncID={doc.get(ID)} locationArn={location_arn} "
-                                f"taskArn={task_arn} "
-                                f"reason=recorded task gone location unreferenced "
-                                f"age={_age_text(age)}"
-                            )
-                    eligible = _sweep_eligible_docs(
-                        matched, location.get("CreationTime"), now, grace, recovery_wait,
-                        require_no_task=True,
-                    )
-                    if not eligible:
-                        skipped += 1
-                        continue
-                    found += 1
-                    for doc in eligible:
-                        doc_id = doc.get(ID)
-                        if doc_id in processed_doc_ids:
-                            continue
-                        processed_doc_ids.add(doc_id)
-                        end_time = doc.get(DATA_SYNC_END_TIME) or location.get("CreationTime")
-                        _count_outcome(_sweep_cleanup_doc(
-                            datasync, mongo_dao, log, doc, location_arn,
-                            _age_text(_age_seconds(end_time, now)), dry_run, "locations", now,
-                        ))
-                    continue
-                # No matching document — ownership cannot be proven; log only.
-                if age is None or age < grace:
-                    skipped += 1
-                    continue
-                found += 1
-                log.warning(
-                    f"{DATA_SYNC_LOG_ORPHAN} manual cleanup needed arn={location_arn} "
-                    f"subdirectory={location.get('Subdirectory')} "
-                    f"reason=orphaned location no document age={_age_text(age)}"
-                )
-                skipped += 1
-
-        log.info(
-            f"DataSync orphan sweep found={found} deleted={deleted} "
-            f"wouldDelete={would_delete} skipped={skipped} dryRun={dry_run}"
-        )
-        return {
-            "found": found,
-            "deleted": deleted,
-            "wouldDelete": would_delete,
-            "skipped": skipped,
-            "dryRun": dry_run,
-        }
-    finally:
-        if owns_client and datasync:
-            try:
-                datasync.close()
-            except Exception:
-                pass
-
-def data_sync_sweep_loop(mongo_dao, log, configs, sleep_fn=None, clock=None):
-    """Run the orphan sweep on an interval with a Mongo run-lock across containers.
-
-    @param mongo_dao MongoDao instance
-    @param log logger
-    @param configs service config dict
-    @param sleep_fn sleep between runs; defaults to time.sleep
-    @param clock epoch-seconds clock; defaults to time.time
-    """
-    sleep_fn = sleep_fn or time.sleep
-    clock = clock or time.time
-    owner = f"{get_uuid_str()}-{threading.get_ident()}"
-    while True:
-        started = clock()
-        now = current_datetime()
-        acquired = False
-        try:
-            acquired = mongo_dao.try_acquire_data_sync_sweep_lock(
-                owner, now, DATA_SYNC_SWEEP_LOCK_TTL_SECONDS,
-            )
-            if acquired:
-                _run_data_sync_orphan_sweep(mongo_dao, log, configs)
-            else:
-                log.info("DataSync orphan sweep skipped: lock held by another container")
-        except Exception as e:
-            log.exception(e)
-            log.error(f"{DATA_SYNC_LOG_ORPHAN} sweep pass failed: {get_exception_msg()}")
-        finally:
-            if acquired:
-                try:
-                    mongo_dao.release_data_sync_sweep_lock(owner, current_datetime())
-                except Exception as e:
-                    log.exception(e)
-        elapsed = clock() - started
-        sleep_fn(max(1, DATA_SYNC_SWEEP_INTERVAL_SECONDS - elapsed))
-
-def start_data_sync_sweep(mongo_dao, log, configs):
-    """Start the orphan-sweep daemon thread.
-
-    @param mongo_dao MongoDao instance
-    @param log logger
-    @param configs service config dict
-    @returns the daemon thread
-    """
-    sweep_thread = threading.Thread(
-        target=data_sync_sweep_loop, args=(mongo_dao, log, configs), daemon=True,
-    )
-    sweep_thread.start()
-    return sweep_thread
-
 """
 Interface for validate files via SQS
 """
@@ -1455,7 +745,6 @@ def metadata_export(configs, job_queue, mongo_dao):
         log.exception(f'Error occurred when initialize metadata validation service: {get_exception_msg()}')
         return 1
     start_data_sync_monitor(mongo_dao, log)
-    start_data_sync_sweep(mongo_dao, log, configs)
     scale_in_protection_flag = False
     log.info(f'{SERVICE_TYPE_EXPORT} service started')
     while True:
@@ -2024,8 +1313,6 @@ class ExportMetadata:
             "status": DATA_SYNC_STATUS_IN_PROGRESS,
             "inserted": False,
             "list_added": False,
-            "tracking_failed": False,
-            "pending_fields": {},
             "task_arn": None,
             "task_execution_arn": None,
             "source_location_arn": None,
@@ -2051,6 +1338,7 @@ class ExportMetadata:
         """Insert the dataSync record and add it to the submission's in-flight list.
 
         A failure is remembered on the tracking state and never raised. The AWS transfer still runs.
+        Tracking writes are retried by _track before returning.
 
         @param tracking tracking state dict
         """
@@ -2060,7 +1348,6 @@ class ExportMetadata:
             tracking["status"], tracking["data_sync_id"], tracking["start_time"],
         )
         if outcome != DATA_SYNC_WRITE_APPLIED:
-            tracking["tracking_failed"] = True
             self.log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} insert outcome={outcome} {self._tracking_context(tracking)}")
             return
         tracking["inserted"] = True
@@ -2070,7 +1357,6 @@ class ExportMetadata:
             tracking["submission_id"], tracking["sync_type"], tracking["data_sync_id"],
         )
         if added != DATA_SYNC_WRITE_APPLIED:
-            tracking["tracking_failed"] = True
             self.log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} add outcome={added} {self._tracking_context(tracking)}")
             return
         cleared = _track(
@@ -2080,7 +1366,6 @@ class ExportMetadata:
         if cleared == DATA_SYNC_WRITE_APPLIED:
             tracking["list_added"] = True
             return
-        tracking["tracking_failed"] = True
         self.log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} clear listPending outcome={cleared} {self._tracking_context(tracking)}")
 
     def _save_data_sync_field(self, tracking, field, value, state_key):
@@ -2093,19 +1378,17 @@ class ExportMetadata:
         """
         tracking[state_key] = value
         if not tracking["inserted"]:
-            tracking["pending_fields"][field] = value
-            tracking["tracking_failed"] = True
             return
         outcome = _track(self.log, self.mongo_dao.update_data_sync, tracking["data_sync_id"], {field: value})
         if outcome != DATA_SYNC_WRITE_APPLIED:
-            tracking["pending_fields"][field] = value
-            tracking["tracking_failed"] = True
             self.log.error(
                 f"{DATA_SYNC_LOG_TRACKING_FAILED} {field} outcome={outcome} {self._tracking_context(tracking)}"
             )
 
     def _mark_data_sync_start_failed(self, tracking, step, message):
         """Record that the AWS transfer failed before start_task_execution returned. Does not delete anything.
+
+        Logs known ARNs for manual cleanup when the record was never inserted or the Failed write fails.
 
         @param tracking tracking state dict
         @param step AWS call that failed
@@ -2117,35 +1400,30 @@ class ExportMetadata:
         tracking["end_time"] = end_time
         tracking["last_error"] = last_error
         tracking["rollup_pending"] = True
-        tracking["tracking_failed"] = True
         context = self._tracking_context(tracking)
         self.log.error(f"{DATA_SYNC_LOG_TRANSFER_FAILED} {step} {message} {context}")
+        if not tracking["inserted"]:
+            return
         fields = {
             STATUS: DATA_SYNC_STATUS_FAILED,
             DATA_SYNC_END_TIME: end_time,
             DATA_SYNC_ROLLUP_PENDING: True,
             DATA_SYNC_LAST_ERROR: last_error,
         }
-        if not tracking["inserted"]:
-            tracking["pending_fields"].update(fields)
-            return
         outcome = _track(self.log, self.mongo_dao.update_data_sync, tracking["data_sync_id"], fields)
         if outcome != DATA_SYNC_WRITE_APPLIED:
-            tracking["pending_fields"].update(fields)
             self.log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} start failure outcome={outcome} {context}")
 
-    def _start_data_sync_recovery(self, tracking):
-        """Start the thread that retries tracking writes. It never deletes AWS resources.
+    def _log_untracked_transfer(self, tracking):
+        """Log ARNs for manual cleanup when the insert never landed.
 
         @param tracking tracking state dict
         """
-        if not tracking or not tracking.get("tracking_failed"):
+        if not tracking or tracking.get("inserted"):
             return
-        threading.Thread(
-            target=recover_data_sync_tracking,
-            args=(self.mongo_dao, self.log, tracking),
-            daemon=True,
-        ).start()
+        self.log.error(
+            f"{DATA_SYNC_LOG_TRACKING_FAILED} untracked transfer {self._tracking_context(tracking)}"
+        )
 
     def transfer_s3_obj(self, bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags, file_key_list = None, sync_type = None):
         """Transfer s3 objects via AWS DataSync.
@@ -2258,8 +1536,6 @@ class ExportMetadata:
                 self._save_data_sync_field(
                     tracking, DATA_SYNC_TASK_EXECUTION_ARN, task_execution_arn, "task_execution_arn",
                 )
-                if tracking["tracking_failed"]:
-                    self._start_data_sync_recovery(tracking)
             else:
                 start_monitoring_task(
                     task_execution_arn, task['TaskArn'], datasync, source_location, destination_location,
@@ -2272,14 +1548,14 @@ class ExportMetadata:
             self.log.exception(f"Failed to transfer files from {data_file_folder} to {dest_bucket_name}:{dest_file_folder}. {ce.response['Error']['Message']}")
             if tracking:
                 self._mark_data_sync_start_failed(tracking, step, ce.response['Error']['Message'])
-                self._start_data_sync_recovery(tracking)
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to transfer files from {data_file_folder} to {dest_bucket_name}:{dest_file_folder}. {get_exception_msg()}")
             if tracking:
                 self._mark_data_sync_start_failed(tracking, step, get_exception_msg())
-                self._start_data_sync_recovery(tracking)
         finally:
+            if tracking:
+                self._log_untracked_transfer(tracking)
             if not handed_to_monitor:
                 try:
                     datasync.close()

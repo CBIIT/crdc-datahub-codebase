@@ -4,6 +4,8 @@ import sys
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 _this_dir = os.path.dirname(os.path.abspath(__file__))
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(_this_dir)))
 sys.path.insert(0, os.path.join(_project_root, "src"))
@@ -14,17 +16,15 @@ import metadata_export
 from metadata_export import (
     ExportMetadata,
     monitor_datasync_task,
-    recover_data_sync_tracking,
+    _track,
     _monitor_data_sync,
     _next_data_sync_monitor_state,
     _run_data_sync_monitor_pass,
     data_sync_monitor_loop,
-    data_sync_sweep_loop,
     _verified_source_keys_to_delete,
     _destination_key_for_source,
     _client_error_not_found,
     _resolve_task_execution_arn,
-    _run_data_sync_orphan_sweep,
 )
 from common.constants import (
     ID,
@@ -44,6 +44,7 @@ from common.constants import (
     DATA_SYNC_STATUS_IN_PROGRESS,
     DATA_SYNC_STATUS_SUCCEEDED,
     DATA_SYNC_STATUS_FAILED,
+    DATA_SYNC_STATUS_STALE,
     DATA_SYNC_TASK_ARN,
     DATA_SYNC_TASK_EXECUTION_ARN,
     DATA_SYNC_SOURCE_LOCATION_ARN,
@@ -62,25 +63,23 @@ from common.constants import (
     DATA_SYNC_WRITE_APPLIED,
     DATA_SYNC_WRITE_STALE,
     DATA_SYNC_WRITE_ERROR,
+    DATA_SYNC_WRITE_MAX_ATTEMPTS,
+    DATA_SYNC_WRITE_RETRY_DELAY_SECONDS,
     DATA_SYNC_MONITOR_STATE_ACTIVE,
     DATA_SYNC_MONITOR_STATE_WAITING,
     DATA_SYNC_MONITOR_ACTIVE_INTERVAL_SECONDS,
     DATA_SYNC_MONITOR_WAITING_INTERVAL_SECONDS,
     DATA_SYNC_POLL_CLAIM_SECONDS,
-    DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE,
     DATA_SYNC_LAST_ERROR_NOT_STARTED,
+    DATA_SYNC_LAST_ERROR_STALE_NO_TASK,
+    DATA_SYNC_LAST_ERROR_STALE_NOT_FOUND,
     DATA_SYNC_LOG_TRANSFER_FAILED,
     DATA_SYNC_LOG_EXECUTION_FAILED,
     DATA_SYNC_LOG_TRACKING_FAILED,
-    DATA_SYNC_LOG_TRACKING_NOT_RECOVERED,
     DATA_SYNC_LOG_CLEANUP_FAILED,
     DATA_SYNC_LOG_CLEANUP_DEFERRED,
-    DATA_SYNC_LOG_OUTCOME_UNKNOWN,
-    DATA_SYNC_LOG_ORPHAN,
-    DATA_SYNC_SWEEP_GRACE_SECONDS,
+    DATA_SYNC_LOG_STALE,
     DATA_SYNC_START_GRACE_SECONDS,
-    DATA_SYNC_RECOVERY_MAX_SECONDS,
-    DATA_SYNC_CLEANUP_REASON,
 )
 
 
@@ -89,22 +88,21 @@ def _finalize_set_fields(mongo_dao):
     for call in mongo_dao.update_data_sync.call_args_list:
         set_fields = call.args[1] if len(call.args) > 1 else None
         if isinstance(set_fields, dict) and set_fields.get(STATUS) in (
-            DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED,
+            DATA_SYNC_STATUS_SUCCEEDED, DATA_SYNC_STATUS_FAILED, DATA_SYNC_STATUS_STALE,
         ):
             return set_fields
     return None
 
 
-def _update_without_reopen(default=DATA_SYNC_WRITE_APPLIED, reopen=DATA_SYNC_WRITE_STALE):
-    """Side effect that treats early-finalize reopen matches as STALE by default."""
-    def side_effect(_data_sync_id, set_fields=None, unset_fields=None, match_fields=None):
-        if match_fields and DATA_SYNC_LAST_ERROR in match_fields:
-            return reopen
-        return default
-    return side_effect
-
 SUBMISSION_ID_VAL = "sub-1"
 NOW = datetime(2026, 1, 1, 12, 0, 0)
+
+
+@pytest.fixture(autouse=True)
+def _fast_track_retries():
+    """Skip the one-minute _track retry delay in every test."""
+    with patch("metadata_export.time.sleep"):
+        yield
 
 
 def _make_export_metadata():
@@ -177,19 +175,6 @@ def _record(**overrides):
     return record
 
 
-def _eligible_location_doc(location_arn):
-    """A terminal document the location sweep would delete if nothing else protects the location."""
-    return _record(**{
-        STATUS: DATA_SYNC_STATUS_FAILED,
-        DATA_SYNC_TASK_ARN: None,
-        DATA_SYNC_TASK_EXECUTION_ARN: None,
-        DATA_SYNC_SOURCE_LOCATION_ARN: location_arn,
-        DATA_SYNC_END_TIME: NOW - timedelta(seconds=DATA_SYNC_SWEEP_GRACE_SECONDS + 30),
-        DATA_SYNC_LIST_PENDING: False,
-        DATA_SYNC_ROLLUP_PENDING: False,
-    })
-
-
 class TestTransferPrecedence:
     def _run(self, export_metadata, sync_type=DATA_SYNC_TYPE_FILE):
         with patch("metadata_export.boto3") as mock_boto3, \
@@ -245,28 +230,53 @@ class TestTransferPrecedence:
         assert thread_cls.call_args.kwargs["target"] == monitor_datasync_task
         notify.assert_not_called()
 
-    def test_insert_error_still_runs_the_transfer_and_starts_recovery(self):
-        """When insert returns error, the same AWS create/start calls still run, recovery is started, and nothing is deleted."""
+    def test_insert_error_still_runs_the_transfer_and_logs_untracked(self):
+        """When insert returns error after retries, the same AWS create/start calls still run, no recovery thread starts, and an untracked-transfer line is logged."""
         export_metadata, mongo_dao = _make_export_metadata()
         mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_ERROR
-        client, thread_cls, notify = self._run(export_metadata)
+        with patch("metadata_export.boto3") as mock_boto3, \
+                patch("metadata_export.threading.Thread") as thread_cls, \
+                patch("metadata_export.notify_data_sync_started") as notify, \
+                patch("metadata_export.get_uuid_str", return_value="sync-1"), \
+                patch("metadata_export.current_datetime", return_value=NOW), \
+                patch("metadata_export.time.sleep"):
+            client = _mock_datasync_client()
+            mock_boto3.client.return_value = client
+            export_metadata.transfer_s3_obj(
+                "bucket", "src/folder", "dest-bucket", "dest/folder", [], sync_type=DATA_SYNC_TYPE_FILE,
+            )
 
         assert _aws_methods(client) == [
             "create_location_s3", "create_location_s3", "create_task", "start_task_execution",
         ]
         notify.assert_not_called()
-        assert thread_cls.call_args.kwargs["target"] == recover_data_sync_tracking
+        thread_cls.assert_not_called()
+        assert mongo_dao.insert_data_sync.call_count == DATA_SYNC_WRITE_MAX_ATTEMPTS
         client.delete_task.assert_not_called()
         client.delete_location.assert_not_called()
+        assert any(
+            DATA_SYNC_LOG_TRACKING_FAILED in str(call) and "untracked transfer" in str(call)
+            for call in export_metadata.log.error.call_args_list
+        )
 
     def test_insert_exception_still_runs_the_transfer(self):
-        """An insert exception does not skip start_task_execution; recovery is started instead."""
-        export_metadata, _mongo_dao = _make_export_metadata()
-        export_metadata.mongo_dao.insert_data_sync.side_effect = RuntimeError("down")
-        client, thread_cls, _notify = self._run(export_metadata)
+        """An insert exception is retried then logged; start_task_execution still runs and no recovery thread starts."""
+        export_metadata, mongo_dao = _make_export_metadata()
+        mongo_dao.insert_data_sync.side_effect = RuntimeError("down")
+        with patch("metadata_export.boto3") as mock_boto3, \
+                patch("metadata_export.threading.Thread") as thread_cls, \
+                patch("metadata_export.get_uuid_str", return_value="sync-1"), \
+                patch("metadata_export.current_datetime", return_value=NOW), \
+                patch("metadata_export.time.sleep"):
+            client = _mock_datasync_client()
+            mock_boto3.client.return_value = client
+            export_metadata.transfer_s3_obj(
+                "bucket", "src/folder", "dest-bucket", "dest/folder", [], sync_type=DATA_SYNC_TYPE_FILE,
+            )
 
         assert "start_task_execution" in _aws_methods(client)
-        assert thread_cls.call_args.kwargs["target"] == recover_data_sync_tracking
+        thread_cls.assert_not_called()
+        assert mongo_dao.insert_data_sync.call_count == DATA_SYNC_WRITE_MAX_ATTEMPTS
 
     def test_pre_start_error_records_failed_and_deletes_nothing(self):
         """create_task raising InvalidRequestException marks the record Failed with rollupPending and no cleanupAfter, and does not delete locations or start the execution."""
@@ -300,6 +310,48 @@ class TestTransferPrecedence:
             f"submissionID={SUBMISSION_ID_VAL} type={DATA_SYNC_TYPE_METADATA} dataSyncID=sync-1 "
             f"sourceLocationArn=src-loc destinationLocationArn=dest-loc"
         )
+
+
+class TestTrackRetry:
+    def test_retries_error_outcome_then_succeeds(self):
+        """An error outcome is retried with the configured delay until a later attempt returns applied."""
+        log = MagicMock()
+        sleeps = []
+        fn = MagicMock(side_effect=[DATA_SYNC_WRITE_ERROR, DATA_SYNC_WRITE_ERROR, DATA_SYNC_WRITE_APPLIED])
+        fn.__name__ = "insert_data_sync"
+
+        outcome = _track(log, fn, sleep_fn=lambda s: sleeps.append(s))
+
+        assert outcome == DATA_SYNC_WRITE_APPLIED
+        assert fn.call_count == 3
+        assert sleeps == [DATA_SYNC_WRITE_RETRY_DELAY_SECONDS, DATA_SYNC_WRITE_RETRY_DELAY_SECONDS]
+
+    def test_retries_exception_then_returns_error(self):
+        """Raised exceptions are retried and become WRITE_ERROR after all attempts fail."""
+        log = MagicMock()
+        sleeps = []
+        fn = MagicMock(side_effect=RuntimeError("down"))
+        fn.__name__ = "update_data_sync"
+
+        outcome = _track(log, fn, sleep_fn=lambda s: sleeps.append(s))
+
+        assert outcome == DATA_SYNC_WRITE_ERROR
+        assert fn.call_count == DATA_SYNC_WRITE_MAX_ATTEMPTS
+        assert sleeps == [DATA_SYNC_WRITE_RETRY_DELAY_SECONDS] * (DATA_SYNC_WRITE_MAX_ATTEMPTS - 1)
+        assert any("failed after" in str(call) for call in log.error.call_args_list)
+
+    def test_does_not_retry_stale_outcome(self):
+        """A stale outcome is returned immediately without sleeping or retrying."""
+        log = MagicMock()
+        sleeps = []
+        fn = MagicMock(return_value=DATA_SYNC_WRITE_STALE)
+        fn.__name__ = "update_data_sync"
+
+        outcome = _track(log, fn, sleep_fn=lambda s: sleeps.append(s))
+
+        assert outcome == DATA_SYNC_WRITE_STALE
+        assert fn.call_count == 1
+        assert sleeps == []
 
 
 class TestMonitorPrecedence:
@@ -351,6 +403,7 @@ class TestMonitorPrecedence:
             STATUS: DATA_SYNC_STATUS_SUCCEEDED,
             DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(minutes=1),
         })
+        mongo_dao.find_data_sync_by_id.return_value = dict(record)
 
         with patch("metadata_export.current_datetime", return_value=NOW):
             _monitor_data_sync(datasync, mongo_dao, log, record)
@@ -417,8 +470,8 @@ class TestMonitorPrecedence:
         )
         assert DATA_SYNC_LAST_ERROR in success_call.kwargs.get("unset_fields", [])
 
-    def test_confirmed_missing_execution_schedules_cleanup(self):
-        """A not-found describe is treated as a confirmed missing execution: Failed plus cleanupAfter, with no delete yet."""
+    def test_confirmed_missing_execution_is_stale_without_cleanup(self):
+        """A not-found describe finalizes the record as Stale with no cleanupAfter and logs for manual cleanup."""
         mongo_dao = MagicMock()
         mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
         mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
@@ -432,11 +485,14 @@ class TestMonitorPrecedence:
 
         datasync.delete_task.assert_not_called()
         finalize = _finalize_set_fields(mongo_dao)
-        assert finalize[STATUS] == DATA_SYNC_STATUS_FAILED
-        assert DATA_SYNC_CLEANUP_AFTER in finalize
+        assert finalize[STATUS] == DATA_SYNC_STATUS_STALE
+        assert finalize[DATA_SYNC_LAST_ERROR] == DATA_SYNC_LAST_ERROR_STALE_NOT_FOUND
+        assert DATA_SYNC_CLEANUP_AFTER not in finalize
+        assert any(DATA_SYNC_LOG_STALE in str(call) and "manual cleanup needed" in str(call)
+                   for call in datasync_log.error.call_args_list)
 
-    def test_unobservable_execution_is_failed_and_logged_unknown(self):
-        """A record with no task or execution ARN is failed as not-observable, cleanupAfter is not set, and the unknown outcome is logged."""
+    def test_unobservable_execution_is_stale_and_logged(self):
+        """A record with no task or execution ARN is finalized Stale with no cleanupAfter and logged for manual cleanup."""
         mongo_dao = MagicMock()
         mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
         mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
@@ -447,11 +503,11 @@ class TestMonitorPrecedence:
             _monitor_data_sync(MagicMock(), mongo_dao, log, record)
 
         finalize = _finalize_set_fields(mongo_dao)
-        assert finalize[STATUS] == DATA_SYNC_STATUS_FAILED
-        assert finalize[DATA_SYNC_LAST_ERROR] == DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE
+        assert finalize[STATUS] == DATA_SYNC_STATUS_STALE
+        assert finalize[DATA_SYNC_LAST_ERROR] == DATA_SYNC_LAST_ERROR_STALE_NO_TASK
         assert DATA_SYNC_CLEANUP_AFTER not in finalize
-        assert any(DATA_SYNC_LOG_OUTCOME_UNKNOWN in str(call) for call in log.error.call_args_list)
-        assert any("may have succeeded" in str(call) for call in log.error.call_args_list)
+        assert any(DATA_SYNC_LOG_STALE in str(call) and "manual cleanup needed" in str(call)
+                   for call in log.error.call_args_list)
 
     def test_stale_finish_logs_info_not_error(self):
         """A stale finish (submission already finished) is logged at info and does not log an error."""
@@ -476,6 +532,7 @@ class TestMonitorPrecedence:
             STATUS: DATA_SYNC_STATUS_SUCCEEDED,
             DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(seconds=1),
         })
+        mongo_dao.find_data_sync_by_id.return_value = dict(record)
 
         with patch("metadata_export.current_datetime", return_value=NOW):
             _monitor_data_sync(datasync, mongo_dao, MagicMock(), record)
@@ -543,6 +600,10 @@ class TestMonitorPrecedence:
             DATA_SYNC_ROLLUP_PENDING: True,
             DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(minutes=1),
         })
+        mongo_dao.find_data_sync_by_id.return_value = {
+            ID: "sync-1",
+            STATUS: DATA_SYNC_STATUS_SUCCEEDED,
+        }
 
         with patch("metadata_export.current_datetime", return_value=NOW):
             _monitor_data_sync(datasync, mongo_dao, log, record)
@@ -610,177 +671,24 @@ class TestMonitorPrecedence:
 
         assert mongo_dao.finish_submission_data_sync.call_args.args[3] == DATA_SYNC_STATUS_FAILED
 
-
-class TestRecovery:
-    def _state(self, **overrides):
-        state = {
-            "submission_id": SUBMISSION_ID_VAL,
-            "sync_type": DATA_SYNC_TYPE_FILE,
-            "data_sync_id": "sync-1",
-            "source_folder": "src",
-            "target_folder": "dest",
-            "start_time": NOW,
-            "status": DATA_SYNC_STATUS_IN_PROGRESS,
-            "inserted": False,
-            "list_added": False,
-            "pending_fields": {DATA_SYNC_TASK_ARN: "task-arn-1"},
-            "task_arn": "task-arn-1",
-            "task_execution_arn": "exec-arn-1",
-            "source_location_arn": "src-loc",
-            "destination_location_arn": "dest-loc",
-            "end_time": None,
-            "last_error": None,
-            "rollup_pending": False,
-        }
-        state.update(overrides)
-        return state
-
-    def test_retries_insert_then_hands_off_without_deleting(self):
-        """Recovery retries a failed insert with the same id, notifies the monitor on success, and never deletes the task or locations."""
+    def test_stored_non_final_status_skips_delete(self):
+        """A due in-memory snapshot does not delete the task when the stored status is not Succeeded or Failed."""
         mongo_dao = MagicMock()
-        mongo_dao.insert_data_sync.side_effect = [DATA_SYNC_WRITE_ERROR, DATA_SYNC_WRITE_APPLIED]
-        mongo_dao.update_data_sync.side_effect = _update_without_reopen()
-        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        log = MagicMock()
+        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
+        mongo_dao.find_data_sync_by_id.return_value = {ID: "sync-1", STATUS: DATA_SYNC_STATUS_STALE}
         datasync = MagicMock()
+        log = MagicMock()
+        record = _record(**{
+            STATUS: DATA_SYNC_STATUS_SUCCEEDED,
+            DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(minutes=1),
+        })
 
-        with patch("metadata_export.notify_data_sync_started") as notify, \
-                patch("metadata_export.boto3") as mock_boto3:
-            mock_boto3.client.return_value = datasync
-            recover_data_sync_tracking(
-                mongo_dao, log, self._state(), sleep_fn=lambda _seconds: None, clock=lambda: 0, max_seconds=10,
-            )
+        with patch("metadata_export.current_datetime", return_value=NOW):
+            _monitor_data_sync(datasync, mongo_dao, log, record)
 
-        assert mongo_dao.insert_data_sync.call_count == 2
-        assert mongo_dao.insert_data_sync.call_args.args[5] == "sync-1"
-        notify.assert_called_once()
         datasync.delete_task.assert_not_called()
         datasync.delete_location.assert_not_called()
-
-    def test_pending_arns_are_saved_after_insert(self):
-        """After a successful insert, the first update writes the pending task ARN captured before tracking existed."""
-        mongo_dao = MagicMock()
-        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        mongo_dao.update_data_sync.side_effect = _update_without_reopen()
-        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        state = self._state()
-
-        with patch("metadata_export.notify_data_sync_started"), \
-                patch("metadata_export.boto3"):
-            recover_data_sync_tracking(
-                mongo_dao, MagicMock(), state, sleep_fn=lambda _seconds: None, clock=lambda: 0,
-                describe_status=lambda _arn: "TRANSFERRING", max_seconds=10,
-            )
-
-        assert mongo_dao.update_data_sync.call_args_list[0].args[1][DATA_SYNC_TASK_ARN] == "task-arn-1"
-
-    def test_timeout_logs_unrecovered_arns(self):
-        """When insert keeps failing until max_seconds, recovery logs tracking-not-recovered with every captured ARN."""
-        mongo_dao = MagicMock()
-        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_ERROR
-        log = MagicMock()
-        now = {"t": 0}
-
-        def clock():
-            return now["t"]
-
-        def sleep_fn(_seconds):
-            now["t"] += 100
-
-        recover_data_sync_tracking(
-            mongo_dao, log, self._state(), sleep_fn=sleep_fn, clock=clock, max_seconds=50,
-        )
-
-        logged = " ".join(str(call) for call in log.error.call_args_list)
-        assert DATA_SYNC_LOG_TRACKING_NOT_RECOVERED in logged
-        assert "task-arn-1" in logged
-        assert "exec-arn-1" in logged
-        assert "src-loc" in logged
-        assert "dest-loc" in logged
-
-    def test_reopens_not_observable_record_after_saving_arns(self):
-        """Saving ARNs onto a not-observable/not-started Failed record reopens it to In Progress, clears endTime and cleanupAfter, and refuses records that already have cleanup started or cleaned."""
-        mongo_dao = MagicMock()
-        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        mongo_dao.update_data_sync.side_effect = _update_without_reopen(reopen=DATA_SYNC_WRITE_APPLIED)
-        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        log = MagicMock()
-
-        with patch("metadata_export.notify_data_sync_started") as notify, \
-                patch("metadata_export.boto3"):
-            recover_data_sync_tracking(
-                mongo_dao, log, self._state(inserted=True),
-                sleep_fn=lambda _seconds: None, clock=lambda: 0,
-                describe_status=lambda _arn: "TRANSFERRING", max_seconds=10,
-            )
-
-        reopen_calls = [
-            call for call in mongo_dao.update_data_sync.call_args_list
-            if call.kwargs.get("match_fields") and DATA_SYNC_LAST_ERROR in call.kwargs["match_fields"]
-        ]
-        assert len(reopen_calls) == 1
-        assert reopen_calls[0].args[1][STATUS] == DATA_SYNC_STATUS_IN_PROGRESS
-        assert reopen_calls[0].args[1][DATA_SYNC_LIST_PENDING] is True
-        unset = reopen_calls[0].kwargs["unset_fields"]
-        assert DATA_SYNC_END_TIME in unset
-        assert DATA_SYNC_CLEANUP_AFTER in unset
-        match = reopen_calls[0].kwargs["match_fields"]
-        assert DATA_SYNC_LAST_ERROR_NOT_OBSERVABLE in match[DATA_SYNC_LAST_ERROR]["$in"]
-        assert DATA_SYNC_LAST_ERROR_NOT_STARTED in match[DATA_SYNC_LAST_ERROR]["$in"]
-        assert match[DATA_SYNC_CLEANUP_STARTED_AT] == {"$exists": False}
-        assert match[DATA_SYNC_CLEANED_AT] == {"$exists": False}
-        assert any("reopened" in str(call) for call in log.info.call_args_list)
-        assert notify.call_count == 2
-
-    def test_normal_arn_save_does_not_reopen(self):
-        """An ARN save whose reopen guard misses (record was not an early finalize) does not log reopened and notifies only once."""
-        mongo_dao = MagicMock()
-        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        mongo_dao.update_data_sync.side_effect = _update_without_reopen(reopen=DATA_SYNC_WRITE_STALE)
-        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        log = MagicMock()
-
-        with patch("metadata_export.notify_data_sync_started") as notify, \
-                patch("metadata_export.boto3"):
-            recover_data_sync_tracking(
-                mongo_dao, log, self._state(inserted=True),
-                sleep_fn=lambda _seconds: None, clock=lambda: 0,
-                describe_status=lambda _arn: "TRANSFERRING", max_seconds=10,
-            )
-
-        reopen_calls = [
-            call for call in mongo_dao.update_data_sync.call_args_list
-            if call.kwargs.get("match_fields") and DATA_SYNC_LAST_ERROR in call.kwargs["match_fields"]
-        ]
-        assert len(reopen_calls) == 1
-        assert not any("reopened" in str(call) for call in log.info.call_args_list)
-        notify.assert_called_once()
-
-    def test_stale_list_add_clears_pending_flags(self):
-        """During recovery, a stale list add clears listPending and rollupPending and logs that the submission was not found."""
-        mongo_dao = MagicMock()
-        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        mongo_dao.update_data_sync.side_effect = _update_without_reopen()
-        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_STALE
-        log = MagicMock()
-        state = self._state(inserted=True, pending_fields={})
-
-        with patch("metadata_export.notify_data_sync_started"), \
-                patch("metadata_export.boto3"):
-            recover_data_sync_tracking(
-                mongo_dao, log, state, sleep_fn=lambda _seconds: None, clock=lambda: 0,
-                describe_status=lambda _arn: "SUCCESS", max_seconds=10,
-            )
-
-        assert state["list_added"] is True
-        clear_calls = [
-            call for call in mongo_dao.update_data_sync.call_args_list
-            if isinstance(call.args[1] if len(call.args) > 1 else None, dict)
-            and call.args[1].get(DATA_SYNC_LIST_PENDING) is False
-            and call.args[1].get(DATA_SYNC_ROLLUP_PENDING) is False
-        ]
-        assert clear_calls
-        assert any("submission not found" in str(call) for call in log.error.call_args_list)
+        assert any("skipped delete" in str(call) for call in log.error.call_args_list)
 
 
 class TestMonitorState:
@@ -853,38 +761,7 @@ class TestMonitorState:
         metadata_export._data_sync_wake_event.clear()
 
 
-class TestRecoveryCleanupInterleaving:
-    def test_reopened_in_progress_blocks_cleanup(self):
-        """A reopened In Progress snapshot with a stale cleanupAfter is polled but never deleted, and no cleanup claim is written."""
-        mongo_dao = MagicMock()
-        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        mongo_dao.finish_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        datasync = MagicMock()
-        log = MagicMock()
-        # Snapshot as if monitor loaded the record before reopen finished.
-        record = _record(**{
-            STATUS: DATA_SYNC_STATUS_IN_PROGRESS,
-            DATA_SYNC_LIST_PENDING: True,
-            DATA_SYNC_ROLLUP_PENDING: False,
-            DATA_SYNC_CLEANUP_AFTER: NOW - timedelta(minutes=1),
-            DATA_SYNC_LAST_ERROR: None,
-        })
-        # list add succeeds and clears listPending; status stays In Progress.
-        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        datasync.describe_task_execution.return_value = {"Status": "TRANSFERRING"}
-
-        with patch("metadata_export.current_datetime", return_value=NOW):
-            _monitor_data_sync(datasync, mongo_dao, log, record)
-
-        assert record[STATUS] == DATA_SYNC_STATUS_IN_PROGRESS
-        datasync.delete_task.assert_not_called()
-        datasync.delete_location.assert_not_called()
-        assert not any(
-            isinstance(call.args[1] if len(call.args) > 1 else None, dict)
-            and DATA_SYNC_CLEANUP_STARTED_AT in (call.args[1] or {})
-            for call in mongo_dao.update_data_sync.call_args_list
-        )
-
+class TestCleanupClaim:
     def test_stale_cleanup_claim_skips_delete(self):
         """When the cleanup claim returns stale (record changed since the snapshot), delete is skipped and a stale-claim info line is logged."""
         mongo_dao = MagicMock()
@@ -905,58 +782,6 @@ class TestRecoveryCleanupInterleaving:
         datasync.delete_task.assert_not_called()
         datasync.delete_location.assert_not_called()
         assert any("cleanup claim stale" in str(call) for call in log.info.call_args_list)
-
-    def test_cleanup_then_reopen_is_rejected(self):
-        """Reopen match_fields require cleanupStartedAt and cleanedAt to be absent, so a cleaned record stays stale and is not reopened."""
-        mongo_dao = MagicMock()
-        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        mongo_dao.add_active_submission_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        log = MagicMock()
-
-        def update_side_effect(_data_sync_id, set_fields=None, unset_fields=None, match_fields=None):
-            if match_fields and DATA_SYNC_LAST_ERROR in match_fields:
-                # Simulate cleaned record: reopen guards reject it.
-                assert match_fields[DATA_SYNC_CLEANED_AT] == {"$exists": False}
-                assert match_fields[DATA_SYNC_CLEANUP_STARTED_AT] == {"$exists": False}
-                return DATA_SYNC_WRITE_STALE
-            return DATA_SYNC_WRITE_APPLIED
-
-        mongo_dao.update_data_sync.side_effect = update_side_effect
-        state = {
-            "submission_id": SUBMISSION_ID_VAL,
-            "sync_type": DATA_SYNC_TYPE_FILE,
-            "data_sync_id": "sync-1",
-            "source_folder": "src",
-            "target_folder": "dest",
-            "start_time": NOW,
-            "status": DATA_SYNC_STATUS_IN_PROGRESS,
-            "inserted": True,
-            "list_added": False,
-            "pending_fields": {DATA_SYNC_TASK_ARN: "task-arn-1"},
-            "task_arn": "task-arn-1",
-            "task_execution_arn": "exec-arn-1",
-            "source_location_arn": "src-loc",
-            "destination_location_arn": "dest-loc",
-            "end_time": None,
-            "last_error": None,
-            "rollup_pending": False,
-        }
-
-        with patch("metadata_export.notify_data_sync_started") as notify, \
-                patch("metadata_export.boto3"):
-            recover_data_sync_tracking(
-                mongo_dao, log, state, sleep_fn=lambda _seconds: None, clock=lambda: 0,
-                describe_status=lambda _arn: "SUCCESS", max_seconds=10,
-            )
-
-        reopen_calls = [
-            call for call in mongo_dao.update_data_sync.call_args_list
-            if call.kwargs.get("match_fields") and DATA_SYNC_LAST_ERROR in call.kwargs["match_fields"]
-        ]
-        assert len(reopen_calls) == 1
-        assert not any("reopened" in str(call) for call in log.info.call_args_list)
-        # Hand-off notify only (not the reopen notify).
-        notify.assert_called_once()
 
 
 class TestResolveTaskExecutionArn:
@@ -1316,572 +1141,6 @@ class TestRestoreAndMoveFilters:
         start_monitor.assert_not_called()
         thread_cls.assert_not_called()
         mongo_dao.insert_data_sync.assert_called_once()
-
-
-class TestOrphanSweep:
-    ROLE = "role-arn"
-    CONFIGS = {TIER_CONFIG: "dev", DATASYNC_ROLE_ARN_CONFIG: ROLE}
-
-    def _empty_paginators(self, datasync):
-        task_pag = MagicMock()
-        task_pag.paginate.return_value = [{"Tasks": []}]
-        loc_pag = MagicMock()
-        loc_pag.paginate.return_value = [{"Locations": []}]
-        exec_pag = MagicMock()
-        exec_pag.paginate.return_value = [{"TaskExecutions": []}]
-
-        def get_paginator(name):
-            if name == "list_tasks":
-                return task_pag
-            if name == "list_locations":
-                return loc_pag
-            if name == "list_task_executions":
-                return exec_pag
-            return MagicMock()
-
-        datasync.get_paginator.side_effect = get_paginator
-        return task_pag, loc_pag, exec_pag
-
-    def test_aged_orphaned_location_without_document_is_logged_only(self):
-        """An aged location that matches our role but no tracking document is not deleted; a manual-cleanup warning is logged."""
-        mongo_dao = MagicMock()
-        mongo_dao.find_data_syncs_by_arns.return_value = []
-        datasync = MagicMock()
-        task_pag, loc_pag, _exec_pag = self._empty_paginators(datasync)
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "loc-orphan", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.return_value = {
-            "LocationArn": "loc-orphan",
-            "Subdirectory": "/some/path",
-            "CreationTime": NOW - timedelta(seconds=DATA_SYNC_SWEEP_GRACE_SECONDS + 10),
-            "S3Config": {"BucketAccessRoleArn": self.ROLE},
-        }
-        log = MagicMock()
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, log, self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        assert result["deleted"] == 0
-        assert result["found"] == 1
-        datasync.delete_location.assert_not_called()
-        assert any(
-            "manual cleanup needed" in str(call) and "loc-orphan" in str(call)
-            for call in log.warning.call_args_list
-        )
-
-    def test_young_orphaned_location_is_kept(self):
-        """A location younger than the sweep grace period is not found as a candidate and is not deleted."""
-        mongo_dao = MagicMock()
-        mongo_dao.find_data_syncs_by_arns.return_value = []
-        datasync = MagicMock()
-        _task_pag, loc_pag, _exec_pag = self._empty_paginators(datasync)
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "loc-young", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.return_value = {
-            "LocationArn": "loc-young",
-            "CreationTime": NOW - timedelta(minutes=5),
-            "S3Config": {"BucketAccessRoleArn": self.ROLE},
-        }
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, MagicMock(), self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        assert result["deleted"] == 0
-        assert result["found"] == 0
-        datasync.delete_location.assert_not_called()
-
-    def test_pre_start_failed_document_locations_deleted(self):
-        """A terminal record with no task ARN, no cleanupAfter, and an old endTime has both locations deleted and cleanedAt written."""
-        mongo_dao = MagicMock()
-        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        doc = _record(**{
-            STATUS: DATA_SYNC_STATUS_FAILED,
-            DATA_SYNC_TASK_ARN: None,
-            DATA_SYNC_TASK_EXECUTION_ARN: None,
-            DATA_SYNC_END_TIME: NOW - timedelta(seconds=DATA_SYNC_SWEEP_GRACE_SECONDS + 30),
-            DATA_SYNC_LIST_PENDING: False,
-            DATA_SYNC_ROLLUP_PENDING: False,
-        })
-        mongo_dao.find_data_syncs_by_arns.return_value = [doc]
-        datasync = MagicMock()
-        _task_pag, loc_pag, _exec_pag = self._empty_paginators(datasync)
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "src-loc", "LocationType": "S3"},
-            {"LocationArn": "dest-loc", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.side_effect = [
-            {
-                "LocationArn": "src-loc",
-                "CreationTime": NOW - timedelta(hours=2),
-                "S3Config": {"BucketAccessRoleArn": self.ROLE},
-            },
-            {
-                "LocationArn": "dest-loc",
-                "CreationTime": NOW - timedelta(hours=2),
-                "S3Config": {"BucketAccessRoleArn": self.ROLE},
-            },
-        ]
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, MagicMock(), self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        assert result["deleted"] == 1
-        assert datasync.delete_location.call_count == 2
-        cleaned = [
-            call for call in mongo_dao.update_data_sync.call_args_list
-            if isinstance(call.args[1] if len(call.args) > 1 else None, dict)
-            and DATA_SYNC_CLEANED_AT in (call.args[1] or {})
-        ]
-        assert cleaned
-        assert cleaned[0].args[1][DATA_SYNC_CLEANUP_REASON]
-
-    def test_active_execution_is_untouched(self):
-        """A tier-named task older than the recovery window is kept only because it still has a non-terminal execution."""
-        mongo_dao = MagicMock()
-        mongo_dao.find_data_syncs_by_arns.return_value = []
-        datasync = MagicMock()
-        task_pag, loc_pag, exec_pag = self._empty_paginators(datasync)
-        task_pag.paginate.return_value = [{"Tasks": [
-            {"TaskArn": "task-arn-1", "Name": "Data_Hub_SyncTask-dev"},
-        ]}]
-        datasync.describe_task.return_value = {
-            "TaskArn": "task-arn-1",
-            "Name": "Data_Hub_SyncTask-dev",
-            "SourceLocationArn": "src-loc",
-            "DestinationLocationArn": "dest-loc",
-            "CreationTime": NOW - timedelta(
-                seconds=DATA_SYNC_RECOVERY_MAX_SECONDS + DATA_SYNC_SWEEP_GRACE_SECONDS + 10,
-            ),
-        }
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "src-loc", "LocationType": "S3"},
-            {"LocationArn": "dest-loc", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.side_effect = [
-            {"LocationArn": "src-loc", "CreationTime": NOW - timedelta(hours=2),
-             "S3Config": {"BucketAccessRoleArn": self.ROLE}},
-            {"LocationArn": "dest-loc", "CreationTime": NOW - timedelta(hours=2),
-             "S3Config": {"BucketAccessRoleArn": self.ROLE}},
-        ]
-        exec_pag.paginate.return_value = [{"TaskExecutions": [{"Status": "TRANSFERRING"}]}]
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, MagicMock(), self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        datasync.delete_task.assert_not_called()
-        assert result["deleted"] == 0
-
-    def test_location_referenced_by_task_is_untouched(self):
-        """An eligible location document is not deleted while any listed task still references that location."""
-        mongo_dao = MagicMock()
-        mongo_dao.find_data_syncs_by_arns.return_value = [_eligible_location_doc("src-loc")]
-        datasync = MagicMock()
-        task_pag, loc_pag, exec_pag = self._empty_paginators(datasync)
-        task_pag.paginate.return_value = [{"Tasks": [
-            {"TaskArn": "task-arn-1", "Name": "Data_Hub_SyncTask-dev"},
-        ]}]
-        datasync.describe_task.return_value = {
-            "TaskArn": "task-arn-1",
-            "Name": "Data_Hub_SyncTask-dev",
-            "SourceLocationArn": "src-loc",
-            "DestinationLocationArn": "dest-loc",
-            "CreationTime": NOW - timedelta(minutes=1),  # young task kept
-        }
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "src-loc", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.return_value = {
-            "LocationArn": "src-loc",
-            "CreationTime": NOW - timedelta(hours=3),
-            "S3Config": {"BucketAccessRoleArn": self.ROLE},
-        }
-        exec_pag.paginate.return_value = [{"TaskExecutions": []}]
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, MagicMock(), self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        datasync.delete_location.assert_not_called()
-        assert result["deleted"] == 0
-
-    def test_wrong_role_is_untouched(self):
-        """A location whose BucketAccessRoleArn is not ours is ignored and does not increment found."""
-        mongo_dao = MagicMock()
-        mongo_dao.find_data_syncs_by_arns.return_value = []
-        datasync = MagicMock()
-        _task_pag, loc_pag, _exec_pag = self._empty_paginators(datasync)
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "loc-other", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.return_value = {
-            "LocationArn": "loc-other",
-            "CreationTime": NOW - timedelta(hours=3),
-            "S3Config": {"BucketAccessRoleArn": "other-role"},
-        }
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, MagicMock(), self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        datasync.delete_location.assert_not_called()
-        assert result["found"] == 0
-
-    def test_dry_run_makes_no_deletes(self):
-        """Dry-run on an eligible document logs would-delete, increments wouldDelete, and does not call AWS delete or update Mongo."""
-        mongo_dao = MagicMock()
-        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        doc = _record(**{
-            STATUS: DATA_SYNC_STATUS_FAILED,
-            DATA_SYNC_TASK_ARN: None,
-            DATA_SYNC_TASK_EXECUTION_ARN: None,
-            DATA_SYNC_END_TIME: NOW - timedelta(seconds=DATA_SYNC_SWEEP_GRACE_SECONDS + 30),
-            DATA_SYNC_LIST_PENDING: False,
-            DATA_SYNC_ROLLUP_PENDING: False,
-        })
-        mongo_dao.find_data_syncs_by_arns.return_value = [doc]
-        datasync = MagicMock()
-        _task_pag, loc_pag, _exec_pag = self._empty_paginators(datasync)
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "src-loc", "LocationType": "S3"},
-            {"LocationArn": "dest-loc", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.side_effect = [
-            {
-                "LocationArn": "src-loc",
-                "CreationTime": NOW - timedelta(hours=2),
-                "S3Config": {"BucketAccessRoleArn": self.ROLE},
-            },
-            {
-                "LocationArn": "dest-loc",
-                "CreationTime": NOW - timedelta(hours=2),
-                "S3Config": {"BucketAccessRoleArn": self.ROLE},
-            },
-        ]
-        log = MagicMock()
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, log, self.CONFIGS, datasync=datasync, now=NOW, dry_run=True,
-        )
-
-        assert result["deleted"] == 0
-        assert result["wouldDelete"] == 1
-        assert result["dryRun"] is True
-        datasync.delete_location.assert_not_called()
-        datasync.delete_task.assert_not_called()
-        mongo_dao.update_data_sync.assert_not_called()
-        assert any("would delete" in str(call) for call in log.info.call_args_list)
-        assert any("wouldDelete=1" in str(call) for call in log.info.call_args_list)
-        assert any("dryRun=True" in str(call) for call in log.info.call_args_list)
-
-    def test_location_referenced_by_other_tier_task_is_untouched(self):
-        """An eligible location document is kept because a prod task references it, even though this sweep is dev."""
-        mongo_dao = MagicMock()
-        mongo_dao.find_data_syncs_by_arns.return_value = [_eligible_location_doc("loc-shared")]
-        datasync = MagicMock()
-        task_pag, loc_pag, exec_pag = self._empty_paginators(datasync)
-        task_pag.paginate.return_value = [{"Tasks": [
-            {"TaskArn": "task-prod-1", "Name": "Data_Hub_SyncTask-prod-sync-9"},
-        ]}]
-        datasync.describe_task.return_value = {
-            "TaskArn": "task-prod-1",
-            "Name": "Data_Hub_SyncTask-prod-sync-9",
-            "SourceLocationArn": "loc-shared",
-            "DestinationLocationArn": "loc-prod-dest",
-            "CreationTime": NOW - timedelta(hours=3),
-        }
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "loc-shared", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.return_value = {
-            "LocationArn": "loc-shared",
-            "CreationTime": NOW - timedelta(hours=3),
-            "S3Config": {"BucketAccessRoleArn": self.ROLE},
-        }
-        exec_pag.paginate.return_value = [{"TaskExecutions": []}]
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, MagicMock(), self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        datasync.delete_location.assert_not_called()
-        assert result["deleted"] == 0
-
-    def test_lookup_failure_skips_deletes(self):
-        """A database error from the ARN lookup skips deletes, including a task old enough to delete when nothing matches."""
-        mongo_dao = MagicMock()
-        mongo_dao.find_data_syncs_by_arns.return_value = None
-        datasync = MagicMock()
-        task_pag, loc_pag, exec_pag = self._empty_paginators(datasync)
-        task_pag.paginate.return_value = [{"Tasks": [
-            {"TaskArn": "task-arn-1", "Name": "Data_Hub_SyncTask-dev"},
-        ]}]
-        datasync.describe_task.return_value = {
-            "TaskArn": "task-arn-1",
-            "Name": "Data_Hub_SyncTask-dev",
-            "SourceLocationArn": "src-loc",
-            "DestinationLocationArn": "dest-loc",
-            "CreationTime": NOW - timedelta(seconds=DATA_SYNC_SWEEP_GRACE_SECONDS + 10),
-        }
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "src-loc", "LocationType": "S3"},
-            {"LocationArn": "dest-loc", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.side_effect = [
-            {"LocationArn": "src-loc", "CreationTime": NOW - timedelta(hours=2),
-             "S3Config": {"BucketAccessRoleArn": self.ROLE}},
-            {"LocationArn": "dest-loc", "CreationTime": NOW - timedelta(hours=2),
-             "S3Config": {"BucketAccessRoleArn": self.ROLE}},
-        ]
-        exec_pag.paginate.return_value = [{"TaskExecutions": []}]
-        log = MagicMock()
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, log, self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        assert result["deleted"] == 0
-        datasync.delete_task.assert_not_called()
-        datasync.delete_location.assert_not_called()
-        assert any("tracking lookup failed" in str(call) for call in log.error.call_args_list)
-
-    def test_describe_task_failure_skips_all_location_deletes(self):
-        """If describe_task fails, the sweep logs that location deletes are skipped and does not delete eligible locations."""
-        mongo_dao = MagicMock()
-        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        doc = _record(**{
-            STATUS: DATA_SYNC_STATUS_FAILED,
-            DATA_SYNC_TASK_ARN: None,
-            DATA_SYNC_TASK_EXECUTION_ARN: None,
-            DATA_SYNC_END_TIME: NOW - timedelta(seconds=DATA_SYNC_SWEEP_GRACE_SECONDS + 30),
-            DATA_SYNC_LIST_PENDING: False,
-            DATA_SYNC_ROLLUP_PENDING: False,
-        })
-        mongo_dao.find_data_syncs_by_arns.return_value = [doc]
-        datasync = MagicMock()
-        task_pag, loc_pag, _exec_pag = self._empty_paginators(datasync)
-        task_pag.paginate.return_value = [{"Tasks": [
-            {"TaskArn": "task-broken", "Name": "Data_Hub_SyncTask-dev"},
-        ]}]
-        datasync.describe_task.side_effect = RuntimeError("describe failed")
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "src-loc", "LocationType": "S3"},
-            {"LocationArn": "dest-loc", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.side_effect = [
-            {
-                "LocationArn": "src-loc",
-                "CreationTime": NOW - timedelta(hours=2),
-                "S3Config": {"BucketAccessRoleArn": self.ROLE},
-            },
-            {
-                "LocationArn": "dest-loc",
-                "CreationTime": NOW - timedelta(hours=2),
-                "S3Config": {"BucketAccessRoleArn": self.ROLE},
-            },
-        ]
-        log = MagicMock()
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, log, self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        datasync.delete_location.assert_not_called()
-        assert result["deleted"] == 0
-        assert any("skipping all location deletes" in str(call) for call in log.error.call_args_list)
-
-    def test_legacy_bare_task_is_logged_only(self):
-        """A task named exactly Data_Hub_SyncTask is not deleted; a legacy-name manual-cleanup warning is logged."""
-        mongo_dao = MagicMock()
-        mongo_dao.find_data_syncs_by_arns.return_value = []
-        datasync = MagicMock()
-        task_pag, loc_pag, exec_pag = self._empty_paginators(datasync)
-        task_pag.paginate.return_value = [{"Tasks": [
-            {"TaskArn": "task-legacy", "Name": "Data_Hub_SyncTask"},
-        ]}]
-        datasync.describe_task.return_value = {
-            "TaskArn": "task-legacy",
-            "Name": "Data_Hub_SyncTask",
-            "SourceLocationArn": "src-loc",
-            "DestinationLocationArn": "dest-loc",
-            "CreationTime": NOW - timedelta(hours=3),
-        }
-        loc_pag.paginate.return_value = [{"Locations": []}]
-        exec_pag.paginate.return_value = [{"TaskExecutions": []}]
-        log = MagicMock()
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, log, self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        datasync.delete_task.assert_not_called()
-        assert result["deleted"] == 0
-        assert any(
-            "manual cleanup needed" in str(call) and "legacy bare task name" in str(call)
-            for call in log.warning.call_args_list
-        )
-
-    def test_sweep_delete_failure_writes_cleanup_error(self):
-        """A delete error after the sweep claim writes cleanupError, does not write cleanedAt, and logs manual cleanup needed."""
-        mongo_dao = MagicMock()
-        mongo_dao.update_data_sync.return_value = DATA_SYNC_WRITE_APPLIED
-        doc = _record(**{
-            STATUS: DATA_SYNC_STATUS_FAILED,
-            DATA_SYNC_TASK_ARN: None,
-            DATA_SYNC_TASK_EXECUTION_ARN: None,
-            DATA_SYNC_END_TIME: NOW - timedelta(seconds=DATA_SYNC_SWEEP_GRACE_SECONDS + 30),
-            DATA_SYNC_LIST_PENDING: False,
-            DATA_SYNC_ROLLUP_PENDING: False,
-        })
-        mongo_dao.find_data_syncs_by_arns.return_value = [doc]
-        datasync = MagicMock()
-        _task_pag, loc_pag, _exec_pag = self._empty_paginators(datasync)
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "src-loc", "LocationType": "S3"},
-            {"LocationArn": "dest-loc", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.side_effect = [
-            {
-                "LocationArn": "src-loc",
-                "CreationTime": NOW - timedelta(hours=2),
-                "S3Config": {"BucketAccessRoleArn": self.ROLE},
-            },
-            {
-                "LocationArn": "dest-loc",
-                "CreationTime": NOW - timedelta(hours=2),
-                "S3Config": {"BucketAccessRoleArn": self.ROLE},
-            },
-        ]
-        datasync.delete_location.side_effect = RuntimeError("denied")
-        log = MagicMock()
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, log, self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        assert result["deleted"] == 0
-        claim_writes = [
-            call for call in mongo_dao.update_data_sync.call_args_list
-            if isinstance(call.args[1] if len(call.args) > 1 else None, dict)
-            and DATA_SYNC_CLEANUP_STARTED_AT in (call.args[1] or {})
-        ]
-        error_writes = [
-            call for call in mongo_dao.update_data_sync.call_args_list
-            if isinstance(call.args[1] if len(call.args) > 1 else None, dict)
-            and DATA_SYNC_CLEANUP_ERROR in (call.args[1] or {})
-        ]
-        assert claim_writes
-        assert error_writes
-        assert any(
-            DATA_SYNC_CLEANED_AT in (call.args[1] or {})
-            for call in mongo_dao.update_data_sync.call_args_list
-            if isinstance(call.args[1] if len(call.args) > 1 else None, dict)
-        ) is False
-        assert any("manual cleanup needed" in str(call) for call in log.error.call_args_list)
-
-    def test_half_cleaned_location_with_gone_task_is_logged(self):
-        """A location whose tracking record still has a task ARN that is not in the listed tasks is logged for manual cleanup and not deleted."""
-        mongo_dao = MagicMock()
-        doc = _record(**{
-            STATUS: DATA_SYNC_STATUS_SUCCEEDED,
-            DATA_SYNC_TASK_ARN: "task-gone",
-            DATA_SYNC_END_TIME: NOW - timedelta(hours=2),
-            DATA_SYNC_LIST_PENDING: False,
-            DATA_SYNC_ROLLUP_PENDING: False,
-        })
-        mongo_dao.find_data_syncs_by_arns.return_value = [doc]
-        datasync = MagicMock()
-        _task_pag, loc_pag, _exec_pag = self._empty_paginators(datasync)
-        loc_pag.paginate.return_value = [{"Locations": [
-            {"LocationArn": "src-loc", "LocationType": "S3"},
-        ]}]
-        datasync.describe_location_s3.return_value = {
-            "LocationArn": "src-loc",
-            "CreationTime": NOW - timedelta(hours=2),
-            "S3Config": {"BucketAccessRoleArn": self.ROLE},
-        }
-        log = MagicMock()
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, log, self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        datasync.delete_location.assert_not_called()
-        assert result["deleted"] == 0
-        assert any(
-            "manual cleanup needed" in str(call) and "recorded task gone" in str(call)
-            for call in log.warning.call_args_list
-        )
-
-    def test_task_with_missing_source_location_is_logged(self):
-        """A task whose source location is absent from the role-filtered location list is not deleted and is logged for manual cleanup."""
-        mongo_dao = MagicMock()
-        doc = _record(**{
-            STATUS: DATA_SYNC_STATUS_FAILED,
-            DATA_SYNC_END_TIME: NOW - timedelta(hours=2),
-            DATA_SYNC_LIST_PENDING: False,
-            DATA_SYNC_ROLLUP_PENDING: False,
-        })
-        mongo_dao.find_data_syncs_by_arns.return_value = [doc]
-        datasync = MagicMock()
-        task_pag, loc_pag, exec_pag = self._empty_paginators(datasync)
-        task_pag.paginate.return_value = [{"Tasks": [
-            {"TaskArn": "task-arn-1", "Name": "Data_Hub_SyncTask-dev-sync-1"},
-        ]}]
-        datasync.describe_task.return_value = {
-            "TaskArn": "task-arn-1",
-            "Name": "Data_Hub_SyncTask-dev-sync-1",
-            "SourceLocationArn": "src-missing",
-            "DestinationLocationArn": "dest-loc",
-            "CreationTime": NOW - timedelta(hours=2),
-        }
-        loc_pag.paginate.return_value = [{"Locations": []}]
-        exec_pag.paginate.return_value = [{"TaskExecutions": []}]
-        log = MagicMock()
-
-        result = _run_data_sync_orphan_sweep(
-            mongo_dao, log, self.CONFIGS, datasync=datasync, now=NOW, dry_run=False,
-        )
-
-        datasync.delete_task.assert_not_called()
-        assert result["deleted"] == 0
-        assert any(
-            "manual cleanup needed" in str(call)
-            and "source location not in role-filtered list" in str(call)
-            for call in log.warning.call_args_list
-        )
-
-
-class TestSweepLockOwner:
-    def test_sweep_loop_uses_uuid_owner(self):
-        """The sweep loop builds the lock owner from get_uuid_str plus the thread id, so it is not the process id."""
-        mongo_dao = MagicMock()
-        mongo_dao.try_acquire_data_sync_sweep_lock.return_value = False
-        log = MagicMock()
-        sleeps = []
-
-        def sleep_once(_seconds):
-            sleeps.append(_seconds)
-            raise StopIteration
-
-        with patch("metadata_export.get_uuid_str", return_value="uuid-owner"), \
-                patch("metadata_export._run_data_sync_orphan_sweep") as sweep:
-            try:
-                data_sync_sweep_loop(
-                    mongo_dao, log, {TIER_CONFIG: "dev"},
-                    sleep_fn=sleep_once, clock=lambda: 0,
-                )
-            except StopIteration:
-                pass
-
-        sweep.assert_not_called()
-        owner = mongo_dao.try_acquire_data_sync_sweep_lock.call_args.args[0]
-        assert owner.startswith("uuid-owner-")
 
 
 class TestMonitorIndependentDeletes:

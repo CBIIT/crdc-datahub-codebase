@@ -351,7 +351,7 @@ type DataSync {
     targetFolder: String
     startTime: Date
     endTime: Date
-    status: String # [Not Started, In Progress, Succeeded, Failed]
+    status: String # [Not Started, In Progress, Succeeded, Failed, Stale]
 }
 
 type Batch {

@@ -26,7 +26,7 @@ from common.constants import BATCH_COLLECTION, SUBMISSION_COLLECTION, DATA_COLLE
     DATA_SYNC_SOURCE_LOCATION_ARN, DATA_SYNC_DEST_LOCATION_ARN, \
     DATA_SYNC_LIST_PENDING, DATA_SYNC_ROLLUP_PENDING, DATA_SYNC_CLEANUP_AFTER, DATA_SYNC_LAST_ERROR, \
     DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE, DATA_SYNC_WRITE_ERROR, \
-    DATA_SYNC_FINISH_MAX_ATTEMPTS, DATA_SYNC_SWEEP_LOCK_COLLECTION
+    DATA_SYNC_FINISH_MAX_ATTEMPTS
 from common.utils import get_exception_msg, current_datetime, get_uuid_str, dao_write_succeeded
 from common.s3_utils import S3Service
 
@@ -1571,8 +1571,8 @@ class MongoDao:
     def _finish_last_submission_data_sync(self, collection, submission_id, data_sync_id, status, status_field, active_field, flag_field):
         """Write the final status when this id is the only in-flight transfer.
 
-        A failed transfer always finishes Failed. A successful transfer finishes Failed when the
-        overlap flag is set, and Succeeded otherwise. Both variants are single atomic updates.
+        Any status other than Succeeded finishes Failed. A successful transfer finishes Failed when
+        the overlap flag is set, and Succeeded otherwise. Both variants are single atomic updates.
 
         @param collection submission collection
         @param submission_id submission document id
@@ -1585,7 +1585,7 @@ class MongoDao:
         """
         clear = {"$set": {active_field: []}, "$unset": {flag_field: ""}}
         exact = {ID: submission_id, active_field: [data_sync_id]}
-        if status == DATA_SYNC_STATUS_FAILED:
+        if status != DATA_SYNC_STATUS_SUCCEEDED:
             clear["$set"][status_field] = DATA_SYNC_STATUS_FAILED
             return collection.update_one(exact, clear).matched_count > 0
         failed_overlap = collection.update_one(
@@ -1602,12 +1602,13 @@ class MongoDao:
 
         Tries the last-one-out update, then a pull that only matches while another id remains, then
         checks whether the id is still listed. A list that changed between those writes is retried.
-        Does not touch updatedAt.
+        Does not touch updatedAt. Any status other than Succeeded (including Stale) is treated as a
+        failure for the overlap flag and the final rollup.
 
         @param submission_id submission document id
         @param sync_type DataSync type, "metadata" or "file"
         @param data_sync_id dataSync document id
-        @param status terminal status of this transfer, Succeeded or Failed
+        @param status terminal status of this transfer (Succeeded, Failed, or Stale)
         @returns DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE when the id is not in the list,
                  or DATA_SYNC_WRITE_ERROR
         """
@@ -1628,7 +1629,7 @@ class MongoDao:
                 ):
                     return DATA_SYNC_WRITE_APPLIED
                 pull_update = {"$pull": {active_field: data_sync_id}}
-                if status == DATA_SYNC_STATUS_FAILED:
+                if status != DATA_SYNC_STATUS_SUCCEEDED:
                     pull_update["$set"] = {flag_field: True}
                 pulled = submission_collection.update_one(
                     {ID: submission_id, active_field: data_sync_id, f"{active_field}.1": {"$exists": True}},
@@ -1644,6 +1645,22 @@ class MongoDao:
         except Exception as e:
             self._log_data_sync_db_error(e, f"DataSync tracking failed finish {context}: {get_exception_msg()}")
             return DATA_SYNC_WRITE_ERROR
+
+    def find_data_sync_by_id(self, data_sync_id):
+        """Return one dataSync document by id.
+
+        @param data_sync_id dataSync document id
+        @returns the document, or None when it is missing or the query fails
+        """
+        db = self.client[self.db_name]
+        data_sync_collection = db[DATA_SYNC_COLLECTION]
+        try:
+            return data_sync_collection.find_one({ID: data_sync_id})
+        except Exception as e:
+            self._log_data_sync_db_error(
+                e, f"DataSync tracking failed find dataSyncID={data_sync_id}: {get_exception_msg()}",
+            )
+            return None
 
     def find_unfinished_data_syncs(self):
         """Return dataSync documents that still need monitoring.
@@ -1665,84 +1682,6 @@ class MongoDao:
         except Exception as e:
             self._log_data_sync_db_error(e, f"DataSync tracking failed find unfinished: {get_exception_msg()}")
             return None
-
-    def find_data_syncs_by_arns(self, arns, data_sync_ids=None):
-        """Return dataSync documents matching any of the given ARNs or document ids.
-
-        @param arns task/source/destination location ARNs to match
-        @param data_sync_ids optional document ids extracted from task names
-        @returns list of documents, or None when the query fails
-        """
-        clauses = []
-        arn_list = [arn for arn in (arns or []) if arn]
-        id_list = [doc_id for doc_id in (data_sync_ids or []) if doc_id]
-        if arn_list:
-            clauses.append({DATA_SYNC_TASK_ARN: {"$in": arn_list}})
-            clauses.append({DATA_SYNC_SOURCE_LOCATION_ARN: {"$in": arn_list}})
-            clauses.append({DATA_SYNC_DEST_LOCATION_ARN: {"$in": arn_list}})
-        if id_list:
-            clauses.append({ID: {"$in": id_list}})
-        if not clauses:
-            return []
-        db = self.client[self.db_name]
-        data_sync_collection = db[DATA_SYNC_COLLECTION]
-        try:
-            return list(data_sync_collection.find({"$or": clauses}))
-        except Exception as e:
-            self._log_data_sync_db_error(e, f"DataSync tracking failed find by ARNs: {get_exception_msg()}")
-            return None
-
-    def try_acquire_data_sync_sweep_lock(self, owner, now, ttl_seconds):
-        """Acquire the coarse orphan-sweep run lock if it is free or expired.
-
-        Ensures a single lock document exists, then claims it when lockedUntil is in the past.
-
-        @param owner identifier for the acquiring container/thread
-        @param now current datetime
-        @param ttl_seconds how long the lock is held
-        @returns True when this caller acquired the lock
-        """
-        lock_id = "dataSyncSweep"
-        db = self.client[self.db_name]
-        lock_collection = db[DATA_SYNC_SWEEP_LOCK_COLLECTION]
-        try:
-            try:
-                lock_collection.insert_one({ID: lock_id, "lockedUntil": now - timedelta(seconds=1)})
-            except errors.DuplicateKeyError:
-                pass
-            result = lock_collection.find_one_and_update(
-                {ID: lock_id, "lockedUntil": {"$lt": now}},
-                {"$set": {
-                    "lockedUntil": now + timedelta(seconds=ttl_seconds),
-                    "lockedAt": now,
-                    "owner": owner,
-                }},
-                return_document=ReturnDocument.AFTER,
-            )
-            return result is not None
-        except Exception as e:
-            self._log_data_sync_db_error(e, f"DataSync sweep lock acquire failed: {get_exception_msg()}")
-            return False
-
-    def release_data_sync_sweep_lock(self, owner, now):
-        """Release the orphan-sweep run lock when held by owner.
-
-        @param owner identifier that acquired the lock
-        @param now current datetime used as the new lockedUntil (immediately free)
-        @returns True when the lock was released
-        """
-        lock_id = "dataSyncSweep"
-        db = self.client[self.db_name]
-        lock_collection = db[DATA_SYNC_SWEEP_LOCK_COLLECTION]
-        try:
-            result = lock_collection.update_one(
-                {ID: lock_id, "owner": owner},
-                {"$set": {"lockedUntil": now}},
-            )
-            return result.matched_count > 0
-        except Exception as e:
-            self._log_data_sync_db_error(e, f"DataSync sweep lock release failed: {get_exception_msg()}")
-            return False
 
     """
     get bucket name based on dataCommons and type
