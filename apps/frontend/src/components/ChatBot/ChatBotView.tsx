@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { FC, SVGProps } from "react";
 
 import {
   FloatingWindow,
@@ -7,10 +7,11 @@ import {
 } from "@/components/FloatingWindow";
 import type { FloatingWindowLabels } from "@/components/FloatingWindow";
 
+import { useLauncherItem } from "../Contexts/LauncherContext";
+
+import ChatBotLogoSvg from "./assets/chatbot-logo.svg?react";
 import ChatPanel from "./ChatPanel";
 import ChatBotLogo from "./components/ChatBotLogo";
-import { useChatBotContext } from "./context/ChatBotContext";
-import FloatingChatButton from "./FloatingChatButton";
 
 const WINDOW_LABELS: FloatingWindowLabels = {
   expand: "Expand chat drawer",
@@ -21,34 +22,43 @@ const WINDOW_LABELS: FloatingWindowLabels = {
   close: "End conversation",
 };
 
+const ChatBotIcon: FC<SVGProps<SVGSVGElement>> = (props) => (
+  <ChatBotLogoSvg width={36} height={29} {...props} />
+);
+
 /**
  * The view component for the entire ChatBot.
  */
-const ChatBot = (): JSX.Element => {
-  const { label } = useChatBotContext();
-  const { isOpen, openWindow, isMinimized } = useFloatingWindowContext();
+const ChatBot = (): JSX.Element | null => {
+  const { isOpen, isMinimized, openWindow } = useFloatingWindowContext();
 
-  const showFloatingButton = useMemo(() => !isOpen || isMinimized, [isOpen, isMinimized]);
+  useLauncherItem({
+    id: "chatbot",
+    label: "SI CRDC Assistant",
+    icon: ChatBotIcon,
+    gradient: "linear-gradient(177.87deg, #32ACC5 -9.82%, #0946A9 44.29%, #673DFF 97.88%)",
+    order: 1,
+    isActive: isOpen && !isMinimized,
+    onClick: openWindow,
+  });
+
+  if (!isOpen) {
+    return null;
+  }
 
   return (
-    <>
-      {showFloatingButton && <FloatingChatButton label={label} onClick={openWindow} />}
-
-      {isOpen && (
-        <FloatingWindow
-          id="chat-drawer"
-          labels={WINDOW_LABELS}
-          confirmCloseContent={
-            <FloatingWindowConfirm
-              title="End Conversation"
-              icon={<ChatBotLogo ariaLabel="CRDC Assistant Logo" variant="square" />}
-            />
-          }
-        >
-          <ChatPanel />
-        </FloatingWindow>
-      )}
-    </>
+    <FloatingWindow
+      id="chat-drawer"
+      labels={WINDOW_LABELS}
+      confirmCloseContent={
+        <FloatingWindowConfirm
+          title="End Conversation"
+          icon={<ChatBotLogo ariaLabel="CRDC Assistant Logo" variant="square" />}
+        />
+      }
+    >
+      <ChatPanel />
+    </FloatingWindow>
   );
 };
 
