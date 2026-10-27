@@ -1441,7 +1441,9 @@ class MongoDao:
 
         The document _id is the caller's string UUID. listPending is always true so the submission
         finish write waits until this id is on the in-flight list. A duplicate key means an earlier
-        insert of the same id already landed and counts as applied.
+        insert of the same id already landed and counts as applied. When recovery fields (ARNs)
+        are supplied on a duplicate, they are merged only while the existing row is still
+        In Progress so a lost insert ack does not leave an ARN-less monitor-invisible row.
 
         Does not write updatedAt.
 
@@ -1485,6 +1487,15 @@ class MongoDao:
         for field, value in optional.items():
             if value is not None:
                 doc[field] = value
+        recovery_fields = {
+            field: value for field, value in {
+                DATA_SYNC_TASK_ARN: task_arn,
+                DATA_SYNC_TASK_EXECUTION_ARN: task_execution_arn,
+                DATA_SYNC_SOURCE_LOCATION_ARN: source_location_arn,
+                DATA_SYNC_DEST_LOCATION_ARN: destination_location_arn,
+                DATA_SYNC_TASK_ARN_RECORDED_AT: task_arn_recorded_at,
+            }.items() if value is not None
+        }
         db = self.client[self.db_name]
         data_sync_collection = db[DATA_SYNC_COLLECTION]
         try:
@@ -1495,7 +1506,26 @@ class MongoDao:
                 f"DataSync insert already recorded "
                 f"submissionID={submission_id} type={sync_type} dataSyncID={data_sync_id}"
             )
-            return DATA_SYNC_WRITE_APPLIED
+            if not recovery_fields:
+                return DATA_SYNC_WRITE_APPLIED
+            try:
+                result = data_sync_collection.update_one(
+                    {ID: data_sync_id, STATUS: DATA_SYNC_STATUS_IN_PROGRESS},
+                    {"$set": recovery_fields},
+                )
+                if result.matched_count == 0:
+                    self.log.info(
+                        f"DataSync recovery merge skipped; record already terminal "
+                        f"submissionID={submission_id} type={sync_type} dataSyncID={data_sync_id}"
+                    )
+                return DATA_SYNC_WRITE_APPLIED
+            except Exception as e:
+                self._log_data_sync_db_error(
+                    e,
+                    f"DataSync tracking failed recovery merge submissionID={submission_id} "
+                    f"type={sync_type} dataSyncID={data_sync_id}: {get_exception_msg()}",
+                )
+                return DATA_SYNC_WRITE_ERROR
         except Exception as e:
             self._log_data_sync_db_error(
                 e,
@@ -1536,13 +1566,15 @@ class MongoDao:
     def add_active_submission_data_sync(self, submission_id, sync_type, data_sync_id):
         """Add a dataSync id to the submission's in-flight list and set that type's status to In Progress.
 
-        One atomic update. Does not touch updatedAt. Idempotent while the transfer is still in flight.
+        Skips the submission write when the dataSync row is missing or no longer In Progress so a
+        delayed starter or monitor cannot recreate a finished list entry. Does not touch updatedAt.
+        Idempotent while the transfer is still in flight.
 
         @param submission_id submission document id
         @param sync_type DataSync type, "metadata" or "file"
         @param data_sync_id dataSync document id
-        @returns DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE when the submission is missing,
-                 or DATA_SYNC_WRITE_ERROR
+        @returns DATA_SYNC_WRITE_APPLIED, DATA_SYNC_WRITE_STALE when the dataSync row is not
+                 In Progress or the submission is missing, or DATA_SYNC_WRITE_ERROR
         """
         fields = self._submission_data_sync_fields(sync_type)
         if not fields:
@@ -1552,8 +1584,12 @@ class MongoDao:
             return DATA_SYNC_WRITE_ERROR
         status_field, active_field, _flag_field = fields
         db = self.client[self.db_name]
+        data_sync_collection = db[DATA_SYNC_COLLECTION]
         submission_collection = db[SUBMISSION_COLLECTION]
         try:
+            data_sync = data_sync_collection.find_one({ID: data_sync_id}, {STATUS: 1})
+            if not data_sync or data_sync.get(STATUS) != DATA_SYNC_STATUS_IN_PROGRESS:
+                return DATA_SYNC_WRITE_STALE
             result = submission_collection.update_one(
                 {ID: submission_id},
                 {

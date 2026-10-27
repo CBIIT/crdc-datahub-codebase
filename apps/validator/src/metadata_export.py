@@ -183,6 +183,22 @@ def _client_error_not_found(error):
     message = err.get("Message", "") or ""
     return bool(re.search(r"\bnot found\b|does not exist", message, re.IGNORECASE))
 
+def _confirmed_start_rejection(error):
+    """True when start_task_execution returned a ClientError that confirms AWS rejected the start.
+
+    Timeouts and lost responses are not ClientErrors with these codes, so they stay ambiguous
+    and must not mark the record Failed (which would allow cleanup while a transfer may still run).
+
+    @param error botocore ClientError
+    @returns True when the error code is a confirmed rejection
+    """
+    err = error.response.get("Error", {}) if getattr(error, "response", None) else {}
+    return err.get("Code", "") in (
+        "InvalidRequestException",
+        "ResourceNotFoundException",
+        "AccessDeniedException",
+    )
+
 def _execution_error_detail(response):
     """Read the AWS Result error from a describe_task_execution response.
 
@@ -221,12 +237,52 @@ def _defer_cleanup(log, context):
     """
     log.error(f"{DATA_SYNC_LOG_CLEANUP_DEFERRED} {context}")
 
-def _finalize_data_sync_record(mongo_dao, log, record, status, end_time, last_error, schedule_cleanup):
+def _absence_terminal_match_fields(record):
+    """Extra match_fields so absence-based terminals do not overwrite a record whose ARNs changed.
+
+    Confirmed SUCCESS/ERROR describes stay status-only. Absence terminals (no task, not-found,
+    not-started) also require the observed ARN presence to still match.
+
+    @param record dataSync document as observed for this decision
+    @returns match_fields to merge with status In Progress
+    """
+    match = {}
+    task_arn = record.get(DATA_SYNC_TASK_ARN)
+    execution_arn = record.get(DATA_SYNC_TASK_EXECUTION_ARN)
+    if task_arn:
+        match[DATA_SYNC_TASK_ARN] = task_arn
+    else:
+        match[DATA_SYNC_TASK_ARN] = {"$exists": False}
+    if execution_arn:
+        match[DATA_SYNC_TASK_EXECUTION_ARN] = execution_arn
+    else:
+        match[DATA_SYNC_TASK_EXECUTION_ARN] = {"$exists": False}
+    return match
+
+def _observation_changed_since_snapshot(mongo_dao, record):
+    """True when a fresh read shows ARN or status values that differ from the monitor snapshot.
+
+    @param mongo_dao MongoDao instance
+    @param record dataSync document used for the failed terminal write
+    @returns True when taskArn, taskArnRecordedAt, taskExecutionArn, or status changed
+    """
+    stored = mongo_dao.find_data_sync_by_id(record.get(ID))
+    if not stored:
+        return True
+    return (
+        stored.get(STATUS) != record.get(STATUS)
+        or stored.get(DATA_SYNC_TASK_ARN) != record.get(DATA_SYNC_TASK_ARN)
+        or stored.get(DATA_SYNC_TASK_ARN_RECORDED_AT) != record.get(DATA_SYNC_TASK_ARN_RECORDED_AT)
+        or stored.get(DATA_SYNC_TASK_EXECUTION_ARN) != record.get(DATA_SYNC_TASK_EXECUTION_ARN)
+    )
+
+def _finalize_data_sync_record(mongo_dao, log, record, status, end_time, last_error, schedule_cleanup, match_fields=None):
     """Write a terminal dataSync status. Sets cleanupAfter for Succeeded/Failed results that still
     have ARNs to delete. Stale records pass schedule_cleanup=False for manual cleanup.
 
     Only matches while status is still In Progress so a stale monitor snapshot cannot overwrite
-    a record another container already finalized.
+    a record another container already finalized. Absence terminals pass extra match_fields so a
+    snapshot missing ARNs cannot mark a live transfer Stale after the starter wrote them.
 
     @param mongo_dao MongoDao instance
     @param log logger
@@ -235,6 +291,7 @@ def _finalize_data_sync_record(mongo_dao, log, record, status, end_time, last_er
     @param end_time terminal time
     @param last_error diagnostic to store, or None
     @param schedule_cleanup True when AWS resources should be deleted after the delay
+    @param match_fields extra filter fields for absence-based terminals, or None
     @returns True when the record was updated
     """
     context = _context_from_record(record)
@@ -252,10 +309,11 @@ def _finalize_data_sync_record(mongo_dao, log, record, status, end_time, last_er
         unset_fields.append(DATA_SYNC_LAST_ERROR)
     if schedule_cleanup:
         set_fields[DATA_SYNC_CLEANUP_AFTER] = end_time + timedelta(seconds=DATA_SYNC_CLEANUP_DELAY_SECONDS)
+    filters = {STATUS: DATA_SYNC_STATUS_IN_PROGRESS, **(match_fields or {})}
     outcome = _track(
         log, mongo_dao.update_data_sync, record.get(ID), set_fields,
         unset_fields=unset_fields,
-        match_fields={STATUS: DATA_SYNC_STATUS_IN_PROGRESS},
+        match_fields=filters,
     )
     if outcome == DATA_SYNC_WRITE_APPLIED:
         record[STATUS] = status
@@ -272,6 +330,9 @@ def _finalize_data_sync_record(mongo_dao, log, record, status, end_time, last_er
             record.pop(DATA_SYNC_CLEANUP_AFTER, None)
         return True
     if outcome == DATA_SYNC_WRITE_STALE:
+        if match_fields is not None and _observation_changed_since_snapshot(mongo_dao, record):
+            log.info(f"DataSync observation changed; skipping terminal write {context}")
+            return False
         log.info(f"DataSync already finalized by another monitor {context}")
         return False
     log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} finalize outcome={outcome} {context}")
@@ -497,6 +558,9 @@ def _claim_data_sync_poll(mongo_dao, log, record, now):
 def _finalize_stale_record(mongo_dao, log, record, now, last_error):
     """Mark a record Stale with no automatic cleanup and log ARNs for manual cleanup.
 
+    Uses absence ARN match_fields so a snapshot without a task ARN cannot Stale a live transfer
+    after the starter recorded one.
+
     @param mongo_dao MongoDao instance
     @param log logger
     @param record dataSync document
@@ -507,6 +571,7 @@ def _finalize_stale_record(mongo_dao, log, record, now, last_error):
     context = _context_from_record(record)
     finalized = _finalize_data_sync_record(
         mongo_dao, log, record, DATA_SYNC_STATUS_STALE, now, last_error, False,
+        match_fields=_absence_terminal_match_fields(record),
     )
     if finalized:
         log.error(f"{DATA_SYNC_LOG_STALE} manual cleanup needed {context}")
@@ -519,6 +584,7 @@ def _monitor_in_progress_data_sync(datasync, mongo_dao, log, record):
     Records with no task ARN past insert grace, or whose task/execution AWS reports as not found
     after the applicable grace, are finalized as Stale for manual cleanup. A task ARN with no
     observed execution past taskArnRecordedAt grace is finalized Failed as not-started.
+    Not-found paths use task-aware grace (taskArnRecordedAt when a task ARN exists).
 
     @param datasync boto3 DataSync client
     @param mongo_dao MongoDao instance
@@ -532,7 +598,10 @@ def _monitor_in_progress_data_sync(datasync, mongo_dao, log, record):
     try:
         execution_arn = _resolve_task_execution_arn(datasync, mongo_dao, log, record)
     except ClientError as ce:
-        if _client_error_not_found(ce) and _past_start_grace(record, now):
+        if _client_error_not_found(ce):
+            if not _past_execution_start_grace(record, now):
+                _record_observation_error(mongo_dao, log, record, ce.response["Error"]["Message"])
+                return
             _finalize_stale_record(mongo_dao, log, record, now, DATA_SYNC_LAST_ERROR_STALE_NOT_FOUND)
             return
         _record_observation_error(mongo_dao, log, record, ce.response["Error"]["Message"])
@@ -548,6 +617,7 @@ def _monitor_in_progress_data_sync(datasync, mongo_dao, log, record):
             log.error(f"{DATA_SYNC_LOG_TRANSFER_FAILED} {DATA_SYNC_LAST_ERROR_NOT_STARTED} {context}")
             _finalize_data_sync_record(
                 mongo_dao, log, record, DATA_SYNC_STATUS_FAILED, now, DATA_SYNC_LAST_ERROR_NOT_STARTED, True,
+                match_fields=_absence_terminal_match_fields(record),
             )
             return
         _finalize_stale_record(mongo_dao, log, record, now, DATA_SYNC_LAST_ERROR_STALE_NO_TASK)
@@ -556,6 +626,9 @@ def _monitor_in_progress_data_sync(datasync, mongo_dao, log, record):
         response = datasync.describe_task_execution(TaskExecutionArn=execution_arn)
     except ClientError as ce:
         if _client_error_not_found(ce):
+            if not _past_execution_start_grace(record, now):
+                _record_observation_error(mongo_dao, log, record, ce.response["Error"]["Message"])
+                return
             _finalize_stale_record(mongo_dao, log, record, now, DATA_SYNC_LAST_ERROR_STALE_NOT_FOUND)
             return
         _record_observation_error(mongo_dao, log, record, ce.response["Error"]["Message"])
@@ -602,7 +675,9 @@ def _monitor_data_sync(datasync, mongo_dao, log, record):
 
     Cleanup runs only after the tracking writes have been applied, cleanupAfter is due,
     and a fresh read shows the stored status is Succeeded or Failed.
-    A STALE list add (submission gone) clears the pending flags so cleanup can still run.
+    A STALE list add when the dataSync row is already terminal skips recreating the list entry.
+    A STALE list add when the submission is gone clears the pending flags so cleanup can still run.
+    A STALE list add whose dataSync reread is missing or failed is deferred without clearing flags.
 
     @param datasync boto3 DataSync client
     @param mongo_dao MongoDao instance
@@ -616,7 +691,36 @@ def _monitor_data_sync(datasync, mongo_dao, log, record):
             record.get(SUBMISSION_ID), record.get(TYPE), record.get(ID),
         )
         if added == DATA_SYNC_WRITE_STALE:
-            if _clear_submission_gone_flags(mongo_dao, log, record.get(ID), context):
+            stored = mongo_dao.find_data_sync_by_id(record.get(ID))
+            if stored is None:
+                log.error(
+                    f"{DATA_SYNC_LOG_TRACKING_FAILED} STALE list add; dataSync reread missing "
+                    f"or failed {context}"
+                )
+                _defer_cleanup(log, context)
+                return
+            if stored.get(STATUS) != DATA_SYNC_STATUS_IN_PROGRESS:
+                # Late add after finalize: do not recreate the finished list entry.
+                record[STATUS] = stored.get(STATUS)
+                record[DATA_SYNC_LIST_PENDING] = stored.get(DATA_SYNC_LIST_PENDING, False)
+                record[DATA_SYNC_ROLLUP_PENDING] = stored.get(DATA_SYNC_ROLLUP_PENDING, False)
+                if DATA_SYNC_CLEANUP_AFTER in stored:
+                    record[DATA_SYNC_CLEANUP_AFTER] = stored[DATA_SYNC_CLEANUP_AFTER]
+                if DATA_SYNC_END_TIME in stored:
+                    record[DATA_SYNC_END_TIME] = stored[DATA_SYNC_END_TIME]
+                if record.get(DATA_SYNC_LIST_PENDING):
+                    cleared = _track(
+                        log, mongo_dao.update_data_sync, record.get(ID), {DATA_SYNC_LIST_PENDING: False},
+                    )
+                    if cleared == DATA_SYNC_WRITE_APPLIED:
+                        record[DATA_SYNC_LIST_PENDING] = False
+                    else:
+                        log.error(
+                            f"{DATA_SYNC_LOG_TRACKING_FAILED} clear listPending outcome={cleared} {context}"
+                        )
+                        _defer_cleanup(log, context)
+                        return
+            elif _clear_submission_gone_flags(mongo_dao, log, record.get(ID), context):
                 record[DATA_SYNC_LIST_PENDING] = False
                 record[DATA_SYNC_ROLLUP_PENDING] = False
             else:
@@ -1391,11 +1495,34 @@ class ExportMetadata:
             return
         self.log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} clear listPending outcome={cleared} {self._tracking_context(tracking)}")
 
+    def _tracking_arn_fields(self, tracking):
+        """Build $set fields for every non-null ARN accumulated on the tracking state.
+
+        Later writes re-persist earlier ARNs so a failed source-location write can be repaired
+        by a subsequent successful field save or the start-failure update.
+
+        @param tracking tracking state dict
+        @returns dict of dataSync field names to values
+        """
+        fields = {}
+        if tracking.get("source_location_arn"):
+            fields[DATA_SYNC_SOURCE_LOCATION_ARN] = tracking["source_location_arn"]
+        if tracking.get("destination_location_arn"):
+            fields[DATA_SYNC_DEST_LOCATION_ARN] = tracking["destination_location_arn"]
+        if tracking.get("task_arn"):
+            fields[DATA_SYNC_TASK_ARN] = tracking["task_arn"]
+        if tracking.get("task_execution_arn"):
+            fields[DATA_SYNC_TASK_EXECUTION_ARN] = tracking["task_execution_arn"]
+        if tracking.get("task_arn_recorded_at"):
+            fields[DATA_SYNC_TASK_ARN_RECORDED_AT] = tracking["task_arn_recorded_at"]
+        return fields
+
     def _save_data_sync_field(self, tracking, field, value, state_key):
-        """Remember an ARN and write it to the dataSync record when the record exists.
+        """Remember an ARN and write all known ARNs to the dataSync record when the record exists.
 
         Updates match status In Progress so a monitor-finalized record is not overwritten.
         The first taskArn write also sets taskArnRecordedAt once for execution-start grace.
+        Each save persists every accumulated ARN so earlier write failures can be repaired.
 
         @param tracking tracking state dict
         @param field dataSync document field name
@@ -1407,9 +1534,7 @@ class ExportMetadata:
             tracking["task_arn_recorded_at"] = current_datetime()
         if not tracking["inserted"] or tracking.get("persist_stopped"):
             return
-        set_fields = {field: value}
-        if field == DATA_SYNC_TASK_ARN and tracking.get("task_arn_recorded_at"):
-            set_fields[DATA_SYNC_TASK_ARN_RECORDED_AT] = tracking["task_arn_recorded_at"]
+        set_fields = self._tracking_arn_fields(tracking)
         outcome = _track(
             self.log, self.mongo_dao.update_data_sync, tracking["data_sync_id"], set_fields,
             match_fields={STATUS: DATA_SYNC_STATUS_IN_PROGRESS},
@@ -1428,11 +1553,12 @@ class ExportMetadata:
         )
 
     def _mark_data_sync_start_failed(self, tracking, step, message):
-        """Record that the AWS transfer failed before start_task_execution returned. Does not delete anything.
+        """Record that the AWS transfer failed before a confirmed start. Does not delete anything.
 
-        When the record was inserted and any AWS ARNs exist, schedules deferred cleanup.
-        Matches status In Progress so a concurrent monitor finalization is not overwritten.
-        Logs known ARNs for manual cleanup when the record was never inserted or the Failed write fails.
+        When the record was inserted and any AWS ARNs exist, schedules deferred cleanup and
+        persists all accumulated ARNs. Matches status In Progress so a concurrent monitor
+        finalization is not overwritten. Logs known ARNs for manual cleanup when the record
+        was never inserted or the Failed write fails.
 
         @param tracking tracking state dict
         @param step AWS call that failed
@@ -1459,6 +1585,7 @@ class ExportMetadata:
             DATA_SYNC_END_TIME: end_time,
             DATA_SYNC_ROLLUP_PENDING: True,
             DATA_SYNC_LAST_ERROR: last_error,
+            **self._tracking_arn_fields(tracking),
         }
         if tracking.get("task_arn") or tracking.get("source_location_arn") or tracking.get("destination_location_arn"):
             fields[DATA_SYNC_CLEANUP_AFTER] = end_time + timedelta(seconds=DATA_SYNC_CLEANUP_DELAY_SECONDS)
@@ -1473,6 +1600,75 @@ class ExportMetadata:
             self.log.info(f"DataSync already finalized by another monitor {context}")
             return
         self.log.error(f"{DATA_SYNC_LOG_TRACKING_FAILED} start failure outcome={outcome} {context}")
+
+    def _handle_unconfirmed_start(self, tracking, step, message):
+        """Handle an ambiguous start_task_execution outcome without marking Failed.
+
+        Logs the ambiguity, recovers or re-persists ARNs so the monitor can resolve the
+        execution, and marks Stale only when the transfer cannot be made observable.
+
+        @param tracking tracking state dict
+        @param step AWS call that failed ambiguously
+        @param message AWS or exception message
+        """
+        context = self._tracking_context(tracking)
+        self.log.error(
+            f"{DATA_SYNC_LOG_TRANSFER_FAILED} {step} unconfirmed start; leaving In Progress "
+            f"for monitor resolution: {message} {context}"
+        )
+        if tracking.get("persist_stopped"):
+            return
+        if not tracking.get("inserted"):
+            self._recover_data_sync_tracking(tracking)
+            if not tracking.get("inserted"):
+                return
+        set_fields = self._tracking_arn_fields(tracking)
+        if not set_fields:
+            self._mark_unconfirmed_start_stale(tracking, "unconfirmed start: no ARNs to persist")
+            return
+        outcome = _track(
+            self.log, self.mongo_dao.update_data_sync, tracking["data_sync_id"], set_fields,
+            match_fields={STATUS: DATA_SYNC_STATUS_IN_PROGRESS},
+        )
+        if outcome == DATA_SYNC_WRITE_APPLIED:
+            return
+        if outcome == DATA_SYNC_WRITE_STALE:
+            tracking["persist_stopped"] = True
+            self.log.info(f"DataSync already finalized; skipping further starter writes {context}")
+            return
+        self.log.error(
+            f"{DATA_SYNC_LOG_TRACKING_FAILED} unconfirmed start ARN persist outcome={outcome} {context}"
+        )
+        self._mark_unconfirmed_start_stale(tracking, f"unconfirmed start: ARN persist failed ({outcome})")
+
+    def _mark_unconfirmed_start_stale(self, tracking, last_error):
+        """Mark an inserted record Stale when an unconfirmed start cannot stay observable.
+
+        Uses a status-only In Progress match (no absence ARN guard) because the starter may
+        be marking Stale precisely because those ARNs never landed on the document.
+
+        @param tracking tracking state dict
+        @param last_error diagnostic stored on the record
+        """
+        if not tracking.get("inserted") or tracking.get("persist_stopped"):
+            return
+        record = {
+            ID: tracking["data_sync_id"],
+            SUBMISSION_ID: tracking.get("submission_id"),
+            TYPE: tracking.get("sync_type"),
+            STATUS: DATA_SYNC_STATUS_IN_PROGRESS,
+            DATA_SYNC_TASK_ARN: tracking.get("task_arn"),
+            DATA_SYNC_TASK_EXECUTION_ARN: tracking.get("task_execution_arn"),
+            DATA_SYNC_SOURCE_LOCATION_ARN: tracking.get("source_location_arn"),
+            DATA_SYNC_DEST_LOCATION_ARN: tracking.get("destination_location_arn"),
+        }
+        context = self._tracking_context(tracking)
+        if _finalize_data_sync_record(
+            self.mongo_dao, self.log, record, DATA_SYNC_STATUS_STALE, current_datetime(), last_error, False,
+        ):
+            tracking["persist_stopped"] = True
+            tracking["status"] = DATA_SYNC_STATUS_STALE
+            self.log.error(f"{DATA_SYNC_LOG_STALE} manual cleanup needed {context}")
 
     def _recover_data_sync_tracking(self, tracking):
         """Insert a monitor-visible dataSync record after AWS start when the initial insert failed.
@@ -1659,12 +1855,18 @@ class ExportMetadata:
             self.log.exception(ce)
             self.log.exception(f"Failed to transfer files from {data_file_folder} to {dest_bucket_name}:{dest_file_folder}. {ce.response['Error']['Message']}")
             if tracking:
-                self._mark_data_sync_start_failed(tracking, step, ce.response['Error']['Message'])
+                if step == "start_task_execution" and not _confirmed_start_rejection(ce):
+                    self._handle_unconfirmed_start(tracking, step, ce.response['Error']['Message'])
+                else:
+                    self._mark_data_sync_start_failed(tracking, step, ce.response['Error']['Message'])
         except Exception as e:
             self.log.exception(e)
             self.log.exception(f"Failed to transfer files from {data_file_folder} to {dest_bucket_name}:{dest_file_folder}. {get_exception_msg()}")
             if tracking:
-                self._mark_data_sync_start_failed(tracking, step, get_exception_msg())
+                if step == "start_task_execution":
+                    self._handle_unconfirmed_start(tracking, step, get_exception_msg())
+                else:
+                    self._mark_data_sync_start_failed(tracking, step, get_exception_msg())
         finally:
             if tracking:
                 self._log_untracked_transfer(tracking)

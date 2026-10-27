@@ -15,6 +15,10 @@ from common.constants import (
     DATA_SYNC_ROLLUP_PENDING,
     DATA_SYNC_CLEANUP_AFTER,
     DATA_SYNC_TASK_ARN,
+    DATA_SYNC_TASK_EXECUTION_ARN,
+    DATA_SYNC_SOURCE_LOCATION_ARN,
+    DATA_SYNC_DEST_LOCATION_ARN,
+    DATA_SYNC_TASK_ARN_RECORDED_AT,
     DATA_SYNC_COLLECTION,
     SUBMISSION_COLLECTION,
     DATA_SYNC_TYPE_METADATA,
@@ -99,6 +103,53 @@ def test_insert_data_sync_duplicate_key_is_applied(mock_client_class):
     assert dao.insert_data_sync(
         "sub_1", DATA_SYNC_TYPE_FILE, "src", "dest", DATA_SYNC_STATUS_IN_PROGRESS, SYNC_ID, START,
     ) == DATA_SYNC_WRITE_APPLIED
+    collections[DATA_SYNC_COLLECTION].update_one.assert_not_called()
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_insert_data_sync_duplicate_merges_recovery_arns_while_in_progress(mock_client_class):
+    """A duplicate recovery insert $sets supplied ARNs only while the existing row is still In Progress."""
+    collections = _setup_mock_collections(mock_client_class, DATA_SYNC_COLLECTION)
+    collections[DATA_SYNC_COLLECTION].insert_one.side_effect = DuplicateKeyError("duplicate")
+    collections[DATA_SYNC_COLLECTION].update_one.return_value = _matched(1)
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+
+    outcome = dao.insert_data_sync(
+        "sub_1", DATA_SYNC_TYPE_FILE, "src", "dest", DATA_SYNC_STATUS_IN_PROGRESS, SYNC_ID, START,
+        task_arn="task-arn-1",
+        task_execution_arn="exec-arn-1",
+        source_location_arn="src-loc",
+        destination_location_arn="dest-loc",
+        task_arn_recorded_at=START,
+    )
+
+    assert outcome == DATA_SYNC_WRITE_APPLIED
+    filt, update = collections[DATA_SYNC_COLLECTION].update_one.call_args.args
+    assert filt == {ID: SYNC_ID, STATUS: DATA_SYNC_STATUS_IN_PROGRESS}
+    assert update["$set"] == {
+        DATA_SYNC_TASK_ARN: "task-arn-1",
+        DATA_SYNC_TASK_EXECUTION_ARN: "exec-arn-1",
+        DATA_SYNC_SOURCE_LOCATION_ARN: "src-loc",
+        DATA_SYNC_DEST_LOCATION_ARN: "dest-loc",
+        DATA_SYNC_TASK_ARN_RECORDED_AT: START,
+    }
+    assert DATA_SYNC_LIST_PENDING not in update["$set"]
+    assert STATUS not in update["$set"]
+
+
+@patch("common.mongo_dao.MongoClient")
+def test_insert_data_sync_duplicate_skips_merge_when_terminal(mock_client_class):
+    """A duplicate recovery merge that misses the In Progress guard still returns applied and does not overwrite."""
+    collections = _setup_mock_collections(mock_client_class, DATA_SYNC_COLLECTION)
+    collections[DATA_SYNC_COLLECTION].insert_one.side_effect = DuplicateKeyError("duplicate")
+    collections[DATA_SYNC_COLLECTION].update_one.return_value = _matched(0)
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+
+    assert dao.insert_data_sync(
+        "sub_1", DATA_SYNC_TYPE_FILE, "src", "dest", DATA_SYNC_STATUS_IN_PROGRESS, SYNC_ID, START,
+        task_arn="task-arn-1",
+    ) == DATA_SYNC_WRITE_APPLIED
+    collections[DATA_SYNC_COLLECTION].update_one.assert_called_once()
 
 
 @patch("common.mongo_dao.MongoClient")
@@ -165,7 +216,8 @@ def test_update_data_sync_returns_error_and_logs_id(mock_client_class, caplog):
 @patch("common.mongo_dao.MongoClient")
 def test_add_active_uses_add_to_set_and_sets_in_progress(mock_client_class):
     """Adding an active metadata sync $addToSets the dataSync id and sets the submission status to In Progress, without updatedAt."""
-    collections = _setup_mock_collections(mock_client_class, SUBMISSION_COLLECTION)
+    collections = _setup_mock_collections(mock_client_class, SUBMISSION_COLLECTION, DATA_SYNC_COLLECTION)
+    collections[DATA_SYNC_COLLECTION].find_one.return_value = {ID: SYNC_ID, STATUS: DATA_SYNC_STATUS_IN_PROGRESS}
     collections[SUBMISSION_COLLECTION].update_one.return_value = _matched(1)
     dao = MongoDao("mongodb://localhost:27017", "test_db")
 
@@ -182,7 +234,8 @@ def test_add_active_uses_add_to_set_and_sets_in_progress(mock_client_class):
 @patch("common.mongo_dao.MongoClient")
 def test_add_active_returns_stale_when_submission_is_missing(mock_client_class):
     """matched_count 0 on the submission update means the submission is gone, so the add returns stale."""
-    collections = _setup_mock_collections(mock_client_class, SUBMISSION_COLLECTION)
+    collections = _setup_mock_collections(mock_client_class, SUBMISSION_COLLECTION, DATA_SYNC_COLLECTION)
+    collections[DATA_SYNC_COLLECTION].find_one.return_value = {ID: SYNC_ID, STATUS: DATA_SYNC_STATUS_IN_PROGRESS}
     collections[SUBMISSION_COLLECTION].update_one.return_value = _matched(0)
     dao = MongoDao("mongodb://localhost:27017", "test_db")
 
@@ -190,13 +243,25 @@ def test_add_active_returns_stale_when_submission_is_missing(mock_client_class):
 
 
 @patch("common.mongo_dao.MongoClient")
+def test_add_active_returns_stale_when_data_sync_already_terminal(mock_client_class):
+    """A finished dataSync row skips the submission write so a late add cannot recreate the list entry."""
+    collections = _setup_mock_collections(mock_client_class, SUBMISSION_COLLECTION, DATA_SYNC_COLLECTION)
+    collections[DATA_SYNC_COLLECTION].find_one.return_value = {ID: SYNC_ID, STATUS: DATA_SYNC_STATUS_SUCCEEDED}
+    dao = MongoDao("mongodb://localhost:27017", "test_db")
+
+    assert dao.add_active_submission_data_sync("sub_1", DATA_SYNC_TYPE_FILE, SYNC_ID) == DATA_SYNC_WRITE_STALE
+    collections[SUBMISSION_COLLECTION].update_one.assert_not_called()
+
+
+@patch("common.mongo_dao.MongoClient")
 def test_add_active_unrecognized_type_makes_no_database_call(mock_client_class):
     """An unknown sync type returns error and never calls update_one."""
-    collections = _setup_mock_collections(mock_client_class, SUBMISSION_COLLECTION)
+    collections = _setup_mock_collections(mock_client_class, SUBMISSION_COLLECTION, DATA_SYNC_COLLECTION)
     dao = MongoDao("mongodb://localhost:27017", "test_db")
 
     assert dao.add_active_submission_data_sync("sub_1", "unknown", SYNC_ID) == DATA_SYNC_WRITE_ERROR
     collections[SUBMISSION_COLLECTION].update_one.assert_not_called()
+    collections[DATA_SYNC_COLLECTION].find_one.assert_not_called()
 
 
 @patch("common.mongo_dao.MongoClient")
