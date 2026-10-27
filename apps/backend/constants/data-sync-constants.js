@@ -10,6 +10,7 @@ const DATA_SYNC_STATUS = Object.freeze({
     IN_PROGRESS: 'In Progress',
     SUCCEEDED: 'Succeeded',
     FAILED: 'Failed',
+    STALE: 'Stale',
 });
 
 const DATA_SYNC_TYPE = Object.freeze({

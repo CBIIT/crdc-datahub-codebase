@@ -42,6 +42,10 @@ describe('ensure-indexes', () => {
             name: 'submissionID_1_type_1_status_1',
             keys: { submissionID: 1, type: 1, status: 1 },
         },
+        { collection: 'dataSync', name: 'status_1', keys: { status: 1 } },
+        { collection: 'dataSync', name: 'listPending_1', keys: { listPending: 1 } },
+        { collection: 'dataSync', name: 'rollupPending_1', keys: { rollupPending: 1 } },
+        { collection: 'dataSync', name: 'cleanupAfter_1', keys: { cleanupAfter: 1 } },
         {
             collection: 'submissions',
             name: 'studyID_1_dataCommons_1_status_1',
@@ -134,8 +138,8 @@ describe('ensure-indexes', () => {
         return db;
     }
 
-    it('declares all 22 catalog indexes', () => {
-        expect(INDEXES).toHaveLength(22);
+    it('declares all 26 catalog indexes', () => {
+        expect(INDEXES).toHaveLength(26);
         expect(INDEXES.map(({ collection, name, keys }) => ({ collection, name, keys }))).toEqual(expectedCatalog);
         const sessionsSpec = INDEXES.find((spec) => spec.collection === SESSION_COLLECTION && spec.name === 'expires_1');
         expect(sessionsSpec.expireAfterSeconds).toBe(0);

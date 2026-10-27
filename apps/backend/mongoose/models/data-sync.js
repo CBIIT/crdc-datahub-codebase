@@ -50,6 +50,18 @@ const dataSyncSchema = new mongoose.Schema(
         taskExecutionArn: {
             type: String,
         },
+        sourceLocationArn: { type: String },
+        destinationLocationArn: { type: String },
+        listPending: { type: Boolean },
+        rollupPending: { type: Boolean },
+        cleanupAfter: { type: Date },
+        cleanupStartedAt: { type: Date },
+        cleanedAt: { type: Date },
+        cleanupError: { type: String },
+        lastError: { type: String },
+        observationErrorSince: { type: Date },
+        lastPolledAt: { type: Date },
+        taskArnRecordedAt: { type: Date },
     },
     {
         collection: DATA_SYNC_COLLECTION,

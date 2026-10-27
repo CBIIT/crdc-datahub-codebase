@@ -17,6 +17,10 @@ describe('data-sync-constants', () => {
                 DATA_SYNC_STATUS.IN_PROGRESS
             );
         });
+
+        it('includes Stale among DataSync statuses', () => {
+            expect(DATA_SYNC_STATUS.STALE).toBe('Stale');
+        });
     });
 
     describe('missingDataSyncRollupMongoFilter', () => {
