@@ -118,8 +118,10 @@ type ValidationStatus = null | "New" | "Validating" | "Passed" | "Error" | "Warn
 
 /**
  * The status of the DataSync copy operation for a Submission.
+ *
+ * @note The API never returns `null`; a missing stored value is reported as `Not Started`.
  */
-type DataSyncStatus = null | "In Progress" | "Completed" | "Failed";
+type DataSyncStatus = "Not Started" | "In Progress" | "Succeeded" | "Failed";
 
 /**
  * The status of the cross-submission validation action for a Submission.

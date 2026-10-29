@@ -440,8 +440,8 @@ describe("Implementation Requirements", () => {
     const submission: Submission = {
       ...baseSubmission,
       status: "Completed",
-      metadataDataSyncStatus: "Completed",
-      fileDataSyncStatus: "Completed",
+      metadataDataSyncStatus: "Succeeded",
+      fileDataSyncStatus: "Succeeded",
     };
 
     const { findByTestId, queryByLabelText } = render(
