@@ -38,14 +38,18 @@ def main():
         failed_file_name = get_failed_result_file_name(now, len(failed_files), len(files_list))
 
         recorder = None
-        delete_intermediate_file(bucket, intermediate_file_path)
-        write_results_to_file(succeeded_files, succeeded_file_name, failed_files, failed_file_name )
+        result_files = write_results_to_file(succeeded_files, succeeded_file_name, failed_files, failed_file_name )
+        print(f'Results written to {result_files}')
         if os.path.isfile(failed_file_name):
             key = os.path.join(prefix, failed_file_name)
             upload_file_to_s3(bucket, key, failed_file_name)
+            print(f'Result file uploaded to {key}')
         if os.path.isfile(succeeded_file_name):
             key = os.path.join(prefix, succeeded_file_name)
             upload_file_to_s3(bucket, key, succeeded_file_name)
+            print(f'Result file uploaded to {key}')
+        delete_intermediate_file(bucket, intermediate_file_path)
+        print(f'Temporary file cleaned up')
     except Exception as e:
         print(e)
     finally:
@@ -53,6 +57,7 @@ def main():
             recorder.close()
         if os.path.isfile(INTERMEDIATE_RESULT_FILE_NAME):
             upload_file_to_s3(bucket, intermediate_file_path, INTERMEDIATE_RESULT_FILE_NAME)
+            print(f'Validation interrupted, temporary file uploaded to {intermediate_file_path}')
 
 def validate_all_files_integrity(file_list: list, get_file_header, intermediate_results: dict = {}, result_recorder = None):
     succeeded_files = []
@@ -121,18 +126,15 @@ def download_file_from_s3(bucket: str, key: str, local_file_name: str):
         print(e)
 
 def upload_file_to_s3(bucket: str, key: str, local_file_name: str):
-    try:
-        if not bucket or not key:
-            print('bucket or key not provided')
-            return
-        s3_client = boto3.client('s3')
-        s3_client.upload_file(
-            Filename=local_file_name,
-            Bucket=bucket,
-            Key=key
-        )
-    except Exception as e:
-        print(e)
+    if not bucket or not key:
+        print('bucket or key not provided')
+        return
+    s3_client = boto3.client('s3')
+    s3_client.upload_file(
+        Filename=local_file_name,
+        Bucket=bucket,
+        Key=key
+    )
 
 
 def _compose_result(file_info: dict, status: str):
@@ -208,18 +210,22 @@ def _get_timestamp(date: datetime):
     return date.strftime("%Y-%m-%dT%H-%M-%S")
 
 def write_results_to_file(succeeded_files, succeeded_file_name,  failed_files, failed_file_name):
+    results = []
     headers = ["Study ID", "GUID", "File Name", "Location", "Result"]
     if len(failed_files) > 0:
         with open(failed_file_name, "w") as f:
             csv_writer = csv.DictWriter(f, fieldnames=headers)
             csv_writer.writeheader()
             csv_writer.writerows(failed_files)
+        results.append(failed_file_name)
 
     if len(succeeded_files) != 0:
         with open(succeeded_file_name, "w") as f:
             csv_writer = csv.DictWriter(f, fieldnames=headers)
             csv_writer.writeheader()
             csv_writer.writerows(succeeded_files)
+        results.append(succeeded_file_name)
+    return results
 
 
 class IntermediateResultsRecorder:
