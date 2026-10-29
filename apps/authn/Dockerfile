@@ -23,7 +23,7 @@ WORKDIR /usr/src/app
 # Copy built application and production node_modules from the builder stage.
 COPY --from=builder --chown=node:node /usr/src/app .
 # Remove global npm shipped with the Node base image; only the node binary is needed at runtime.
-RUN apk update && apk add --no-cache --upgrade openssl \
+RUN apk upgrade --no-cache \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
     && mkdir -p logs && chown node:node logs
 USER node

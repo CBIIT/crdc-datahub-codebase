@@ -16,7 +16,7 @@ RUN npm prune --omit=dev
 
 # Run stage
 FROM node:24.22.2-alpine3.24 AS fnl_base_image
-RUN apk add --no-cache --upgrade openssl
+RUN apk upgrade --no-cache
 ENV PORT=8080 \
     NODE_ENV=production
 WORKDIR /usr/src/app
