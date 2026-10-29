@@ -26,16 +26,17 @@ Download from the [MongoDB Database Tools legacy releases archive](https://www.m
 
 ## Environment
 
-Configure `.env` from [.env.example](.env.example). The 3705 scripts use these variables (in addition to the standard `CONNECTION_STRING` / `DATABASE_NAME` used by other scripts):
+Configure `.env` from [env.example](env.example). The 3705 scripts use these variables (in addition to the standard `CONNECTION_STRING` / `DATABASE_NAME` used by other scripts):
 
 | Variable | Used by | Description |
 | -------- | ------- | ----------- |
 | `BACKUP_CONNECTION_STRING` | backup, compare | MongoDB URI for the **source** instance |
-| `BACKUP_DATABASE_NAME` | backup, compare | Database name on source and destination |
+| `BACKUP_DATABASE_NAME` | backup, restore, compare | Database name on the **source** MongoDB instance (also the name in the dump directory) |
+| `RESTORE_DATABASE_NAME` | restore, compare | Database name on DocumentDB; defaults to `BACKUP_DATABASE_NAME` when unset |
 | `BACKUP_DIRECTORY` | backup, restore | Local directory where `mongodump` writes BSON files |
 | `RESTORE_CONNECTION_STRING` | restore, compare | DocumentDB URI for the **destination** instance (typically includes `tls=true`, `tlsCAFile`, and `retryWrites=false`) |
 
-Example DocumentDB connection string shape (from `.env.example`):
+Example DocumentDB connection string shape (from `env.example`):
 
 ```
 mongodb://username:password@host:port/?tls=true&tlsCAFile=/path/to/example.pem&retryWrites=false
@@ -103,6 +104,7 @@ node scripts/3705-restore-documentdb.js
 ```
 
 - Spawns `mongorestore` with `--drop` against `RESTORE_CONNECTION_STRING`, restoring everything under `BACKUP_DIRECTORY`.
+- When `RESTORE_DATABASE_NAME` differs from `BACKUP_DATABASE_NAME`, passes `--nsInclude`, `--nsFrom`, and `--nsTo` so only the source database is dropped and restored under the destination database name.
 - **Destructive:** existing collections in the restore target that overlap with the dump are dropped before import.
 - Blocks until `mongorestore` exits. Watch the terminal for progress and a clean completion before running compare.
 
@@ -125,8 +127,8 @@ Verification is **count-only** — it confirms the same number of documents per 
 **Successful compare:**
 
 ```
-Getting count for dataRecords in backup database
-Getting count for dataRecords in restore database
+Getting count for dataRecords in backup database source_database_name
+Getting count for dataRecords in restore database documentdb_database_name
 Matched counts for dataRecords: 12345
 ...
 All collections matched
