@@ -77,7 +77,7 @@ def get_files_from_db(connection_str: str, db_name: str):
     client = MongoClient(connection_str)
     db = client[db_name]
     data_collection = db[RELEASE_COLLECTION]
-    query = {DATA_FILE_LOCATION: {"$exists": True, "$nin": [None, ""]}}
+    query = {DATA_FILE_LOCATION: {"$exists": True, "$nin": [None, ""]}, "status": {"$ne": "Deleted"}}
     files = []
     for data in data_collection.find(query):
         location = data.get(DATA_FILE_LOCATION)
