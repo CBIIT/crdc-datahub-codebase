@@ -178,7 +178,6 @@ def get_s3_header(uri: str):
     for i in range(2):
         try:
             response = s3_client.head_object(Bucket=bucket_name, Key=key)
-            print(response)
             return {"size": response["ContentLength"]}
         except ClientError as e:
             if e.response['Error']['Code'] in ('404', 'NoSuchKey'):
