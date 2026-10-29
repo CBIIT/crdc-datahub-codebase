@@ -38,7 +38,6 @@ def main():
         failed_file_name = get_failed_result_file_name(now, len(failed_files), len(files_list))
 
         recorder = None
-        delete_intermediate_file(bucket, intermediate_file_path)
         write_results_to_file(succeeded_files, succeeded_file_name, failed_files, failed_file_name )
         if os.path.isfile(failed_file_name):
             key = os.path.join(prefix, failed_file_name)
@@ -46,6 +45,7 @@ def main():
         if os.path.isfile(succeeded_file_name):
             key = os.path.join(prefix, succeeded_file_name)
             upload_file_to_s3(bucket, key, succeeded_file_name)
+        delete_intermediate_file(bucket, intermediate_file_path)
     except Exception as e:
         print(e)
     finally:
@@ -121,18 +121,15 @@ def download_file_from_s3(bucket: str, key: str, local_file_name: str):
         print(e)
 
 def upload_file_to_s3(bucket: str, key: str, local_file_name: str):
-    try:
-        if not bucket or not key:
-            print('bucket or key not provided')
-            return
-        s3_client = boto3.client('s3')
-        s3_client.upload_file(
-            Filename=local_file_name,
-            Bucket=bucket,
-            Key=key
-        )
-    except Exception as e:
-        print(e)
+    if not bucket or not key:
+        print('bucket or key not provided')
+        return
+    s3_client = boto3.client('s3')
+    s3_client.upload_file(
+        Filename=local_file_name,
+        Bucket=bucket,
+        Key=key
+    )
 
 
 def _compose_result(file_info: dict, status: str):
