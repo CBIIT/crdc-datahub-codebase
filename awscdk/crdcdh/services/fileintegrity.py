@@ -158,7 +158,7 @@ class fileintegrityService:
 
     # roles attached to ecs
     # allowed roles access to the data management bucket
-    bucket_names = [name.strip() for name in config['service']['data_management_buckets'].split(',')]
+    bucket_names = [name.strip() for name in config[service]['data_management_buckets'].split(',')]
     bucket_arns_export = []
     for bucket_name in bucket_names:
         bucket_arns_export.append(f"arn:aws:s3:::{bucket_name}")
