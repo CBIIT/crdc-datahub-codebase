@@ -152,77 +152,58 @@ describe("buildReleaseNotesUrl cases", () => {
     vi.resetAllMocks();
   });
 
-  it("should return the correct URL when VITE_FE_VERSION is valid", async () => {
-    vi.doMock("../env", async () => {
-      const actual = await vi.importActual<typeof import("../env")>("../env");
-      return {
-        default: {
-          ...actual.default,
-          VITE_FE_VERSION: "3.1.0.472",
-        },
-      };
-    });
+  it.each([
+    ["prod", "prod"],
+    ["dev2", "dev2"],
+    ["QA2", "qa2"],
+    [" DEV2 ", "dev2"],
+  ])("should select the matching branch for tier %s", async (tier, branch) => {
+    vi.doMock("../env", () => ({
+      default: { VITE_DEV_TIER: tier },
+    }));
 
     const { buildReleaseNotesUrl } = await import("./envUtils");
 
     expect(buildReleaseNotesUrl()).toBe(
-      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/tags/3.1.0.472/apps/frontend/CHANGELOG.md"
+      `https://raw.githubusercontent.com/CBIIT/crdc-datahub-static-content/refs/heads/${branch}/content/release-notes.md`
     );
   });
 
-  it("should return the fallback URL when VITE_FE_VERSION is not set", async () => {
-    vi.doMock("../env", async () => {
-      const actual = await vi.importActual<typeof import("../env")>("../env");
-      return {
-        default: {
-          ...actual.default,
-          VITE_FE_VERSION: undefined,
-        },
-      };
-    });
+  it.each([undefined, "", "not-a-build-tag", "3.7.0.123"])(
+    "should ignore the invalid application deployment tier %s",
+    async (tier) => {
+      vi.doMock("../env", () => ({
+        default: { VITE_DEV_TIER: tier },
+      }));
+      const { Logger } = await import("./logger");
+      vi.spyOn(Logger, "error").mockImplementation(() => {});
 
-    const { buildReleaseNotesUrl } = await import("./envUtils");
+      const { buildReleaseNotesUrl } = await import("./envUtils");
 
-    expect(buildReleaseNotesUrl()).toBe(
-      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/heads/master/apps/frontend/CHANGELOG.md"
-    );
-  });
+      expect(buildReleaseNotesUrl()).toBe(
+        "https://raw.githubusercontent.com/CBIIT/crdc-datahub-static-content/refs/heads/prod/content/release-notes.md"
+      );
+    }
+  );
 
-  it("should return the fallback URL when VITE_FE_VERSION is not a string", async () => {
-    vi.doMock("../env", async () => {
-      const actual = await vi.importActual<typeof import("../env")>("../env");
-      return {
-        default: {
-          ...actual.default,
-          VITE_FE_VERSION: 0 as unknown as string, // NOTE: Env variables can officially only be strings
-        },
-      };
-    });
+  it.each([undefined, "", "   ", 0, "dev/../../prod", "dev?ref=prod", "dev-2"])(
+    "should log an error and fall back to prod for missing or invalid tier %s",
+    async (tier) => {
+      vi.doMock("../env", () => ({ default: { VITE_DEV_TIER: tier } }));
 
-    const { buildReleaseNotesUrl } = await import("./envUtils");
+      const { buildReleaseNotesUrl } = await import("./envUtils");
+      const { Logger } = await import("./logger");
+      const logError = vi.spyOn(Logger, "error").mockImplementation(() => {});
 
-    expect(buildReleaseNotesUrl()).toBe(
-      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/heads/master/apps/frontend/CHANGELOG.md"
-    );
-  });
-
-  it("should return the fallback URL when VITE_FE_VERSION is not in the expected format", async () => {
-    vi.doMock("../env", async () => {
-      const actual = await vi.importActual<typeof import("../env")>("../env");
-      return {
-        default: {
-          ...actual.default,
-          VITE_FE_VERSION: "invalid",
-        },
-      };
-    });
-
-    const { buildReleaseNotesUrl } = await import("./envUtils");
-
-    expect(buildReleaseNotesUrl()).toBe(
-      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/heads/master/apps/frontend/CHANGELOG.md"
-    );
-  });
+      expect(buildReleaseNotesUrl()).toBe(
+        "https://raw.githubusercontent.com/CBIIT/crdc-datahub-static-content/refs/heads/prod/content/release-notes.md"
+      );
+      expect(logError).toHaveBeenCalledWith(
+        "buildReleaseNotesUrl: VITE_DEV_TIER is missing or invalid",
+        { VITE_DEV_TIER: tier }
+      );
+    }
+  );
 });
 
 describe("getFilteredDataCommons cases", () => {
