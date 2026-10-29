@@ -79,7 +79,7 @@ class fileintegrityService:
         }
 
     secrets={
-            "NEW_RELIC_LICENSE_KEY":ecs.Secret.from_secrets_manager(secretsmanager.Secret.from_secret_name_v2(self, "pvpuller_newrelic", secret_name='monitoring/newrelic'), 'api_key'),
+            "NEW_RELIC_LICENSE_KEY":ecs.Secret.from_secrets_manager(secretsmanager.Secret.from_secret_name_v2(self, "fileintegrity_newrelic", secret_name='monitoring/newrelic'), 'api_key'),
             "DOCDB_ENDPOINT":ecs.Secret.from_secrets_manager(self.secret, 'docdb_endpoint'),
             "DOCDB_PORT":ecs.Secret.from_secrets_manager(self.secret, 'docdb_port'),
             "DOCDB_USERNAME":ecs.Secret.from_secrets_manager(self.secret, 'docdb_username'),
