@@ -30,7 +30,7 @@ from documentdb import DocumentDbCluster
 from knowledgebase import KnowledgeBase
 from guardrail import Guardrail
 #from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, chatbotbe
-from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
+from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, fileintegrity
 
 class Stack(Stack):
     def __init__(self, scope: Construct, **kwargs) -> None:
@@ -549,7 +549,7 @@ class Stack(Stack):
         # Metadata service
         metadatavalidation.metadatavalidationService.createService(self, config)
 
-        # File service
+        # File validation service
         filevalidation.filevalidationService.createService(self, config)
 
         # Export service
@@ -561,8 +561,8 @@ class Stack(Stack):
         # Chatbotbe Service
         #chatbotbe.chatbotbeService.createService(self, config)
 
-        # Files Service
-        # files.filesService.createService(self, config)
+        # File_integrity Service
+        fileintegrity.fileintegrityService.createService(self, config)
 
 
         # Add a fixed error message when browsing an invalid URL
