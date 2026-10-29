@@ -180,6 +180,19 @@ class fileintegrityService:
         ],
         resources=bucket_arns_export
     )
+
+    # allowed to access container shell using ssm
+    #ssm_policy = iam.PolicyStatement(
+        #effect=iam.Effect.ALLOW,
+        #actions=[
+            #"ssmmessages:CreateControlChannel",
+            #"ssmmessages:CreateDataChannel",
+            #"ssmmessages:OpenControlChannel",
+            #"ssmmessages:OpenDataChannel"
+        #],
+        #resources=["*"]
+    #)
+
     # attach amazon full SQS access to the task role
     taskDefinition.task_role.add_to_policy(data_mgmt_buckets)
     taskDefinition.task_role.add_managed_policy(
@@ -249,6 +262,7 @@ class fileintegrityService:
         #            config[service]['eventsbridge_role_arn']
         #        ),
         platform_version=ecs.FargatePlatformVersion.LATEST,
+        enable_execute_command=True,
 #        dead_letter_queue=dead_letter_queue,
         )
     )
