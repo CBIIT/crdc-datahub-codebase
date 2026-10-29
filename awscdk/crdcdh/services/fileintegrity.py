@@ -1,0 +1,299 @@
+from aws_cdk import Duration
+
+from aws_cdk import aws_elasticloadbalancingv2 as elbv2
+from aws_cdk import aws_ecs as ecs
+from aws_cdk import aws_ecr as ecr
+from aws_cdk import aws_secretsmanager as secretsmanager
+from datetime import date
+from aws_cdk import Duration
+from aws_cdk import aws_applicationautoscaling as appscaling
+from aws_cdk import aws_cloudwatch as cloudwatch
+from aws_cdk import aws_cloudwatch_actions as cw_actions
+from aws_cdk import aws_sqs as sqs
+from aws_cdk import aws_iam as iam
+from aws_cdk import aws_events as events
+from aws_cdk import aws_events_targets as targets
+from aws_cdk import aws_ec2 as ec2
+from urllib.parse import quote_plus
+
+class fileintegrityService:
+  def createService(self, config):
+
+    ### Fileintegrity Service ############################################################################################################
+    service = "fileintegrity"
+
+    # Set container configs
+    if config.has_option(service, 'entrypoint'):
+        entry_point = ["/bin/sh", "-c", config[service]['entrypoint']]
+    else:
+        entry_point = None
+
+    taskDefinition = ecs.FargateTaskDefinition(self,
+        "{}-{}-taskDef".format(self.namingPrefix, service),
+        family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-fileintegrity",
+        cpu=config.getint(service, 'cpu'),
+        memory_limit_mib=config.getint(service, 'memory')
+    )
+
+    exec_role = taskDefinition.obtain_execution_role()
+    role_arn = exec_role.role_arn
+
+    # DocumentDB connection details (same sources stack.py uses for the shared secret)
+    if config.getboolean('db', 'create_docdb', fallback=False):
+        docdb_endpoint = self.docdb.cluster.attr_endpoint
+    else:
+        docdb_endpoint = config['db']['docdb_endpoint']
+
+    db_connection_string = (
+        "mongodb://{}:{}@{}:27017/"
+        "?tls=true"
+        "&tlsCAFile=resources/aws-documentdb-certificate/global-bundle.pem"
+        "&replicaSet=rs0"
+        "&readPreference=secondaryPreferred"
+        "&retryWrites=false"
+    ).format(
+        quote_plus(config['db']['docdb_user']),
+        quote_plus(config['db']['docdb_password']),
+        docdb_endpoint,
+    )
+
+    environment={
+            "DATE":date.today().isoformat(),
+            "PROJECT":"crdc-hub",
+            "VERSION":config[service]['image'],
+            "RESULT_BUCKET":config[service]['result_bucket'],
+            "DB_CONNECTION_STRING": db_connection_string,
+            "FARGATE":"true",
+            "SESSION_SECRET":"abcd256asghaaamnkloofghj",
+            "NEW_RELIC_APP_NAME":"{}-{}".format(self.namingPrefix, service),
+            "NEW_RELIC_DISTRIBUTED_TRACING_ENABLED":"true",
+            "NEW_RELIC_HOST":"gov-collector.newrelic.com",
+            "NEW_RELIC_LABELS":"Project:{};Environment:{}".format('crdc-hub', config['main']['env']),
+            "NEW_RELIC_LOG_FILE_NAME":"STDOUT",
+            "NRIA_IS_FORWARD_ONLY":"true",
+            "NRIA_PASSTHROUGH_ENVIRONMENT":"ECS_CONTAINER_METADATA_URI,ECS_CONTAINER_METADATA_URI_V4,FARGATE",
+            "NRIA_CUSTOM_ATTRIBUTES":"{\"nrDeployMethod\":\"downloadPage\"}",
+            "NRIA_OVERRIDE_HOST_ROOT":"",
+            "JAVA_OPTS": "-javaagent:/usr/local/tomcat/newrelic/newrelic.jar",
+            "ROLE_ARN": exec_role.role_arn,
+        }
+
+    secrets={
+            "NEW_RELIC_LICENSE_KEY":ecs.Secret.from_secrets_manager(secretsmanager.Secret.from_secret_name_v2(self, "pvpuller_newrelic", secret_name='monitoring/newrelic'), 'api_key'),
+            "DOCDB_ENDPOINT":ecs.Secret.from_secrets_manager(self.secret, 'docdb_endpoint'),
+            "DOCDB_PORT":ecs.Secret.from_secrets_manager(self.secret, 'docdb_port'),
+            "DOCDB_USERNAME":ecs.Secret.from_secrets_manager(self.secret, 'docdb_username'),
+            "DOCDB_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'docdb_password'),
+            "DOCDB_DB_NAME":ecs.Secret.from_secrets_manager(self.secret, 'docdb_db_name'),
+        }   
+    
+    # create sqs
+#    dead_letter_queue = sqs.Queue(self, f"{self.namingPrefix}-{service}-dlqueue",
+#        queue_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-{service}-dlq",
+#        fifo=False
+#    )
+ 
+    #taskDefinition = ecs.FargateTaskDefinition(self,
+        #"{}-{}-taskDef".format(self.namingPrefix, service),
+        #family=f"{config['main']['resource_prefix']}-{config['main']['tier']}-pvpuller",
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory')
+    #)
+    
+    ecr_repo = ecr.Repository.from_repository_arn(self, "{}_repo".format(service), repository_arn=config[service]['repo'])
+    
+    # no sumolog
+    taskDefinition.add_container(
+        service,
+        #image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
+        image=ecs.ContainerImage.from_ecr_repository(repository=ecr_repo, tag=config[service]['image']),
+        cpu=config.getint(service, 'cpu'),
+        memory_limit_mib=config.getint(service, 'memory'),
+        #port_mappings=[ecs.PortMapping(app_protocol=ecs.AppProtocol.http, container_port=config.getint(service, 'port'), name=service)],
+        entry_point=entry_point,
+        environment=environment,
+        secrets=secrets,
+        logging=ecs.LogDrivers.aws_logs(
+            stream_prefix="{}-{}".format(self.namingPrefix, service)
+        )
+    )
+
+    # use sumo log
+    #taskDefinition.add_container(
+        #service,
+        ##image=ecs.ContainerImage.from_registry("{}:{}".format(config[service]['repo'], config[service]['image'])),
+        #image=ecs.ContainerImage.from_ecr_repository(repository=ecr_repo, tag=config[service]['image']),
+        #cpu=config.getint(service, 'cpu'),
+        #memory_limit_mib=config.getint(service, 'memory'),
+        #port_mappings=[ecs.PortMapping(app_protocol=ecs.AppProtocol.http, container_port=config.getint(service, 'port'), name=service)],
+        #entry_point=entry_point,
+        #environment=environment,
+        #secrets=secrets,
+        #logging=ecs.LogDrivers.firelens(
+            #options={
+                #"Name": "http",
+                #"Host": config['secrets']['sumo_collector_endpoint'],
+                #"URI": "/receiver/v1/http/{}".format(config['secrets']['sumo_collector_token_backend']),
+                #"Port": "443",
+                #"tls": "on",
+                #"tls.verify": "off",
+                #"Retry_Limit": "2",
+                #"Format": "json_lines"
+            #}
+        #)
+    #)
+
+    # Sumo Logic FireLens Log Router Container
+    #sumo_logic_container = taskDefinition.add_firelens_log_router(
+        #"sumologic-firelens",
+        #image=ecs.ContainerImage.from_registry("public.ecr.aws/aws-observability/aws-for-fluent-bit:stable"),
+        #firelens_config=ecs.FirelensConfig(
+            #type=ecs.FirelensLogRouterType.FLUENTBIT,
+            #options=ecs.FirelensOptions(
+                #enable_ecs_log_metadata=True
+            #)
+        #),
+    #essential=True
+    #)
+
+    # roles attached to ecs
+    # allowed roles access to the data management bucket
+    bucket_names = [name.strip() for name in config['service']['data_management_buckets'].split(',')]
+    bucket_arns_export = []
+    for bucket_name in bucket_names:
+        bucket_arns_export.append(f"arn:aws:s3:::{bucket_name}")
+        bucket_arns_export.append(f"arn:aws:s3:::{bucket_name}/*")
+
+    data_mgmt_buckets = iam.PolicyStatement(
+        effect=iam.Effect.ALLOW,
+        actions=[
+            "s3:ListObjectsV2",
+            "s3:ListBucketMultipartUploads",
+            "s3:ListBucket",
+            "s3:GetBucketLocation",
+            "s3:PutObjectTagging",
+            "s3:PutObject",
+            "s3:GetObjectTagging",
+            "s3:GetObject",
+            "s3:DeleteObject",
+            "s3:AbortMultipartUpload"
+        ],
+        resources=bucket_arns_export
+    )
+    # attach amazon full SQS access to the task role
+    taskDefinition.task_role.add_to_policy(data_mgmt_buckets)
+    taskDefinition.task_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSQSFullAccess")
+    )
+
+    taskDefinition.task_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceEventsRole")
+    )
+
+    taskDefinition.task_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("CloudWatchLogsFullAccess")
+    )
+
+    taskDefinition.execution_role.add_to_policy(data_mgmt_buckets)
+    taskDefinition.execution_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSQSFullAccess")
+    )
+    taskDefinition.execution_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceEventsRole")
+    )
+    taskDefinition.execution_role.add_managed_policy(
+        iam.ManagedPolicy.from_aws_managed_policy_name("CloudWatchLogsFullAccess")
+    )
+
+    # Grant SQS permissions to the task role
+#    dead_letter_queue.grant_send_messages(taskDefinition.task_role)
+#    dead_letter_queue.grant_consume_messages(taskDefinition.task_role)
+
+    # Create EventBridge Rule for Scheduling
+    scheduled_rule = events.Rule(self,
+        f"{self.namingPrefix}-{service}-schedule-rule",
+        rule_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-{service}-schedule-rule",
+        description=f"Run {service} task on schedule",
+        schedule=events.Schedule.expression(config[service]['cron_schedule'])
+    )
+
+    # get subnet for the ecs service
+    subnet_fi1 = config.get(service, 'subnet_fi1')
+    subnet_fi2 = config.get(service, 'subnet_fi2')
+    subnets_fi= ec2.SubnetSelection(
+        subnets=[
+          ec2.Subnet.from_subnet_id(self, "Subnet_fi1", subnet_fi1),
+          ec2.Subnet.from_subnet_id(self, "Subnet_fi2", subnet_fi2)
+        ]
+    )
+    # Extract security group ID
+    #security_group_id = config.get('SecurityGroup', 'security_group_id')
+    security_group_id = config.get(service, 'security_group_id')
+    security_group = ec2.SecurityGroup.from_security_group_id(self,
+        f"{config['main']['resource_prefix']}-{config['main']['tier']}-file-integrity-SG",
+        security_group_id
+    )
+
+    # Add ECS task as target - this block works but wont allow to add extra policy to the event role created by cdk
+    scheduled_rule.add_target(
+        targets.EcsTask(
+        cluster=self.ECSCluster,
+        task_definition=taskDefinition,
+        task_count=config.getint(service, 'task_count'),
+        subnet_selection=subnets_fi,
+        security_groups=[security_group],
+        assign_public_ip=False,
+        #role=iam.Role.from_role_arn(
+        #            self,
+        #            f"{service}-eventsbridge-role",
+        #            config[service]['eventsbridge_role_arn']
+        #        ),
+        platform_version=ecs.FargatePlatformVersion.LATEST,
+#        dead_letter_queue=dead_letter_queue,
+        )
+    )
+
+    # this block will allow to add policy
+
+    #ecs_task_target = targets.EcsTask(
+        #cluster=self.ECSCluster,
+        #task_definition=taskDefinition,
+        #task_count=config.getint(service, 'task_count'),
+        #subnet_selection=subnets_pv,
+        #security_groups=[security_group],
+        #assign_public_ip=False,
+        #platform_version=ecs.FargatePlatformVersion.LATEST,
+    #)
+
+    #ecs_task_target.role.add_managed_policy(
+        #iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSQSFullAccess")
+    #)
+
+    #ecs_task_target.role.add_managed_policy(
+        #iam.ManagedPolicy.from_aws_managed_policy_name("CloudWatchFullAccess")
+    #)
+
+    #ecs_task_target.role.add_managed_policy(
+        #iam.ManagedPolicy.from_managed_policy_arn(
+            #self,
+            #"ECSEventRolePolicy",
+            #"arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceEventsRole"
+        #)
+    #)
+
+    # add the target to the rule
+    #scheduled_rule.add_target(ecs_task_target)
+    #ecsService = ecs.FargateService(self,
+    #    "{}-{}-service".format(self.namingPrefix, service),
+    #    service_name=f"{config['main']['resource_prefix']}-{config['main']['tier']}-essentialvalidation",
+    #    cluster=self.ECSCluster,
+    #    task_definition=taskDefinition,
+    #    enable_execute_command=True,
+    #    desired_count=1,
+    #    min_healthy_percent=50,
+    #    max_healthy_percent=200,
+    #    circuit_breaker=ecs.DeploymentCircuitBreaker(
+    #        enable=True,
+    #        rollback=True
+    #    ),
+    #)
