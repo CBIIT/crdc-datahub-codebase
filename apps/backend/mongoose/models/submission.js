@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const { SUBMISSIONS_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
+const { DATA_SYNC_STATUSES } = require('../../constants/data-sync-constants');
 
 /**
  * Embedded error/warning schema for embedded Error fields.
@@ -118,6 +119,12 @@ const submissionSchema = new mongoose.Schema(
         intention: { type: String, required: true },
         // Legacy docs may store Boolean; prefer String going forward
         metadataValidationStatus: { type: mongoose.Schema.Types.Mixed },
+        metadataDataSyncStatus: { type: String, enum: DATA_SYNC_STATUSES },
+        fileDataSyncStatus: { type: String, enum: DATA_SYNC_STATUSES },
+        metadataDataSyncActive: { type: [String], default: undefined },
+        fileDataSyncActive: { type: [String], default: undefined },
+        metadataDataSyncOverlapFailed: { type: Boolean },
+        fileDataSyncOverlapFailed: { type: Boolean },
         modelVersion: { type: String, required: true },
         name: { type: String, required: true },
         nodeCount: { type: Number },

@@ -1,6 +1,12 @@
 const {getDataCommonsDisplayName, getDataCommonsDisplayNamesForSubmission, getDataCommonsDisplayNamesForListSubmissions, genericGetDataCommonsDisplayNames,
     getDataCommonsDisplayNamesForUser, applyStudyAbbreviationFallbackToListSubmission
 } = require('../../utility/data-commons-remapper');
+const { DATA_SYNC_STATUS } = require('../../constants/data-sync-constants');
+
+const NOT_STARTED_ROLLUPS = {
+    metadataDataSyncStatus: DATA_SYNC_STATUS.NOT_STARTED,
+    fileDataSyncStatus: DATA_SYNC_STATUS.NOT_STARTED,
+};
 
 describe('Data Commons Remapper Test', () => {
     let baseInput = {
@@ -50,21 +56,44 @@ describe('Data Commons Remapper Test', () => {
         };
         let outputSubmission = {
             dataCommons: "CDS",
-            dataCommonsDisplayName: "GC"
-        }
+            dataCommonsDisplayName: "GC",
+            ...NOT_STARTED_ROLLUPS,
+        };
         expect(getDataCommonsDisplayNamesForSubmission(inputSubmission)).toStrictEqual(outputSubmission);
         inputSubmission = {
             dataCommons: "ICDC"
         };
         outputSubmission = {
             dataCommons: "ICDC",
-            dataCommonsDisplayName: "ICDC"
-        }
+            dataCommonsDisplayName: "ICDC",
+            ...NOT_STARTED_ROLLUPS,
+        };
         expect(getDataCommonsDisplayNamesForSubmission(inputSubmission)).toStrictEqual(outputSubmission);
         inputSubmission = {
             dataCommons: null
         };
-        expect(getDataCommonsDisplayNamesForSubmission(inputSubmission)).toStrictEqual(inputSubmission);
+        expect(getDataCommonsDisplayNamesForSubmission(inputSubmission)).toStrictEqual({
+            dataCommons: null,
+            ...NOT_STARTED_ROLLUPS,
+        });
+    });
+
+    test('getDataCommonsDisplayNamesForSubmission normalizes invalid DataSync rollup values', () => {
+        const input = {
+            metadataDataSyncStatus: null,
+            fileDataSyncStatus: '',
+        };
+        const out = getDataCommonsDisplayNamesForSubmission(input);
+        expect(out.metadataDataSyncStatus).toBe(DATA_SYNC_STATUS.NOT_STARTED);
+        expect(out.fileDataSyncStatus).toBe(DATA_SYNC_STATUS.NOT_STARTED);
+
+        const withProgress = {
+            metadataDataSyncStatus: DATA_SYNC_STATUS.IN_PROGRESS,
+            fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+        };
+        const outProgress = getDataCommonsDisplayNamesForSubmission(withProgress);
+        expect(outProgress.metadataDataSyncStatus).toBe(DATA_SYNC_STATUS.IN_PROGRESS);
+        expect(outProgress.fileDataSyncStatus).toBe(DATA_SYNC_STATUS.SUCCEEDED);
     });
 
     test('/test getDataCommonsDisplayNamesForListSubmissions', () => {
@@ -82,10 +111,15 @@ describe('Data Commons Remapper Test', () => {
         let outputSubmission = {
             dataCommons: "CDS",
             dataCommonsDisplayName: "GC",
-            studyAbbreviation: ""
-        }
-        inputListSubmission.submissions = [inputSubmission, {}, inputSubmission]
-        outputListSubmission.submissions = [outputSubmission, { studyAbbreviation: "" }, outputSubmission]
+            studyAbbreviation: "",
+            ...NOT_STARTED_ROLLUPS,
+        };
+        inputListSubmission.submissions = [inputSubmission, {}, inputSubmission];
+        outputListSubmission.submissions = [
+            outputSubmission,
+            { studyAbbreviation: '', ...NOT_STARTED_ROLLUPS },
+            outputSubmission,
+        ];
         expect(getDataCommonsDisplayNamesForListSubmissions(inputListSubmission)).toStrictEqual(outputListSubmission);
     });
 

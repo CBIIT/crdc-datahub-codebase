@@ -3,8 +3,9 @@ const SubmissionModel = require("../mongoose/models/submission");
 const {MongoPagination} = require("../crdc-datahub-database-drivers/domain/mongo-pagination");
 const {SUBMISSION_ORDER_BY_MAP} = require("../constants/submission-constants");
 const {DELETED, CANCELED, NEW, IN_PROGRESS, SUBMITTED, WITHDRAWN, RELEASED, REJECTED, COMPLETED, ARCHIVED,
-    COLLABORATOR_PERMISSIONS
+    COLLABORATOR_PERMISSIONS, DATA_TYPE
 } = require("../constants/submission-constants");
+const { DATA_SYNC_STATUS } = require("../constants/data-sync-constants");
 const ERROR = require("../constants/error-constants");
 const {replaceErrorString, escapeRegexLiteral} = require("../utility/string-util");
 const {formatNestedOrganization, formatNestedOrganizations} = require("../utility/organization-transformer");
@@ -650,8 +651,9 @@ class SubmissionDAO extends MongooseGenericDAO {
 
     /**
      * Finds completed submissions past the retention window for archival.
+     * Metadata-only submissions are included. Other submissions must have a succeeded file DataSync.
      * @param {number} completedSubmissionDays Retention days after completion
-     * @returns {Promise<object[]>}
+     * @returns {Promise<object[]>} Matching submissions, or an empty array when the query fails
      */
     async getToBeArchivedSubmissions(completedSubmissionDays) {
         try {
@@ -661,7 +663,11 @@ class SubmissionDAO extends MongooseGenericDAO {
                 status: COMPLETED,
                 updatedAt: {
                     $lte: targetRetentionDate
-                }
+                },
+                $or: [
+                    { dataType: DATA_TYPE.METADATA_ONLY },
+                    { fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED },
+                ],
             });
         } catch (error) {
             console.error('Error getting archiveCompletedSubmissions:', error);

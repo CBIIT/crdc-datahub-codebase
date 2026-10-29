@@ -2,6 +2,7 @@ const { NEW, IN_PROGRESS, SUBMITTED, RELEASED, COMPLETED, ARCHIVED, CANCELED,
     REJECTED, WITHDRAWN, ACTIONS, VALIDATION, VALIDATION_STATUS, INTENTION, DATA_TYPE, DELETED, DATA_FILE,
     CONSTRAINTS, COLLABORATOR_PERMISSIONS, UPLOADING_HEARTBEAT_CONFIG_TYPE, SUBMISSION_TYPE
 } = require("../constants/submission-constants");
+const { DATA_SYNC_STATUS } = require("../constants/data-sync-constants");
 const fs = require('fs');
 const path = require('path');
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
@@ -71,10 +72,37 @@ Set.prototype.toArray = function() {
 
 class Submission {
     _NOT_ASSIGNED = "Not yet assigned";
+    /**
+     * @param {object} logCollection Log collection
+     * @param {object} submissionCollection Submission collection
+     * @param {object} batchService Batch service
+     * @param {object} userService User service
+     * @param {object} programService Program service
+     * @param {object} notificationService Notification service
+     * @param {object} dataRecordService Data record service
+     * @param {Function} fetchDataModelInfo Loads data model info
+     * @param {object} awsService AWS service
+     * @param {string} metadataQueueName Metadata SQS queue name
+     * @param {object} s3Service S3 service
+     * @param {object} emailParams Email parameters
+     * @param {string[]} dataCommonsList Allowed data commons
+     * @param {string[]} hiddenDataCommonsList Hidden data commons
+     * @param {string} sqsLoaderQueue Loader SQS queue name
+     * @param {object} qcResultsService QC results service
+     * @param {object} uploaderCLIConfigs Uploader CLI configuration
+     * @param {string} submissionBucketName Submission S3 bucket name
+     * @param {object} configurationService Configuration service
+     * @param {object} uploadingMonitor Uploading heartbeat monitor
+     * @param {Map} dataCommonsBucketMap Data commons to bucket map
+     * @param {object} authorizationService Authorization service
+     * @param {object} dataModelService Data model service
+     * @param {DataSyncService} dataSyncService Read-only DataSync task records
+     */
     constructor(logCollection, submissionCollection, batchService, userService, programService, notificationService,
                 dataRecordService, fetchDataModelInfo, awsService, metadataQueueName, s3Service, emailParams, dataCommonsList,
                 hiddenDataCommonsList, sqsLoaderQueue, qcResultsService, uploaderCLIConfigs, 
-                submissionBucketName, configurationService, uploadingMonitor, dataCommonsBucketMap, authorizationService, dataModelService) {
+                submissionBucketName, configurationService, uploadingMonitor, dataCommonsBucketMap, authorizationService, dataModelService,
+                dataSyncService) {
         this.logCollection = logCollection;
         this.submissionCollection = submissionCollection;
         this.batchService = batchService;
@@ -107,6 +135,7 @@ class Submission {
         this.approvedStudyDAO = new ApprovedStudyDAO();
         this.validationDAO = new ValidationDAO();
         this.applicationDAO = new ApplicationDAO();
+        this.dataSyncService = dataSyncService;
     }
 
     /**
@@ -478,6 +507,58 @@ class Submission {
         }
 
         return await this.batchService.listBatches(params);
+    }
+
+    /**
+     * Rejects unless the session is initialized and the user can view the submission.
+     * @param {string} submissionID Submission ID
+     * @param {object} context GraphQL context with userInfo
+     * @throws {Error} When the session is not initialized, the submission does not exist, or the user cannot view it
+     */
+    async _verifyDataSyncAccess(submissionID, context) {
+        verifySession(context)
+            .verifyInitialized();
+
+        const aSubmission = await this._findByID(submissionID);
+        if (!aSubmission) {
+            throw new Error(ERROR.SUBMISSION_NOT_EXIST);
+        }
+
+        const viewScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.VIEW, aSubmission);
+        if (viewScope.isNoneScope() ||
+            !userHasValidScope(context?.userInfo?._id, viewScope, context?.userInfo?.studies, context?.userInfo?.dataCommons, aSubmission)) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+    }
+
+    /**
+     * GraphQL resolver for listDataSyncs. Lists a submission's DataSync tasks, newest startTime first.
+     * Requires the same access as viewing the submission.
+     * @param {object} params GraphQL arguments
+     * @param {string} params.submissionID Submission ID
+     * @param {string} [params.type] DataSync type (metadata or file); omitted returns every type
+     * @param {object} context GraphQL context with userInfo
+     * @returns {Promise<object[]>} DataSync records
+     * @throws {Error} When the session is not initialized, the submission does not exist, the user cannot view it, or the arguments are invalid
+     */
+    async listDataSyncs(params, context) {
+        await this._verifyDataSyncAccess(params?.submissionID, context);
+        return await this.dataSyncService.listBySubmissionID(params.submissionID, params?.type);
+    }
+
+    /**
+     * GraphQL resolver for getLatestDataSync. Returns the submission's newest DataSync task of one type.
+     * Requires the same access as viewing the submission.
+     * @param {object} params GraphQL arguments
+     * @param {string} params.submissionID Submission ID
+     * @param {string} params.type DataSync type (metadata or file)
+     * @param {object} context GraphQL context with userInfo
+     * @returns {Promise<object|null>} The latest record, or null when none match
+     * @throws {Error} When the session is not initialized, the submission does not exist, the user cannot view it, or the arguments are invalid
+     */
+    async getLatestDataSync(params, context) {
+        await this._verifyDataSyncAccess(params?.submissionID, context);
+        return await this.dataSyncService.findLatestBySubmissionIDAndType(params.submissionID, params?.type);
     }
 
   async getSubmission(params, context){
@@ -3274,7 +3355,7 @@ const isUserScope = (userID, userRole, userStudies, userDataCommons, aSubmission
  * @param {string} userID - The ID of the user.
  * @param {Object} userScope - The scope object with methods to check scope type.
  * @param {Array<Object>} userStudies - Array of study objects assigned to the user.
- * @param {Array<string>} userDataCommons - Array of data commons IDs assigned to the user.
+ * @param {Array<string>|*} userDataCommons - Array of data commons IDs assigned to the user; non-arrays are treated as none
  * @param {Object} aSubmission - The submission object to check access for.
  * @returns {boolean} True if the user has valid access to the submission, false otherwise.
  */
@@ -3290,7 +3371,8 @@ const userHasValidScope = (userID, userScope, userStudies, userDataCommons, aSub
         const studies = Array.isArray(userStudies) && userStudies.length > 0 ? userStudies : [];
         return isAllStudy(studies) || Boolean(studies.find(study => study._id === aSubmission.studyID));
     } else if (userScope.isDCScope()) {
-        return userDataCommons.includes(aSubmission.dataCommons); // Access to assigned data commons.
+        const dataCommons = Array.isArray(userDataCommons) ? userDataCommons : [];
+        return dataCommons.includes(aSubmission.dataCommons); // Access to assigned data commons.
     }
     return false;
 }
@@ -3399,6 +3481,8 @@ class DataSubmission {
         this.createdAt = this.updatedAt = getCurrentTime();
         // no metadata to be validated
         this.metadataValidationStatus = this.fileValidationStatus = this.crossSubmissionStatus = null;
+        this.metadataDataSyncStatus = DATA_SYNC_STATUS.NOT_STARTED;
+        this.fileDataSyncStatus = DATA_SYNC_STATUS.NOT_STARTED;
         this.fileErrors = [];
         this.fileWarnings = [];
         this.intention = intention;

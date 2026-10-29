@@ -147,3 +147,6 @@ resources/aws-documentdb-certificate/
 
 # model dict dumps
 **/models/*.json
+
+# intermediate integrity result file
+intermediate_results.csv

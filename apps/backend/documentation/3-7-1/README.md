@@ -16,6 +16,7 @@ One-time data backfills from 3.7.0 are **not** re-run here; if you need those st
 |------|---------|
 | `3-7-1-migration.js` | Orchestrator (runs all steps below) |
 | `create-data-sync-collection.js` | Create `dataSync` collection if missing (one-time) |
+| `backfill-submission-data-sync-status.js` | Set `metadataDataSyncStatus` and `fileDataSyncStatus` to `Not Started` where missing, null, or empty string (one-time) |
 | `ensure-indexes-migration.js` | Create catalog indexes via `recurring-steps/ensure-indexes.js` (background builds; missing collections logged, not created) |
 | `sync-pbac-defaults-migration.js` | Sync PBAC from JSON via `recurring-steps/sync-pbac-defaults.js` |
 | `backfill-submission-submission-request-id.js` | Backfill `submissionRequestID` via `recurring-steps/backfill-submission-request-id.js` |
@@ -23,9 +24,10 @@ One-time data backfills from 3.7.0 are **not** re-run here; if you need those st
 ## Execution order
 
 1. `create-data-sync-collection.js` (one-time) — creates the `dataSync` collection when absent; idempotent if it already exists
-2. `ensure-indexes-migration.js` (recurring) — creates catalog indexes when missing (`background: true`). Startup waits until the catalog is processed, then listens even if some indexes failed. Missing collections are logged and skipped (not created). Same key pattern under a different name logs a warning and skips.
-3. `sync-pbac-defaults-migration.js` (recurring) — merges PBAC defaults into `configuration`
-4. `backfill-submission-submission-request-id.js` (recurring) — only touches submissions where `submissionRequestID` is missing, null, or empty, so it also repairs records whose study gained an `applicationID` after the submission was created
+2. `backfill-submission-data-sync-status.js` (one-time) — sets submission DataSync rollup fields where missing, null, or empty string
+3. `ensure-indexes-migration.js` (recurring) — creates catalog indexes when missing (`background: true`). Startup waits until the catalog is processed, then listens even if some indexes failed. Missing collections are logged and skipped (not created). Same key pattern under a different name logs a warning and skips.
+4. `sync-pbac-defaults-migration.js` (recurring) — merges PBAC defaults into `configuration`
+5. `backfill-submission-submission-request-id.js` (recurring) — only touches submissions where `submissionRequestID` is missing, null, or empty, so it also repairs records whose study gained an `applicationID` after the submission was created
 
 ## Prerequisites
 

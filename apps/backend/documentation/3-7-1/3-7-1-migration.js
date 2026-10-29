@@ -6,6 +6,7 @@
  *
  * Migration files:
  * - create-data-sync-collection.js: Create dataSync collection if missing
+ * - backfill-submission-data-sync-status.js: Set submission DataSync rollup fields where missing (one-time)
  * - ensure-indexes-migration.js: Create catalog indexes (recurring step)
  * - sync-pbac-defaults-migration.js: Sync PBAC defaults from JSON (recurring step)
  * - backfill-submission-submission-request-id.js: Backfill Submission.submissionRequestID (recurring;
@@ -18,6 +19,7 @@ const {
 } = require('../recurring-steps/migration-utils');
 
 const { createDataSyncCollection } = require('./create-data-sync-collection');
+const { executeBackfillSubmissionDataSyncStatus } = require('./backfill-submission-data-sync-status');
 const { executeEnsureIndexes } = require('./ensure-indexes-migration');
 const { executeSyncPbacDefaults } = require('./sync-pbac-defaults-migration');
 const { executeBackfillSubmissionRequestID } = require('./backfill-submission-submission-request-id');
@@ -39,6 +41,11 @@ async function orchestrateMigration() {
                 name: 'Create dataSync collection',
                 file: 'create-data-sync-collection.js',
                 execute: () => createDataSyncCollection(db)
+            },
+            {
+                name: 'Backfill Submission DataSync status fields (one-time)',
+                file: 'backfill-submission-data-sync-status.js',
+                execute: () => executeBackfillSubmissionDataSyncStatus(db)
             },
             {
                 name: 'Ensure DocumentDB indexes (recurring)',

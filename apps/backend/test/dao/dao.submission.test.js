@@ -33,8 +33,9 @@ const ApprovedStudyDAO = require('../../dao/approvedStudy');
 const UserDAO = require('../../dao/user');
 const {
     NEW, IN_PROGRESS, SUBMITTED, RELEASED, COMPLETED, ARCHIVED, REJECTED, WITHDRAWN, CANCELED, DELETED,
-    COLLABORATOR_PERMISSIONS,
+    COLLABORATOR_PERMISSIONS, DATA_TYPE,
 } = require('../../constants/submission-constants');
+const { DATA_SYNC_STATUS } = require('../../constants/data-sync-constants');
 const ERROR = require('../../constants/error-constants');
 const {
     APPROVED_STUDIES_COLLECTION,
@@ -695,6 +696,10 @@ describe('SubmissionDAO', () => {
             expect(SubmissionModel.find).toHaveBeenCalledWith(expect.objectContaining({
                 status: COMPLETED,
                 updatedAt: expect.objectContaining({ $lte: expect.any(Date) }),
+                $or: [
+                    { dataType: DATA_TYPE.METADATA_ONLY },
+                    { fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED },
+                ],
             }));
             expect(result).toEqual([{ id: 'sub-3', _id: 'sub-3' }]);
         });
