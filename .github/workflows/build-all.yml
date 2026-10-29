@@ -127,6 +127,10 @@ jobs:
             ecr_repo: crdc-hub-pvpuller
             dockerfile: apps/validator/pv_puller.dockerfile
             context: apps/validator
+          - name: file-integrity
+            ecr_repo: crdc-hub-file-integrity
+            dockerfile: apps/validator/file_integrity.dockerfile
+            context: apps/validator
 
     steps:
       - name: Checkout Code Repository
@@ -326,6 +330,8 @@ jobs:
             ecr_repo: crdc-hub-metadatavalidation
           - name: pv-puller
             ecr_repo: crdc-hub-pvpuller
+          - name: file-integrity
+            ecr_repo: crdc-hub-file-integrity
     outputs:
       backend_scan_result: ${{ steps.set_scan_output.outputs.scan_result }}
     steps:
