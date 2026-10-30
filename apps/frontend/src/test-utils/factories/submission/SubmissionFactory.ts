@@ -43,6 +43,8 @@ export const baseSubmission: Submission = {
     formatted: "",
     size: 0,
   },
+  metadataDataSyncStatus: "Not Started",
+  fileDataSyncStatus: "Not Started",
   createdAt: "",
   updatedAt: "",
 };
