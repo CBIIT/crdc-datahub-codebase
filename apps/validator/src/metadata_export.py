@@ -900,9 +900,15 @@ def metadata_export(configs, job_queue, mongo_dao):
                     if not submission:
                         log.error(f'Submission {submission_id} does not exist!')
                         continue
-                    if data.get(SQS_TYPE) == TYPE_EXPORT_METADATA: 
+                    if data.get(SQS_TYPE) == TYPE_EXPORT_METADATA:
                         export_validator = ExportMetadata(mongo_dao, submission, model_store, configs)
-                        export_validator.export_data_to_file()
+                        try:
+                            export_validator.export_data_to_file()
+                        except Exception as export_error:
+                            # Record a Failed metadata dataSync for this attempt; the message is left on
+                            # the queue so the normal SQS retry and redrive policy apply.
+                            export_validator.record_export_failure(export_error)
+                            raise
                         # transfer metadata to destination s3 bucket if error occurred.
                         export_validator.transfer_release_metadata()
                     elif data.get(SQS_TYPE) == TYPE_EXPORT_DCF_MANIFEST:
@@ -958,7 +964,9 @@ class ExportMetadata:
     def export_data_to_file(self):
         submission_id, root_path, bucket_name, datacommon, study_id = self.get_submission_info()
         if not root_path or not submission_id or not bucket_name:
-            self.log(f"{submission_id}: The process of exporting metadata stopped due to incomplete data in the submission.")
+            msg = f"{submission_id}: The process of exporting metadata stopped due to incomplete data in the submission."
+            self.log.error(msg)
+            raise ValueError(msg)
 
         model_version = self.submission.get(MODEL_VERSION)
         #1 get data model based on datacommon and version
@@ -979,10 +987,8 @@ class ExportMetadata:
         study = self.mongo_dao.find_study_by_id(study_id)
         if study:
             study = {"name": study.get("studyName"), "abbreviation": study.get("studyAbbreviation"), "dbGaPID": study.get("dbGaPID")}
-        submitter = self.mongo_dao.find_user_by_id(self.submission.get("submitterID"))
-        if submitter:
-            submitter = {"name": submitter.get("firstName") + " " + submitter.get("lastName"), "email": submitter.get("email"), "institution": submitter.get("institution", {}).get("name")}                                      
-        self.release_manifest_data = {"submission ID": submission_id, "submission creation date": convert_date_time(self.submission.get(CREATED_AT), "%Y-%m-%d %H:%M:%S"), 
+        submitter = self._resolve_submitter()
+        self.release_manifest_data = {"submission ID": submission_id, "submission creation date": convert_date_time(self.submission.get(CREATED_AT), "%Y-%m-%d %H:%M:%S"),
                                       "submission release date": get_date_time("%Y-%m-%d %H:%M:%S"), "study": study, "submitter": submitter,
                                       "data concierge": self._resolve_concierge(),
                                       "data model version": self.submission.get("modelVersion"), "intention": self.submission.get(SUBMISSION_INTENTION),
@@ -1015,6 +1021,20 @@ class ExportMetadata:
             DCF_manifest_exporter.generate_dcf()
         #5 export release manifest file as release-info.json
         self.upload_release_manifest()
+
+    def _resolve_submitter(self):
+        """Resolves the submitter block for the release manifest.
+
+        name is the available first/last name parts joined by a space; institution is the name of
+        the user's institution. Any field may be null, including institution when the user has none.
+        @returns dict with name, email, institution, or None when the user is not found
+        """
+        submitter = self.mongo_dao.find_user_by_id(self.submission.get("submitterID"))
+        if not submitter:
+            return None
+        institution = submitter.get("institution") or {}
+        name = " ".join(part for part in (submitter.get("firstName"), submitter.get("lastName")) if part) or None
+        return {"name": name, "email": submitter.get("email"), "institution": institution.get("name")}
 
     def _resolve_concierge(self):
         """Resolves the concierge information block based on available information"""
@@ -1392,9 +1412,12 @@ class ExportMetadata:
         dcf_exporter = GenerateDCF(self.configs, self.mongo_dao, self.submission, self.s3_service, None)
         dcf_exporter.generate_dcf_preview()
 
-    def transfer_release_metadata(self):
-        """
-        transfer released data to cds cbiit metadata bucket by aws datasync
+    def _release_metadata_transfer_paths(self):
+        """Source and destination of the release metadata transfer.
+
+        Shared by transfer_release_metadata and record_export_failure so a failure record carries
+        the same sourceFolder/targetFolder the real transfer would have used.
+        @returns (bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags)
         """
         id, root_path, bucket_name, dataCommon, _ = self.get_submission_info()
         dest_bucket_name = self.mongo_dao.get_bucket_name("Metadata Bucket", dataCommon)
@@ -1404,7 +1427,34 @@ class ExportMetadata:
             {"Key": "Tier", "Value": self.configs[TIER_CONFIG]},
             {"Key": "Type", "Value" : "Metadata"}
             ]
+        return bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags
+
+    def transfer_release_metadata(self):
+        """
+        transfer released data to cds cbiit metadata bucket by aws datasync
+        """
+        bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags = self._release_metadata_transfer_paths()
         self.transfer_s3_obj(bucket_name, data_file_folder, dest_bucket_name, dest_file_folder, tags, sync_type=DATA_SYNC_TYPE_METADATA)
+
+    def record_export_failure(self, error):
+        """Record a Failed metadata dataSync for an export that did not reach the transfer step.
+
+        Inserts the record and finalizes it as Failed with lastError "export_metadata: <message>"
+        through the same tracking helpers as a transfer, so the submission's metadataDataSyncStatus
+        is rolled up by the monitor. No AWS resources are involved, so no cleanup is scheduled.
+        Never raises.
+        @param error the exception raised by export_data_to_file
+        """
+        try:
+            _, data_file_folder, _, dest_file_folder, _ = self._release_metadata_transfer_paths()
+            tracking = self._new_data_sync_tracking(DATA_SYNC_TYPE_METADATA, data_file_folder, dest_file_folder)
+            self._record_data_sync_start(tracking)
+            self._mark_data_sync_start_failed(tracking, "export_metadata", str(error) or type(error).__name__)
+        except Exception:
+            self.log.error(
+                f"{DATA_SYNC_LOG_TRACKING_FAILED} record export failure raised: {get_exception_msg()} "
+                f"submissionID={self.submission.get(ID)} type={DATA_SYNC_TYPE_METADATA}"
+            )
     
     def transfer_released_files(self):
         """
