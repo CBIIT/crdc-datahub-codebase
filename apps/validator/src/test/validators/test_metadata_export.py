@@ -104,3 +104,59 @@ class TestResolveConcierge:
 
         mongo_dao.find_user_by_id.assert_called_once_with("concierge-1")
         assert result == {"name": "Jane Doe", "email": "jane.doe@example.com"}
+
+
+def _make_export_metadata_with_submitter(submitter_user):
+    export_metadata, mongo_dao = _make_export_metadata(
+        submission_overrides={"submitterID": "submitter-1"},
+        concierge_user=submitter_user,
+    )
+    return export_metadata, mongo_dao
+
+
+class TestResolveSubmitter:
+    """_resolve_submitter builds the nullable submitter block of the release manifest."""
+
+    def test_institution_null_yields_null_institution(self):
+        gen, mongo_dao = _make_export_metadata_with_submitter(
+            {"firstName": "Ada", "lastName": "Admin", "email": "ada@example.com", "institution": None}
+        )
+
+        result = gen._resolve_submitter()
+
+        mongo_dao.find_user_by_id.assert_called_once_with("submitter-1")
+        assert result == {"name": "Ada Admin", "email": "ada@example.com", "institution": None}
+
+    def test_institution_key_absent(self):
+        gen, _ = _make_export_metadata_with_submitter(
+            {"firstName": "Ada", "lastName": "Admin", "email": "ada@example.com"}
+        )
+
+        assert gen._resolve_submitter() == {"name": "Ada Admin", "email": "ada@example.com", "institution": None}
+
+    def test_institution_name_is_used_when_present(self):
+        gen, _ = _make_export_metadata_with_submitter(
+            {"firstName": "Sam", "lastName": "Submitter", "email": "sam@example.com",
+             "institution": {"_id": "inst-1", "name": "NCI", "status": "Active"}}
+        )
+
+        assert gen._resolve_submitter() == {"name": "Sam Submitter", "email": "sam@example.com", "institution": "NCI"}
+
+    def test_institution_without_name_yields_null(self):
+        gen, _ = _make_export_metadata_with_submitter(
+            {"firstName": "Sam", "lastName": "Submitter", "email": "sam@example.com", "institution": {"_id": "inst-1"}}
+        )
+
+        assert gen._resolve_submitter()["institution"] is None
+
+    def test_name_uses_available_parts(self):
+        gen, _ = _make_export_metadata_with_submitter({"firstName": "Ada", "lastName": None, "email": "a@example.com"})
+        assert gen._resolve_submitter()["name"] == "Ada"
+
+        gen, _ = _make_export_metadata_with_submitter({"email": "a@example.com"})
+        assert gen._resolve_submitter()["name"] is None
+
+    def test_returns_none_when_user_not_found(self):
+        gen, _ = _make_export_metadata_with_submitter(None)
+
+        assert gen._resolve_submitter() is None
