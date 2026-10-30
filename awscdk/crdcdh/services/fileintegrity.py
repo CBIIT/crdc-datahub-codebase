@@ -39,30 +39,29 @@ class fileintegrityService:
     role_arn = exec_role.role_arn
 
     # DocumentDB connection details (same sources stack.py uses for the shared secret)
-    if config.getboolean('db', 'create_docdb', fallback=False):
-        docdb_endpoint = self.docdb.cluster.attr_endpoint
-    else:
-        docdb_endpoint = config['db']['docdb_endpoint']
+    #if config.getboolean('db', 'create_docdb', fallback=False):
+        #docdb_endpoint = self.docdb.cluster.attr_endpoint
+    #else:
+        #docdb_endpoint = config['db']['docdb_endpoint']
 
-    db_connection_string = (
-        "mongodb://{}:{}@{}:27017/"
-        "?tls=true"
-        "&tlsCAFile=resources/aws-documentdb-certificate/global-bundle.pem"
-        "&replicaSet=rs0"
-        "&readPreference=secondaryPreferred"
-        "&retryWrites=false"
-    ).format(
-        quote_plus(config['db']['docdb_user']),
-        quote_plus(config['db']['docdb_password']),
-        docdb_endpoint,
-    )
+    #db_connection_string = (
+        #"mongodb://{}:{}@{}:27017/"
+        #"?tls=true"
+        #"&tlsCAFile=resources/aws-documentdb-certificate/global-bundle.pem"
+        #"&replicaSet=rs0"
+        #"&readPreference=secondaryPreferred"
+        #"&retryWrites=false"
+    #).format(
+        #quote_plus(config['db']['docdb_user']),
+        #quote_plus(config['db']['docdb_password']),
+        #docdb_endpoint,
+    #)
 
     environment={
             "DATE":date.today().isoformat(),
             "PROJECT":"crdc-hub",
             "VERSION":config[service]['image'],
             "RESULT_BUCKET":config[service]['result_bucket'],
-            "DB_CONNECTION_STRING": db_connection_string,
             "FARGATE":"true",
             "SESSION_SECRET":"abcd256asghaaamnkloofghj",
             "NEW_RELIC_APP_NAME":"{}-{}".format(self.namingPrefix, service),
@@ -85,6 +84,7 @@ class fileintegrityService:
             "DOCDB_USERNAME":ecs.Secret.from_secrets_manager(self.secret, 'docdb_username'),
             "DOCDB_PASSWORD":ecs.Secret.from_secrets_manager(self.secret, 'docdb_password'),
             "DOCDB_DB_NAME":ecs.Secret.from_secrets_manager(self.secret, 'docdb_db_name'),
+            "DB_CONNECTION_STRING":ecs.Secret.from_secrets_manager(self.secret, 'docdb_connection_string'), 
         }   
     
     # create sqs
