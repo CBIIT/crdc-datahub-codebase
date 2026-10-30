@@ -964,8 +964,9 @@ class ExportMetadata:
     def export_data_to_file(self):
         submission_id, root_path, bucket_name, datacommon, study_id = self.get_submission_info()
         if not root_path or not submission_id or not bucket_name:
-            self.log.error(f"{submission_id}: The process of exporting metadata stopped due to incomplete data in the submission.")
-            return
+            msg = f"{submission_id}: The process of exporting metadata stopped due to incomplete data in the submission."
+            self.log.error(msg)
+            raise ValueError(msg)
 
         model_version = self.submission.get(MODEL_VERSION)
         #1 get data model based on datacommon and version
