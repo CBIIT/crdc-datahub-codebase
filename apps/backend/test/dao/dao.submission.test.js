@@ -697,8 +697,15 @@ describe('SubmissionDAO', () => {
                 status: COMPLETED,
                 updatedAt: expect.objectContaining({ $lte: expect.any(Date) }),
                 $or: [
-                    { dataType: DATA_TYPE.METADATA_ONLY },
-                    { fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED },
+                    {
+                        dataType: DATA_TYPE.METADATA_ONLY,
+                        metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+                    },
+                    {
+                        dataType: DATA_TYPE.METADATA_AND_DATA_FILES,
+                        metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+                        fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+                    },
                 ],
             }));
             expect(result).toEqual([{ id: 'sub-3', _id: 'sub-3' }]);

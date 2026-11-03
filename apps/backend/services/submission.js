@@ -2,7 +2,9 @@ const { NEW, IN_PROGRESS, SUBMITTED, RELEASED, COMPLETED, ARCHIVED, CANCELED,
     REJECTED, WITHDRAWN, ACTIONS, VALIDATION, VALIDATION_STATUS, INTENTION, DATA_TYPE, DELETED, DATA_FILE,
     CONSTRAINTS, COLLABORATOR_PERMISSIONS, UPLOADING_HEARTBEAT_CONFIG_TYPE, SUBMISSION_TYPE
 } = require("../constants/submission-constants");
-const { DATA_SYNC_STATUS } = require("../constants/data-sync-constants");
+const { DATA_SYNC_STATUS, DATA_SYNC_TYPE } = require("../constants/data-sync-constants");
+const { compareSyncedPrefix } = require("../utility/synced-copy-compare");
+const { isArchiveEligible } = require("../utility/archive-eligibility");
 const fs = require('fs');
 const path = require('path');
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
@@ -1648,8 +1650,73 @@ class Submission {
     }
 
     /**
-     * archiveCompletedSubmissions
-     * description: overnight job to set completed submission after retention with "archived = true", archive related data and delete s3 files
+     * Resolves the destination bucket for a DataSync type.
+     * @param {string} type DataSync type
+     * @param {object} submission Submission document
+     * @returns {Promise<string|undefined>}
+     */
+    async _syncDestinationBucket(type, submission) {
+        if (type === DATA_SYNC_TYPE.METADATA) {
+            return this.dataCommonsBucketMap?.get(submission.dataCommons);
+        }
+        const dmBucketConfig = await this.configurationService.findByType("DM_BUCKET_NAME");
+        return dmBucketConfig?.keys?.dm_bucket;
+    }
+
+    /**
+     * Verifies that DataSync destination copies match the submission source prefixes.
+     * Fails closed: anything unverifiable (missing or unsucceeded DataSync record, missing
+     * folders, unresolved destination bucket, listing error) returns `ok: false` so the
+     * caller retains the source data. Never throws.
+     * @param {object} submission Submission document
+     * @returns {Promise<{ok: boolean, reason?: string}>}
+     */
+    async _verifySyncedCopies(submission) {
+        try {
+            if (!submission?.bucketName) {
+                return { ok: false, reason: "MissingSubmissionBucket" };
+            }
+            const types = [DATA_SYNC_TYPE.METADATA];
+            if (submission.dataType === DATA_TYPE.METADATA_AND_DATA_FILES) {
+                types.push(DATA_SYNC_TYPE.FILE);
+            }
+            for (const type of types) {
+                const record = await this.dataSyncService.findLatestBySubmissionIDAndType(submission._id, type);
+                if (!record) {
+                    return { ok: false, reason: `NoDataSyncRecord for ${type}` };
+                }
+                if (record.status !== DATA_SYNC_STATUS.SUCCEEDED) {
+                    return { ok: false, reason: `${type} DataSyncNotSucceeded: ${record.status}` };
+                }
+                if (!record.sourceFolder || !record.targetFolder) {
+                    return { ok: false, reason: `${type} MissingSyncFolder` };
+                }
+                const destBucket = await this._syncDestinationBucket(type, submission);
+                if (!destBucket) {
+                    return { ok: false, reason: `${type} NoDestinationBucket` };
+                }
+                const result = await compareSyncedPrefix({
+                    sourceBucket: submission.bucketName,
+                    sourcePrefix: record.sourceFolder,
+                    destBucket,
+                    destPrefix: record.targetFolder,
+                    s3Service: this.s3Service,
+                    logger: console,
+                });
+                if (!result.ok) {
+                    return { ok: false, reason: `${type} ${result.reason}` };
+                }
+            }
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, reason: error.message };
+        }
+    }
+
+    /**
+     * Overnight job that archives completed submissions past retention after verifying
+     * that DataSync destination copies still match the source prefixes.
+     * @returns {Promise<string>} Outcome summary
      */
     async archiveSubmissions(){
         try {
@@ -1660,9 +1727,21 @@ class Submission {
             }
            
             let failedDeleteSubs = []
+            let retainedSubs = []
             //archive related data and delete files in s3
             for (const sub of archiveSubs) {
                 try {
+                    if (!isArchiveEligible(sub)) {
+                        console.error(`Skipping archive for submission ${sub._id}: DataSync status criteria not met.`);
+                        retainedSubs.push(sub._id);
+                        continue;
+                    }
+                    const verification = await this._verifySyncedCopies(sub);
+                    if (!verification.ok) {
+                        console.error(`Skipping archive for submission ${sub._id}: ${verification.reason}`);
+                        retainedSubs.push(sub._id);
+                        continue;
+                    }
                     await this._archiveSubmission(sub._id, sub.bucketName, sub.rootPath);
                     console.debug(`Successfully archive completed submissions: ${sub._id}.`);
                 } catch (e) {
@@ -1670,7 +1749,14 @@ class Submission {
                     failedDeleteSubs.push(sub._id);
                 }
             }
-            return (failedDeleteSubs.length === 0 )? "successful!" : `Failed to delete files archived completed submission submissions: ${failedDeleteSubs.toString()}.  please contact admin.`;
+            const problems = [];
+            if (retainedSubs.length > 0) {
+                problems.push(`Data sync comparison failed, data retained for submission(s): ${retainedSubs.toString()}.`);
+            }
+            if (failedDeleteSubs.length > 0) {
+                problems.push(`Failed to delete files archived completed submission submissions: ${failedDeleteSubs.toString()}.`);
+            }
+            return (problems.length === 0) ? "successful!" : `${problems.join(" ")}  please contact admin.`;
         }
         catch (e){
             console.error("Failed to archive completed submission(s) with error:" + e.message);

@@ -651,7 +651,8 @@ class SubmissionDAO extends MongooseGenericDAO {
 
     /**
      * Finds completed submissions past the retention window for archival.
-     * Metadata-only submissions are included. Other submissions must have a succeeded file DataSync.
+     * Metadata Only submissions require a succeeded metadata DataSync.
+     * Metadata and Data Files submissions require both metadata and file DataSyncs to have succeeded.
      * @param {number} completedSubmissionDays Retention days after completion
      * @returns {Promise<object[]>} Matching submissions, or an empty array when the query fails
      */
@@ -665,8 +666,15 @@ class SubmissionDAO extends MongooseGenericDAO {
                     $lte: targetRetentionDate
                 },
                 $or: [
-                    { dataType: DATA_TYPE.METADATA_ONLY },
-                    { fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED },
+                    {
+                        dataType: DATA_TYPE.METADATA_ONLY,
+                        metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+                    },
+                    {
+                        dataType: DATA_TYPE.METADATA_AND_DATA_FILES,
+                        metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+                        fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+                    },
                 ],
             });
         } catch (error) {

@@ -31,7 +31,7 @@ describe('SubmissionDAO data sync', () => {
 
     describe('getToBeArchivedSubmissions', () => {
 
-        it('requires a succeeded file sync or a metadata-only submission', async () => {
+        it('requires succeeded metadata sync, and a succeeded file sync for Metadata and Data Files', async () => {
             const findManySpy = jest.spyOn(dao, 'findMany').mockResolvedValue([]);
 
             const submissions = await dao.getToBeArchivedSubmissions(30);
@@ -40,8 +40,15 @@ describe('SubmissionDAO data sync', () => {
                 status: COMPLETED,
                 updatedAt: { $lte: expect.any(Date) },
                 $or: [
-                    { dataType: DATA_TYPE.METADATA_ONLY },
-                    { fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED },
+                    {
+                        dataType: DATA_TYPE.METADATA_ONLY,
+                        metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+                    },
+                    {
+                        dataType: DATA_TYPE.METADATA_AND_DATA_FILES,
+                        metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+                        fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+                    },
                 ],
             });
         });
