@@ -41,10 +41,13 @@ Once the backlog is cleared every submission has a `dataSync` record and this sc
   order a partial failure leaves the submission still selected next run, so it converges; the reverse
   order would drop it out of the selection filter with no record and strand it permanently.
 - Never modifies `status` or `archived`, and never deletes anything in S3.
-- Never overwrites an existing succeeded `dataSync` record, so a record written by the validator
-  always wins.
-- Idempotent: submissions already `Succeeded` are not selected, and a record is inserted only when no
-  succeeded one exists.
+- Never overwrites an existing `dataSync` record. A record is inserted only when the **latest** record
+  for that type (by `startTime`, whatever its status — the same lookup the archive gate uses) is not
+  already `Succeeded`.
+- **Never reconciles over a running transfer.** If the latest record is `In Progress`, or has
+  `listPending` / `rollupPending` set, the submission is reported as `ActiveTransfer` and left alone.
+- Idempotent: submissions already `Succeeded` are not selected, and a second run finds its own record
+  as the latest and inserts nothing.
 
 ## What it compares
 
@@ -53,16 +56,26 @@ Once the backlog is cleared every submission has a `dataSync` record and this sc
 | metadata | `<rootPath>/metadata/release` in the submission bucket | the `Metadata Bucket` for the submission's data commons, under the prefix ending in `-<submissionID>` |
 | file | `<rootPath>/file` in the submission bucket | `<studyID>` in the `DM_BUCKET_NAME` bucket |
 
-Where a `dataSync` record exists **and succeeded**, its `sourceFolder` and `targetFolder` are used
-directly; the latest by `startTime` wins. Records that did not succeed are ignored — the export
+Where a succeeded `dataSync` record exists, the `sourceFolder` and `targetFolder` of the latest one
+(by `startTime`) are used directly. Records that did not succeed never supply folders — the export
 validator writes a `Failed` record carrying real folder values when an export never reached the
 transfer, and those folders are not evidence of a copy. Otherwise the metadata destination is found
 by listing the metadata bucket's top-level prefixes and matching the one ending in
 `-<submissionID>`; if a submission was released more than once, the latest timestamp wins.
 
-Objects match on **key and size only**. Extra objects at the destination are ignored, since the file
-destination prefix `<studyID>` is shared by every submission in a study. Zero-length folder marker
-keys are skipped on both sides.
+If the latest record is a finished non-success (for example an older `Succeeded` shadowed by a newer
+`Failed`), the comparison runs against the last succeeded copy (or the discovered one) and, on a pass
+with `--apply`, a new `Succeeded` record is inserted. Its `startTime` is the run time, so it becomes
+the record the archive gate reads.
+
+Objects must match on **key, size and content**. Content is proven by equal ETags from the listing;
+when the ETags differ, both objects are fetched with `HeadObject` (checksum mode enabled) and their
+stored full-object checksums (CRC64NVME, SHA256, SHA1, CRC32C or CRC32) are compared. If equality
+cannot be proven — no shared checksum, or only differing multipart (composite) checksums — the
+comparison fails with `ContentUnverifiable`. This matters because the file destination `<studyID>` is
+shared by every submission in a study, so a later submission can overwrite a key with different bytes
+of the same length. Extra objects at the destination are ignored. Zero-length folder marker keys are
+skipped on both sides.
 
 An **empty source listing is a failure here**, where the backend treats it as a pass. The backend's
 prefix comes from a recorded `sourceFolder`, so empty means an empty folder; this script may derive
@@ -72,8 +85,10 @@ output authorises deletion, it fails closed.
 ## Running it
 
 Requires `CONNECTION_STRING`, `DATABASE_NAME` and `AWS_REGION` (see
-[Setup and environment](README-setup.md)), plus AWS credentials with `s3:ListBucket` on the
-submission, metadata and data management buckets.
+[Setup and environment](README-setup.md)), plus AWS credentials with `s3:ListBucket` and
+`s3:GetObject` (needed by `HeadObject`) on the submission, metadata and data management buckets. If
+any of those buckets use SSE-KMS, reading stored checksums also requires `kms:Decrypt` on the key;
+without it every `HeadObject` fails and the affected submissions are reported as errors.
 
 ```bash
 # dry run — reports what would change, writes nothing
@@ -96,7 +111,7 @@ Run the dry run in a lower tier and review the report before applying anything i
 | `--apply` | Persist the DataSync records and status updates. |
 | `--verify-only` | Re-run the comparison for submissions already reconciled by this script, writing nothing. Mutually exclusive with `--apply`. |
 | `--submission=<id>` | Process a single submission, for triage. |
-| `--limit=<n>` | Cap the number of submissions processed in one run. |
+| `--limit=<n>` | Cap the number of submissions processed in one run. Must be a whole number of 0 or more written in digits only (`5`, not `-1`, `1.5`, `1e3` or `5x`); anything else is rejected before the script connects to anything. |
 | `--report=<path>` | Write a per-submission CSV: submission ID, verdict, reason, destination prefix, reconciled timestamp. Written even if the run aborts partway. |
 | `--output` | Mirror console output into a dated file under `logs/`. |
 
@@ -113,6 +128,9 @@ Each submission ends as `Passed` or `Failed`. Common failure reasons:
 | `MissingSubmissionBucket` / `MissingStudyID` | The submission is missing a field needed to locate its data. |
 | `missing destination object <key>` | A source object has no counterpart at the destination. |
 | `size mismatch for <key>` | The destination object exists but differs in size. |
+| `content mismatch for <key> (<algorithm>)` | Same size, but the stored full-object checksums differ: the destination holds different bytes, typically because another submission in the study overwrote it. |
+| `ContentUnverifiable for <key>` | Same size, different ETags, and no comparable stored checksum, so equality cannot be proven. Common for objects stored before S3 began adding default checksums (Dec 2024). |
+| `ActiveTransfer` | The latest `dataSync` record is still being monitored by the validator. Re-run after it finishes. |
 | `error: <message>` | An unexpected error, usually S3. Only that submission is affected; the run continues. |
 
 A failure means the source data must not be deleted. Submissions that fail need a decision: either the

@@ -1,8 +1,39 @@
-const { compareSyncedPrefix } = require('../../utility/synced-copy-compare');
+const {
+    compareSyncedPrefix,
+    contentVerdict,
+    etagsMatch,
+    checksumsFromHeaders,
+    CONTENT_VERDICT,
+} = require('../../utility/synced-copy-compare');
+
+/**
+ * contentVerdict decision table. KEEP IN SYNC with the copy in
+ * utils/one_time_db_migration/test/reconcile-data-sync-status.test.js: the reconciliation script
+ * duplicates this rule (ESM cannot import this CommonJS module), and these shared vectors are what
+ * keep the two implementations from drifting.
+ */
+const CONTENT_VERDICT_VECTORS = [
+    { name: 'equal ETags', source: { etag: 'abc' }, dest: { etag: 'abc' }, verdict: 'equal' },
+    { name: 'equal ETags, quoting differs', source: { etag: '"abc"' }, dest: { etag: 'abc' }, verdict: 'equal' },
+    { name: 'different ETags, no checksums', source: { etag: 'a' }, dest: { etag: 'b' }, verdict: 'unknown' },
+    { name: 'no metadata at all', source: {}, dest: {}, verdict: 'unknown' },
+    { name: 'full-object CRC64NVME equal', source: { checksums: { CRC64NVME: 'x' }, checksumType: 'FULL_OBJECT' }, dest: { checksums: { CRC64NVME: 'x' }, checksumType: 'FULL_OBJECT' }, verdict: 'equal' },
+    { name: 'full-object CRC64NVME different', source: { checksums: { CRC64NVME: 'x' }, checksumType: 'FULL_OBJECT' }, dest: { checksums: { CRC64NVME: 'y' }, checksumType: 'FULL_OBJECT' }, verdict: 'different' },
+    { name: 'full-object inferred from missing suffix, different', source: { checksums: { SHA256: 'x' } }, dest: { checksums: { SHA256: 'y' } }, verdict: 'different' },
+    { name: 'checksum on one side only', source: { checksums: { CRC64NVME: 'x' } }, dest: {}, verdict: 'unknown' },
+    { name: 'different algorithms', source: { checksums: { CRC32: 'x' } }, dest: { checksums: { CRC64NVME: 'x' } }, verdict: 'unknown' },
+    { name: 'composite equal', source: { checksums: { CRC32: 'x-3' } }, dest: { checksums: { CRC32: 'x-3' } }, verdict: 'equal' },
+    { name: 'composite different', source: { checksums: { CRC32: 'x-3' } }, dest: { checksums: { CRC32: 'y-4' } }, verdict: 'unknown' },
+    { name: 'explicit COMPOSITE type, different', source: { checksums: { CRC32C: 'x' }, checksumType: 'COMPOSITE' }, dest: { checksums: { CRC32C: 'y' }, checksumType: 'COMPOSITE' }, verdict: 'unknown' },
+    { name: 'full-object vs composite', source: { checksums: { CRC32: 'x' }, checksumType: 'FULL_OBJECT' }, dest: { checksums: { CRC32: 'x-3' } }, verdict: 'unknown' },
+    { name: 'CRC64NVME preferred over a differing composite CRC32', source: { checksums: { CRC64NVME: 'n', CRC32: 'a-2' } }, dest: { checksums: { CRC64NVME: 'n', CRC32: 'b-3' } }, verdict: 'equal' },
+    { name: 'equal ETags win over differing checksums', source: { etag: 'e', checksums: { CRC64NVME: 'x' } }, dest: { etag: 'e', checksums: { CRC64NVME: 'y' } }, verdict: 'equal' },
+];
 
 /**
  * compareSyncedPrefix compares a source S3 prefix against the copy a DataSync transfer made at
- * a destination prefix. Matching is on key and size only.
+ * a destination prefix. Matching is on key, size, and provable content equality (ETag or stored
+ * checksum).
  */
 
 const SOURCE_BUCKET = 'submission-bucket';
@@ -10,20 +41,36 @@ const SOURCE_PREFIX = 'submissions/sub-1/file';
 const DEST_BUCKET = 'dm-bucket';
 const DEST_PREFIX = 'study-1';
 
-/** @returns {{Key: string, Size: number}} */
-const obj = (Key, Size) => ({ Key, Size });
+/**
+ * Listing entry. The default ETag is derived from the size so that existing key/size fixtures
+ * model a faithful copy; pass an explicit ETag to model different content.
+ * @returns {{Key: string, Size: number, ETag: string}}
+ */
+const obj = (Key, Size, ETag = `"etag-${Size}"`) => ({ Key, Size, ETag });
+
+/** Normalized HeadObject checksum metadata. */
+const head = (checksums = {}, checksumType = null, etag = null) => ({ etag, checksumType, checksums });
 
 /**
- * s3Service double returning a fixed listing per bucket.
+ * s3Service double returning a fixed listing per bucket and fixed HeadObject metadata per
+ * `bucket|key`. Unknown buckets or keys throw so a wrong key cannot silently pass.
  * @param {object[]} sourceObjects Objects under the source prefix
  * @param {object[]} destObjects Objects under the destination prefix
+ * @param {Record<string, object>} [heads] HeadObject results keyed by `bucket|key`
  */
-function mockS3Service(sourceObjects, destObjects) {
+function mockS3Service(sourceObjects, destObjects, heads = {}) {
     return {
         listFileInDir: jest.fn(async (bucket) => {
             if (bucket === SOURCE_BUCKET) return sourceObjects;
             if (bucket === DEST_BUCKET) return destObjects;
             throw new Error(`unexpected bucket: ${bucket}`);
+        }),
+        headObjectChecksums: jest.fn(async (bucket, key) => {
+            const id = `${bucket}|${key}`;
+            if (!(id in heads)) {
+                throw new Error(`unexpected head request: ${id}`);
+            }
+            return heads[id];
         }),
     };
 }
@@ -37,15 +84,31 @@ function makeLogger() {
  * @param {object[]} destObjects
  * @param {object} [logger]
  */
-function run(sourceObjects, destObjects, logger = makeLogger()) {
+function run(sourceObjects, destObjects, logger = makeLogger(), s3Service = mockS3Service(sourceObjects, destObjects)) {
     return compareSyncedPrefix({
         sourceBucket: SOURCE_BUCKET,
         sourcePrefix: SOURCE_PREFIX,
         destBucket: DEST_BUCKET,
         destPrefix: DEST_PREFIX,
-        s3Service: mockS3Service(sourceObjects, destObjects),
+        s3Service,
         logger,
     });
+}
+
+/**
+ * One source object and one destination object with the same key and size but different ETags,
+ * so the comparison must consult HeadObject.
+ * @param {object} sourceHead HeadObject metadata for the source object
+ * @param {object} destHead HeadObject metadata for the destination object
+ */
+function runWithHeads(sourceHead, destHead) {
+    const source = [obj(`${SOURCE_PREFIX}/a.fastq`, 500, '"source-etag"')];
+    const dest = [obj(`${DEST_PREFIX}/a.fastq`, 500, '"dest-etag"')];
+    const s3Service = mockS3Service(source, dest, {
+        [`${SOURCE_BUCKET}|${SOURCE_PREFIX}/a.fastq`]: sourceHead,
+        [`${DEST_BUCKET}|${DEST_PREFIX}/a.fastq`]: destHead,
+    });
+    return { s3Service, result: run(source, dest, makeLogger(), s3Service) };
 }
 
 describe('compareSyncedPrefix', () => {
@@ -146,6 +209,166 @@ describe('compareSyncedPrefix', () => {
 
         expect(result.ok).toBe(true);
         expect(logger.info).toHaveBeenCalled();
+    });
+
+    describe('content equality', () => {
+
+        it('fails when a later submission overwrote the shared study key with different bytes of the same length', async () => {
+            const { result } = runWithHeads(
+                head({ CRC64NVME: 'original==' }, 'FULL_OBJECT'),
+                head({ CRC64NVME: 'overwritten==' }, 'FULL_OBJECT'),
+            );
+
+            await expect(result).resolves.toEqual({
+                ok: false,
+                reason: expect.stringMatching(/content mismatch for a\.fastq/),
+            });
+        });
+
+        it('passes on equal ETags without any HeadObject call', async () => {
+            const source = [obj(`${SOURCE_PREFIX}/a.txt`, 10, '"same"')];
+            const dest = [obj(`${DEST_PREFIX}/a.txt`, 10, '"same"')];
+            const s3Service = mockS3Service(source, dest);
+
+            const result = await run(source, dest, makeLogger(), s3Service);
+
+            expect(result.ok).toBe(true);
+            expect(s3Service.headObjectChecksums).not.toHaveBeenCalled();
+        });
+
+        it('treats ETags that differ only in quoting as equal', async () => {
+            const source = [obj(`${SOURCE_PREFIX}/a.txt`, 10, '"abc"')];
+            const dest = [obj(`${DEST_PREFIX}/a.txt`, 10, 'abc')];
+            const s3Service = mockS3Service(source, dest);
+
+            const result = await run(source, dest, makeLogger(), s3Service);
+
+            expect(result.ok).toBe(true);
+            expect(s3Service.headObjectChecksums).not.toHaveBeenCalled();
+        });
+
+        it('passes when ETags differ but full-object CRC64NVME checksums are equal', async () => {
+            const { result, s3Service } = runWithHeads(
+                head({ CRC64NVME: 'same==' }, 'FULL_OBJECT'),
+                head({ CRC64NVME: 'same==' }, 'FULL_OBJECT'),
+            );
+
+            await expect(result).resolves.toEqual({ ok: true });
+            expect(s3Service.headObjectChecksums).toHaveBeenCalledWith(SOURCE_BUCKET, `${SOURCE_PREFIX}/a.fastq`);
+            expect(s3Service.headObjectChecksums).toHaveBeenCalledWith(DEST_BUCKET, `${DEST_PREFIX}/a.fastq`);
+        });
+
+        it('fails as unverifiable when ETags differ and neither side has a checksum', async () => {
+            const { result } = runWithHeads(head(), head());
+
+            await expect(result).resolves.toEqual({
+                ok: false,
+                reason: expect.stringMatching(/ContentUnverifiable for a\.fastq/),
+            });
+        });
+
+        it('fails as unverifiable when only one side has a checksum', async () => {
+            const { result } = runWithHeads(head({ CRC64NVME: 'x==' }, 'FULL_OBJECT'), head());
+
+            await expect(result).resolves.toEqual({ ok: false, reason: expect.stringContaining('ContentUnverifiable') });
+        });
+
+        it('fails as unverifiable when the two sides use different checksum algorithms', async () => {
+            const { result } = runWithHeads(head({ CRC32: 'x==' }, 'FULL_OBJECT'), head({ CRC64NVME: 'y==' }, 'FULL_OBJECT'));
+
+            await expect(result).resolves.toEqual({ ok: false, reason: expect.stringContaining('ContentUnverifiable') });
+        });
+
+        it('passes on equal composite checksums', async () => {
+            const { result } = runWithHeads(head({ CRC32: 'abc==-3' }), head({ CRC32: 'abc==-3' }));
+
+            await expect(result).resolves.toEqual({ ok: true });
+        });
+
+        it('fails as unverifiable, not as a mismatch, on different composite checksums', async () => {
+            const { result } = runWithHeads(head({ CRC32: 'abc==-3' }), head({ CRC32: 'def==-4' }));
+
+            await expect(result).resolves.toEqual({ ok: false, reason: expect.stringContaining('ContentUnverifiable') });
+        });
+
+        it('fails as unverifiable when one checksum is full-object and the other composite', async () => {
+            const { result } = runWithHeads(head({ CRC32: 'abc==' }, 'FULL_OBJECT'), head({ CRC32: 'abc==-3' }));
+
+            await expect(result).resolves.toEqual({ ok: false, reason: expect.stringContaining('ContentUnverifiable') });
+        });
+
+        it('rejects when HeadObject fails, leaving retention to the caller', async () => {
+            const source = [obj(`${SOURCE_PREFIX}/a.fastq`, 500, '"s"')];
+            const dest = [obj(`${DEST_PREFIX}/a.fastq`, 500, '"d"')];
+            const s3Service = mockS3Service(source, dest);
+            s3Service.headObjectChecksums.mockRejectedValue(new Error('AccessDenied'));
+
+            await expect(run(source, dest, makeLogger(), s3Service)).rejects.toThrow('AccessDenied');
+        });
+
+        it('stops at the first unproven object', async () => {
+            const source = [
+                obj(`${SOURCE_PREFIX}/a.txt`, 10, '"a"'),
+                obj(`${SOURCE_PREFIX}/b.txt`, 10, '"b-src"'),
+            ];
+            const dest = [
+                obj(`${DEST_PREFIX}/a.txt`, 10, '"a"'),
+                obj(`${DEST_PREFIX}/b.txt`, 10, '"b-dst"'),
+            ];
+            const s3Service = mockS3Service(source, dest, {
+                [`${SOURCE_BUCKET}|${SOURCE_PREFIX}/b.txt`]: head({ SHA256: 'one' }),
+                [`${DEST_BUCKET}|${DEST_PREFIX}/b.txt`]: head({ SHA256: 'two' }),
+            });
+
+            const result = await run(source, dest, makeLogger(), s3Service);
+
+            expect(result).toEqual({ ok: false, reason: expect.stringContaining('content mismatch for b.txt (SHA256)') });
+        });
+
+    });
+
+});
+
+describe('contentVerdict', () => {
+
+    it.each(CONTENT_VERDICT_VECTORS)('$name', ({ source, dest, verdict }) => {
+        expect(contentVerdict(source, dest).verdict).toBe(verdict);
+    });
+
+    it('uses the verdict constants the vectors are written against', () => {
+        expect(Object.values(CONTENT_VERDICT).sort()).toEqual(['different', 'equal', 'unknown']);
+    });
+
+});
+
+describe('etagsMatch', () => {
+
+    it('is false when either ETag is missing', () => {
+        expect(etagsMatch(undefined, undefined)).toBe(false);
+        expect(etagsMatch('"a"', undefined)).toBe(false);
+        expect(etagsMatch('""', '""')).toBe(false);
+    });
+
+});
+
+describe('checksumsFromHeaders', () => {
+
+    it('extracts every algorithm, the checksum type and the ETag from lower-case headers', () => {
+        expect(checksumsFromHeaders({
+            etag: '"abc-2"',
+            'x-amz-checksum-crc64nvme': 'n==',
+            'x-amz-checksum-crc32': 'c==',
+            'x-amz-checksum-type': 'FULL_OBJECT',
+            'content-length': '5',
+        })).toEqual({
+            etag: 'abc-2',
+            checksumType: 'FULL_OBJECT',
+            checksums: { CRC64NVME: 'n==', CRC32: 'c==' },
+        });
+    });
+
+    it('returns empty metadata when no checksum headers are present', () => {
+        expect(checksumsFromHeaders({})).toEqual({ etag: null, checksumType: null, checksums: {} });
     });
 
 });

@@ -1,6 +1,7 @@
 const AWS = require('aws-sdk');
 const fs = require('fs');
 const path = require('path');
+const { checksumsFromHeaders } = require('../utility/synced-copy-compare');
 class S3Service {
 
     constructor() {
@@ -229,6 +230,31 @@ class S3Service {
 
         await listRecursively(listParams);  // Start recursive listing
         return fileObjects;
+    }
+
+    /**
+     * Fetches an object's ETag and stored additional checksum (HeadObject with checksum mode on).
+     *
+     * Reads the raw response headers rather than the parsed response: aws-sdk v2's S3 model has
+     * no ChecksumCRC64NVME or ChecksumType, so the parsed result silently drops S3's default
+     * full-object CRC64NVME checksum.
+     *
+     * @param {string} bucketName Bucket
+     * @param {string} key Object key
+     * @returns {Promise<{etag: string|null, checksumType: string|null, checksums: Record<string, string>}>}
+     */
+    async headObjectChecksums(bucketName, key) {
+        const request = this.s3.headObject({ Bucket: bucketName, Key: key, ChecksumMode: 'ENABLED' });
+        let rawHeaders = {};
+        request.on('httpHeaders', (statusCode, headers) => {
+            rawHeaders = headers || {};
+        });
+        await request.promise();
+        const lowerCased = {};
+        for (const [name, value] of Object.entries(rawHeaders)) {
+            lowerCased[name.toLowerCase()] = value;
+        }
+        return checksumsFromHeaders(lowerCased);
     }
 
     async _listObjectsV2(params) {

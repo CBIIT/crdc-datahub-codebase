@@ -38,6 +38,7 @@ describe('SubmissionDAO data sync', () => {
             expect(submissions).toEqual([]);
             expect(findManySpy).toHaveBeenCalledWith({
                 status: COMPLETED,
+                archived: { $ne: true },
                 updatedAt: { $lte: expect.any(Date) },
                 $or: [
                     {

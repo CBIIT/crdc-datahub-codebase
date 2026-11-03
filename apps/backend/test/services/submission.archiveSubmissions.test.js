@@ -45,7 +45,11 @@ const DATA_COMMONS = 'TestCommons';
 const METADATA_TARGET = '2026-11-03T14:25:02-sub-1';
 const METADATA_ONLY_TARGET = '2026-11-03T14:30:00-sub-2';
 
-const obj = (Key, Size) => ({ Key, Size });
+/** Listing entry. The default ETag derives from the size, so equal-size fixtures model a faithful copy. */
+const obj = (Key, Size, ETag = `"etag-${Size}"`) => ({ Key, Size, ETag });
+
+/** Normalized HeadObject checksum metadata. */
+const head = (checksums = {}, checksumType = null) => ({ etag: null, checksumType, checksums });
 
 const filesSubmission = () => ({
     _id: 'sub-1',
@@ -94,11 +98,19 @@ const matchingListings = () => ({
 
 /**
  * s3Service double. Prefix lookups ignore a trailing slash so the implementation may pass
- * either form.
+ * either form. HeadObject lookups are keyed by `bucket|key`; unknown keys throw.
  * @param {Record<string, object[]>} listings keyed by `bucket|prefix`
+ * @param {Record<string, object>} [heads] keyed by `bucket|key`
  */
-function makeS3Service(listings) {
+function makeS3Service(listings, heads = {}) {
     return {
+        headObjectChecksums: jest.fn(async (bucket, key) => {
+            const id = `${bucket}|${key}`;
+            if (!(id in heads)) {
+                throw new Error(`unexpected head request: ${id}`);
+            }
+            return heads[id];
+        }),
         listFileInDir: jest.fn(async (bucket, prefix) => {
             const key = `${bucket}|${String(prefix).replace(/\/+$/, '')}`;
             if (!(key in listings)) {
@@ -236,6 +248,44 @@ describe('_verifySyncedCopies', () => {
 
         expect(result.ok).toBe(false);
         expect(result.reason).toEqual(expect.stringMatching(/metadata/i));
+    });
+
+    it('fails when a later submission overwrote the shared study key with same-length different bytes', async () => {
+        const listings = matchingListings();
+        listings[`${SUBMISSION_BUCKET}|submissions/sub-1/file`] = [obj('submissions/sub-1/file/a.fastq', 500, '"original"')];
+        listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"overwritten"')];
+        service.s3Service = makeS3Service(listings, {
+            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({ CRC64NVME: 'orig==' }, 'FULL_OBJECT'),
+            [`${DM_BUCKET}|study-1/a.fastq`]: head({ CRC64NVME: 'new==' }, 'FULL_OBJECT'),
+        });
+
+        const result = await service._verifySyncedCopies(filesSubmission());
+
+        expect(result).toEqual({ ok: false, reason: expect.stringContaining('file content mismatch for a.fastq') });
+    });
+
+    it('fails as unverifiable when content equality cannot be established', async () => {
+        const listings = matchingListings();
+        listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"multipart-etag-2"')];
+        service.s3Service = makeS3Service(listings, {
+            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head(),
+            [`${DM_BUCKET}|study-1/a.fastq`]: head(),
+        });
+
+        const result = await service._verifySyncedCopies(filesSubmission());
+
+        expect(result).toEqual({ ok: false, reason: expect.stringContaining('file ContentUnverifiable for a.fastq') });
+    });
+
+    it('fails rather than throwing when HeadObject rejects', async () => {
+        const listings = matchingListings();
+        listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"different"')];
+        service.s3Service = makeS3Service(listings);
+        service.s3Service.headObjectChecksums.mockRejectedValue(new Error('AccessDenied: kms:Decrypt'));
+
+        const result = await service._verifySyncedCopies(filesSubmission());
+
+        expect(result).toEqual({ ok: false, reason: expect.stringContaining('AccessDenied') });
     });
 
     it('fails when no dataSync record exists for a required type', async () => {
@@ -450,6 +500,53 @@ describe('archiveSubmissions', () => {
         await service.archiveSubmissions();
 
         expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
+    });
+
+    it('retains the source when the shared study copy was overwritten with different content', async () => {
+        const listings = matchingListings();
+        listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"overwritten"')];
+        service.s3Service = makeS3Service(listings, {
+            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({ CRC64NVME: 'orig==' }, 'FULL_OBJECT'),
+            [`${DM_BUCKET}|study-1/a.fastq`]: head({ CRC64NVME: 'new==' }, 'FULL_OBJECT'),
+        });
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
+
+        const summary = await service.archiveSubmissions();
+
+        expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
+        expect(service.submissionDAO.update).not.toHaveBeenCalled();
+        expect(summary).toEqual(expect.stringContaining('data retained for submission(s): sub-1'));
+    });
+
+    it('skips an already-archived candidate without verifying, deleting, or reporting it', async () => {
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([
+            { ...filesSubmission(), archived: true },
+        ]);
+        const verify = jest.spyOn(service, '_verifySyncedCopies');
+
+        const summary = await service.archiveSubmissions();
+
+        expect(verify).not.toHaveBeenCalled();
+        expect(service.dataSyncService.findLatestBySubmissionIDAndType).not.toHaveBeenCalled();
+        expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
+        expect(service.s3Service.headObjectChecksums).not.toHaveBeenCalled();
+        expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
+        expect(service.submissionDAO.update).not.toHaveBeenCalled();
+        expect(summary).toEqual('successful!');
+    });
+
+    it('still archives the other candidates when one is already archived', async () => {
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([
+            { ...filesSubmission(), _id: 'sub-old', rootPath: 'submissions/sub-old', archived: true },
+            filesSubmission(),
+        ]);
+        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+
+        await service.archiveSubmissions();
+
+        expect(service._verifySyncedCopies).toHaveBeenCalledTimes(1);
+        expect(service.s3Service.deleteDirectory).toHaveBeenCalledTimes(1);
+        expect(service.s3Service.deleteDirectory).toHaveBeenCalledWith(SUBMISSION_BUCKET, 'submissions/sub-1');
     });
 
     it('keeps archiving the remaining candidates after one fails verification', async () => {

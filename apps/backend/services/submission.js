@@ -1731,6 +1731,12 @@ class Submission {
             //archive related data and delete files in s3
             for (const sub of archiveSubs) {
                 try {
+                    if (sub.archived === true) {
+                        // The DAO query excludes these; guard anyway so a query regression can
+                        // never re-scan shared study prefixes for data that is already deleted.
+                        console.debug(`Skipping already-archived submission ${sub._id}.`);
+                        continue;
+                    }
                     if (!isArchiveEligible(sub)) {
                         console.error(`Skipping archive for submission ${sub._id}: DataSync status criteria not met.`);
                         retainedSubs.push(sub._id);

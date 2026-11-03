@@ -14,6 +14,7 @@ const scriptPath = fileURLToPath(import.meta.url);
 
 const COMPLETED = 'Completed';
 const SUCCEEDED = 'Succeeded';
+const IN_PROGRESS = 'In Progress';
 const METADATA_ONLY = 'Metadata Only';
 const METADATA_AND_DATA_FILES = 'Metadata and Data Files';
 const METADATA_TYPE = 'metadata';
@@ -78,8 +79,99 @@ function isFolderPlaceholder(object) {
 }
 
 /**
- * Compares objects under a source prefix against a destination prefix.
- * Matching is on relative key and size only; extra destination objects are ignored.
+ * S3 additional-checksum algorithms, in the order they are tried. Mirrors CHECKSUM_ALGORITHMS in
+ * apps/backend/utility/synced-copy-compare.js.
+ */
+const CHECKSUM_ALGORITHMS = ['CRC64NVME', 'SHA256', 'SHA1', 'CRC32C', 'CRC32'];
+
+export const CONTENT_VERDICT = Object.freeze({
+    EQUAL: 'equal',
+    DIFFERENT: 'different',
+    UNKNOWN: 'unknown',
+});
+
+/**
+ * @param {string|undefined|null} etag
+ * @returns {string|null} ETag without surrounding quotes, or null when absent
+ */
+function normalizeETag(etag) {
+    if (etag == null) {
+        return null;
+    }
+    const text = String(etag).trim().replace(/^"+|"+$/g, '');
+    return text === '' ? null : text;
+}
+
+/**
+ * True only when both ETags are present and identical — positive evidence of equal content.
+ * Unequal ETags prove nothing (SSE-KMS, multipart part size), so callers fall through.
+ * @param {string|undefined} a
+ * @param {string|undefined} b
+ * @returns {boolean}
+ */
+function etagsMatch(a, b) {
+    const left = normalizeETag(a);
+    const right = normalizeETag(b);
+    return left !== null && left === right;
+}
+
+/**
+ * @param {string} value Checksum value
+ * @param {string|null|undefined} checksumType FULL_OBJECT, COMPOSITE, or absent
+ * @returns {boolean} true when the value describes the whole object (composite values carry `-<parts>`)
+ */
+function isFullObjectChecksum(value, checksumType) {
+    if (checksumType === 'FULL_OBJECT') {
+        return true;
+    }
+    if (checksumType === 'COMPOSITE') {
+        return false;
+    }
+    return !/-\d+$/.test(value);
+}
+
+/**
+ * Decides whether two objects hold the same bytes from their ETags and stored checksums.
+ *
+ * DUPLICATE of contentVerdict in apps/backend/utility/synced-copy-compare.js (this ESM package
+ * cannot import that CommonJS module). Both test suites carry the same vector table; change both
+ * together.
+ *
+ * @param {{etag?: string|null, checksumType?: string|null, checksums?: Record<string, string>}} source
+ * @param {{etag?: string|null, checksumType?: string|null, checksums?: Record<string, string>}} dest
+ * @returns {{verdict: string, algorithm?: string}}
+ */
+export function contentVerdict(source = {}, dest = {}) {
+    if (etagsMatch(source.etag, dest.etag)) {
+        return { verdict: CONTENT_VERDICT.EQUAL };
+    }
+    for (const algorithm of CHECKSUM_ALGORITHMS) {
+        const sourceValue = source.checksums?.[algorithm];
+        const destValue = dest.checksums?.[algorithm];
+        if (!sourceValue || !destValue) {
+            continue;
+        }
+        const sourceFull = isFullObjectChecksum(sourceValue, source.checksumType);
+        const destFull = isFullObjectChecksum(destValue, dest.checksumType);
+        if (sourceFull !== destFull) {
+            return { verdict: CONTENT_VERDICT.UNKNOWN, algorithm };
+        }
+        if (sourceValue === destValue) {
+            return { verdict: CONTENT_VERDICT.EQUAL, algorithm };
+        }
+        return {
+            verdict: sourceFull ? CONTENT_VERDICT.DIFFERENT : CONTENT_VERDICT.UNKNOWN,
+            algorithm,
+        };
+    }
+    return { verdict: CONTENT_VERDICT.UNKNOWN };
+}
+
+/**
+ * Compares objects under a source prefix against a destination prefix. Every source object must
+ * exist at the destination with an equal size AND provably equal content (contentVerdict: equal
+ * ETags from the listing, else HeadObject checksums); extra destination objects are ignored.
+ * Anything short of proven equality fails, so the submission is not reconciled.
  *
  * Mirrors apps/backend/utility/synced-copy-compare.js, with one deliberate difference: an empty
  * source listing is a FAILURE here, where the backend treats it as a pass. The backend's source
@@ -108,16 +200,28 @@ async function compareListings(s3, sourceBucket, sourcePrefix, destBucket, destP
 
     const destByRelative = new Map();
     for (const object of destObjects) {
-        destByRelative.set(relativeKey(object.Key, destPrefix), object.Size);
+        destByRelative.set(relativeKey(object.Key, destPrefix), object);
     }
     for (const object of sourceObjects) {
         const rel = relativeKey(object.Key, sourcePrefix);
-        if (!destByRelative.has(rel)) {
+        const destObject = destByRelative.get(rel);
+        if (!destObject) {
             return { ok: false, reason: `missing destination object ${rel}` };
         }
-        const destSize = destByRelative.get(rel);
-        if (destSize !== object.Size) {
-            return { ok: false, reason: `size mismatch for ${rel}: source ${object.Size} dest ${destSize}` };
+        if (destObject.Size !== object.Size) {
+            return { ok: false, reason: `size mismatch for ${rel}: source ${object.Size} dest ${destObject.Size}` };
+        }
+        if (etagsMatch(object.ETag, destObject.ETag)) {
+            continue;
+        }
+        const sourceMeta = await s3.headObjectChecksums(sourceBucket, object.Key);
+        const destMeta = await s3.headObjectChecksums(destBucket, destObject.Key);
+        const { verdict, algorithm } = contentVerdict(sourceMeta, destMeta);
+        if (verdict === CONTENT_VERDICT.DIFFERENT) {
+            return { ok: false, reason: `content mismatch for ${rel} (${algorithm})` };
+        }
+        if (verdict !== CONTENT_VERDICT.EQUAL) {
+            return { ok: false, reason: `ContentUnverifiable for ${rel}` };
         }
     }
     return { ok: true };
@@ -157,10 +261,26 @@ function deriveSourcePrefix(submission, type) {
 }
 
 /**
- * Latest succeeded DataSync record for a submission and type.
- * Mirrors the backend's `findLatestBySubmissionIDAndType`, and additionally ignores records that
- * did not succeed: the export validator writes a Failed record carrying real folder values when an
- * export never reached the transfer, and those folders are not evidence of a copy.
+ * Latest DataSync record of ANY status for a submission and type. This is exactly the backend's
+ * `DataSyncDAO.findLatestBySubmissionIDAndType`, which the archive gate reads: whatever this
+ * returns is what decides whether the submission can be archived.
+ * @param {object} dataSyncCollection Mongo dataSync collection
+ * @param {string} submissionID Submission ID
+ * @param {string} type DataSync type
+ * @returns {Promise<object|null>}
+ */
+async function latestRecord(dataSyncCollection, submissionID, type) {
+    return dataSyncCollection.findOne(
+        { submissionID, type },
+        { sort: { startTime: -1 } }
+    );
+}
+
+/**
+ * Latest succeeded DataSync record — used only to find the folders of the last real copy. Records
+ * that did not succeed are skipped: the export validator writes a Failed record carrying real
+ * folder values when an export never reached the transfer, and those folders are not evidence of
+ * a copy.
  * @param {object} dataSyncCollection Mongo dataSync collection
  * @param {string} submissionID Submission ID
  * @param {string} type DataSync type
@@ -174,6 +294,17 @@ async function latestSucceededRecord(dataSyncCollection, submissionID, type) {
 }
 
 /**
+ * True when the validator's monitor still owns the record, i.e. a transfer may still be moving
+ * data (same criteria as `find_unfinished_data_syncs`, minus `cleanupAfter`: a cleanup time on a
+ * finished record only means AWS resources are awaiting deletion, not that data is moving).
+ * @param {object} record DataSync record
+ * @returns {boolean}
+ */
+function isActiveRecord(record) {
+    return record.status === IN_PROGRESS || record.listPending === true || record.rollupPending === true;
+}
+
+/**
  * Verifies one DataSync type for a submission against its destination copy.
  * @param {object} params
  * @returns {Promise<{ok: boolean, reason?: string, sourcePrefix?: string, destPrefix?: string|null}>}
@@ -183,7 +314,17 @@ async function verifySyncType({ submission, type, collections, lookups, s3 }) {
         return { ok: false, reason: 'MissingSubmissionBucket' };
     }
 
-    const record = await latestSucceededRecord(collections.dataSync, submission._id, type);
+    const latest = await latestRecord(collections.dataSync, submission._id, type);
+    if (latest && isActiveRecord(latest)) {
+        // Never reconcile over a transfer that is still running: its outcome will set the status.
+        return { ok: false, reason: 'ActiveTransfer' };
+    }
+    // When the latest record is a terminal failure, compare against the last real copy (or
+    // rediscover it), and on a pass insert a new record so the backend gate stops reading the
+    // failure. Never use the failed record's own folders.
+    const record = latest?.status === SUCCEEDED
+        ? latest
+        : await latestSucceededRecord(collections.dataSync, submission._id, type);
     const sourcePrefix = record?.sourceFolder || deriveSourcePrefix(submission, type);
     if (!sourcePrefix) {
         return { ok: false, reason: 'MissingRootPath' };
@@ -226,9 +367,11 @@ async function verifySyncType({ submission, type, collections, lookups, s3 }) {
 }
 
 /**
- * Inserts a terminal DataSync record for a verified copy, unless a succeeded record already
- * exists. The backend gate requires a record, not just the submission's rollup status, so without
- * this a reconciled submission would still be retained every night.
+ * Inserts a terminal DataSync record for a verified copy, unless the latest record (any status)
+ * is already Succeeded. The backend gate reads the latest record, not just the submission's rollup
+ * status, so without this a reconciled submission would still be retained every night — including
+ * when an older Succeeded record is shadowed by a newer Failed one. The new record's `startTime`
+ * is now, so it becomes the latest.
  *
  * `listPending`, `rollupPending` and `cleanupAfter` are deliberately omitted: any of them would
  * make the export validator's monitor adopt this record (see find_unfinished_data_syncs). AWS ARN
@@ -239,8 +382,8 @@ async function verifySyncType({ submission, type, collections, lookups, s3 }) {
  * @returns {Promise<boolean>} true when a record was inserted
  */
 async function insertSyntheticRecord(dataSyncCollection, { submissionID, type, sourceFolder, targetFolder, now }) {
-    const existing = await latestSucceededRecord(dataSyncCollection, submissionID, type);
-    if (existing) {
+    const latest = await latestRecord(dataSyncCollection, submissionID, type);
+    if (latest?.status === SUCCEEDED) {
         return false;
     }
     await dataSyncCollection.insertOne({
@@ -289,7 +432,7 @@ async function selectSubmissions({ collections, submissionID, limit, verifyOnly 
         }
         submissions = await collections.submissions.find(filter).toArray();
     }
-    if (Number.isInteger(limit) && limit >= 0) {
+    if (limit !== undefined) {
         submissions = submissions.slice(0, limit);
     }
     return submissions;
@@ -363,6 +506,9 @@ export async function reconcileDataSyncStatus({
     submissionID,
     limit,
 } = {}) {
+    if (limit !== undefined && !(Number.isSafeInteger(limit) && limit >= 0)) {
+        throw new Error(`limit must be a non-negative integer, received ${JSON.stringify(limit)}`);
+    }
     const collections = {
         submissions: db.collection('submissions'),
         configuration: db.collection('configuration'),
@@ -456,14 +602,15 @@ export async function reconcileDataSyncStatus({
 }
 
 /**
- * S3 adapter over the AWS SDK. Both methods paginate. The SDK is passed in rather than
- * imported here so the pagination logic can be unit tested without installing it.
+ * S3 adapter over the AWS SDK. Listing methods paginate. The SDK is passed in rather than
+ * imported here so the logic can be unit tested without installing it.
  * @param {object} params
  * @param {{send: Function}} params.client S3 client
  * @param {Function} params.ListObjectsV2Command Command constructor
- * @returns {{listCommonPrefixes: Function, listObjects: Function}}
+ * @param {Function} [params.HeadObjectCommand] Command constructor (required for headObjectChecksums)
+ * @returns {{listCommonPrefixes: Function, listObjects: Function, headObjectChecksums: Function}}
  */
-export function createS3Adapter({ client, ListObjectsV2Command }) {
+export function createS3Adapter({ client, ListObjectsV2Command, HeadObjectCommand }) {
     return {
         async listCommonPrefixes(bucket) {
             const prefixes = [];
@@ -492,11 +639,30 @@ export function createS3Adapter({ client, ListObjectsV2Command }) {
                     ContinuationToken: token
                 }));
                 for (const entry of response.Contents ?? []) {
-                    objects.push({ Key: entry.Key, Size: entry.Size });
+                    objects.push({ Key: entry.Key, Size: entry.Size, ETag: entry.ETag });
                 }
                 token = response.IsTruncated ? response.NextContinuationToken : undefined;
             } while (token);
             return objects;
+        },
+        async headObjectChecksums(bucket, key) {
+            const response = await client.send(new HeadObjectCommand({
+                Bucket: bucket,
+                Key: key,
+                ChecksumMode: 'ENABLED'
+            }));
+            const checksums = {};
+            for (const algorithm of CHECKSUM_ALGORITHMS) {
+                const value = response[`Checksum${algorithm}`];
+                if (value) {
+                    checksums[algorithm] = value;
+                }
+            }
+            return {
+                etag: normalizeETag(response.ETag),
+                checksumType: response.ChecksumType ?? null,
+                checksums
+            };
         }
     };
 }
@@ -506,10 +672,10 @@ export function createS3Adapter({ client, ListObjectsV2Command }) {
  * @returns {Promise<{s3: object, destroy: () => void}>}
  */
 async function createS3AdapterFromEnv() {
-    const { S3Client, ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+    const { S3Client, ListObjectsV2Command, HeadObjectCommand } = await import('@aws-sdk/client-s3');
     const client = new S3Client({ region: process.env.AWS_REGION });
     return {
-        s3: createS3Adapter({ client, ListObjectsV2Command }),
+        s3: createS3Adapter({ client, ListObjectsV2Command, HeadObjectCommand }),
         destroy: () => client.destroy()
     };
 }
@@ -571,18 +737,48 @@ function logSummary(result) {
     }
 }
 
-async function main() {
-    const { values } = parseArgs({ options, allowPositionals: true });
+/**
+ * Parses `--limit`. The whole value must be decimal digits and a safe integer: `parseInt` would
+ * accept `1.5` or `1oops`, and a negative cap would silently process every candidate.
+ * @param {string|undefined} raw Raw option value
+ * @returns {number|undefined}
+ */
+export function parseLimit(raw) {
+    if (raw === undefined) {
+        return undefined;
+    }
+    const value = Number(raw);
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value)) {
+        throw new Error(`--limit must be a non-negative integer, received ${JSON.stringify(raw)}`);
+    }
+    return value;
+}
+
+/**
+ * Parses and validates the command line. Throws before anything is opened or connected.
+ * @param {string[]} argv Arguments after the script path
+ * @returns {{apply: boolean, verifyOnly: boolean, submissionID?: string, limit?: number, report?: string, output?: string}}
+ */
+export function parseCliArgs(argv) {
+    const { values } = parseArgs({ args: argv, options, allowPositionals: true });
     const apply = values.apply;
     const verifyOnly = values['verify-only'];
     if (apply && verifyOnly) {
         throw new Error('--apply and --verify-only are mutually exclusive');
     }
-    const submissionID = values.submission;
-    const limit = values.limit === undefined ? undefined : Number.parseInt(values.limit, 10);
-    if (values.limit !== undefined && !Number.isInteger(limit)) {
-        throw new Error(`--limit must be an integer, received ${JSON.stringify(values.limit)}`);
-    }
+    return {
+        apply,
+        verifyOnly,
+        submissionID: values.submission,
+        limit: parseLimit(values.limit),
+        report: values.report,
+        output: values.output,
+    };
+}
+
+async function main() {
+    const values = parseCliArgs(process.argv.slice(2));
+    const { apply, verifyOnly, submissionID, limit } = values;
 
     let logPath;
     let endConsoleFileMirror = null;

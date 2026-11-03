@@ -695,6 +695,7 @@ describe('SubmissionDAO', () => {
 
             expect(SubmissionModel.find).toHaveBeenCalledWith(expect.objectContaining({
                 status: COMPLETED,
+                archived: { $ne: true },
                 updatedAt: expect.objectContaining({ $lte: expect.any(Date) }),
                 $or: [
                     {

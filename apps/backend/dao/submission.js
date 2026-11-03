@@ -653,6 +653,8 @@ class SubmissionDAO extends MongooseGenericDAO {
      * Finds completed submissions past the retention window for archival.
      * Metadata Only submissions require a succeeded metadata DataSync.
      * Metadata and Data Files submissions require both metadata and file DataSyncs to have succeeded.
+     * Already-archived submissions are excluded: archiving leaves `status` and the sync rollups
+     * unchanged and refreshes `updatedAt`, so without this they re-qualify every retention window.
      * @param {number} completedSubmissionDays Retention days after completion
      * @returns {Promise<object[]>} Matching submissions, or an empty array when the query fails
      */
@@ -662,6 +664,7 @@ class SubmissionDAO extends MongooseGenericDAO {
             targetRetentionDate.setDate(targetRetentionDate.getDate() - completedSubmissionDays);
             return await this.findMany({
                 status: COMPLETED,
+                archived: { $ne: true },
                 updatedAt: {
                     $lte: targetRetentionDate
                 },

@@ -42,6 +42,15 @@ describe('SubmissionDAO.getToBeArchivedSubmissions archive gate', () => {
         expect(filter.updatedAt).toEqual({ $lte: expect.any(Date) });
     });
 
+    it('excludes already-archived submissions at the top level of the query', async () => {
+        const filter = await captureFilter();
+
+        expect(filter.archived).toEqual({ $ne: true });
+        for (const branch of filter.$or) {
+            expect(Object.keys(branch)).not.toContain('archived');
+        }
+    });
+
     it('has exactly two eligibility branches, each requiring a succeeded metadata sync', async () => {
         const filter = await captureFilter();
 
