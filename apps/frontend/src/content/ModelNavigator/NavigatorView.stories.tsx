@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { userEvent, waitFor, within, expect } from "@storybook/test";
 
-import { DataCommonProvider } from "../../components/Contexts/DataCommonContext";
+import { DataModelsProvider } from "../../components/Contexts/DataModelsContext";
 import ErrorBoundary from "../../components/ErrorBoundary";
-import { DataCommons } from "../../config/DataCommons";
 import env from "../../env";
+import { MANIFEST_CACHE_KEY } from "../../utils";
 
 import NavigatorView from "./NavigatorView";
 
@@ -22,7 +22,7 @@ const meta: Meta<CustomStoryProps> = {
     model: {
       control: "select",
       description: "The display name of the Data Model to display",
-      options: DataCommons.map((model) => model.displayName),
+      options: ["GC", "CCDI", "CTDC", "ICDC", "PSDC", "SDM"],
     },
     version: {
       control: "text",
@@ -38,8 +38,8 @@ const meta: Meta<CustomStoryProps> = {
   decorators: [
     (Story, context) => {
       try {
-        // Remove the model manifest from session storage
-        sessionStorage.removeItem("manifest");
+        // Remove the cached model manifest
+        localStorage.removeItem(MANIFEST_CACHE_KEY);
 
         // Set the dev tier to fetch the correct manifest from
         env.VITE_DEV_TIER = context.args.tier;
@@ -49,9 +49,9 @@ const meta: Meta<CustomStoryProps> = {
 
       return (
         <ErrorBoundary key={`${context.args.tier}-${context.args.model}-${context.args.version}`}>
-          <DataCommonProvider displayName={context.args.model}>
+          <DataModelsProvider>
             <Story />
-          </DataCommonProvider>
+          </DataModelsProvider>
         </ErrorBoundary>
       );
     },

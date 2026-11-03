@@ -64,31 +64,6 @@ export const buildReleaseNotesUrl = (): string => {
 };
 
 /**
- * A utility to safely get the hidden Data Commons from the environment variable.
- * If it is not set, return an empty array.
- *
- * @returns An array of hidden Data Commons or an empty array if not set.
- */
-export const getFilteredDataCommons = (): string[] => {
-  const { VITE_HIDDEN_MODELS } = env || {};
-
-  if (!VITE_HIDDEN_MODELS || typeof VITE_HIDDEN_MODELS !== "string") {
-    Logger.error("getFilteredDataCommons: VITE_HIDDEN_MODELS is not set or is not a string");
-    return [];
-  }
-
-  const mapped = VITE_HIDDEN_MODELS.split(",")
-    .map((dc) => dc?.trim())
-    .filter((dc) => dc?.length);
-
-  if (!mapped?.length) {
-    return [];
-  }
-
-  return mapped;
-};
-
-/**
  * A utility to determine the correct base URL for the CRDC Data commons domain.
  *
  * @returns The base URL as a string.

@@ -1,11 +1,12 @@
-import { FC } from "react";
+import { FC, useEffect } from "react";
 import { Route, RouterProvider, Routes, createMemoryRouter } from "react-router-dom";
 
-import { TestRouter, render, waitFor } from "../../test-utils";
+import { TestRouter, act, render, waitFor } from "../../test-utils";
 
 import Controller from "./Controller";
 
 const mockUsePageTitle = vi.fn();
+const mockNavigatorMount = vi.fn();
 vi.mock("../../hooks/usePageTitle", () => ({
   ...vi.importActual("../../hooks/usePageTitle"),
   __esModule: true,
@@ -14,7 +15,17 @@ vi.mock("../../hooks/usePageTitle", () => ({
 
 vi.mock("./NavigatorView", () => ({
   __esModule: true,
-  default: ({ version }: { version?: string }) => <div>MOCK NAVIGATOR VIEW {version}</div>,
+  default: ({ model, version }: { model: string; version?: string }) => {
+    useEffect(() => {
+      mockNavigatorMount(model, version);
+    }, []);
+
+    return (
+      <div>
+        MOCK NAVIGATOR VIEW {model} {version}
+      </div>
+    );
+  },
 }));
 
 type ParentProps = {
@@ -80,7 +91,7 @@ describe("Basic Functionality", () => {
   });
 
   it.each<string>(["3.2.0", "latest"])(
-    "should pass the version '%s' to the NavigatorView",
+    "should pass the model and version '%s' to the NavigatorView",
     async (version) => {
       render(<Controller />, {
         wrapper: ({ children }) => (
@@ -91,8 +102,33 @@ describe("Basic Functionality", () => {
       });
 
       await waitFor(() => {
-        expect(document.body).toHaveTextContent(`MOCK NAVIGATOR VIEW ${version}`);
+        expect(document.body).toHaveTextContent(`MOCK NAVIGATOR VIEW fake-model ${version}`);
       });
     }
   );
+
+  // NOTE: This is preventing a regression where model navigator fails to show the correct
+  // model and version when navigating between different routes via the navigation bar
+  it("should remount the navigator when the model or version changes", async () => {
+    const router = createMemoryRouter(
+      [{ path: "/model-navigator/:model/:version?", element: <Controller /> }],
+      {
+        initialEntries: ["/model-navigator/GC/1.0.0"],
+        future: { v7_relativeSplatPath: true },
+      }
+    );
+
+    render(<RouterProvider router={router} future={{ v7_startTransition: true }} />);
+    await waitFor(() => expect(mockNavigatorMount).toHaveBeenLastCalledWith("GC", "1.0.0"));
+
+    await act(async () => {
+      await router.navigate("/model-navigator/GC/2.0.0");
+    });
+    await waitFor(() => expect(mockNavigatorMount).toHaveBeenLastCalledWith("GC", "2.0.0"));
+
+    await act(async () => {
+      await router.navigate("/model-navigator/ICDC/2.0.0");
+    });
+    await waitFor(() => expect(mockNavigatorMount).toHaveBeenLastCalledWith("ICDC", "2.0.0"));
+  });
 });
