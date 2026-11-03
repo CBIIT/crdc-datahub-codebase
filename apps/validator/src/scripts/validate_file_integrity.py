@@ -4,6 +4,10 @@ from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
 from pymongo import MongoClient
+from dotenv import load_dotenv
+
+# Load variables from .env file into os.environ
+load_dotenv()
 
 SIZE = 'size'
 URI = 'URI'
@@ -122,8 +126,13 @@ def download_file_from_s3(bucket: str, key: str, local_file_name: str):
         s3_client = boto3.client('s3')
         header = s3_client.head_object(Bucket=bucket, Key=key)
         s3_client.download_file(bucket, key, local_file_name)
-    except Exception as e:
-        print(e)
+    except ClientError as e:
+        if e.response['Error']['Code'] in ('404', 'NoSuchKey'):
+            print("No intermediate file found in the bucket")
+            return None
+        else:
+            print('Error happened when downloading intermediate file')
+            print(e)
 
 def upload_file_to_s3(bucket: str, key: str, local_file_name: str):
     if not bucket or not key:
