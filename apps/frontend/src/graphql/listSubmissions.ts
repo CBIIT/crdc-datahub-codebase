@@ -55,6 +55,8 @@ export const query: TypedDocumentNode<Response, Input> = gql`
         dataFileSize {
           formatted
         }
+        metadataDataSyncStatus
+        fileDataSyncStatus
         submissionRequestID
         canViewSubmissionRequest
         adminSubmitComment @include(if: $isInternalUser)
@@ -103,6 +105,8 @@ export type Response = {
       | "updatedAt"
       | "intention"
       | "adminSubmitComment"
+      | "metadataDataSyncStatus"
+      | "fileDataSyncStatus"
     > & {
       dataFileSize: Pick<Submission["dataFileSize"], "formatted">;
       history: Pick<Submission["history"][number], "status">[];

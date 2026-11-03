@@ -255,13 +255,16 @@ class YamlModelParser:
                     if VALUE_TYPE in prop_desc:
                         result[TYPE] = prop_desc[VALUE_TYPE] if prop_desc[VALUE_TYPE] != "list" else "value-list"
                         if ITEM_TYPE in prop_desc:
-                            item_type = self._get_item_type(prop_desc[ITEM_TYPE])
+                            item_type = self._get_item_type(prop_desc[ITEM_TYPE], name)
                             result[ITEM_TYPE] = item_type
                         if PROP_ENUM in prop_desc:
-                            item_type = self._get_item_type(prop_desc[PROP_ENUM])
-                            result[ALLOWED_VALUES] = item_type[ALLOWED_VALUES]
-                            if prop_desc[VALUE_TYPE] != "list":
-                                result[ITEM_TYPE] = item_type[TYPE]
+                            item_type = self._get_item_type(prop_desc[PROP_ENUM], name)
+                            if isinstance(item_type, dict) and ALLOWED_VALUES in item_type:
+                                result[ALLOWED_VALUES] = item_type[ALLOWED_VALUES]
+                                if prop_desc[VALUE_TYPE] != "list":
+                                    result[ITEM_TYPE] = item_type[TYPE]
+                            else:
+                                self.log.warning(f'Property "{name}": Enum did not yield allowed values, skipping: {prop_desc[PROP_ENUM]}')
                         if UNITS in prop_desc:
                             result[HAS_UNIT] = True
                     elif PROPERTY_PATTERN in prop_desc:
@@ -294,7 +297,18 @@ class YamlModelParser:
                     result[CDE_TERM] = prop[CDE_TERM]
         return result
 
-    def _get_item_type(self, item_type):
+    def _get_item_type(self, item_type, prop_name=None):
+        """Normalize an MDF item_type / Enum value.
+
+        str -> the type name; 
+        list -> enum dict (URLs dropped); 
+        dict with pattern -> pattern dict;
+        dict with value_type -> the value type name; 
+        anything else -> None with a warning.
+        
+        @param item_type raw value from the props file
+        @param prop_name owning property, for log context only
+        """
         if isinstance(item_type, str):
             return item_type
         elif isinstance(item_type, list):
@@ -306,9 +320,14 @@ class YamlModelParser:
                 return {TYPE: DEFAULT_TYPE, ALLOWED_VALUES: list(enum)}
             else:
                 return None
-        else:
-            self.log.error(f"{item_type} is not a scala or Enum!")
-            return None
+        elif isinstance(item_type, dict):
+            if PROPERTY_PATTERN in item_type:
+                return {TYPE: PROPERTY_PATTERN, PROPERTY_PATTERN: item_type[PROPERTY_PATTERN]}
+            if VALUE_TYPE in item_type:
+                value_type = item_type[VALUE_TYPE]
+                return value_type if value_type in valid_prop_types else DEFAULT_TYPE
+        self.log.warning(f'Property "{prop_name}": item type {item_type} is not a scalar, Enum, pattern or value_type; ignored.')
+        return None
 
     def get_prop(self, node_name, name):
         if node_name in self.nodes:

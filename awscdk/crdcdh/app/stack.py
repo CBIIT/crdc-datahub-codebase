@@ -29,8 +29,9 @@ from rds import RdsInstance
 from documentdb import DocumentDbCluster
 from knowledgebase import KnowledgeBase
 from guardrail import Guardrail
+from urllib.parse import quote_plus
 #from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, chatbotbe
-from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller
+from services import frontend, backend, authn, essentialvalidation, metadatavalidation, filevalidation, exportvalidation, pvpuller, fileintegrity
 
 class Stack(Stack):
     def __init__(self, scope: Construct, **kwargs) -> None:
@@ -235,6 +236,19 @@ class Stack(Stack):
             docdb_password = config['db']['docdb_password']
             docdb_db_name = config['db']['docdb_db_name']
 
+        docdb_connection_string = (
+            "mongodb://{}:{}@{}:27017/"
+            "?tls=true"
+            "&tlsCAFile=resources/aws-documentdb-certificate/global-bundle.pem"
+            "&replicaSet=rs0"
+            "&readPreference=secondaryPreferred"
+            "&retryWrites=false"
+        ).format(
+            quote_plus(docdb_username),
+            quote_plus(docdb_password),
+            docdb_endpoint,
+        )    
+
         self.secret = secretsmanager.Secret(self, "Secret",
 #            secret_name="{}/{}/{}".format(config['main']['secret_prefix'], config['main']['tier'], "crdc-dh"),
             secret_name="{}/{}".format(config['main']['resource_prefix'], config['main']['tier']),
@@ -245,6 +259,7 @@ class Stack(Stack):
                 "docdb_username": SecretValue.unsafe_plain_text(docdb_username),
                 "docdb_password": SecretValue.unsafe_plain_text(docdb_password),
                 "docdb_db_name": SecretValue.unsafe_plain_text(docdb_db_name),
+                "docdb_connection_string": SecretValue.unsafe_plain_text(docdb_connection_string),
                 "neo4j_uri": SecretValue.unsafe_plain_text(config['db']['neo4j_uri']),
                 "neo4j_password": SecretValue.unsafe_plain_text(config['db']['neo4j_password']),
                 # "es_host": SecretValue.unsafe_plain_text(self.osDomain.domain_endpoint),
@@ -549,7 +564,7 @@ class Stack(Stack):
         # Metadata service
         metadatavalidation.metadatavalidationService.createService(self, config)
 
-        # File service
+        # File validation service
         filevalidation.filevalidationService.createService(self, config)
 
         # Export service
@@ -561,8 +576,8 @@ class Stack(Stack):
         # Chatbotbe Service
         #chatbotbe.chatbotbeService.createService(self, config)
 
-        # Files Service
-        # files.filesService.createService(self, config)
+        # File_integrity Service
+        fileintegrity.fileintegrityService.createService(self, config)
 
 
         # Add a fixed error message when browsing an invalid URL
