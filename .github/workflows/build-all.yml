@@ -34,7 +34,8 @@ jobs:
   # ──────────────────────────────────────────────
   prepare:
     name: Prepare Image Tag
-    runs-on: ubuntu-latest
+    #runs-on: ubuntu-latest
+    runs-on: ec2-al2023-s-nonprod
     outputs:
       image_tag: ${{ steps.set_tag.outputs.image_tag }}
     steps:
@@ -81,7 +82,8 @@ jobs:
   # ──────────────────────────────────────────────
   build:
     name: Build, Scan and Push - ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    #runs-on: ubuntu-latest
+    runs-on: ec2-al2023-s-nonprod 
     needs: prepare
     environment: ${{ inputs.environment }}
     env:
