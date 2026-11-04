@@ -56,12 +56,12 @@ jobs:
           # Packages: git + what rootless Docker needs (newuidmap/newgidmap, iptables)
           case "${ID}" in
             amzn|rhel|centos|rocky|almalinux|fedora)
-              sudo dnf install -y git shadow-utils iptables curl-minimal || \
-                sudo dnf install -y git shadow-utils iptables
+              dnf install -y git shadow-utils iptables curl-minimal || \
+                dnf install -y git shadow-utils iptables
               ;;
             ubuntu|debian)
-              sudo apt-get update -y
-              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git uidmap dbus-user-session iptables curl
+              apt-get update -y
+              DEBIAN_FRONTEND=noninteractive apt-get install -y git uidmap dbus-user-session iptables curl
               ;;
             *)
               echo "::error::Unsupported OS: ${ID}"
@@ -71,30 +71,30 @@ jobs:
           git --version
  
           # Create the user if it does not exist
-          if id "${RUNNER_SVC_USER}" >/dev/null 2>&1; then
-            echo "User ${RUNNER_SVC_USER} already exists"
-          else
-            sudo useradd -m -s /bin/bash "${RUNNER_SVC_USER}"
-            echo "Created user ${RUNNER_SVC_USER}"
-          fi
+          #if id "${RUNNER_SVC_USER}" >/dev/null 2>&1; then
+            #echo "User ${RUNNER_SVC_USER} already exists"
+          #else
+            #sudo useradd -m -s /bin/bash "${RUNNER_SVC_USER}"
+            #echo "Created user ${RUNNER_SVC_USER}"
+          #fi
  
           # Subordinate UID/GID ranges required by rootless Docker
-          grep -q "^${RUNNER_SVC_USER}:" /etc/subuid || sudo usermod --add-subuids 100000-165535 "${RUNNER_SVC_USER}"
-          grep -q "^${RUNNER_SVC_USER}:" /etc/subgid || sudo usermod --add-subgids 100000-165535 "${RUNNER_SVC_USER}"
+          #grep -q "^${RUNNER_SVC_USER}:" /etc/subuid || sudo usermod --add-subuids 100000-165535 "${RUNNER_SVC_USER}"
+          #grep -q "^${RUNNER_SVC_USER}:" /etc/subgid || sudo usermod --add-subgids 100000-165535 "${RUNNER_SVC_USER}"
  
           # Start a systemd user session for the user (creates /run/user/<uid>)
-          RUNNER_UID="$(id -u "${RUNNER_SVC_USER}")"
-          if command -v loginctl >/dev/null 2>&1; then
-            sudo loginctl enable-linger "${RUNNER_SVC_USER}" || true
-            for i in $(seq 1 15); do
-              [ -S "/run/user/${RUNNER_UID}/bus" ] && break
-              sleep 1
-            done
-          fi
-          ls -ld "/run/user/${RUNNER_UID}" || true
+          #RUNNER_UID="$(id -u "${RUNNER_SVC_USER}")"
+          #if command -v loginctl >/dev/null 2>&1; then
+            #sudo loginctl enable-linger "${RUNNER_SVC_USER}" || true
+            #for i in $(seq 1 15); do
+              #[ -S "/run/user/${RUNNER_UID}/bus" ] && break
+              #sleep 1
+            #done
+          #fi
+          #ls -ld "/run/user/${RUNNER_UID}" || true
  
           # Wrapper: run a step script as cbiit-runner with the Docker environment set up
-          sudo tee /usr/local/bin/as-runner >/dev/null <<'WRAPPER'
+          tee /usr/local/bin/as-runner >/dev/null <<'WRAPPER'
           #!/bin/bash
           # Usage: as-runner <script-file>   (used as the custom `shell:` of workflow steps)
           set -eu
@@ -103,7 +103,7 @@ jobs:
           U_HOME="$(getent passwd "${RUNNER_SVC_USER}" | cut -d: -f6)"
           XDG="/run/user/${U_UID}"
           [ -d "${XDG}" ] || XDG="${U_HOME}/.xdg-runtime"
-          sudo -n install -d -m 0700 -o "${RUNNER_SVC_USER}" -g "${RUNNER_SVC_USER}" "${U_HOME}/tmp" "${XDG}" 2>/dev/null || true
+          install -d -m 0700 -o "${RUNNER_SVC_USER}" -g "${RUNNER_SVC_USER}" "${U_HOME}/tmp" "${XDG}" 2>/dev/null || true
           exec sudo -n -u "${RUNNER_SVC_USER}" -H env \
             "HOME=${U_HOME}" \
             "PATH=${U_HOME}/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin" \
@@ -116,10 +116,10 @@ jobs:
             "WORKDIR=${WORKDIR:-}" \
             bash --noprofile --norc -eo pipefail "$1"
           WRAPPER
-          sudo chmod 0755 /usr/local/bin/as-runner
+          chmod 0755 /usr/local/bin/as-runner
  
           # The step script files live in the runner's temp dir; the service user must be able to read them
-          sudo chmod o+x "$(dirname "${RUNNER_TEMP}")" "${RUNNER_TEMP}" || true
+          chmod o+x "$(dirname "${RUNNER_TEMP}")" "${RUNNER_TEMP}" || true
  
       - name: Confirm steps run as cbiit-runner
         shell: /usr/local/bin/as-runner {0}
