@@ -33,29 +33,14 @@ const { DATA_SYNC_STATUS, DATA_SYNC_TYPE } = require('../../constants/data-sync-
 
 /**
  * Units under test:
- *   _verifySyncedCopies(submission) -> {ok, reason}, never throws
- *   archiveSubmissions()            -> deletes only when verification passes,
- *                                      or when a manual archive approval is set
+ *   _hasSucceededDataSyncRecords(submission) -> {ok, reason}, never throws
+ *   archiveSubmissions()                     -> deletes when records succeeded,
+ *                                              or when a manual archive approval is set
+ *                                              and a required type has no record
  */
 
 const SUBMISSION_BUCKET = 'submission-bucket';
-const METADATA_BUCKET = 'metadata-bucket';
-const DM_BUCKET = 'dm-bucket';
 const DATA_COMMONS = 'TestCommons';
-
-const METADATA_TARGET = '2026-11-03T14:25:02-sub-1';
-const METADATA_ONLY_TARGET = '2026-11-03T14:30:00-sub-2';
-
-/** Listing entry. The default ETag derives from the size, so equal-size fixtures model a faithful copy. */
-const obj = (Key, Size, ETag = `"etag-${Size}"`) => ({ Key, Size, ETag });
-
-/** Normalized HeadObject checksum metadata. */
-const head = (checksums = {}, checksumType = null, etag = null, size = null) => ({
-    etag,
-    checksumType,
-    checksums,
-    size,
-});
 
 const filesSubmission = () => ({
     _id: 'sub-1',
@@ -96,79 +81,28 @@ const metadataOnlySubmission = () => ({
 const metadataRecord = (overrides = {}) => ({
     type: DATA_SYNC_TYPE.METADATA,
     status: DATA_SYNC_STATUS.SUCCEEDED,
-    sourceFolder: 'submissions/sub-1/metadata/release',
-    targetFolder: METADATA_TARGET,
     ...overrides,
 });
 
 const fileRecord = (overrides = {}) => ({
     type: DATA_SYNC_TYPE.FILE,
     status: DATA_SYNC_STATUS.SUCCEEDED,
-    sourceFolder: 'submissions/sub-1/file',
-    targetFolder: 'study-1',
     ...overrides,
 });
 
-/** Listings where both the metadata and file copies match their source. */
-const matchingListings = () => ({
-    [`${SUBMISSION_BUCKET}|submissions/sub-1/metadata/release`]: [obj('submissions/sub-1/metadata/release/study.tsv', 100)],
-    [`${METADATA_BUCKET}|${METADATA_TARGET}`]: [obj(`${METADATA_TARGET}/study.tsv`, 100)],
-    [`${SUBMISSION_BUCKET}|submissions/sub-1/file`]: [obj('submissions/sub-1/file/a.fastq', 500)],
-    [`${DM_BUCKET}|study-1`]: [obj('study-1/a.fastq', 500)],
-});
+/** Both required types recorded for a Metadata and Data Files submission. */
+const bothRecordedTypes = (submissionID) => new Map([
+    [submissionID, new Set([DATA_SYNC_TYPE.METADATA, DATA_SYNC_TYPE.FILE])],
+]);
 
 /**
- * @param {{ETag?: string, Size: number}} entry S3 listing entry
- * @returns {{etag: string|null, size: number, checksumType: null, checksums: object}}
+ * s3Service double. listFileInDir throws on any call so an unexpected
+ * destination read fails the test instead of looking like an empty prefix.
  */
-function listingEntryToHead(entry) {
-    let etag = null;
-    if (entry.ETag != null) {
-        const text = String(entry.ETag).trim().replace(/^"+|"+$/g, '');
-        etag = text === '' ? null : text;
-    }
-    return { etag, size: entry.Size, checksumType: null, checksums: {} };
-}
-
-/**
- * Builds HeadObject fixtures from listing entries (source and destination objects).
- * @param {Record<string, object[]>} listings keyed by `bucket|prefix`
- * @returns {Record<string, object>}
- */
-function headsFromListingEntries(listings) {
-    const heads = {};
-    for (const [bucketPrefix, objects] of Object.entries(listings)) {
-        const bucket = bucketPrefix.split('|')[0];
-        for (const object of objects) {
-            heads[`${bucket}|${object.Key}`] = listingEntryToHead(object);
-        }
-    }
-    return heads;
-}
-
-/**
- * s3Service double. Only source prefixes are listed. HeadObject lookups are keyed by `bucket|key`.
- * @param {Record<string, object[]>} listings keyed by `bucket|prefix`
- * @param {Record<string, object>} [heads] keyed by `bucket|key`
- */
-function makeS3Service(listings, heads = {}) {
-    const mergedHeads = { ...headsFromListingEntries(listings), ...heads };
+function makeS3Service() {
     return {
-        headObjectChecksums: jest.fn(async (bucket, key) => {
-            const id = `${bucket}|${key}`;
-            if (!(id in mergedHeads)) {
-                const err = new Error('NotFound');
-                err.code = 'NotFound';
-                throw err;
-            }
-            return mergedHeads[id];
-        }),
         listFileInDir: jest.fn(async (bucket, prefix) => {
-            const key = `${bucket}|${String(prefix).replace(/\/+$/, '')}`;
-            if (!(key in listings)) {
-                throw new Error(`unexpected listing request: ${key}`);
-            }
-            return listings[key];
+            throw new Error(`unexpected listing request: ${bucket}|${prefix}`);
         }),
         deleteDirectory: jest.fn().mockResolvedValue(true),
     };
@@ -206,16 +140,12 @@ function makeService() {
     );
 
     service.emailParams = { completedSubmissionDays: 30 };
-    service.s3Service = makeS3Service(matchingListings());
-    service.dataCommonsBucketMap = new Map([[DATA_COMMONS, METADATA_BUCKET]]);
-    service.configurationService = {
-        findByType: jest.fn().mockResolvedValue({ keys: { dm_bucket: DM_BUCKET } }),
-    };
+    service.s3Service = makeS3Service();
     service.dataSyncService = {
         findLatestBySubmissionIDAndType: jest.fn(async (_submissionID, type) => (
             type === DATA_SYNC_TYPE.METADATA ? metadataRecord() : fileRecord()
         )),
-        findSubmissionIDsWithRecords: jest.fn().mockResolvedValue([]),
+        findRecordedTypesBySubmissionIDs: jest.fn().mockResolvedValue(new Map()),
         findSubmissionIDsWithInProgressFileRecords: jest.fn().mockResolvedValue([]),
     };
     service.submissionDAO = {
@@ -244,121 +174,30 @@ afterEach(() => {
     jest.restoreAllMocks();
 });
 
-describe('_verifySyncedCopies', () => {
+describe('_hasSucceededDataSyncRecords', () => {
 
-    it('passes for a Metadata Only submission whose metadata copy matches', async () => {
-        service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn(async () => metadataRecord({
-            sourceFolder: 'submissions/sub-2/metadata/release',
-            targetFolder: METADATA_ONLY_TARGET,
-        }));
-        service.s3Service = makeS3Service({
-            [`${SUBMISSION_BUCKET}|submissions/sub-2/metadata/release`]: [obj('submissions/sub-2/metadata/release/study.tsv', 100)],
-            [`${METADATA_BUCKET}|${METADATA_ONLY_TARGET}`]: [obj(`${METADATA_ONLY_TARGET}/study.tsv`, 100)],
-        });
-
-        const result = await service._verifySyncedCopies(metadataOnlySubmission());
+    it('passes when required metadata and file records succeeded', async () => {
+        const result = await service._hasSucceededDataSyncRecords(filesSubmission());
 
         expect(result.ok).toBe(true);
+        expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
     });
 
-    it('does not compare data files for a Metadata Only submission', async () => {
-        service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn(async () => metadataRecord({
-            sourceFolder: 'submissions/sub-2/metadata/release',
-            targetFolder: METADATA_ONLY_TARGET,
-        }));
-        service.s3Service = makeS3Service({
-            [`${SUBMISSION_BUCKET}|submissions/sub-2/metadata/release`]: [obj('submissions/sub-2/metadata/release/study.tsv', 100)],
-            [`${METADATA_BUCKET}|${METADATA_ONLY_TARGET}`]: [obj(`${METADATA_ONLY_TARGET}/study.tsv`, 100)],
-        });
+    it('passes for Metadata Only when the metadata record succeeded', async () => {
+        const result = await service._hasSucceededDataSyncRecords(metadataOnlySubmission());
 
-        await service._verifySyncedCopies(metadataOnlySubmission());
-
-        const bucketsListed = service.s3Service.listFileInDir.mock.calls.map(([bucket]) => bucket);
-        expect(bucketsListed).not.toContain(DM_BUCKET);
+        expect(result.ok).toBe(true);
         expect(service.dataSyncService.findLatestBySubmissionIDAndType)
             .not.toHaveBeenCalledWith(expect.anything(), DATA_SYNC_TYPE.FILE);
-    });
-
-    it('passes for Metadata and Data Files when both copies match', async () => {
-        const result = await service._verifySyncedCopies(filesSubmission());
-
-        expect(result.ok).toBe(true);
-    });
-
-    it('fails and identifies the file sync when the data file copy differs', async () => {
-        const listings = matchingListings();
-        listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 499)];
-        service.s3Service = makeS3Service(listings);
-
-        const result = await service._verifySyncedCopies(filesSubmission());
-
-        expect(result.ok).toBe(false);
-        expect(result.reason).toEqual(expect.stringMatching(/file/i));
-    });
-
-    it('fails and identifies the metadata sync when the metadata copy differs', async () => {
-        const listings = matchingListings();
-        listings[`${METADATA_BUCKET}|${METADATA_TARGET}`] = [];
-        service.s3Service = makeS3Service(listings);
-
-        const result = await service._verifySyncedCopies(filesSubmission());
-
-        expect(result.ok).toBe(false);
-        expect(result.reason).toEqual(expect.stringMatching(/metadata/i));
-    });
-
-    it('fails when a later submission overwrote the shared study key with same-length different bytes', async () => {
-        const listings = matchingListings();
-        listings[`${SUBMISSION_BUCKET}|submissions/sub-1/file`] = [obj('submissions/sub-1/file/a.fastq', 500, '"original"')];
-        listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"overwritten"')];
-        service.s3Service = makeS3Service(listings, {
-            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({ CRC64NVME: 'orig==' }, 'FULL_OBJECT', null, 500),
-            [`${DM_BUCKET}|study-1/a.fastq`]: head({ CRC64NVME: 'new==' }, 'FULL_OBJECT', null, 500),
-        });
-
-        const result = await service._verifySyncedCopies(filesSubmission());
-
-        expect(result).toEqual({ ok: false, reason: expect.stringContaining('file content mismatch for a.fastq') });
-    });
-
-    it('fails as unverifiable when content equality cannot be established', async () => {
-        const listings = matchingListings();
-        listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"multipart-etag-2"')];
-        service.s3Service = makeS3Service(listings, {
-            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({}, null, 'source-etag', 500),
-            [`${DM_BUCKET}|study-1/a.fastq`]: head({}, null, 'dest-etag', 500),
-        });
-
-        const result = await service._verifySyncedCopies(filesSubmission());
-
-        expect(result).toEqual({ ok: false, reason: expect.stringContaining('file ContentUnverifiable for a.fastq') });
-    });
-
-    it('fails rather than throwing when HeadObject rejects', async () => {
-        const listings = matchingListings();
-        listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"different"')];
-        service.s3Service = makeS3Service(listings);
-        service.s3Service.headObjectChecksums.mockRejectedValue(new Error('AccessDenied: kms:Decrypt'));
-
-        const result = await service._verifySyncedCopies(filesSubmission());
-
-        expect(result).toEqual({ ok: false, reason: expect.stringContaining('AccessDenied') });
     });
 
     it('fails when no dataSync record exists for a required type', async () => {
         service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn().mockResolvedValue(null);
 
-        const result = await service._verifySyncedCopies(filesSubmission());
+        const result = await service._hasSucceededDataSyncRecords(filesSubmission());
 
         expect(result.ok).toBe(false);
         expect(result.reason).toEqual(expect.stringContaining('NoDataSyncRecord'));
-    });
-
-    it('makes no S3 calls when the dataSync record is missing', async () => {
-        service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn().mockResolvedValue(null);
-
-        await service._verifySyncedCopies(filesSubmission());
-
         expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
     });
 
@@ -366,70 +205,21 @@ describe('_verifySyncedCopies', () => {
         DATA_SYNC_STATUS.FAILED,
         DATA_SYNC_STATUS.IN_PROGRESS,
         DATA_SYNC_STATUS.NOT_STARTED,
-    ])('fails without listing when the dataSync record status is %s', async (status) => {
+    ])('fails when the dataSync record status is %s', async (status) => {
         service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn()
             .mockResolvedValue(metadataRecord({ status }));
 
-        const result = await service._verifySyncedCopies(filesSubmission());
+        const result = await service._hasSucceededDataSyncRecords(filesSubmission());
 
         expect(result.ok).toBe(false);
-        expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
-    });
-
-    it.each([
-        ['sourceFolder', { sourceFolder: '' }],
-        ['sourceFolder', { sourceFolder: undefined }],
-        ['targetFolder', { targetFolder: '' }],
-        ['targetFolder', { targetFolder: undefined }],
-    ])('fails without listing when the dataSync record has no %s', async (_field, overrides) => {
-        service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn()
-            .mockResolvedValue(metadataRecord(overrides));
-
-        const result = await service._verifySyncedCopies(filesSubmission());
-
-        expect(result.ok).toBe(false);
-        expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
-    });
-
-    it('fails with NoDestinationBucket when the data commons has no metadata bucket', async () => {
-        service.dataCommonsBucketMap = new Map();
-
-        const result = await service._verifySyncedCopies(filesSubmission());
-
-        expect(result.ok).toBe(false);
-        expect(result.reason).toEqual(expect.stringContaining('NoDestinationBucket'));
-        expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
-    });
-
-    it('fails with NoDestinationBucket when the DM bucket config is missing', async () => {
-        service.configurationService.findByType = jest.fn().mockResolvedValue(null);
-
-        const result = await service._verifySyncedCopies(filesSubmission());
-
-        expect(result.ok).toBe(false);
-        expect(result.reason).toEqual(expect.stringContaining('NoDestinationBucket'));
-    });
-
-    it('never lists with an undefined bucket when the DM bucket does not resolve', async () => {
-        service.configurationService.findByType = jest.fn().mockResolvedValue({ keys: {} });
-
-        await service._verifySyncedCopies(filesSubmission());
-
-        const bucketsListed = service.s3Service.listFileInDir.mock.calls.map(([bucket]) => bucket);
-        expect(bucketsListed).not.toContain(undefined);
-    });
-
-    it('fails when the submission has no bucketName', async () => {
-        const result = await service._verifySyncedCopies({ ...filesSubmission(), bucketName: undefined });
-
-        expect(result.ok).toBe(false);
+        expect(result.reason).toEqual(expect.stringContaining('DataSyncNotSucceeded'));
         expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
     });
 
     it('returns a reason on every failure path', async () => {
         service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn().mockRejectedValue(new Error('boom'));
 
-        const result = await service._verifySyncedCopies(filesSubmission());
+        const result = await service._hasSucceededDataSyncRecords(filesSubmission());
 
         expect(result.ok).toBe(false);
         expect(result.reason).toBeTruthy();
@@ -441,7 +231,7 @@ describe('_verifySyncedCopies', () => {
         error.code = 'AccessDenied';
         service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn().mockRejectedValue(error);
 
-        const result = await service._verifySyncedCopies(filesSubmission());
+        const result = await service._hasSucceededDataSyncRecords(filesSubmission());
 
         expect(result).toEqual({ ok: false, reason: 'AccessDenied' });
     });
@@ -449,7 +239,7 @@ describe('_verifySyncedCopies', () => {
     it('uses String(error) when a non-Error string is thrown', async () => {
         service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn().mockRejectedValue('test error');
 
-        const result = await service._verifySyncedCopies(filesSubmission());
+        const result = await service._hasSucceededDataSyncRecords(filesSubmission());
 
         expect(result).toEqual({ ok: false, reason: 'test error' });
     });
@@ -457,28 +247,53 @@ describe('_verifySyncedCopies', () => {
     it('uses a fallback reason when the thrown value has no message or code', async () => {
         service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn().mockRejectedValue(null);
 
-        const result = await service._verifySyncedCopies(filesSubmission());
+        const result = await service._hasSucceededDataSyncRecords(filesSubmission());
 
         expect(result).toEqual({ ok: false, reason: 'Unknown error' });
     });
 
-    it('fails rather than throwing when an S3 listing rejects', async () => {
-        service.s3Service.listFileInDir = jest.fn().mockRejectedValue(new Error('AccessDenied'));
+    it('rejects Metadata and Data Files when metadata succeeded and the file record failed', async () => {
+        service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn(async (_submissionID, type) => (
+            type === DATA_SYNC_TYPE.METADATA
+                ? metadataRecord()
+                : fileRecord({ status: DATA_SYNC_STATUS.FAILED })
+        ));
 
-        const result = await service._verifySyncedCopies(filesSubmission());
+        const result = await service._hasSucceededDataSyncRecords(filesSubmission());
 
-        expect(result.ok).toBe(false);
-        expect(result.reason).toEqual(expect.stringContaining('AccessDenied'));
+        expect(result).toEqual({
+            ok: false,
+            reason: `${DATA_SYNC_TYPE.FILE} DataSyncNotSucceeded: ${DATA_SYNC_STATUS.FAILED}`,
+        });
+    });
+
+    it('loads both metadata and file records for Metadata and Data Files', async () => {
+        await service._hasSucceededDataSyncRecords(filesSubmission());
+
+        expect(service.dataSyncService.findLatestBySubmissionIDAndType)
+            .toHaveBeenCalledWith('sub-1', DATA_SYNC_TYPE.METADATA);
+        expect(service.dataSyncService.findLatestBySubmissionIDAndType)
+            .toHaveBeenCalledWith('sub-1', DATA_SYNC_TYPE.FILE);
+    });
+
+    it('returns UnknownDataType when dataType is neither known value', async () => {
+        const result = await service._hasSucceededDataSyncRecords({
+            ...filesSubmission(),
+            dataType: 'Other',
+        });
+
+        expect(result).toEqual({ ok: false, reason: 'UnknownDataType' });
+        expect(service.dataSyncService.findLatestBySubmissionIDAndType).not.toHaveBeenCalled();
     });
 
 });
 
 describe('archiveSubmissions', () => {
 
-    it('archives the submission when verification passes', async () => {
+    it('archives the submission when the record gate passes', async () => {
         const submission = filesSubmission();
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([submission]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await service.archiveSubmissions();
 
@@ -488,18 +303,18 @@ describe('archiveSubmissions', () => {
         expect(service.submissionDAO.update).toHaveBeenCalledWith('sub-1', expect.objectContaining({ archived: true }));
     });
 
-    it('does not delete the S3 directory when verification fails', async () => {
+    it('does not delete the S3 directory when the record gate fails', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: false, reason: 'size mismatch' });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: false, reason: 'NoDataSyncRecord for metadata' });
 
         await service.archiveSubmissions();
 
         expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
     });
 
-    it('does not archive records or delete batches when verification fails', async () => {
+    it('does not archive records or delete batches when the record gate fails', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: false, reason: 'size mismatch' });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: false, reason: 'NoDataSyncRecord for metadata' });
 
         await service.archiveSubmissions();
 
@@ -507,29 +322,29 @@ describe('archiveSubmissions', () => {
         expect(service.batchDAO.deleteBatchesBySubmissionID).not.toHaveBeenCalled();
     });
 
-    it('does not mark the submission archived when verification fails', async () => {
+    it('does not mark the submission archived when the record gate fails', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: false, reason: 'size mismatch' });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: false, reason: 'NoDataSyncRecord for metadata' });
 
         await service.archiveSubmissions();
 
         expect(service.submissionDAO.update).not.toHaveBeenCalled();
     });
 
-    it('verifies a Metadata Only submission rather than exempting it', async () => {
+    it('runs the record gate for a Metadata Only submission rather than exempting it', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([metadataOnlySubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await service.archiveSubmissions();
 
-        expect(service._verifySyncedCopies).toHaveBeenCalledWith(expect.objectContaining({ _id: 'sub-2' }));
+        expect(service._hasSucceededDataSyncRecords).toHaveBeenCalledWith(expect.objectContaining({ _id: 'sub-2' }));
     });
 
-    it('verifies before deleting anything', async () => {
+    it('runs the record gate before deleting anything', async () => {
         const order = [];
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn(async () => {
-            order.push('verify');
+        service._hasSucceededDataSyncRecords = jest.fn(async () => {
+            order.push('records');
             return { ok: true };
         });
         service.s3Service.deleteDirectory = jest.fn(async () => {
@@ -539,12 +354,12 @@ describe('archiveSubmissions', () => {
 
         await service.archiveSubmissions();
 
-        expect(order).toEqual(['verify', 'delete']);
+        expect(order).toEqual(['records', 'delete']);
     });
 
-    it('names the retained submission in the summary when verification fails', async () => {
+    it('names the retained submission in the summary when the record gate fails', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: false, reason: 'size mismatch' });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: false, reason: 'NoDataSyncRecord for metadata' });
 
         const summary = await service.archiveSubmissions();
 
@@ -552,24 +367,24 @@ describe('archiveSubmissions', () => {
         expect(summary).not.toEqual('successful!');
     });
 
-    it('distinguishes a failed comparison from a failed S3 delete in the summary', async () => {
+    it('distinguishes a retained submission from a failed S3 delete in the summary', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: false, reason: 'size mismatch' });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: false, reason: 'NoDataSyncRecord for metadata' });
 
-        const comparisonSummary = await service.archiveSubmissions();
+        const retainedSummary = await service.archiveSubmissions();
 
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
         service.s3Service.deleteDirectory = jest.fn().mockRejectedValue(new Error('access denied'));
 
         const deleteSummary = await service.archiveSubmissions();
 
-        expect(comparisonSummary).not.toEqual(deleteSummary);
+        expect(retainedSummary).not.toEqual(deleteSummary);
     });
 
     it('reports success when every candidate is archived', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await expect(service.archiveSubmissions()).resolves.toEqual('successful!');
     });
@@ -579,41 +394,34 @@ describe('archiveSubmissions', () => {
             ...filesSubmission(),
             fileDataSyncStatus: DATA_SYNC_STATUS.FAILED,
         }]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await service.archiveSubmissions();
 
         expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
     });
 
-    it('retains the source when the shared study copy was overwritten with different content', async () => {
-        const listings = matchingListings();
-        listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"overwritten"')];
-        service.s3Service = makeS3Service(listings, {
-            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({ CRC64NVME: 'orig==' }, 'FULL_OBJECT', null, 500),
-            [`${DM_BUCKET}|study-1/a.fastq`]: head({ CRC64NVME: 'new==' }, 'FULL_OBJECT', null, 500),
-        });
+    it('archives without listing or HeadObject when DataSync records succeeded', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
 
-        const summary = await service.archiveSubmissions();
+        await service.archiveSubmissions();
 
-        expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
-        expect(service.submissionDAO.update).not.toHaveBeenCalled();
-        expect(summary).toEqual(expect.stringContaining('data retained for submission(s): sub-1'));
+        expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
+        expect(service.s3Service.deleteDirectory).toHaveBeenCalledWith(SUBMISSION_BUCKET, 'submissions/sub-1');
+        expect(service.submissionDAO.update).toHaveBeenCalledWith('sub-1', expect.objectContaining({ archived: true }));
     });
 
     it('skips an already-archived candidate without verifying, deleting, or reporting it', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([
             { ...filesSubmission(), archived: true },
         ]);
-        const verify = jest.spyOn(service, '_verifySyncedCopies');
+        const verify = jest.spyOn(service, '_hasSucceededDataSyncRecords');
 
         const summary = await service.archiveSubmissions();
 
         expect(verify).not.toHaveBeenCalled();
         expect(service.dataSyncService.findLatestBySubmissionIDAndType).not.toHaveBeenCalled();
         expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
-        expect(service.s3Service.headObjectChecksums).not.toHaveBeenCalled();
         expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
         expect(service.submissionDAO.update).not.toHaveBeenCalled();
         expect(summary).toEqual('successful!');
@@ -624,23 +432,23 @@ describe('archiveSubmissions', () => {
             { ...filesSubmission(), _id: 'sub-old', rootPath: 'submissions/sub-old', archived: true },
             filesSubmission(),
         ]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await service.archiveSubmissions();
 
-        expect(service._verifySyncedCopies).toHaveBeenCalledTimes(1);
+        expect(service._hasSucceededDataSyncRecords).toHaveBeenCalledTimes(1);
         expect(service.s3Service.deleteDirectory).toHaveBeenCalledTimes(1);
         expect(service.s3Service.deleteDirectory).toHaveBeenCalledWith(SUBMISSION_BUCKET, 'submissions/sub-1');
     });
 
-    it('keeps archiving the remaining candidates after one fails verification', async () => {
+    it('keeps archiving the remaining candidates after one fails the record gate', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([
             { ...filesSubmission(), _id: 'sub-a', rootPath: 'submissions/sub-a' },
             { ...filesSubmission(), _id: 'sub-b', rootPath: 'submissions/sub-b' },
             { ...filesSubmission(), _id: 'sub-c', rootPath: 'submissions/sub-c' },
         ]);
-        service._verifySyncedCopies = jest.fn(async (sub) => (
-            sub._id === 'sub-b' ? { ok: false, reason: 'size mismatch' } : { ok: true }
+        service._hasSucceededDataSyncRecords = jest.fn(async (sub) => (
+            sub._id === 'sub-b' ? { ok: false, reason: 'NoDataSyncRecord for metadata' } : { ok: true }
         ));
 
         await service.archiveSubmissions();
@@ -664,36 +472,42 @@ describe('archiveSubmissions', () => {
         await service.archiveSubmissions();
 
         expect(warnLines()).toEqual([
-            '[ARCHIVE_MANUAL_VERIFY] submission=sub-legacy dataCommons=TestCommons dataType=Metadata and Data Files studyID=study-legacy bucket=submission-bucket rootPath=submissions/sub-legacy updatedAt=2024-01-15T00:00:00.000Z',
-            '[ARCHIVE_MANUAL_VERIFY] submission=sub-legacy-2 dataCommons=TestCommons dataType=Metadata Only studyID=study-2 bucket=other-bucket rootPath=submissions/sub-legacy-2 updatedAt=2024-01-15T00:00:00.000Z',
+            '[ARCHIVE_MANUAL_VERIFY] submission=sub-legacy dataCommons=TestCommons dataType=Metadata and Data Files studyID=study-legacy bucket=submission-bucket rootPath=submissions/sub-legacy updatedAt=2024-01-15T00:00:00.000Z reason=NoDataSyncRecord',
+            '[ARCHIVE_MANUAL_VERIFY] submission=sub-legacy-2 dataCommons=TestCommons dataType=Metadata Only studyID=study-2 bucket=other-bucket rootPath=submissions/sub-legacy-2 updatedAt=2024-01-15T00:00:00.000Z reason=NoDataSyncRecord',
             '[ARCHIVE_MANUAL_VERIFY] total=2',
         ]);
-        expect(service.dataSyncService.findSubmissionIDsWithRecords).toHaveBeenCalledTimes(1);
-        expect(service.dataSyncService.findSubmissionIDsWithRecords).toHaveBeenCalledWith(['sub-legacy', 'sub-legacy-2']);
+        expect(service.dataSyncService.findRecordedTypesBySubmissionIDs).toHaveBeenCalledTimes(1);
+        expect(service.dataSyncService.findRecordedTypesBySubmissionIDs).toHaveBeenCalledWith(['sub-legacy', 'sub-legacy-2']);
         expect(service.s3Service.listFileInDir).not.toHaveBeenCalled();
-        expect(service.s3Service.headObjectChecksums).not.toHaveBeenCalled();
         expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
         expect(archive).not.toHaveBeenCalled();
     });
 
-    it('does not log a submission that has any data sync record, whatever its rollup', async () => {
+    it('logs a missing required type and omits a submission whose required records are present', async () => {
         service.submissionDAO.getPastRetentionUnapprovedSubmissions.mockResolvedValue([
-            legacyCandidate({ _id: 'sub-succeeded', metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED }),
-            legacyCandidate({ _id: 'sub-failed', metadataDataSyncStatus: DATA_SYNC_STATUS.FAILED, fileDataSyncStatus: DATA_SYNC_STATUS.FAILED }),
-            legacyCandidate({ _id: 'sub-progress', metadataDataSyncStatus: DATA_SYNC_STATUS.IN_PROGRESS }),
-            legacyCandidate({ _id: 'sub-missing', metadataDataSyncStatus: DATA_SYNC_STATUS.NOT_STARTED }),
+            legacyCandidate({ _id: 'sub-partial' }),
+            legacyCandidate({ _id: 'sub-none' }),
+            legacyCandidate({
+                _id: 'sub-complete',
+                metadataDataSyncStatus: DATA_SYNC_STATUS.FAILED,
+                fileDataSyncStatus: DATA_SYNC_STATUS.FAILED,
+            }),
         ]);
-        service.dataSyncService.findSubmissionIDsWithRecords.mockResolvedValue([
-            'sub-succeeded', 'sub-failed', 'sub-progress',
-        ]);
+        service.dataSyncService.findRecordedTypesBySubmissionIDs.mockResolvedValue(new Map([
+            ['sub-partial', new Set([DATA_SYNC_TYPE.METADATA])],
+            ['sub-complete', new Set([DATA_SYNC_TYPE.METADATA, DATA_SYNC_TYPE.FILE])],
+        ]));
 
         await service.archiveSubmissions();
 
         const lines = warnLines().filter((line) => line.startsWith('[ARCHIVE_MANUAL_VERIFY] submission='));
-        expect(lines).toHaveLength(1);
-        expect(lines[0]).toContain('submission=sub-missing');
-        expect(lines[0]).toContain('studyID=study-legacy');
-        expect(warnLines()).toContain('[ARCHIVE_MANUAL_VERIFY] total=1');
+        expect(lines).toHaveLength(2);
+        expect(lines[0]).toContain('submission=sub-partial');
+        expect(lines[0]).toContain('reason=MissingRecordForType:file');
+        expect(lines[1]).toContain('submission=sub-none');
+        expect(lines[1]).toContain('reason=NoDataSyncRecord');
+        expect(lines.some((line) => line.includes('submission=sub-complete'))).toBe(false);
+        expect(warnLines()).toContain('[ARCHIVE_MANUAL_VERIFY] total=2');
     });
 
     it('does not log an approved submission on the manual verification worklist', async () => {
@@ -706,7 +520,7 @@ describe('archiveSubmissions', () => {
         };
         service.submissionDAO.getPastRetentionUnapprovedSubmissions.mockResolvedValue([legacyCandidate()]);
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([approved]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await service.archiveSubmissions();
 
@@ -725,7 +539,7 @@ describe('archiveSubmissions', () => {
 
         expect(summary).toBe('No completed submissions need to be archived');
         expect(warnLines()).toEqual([
-            '[ARCHIVE_MANUAL_VERIFY] submission=sub-legacy dataCommons=TestCommons dataType=Metadata and Data Files studyID=study-legacy bucket=submission-bucket rootPath=submissions/sub-legacy updatedAt=2024-01-15T00:00:00.000Z',
+            '[ARCHIVE_MANUAL_VERIFY] submission=sub-legacy dataCommons=TestCommons dataType=Metadata and Data Files studyID=study-legacy bucket=submission-bucket rootPath=submissions/sub-legacy updatedAt=2024-01-15T00:00:00.000Z reason=NoDataSyncRecord',
             '[ARCHIVE_MANUAL_VERIFY] total=1',
         ]);
         expect(archive).not.toHaveBeenCalled();
@@ -735,7 +549,7 @@ describe('archiveSubmissions', () => {
         jest.clearAllMocks();
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([]);
         service.submissionDAO.getPastRetentionUnapprovedSubmissions.mockResolvedValue([]);
-        service.dataSyncService.findSubmissionIDsWithRecords.mockResolvedValue([]);
+        service.dataSyncService.findRecordedTypesBySubmissionIDs.mockResolvedValue(new Map());
 
         await service.archiveSubmissions();
 
@@ -745,7 +559,7 @@ describe('archiveSubmissions', () => {
     it('keeps archiving when the worklist query or the record lookup rejects', async () => {
         service.submissionDAO.getPastRetentionUnapprovedSubmissions.mockRejectedValue(new Error('worklist down'));
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await expect(service.archiveSubmissions()).resolves.toEqual('successful!');
 
@@ -754,9 +568,9 @@ describe('archiveSubmissions', () => {
 
         jest.clearAllMocks();
         service.submissionDAO.getPastRetentionUnapprovedSubmissions.mockResolvedValue([legacyCandidate()]);
-        service.dataSyncService.findSubmissionIDsWithRecords.mockRejectedValue(new Error('lookup down'));
+        service.dataSyncService.findRecordedTypesBySubmissionIDs.mockRejectedValue(new Error('lookup down'));
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
         service.s3Service.deleteDirectory.mockResolvedValue(true);
 
         await expect(service.archiveSubmissions()).resolves.toEqual('successful!');
@@ -769,7 +583,7 @@ describe('archiveSubmissions', () => {
     it('keeps archiving when the worklist throws a non-Error', async () => {
         service.submissionDAO.getPastRetentionUnapprovedSubmissions.mockRejectedValue(null);
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await expect(service.archiveSubmissions()).resolves.toEqual('successful!');
 
@@ -789,7 +603,7 @@ describe('archiveSubmissions', () => {
                 note: 'ticket-42 verified copy',
             },
         }]);
-        const verify = jest.spyOn(service, '_verifySyncedCopies');
+        const verify = jest.spyOn(service, '_hasSucceededDataSyncRecords');
         const archive = jest.spyOn(service, '_archiveSubmission');
 
         await service.archiveSubmissions();
@@ -800,46 +614,46 @@ describe('archiveSubmissions', () => {
         expect(console.warn).toHaveBeenCalledWith(
             '[ARCHIVE_MANUAL] submission=sub-1 note=ticket-42 verified copy outcome=archived reason=NoDataSyncRecord'
         );
-        expect(service.dataSyncService.findSubmissionIDsWithRecords).toHaveBeenCalledWith(['sub-1']);
+        expect(service.dataSyncService.findRecordedTypesBySubmissionIDs).toHaveBeenCalledWith(['sub-1']);
         expect(archive).toHaveBeenCalledWith('sub-1', SUBMISSION_BUCKET, 'submissions/sub-1');
         expect(service.s3Service.deleteDirectory).toHaveBeenCalledWith(SUBMISSION_BUCKET, 'submissions/sub-1');
         expect(service.submissionDAO.update).toHaveBeenCalledWith('sub-1', expect.objectContaining({ archived: true }));
     });
 
-    it('ignores an approval when any data sync record exists and a failed rollup is retained', async () => {
+    it('ignores an approval when every required record exists and a failed rollup is retained', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([{
             ...filesSubmission(),
             metadataDataSyncStatus: DATA_SYNC_STATUS.NOT_STARTED,
             fileDataSyncStatus: DATA_SYNC_STATUS.FAILED,
             manualArchiveApproval: { approved: true, note: 'ticket-42 verified copy' },
         }]);
-        service.dataSyncService.findSubmissionIDsWithRecords.mockResolvedValue(['sub-1']);
-        const verify = jest.spyOn(service, '_verifySyncedCopies');
+        service.dataSyncService.findRecordedTypesBySubmissionIDs.mockResolvedValue(bothRecordedTypes('sub-1'));
+        const verify = jest.spyOn(service, '_hasSucceededDataSyncRecords');
 
         await service.archiveSubmissions();
 
         expect(console.warn).toHaveBeenCalledWith(
-            '[ARCHIVE_MANUAL] submission=sub-1 note=ticket-42 verified copy outcome=ignored reason=DataSyncRecordExists'
+            '[ARCHIVE_MANUAL] submission=sub-1 note=ticket-42 verified copy outcome=ignored reason=DataSyncRecordsComplete'
         );
         expect(verify).not.toHaveBeenCalled();
         expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
         expect(service.submissionDAO.update).not.toHaveBeenCalled();
     });
 
-    it('ignores an approval when a data sync record exists and still verifies a succeeded rollup', async () => {
+    it('ignores an approval when every required record exists and still runs the record gate for a succeeded rollup', async () => {
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([{
             ...filesSubmission(),
             manualArchiveApproval: { approved: true, note: 'ticket-7' },
         }]);
-        service.dataSyncService.findSubmissionIDsWithRecords.mockResolvedValue(['sub-1']);
-        const verify = jest.spyOn(service, '_verifySyncedCopies').mockResolvedValue({ ok: true });
+        service.dataSyncService.findRecordedTypesBySubmissionIDs.mockResolvedValue(bothRecordedTypes('sub-1'));
+        const recordCheck = jest.spyOn(service, '_hasSucceededDataSyncRecords').mockResolvedValue({ ok: true });
 
         await service.archiveSubmissions();
 
         expect(console.warn).toHaveBeenCalledWith(
-            '[ARCHIVE_MANUAL] submission=sub-1 note=ticket-7 outcome=ignored reason=DataSyncRecordExists'
+            '[ARCHIVE_MANUAL] submission=sub-1 note=ticket-7 outcome=ignored reason=DataSyncRecordsComplete'
         );
-        expect(verify).toHaveBeenCalledWith(expect.objectContaining({ _id: 'sub-1' }));
+        expect(recordCheck).toHaveBeenCalledWith(expect.objectContaining({ _id: 'sub-1' }));
         expect(service.s3Service.deleteDirectory).toHaveBeenCalledWith(SUBMISSION_BUCKET, 'submissions/sub-1');
     });
 
@@ -847,11 +661,11 @@ describe('archiveSubmissions', () => {
         service.dataSyncService.findSubmissionIDsWithInProgressFileRecords.mockResolvedValue(['sub-other']);
         service.submissionDAO.findMany.mockResolvedValue([{ _id: 'sub-other', studyID: 'study-1' }]);
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await service.archiveSubmissions();
 
-        expect(service._verifySyncedCopies).not.toHaveBeenCalled();
+        expect(service._hasSucceededDataSyncRecords).not.toHaveBeenCalled();
         expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
     });
 
@@ -863,11 +677,12 @@ describe('archiveSubmissions', () => {
             manualArchiveApproval: { approved: true, note: 'ticket-9' },
         }]);
 
-        await service.archiveSubmissions();
+        const summary = await service.archiveSubmissions();
 
         expect(console.warn).toHaveBeenCalledWith(
             '[ARCHIVE_MANUAL] submission=sub-1 note=ticket-9 outcome=ignored reason=StudyFileDataSyncInProgress'
         );
+        expect(summary).toEqual(expect.stringContaining('data retained for submission(s): sub-1'));
         expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
     });
 
@@ -896,10 +711,10 @@ describe('archiveSubmissions', () => {
             },
             filesSubmission(),
         ]);
-        service.dataSyncService.findSubmissionIDsWithRecords
-            .mockResolvedValueOnce([])
+        service.dataSyncService.findRecordedTypesBySubmissionIDs
+            .mockResolvedValueOnce(new Map())
             .mockRejectedValueOnce(new Error('approval lookup down'));
-        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
 
         await service.archiveSubmissions();
 
@@ -913,17 +728,173 @@ describe('archiveSubmissions', () => {
         expect(service.submissionDAO.update).not.toHaveBeenCalledWith('sub-approved', expect.anything());
     });
 
+    it('honors an approval when a metadata record exists and the file record does not', async () => {
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([{
+            ...filesSubmission(),
+            metadataDataSyncStatus: DATA_SYNC_STATUS.NOT_STARTED,
+            fileDataSyncStatus: DATA_SYNC_STATUS.FAILED,
+            manualArchiveApproval: { approved: true, note: 'ticket-partial' },
+        }]);
+        service.dataSyncService.findRecordedTypesBySubmissionIDs.mockResolvedValue(new Map([
+            ['sub-1', new Set([DATA_SYNC_TYPE.METADATA])],
+        ]));
+        const verify = jest.spyOn(service, '_hasSucceededDataSyncRecords');
+
+        await service.archiveSubmissions();
+
+        expect(verify).not.toHaveBeenCalled();
+        expect(console.warn).toHaveBeenCalledWith(
+            '[ARCHIVE_MANUAL] submission=sub-1 note=ticket-partial outcome=archived reason=MissingRecordForType:file'
+        );
+        expect(service.s3Service.deleteDirectory).toHaveBeenCalledWith(SUBMISSION_BUCKET, 'submissions/sub-1');
+    });
+
+    it('does not delete when the file record failed and the record gate is not stubbed', async () => {
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
+        service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn(async (_submissionID, type) => (
+            type === DATA_SYNC_TYPE.FILE
+                ? fileRecord({ status: DATA_SYNC_STATUS.FAILED })
+                : metadataRecord()
+        ));
+
+        const summary = await service.archiveSubmissions();
+
+        expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
+        expect(summary).toEqual(expect.stringContaining('sub-1'));
+        expect(console.error).toHaveBeenCalledWith(expect.stringContaining(
+            `${DATA_SYNC_TYPE.FILE} DataSyncNotSucceeded: ${DATA_SYNC_STATUS.FAILED}`
+        ));
+    });
+
+    it('names the post-delete step when archive metadata fails', async () => {
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
+        service._hasSucceededDataSyncRecords = jest.fn().mockResolvedValue({ ok: true });
+        service.dataRecordService.archiveMetadataByFilter.mockRejectedValue(new Error('mongo down'));
+
+        await service.archiveSubmissions();
+
+        expect(console.error).toHaveBeenCalledWith(
+            'Failed to archive completed submission: sub-1 with error: archiveMetadataByFilter failed for submission sub-1: mongo down.'
+        );
+        expect(service.batchDAO.deleteBatchesBySubmissionID).not.toHaveBeenCalled();
+        expect(service.submissionDAO.update).not.toHaveBeenCalled();
+    });
+
+    it('logs UnknownDataType on the worklist and ignores approval for an unknown dataType', async () => {
+        const unknown = {
+            ...legacyCandidate({ _id: 'sub-unknown', dataType: 'Other' }),
+        };
+        service.submissionDAO.getPastRetentionUnapprovedSubmissions.mockResolvedValue([unknown]);
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([{
+            ...unknown,
+            manualArchiveApproval: { approved: true, note: 'ticket-unknown' },
+        }]);
+
+        await service.archiveSubmissions();
+
+        expect(warnLines().some((line) => line.includes('submission=sub-unknown') && line.includes('reason=UnknownDataType'))).toBe(true);
+        expect(console.warn).toHaveBeenCalledWith(
+            '[ARCHIVE_MANUAL] submission=sub-unknown note=ticket-unknown outcome=ignored reason=UnknownDataType'
+        );
+        expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
+    });
+
+    it('does not log the worklist when the record lookup resolves to a non-Map', async () => {
+        service.submissionDAO.getPastRetentionUnapprovedSubmissions.mockResolvedValue([legacyCandidate()]);
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([]);
+        service.dataSyncService.findRecordedTypesBySubmissionIDs.mockResolvedValue(undefined);
+
+        await service.archiveSubmissions();
+
+        expect(console.error).toHaveBeenCalledWith(
+            'Failed to log submissions needing manual archive verification: DataSync record lookup returned an invalid result'
+        );
+        expect(warnLines().filter((line) => line.startsWith('[ARCHIVE_MANUAL_VERIFY]'))).toEqual([]);
+    });
+
+    it('ignores approval when the approval record lookup resolves to a non-Map', async () => {
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([{
+            ...filesSubmission(),
+            metadataDataSyncStatus: DATA_SYNC_STATUS.NOT_STARTED,
+            fileDataSyncStatus: DATA_SYNC_STATUS.FAILED,
+            manualArchiveApproval: { approved: true, note: 'ticket-map' },
+        }]);
+        service.dataSyncService.findRecordedTypesBySubmissionIDs.mockResolvedValue(undefined);
+
+        await service.archiveSubmissions();
+
+        expect(console.warn).toHaveBeenCalledWith(
+            '[ARCHIVE_MANUAL] submission=sub-1 note=ticket-map outcome=ignored reason=DataSyncLookupFailed'
+        );
+        expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
+    });
+
+    it('preserves the original error as cause when a post-delete step fails', async () => {
+        const original = new Error('mongo down');
+        service.dataRecordService.archiveMetadataByFilter.mockRejectedValue(original);
+
+        await expect(
+            service._archiveSubmission('sub-1', SUBMISSION_BUCKET, 'submissions/sub-1')
+        ).rejects.toMatchObject({
+            message: expect.stringContaining('archiveMetadataByFilter failed for submission sub-1'),
+            cause: original,
+        });
+    });
+
+});
+
+describe('deleteInactiveSubmissions', () => {
+
+    it('records a failed delete when deleteDirectory returns false', async () => {
+        service.emailParams.inactiveSubmissionDays = 90;
+        service.submissionDAO.getToBeDeletedSubmissions = jest.fn().mockResolvedValue([filesSubmission()]);
+        service.dataRecordService.deleteMetadataByFilter = jest.fn().mockResolvedValue({});
+        service.s3Service.deleteDirectory.mockResolvedValue(false);
+
+        const summary = await service.deleteInactiveSubmissions();
+
+        expect(summary).toEqual(expect.stringContaining('Failed to delete files under submissions: sub-1'));
+        expect(console.error).toHaveBeenCalledWith(
+            'Failed to delete files under inactive submission: sub-1: S3 delete did not succeed.'
+        );
+        expect(service.submissionDAO.update).not.toHaveBeenCalled();
+        expect(service.dataRecordService.deleteMetadataByFilter).not.toHaveBeenCalled();
+        expect(service.batchDAO.deleteBatchesBySubmissionID).not.toHaveBeenCalled();
+    });
+
+    it('continues deleting other inactive submissions when deleteDirectory throws a non-Error', async () => {
+        service.emailParams.inactiveSubmissionDays = 90;
+        service.submissionDAO.getToBeDeletedSubmissions = jest.fn().mockResolvedValue([
+            { ...filesSubmission(), _id: 'sub-a', rootPath: 'submissions/sub-a' },
+            { ...filesSubmission(), _id: 'sub-b', rootPath: 'submissions/sub-b' },
+        ]);
+        service.dataRecordService.deleteMetadataByFilter = jest.fn().mockResolvedValue({});
+        jest.spyOn(service, '_sendEmailsDeletedSubmissions').mockResolvedValue(undefined);
+        service.s3Service.deleteDirectory
+            .mockRejectedValueOnce(null)
+            .mockResolvedValueOnce(true);
+
+        const summary = await service.deleteInactiveSubmissions();
+
+        expect(summary).toEqual(expect.stringContaining('Failed to delete files under submissions: sub-a'));
+        expect(console.error).toHaveBeenCalledWith(
+            'Failed to delete files under inactive submission: sub-a with error: Unknown error.'
+        );
+        expect(service.submissionDAO.update).toHaveBeenCalledWith('sub-b', expect.objectContaining({ status: 'Deleted' }));
+        expect(service.submissionDAO.update).not.toHaveBeenCalledWith('sub-a', expect.anything());
+    });
+
 });
 
 describe('_archiveCancelSubmission', () => {
 
-    it('deletes without any verification on the Canceled path', async () => {
-        service._verifySyncedCopies = jest.fn();
+    it('deletes without a DataSync record check on the Canceled path', async () => {
+        const recordCheck = jest.spyOn(service, '_hasSucceededDataSyncRecords');
 
         await service._archiveCancelSubmission(ACTIONS.CANCEL, 'sub-1', SUBMISSION_BUCKET, 'submissions/sub-1');
 
         expect(service.s3Service.deleteDirectory).toHaveBeenCalledWith(SUBMISSION_BUCKET, 'submissions/sub-1');
-        expect(service._verifySyncedCopies).not.toHaveBeenCalled();
+        expect(recordCheck).not.toHaveBeenCalled();
     });
 
 });

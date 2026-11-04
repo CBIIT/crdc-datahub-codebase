@@ -1,7 +1,6 @@
 const AWS = require('aws-sdk');
 const fs = require('fs');
 const path = require('path');
-const { checksumsFromHeaders } = require('../utility/synced-copy-compare');
 class S3Service {
 
     constructor() {
@@ -168,34 +167,45 @@ class S3Service {
     }
 
     /**
-     * delete objects under dir recursively
-     * @param {*} bucket 
-     * @param {*} dir 
-     * @returns 
+     * Deletes every object under a prefix.
+     * Returns false when deleteObjects reports per-key errors, and stops paging so a
+     * permanently undeletable key cannot be listed again forever. An empty prefix,
+     * including a listing that omits Contents, returns true.
+     * @param {string} bucket Bucket name
+     * @param {string} dir Prefix to delete
+     * @returns {Promise<boolean>} True when every listed object was deleted or the prefix was empty
      */
     async deleteDirectory(bucket, dir) {
-        const listParams = {
-            Bucket: bucket,
-            Prefix: (dir.endsWith("/"))? dir : dir + "/"
-        };
-    
-        const listedObjects = await this.s3.listObjectsV2(listParams).promise();
-    
-        if (listedObjects.Contents.length === 0) return true;  //no files to delete;
-    
-        const deleteParams = {
-            Bucket: bucket,
-            Delete: { Objects: [] }
-        };
-    
-        listedObjects.Contents.forEach(({ Key }) => {
-            deleteParams.Delete.Objects.push({ Key });
-        });
-    
-        await this.s3.deleteObjects(deleteParams).promise();
-    
-        if (listedObjects.IsTruncated) await this.deleteDirectory(bucket, dir); // finally delete the dir
-        return true; // if no errors
+        const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+        let continuationToken;
+        do {
+            const listParams = {
+                Bucket: bucket,
+                Prefix: prefix,
+            };
+            if (continuationToken) {
+                listParams.ContinuationToken = continuationToken;
+            }
+            const listedObjects = await this.s3.listObjectsV2(listParams).promise();
+            const contents = listedObjects.Contents;
+            if (contents?.length) {
+                const response = await this.s3.deleteObjects({
+                    Bucket: bucket,
+                    Delete: { Objects: contents.map(({ Key }) => ({ Key })) },
+                }).promise();
+                if (response?.Errors?.length > 0) {
+                    for (const error of response.Errors) {
+                        console.error(`Failed to delete S3 object key=${error.Key} code=${error.Code} message=${error.Message}`);
+                    }
+                    return false;
+                }
+            }
+            if (!listedObjects.IsTruncated) {
+                return true;
+            }
+            continuationToken = listedObjects.NextContinuationToken;
+        } while (continuationToken);
+        return true;
     }
 
     /**
@@ -230,31 +240,6 @@ class S3Service {
 
         await listRecursively(listParams);  // Start recursive listing
         return fileObjects;
-    }
-
-    /**
-     * Fetches an object's ETag and stored additional checksum (HeadObject with checksum mode on).
-     *
-     * Reads the raw response headers rather than the parsed response: aws-sdk v2's S3 model has
-     * no ChecksumCRC64NVME or ChecksumType, so the parsed result silently drops S3's default
-     * full-object CRC64NVME checksum.
-     *
-     * @param {string} bucketName Bucket
-     * @param {string} key Object key
-     * @returns {Promise<{etag: string|null, checksumType: string|null, checksums: Record<string, string>, size: number|null}>}
-     */
-    async headObjectChecksums(bucketName, key) {
-        const request = this.s3.headObject({ Bucket: bucketName, Key: key, ChecksumMode: 'ENABLED' });
-        let rawHeaders = {};
-        request.on('httpHeaders', (statusCode, headers) => {
-            rawHeaders = headers || {};
-        });
-        await request.promise();
-        const lowerCased = {};
-        for (const [name, value] of Object.entries(rawHeaders)) {
-            lowerCased[name.toLowerCase()] = value;
-        }
-        return checksumsFromHeaders(lowerCased);
     }
 
     async _listObjectsV2(params) {

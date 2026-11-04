@@ -44,7 +44,7 @@ describe('Data Sync service tests', () => {
         it('should have expected methods defined', () => {
             expect(dataSyncService.listBySubmissionID).toBeDefined();
             expect(dataSyncService.findLatestBySubmissionIDAndType).toBeDefined();
-            expect(dataSyncService.findSubmissionIDsWithRecords).toBeDefined();
+            expect(dataSyncService.findRecordedTypesBySubmissionIDs).toBeDefined();
             expect(dataSyncService.findSubmissionIDsWithInProgressFileRecords).toBeDefined();
         });
 
@@ -245,22 +245,23 @@ describe('Data Sync service tests', () => {
 
     });
 
-    describe('findSubmissionIDsWithRecords', () => {
+    describe('findRecordedTypesBySubmissionIDs', () => {
 
-        it('returns an empty array without querying when given no ids', async () => {
-            const daoSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findSubmissionIDsWithRecords');
+        it('returns an empty map without querying when given no ids', async () => {
+            const daoSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findRecordedTypesBySubmissionIDs');
 
-            await expect(dataSyncService.findSubmissionIDsWithRecords([])).resolves.toEqual([]);
-            await expect(dataSyncService.findSubmissionIDsWithRecords(undefined)).resolves.toEqual([]);
+            await expect(dataSyncService.findRecordedTypesBySubmissionIDs([])).resolves.toEqual(new Map());
+            await expect(dataSyncService.findRecordedTypesBySubmissionIDs(undefined)).resolves.toEqual(new Map());
 
             expect(daoSpy).not.toHaveBeenCalled();
         });
 
-        it('returns the submission IDs that have a record', async () => {
-            const daoSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findSubmissionIDsWithRecords')
-                .mockResolvedValue(['sub-1']);
+        it('returns recorded types grouped by submission ID', async () => {
+            const recorded = new Map([['sub-1', new Set([DATA_SYNC_TYPE.METADATA])]]);
+            const daoSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findRecordedTypesBySubmissionIDs')
+                .mockResolvedValue(recorded);
 
-            await expect(dataSyncService.findSubmissionIDsWithRecords(['sub-1', 'sub-2'])).resolves.toEqual(['sub-1']);
+            await expect(dataSyncService.findRecordedTypesBySubmissionIDs(['sub-1', 'sub-2'])).resolves.toBe(recorded);
 
             expect(daoSpy).toHaveBeenCalledTimes(1);
             expect(daoSpy).toHaveBeenCalledWith(['sub-1', 'sub-2']);

@@ -21,7 +21,7 @@ describe('DataSyncDAO', () => {
         it('should have expected methods defined', () => {
             expect(dataSyncDAO.listBySubmissionID).toBeDefined();
             expect(dataSyncDAO.findLatestBySubmissionIDAndType).toBeDefined();
-            expect(dataSyncDAO.findSubmissionIDsWithRecords).toBeDefined();
+            expect(dataSyncDAO.findRecordedTypesBySubmissionIDs).toBeDefined();
             expect(dataSyncDAO.findSubmissionIDsWithInProgressFileRecords).toBeDefined();
             expect(dataSyncDAO.findInProgressBySubmissionIDAndType).toBeUndefined();
         });
@@ -108,29 +108,33 @@ describe('DataSyncDAO', () => {
         });
     });
 
-    describe('findSubmissionIDsWithRecords', () => {
-        let distinctSpy;
+    describe('findRecordedTypesBySubmissionIDs', () => {
+        let aggregateSpy;
 
         beforeEach(() => {
-            distinctSpy = jest.spyOn(dataSyncDAO, 'distinct').mockResolvedValue([]);
+            aggregateSpy = jest.spyOn(dataSyncDAO, 'aggregate').mockResolvedValue([]);
         });
 
-        it('returns an empty array without querying when given no ids', async () => {
-            await expect(dataSyncDAO.findSubmissionIDsWithRecords([])).resolves.toEqual([]);
-            await expect(dataSyncDAO.findSubmissionIDsWithRecords(undefined)).resolves.toEqual([]);
+        it('returns an empty map without querying when given no ids', async () => {
+            await expect(dataSyncDAO.findRecordedTypesBySubmissionIDs([])).resolves.toEqual(new Map());
+            await expect(dataSyncDAO.findRecordedTypesBySubmissionIDs(undefined)).resolves.toEqual(new Map());
 
-            expect(distinctSpy).not.toHaveBeenCalled();
+            expect(aggregateSpy).not.toHaveBeenCalled();
         });
 
-        it('queries distinct submission IDs that have a record of any type', async () => {
-            distinctSpy.mockResolvedValue(['sub-1']);
+        it('groups recorded types by submission ID', async () => {
+            aggregateSpy.mockResolvedValue([
+                { _id: 'sub-1', types: [DATA_SYNC_TYPE.METADATA, DATA_SYNC_TYPE.FILE] },
+            ]);
 
-            await expect(dataSyncDAO.findSubmissionIDsWithRecords(['sub-1', 'sub-2'])).resolves.toEqual(['sub-1']);
+            const recorded = await dataSyncDAO.findRecordedTypesBySubmissionIDs(['sub-1', 'sub-2']);
 
-            expect(distinctSpy).toHaveBeenCalledTimes(1);
-            expect(distinctSpy).toHaveBeenCalledWith('submissionID', {
-                submissionID: { $in: ['sub-1', 'sub-2'] },
-            });
+            expect(aggregateSpy).toHaveBeenCalledWith([
+                { $match: { submissionID: { $in: ['sub-1', 'sub-2'] } } },
+                { $group: { _id: '$submissionID', types: { $addToSet: '$type' } } },
+            ]);
+            expect(recorded.get('sub-1')).toEqual(new Set([DATA_SYNC_TYPE.METADATA, DATA_SYNC_TYPE.FILE]));
+            expect(recorded.has('sub-2')).toBe(false);
         });
     });
 });

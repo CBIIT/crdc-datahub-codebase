@@ -32,16 +32,25 @@ class DataSyncDAO extends MongooseGenericDAO {
     }
 
     /**
-     * Submission IDs among the given list that have any DataSync record.
-     * An empty list returns immediately and does not query.
+     * DataSync types recorded for each of the given submissions.
+     * An empty list returns immediately and does not query. Submissions with no
+     * record are absent from the map.
      * @param {string[]} submissionIDs Submission IDs to check
-     * @returns {Promise<string[]>} Distinct submission IDs that have a record
+     * @returns {Promise<Map<string, Set<string>>>} submissionID to the set of recorded types
      */
-    async findSubmissionIDsWithRecords(submissionIDs) {
+    async findRecordedTypesBySubmissionIDs(submissionIDs) {
         if (!Array.isArray(submissionIDs) || submissionIDs.length === 0) {
-            return [];
+            return new Map();
         }
-        return this.distinct("submissionID", { submissionID: { $in: submissionIDs } });
+        const rows = await this.aggregate([
+            { $match: { submissionID: { $in: submissionIDs } } },
+            { $group: { _id: "$submissionID", types: { $addToSet: "$type" } } },
+        ]);
+        const recorded = new Map();
+        for (const row of rows || []) {
+            recorded.set(row._id, new Set(row.types || []));
+        }
+        return recorded;
     }
 
     /**
