@@ -1,9 +1,10 @@
 name: Test Ephemeral Runner
  
-# Manual workflow to validate the new ephemeral runner:
-#   1. git can be installed
-#   2. rootless Docker can be installed and started (as cbiit-runner, no sudo for docker)
-#   3. a workspace on the runner can build and run a Docker image
+# Manual workflow to validate the new ephemeral runner. The job runs as cbiit-runner:
+#   1. git + rootless Docker prerequisites (iptables, newuidmap/newgidmap, subuid/subgid)
+#      are installed - the only step that uses sudo
+#   2. rootless Docker is installed and started as cbiit-runner, no sudo
+#   3. a workspace on the runner builds and runs a Docker image, no sudo
  
 on:
   workflow_dispatch:
@@ -21,14 +22,12 @@ jobs:
     name: Test runner - git, docker, image build
     # TODO: replace with the new ephemeral runner group/labels
     runs-on:
-      #group: cbiit-global-runners
-      labels: [ec2-al2023-s-nonprod]
+      group: cbiit-global-runners
+      labels: [nonprod-org-runner]
     timeout-minutes: 30
     env:
-      RUNNER_SVC_USER: cbiit-runner
       BASE_IMAGE: ${{ inputs.base_image }}
       TEST_IMAGE: runner-test:${{ github.run_id }}
-      WORKDIR: /home/cbiit-runner/docker-build-test
     steps:
       - name: Runner info
         run: |
@@ -37,40 +36,58 @@ jobs:
           uname -a
           cat /etc/os-release
           echo "Python: $(python3 --version 2>&1 || echo 'not installed')"
-          echo "sudo available: $(sudo -n true 2>/dev/null && echo yes || echo no)"
           df -h
           free -h || true
  
-      # ── 1. Git ─────────────────────────────────────────────
-      - name: Install git
+      # ── 1. System prerequisites (the only step that needs root, via sudo) ──
+      # The rootless Docker installer refuses to run without iptables / newuidmap, and
+      # these packages can only be installed by root. Everything after this step runs
+      # as cbiit-runner with no sudo.
+      - name: Install git and rootless Docker prerequisites (root via sudo)
         run: |
           set -Eeuo pipefail
-          if command -v git >/dev/null 2>&1; then
-            echo "git already installed"
-          else
-            . /etc/os-release
-            case "${ID}" in
-              amzn|rhel|centos|rocky|almalinux|fedora)
-                sudo dnf install -y git || sudo yum install -y git
-                ;;
-              ubuntu|debian)
-                sudo apt-get update -y
-                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git
-                ;;
-              *)
-                echo "::error::Unsupported OS: ${ID}"
-                exit 1
-                ;;
-            esac
+          echo "Running as: $(whoami) (uid $(id -u))"
+ 
+          if ! sudo -n true 2>/dev/null; then
+            echo "::warning::No passwordless sudo: skipping package installs, rootless Docker will use SKIP_IPTABLES=1"
+            echo "SKIP_IPTABLES=1" >> "$GITHUB_ENV"
+            command -v git >/dev/null || { echo "::error::git is not installed"; exit 1; }
+            git --version
+            exit 0
           fi
+ 
+          . /etc/os-release
+          case "${ID}" in
+            amzn|rhel|centos|rocky|almalinux|fedora)
+              sudo dnf install -y git iptables shadow-utils
+              ;;
+            ubuntu|debian)
+              sudo apt-get update -y
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git iptables uidmap dbus-user-session
+              ;;
+            *)
+              echo "::error::Unsupported OS: ${ID}"
+              exit 1
+              ;;
+          esac
+          sudo modprobe nf_tables || true
+ 
+          # Subordinate UID/GID ranges for the current user, if missing
+          grep -q "^$(id -un):" /etc/subuid || sudo usermod --add-subuids 100000-165535 "$(id -un)"
+          grep -q "^$(id -un):" /etc/subgid || sudo usermod --add-subgids 100000-165535 "$(id -un)"
+ 
           git --version
  
-      # ── 2. Docker (rootless) ───────────────────────────────
+      # ── 2. Docker (rootless, installed and run as cbiit-runner) ──
       - name: Install and start rootless Docker (as cbiit-runner, no sudo)
         run: |
           set -Eeuo pipefail
  
           echo "Running as: $(whoami) (uid $(id -u))"
+          if [ "$(whoami)" != "cbiit-runner" ]; then
+            echo "::error::Rootless Docker must be installed and run as cbiit-runner, not $(whoami)"
+            exit 1
+          fi
  
           # Rootless Docker needs a runtime dir for the socket
           export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -80,14 +97,14 @@ jobs:
             chmod 0700 "$XDG_RUNTIME_DIR"
           fi
  
-          # Prerequisites that need root cannot be installed here; fail early with a clear message
+          # Prerequisites that need root: fail early with a clear message
           for bin in newuidmap newgidmap; do
-            command -v "$bin" >/dev/null || { echo "::error::$bin not found (install 'uidmap' / 'shadow-utils' in the runner image)"; exit 1; }
+            command -v "$bin" >/dev/null || { echo "::error::$bin not found (add 'uidmap' / 'shadow-utils' to the runner image)"; exit 1; }
           done
           grep -q "^$(id -un):" /etc/subuid || { echo "::error::No /etc/subuid entry for $(id -un)"; exit 1; }
           grep -q "^$(id -un):" /etc/subgid || { echo "::error::No /etc/subgid entry for $(id -un)"; exit 1; }
  
-          # Install rootless Docker into ~/bin (no sudo)
+          # Install rootless Docker into ~/bin
           export PATH="$HOME/bin:$PATH"
           if ! command -v dockerd-rootless.sh >/dev/null 2>&1; then
             curl -fsSL https://get.docker.com/rootless -o "${RUNNER_TEMP}/install-docker-rootless.sh"
@@ -138,7 +155,7 @@ jobs:
           CMD ["cat", "/build-info.txt"]
           EOF
  
-          # Heredoc is indented by the YAML block; strip the leading spaces
+          # Strip any leading indentation from the heredoc lines
           sed -i 's/^ *//' "${WORKDIR}/Dockerfile"
  
           echo "WORKDIR=${WORKDIR}" >> "$GITHUB_ENV"

@@ -1,0 +1,164 @@
+name: Test Ephemeral Runner
+ 
+# Manual workflow to validate the new ephemeral runner:
+#   1. git can be installed
+#   2. rootless Docker can be installed and started (as cbiit-runner, no sudo for docker)
+#   3. a workspace on the runner can build and run a Docker image
+ 
+on:
+  workflow_dispatch:
+    inputs:
+      base_image:
+        description: "Base image for the test build (use a registry reachable from the runner)"
+        required: false
+        default: "public.ecr.aws/docker/library/alpine:3.20"
+ 
+permissions:
+  contents: read
+ 
+jobs:
+  test_runner:
+    name: Test runner - git, docker, image build
+    # TODO: replace with the new ephemeral runner group/labels
+    runs-on:
+      #group: cbiit-global-runners
+      labels: [ec2-al2023-s-nonprod]
+    timeout-minutes: 30
+    env:
+      RUNNER_SVC_USER: cbiit-runner
+      BASE_IMAGE: ${{ inputs.base_image }}
+      TEST_IMAGE: runner-test:${{ github.run_id }}
+      WORKDIR: /home/cbiit-runner/docker-build-test
+    steps:
+      - name: Runner info
+        run: |
+          set -Eeuo pipefail
+          echo "User: $(whoami) (uid $(id -u))"
+          uname -a
+          cat /etc/os-release
+          echo "Python: $(python3 --version 2>&1 || echo 'not installed')"
+          echo "sudo available: $(sudo -n true 2>/dev/null && echo yes || echo no)"
+          df -h
+          free -h || true
+ 
+      # ── 1. Git ─────────────────────────────────────────────
+      - name: Install git
+        run: |
+          set -Eeuo pipefail
+          if command -v git >/dev/null 2>&1; then
+            echo "git already installed"
+          else
+            . /etc/os-release
+            case "${ID}" in
+              amzn|rhel|centos|rocky|almalinux|fedora)
+                sudo dnf install -y git || sudo yum install -y git
+                ;;
+              ubuntu|debian)
+                sudo apt-get update -y
+                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git
+                ;;
+              *)
+                echo "::error::Unsupported OS: ${ID}"
+                exit 1
+                ;;
+            esac
+          fi
+          git --version
+ 
+      # ── 2. Docker (rootless) ───────────────────────────────
+      - name: Install and start rootless Docker (as cbiit-runner, no sudo)
+        run: |
+          set -Eeuo pipefail
+ 
+          echo "Running as: $(whoami) (uid $(id -u))"
+ 
+          # Rootless Docker needs a runtime dir for the socket
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          if [ ! -d "$XDG_RUNTIME_DIR" ] || [ ! -w "$XDG_RUNTIME_DIR" ]; then
+            export XDG_RUNTIME_DIR="${RUNNER_TEMP}/xdg-runtime"
+            mkdir -p "$XDG_RUNTIME_DIR"
+            chmod 0700 "$XDG_RUNTIME_DIR"
+          fi
+ 
+          # Prerequisites that need root cannot be installed here; fail early with a clear message
+          for bin in newuidmap newgidmap; do
+            command -v "$bin" >/dev/null || { echo "::error::$bin not found (install 'uidmap' / 'shadow-utils' in the runner image)"; exit 1; }
+          done
+          grep -q "^$(id -un):" /etc/subuid || { echo "::error::No /etc/subuid entry for $(id -un)"; exit 1; }
+          grep -q "^$(id -un):" /etc/subgid || { echo "::error::No /etc/subgid entry for $(id -un)"; exit 1; }
+ 
+          # Install rootless Docker into ~/bin (no sudo)
+          export PATH="$HOME/bin:$PATH"
+          if ! command -v dockerd-rootless.sh >/dev/null 2>&1; then
+            curl -fsSL https://get.docker.com/rootless -o "${RUNNER_TEMP}/install-docker-rootless.sh"
+            FORCE_ROOTLESS_INSTALL=1 sh "${RUNNER_TEMP}/install-docker-rootless.sh"
+          fi
+ 
+          export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/docker.sock"
+ 
+          # Start the rootless daemon (systemd user service if available, otherwise in the background)
+          if systemctl --user is-system-running >/dev/null 2>&1 || systemctl --user status >/dev/null 2>&1; then
+            systemctl --user start docker
+          else
+            nohup setsid "$HOME/bin/dockerd-rootless.sh" > "${RUNNER_TEMP}/dockerd-rootless.log" 2>&1 &
+          fi
+ 
+          # Wait for the daemon
+          for i in $(seq 1 30); do
+            docker info >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker info || { echo "::error::rootless dockerd did not start"; cat "${RUNNER_TEMP}/dockerd-rootless.log" || true; exit 1; }
+ 
+          # Make docker available to all following steps
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          {
+            echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
+            echo "DOCKER_HOST=${DOCKER_HOST}"
+          } >> "$GITHUB_ENV"
+ 
+          docker --version
+ 
+      - name: Verify Docker is rootless
+        run: |
+          set -Eeuo pipefail
+          docker info --format 'SecurityOptions={{.SecurityOptions}}'
+          docker info --format '{{.SecurityOptions}}' | grep -q rootless
+ 
+      # ── 3. Workspace + image build ─────────────────────────
+      - name: Create build workspace
+        run: |
+          set -Eeuo pipefail
+          WORKDIR="${RUNNER_TEMP}/docker-build-test"
+          mkdir -p "${WORKDIR}"
+ 
+          cat > "${WORKDIR}/Dockerfile" <<EOF
+          FROM ${BASE_IMAGE}
+          RUN echo "built on $(hostname) at $(date -u +%FT%TZ)" > /build-info.txt
+          CMD ["cat", "/build-info.txt"]
+          EOF
+ 
+          # Heredoc is indented by the YAML block; strip the leading spaces
+          sed -i 's/^ *//' "${WORKDIR}/Dockerfile"
+ 
+          echo "WORKDIR=${WORKDIR}" >> "$GITHUB_ENV"
+          cat "${WORKDIR}/Dockerfile"
+ 
+      - name: Build Docker image
+        run: |
+          set -Eeuo pipefail
+          docker build -t "${TEST_IMAGE}" "${WORKDIR}"
+          docker images "${TEST_IMAGE}"
+ 
+      - name: Run Docker image
+        run: |
+          set -Eeuo pipefail
+          docker run --rm "${TEST_IMAGE}"
+ 
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rmi -f "${TEST_IMAGE}" || true
+          docker system df || true
+          rm -rf "${WORKDIR}" || true
+ 
