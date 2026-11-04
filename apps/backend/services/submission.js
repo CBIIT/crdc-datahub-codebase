@@ -812,13 +812,21 @@ class Submission {
         return submission;
     }
 
+    /**
+     * Archives a canceled submission's S3 data. Failures are logged and swallowed.
+     * @param {string} action Submission action
+     * @param {string} submissionID Submission ID
+     * @param {string} bucketName Source bucket
+     * @param {string} rootPath Source prefix
+     * @returns {Promise<void>}
+     */
     async _archiveCancelSubmission(action, submissionID, bucketName, rootPath) {
         if (action === ACTIONS.CANCEL) {
             try {
                 await this._archiveSubmission(submissionID, bucketName, rootPath);
                 console.debug(`Successfully archive canceled submissions: ${submissionID}.`);
             } catch (e) {
-                console.error(`Failed to delete files under archived canceled submission: ${submissionID} with error: ${e.message}.`);
+                console.error(`Failed to delete files under archived canceled submission: ${submissionID} with error: ${errorReason(e)}.`);
             }
         }
     }
@@ -1667,7 +1675,8 @@ class Submission {
      * Verifies that DataSync destination copies match the submission source prefixes.
      * Fails closed: anything unverifiable (missing or unsucceeded DataSync record, missing
      * folders, unresolved destination bucket, listing error) returns `ok: false` so the
-     * caller retains the source data. Never throws.
+     * caller retains the source data. Never throws. Caught exceptions use the error
+     * message, then code, then a fallback so the caller always gets a reason.
      * @param {object} submission Submission document
      * @returns {Promise<{ok: boolean, reason?: string}>}
      */
@@ -1709,7 +1718,7 @@ class Submission {
             }
             return { ok: true };
         } catch (error) {
-            return { ok: false, reason: error.message };
+            return { ok: false, reason: errorReason(error) };
         }
     }
 
@@ -1735,7 +1744,7 @@ class Submission {
             }
             console.warn(`[ARCHIVE_MANUAL_VERIFY] total=${needingVerification.length}`);
         } catch (error) {
-            console.error(`Failed to log submissions needing manual archive verification: ${error.message}`);
+            console.error(`Failed to log submissions needing manual archive verification: ${errorReason(error)}`);
         }
     }
 
@@ -1767,7 +1776,7 @@ class Submission {
                     submissionIDsWithRecords = new Set(withRecords || []);
                 } catch (error) {
                     approvalRecordLookupFailed = true;
-                    console.error(`Failed to look up DataSync records for manual archive approvals: ${error.message}`);
+                    console.error(`Failed to look up DataSync records for manual archive approvals: ${errorReason(error)}`);
                 }
             }
 
@@ -1786,7 +1795,7 @@ class Submission {
                 }
             } catch (error) {
                 inProgressFileLookupFailed = true;
-                console.error(`Failed to look up in-progress file DataSync studies: ${error.message}`);
+                console.error(`Failed to look up in-progress file DataSync studies: ${errorReason(error)}`);
             }
            
             let failedDeleteSubs = []
@@ -1837,7 +1846,7 @@ class Submission {
                     await this._archiveSubmission(sub._id, sub.bucketName, sub.rootPath);
                     console.debug(`Successfully archive completed submissions: ${sub._id}.`);
                 } catch (e) {
-                    console.error(`Failed to delete files under archived completed submission: ${sub._id} with error: ${e.message}.`);
+                    console.error(`Failed to delete files under archived completed submission: ${sub._id} with error: ${errorReason(e)}.`);
                     failedDeleteSubs.push(sub._id);
                 }
             }
@@ -1851,7 +1860,7 @@ class Submission {
             return (problems.length === 0) ? "successful!" : `${problems.join(" ")}  please contact admin.`;
         }
         catch (e){
-            console.error("Failed to archive completed submission(s) with error:" + e.message);
+            console.error("Failed to archive completed submission(s) with error:" + errorReason(e));
             return "failed!";
         }
     }
@@ -3822,6 +3831,16 @@ function pickUserSummary(user) {
         fullName: user?.fullName,
         email: user?.email,
     };
+}
+
+/**
+ * Readable reason from a thrown value. Prefers message, then code, then String(error).
+ * @param {*} error Thrown value
+ * @returns {string}
+ */
+function errorReason(error) {
+    return error?.message || error?.code
+        || (error != null ? String(error) : 'Unknown error');
 }
 
 function logDaysDifference(inactiveDays, accessedAt, submissionID) {

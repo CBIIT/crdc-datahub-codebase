@@ -435,6 +435,33 @@ describe('_verifySyncedCopies', () => {
         expect(result.reason).toBeTruthy();
     });
 
+    it('uses the error code when a thrown error has no message', async () => {
+        const error = new Error();
+        error.message = null;
+        error.code = 'AccessDenied';
+        service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn().mockRejectedValue(error);
+
+        const result = await service._verifySyncedCopies(filesSubmission());
+
+        expect(result).toEqual({ ok: false, reason: 'AccessDenied' });
+    });
+
+    it('uses String(error) when a non-Error string is thrown', async () => {
+        service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn().mockRejectedValue('test error');
+
+        const result = await service._verifySyncedCopies(filesSubmission());
+
+        expect(result).toEqual({ ok: false, reason: 'test error' });
+    });
+
+    it('uses a fallback reason when the thrown value has no message or code', async () => {
+        service.dataSyncService.findLatestBySubmissionIDAndType = jest.fn().mockRejectedValue(null);
+
+        const result = await service._verifySyncedCopies(filesSubmission());
+
+        expect(result).toEqual({ ok: false, reason: 'Unknown error' });
+    });
+
     it('fails rather than throwing when an S3 listing rejects', async () => {
         service.s3Service.listFileInDir = jest.fn().mockRejectedValue(new Error('AccessDenied'));
 
@@ -736,6 +763,19 @@ describe('archiveSubmissions', () => {
 
         expect(console.error).toHaveBeenCalledWith(expect.stringContaining('lookup down'));
         expect(warnLines().some((line) => String(line).startsWith('[ARCHIVE_MANUAL_VERIFY]'))).toBe(false);
+        expect(service.s3Service.deleteDirectory).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps archiving when the worklist throws a non-Error', async () => {
+        service.submissionDAO.getPastRetentionUnapprovedSubmissions.mockRejectedValue(null);
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
+        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+
+        await expect(service.archiveSubmissions()).resolves.toEqual('successful!');
+
+        expect(console.error).toHaveBeenCalledWith(
+            'Failed to log submissions needing manual archive verification: Unknown error'
+        );
         expect(service.s3Service.deleteDirectory).toHaveBeenCalledTimes(1);
     });
 
