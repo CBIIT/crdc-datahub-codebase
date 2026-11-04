@@ -1,0 +1,205 @@
+name: Test Ephemeral Runner 2
+ 
+# Manual workflow to validate the new ephemeral runner:
+#   1. user 'cbiit-runner' exists (created if missing) and git is installed
+#   2. rootless Docker can be installed and started as 'cbiit-runner' (no sudo for docker)
+#   3. a workspace owned by 'cbiit-runner' can build and run a Docker image
+#
+# Steps 1-2 run as the runner's own account, which must have passwordless sudo.
+# From the "Rootless Docker" step on, every step runs as 'cbiit-runner' through the
+# 'as-runner' wrapper created in the "Prepare" step (see `shell:` on each step).
+ 
+on:
+  workflow_dispatch:
+    inputs:
+      base_image:
+        description: "Base image for the test build (use a registry reachable from the runner)"
+        required: false
+        default: "public.ecr.aws/docker/library/alpine:3.20"
+ 
+permissions:
+  contents: read
+ 
+jobs:
+  test_runner:
+    name: Test runner - user, git, docker, image build
+    # TODO: replace with the new ephemeral runner group/labels
+    runs-on:
+      #group: cbiit-global-runners
+      labels: [nonprod-org-runner]
+    timeout-minutes: 30
+    env:
+      RUNNER_SVC_USER: cbiit-runner
+      BASE_IMAGE: ${{ inputs.base_image }}
+      TEST_IMAGE: runner-test:${{ github.run_id }}
+      WORKDIR: /home/cbiit-runner/docker-build-test
+    steps:
+      - name: Runner info
+        run: |
+          set -Eeuo pipefail
+          echo "User: $(whoami) (uid $(id -u))"
+          uname -a
+          cat /etc/os-release
+          echo "Python: $(python3 --version 2>&1 || echo 'not installed')"
+          echo "sudo available: $(sudo -n true 2>/dev/null && echo yes || echo no)"
+          df -h
+          free -h || true
+ 
+      # ── 1. User, git and wrapper (runs as the runner account, uses sudo) ──
+      - name: Prepare - create cbiit-runner, install git and prerequisites
+        run: |
+          set -Eeuo pipefail
+          sudo -n true || { echo "::error::Runner account has no passwordless sudo"; exit 1; }
+ 
+          . /etc/os-release
+ 
+          # Packages: git + what rootless Docker needs (newuidmap/newgidmap, iptables)
+          case "${ID}" in
+            amzn|rhel|centos|rocky|almalinux|fedora)
+              sudo dnf install -y git shadow-utils iptables curl-minimal || \
+                sudo dnf install -y git shadow-utils iptables
+              ;;
+            ubuntu|debian)
+              sudo apt-get update -y
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git uidmap dbus-user-session iptables curl
+              ;;
+            *)
+              echo "::error::Unsupported OS: ${ID}"
+              exit 1
+              ;;
+          esac
+          git --version
+ 
+          # Create the user if it does not exist
+          if id "${RUNNER_SVC_USER}" >/dev/null 2>&1; then
+            echo "User ${RUNNER_SVC_USER} already exists"
+          else
+            sudo useradd -m -s /bin/bash "${RUNNER_SVC_USER}"
+            echo "Created user ${RUNNER_SVC_USER}"
+          fi
+ 
+          # Subordinate UID/GID ranges required by rootless Docker
+          grep -q "^${RUNNER_SVC_USER}:" /etc/subuid || sudo usermod --add-subuids 100000-165535 "${RUNNER_SVC_USER}"
+          grep -q "^${RUNNER_SVC_USER}:" /etc/subgid || sudo usermod --add-subgids 100000-165535 "${RUNNER_SVC_USER}"
+ 
+          # Start a systemd user session for the user (creates /run/user/<uid>)
+          RUNNER_UID="$(id -u "${RUNNER_SVC_USER}")"
+          if command -v loginctl >/dev/null 2>&1; then
+            sudo loginctl enable-linger "${RUNNER_SVC_USER}" || true
+            for i in $(seq 1 15); do
+              [ -S "/run/user/${RUNNER_UID}/bus" ] && break
+              sleep 1
+            done
+          fi
+          ls -ld "/run/user/${RUNNER_UID}" || true
+ 
+          # Wrapper: run a step script as cbiit-runner with the Docker environment set up
+          sudo tee /usr/local/bin/as-runner >/dev/null <<'WRAPPER'
+          #!/bin/bash
+          # Usage: as-runner <script-file>   (used as the custom `shell:` of workflow steps)
+          set -eu
+          RUNNER_SVC_USER="cbiit-runner"
+          U_UID="$(id -u "${RUNNER_SVC_USER}")"
+          U_HOME="$(getent passwd "${RUNNER_SVC_USER}" | cut -d: -f6)"
+          XDG="/run/user/${U_UID}"
+          [ -d "${XDG}" ] || XDG="${U_HOME}/.xdg-runtime"
+          sudo -n install -d -m 0700 -o "${RUNNER_SVC_USER}" -g "${RUNNER_SVC_USER}" "${U_HOME}/tmp" "${XDG}" 2>/dev/null || true
+          exec sudo -n -u "${RUNNER_SVC_USER}" -H env \
+            "HOME=${U_HOME}" \
+            "PATH=${U_HOME}/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin" \
+            "XDG_RUNTIME_DIR=${XDG}" \
+            "DBUS_SESSION_BUS_ADDRESS=unix:path=${XDG}/bus" \
+            "DOCKER_HOST=unix://${XDG}/docker.sock" \
+            "RUNNER_TEMP=${U_HOME}/tmp" \
+            "BASE_IMAGE=${BASE_IMAGE:-}" \
+            "TEST_IMAGE=${TEST_IMAGE:-}" \
+            "WORKDIR=${WORKDIR:-}" \
+            bash --noprofile --norc -eo pipefail "$1"
+          WRAPPER
+          sudo chmod 0755 /usr/local/bin/as-runner
+ 
+          # The step script files live in the runner's temp dir; the service user must be able to read them
+          sudo chmod o+x "$(dirname "${RUNNER_TEMP}")" "${RUNNER_TEMP}" || true
+ 
+      - name: Confirm steps run as cbiit-runner
+        shell: /usr/local/bin/as-runner {0}
+        run: |
+          echo "Running as: $(whoami) (uid $(id -u)), HOME=${HOME}"
+          test "$(whoami)" = "cbiit-runner"
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
+          echo "DOCKER_HOST=${DOCKER_HOST}"
+ 
+      # ── 2. Docker (rootless, as cbiit-runner) ──────────────
+      - name: Install and start rootless Docker (as cbiit-runner, no sudo)
+        shell: /usr/local/bin/as-runner {0}
+        run: |
+          # Prerequisites check (installed by the Prepare step)
+          for bin in newuidmap newgidmap; do
+            command -v "$bin" >/dev/null || { echo "::error::$bin not found"; exit 1; }
+          done
+          grep -q "^$(id -un):" /etc/subuid || { echo "::error::No /etc/subuid entry for $(id -un)"; exit 1; }
+          grep -q "^$(id -un):" /etc/subgid || { echo "::error::No /etc/subgid entry for $(id -un)"; exit 1; }
+ 
+          # Install rootless Docker into ~/bin (no sudo)
+          if ! command -v dockerd-rootless.sh >/dev/null 2>&1; then
+            curl -fsSL https://get.docker.com/rootless -o "${RUNNER_TEMP}/install-docker-rootless.sh"
+            FORCE_ROOTLESS_INSTALL=1 sh "${RUNNER_TEMP}/install-docker-rootless.sh"
+          fi
+ 
+          # Start the rootless daemon (systemd user service if available, otherwise in the background)
+          if systemctl --user status >/dev/null 2>&1; then
+            systemctl --user start docker
+          else
+            nohup setsid "$HOME/bin/dockerd-rootless.sh" > "${RUNNER_TEMP}/dockerd-rootless.log" 2>&1 &
+          fi
+ 
+          # Wait for the daemon
+          for i in $(seq 1 30); do
+            docker info >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker info || { echo "::error::rootless dockerd did not start"; cat "${RUNNER_TEMP}/dockerd-rootless.log" || true; exit 1; }
+ 
+          docker --version
+ 
+      - name: Verify Docker is rootless
+        shell: /usr/local/bin/as-runner {0}
+        run: |
+          docker info --format 'SecurityOptions={{.SecurityOptions}}'
+          docker info --format '{{.SecurityOptions}}' | grep -q rootless
+ 
+      # ── 3. Workspace + image build (as cbiit-runner) ───────
+      - name: Create build workspace
+        shell: /usr/local/bin/as-runner {0}
+        run: |
+          mkdir -p "${WORKDIR}"
+ 
+          cat > "${WORKDIR}/Dockerfile" <<EOF
+          FROM ${BASE_IMAGE}
+          RUN echo "built on $(hostname) at $(date -u +%FT%TZ)" > /build-info.txt
+          CMD ["cat", "/build-info.txt"]
+          EOF
+ 
+          # Strip any leading indentation from the heredoc lines
+          sed -i 's/^ *//' "${WORKDIR}/Dockerfile"
+          cat "${WORKDIR}/Dockerfile"
+ 
+      - name: Build Docker image
+        shell: /usr/local/bin/as-runner {0}
+        run: |
+          docker build -t "${TEST_IMAGE}" "${WORKDIR}"
+          docker images "${TEST_IMAGE}"
+ 
+      - name: Run Docker image
+        shell: /usr/local/bin/as-runner {0}
+        run: |
+          docker run --rm "${TEST_IMAGE}"
+ 
+      - name: Cleanup
+        if: always()
+        shell: /usr/local/bin/as-runner {0}
+        run: |
+          docker rmi -f "${TEST_IMAGE}" || true
+          docker system df || true
+          rm -rf "${WORKDIR}" || true
+ 
