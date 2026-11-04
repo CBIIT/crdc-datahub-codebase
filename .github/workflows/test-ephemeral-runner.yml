@@ -53,21 +53,21 @@ jobs:
           set -Eeuo pipefail
           echo "Running as: $(whoami) (uid $(id -u))"
  
-          . /etc/os-release
-          case "${ID}" in
-            amzn|rhel|centos|rocky|almalinux|fedora)
-              dnf install -y git iptables shadow-utils
-              ;;
-            ubuntu|debian)
-              apt-get update -y
-              DEBIAN_FRONTEND=noninteractive apt-get install -y git iptables uidmap dbus-user-session
-              ;;
-            *)
-              echo "::error::Unsupported OS: ${ID}"
-              exit 1
-              ;;
-          esac
-          modprobe nf_tables || true
+          #. /etc/os-release
+          #case "${ID}" in
+            #amzn|rhel|centos|rocky|almalinux|fedora)
+              #dnf install -y git iptables shadow-utils
+              #;;
+            #ubuntu|debian)
+              #apt-get update -y
+              #DEBIAN_FRONTEND=noninteractive apt-get install -y git iptables uidmap dbus-user-session
+              #;;
+            #*)
+              #echo "::error::Unsupported OS: ${ID}"
+              #exit 1
+              #;;
+          #esac
+          #modprobe nf_tables || true
  
           git --version
  
