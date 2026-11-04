@@ -1,59 +1,10 @@
 import { chain, keys } from "lodash";
 
-import { MODEL_FILE_REPO } from "@/config/DataCommons";
+import { MODEL_FILE_REPO } from "@/config/ModelNavigator";
 import env from "@/env";
 import { RetrievePVsByPropertyNameResponse } from "@/graphql";
 
 import { Logger } from "./logger";
-
-/**
- * Fetch the tracked Data Model content manifest.
- *
- * @returns The parsed content manifest.
- * @throws An error if the manifest cannot be fetched.
- */
-export const fetchManifest = async (): Promise<DataModelManifest> => {
-  if (sessionStorage.getItem("manifest")) {
-    return JSON.parse(sessionStorage.getItem("manifest"));
-  }
-
-  const response = await fetch(
-    `${MODEL_FILE_REPO}${env.VITE_DEV_TIER || "prod"}/cache/content.json`
-  ).catch(() => null);
-  const parsed = await response?.json().catch(() => null);
-  if (response && parsed) {
-    sessionStorage.setItem("manifest", JSON.stringify(parsed));
-    return parsed;
-  }
-
-  throw new Error("Unable to fetch or parse manifest");
-};
-
-/**
- * List the available Data Model versions for a given Data Model
- *
- * @param model The Data Model (DataCommon) to list versions for (e.g. "CDS")
- * @returns An array of version strings or empty if none are found
- */
-export const listAvailableModelVersions = async (model: string): Promise<string[]> => {
-  try {
-    const manifest = await fetchManifest();
-    if (!manifest || !manifest[model]) {
-      throw new Error(`Unable to find manifest for ${model}`);
-    }
-
-    const { versions } = manifest[model];
-    if (!Array.isArray(versions) || versions.length === 0) {
-      throw new Error(`No versions found for ${model}`);
-    }
-
-    return versions;
-  } catch (e) {
-    Logger.error("listDataModelVersions: An exception was thrown", e);
-  }
-
-  return [];
-};
 
 /**
  * Builds the asset URLs for the Data Model Navigator to import from

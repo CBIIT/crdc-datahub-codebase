@@ -1,10 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { userEvent, waitFor, within, expect } from "@storybook/test";
 
-import { DataModelsProvider } from "../../components/Contexts/DataModelsContext";
+import {
+  DataModelsProvider,
+  MANIFEST_CACHE_KEY,
+} from "../../components/Contexts/DataModelsContext";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import env from "../../env";
-import { MANIFEST_CACHE_KEY } from "../../utils";
 
 import NavigatorView from "./NavigatorView";
 
