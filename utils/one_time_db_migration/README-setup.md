@@ -17,11 +17,8 @@ Copy `env.example` to `.env` and set values for your environment:
 | `RESTORE_DATABASE_NAME` | DocumentDB database name (3705); defaults to `BACKUP_DATABASE_NAME` |
 | `BACKUP_DIRECTORY` | Local path for `mongodump` output (3705) |
 | `RESTORE_CONNECTION_STRING` | DocumentDB URI, typically with TLS options (3705 restore/compare) |
-| `AWS_REGION` | AWS region for S3 access ([data sync status reconciliation](README-reconcile-data-sync-status.md)) |
 
 Scripts that connect via [utilities/mongo.js](utilities/mongo.js) require `CONNECTION_STRING` and `DATABASE_NAME`.
-
-The [data sync status reconciliation](README-reconcile-data-sync-status.md) additionally needs `AWS_REGION` and AWS credentials in the environment with `s3:ListBucket` on the submission, metadata and data management buckets.
 
 The [3705 backup/restore scripts](README-mongodb-backup-restore-3705.md) use the `BACKUP_*`, `RESTORE_DATABASE_NAME`, and `RESTORE_CONNECTION_STRING` variables instead.
 

@@ -73,6 +73,19 @@ const historySchema = new mongoose.Schema(
 );
 
 /**
+ * Operator approval to archive a past-retention submission that has no DataSync record.
+ * Written by a manual database update. The nightly job honors `approved` only when no
+ * dataSync document exists for the submission; any record ignores the flag.
+ */
+const manualArchiveApprovalSchema = new mongoose.Schema(
+    {
+        approved: { type: Boolean },
+        note: { type: String },
+    },
+    { _id: false }
+);
+
+/**
  * Embedded data file size schema for embedded DataFileSize fields.
  */
 const dataFileSizeSchema = new mongoose.Schema(
@@ -95,6 +108,7 @@ const submissionSchema = new mongoose.Schema(
         ORCID: { type: String },
         accessedAt: { type: Date },
         archived: { type: Boolean },
+        manualArchiveApproval: { type: manualArchiveApprovalSchema },
         bucketName: { type: String, required: true },
         collaborators: { type: [collaboratorSchema], default: undefined },
         controlledAccess: { type: Boolean },

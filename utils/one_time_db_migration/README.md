@@ -10,4 +10,3 @@ This repository holds one-off scripts and small utilities for data and database 
 - [Sync application study fields (3808)](README-sync-study-fields-applications-3808.md) — align root `studyAbbreviation` and `studyName` with `questionnaireData`
 - [Backfill reopen user permissions](README-backfill-reopen-user-permissions.md) — add `submission_request:reopen:*` permissions and `submission_request:reopened` notification on existing active users
 - [MongoDB backup and DocumentDB restore (3705)](README-mongodb-backup-restore-3705.md) — dump selected collections, restore to DocumentDB, verify counts
-- [Reconcile data sync status](README-reconcile-data-sync-status.md) — verify legacy submissions' S3 copies and set `metadataDataSyncStatus` / `fileDataSyncStatus` where they match

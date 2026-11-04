@@ -29,6 +29,19 @@ class DataSyncDAO extends MongooseGenericDAO {
     async findLatestBySubmissionIDAndType(submissionID, type) {
         return this.findFirst({ submissionID, type }, { sort: { startTime: -1 } });
     }
+
+    /**
+     * Submission IDs among the given list that have any DataSync record.
+     * An empty list returns immediately and does not query.
+     * @param {string[]} submissionIDs Submission IDs to check
+     * @returns {Promise<string[]>} Distinct submission IDs that have a record
+     */
+    async findSubmissionIDsWithRecords(submissionIDs) {
+        if (!Array.isArray(submissionIDs) || submissionIDs.length === 0) {
+            return [];
+        }
+        return this.distinct("submissionID", { submissionID: { $in: submissionIDs } });
+    }
 }
 
 module.exports = DataSyncDAO;

@@ -650,9 +650,28 @@ class SubmissionDAO extends MongooseGenericDAO {
     }
 
     /**
+     * Completed, unarchived submissions whose `updatedAt` is at or before the retention cutoff.
+     * @param {number} completedSubmissionDays Retention days after completion
+     * @returns {{status: string, archived: object, updatedAt: {$lte: Date}}}
+     */
+    _archiveBaseFilter(completedSubmissionDays) {
+        const targetRetentionDate = new Date();
+        targetRetentionDate.setDate(targetRetentionDate.getDate() - completedSubmissionDays);
+        return {
+            status: COMPLETED,
+            archived: { $ne: true },
+            updatedAt: {
+                $lte: targetRetentionDate
+            },
+        };
+    }
+
+    /**
      * Finds completed submissions past the retention window for archival.
      * Metadata Only submissions require a succeeded metadata DataSync.
      * Metadata and Data Files submissions require both metadata and file DataSyncs to have succeeded.
+     * A submission with `manualArchiveApproval.approved` set to true is included so the job can see the flag.
+     * The service archives on that branch only when the submission has no DataSync record.
      * Already-archived submissions are excluded: archiving leaves `status` and the sync rollups
      * unchanged and refreshes `updatedAt`, so without this they re-qualify every retention window.
      * @param {number} completedSubmissionDays Retention days after completion
@@ -660,14 +679,8 @@ class SubmissionDAO extends MongooseGenericDAO {
      */
     async getToBeArchivedSubmissions(completedSubmissionDays) {
         try {
-            const targetRetentionDate = new Date();
-            targetRetentionDate.setDate(targetRetentionDate.getDate() - completedSubmissionDays);
             return await this.findMany({
-                status: COMPLETED,
-                archived: { $ne: true },
-                updatedAt: {
-                    $lte: targetRetentionDate
-                },
+                ...this._archiveBaseFilter(completedSubmissionDays),
                 $or: [
                     {
                         dataType: DATA_TYPE.METADATA_ONLY,
@@ -678,10 +691,41 @@ class SubmissionDAO extends MongooseGenericDAO {
                         metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
                         fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
                     },
+                    {
+                        "manualArchiveApproval.approved": true,
+                    },
                 ],
             });
         } catch (error) {
             console.error('Error getting archiveCompletedSubmissions:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Completed, unarchived, past-retention submissions that have not been manually approved
+     * for archive. Sync rollup fields are not part of the filter.
+     * @param {number} completedSubmissionDays Retention days after completion
+     * @returns {Promise<object[]>} Matching submissions, or an empty array when the query fails
+     */
+    async getPastRetentionUnapprovedSubmissions(completedSubmissionDays) {
+        try {
+            return await this.findMany({
+                ...this._archiveBaseFilter(completedSubmissionDays),
+                "manualArchiveApproval.approved": { $ne: true },
+            }, {
+                projection: {
+                    _id: 1,
+                    dataCommons: 1,
+                    dataType: 1,
+                    studyID: 1,
+                    bucketName: 1,
+                    rootPath: 1,
+                    updatedAt: 1,
+                },
+            });
+        } catch (error) {
+            console.error('Error getting getPastRetentionUnapprovedSubmissions:', error);
             return [];
         }
     }

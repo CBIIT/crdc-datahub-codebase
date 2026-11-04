@@ -7,10 +7,7 @@ const {
 } = require('../../utility/synced-copy-compare');
 
 /**
- * contentVerdict decision table. KEEP IN SYNC with the copy in
- * utils/one_time_db_migration/test/reconcile-data-sync-status.test.js: the reconciliation script
- * duplicates this rule (ESM cannot import this CommonJS module), and these shared vectors are what
- * keep the two implementations from drifting.
+ * contentVerdict decision table for the archive copy check.
  */
 const CONTENT_VERDICT_VECTORS = [
     { name: 'equal ETags', source: { etag: 'abc' }, dest: { etag: 'abc' }, verdict: 'equal' },

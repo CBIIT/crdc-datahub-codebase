@@ -87,6 +87,19 @@ class DataSyncService {
         }
         return this.dataSyncDAO.findLatestBySubmissionIDAndType(submissionID, type);
     }
+
+    /**
+     * Submission IDs among the given list that have any DataSync record.
+     * An empty list returns immediately and does not query.
+     * @param {string[]} submissionIDs Submission IDs to check
+     * @returns {Promise<string[]>} Distinct submission IDs that have a record
+     */
+    async findSubmissionIDsWithRecords(submissionIDs) {
+        if (!Array.isArray(submissionIDs) || submissionIDs.length === 0) {
+            return [];
+        }
+        return this.dataSyncDAO.findSubmissionIDsWithRecords(submissionIDs);
+    }
 }
 
 module.exports = { DataSyncService };

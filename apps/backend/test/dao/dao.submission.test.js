@@ -707,6 +707,9 @@ describe('SubmissionDAO', () => {
                         metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
                         fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
                     },
+                    {
+                        'manualArchiveApproval.approved': true,
+                    },
                 ],
             }));
             expect(result).toEqual([{ id: 'sub-3', _id: 'sub-3' }]);

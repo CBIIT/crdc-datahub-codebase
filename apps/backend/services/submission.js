@@ -1714,16 +1714,61 @@ class Submission {
     }
 
     /**
+     * Logs completed, past-retention submissions that have no DataSync record and no
+     * manual archive approval, so an operator can verify the copy by hand.
+     * A failure here is logged and swallowed so archiving still runs.
+     * @returns {Promise<void>}
+     */
+    async _logSubmissionsNeedingManualVerification() {
+        try {
+            const candidates = await this.submissionDAO.getPastRetentionUnapprovedSubmissions(
+                this.emailParams.completedSubmissionDays
+            ) || [];
+            const withRecords = await this.dataSyncService.findSubmissionIDsWithRecords(
+                candidates.map((sub) => sub._id)
+            );
+            const recorded = new Set(withRecords || []);
+            const needingVerification = candidates.filter((sub) => !recorded.has(sub._id));
+            for (const sub of needingVerification) {
+                const updatedAt = sub.updatedAt instanceof Date ? sub.updatedAt.toISOString() : sub.updatedAt;
+                console.warn(`[ARCHIVE_MANUAL_VERIFY] submission=${sub._id} dataCommons=${sub.dataCommons} dataType=${sub.dataType} studyID=${sub.studyID} bucket=${sub.bucketName} rootPath=${sub.rootPath} updatedAt=${updatedAt}`);
+            }
+            console.warn(`[ARCHIVE_MANUAL_VERIFY] total=${needingVerification.length}`);
+        } catch (error) {
+            console.error(`Failed to log submissions needing manual archive verification: ${error.message}`);
+        }
+    }
+
+    /**
      * Overnight job that archives completed submissions past retention after verifying
      * that DataSync destination copies still match the source prefixes.
+     * `manualArchiveApproval.approved` skips that verification only when the submission
+     * has no DataSync record. A record, or a failed record lookup, ignores the flag.
+     * Also logs past-retention submissions that have no DataSync record.
      * @returns {Promise<string>} Outcome summary
      */
     async archiveSubmissions(){
         try {
+            await this._logSubmissionsNeedingManualVerification();
             const archiveSubs = await this.submissionDAO.getToBeArchivedSubmissions(this.emailParams.completedSubmissionDays);
             if (!archiveSubs || archiveSubs.length === 0) {
                 console.debug("No completed submissions need to be archived.")
                 return "No completed submissions need to be archived";
+            }
+
+            const approvedIDs = archiveSubs
+                .filter((sub) => sub.archived !== true && sub.manualArchiveApproval?.approved === true)
+                .map((sub) => sub._id);
+            let submissionIDsWithRecords = new Set();
+            let approvalRecordLookupFailed = false;
+            if (approvedIDs.length > 0) {
+                try {
+                    const withRecords = await this.dataSyncService.findSubmissionIDsWithRecords(approvedIDs);
+                    submissionIDsWithRecords = new Set(withRecords || []);
+                } catch (error) {
+                    approvalRecordLookupFailed = true;
+                    console.error(`Failed to look up DataSync records for manual archive approvals: ${error.message}`);
+                }
             }
            
             let failedDeleteSubs = []
@@ -1736,6 +1781,18 @@ class Submission {
                         // never re-scan shared study prefixes for data that is already deleted.
                         console.debug(`Skipping already-archived submission ${sub._id}.`);
                         continue;
+                    }
+                    if (sub.manualArchiveApproval?.approved === true) {
+                        const note = sub.manualArchiveApproval.note ?? "";
+                        if (approvalRecordLookupFailed || submissionIDsWithRecords.has(sub._id)) {
+                            const reason = approvalRecordLookupFailed ? "DataSyncLookupFailed" : "DataSyncRecordExists";
+                            console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=ignored reason=${reason}`);
+                        } else {
+                            console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=archived reason=NoDataSyncRecord`);
+                            await this._archiveSubmission(sub._id, sub.bucketName, sub.rootPath);
+                            console.debug(`Successfully archive completed submissions: ${sub._id}.`);
+                            continue;
+                        }
                     }
                     if (!isArchiveEligible(sub)) {
                         console.error(`Skipping archive for submission ${sub._id}: DataSync status criteria not met.`);

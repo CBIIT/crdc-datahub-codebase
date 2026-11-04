@@ -21,6 +21,7 @@ describe('DataSyncDAO', () => {
         it('should have expected methods defined', () => {
             expect(dataSyncDAO.listBySubmissionID).toBeDefined();
             expect(dataSyncDAO.findLatestBySubmissionIDAndType).toBeDefined();
+            expect(dataSyncDAO.findSubmissionIDsWithRecords).toBeDefined();
             expect(dataSyncDAO.findInProgressBySubmissionIDAndType).toBeUndefined();
         });
     });
@@ -85,5 +86,31 @@ describe('DataSyncDAO', () => {
             expect(option).toHaveProperty('sort.startTime', -1);
         });
 
+    });
+
+    describe('findSubmissionIDsWithRecords', () => {
+        let distinctSpy;
+
+        beforeEach(() => {
+            distinctSpy = jest.spyOn(dataSyncDAO, 'distinct').mockResolvedValue([]);
+        });
+
+        it('returns an empty array without querying when given no ids', async () => {
+            await expect(dataSyncDAO.findSubmissionIDsWithRecords([])).resolves.toEqual([]);
+            await expect(dataSyncDAO.findSubmissionIDsWithRecords(undefined)).resolves.toEqual([]);
+
+            expect(distinctSpy).not.toHaveBeenCalled();
+        });
+
+        it('queries distinct submission IDs that have a record of any type', async () => {
+            distinctSpy.mockResolvedValue(['sub-1']);
+
+            await expect(dataSyncDAO.findSubmissionIDsWithRecords(['sub-1', 'sub-2'])).resolves.toEqual(['sub-1']);
+
+            expect(distinctSpy).toHaveBeenCalledTimes(1);
+            expect(distinctSpy).toHaveBeenCalledWith('submissionID', {
+                submissionID: { $in: ['sub-1', 'sub-2'] },
+            });
+        });
     });
 });

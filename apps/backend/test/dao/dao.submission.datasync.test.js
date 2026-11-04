@@ -50,6 +50,9 @@ describe('SubmissionDAO data sync', () => {
                         metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
                         fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
                     },
+                    {
+                        'manualArchiveApproval.approved': true,
+                    },
                 ],
             });
         });

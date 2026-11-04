@@ -13,11 +13,9 @@
     "backfill-reopen-user-permissions": "node scripts/backfill-reopen-user-permissions.js",
     "backfill-conditional-approval": "node scripts/backfill-conditional-approval-noficications.js",
     "sync-study-fields-applications-3808": "node scripts/sync-study-fields-applications-3808.js",
-    "reconcile-data-sync-status": "node scripts/reconcile-data-sync-status.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.729.0",
     "dotenv": "^16.6.1",
     "mongodb": "^6.12.0",
     "yaml": "^2.9.0"

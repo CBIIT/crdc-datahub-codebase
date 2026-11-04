@@ -44,6 +44,7 @@ describe('Data Sync service tests', () => {
         it('should have expected methods defined', () => {
             expect(dataSyncService.listBySubmissionID).toBeDefined();
             expect(dataSyncService.findLatestBySubmissionIDAndType).toBeDefined();
+            expect(dataSyncService.findSubmissionIDsWithRecords).toBeDefined();
         });
 
         it('should not expose data sync writes', () => {
@@ -226,6 +227,29 @@ describe('Data Sync service tests', () => {
 
             const dataSync = await dataSyncService.findLatestBySubmissionIDAndType('sub-1', DATA_SYNC_TYPE.METADATA);
             expect(dataSync).toBeNull();
+        });
+
+    });
+
+    describe('findSubmissionIDsWithRecords', () => {
+
+        it('returns an empty array without querying when given no ids', async () => {
+            const daoSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findSubmissionIDsWithRecords');
+
+            await expect(dataSyncService.findSubmissionIDsWithRecords([])).resolves.toEqual([]);
+            await expect(dataSyncService.findSubmissionIDsWithRecords(undefined)).resolves.toEqual([]);
+
+            expect(daoSpy).not.toHaveBeenCalled();
+        });
+
+        it('returns the submission IDs that have a record', async () => {
+            const daoSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findSubmissionIDsWithRecords')
+                .mockResolvedValue(['sub-1']);
+
+            await expect(dataSyncService.findSubmissionIDsWithRecords(['sub-1', 'sub-2'])).resolves.toEqual(['sub-1']);
+
+            expect(daoSpy).toHaveBeenCalledTimes(1);
+            expect(daoSpy).toHaveBeenCalledWith(['sub-1', 'sub-2']);
         });
 
     });
