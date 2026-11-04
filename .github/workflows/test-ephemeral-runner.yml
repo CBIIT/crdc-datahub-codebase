@@ -21,9 +21,9 @@ jobs:
   test_runner:
     name: Test runner - git, docker, image build
     # TODO: replace with the new ephemeral runner group/labels
-    runs-on:
-      group: cbiit-global-runners
-      labels: [nonprod-org-runner]
+    runs-on: ec2-al2023-s-nonprod
+      #group: cbiit-global-runners
+      #labels: [nonprod-org-runner]
     timeout-minutes: 30
     env:
       BASE_IMAGE: ${{ inputs.base_image }}
@@ -39,6 +39,11 @@ jobs:
           df -h
           free -h || true
  
+      - name: checkout the repo
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+          submodules: true
       # ── 1. System prerequisites (the only step that needs root, via sudo) ──
       # The rootless Docker installer refuses to run without iptables / newuidmap, and
       # these packages can only be installed by root. Everything after this step runs
@@ -48,33 +53,21 @@ jobs:
           set -Eeuo pipefail
           echo "Running as: $(whoami) (uid $(id -u))"
  
-          if ! sudo -n true 2>/dev/null; then
-            echo "::warning::No passwordless sudo: skipping package installs, rootless Docker will use SKIP_IPTABLES=1"
-            echo "SKIP_IPTABLES=1" >> "$GITHUB_ENV"
-            command -v git >/dev/null || { echo "::error::git is not installed"; exit 1; }
-            git --version
-            exit 0
-          fi
- 
           . /etc/os-release
           case "${ID}" in
             amzn|rhel|centos|rocky|almalinux|fedora)
-              sudo dnf install -y git iptables shadow-utils
+              dnf install -y git iptables shadow-utils
               ;;
             ubuntu|debian)
-              sudo apt-get update -y
-              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git iptables uidmap dbus-user-session
+              apt-get update -y
+              DEBIAN_FRONTEND=noninteractive apt-get install -y git iptables uidmap dbus-user-session
               ;;
             *)
               echo "::error::Unsupported OS: ${ID}"
               exit 1
               ;;
           esac
-          sudo modprobe nf_tables || true
- 
-          # Subordinate UID/GID ranges for the current user, if missing
-          grep -q "^$(id -un):" /etc/subuid || sudo usermod --add-subuids 100000-165535 "$(id -un)"
-          grep -q "^$(id -un):" /etc/subgid || sudo usermod --add-subgids 100000-165535 "$(id -un)"
+          modprobe nf_tables || true
  
           git --version
  
