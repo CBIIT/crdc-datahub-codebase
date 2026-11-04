@@ -241,7 +241,7 @@ class S3Service {
      *
      * @param {string} bucketName Bucket
      * @param {string} key Object key
-     * @returns {Promise<{etag: string|null, checksumType: string|null, checksums: Record<string, string>}>}
+     * @returns {Promise<{etag: string|null, checksumType: string|null, checksums: Record<string, string>, size: number|null}>}
      */
     async headObjectChecksums(bucketName, key) {
         const request = this.s3.headObject({ Bucket: bucketName, Key: key, ChecksumMode: 'ENABLED' });

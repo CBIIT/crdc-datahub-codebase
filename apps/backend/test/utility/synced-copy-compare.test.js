@@ -46,26 +46,53 @@ const DEST_PREFIX = 'study-1';
 const obj = (Key, Size, ETag = `"etag-${Size}"`) => ({ Key, Size, ETag });
 
 /** Normalized HeadObject checksum metadata. */
-const head = (checksums = {}, checksumType = null, etag = null) => ({ etag, checksumType, checksums });
+const head = (checksums = {}, checksumType = null, etag = null, size = 500) => ({
+    etag,
+    checksumType,
+    checksums,
+    size,
+});
 
 /**
- * s3Service double returning a fixed listing per bucket and fixed HeadObject metadata per
- * `bucket|key`. Unknown buckets or keys throw so a wrong key cannot silently pass.
- * @param {object[]} sourceObjects Objects under the source prefix
- * @param {object[]} destObjects Objects under the destination prefix
- * @param {Record<string, object>} [heads] HeadObject results keyed by `bucket|key`
+ * @param {{ETag?: string, Size: number}} entry
  */
-function mockS3Service(sourceObjects, destObjects, heads = {}) {
+function listingEntryToHead(entry) {
+    let etag = null;
+    if (entry.ETag != null) {
+        const text = String(entry.ETag).trim().replace(/^"+|"+$/g, '');
+        etag = text === '' ? null : text;
+    }
+    return { etag, size: entry.Size, checksumType: null, checksums: {} };
+}
+
+/**
+ * Lists the source prefix only. Destination objects are resolved with HeadObject per key.
+ * @param {object[]} sourceObjects Objects under the source prefix
+ * @param {object[]} [destObjects] Destination objects used to seed default HeadObject fixtures
+ * @param {Record<string, object>} [extraHeads] HeadObject overrides keyed by `bucket|key`
+ */
+function mockS3Service(sourceObjects, destObjects = [], extraHeads = {}) {
+    const heads = {};
+    for (const object of sourceObjects) {
+        heads[`${SOURCE_BUCKET}|${object.Key}`] = listingEntryToHead(object);
+    }
+    for (const object of destObjects) {
+        heads[`${DEST_BUCKET}|${object.Key}`] = listingEntryToHead(object);
+    }
+    Object.assign(heads, extraHeads);
     return {
         listFileInDir: jest.fn(async (bucket) => {
-            if (bucket === SOURCE_BUCKET) return sourceObjects;
-            if (bucket === DEST_BUCKET) return destObjects;
+            if (bucket === SOURCE_BUCKET) {
+                return sourceObjects;
+            }
             throw new Error(`unexpected bucket: ${bucket}`);
         }),
         headObjectChecksums: jest.fn(async (bucket, key) => {
             const id = `${bucket}|${key}`;
             if (!(id in heads)) {
-                throw new Error(`unexpected head request: ${id}`);
+                const err = new Error('NotFound');
+                err.code = 'NotFound';
+                throw err;
             }
             return heads[id];
         }),
@@ -81,7 +108,7 @@ function makeLogger() {
  * @param {object[]} destObjects
  * @param {object} [logger]
  */
-function run(sourceObjects, destObjects, logger = makeLogger(), s3Service = mockS3Service(sourceObjects, destObjects)) {
+function run(sourceObjects, destObjects = [], logger = makeLogger(), s3Service = mockS3Service(sourceObjects, destObjects)) {
     return compareSyncedPrefix({
         sourceBucket: SOURCE_BUCKET,
         sourcePrefix: SOURCE_PREFIX,
@@ -190,13 +217,25 @@ describe('compareSyncedPrefix', () => {
         expect(result.ok).toBe(true);
     });
 
-    it('ignores the folder placeholder key on the destination side', async () => {
+    it('compares a non-zero object whose key ends with a slash', async () => {
         const result = await run(
-            [obj(`${SOURCE_PREFIX}/a.txt`, 10)],
-            [obj(`${DEST_PREFIX}/`, 0), obj(`${DEST_PREFIX}/a.txt`, 10)],
+            [obj(`${SOURCE_PREFIX}/payload/`, 128)],
+            [],
         );
 
-        expect(result.ok).toBe(true);
+        expect(result.ok).toBe(false);
+        expect(result.reason).toEqual(expect.stringContaining('payload/'));
+    });
+
+    it('does not list the destination bucket', async () => {
+        const source = [obj(`${SOURCE_PREFIX}/a.txt`, 10)];
+        const dest = [obj(`${DEST_PREFIX}/a.txt`, 10)];
+        const s3Service = mockS3Service(source, dest);
+
+        await run(source, dest, makeLogger(), s3Service);
+
+        expect(s3Service.listFileInDir).toHaveBeenCalledTimes(1);
+        expect(s3Service.listFileInDir).toHaveBeenCalledWith(SOURCE_BUCKET, SOURCE_PREFIX);
     });
 
     it('treats a source prefix holding only a placeholder as empty', async () => {
@@ -222,7 +261,7 @@ describe('compareSyncedPrefix', () => {
             });
         });
 
-        it('passes on equal ETags without any HeadObject call', async () => {
+        it('passes on equal ETags with a destination HeadObject only', async () => {
             const source = [obj(`${SOURCE_PREFIX}/a.txt`, 10, '"same"')];
             const dest = [obj(`${DEST_PREFIX}/a.txt`, 10, '"same"')];
             const s3Service = mockS3Service(source, dest);
@@ -230,7 +269,8 @@ describe('compareSyncedPrefix', () => {
             const result = await run(source, dest, makeLogger(), s3Service);
 
             expect(result.ok).toBe(true);
-            expect(s3Service.headObjectChecksums).not.toHaveBeenCalled();
+            expect(s3Service.headObjectChecksums).toHaveBeenCalledTimes(1);
+            expect(s3Service.headObjectChecksums).toHaveBeenCalledWith(DEST_BUCKET, `${DEST_PREFIX}/a.txt`);
         });
 
         it('treats ETags that differ only in quoting as equal', async () => {
@@ -241,7 +281,8 @@ describe('compareSyncedPrefix', () => {
             const result = await run(source, dest, makeLogger(), s3Service);
 
             expect(result.ok).toBe(true);
-            expect(s3Service.headObjectChecksums).not.toHaveBeenCalled();
+            expect(s3Service.headObjectChecksums).toHaveBeenCalledTimes(1);
+            expect(s3Service.headObjectChecksums).toHaveBeenCalledWith(DEST_BUCKET, `${DEST_PREFIX}/a.txt`);
         });
 
         it('passes when ETags differ but full-object CRC64NVME checksums are equal', async () => {
@@ -313,8 +354,8 @@ describe('compareSyncedPrefix', () => {
                 obj(`${DEST_PREFIX}/b.txt`, 10, '"b-dst"'),
             ];
             const s3Service = mockS3Service(source, dest, {
-                [`${SOURCE_BUCKET}|${SOURCE_PREFIX}/b.txt`]: head({ SHA256: 'one' }),
-                [`${DEST_BUCKET}|${DEST_PREFIX}/b.txt`]: head({ SHA256: 'two' }),
+                [`${SOURCE_BUCKET}|${SOURCE_PREFIX}/b.txt`]: head({ SHA256: 'one' }, null, null, 10),
+                [`${DEST_BUCKET}|${DEST_PREFIX}/b.txt`]: head({ SHA256: 'two' }, null, null, 10),
             });
 
             const result = await run(source, dest, makeLogger(), s3Service);
@@ -361,11 +402,17 @@ describe('checksumsFromHeaders', () => {
             etag: 'abc-2',
             checksumType: 'FULL_OBJECT',
             checksums: { CRC64NVME: 'n==', CRC32: 'c==' },
+            size: 5,
         });
     });
 
     it('returns empty metadata when no checksum headers are present', () => {
-        expect(checksumsFromHeaders({})).toEqual({ etag: null, checksumType: null, checksums: {} });
+        expect(checksumsFromHeaders({})).toEqual({
+            etag: null,
+            checksumType: null,
+            checksums: {},
+            size: null,
+        });
     });
 
 });

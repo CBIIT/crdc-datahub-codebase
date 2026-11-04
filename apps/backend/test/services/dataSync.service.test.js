@@ -45,6 +45,7 @@ describe('Data Sync service tests', () => {
             expect(dataSyncService.listBySubmissionID).toBeDefined();
             expect(dataSyncService.findLatestBySubmissionIDAndType).toBeDefined();
             expect(dataSyncService.findSubmissionIDsWithRecords).toBeDefined();
+            expect(dataSyncService.findSubmissionIDsWithInProgressFileRecords).toBeDefined();
         });
 
         it('should not expose data sync writes', () => {
@@ -227,6 +228,19 @@ describe('Data Sync service tests', () => {
 
             const dataSync = await dataSyncService.findLatestBySubmissionIDAndType('sub-1', DATA_SYNC_TYPE.METADATA);
             expect(dataSync).toBeNull();
+        });
+
+    });
+
+    describe('findSubmissionIDsWithInProgressFileRecords', () => {
+
+        it('returns submission IDs from the DAO', async () => {
+            const daoSpy = jest.spyOn(dataSyncService.dataSyncDAO, 'findSubmissionIDsWithInProgressFileRecords')
+                .mockResolvedValue(['sub-1']);
+
+            await expect(dataSyncService.findSubmissionIDsWithInProgressFileRecords()).resolves.toEqual(['sub-1']);
+
+            expect(daoSpy).toHaveBeenCalledTimes(1);
         });
 
     });

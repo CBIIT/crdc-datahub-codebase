@@ -42,6 +42,7 @@ describe('S3Service.headObjectChecksums', () => {
                 etag: '"abc-2"',
                 'x-amz-checksum-crc64nvme': 'Naz0uXkYBPM=',
                 'x-amz-checksum-type': 'FULL_OBJECT',
+                'content-length': '500',
             })),
         };
 
@@ -56,6 +57,7 @@ describe('S3Service.headObjectChecksums', () => {
             etag: 'abc-2',
             checksumType: 'FULL_OBJECT',
             checksums: { CRC64NVME: 'Naz0uXkYBPM=' },
+            size: 500,
         });
     });
 
@@ -69,7 +71,7 @@ describe('S3Service.headObjectChecksums', () => {
 
         const result = await service.headObjectChecksums('bucket', 'k');
 
-        expect(result).toEqual({ etag: 'e', checksumType: null, checksums: { SHA256: 's==' } });
+        expect(result).toEqual({ etag: 'e', checksumType: null, checksums: { SHA256: 's==' }, size: null });
     });
 
     it('returns no checksums for an object stored without one', async () => {
@@ -78,6 +80,7 @@ describe('S3Service.headObjectChecksums', () => {
         const result = await service.headObjectChecksums('bucket', 'k');
 
         expect(result.checksums).toEqual({});
+        expect(result.size).toBeNull();
     });
 
     it('rejects when HeadObject fails', async () => {

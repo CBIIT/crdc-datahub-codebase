@@ -31,12 +31,12 @@ function relativeKey(key, prefix) {
 
 /**
  * True for a zero-length "folder" marker object, which S3 consoles create and DataSync does
- * not necessarily reproduce. These are not data and are excluded from the comparison.
- * @param {{Key: string}} object S3 listing entry
+ * not necessarily reproduce. Non-zero keys ending in `/` are real objects and must be compared.
+ * @param {{Key: string, Size?: number}} object S3 listing entry
  * @returns {boolean}
  */
 function isFolderPlaceholder(object) {
-    return String(object.Key).endsWith('/');
+    return String(object.Key).endsWith('/') && object.Size === 0;
 }
 
 /**
@@ -70,7 +70,7 @@ function etagsMatch(a, b) {
 /**
  * Builds normalized checksum metadata from raw HeadObject response headers (lower-case names).
  * @param {Record<string, string>} headers Raw response headers
- * @returns {{etag: string|null, checksumType: string|null, checksums: Record<string, string>}}
+ * @returns {{etag: string|null, checksumType: string|null, checksums: Record<string, string>, size: number|null}}
  */
 function checksumsFromHeaders(headers = {}) {
     const checksums = {};
@@ -80,11 +80,36 @@ function checksumsFromHeaders(headers = {}) {
             checksums[algorithm] = String(value);
         }
     }
+    const contentLength = headers['content-length'];
+    const size = contentLength != null && contentLength !== '' ? Number(contentLength) : null;
     return {
         etag: normalizeETag(headers.etag),
         checksumType: headers['x-amz-checksum-type'] ? String(headers['x-amz-checksum-type']) : null,
         checksums,
+        size: Number.isFinite(size) ? size : null,
     };
+}
+
+/**
+ * Object key for a relative path under a prefix.
+ * @param {string} prefix Destination or source prefix
+ * @param {string} relativePath Path relative to the prefix
+ * @returns {string}
+ */
+function objectKeyUnderPrefix(prefix, relativePath) {
+    const normalizedPrefix = String(prefix).replace(/\/+$/, '');
+    if (relativePath === '') {
+        return normalizedPrefix;
+    }
+    return `${normalizedPrefix}/${relativePath}`;
+}
+
+/**
+ * @param {Error} error HeadObject rejection
+ * @returns {boolean}
+ */
+function isHeadObjectNotFound(error) {
+    return error?.code === 'NotFound' || error?.statusCode === 404 || error?.name === 'NotFound';
 }
 
 /**
@@ -152,7 +177,9 @@ function contentVerdict(source = {}, dest = {}) {
  * can overwrite a key with different bytes of the same length. When equality cannot be
  * established the comparison fails, so the caller retains the source.
  *
- * ETags come from the listing; HeadObject is only called when they differ.
+ * Only the source prefix is listed. Each destination object is looked up with HeadObject so a
+ * shared study prefix is not fully enumerated. ETags from the source listing are compared to the
+ * destination HeadObject first; source HeadObject runs only when those differ.
  *
  * @param {object} params
  * @param {string} params.sourceBucket Source bucket
@@ -173,38 +200,35 @@ async function compareSyncedPrefix({
 }) {
     const sourceObjects = (await s3Service.listFileInDir(sourceBucket, sourcePrefix))
         .filter((object) => !isFolderPlaceholder(object));
-    const destObjects = (await s3Service.listFileInDir(destBucket, destPrefix))
-        .filter((object) => !isFolderPlaceholder(object));
 
     if (sourceObjects.length === 0) {
         // Safe to pass only because `sourcePrefix` comes from a recorded dataSync `sourceFolder`,
         // so an empty listing means an empty folder. If a caller ever derives the prefix instead,
         // an empty listing could just as easily mean the prefix is wrong, and this must become a
-        // failure for that caller. The reconciliation script derives its prefix and therefore
-        // treats an empty source listing as a failure; see its compareListings.
+        // failure for that caller.
         logger?.info?.(`Source prefix ${sourcePrefix} listed zero objects`);
         return { ok: true };
     }
 
-    const destByRelative = new Map();
-    for (const object of destObjects) {
-        destByRelative.set(relativeKey(object.Key, destPrefix), object);
-    }
-
     for (const object of sourceObjects) {
         const rel = relativeKey(object.Key, sourcePrefix);
-        const destObject = destByRelative.get(rel);
-        if (!destObject) {
-            return { ok: false, reason: `missing destination object ${rel}` };
+        const destKey = objectKeyUnderPrefix(destPrefix, rel);
+        let destMeta;
+        try {
+            destMeta = await s3Service.headObjectChecksums(destBucket, destKey);
+        } catch (error) {
+            if (isHeadObjectNotFound(error)) {
+                return { ok: false, reason: `missing destination object ${rel}` };
+            }
+            throw error;
         }
-        if (destObject.Size !== object.Size) {
-            return { ok: false, reason: `size mismatch for ${rel}: source ${object.Size} dest ${destObject.Size}` };
+        if (destMeta.size !== object.Size) {
+            return { ok: false, reason: `size mismatch for ${rel}: source ${object.Size} dest ${destMeta.size}` };
         }
-        if (etagsMatch(object.ETag, destObject.ETag)) {
+        if (etagsMatch(object.ETag, destMeta.etag)) {
             continue;
         }
         const sourceMeta = await s3Service.headObjectChecksums(sourceBucket, object.Key);
-        const destMeta = await s3Service.headObjectChecksums(destBucket, destObject.Key);
         const { verdict, algorithm } = contentVerdict(sourceMeta, destMeta);
         if (verdict === CONTENT_VERDICT.DIFFERENT) {
             return { ok: false, reason: `content mismatch for ${rel} (${algorithm})` };

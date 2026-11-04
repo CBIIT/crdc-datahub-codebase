@@ -1,7 +1,7 @@
 const DataSyncDAO = require('../../dao/dataSync');
 const DataSyncModel = require('../../mongoose/models/data-sync');
 const MongooseGenericDAO = require('../../dao/mongoose-generic');
-const { DATA_SYNC_TYPE } = require('../../constants/data-sync-constants');
+const { DATA_SYNC_TYPE, DATA_SYNC_STATUS } = require('../../constants/data-sync-constants');
 
 describe('DataSyncDAO', () => {
     let dataSyncDAO;
@@ -22,6 +22,7 @@ describe('DataSyncDAO', () => {
             expect(dataSyncDAO.listBySubmissionID).toBeDefined();
             expect(dataSyncDAO.findLatestBySubmissionIDAndType).toBeDefined();
             expect(dataSyncDAO.findSubmissionIDsWithRecords).toBeDefined();
+            expect(dataSyncDAO.findSubmissionIDsWithInProgressFileRecords).toBeDefined();
             expect(dataSyncDAO.findInProgressBySubmissionIDAndType).toBeUndefined();
         });
     });
@@ -86,6 +87,25 @@ describe('DataSyncDAO', () => {
             expect(option).toHaveProperty('sort.startTime', -1);
         });
 
+    });
+
+    describe('findSubmissionIDsWithInProgressFileRecords', () => {
+        let distinctSpy;
+
+        beforeEach(() => {
+            distinctSpy = jest.spyOn(dataSyncDAO, 'distinct').mockResolvedValue([]);
+        });
+
+        it('queries distinct submission IDs for in-progress file syncs', async () => {
+            distinctSpy.mockResolvedValue(['sub-1']);
+
+            await expect(dataSyncDAO.findSubmissionIDsWithInProgressFileRecords()).resolves.toEqual(['sub-1']);
+
+            expect(distinctSpy).toHaveBeenCalledWith('submissionID', {
+                type: DATA_SYNC_TYPE.FILE,
+                status: DATA_SYNC_STATUS.IN_PROGRESS,
+            });
+        });
     });
 
     describe('findSubmissionIDsWithRecords', () => {

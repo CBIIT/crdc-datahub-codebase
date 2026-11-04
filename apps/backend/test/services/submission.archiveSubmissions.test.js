@@ -50,7 +50,12 @@ const METADATA_ONLY_TARGET = '2026-11-03T14:30:00-sub-2';
 const obj = (Key, Size, ETag = `"etag-${Size}"`) => ({ Key, Size, ETag });
 
 /** Normalized HeadObject checksum metadata. */
-const head = (checksums = {}, checksumType = null) => ({ etag: null, checksumType, checksums });
+const head = (checksums = {}, checksumType = null, etag = null, size = null) => ({
+    etag,
+    checksumType,
+    checksums,
+    size,
+});
 
 const filesSubmission = () => ({
     _id: 'sub-1',
@@ -113,19 +118,50 @@ const matchingListings = () => ({
 });
 
 /**
- * s3Service double. Prefix lookups ignore a trailing slash so the implementation may pass
- * either form. HeadObject lookups are keyed by `bucket|key`; unknown keys throw.
+ * @param {{ETag?: string, Size: number}} entry S3 listing entry
+ * @returns {{etag: string|null, size: number, checksumType: null, checksums: object}}
+ */
+function listingEntryToHead(entry) {
+    let etag = null;
+    if (entry.ETag != null) {
+        const text = String(entry.ETag).trim().replace(/^"+|"+$/g, '');
+        etag = text === '' ? null : text;
+    }
+    return { etag, size: entry.Size, checksumType: null, checksums: {} };
+}
+
+/**
+ * Builds HeadObject fixtures from listing entries (source and destination objects).
+ * @param {Record<string, object[]>} listings keyed by `bucket|prefix`
+ * @returns {Record<string, object>}
+ */
+function headsFromListingEntries(listings) {
+    const heads = {};
+    for (const [bucketPrefix, objects] of Object.entries(listings)) {
+        const bucket = bucketPrefix.split('|')[0];
+        for (const object of objects) {
+            heads[`${bucket}|${object.Key}`] = listingEntryToHead(object);
+        }
+    }
+    return heads;
+}
+
+/**
+ * s3Service double. Only source prefixes are listed. HeadObject lookups are keyed by `bucket|key`.
  * @param {Record<string, object[]>} listings keyed by `bucket|prefix`
  * @param {Record<string, object>} [heads] keyed by `bucket|key`
  */
 function makeS3Service(listings, heads = {}) {
+    const mergedHeads = { ...headsFromListingEntries(listings), ...heads };
     return {
         headObjectChecksums: jest.fn(async (bucket, key) => {
             const id = `${bucket}|${key}`;
-            if (!(id in heads)) {
-                throw new Error(`unexpected head request: ${id}`);
+            if (!(id in mergedHeads)) {
+                const err = new Error('NotFound');
+                err.code = 'NotFound';
+                throw err;
             }
-            return heads[id];
+            return mergedHeads[id];
         }),
         listFileInDir: jest.fn(async (bucket, prefix) => {
             const key = `${bucket}|${String(prefix).replace(/\/+$/, '')}`;
@@ -175,15 +211,17 @@ function makeService() {
     service.configurationService = {
         findByType: jest.fn().mockResolvedValue({ keys: { dm_bucket: DM_BUCKET } }),
     };
-    service.    dataSyncService = {
+    service.dataSyncService = {
         findLatestBySubmissionIDAndType: jest.fn(async (_submissionID, type) => (
             type === DATA_SYNC_TYPE.METADATA ? metadataRecord() : fileRecord()
         )),
         findSubmissionIDsWithRecords: jest.fn().mockResolvedValue([]),
+        findSubmissionIDsWithInProgressFileRecords: jest.fn().mockResolvedValue([]),
     };
     service.submissionDAO = {
         getToBeArchivedSubmissions: jest.fn().mockResolvedValue([]),
         getPastRetentionUnapprovedSubmissions: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
     };
     service.batchDAO = { deleteBatchesBySubmissionID: jest.fn().mockResolvedValue({}) };
@@ -274,8 +312,8 @@ describe('_verifySyncedCopies', () => {
         listings[`${SUBMISSION_BUCKET}|submissions/sub-1/file`] = [obj('submissions/sub-1/file/a.fastq', 500, '"original"')];
         listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"overwritten"')];
         service.s3Service = makeS3Service(listings, {
-            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({ CRC64NVME: 'orig==' }, 'FULL_OBJECT'),
-            [`${DM_BUCKET}|study-1/a.fastq`]: head({ CRC64NVME: 'new==' }, 'FULL_OBJECT'),
+            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({ CRC64NVME: 'orig==' }, 'FULL_OBJECT', null, 500),
+            [`${DM_BUCKET}|study-1/a.fastq`]: head({ CRC64NVME: 'new==' }, 'FULL_OBJECT', null, 500),
         });
 
         const result = await service._verifySyncedCopies(filesSubmission());
@@ -287,8 +325,8 @@ describe('_verifySyncedCopies', () => {
         const listings = matchingListings();
         listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"multipart-etag-2"')];
         service.s3Service = makeS3Service(listings, {
-            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head(),
-            [`${DM_BUCKET}|study-1/a.fastq`]: head(),
+            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({}, null, 'source-etag', 500),
+            [`${DM_BUCKET}|study-1/a.fastq`]: head({}, null, 'dest-etag', 500),
         });
 
         const result = await service._verifySyncedCopies(filesSubmission());
@@ -525,8 +563,8 @@ describe('archiveSubmissions', () => {
         const listings = matchingListings();
         listings[`${DM_BUCKET}|study-1`] = [obj('study-1/a.fastq', 500, '"overwritten"')];
         service.s3Service = makeS3Service(listings, {
-            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({ CRC64NVME: 'orig==' }, 'FULL_OBJECT'),
-            [`${DM_BUCKET}|study-1/a.fastq`]: head({ CRC64NVME: 'new==' }, 'FULL_OBJECT'),
+            [`${SUBMISSION_BUCKET}|submissions/sub-1/file/a.fastq`]: head({ CRC64NVME: 'orig==' }, 'FULL_OBJECT', null, 500),
+            [`${DM_BUCKET}|study-1/a.fastq`]: head({ CRC64NVME: 'new==' }, 'FULL_OBJECT', null, 500),
         });
         service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
 
@@ -763,6 +801,47 @@ describe('archiveSubmissions', () => {
         );
         expect(verify).toHaveBeenCalledWith(expect.objectContaining({ _id: 'sub-1' }));
         expect(service.s3Service.deleteDirectory).toHaveBeenCalledWith(SUBMISSION_BUCKET, 'submissions/sub-1');
+    });
+
+    it('retains Metadata and Data Files when the study has an in-progress file DataSync', async () => {
+        service.dataSyncService.findSubmissionIDsWithInProgressFileRecords.mockResolvedValue(['sub-other']);
+        service.submissionDAO.findMany.mockResolvedValue([{ _id: 'sub-other', studyID: 'study-1' }]);
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([filesSubmission()]);
+        service._verifySyncedCopies = jest.fn().mockResolvedValue({ ok: true });
+
+        await service.archiveSubmissions();
+
+        expect(service._verifySyncedCopies).not.toHaveBeenCalled();
+        expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
+    });
+
+    it('logs manual approval as ignored when the study has an in-progress file DataSync', async () => {
+        service.dataSyncService.findSubmissionIDsWithInProgressFileRecords.mockResolvedValue(['sub-other']);
+        service.submissionDAO.findMany.mockResolvedValue([{ _id: 'sub-other', studyID: 'study-1' }]);
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([{
+            ...filesSubmission(),
+            manualArchiveApproval: { approved: true, note: 'ticket-9' },
+        }]);
+
+        await service.archiveSubmissions();
+
+        expect(console.warn).toHaveBeenCalledWith(
+            '[ARCHIVE_MANUAL] submission=sub-1 note=ticket-9 outcome=ignored reason=StudyFileDataSyncInProgress'
+        );
+        expect(service.s3Service.deleteDirectory).not.toHaveBeenCalled();
+    });
+
+    it('does not emit outcome=archived when manual approval archive fails', async () => {
+        service.submissionDAO.getToBeArchivedSubmissions.mockResolvedValue([{
+            ...filesSubmission(),
+            manualArchiveApproval: { approved: true, note: 'ticket-42 verified copy' },
+        }]);
+        jest.spyOn(service, '_archiveSubmission').mockRejectedValue(new Error('S3 delete failed'));
+
+        const summary = await service.archiveSubmissions();
+
+        expect(warnLines().some((line) => line.includes('outcome=archived'))).toBe(false);
+        expect(summary).toEqual(expect.stringContaining('sub-1'));
     });
 
     it('does not honor approvals when the record lookup rejects, and still archives an eligible candidate', async () => {

@@ -37,5 +37,12 @@ For every candidate with `approved: true`:
 | `[ARCHIVE_MANUAL] submission=<id> note=<note> outcome=archived reason=NoDataSyncRecord` | No DataSync record. The job deletes the S3 prefix, moves data records to the archive collection, deletes batches, and sets `archived: true`. |
 | `[ARCHIVE_MANUAL] submission=<id> note=<note> outcome=ignored reason=DataSyncRecordExists` | A DataSync record exists. The flag is ignored and the normal sync gate runs. |
 | `[ARCHIVE_MANUAL] submission=<id> note=<note> outcome=ignored reason=DataSyncLookupFailed` | The record lookup failed. The flag is ignored and the normal sync gate runs. |
+| `[ARCHIVE_MANUAL] submission=<id> note=<note> outcome=ignored reason=StudyFileDataSyncInProgress` | A file DataSync for the same study is In Progress. The flag is ignored and the submission is retained. |
 
 The next run drops an archived submission from both the worklist and the approval log.
+
+## Shared study prefix and concurrent transfers
+
+Metadata and Data Files submissions copy data files into the shared study prefix in the data management bucket (`studyID/`). Before archiving such a submission, the job skips it when any submission on that study already has a file DataSync record with status In Progress.
+
+That check only sees transfers that have already written an In Progress row. A file transfer that starts after the check can still overwrite a shared key after verification and before delete. Fully closing that window would require coordinating with the validator transfer (for example a per-study lock) or copying files to an immutable destination prefix.

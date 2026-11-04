@@ -100,6 +100,14 @@ class DataSyncService {
         }
         return this.dataSyncDAO.findSubmissionIDsWithRecords(submissionIDs);
     }
+
+    /**
+     * Submission IDs that have a file DataSync task still In Progress.
+     * @returns {Promise<string[]>}
+     */
+    async findSubmissionIDsWithInProgressFileRecords() {
+        return this.dataSyncDAO.findSubmissionIDsWithInProgressFileRecords();
+    }
 }
 
 module.exports = { DataSyncService };

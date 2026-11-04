@@ -1770,6 +1770,24 @@ class Submission {
                     console.error(`Failed to look up DataSync records for manual archive approvals: ${error.message}`);
                 }
             }
+
+            let studyIDsWithInProgressFileSync = new Set();
+            let inProgressFileLookupFailed = false;
+            try {
+                const inProgressFileSubmissionIDs = await this.dataSyncService.findSubmissionIDsWithInProgressFileRecords();
+                if (inProgressFileSubmissionIDs?.length > 0) {
+                    const rows = await this.submissionDAO.findMany(
+                        { _id: { $in: inProgressFileSubmissionIDs } },
+                        { projection: { studyID: 1 } }
+                    );
+                    studyIDsWithInProgressFileSync = new Set(
+                        (rows || []).map((row) => row.studyID).filter(Boolean)
+                    );
+                }
+            } catch (error) {
+                inProgressFileLookupFailed = true;
+                console.error(`Failed to look up in-progress file DataSync studies: ${error.message}`);
+            }
            
             let failedDeleteSubs = []
             let retainedSubs = []
@@ -1784,15 +1802,26 @@ class Submission {
                     }
                     if (sub.manualArchiveApproval?.approved === true) {
                         const note = sub.manualArchiveApproval.note ?? "";
+                        const studyFileSyncInProgress = sub.dataType === DATA_TYPE.METADATA_AND_DATA_FILES
+                            && (inProgressFileLookupFailed || studyIDsWithInProgressFileSync.has(sub.studyID));
                         if (approvalRecordLookupFailed || submissionIDsWithRecords.has(sub._id)) {
                             const reason = approvalRecordLookupFailed ? "DataSyncLookupFailed" : "DataSyncRecordExists";
                             console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=ignored reason=${reason}`);
+                        } else if (studyFileSyncInProgress) {
+                            console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=ignored reason=StudyFileDataSyncInProgress`);
+                            continue;
                         } else {
-                            console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=archived reason=NoDataSyncRecord`);
                             await this._archiveSubmission(sub._id, sub.bucketName, sub.rootPath);
+                            console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=archived reason=NoDataSyncRecord`);
                             console.debug(`Successfully archive completed submissions: ${sub._id}.`);
                             continue;
                         }
+                    }
+                    if (sub.dataType === DATA_TYPE.METADATA_AND_DATA_FILES
+                        && (inProgressFileLookupFailed || studyIDsWithInProgressFileSync.has(sub.studyID))) {
+                        console.error(`Skipping archive for submission ${sub._id}: StudyFileDataSyncInProgress`);
+                        retainedSubs.push(sub._id);
+                        continue;
                     }
                     if (!isArchiveEligible(sub)) {
                         console.error(`Skipping archive for submission ${sub._id}: DataSync status criteria not met.`);
@@ -1827,15 +1856,23 @@ class Submission {
         }
     }
 
+    /**
+     * Deletes submission S3 data and marks the submission archived.
+     * @param {string} submissionID Submission ID
+     * @param {string} bucketName Source bucket
+     * @param {string} rootPath Source prefix
+     * @returns {Promise<void>}
+     * @throws {Error} When S3 deletion does not succeed
+     */
     async _archiveSubmission(submissionID, bucketName, rootPath) {
         const result = await this.s3Service.deleteDirectory(bucketName, rootPath);
-        if (result === true) {
-            await this.dataRecordService.archiveMetadataByFilter({"submissionID": submissionID});
-            await this.batchDAO.deleteBatchesBySubmissionID(submissionID);
-            await this.submissionDAO.update(submissionID, this._prepareUpdateData({"archived": true}, new Date()));
-        } else {
+        if (result !== true) {
             console.error(`Failed to delete files in the s3 bucket. SubmissionID: ${submissionID}.`);
+            throw new Error(`Failed to delete S3 files for submission ${submissionID}`);
         }
+        await this.dataRecordService.archiveMetadataByFilter({"submissionID": submissionID});
+        await this.batchDAO.deleteBatchesBySubmissionID(submissionID);
+        await this.submissionDAO.update(submissionID, this._prepareUpdateData({"archived": true}, new Date()));
     }
 
      /**
