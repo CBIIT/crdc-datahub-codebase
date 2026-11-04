@@ -167,34 +167,45 @@ class S3Service {
     }
 
     /**
-     * delete objects under dir recursively
-     * @param {*} bucket 
-     * @param {*} dir 
-     * @returns 
+     * Deletes every object under a prefix.
+     * Returns false when deleteObjects reports per-key errors, and stops paging so a
+     * permanently undeletable key cannot be listed again forever. An empty prefix,
+     * including a listing that omits Contents, returns true.
+     * @param {string} bucket Bucket name
+     * @param {string} dir Prefix to delete
+     * @returns {Promise<boolean>} True when every listed object was deleted or the prefix was empty
      */
     async deleteDirectory(bucket, dir) {
-        const listParams = {
-            Bucket: bucket,
-            Prefix: (dir.endsWith("/"))? dir : dir + "/"
-        };
-    
-        const listedObjects = await this.s3.listObjectsV2(listParams).promise();
-    
-        if (listedObjects.Contents.length === 0) return true;  //no files to delete;
-    
-        const deleteParams = {
-            Bucket: bucket,
-            Delete: { Objects: [] }
-        };
-    
-        listedObjects.Contents.forEach(({ Key }) => {
-            deleteParams.Delete.Objects.push({ Key });
-        });
-    
-        await this.s3.deleteObjects(deleteParams).promise();
-    
-        if (listedObjects.IsTruncated) await this.deleteDirectory(bucket, dir); // finally delete the dir
-        return true; // if no errors
+        const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+        let continuationToken;
+        do {
+            const listParams = {
+                Bucket: bucket,
+                Prefix: prefix,
+            };
+            if (continuationToken) {
+                listParams.ContinuationToken = continuationToken;
+            }
+            const listedObjects = await this.s3.listObjectsV2(listParams).promise();
+            const contents = listedObjects.Contents;
+            if (contents?.length) {
+                const response = await this.s3.deleteObjects({
+                    Bucket: bucket,
+                    Delete: { Objects: contents.map(({ Key }) => ({ Key })) },
+                }).promise();
+                if (response?.Errors?.length > 0) {
+                    for (const error of response.Errors) {
+                        console.error(`Failed to delete S3 object key=${error.Key} code=${error.Code} message=${error.Message}`);
+                    }
+                    return false;
+                }
+            }
+            if (!listedObjects.IsTruncated) {
+                return true;
+            }
+            continuationToken = listedObjects.NextContinuationToken;
+        } while (continuationToken);
+        return true;
     }
 
     /**

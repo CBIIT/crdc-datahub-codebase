@@ -87,6 +87,28 @@ class DataSyncService {
         }
         return this.dataSyncDAO.findLatestBySubmissionIDAndType(submissionID, type);
     }
+
+    /**
+     * DataSync types recorded for each of the given submissions.
+     * An empty list returns immediately and does not query. Submissions with no
+     * record are absent from the map.
+     * @param {string[]} submissionIDs Submission IDs to check
+     * @returns {Promise<Map<string, Set<string>>>} submissionID to the set of recorded types
+     */
+    async findRecordedTypesBySubmissionIDs(submissionIDs) {
+        if (!Array.isArray(submissionIDs) || submissionIDs.length === 0) {
+            return new Map();
+        }
+        return this.dataSyncDAO.findRecordedTypesBySubmissionIDs(submissionIDs);
+    }
+
+    /**
+     * Submission IDs that have a file DataSync task still In Progress.
+     * @returns {Promise<string[]>}
+     */
+    async findSubmissionIDsWithInProgressFileRecords() {
+        return this.dataSyncDAO.findSubmissionIDsWithInProgressFileRecords();
+    }
 }
 
 module.exports = { DataSyncService };
