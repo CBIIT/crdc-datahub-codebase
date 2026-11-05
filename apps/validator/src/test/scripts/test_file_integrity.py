@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 from datetime import datetime
 from collections.abc import Callable
@@ -69,8 +71,13 @@ multi_file_integrity = [
 
 @pytest.mark.parametrize("file_list, get_file_header, expected", multi_file_integrity)
 def test_multiple_file_integrity(file_list: list, get_file_header, expected: list):
-    result = validate_all_files_integrity(file_list, get_file_header)
+    recorder = MagicMock()
+    result = validate_all_files_integrity(iterator(file_list), get_file_header, {}, recorder)
     assert result == expected
+
+def iterator(file_list):
+    for file in file_list:
+        yield file
 
 intermediate_result_file = [
     pytest.param([], file_header({}), {'guid-13': {}, 'guid-14': {}}, ([], []), id='Should return empty lists for empty file list despite unrelated intermediate results'),
@@ -83,14 +90,17 @@ intermediate_result_file = [
 
 @pytest.mark.parametrize("file_list, get_file_header, intermediate_results, expected", intermediate_result_file)
 def test_using_intermediate_result_file(file_list: list, get_file_header: Callable[[str], dict] , intermediate_results: list, expected: list):
-    result = validate_all_files_integrity(file_list, get_file_header, intermediate_results)
+    recorder = MagicMock()
+    result = validate_all_files_integrity(iterator(file_list), get_file_header, intermediate_results, recorder)
     assert result == expected
 
 def test_writing_to_intermediate_result_file():
+    recorder = MagicMock()
     intermediate_results = []
     def record_result(guid, status):
         intermediate_results.append({'GUID': guid, 'Result': status})
-    result = validate_all_files_integrity([succeeded_file_info_1, missing_file_info_1], file_header({succeeded_file_uri_1: succeeded_file_header_1}), {}, record_result)
+    recorder.record_result = record_result
+    result = validate_all_files_integrity(iterator([succeeded_file_info_1, missing_file_info_1]), file_header({succeeded_file_uri_1: succeeded_file_header_1}), {}, recorder)
     assert result == ([succeeded_file_result_1], [missing_file_result_1])
     assert intermediate_results == [{'GUID': 'guid-1', 'Result': 'Succeeded'}, {'GUID': 'guid-2', 'Result': 'Missing' }]
 
