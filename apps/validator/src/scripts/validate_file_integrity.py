@@ -1,4 +1,5 @@
 import os, csv
+from collections.abc import Iterator
 from datetime import datetime
 
 import boto3
@@ -31,14 +32,16 @@ def main():
     try:
         now = datetime.now()
         files_list = get_files_from_db(connection_str, db_name)
-        print(f'Found {len(files_list)} files')
         intermediate_results = get_intermediate_result(bucket, intermediate_file_path)
         recorder = IntermediateResultsRecorder(INTERMEDIATE_RESULT_FILE_NAME)
         succeeded_files, failed_files = validate_all_files_integrity(files_list, get_s3_header, intermediate_results, recorder)
-        print(f'Total files: {len(files_list)}, succeeded {len(succeeded_files)}, failed {len(failed_files)}')
+        num_succeeded_files = len(succeeded_files)
+        num_failed_files = len(failed_files)
+        total_files = num_succeeded_files + num_failed_files
+        print(f'Total files: {total_files}, succeeded {num_succeeded_files}, failed {num_failed_files}')
 
-        succeeded_file_name = get_succeeded_result_file_name(now, len(succeeded_files), len(files_list))
-        failed_file_name = get_failed_result_file_name(now, len(failed_files), len(files_list))
+        succeeded_file_name = get_succeeded_result_file_name(now, num_succeeded_files, total_files)
+        failed_file_name = get_failed_result_file_name(now, num_failed_files, total_files)
 
         result_files = write_results_to_file(succeeded_files, succeeded_file_name, failed_files, failed_file_name )
         print(f'Results written to {result_files}')
@@ -68,7 +71,7 @@ def upload_result_files(bucket: str, prefix: str, result_files: list[str]):
             print(f'Result file uploaded to {key}')
 
 
-def validate_all_files_integrity(file_list: list, get_file_header, intermediate_results: dict, result_recorder: IntermediateResultsRecorder):
+def validate_all_files_integrity(file_list: Iterator[dict], get_file_header, intermediate_results: dict, result_recorder: IntermediateResultsRecorder):
     succeeded_files = []
     failed_files = []
     for file in file_list:
@@ -93,18 +96,16 @@ def get_files_from_db(connection_str: str, db_name: str):
     db = client[db_name]
     data_collection = db[RELEASE_COLLECTION]
     query = {DATA_FILE_LOCATION: {"$exists": True, "$nin": [None, ""]}, "status": {"$ne": "Deleted"}}
-    files = []
     for data in data_collection.find(query):
         location = data.get(DATA_FILE_LOCATION)
         props = data.get(PROPS, {})
         size = int(props.get(FILE_SIZE)) if props else 0
         guid = data.get(NODE_ID)
-        files.append({
+        yield {
             GUID: guid,
             URI: location,
             SIZE: size
-        })
-    return files
+        }
 
 def delete_intermediate_file(bucket: str, file_path: str):
     basename = os.path.basename(file_path)
