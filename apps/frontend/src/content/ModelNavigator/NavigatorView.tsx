@@ -2,17 +2,21 @@
 import { Box } from "@mui/material";
 import { ReduxDataDictionary } from "data-model-navigator";
 import _ from "lodash";
-import { FC } from "react";
+import { FC, useMemo } from "react";
 import { Provider } from "react-redux";
 
-import { Status, useDataCommonContext } from "../../components/Contexts/DataCommonContext";
-import SuspenseLoader from "../../components/SuspenseLoader";
-import useBuildReduxStore from "../../hooks/useBuildReduxStore";
+import { useDataModels } from "@/components/Contexts/DataModelsContext";
+import SuspenseLoader from "@/components/SuspenseLoader";
+import useBuildReduxStore from "@/hooks/useBuildReduxStore";
 
 // NOTE: This is required for Model Navigator to work
 globalThis._ = _;
 
 type ModelNavigatorProps = {
+  /**
+   * The display name of the model to display
+   */
+  model: string;
   /**
    * The version of the model to display
    */
@@ -29,21 +33,26 @@ type ModelNavigatorProps = {
  *
  * @returns The Model Navigator view
  */
-const ModelNavigator: FC<ModelNavigatorProps> = ({ version = "latest" }) => {
-  const { status, DataCommon } = useDataCommonContext();
+const ModelNavigator: FC<ModelNavigatorProps> = ({ model, version = "latest" }) => {
+  const { status, visibleModels } = useDataModels();
   const [{ status: buildStatus, store }, populate] = useBuildReduxStore();
 
-  if (status === Status.LOADING || buildStatus === "loading") {
+  const dataCommon = useMemo<DataCommon | undefined>(
+    () => visibleModels.find((dc) => dc.displayName === model),
+    [visibleModels, model]
+  );
+
+  if (status === "LOADING" || buildStatus === "loading") {
     return <SuspenseLoader />;
   }
 
-  if (status === Status.LOADED && buildStatus === "waiting") {
-    populate(DataCommon, version);
-    return <SuspenseLoader />;
-  }
-
-  if (!DataCommon || status === Status.ERROR || buildStatus === "error") {
+  if (!dataCommon || status === "ERROR" || buildStatus === "error") {
     throw new Error("Oops! Unable to show the requested data model or model version.");
+  }
+
+  if (buildStatus === "waiting") {
+    populate(dataCommon, version);
+    return <SuspenseLoader />;
   }
 
   return (
