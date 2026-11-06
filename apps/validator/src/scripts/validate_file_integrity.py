@@ -1,5 +1,5 @@
 import os, csv
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime
 
 import boto3
@@ -17,8 +17,13 @@ RESULT = 'Result'
 INTERMEDIATE_RESULT_FILE_NAME = 'intermediate_results.csv'
 RELEASE_COLLECTION = "release"
 DATA_FILE_LOCATION = "dataFileLocation"
+DATA_FILE_SIZE = "dataFileSize"
 PROPS = "props"
 FILE_SIZE = "file_size"
+FILE_SIZE_PROP_NAMES = [
+    FILE_SIZE,
+    'data_file_size'
+]
 NODE_ID = "nodeID"
 
 
@@ -75,6 +80,8 @@ def validate_all_files_integrity(file_list: Iterator[dict], get_file_header, int
     succeeded_files = []
     failed_files = []
     for file in file_list:
+        if not file:
+            print('Skipping a file cannot be handled')
         print(f'Validating file {file}')
         guid = file[GUID]
         if guid in intermediate_results:
@@ -97,15 +104,34 @@ def get_files_from_db(connection_str: str, db_name: str):
     data_collection = db[RELEASE_COLLECTION]
     query = {DATA_FILE_LOCATION: {"$exists": True, "$nin": [None, ""]}, "status": {"$ne": "Deleted"}}
     for data in data_collection.find(query):
-        location = data.get(DATA_FILE_LOCATION)
-        props = data.get(PROPS, {})
-        size = int(props.get(FILE_SIZE)) if props else 0
-        guid = data.get(NODE_ID)
-        yield {
-            GUID: guid,
-            URI: location,
-            SIZE: size
-        }
+        try:
+            location = data.get(DATA_FILE_LOCATION)
+            size = get_file_size(data)
+            guid = data.get(NODE_ID)
+            yield {
+                GUID: guid,
+                URI: location,
+                SIZE: size
+            }
+        except Exception as e:
+            print(f'Cannot extract data from {data}')
+            yield {}
+
+
+def get_file_size(data: Mapping) -> int:
+    if not isinstance(data, dict):
+        raise Exception('file record is not a dict')
+    if data == {}:
+        raise Exception('file record is empty')
+    props = data[PROPS]
+    if props == {}:
+        raise Exception('props is empty')
+
+    for prop_name in FILE_SIZE_PROP_NAMES:
+        if prop_name in props:
+            result = int(props[prop_name])
+            return result
+    raise Exception(f'File Size not found in {data}')
 
 def delete_intermediate_file(bucket: str, file_path: str):
     basename = os.path.basename(file_path)

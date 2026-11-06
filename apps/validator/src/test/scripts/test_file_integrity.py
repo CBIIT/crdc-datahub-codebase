@@ -5,7 +5,7 @@ from datetime import datetime
 from collections.abc import Callable
 
 from scripts.validate_file_integrity import validate_file_integrity, validate_all_files_integrity, get_succeeded_result_file_name, \
-get_failed_result_file_name
+get_failed_result_file_name, get_file_size
 
 integrity_edge_cases = [
     pytest.param(None,  lambda x : {}, 'Invalid Parameter', id= 'Should detect None file_info'),
@@ -114,3 +114,46 @@ def test_failed_result_file_name():
     date = datetime(2026, 9, 18, 15, 49, 9)
     result = get_failed_result_file_name(date, 13, 386)
     assert result == '2026-09-18T15-49-09_failed_13_of_386.csv'
+
+
+
+invalid_file_size_test_data = [
+    pytest.param(None, True , id='None data should throw'),
+    pytest.param({}, True, id='empty data should throw'),
+    pytest.param({'props': {}}, True, id='empty props should throw'),
+    pytest.param({'props': {'file_size': 100}}, False, id='valid data should not throw'),
+    pytest.param({'props': {'data_file_size': 100}}, False, id='valid data should not throw'),
+    pytest.param({"props": {'data_file_uuid': 'some id'}}, True, id='should throw when no file size available'),
+]
+
+
+@pytest.mark.parametrize('data, expected', invalid_file_size_test_data)
+def test_get_file_size_with_invalid_data_should_throw(data: dict, expected: bool):
+    try:
+        result = get_file_size(data)
+        actual = False
+    except Exception as e:
+        actual = True
+
+    assert expected == actual
+
+file_with_data_file_size = {
+  'dataFileLocation': 's3://nci-crdc-data-bucket/37f10a5365/file_62_7937.txt',
+  'props':
+      {
+          'data_file_size': '6918',
+          'data_file_type': 'Clinical Report',
+          'data_file_uuid': 'dg.4DFC/007536db-7eb0-5595-bbd4f'
+      }
+}
+
+file_size_test_data = [
+    pytest.param({"props": {'file_size': 1234}}, 1234, id='should accept file_size as int'),
+    pytest.param({"props": {'file_size': '234'}}, 234, id='should accept file_size as str'),
+    pytest.param({"props": {'data_file_size': 6918}}, 6918, id='should accept data_file_size as int'),
+    pytest.param({"props": {'data_file_size': '6918'}}, 6918, id='should accept data_file_size as str'),
+]
+
+@pytest.mark.parametrize('data, expected', file_size_test_data)
+def test_get_file_size(data: dict, expected: int):
+    assert expected == get_file_size(data)
