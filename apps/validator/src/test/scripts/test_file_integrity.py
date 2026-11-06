@@ -137,21 +137,14 @@ def test_get_file_size_with_invalid_data_should_throw(data: dict, expected: bool
 
     assert expected == actual
 
-file_with_data_file_size = {
-  'dataFileLocation': 's3://nci-crdc-data-bucket/37f10a5365/file_62_7937.txt',
-  'props':
-      {
-          'data_file_size': '6918',
-          'data_file_type': 'Clinical Report',
-          'data_file_uuid': 'dg.4DFC/007536db-7eb0-5595-bbd4f'
-      }
-}
-
 file_size_test_data = [
     pytest.param({"props": {'file_size': 1234}}, 1234, id='should accept file_size as int'),
     pytest.param({"props": {'file_size': '234'}}, 234, id='should accept file_size as str'),
     pytest.param({"props": {'data_file_size': 6918}}, 6918, id='should accept data_file_size as int'),
     pytest.param({"props": {'data_file_size': '6918'}}, 6918, id='should accept data_file_size as str'),
+    pytest.param({'dataFileSize': '6918'}, 6918, id='should accept top level dataFileSize as str'),
+    pytest.param({'dataFileSize': 6918, "props": {'file_size': 1234, 'data_file_size': 5678}}, 6918, id='should accept top level dataFileSize and ignore other sizes'),
+    pytest.param({"props": {'file_size': 1234, 'data_file_size': 5678}}, 1234, id='should prefer file_size over data_file_size'),
 ]
 
 @pytest.mark.parametrize('data, expected', file_size_test_data)

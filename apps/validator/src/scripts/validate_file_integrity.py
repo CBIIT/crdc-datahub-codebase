@@ -123,6 +123,10 @@ def get_file_size(data: Mapping) -> int:
         raise Exception('file record is not a dict')
     if data == {}:
         raise Exception('file record is empty')
+
+    if DATA_FILE_SIZE in data:
+        return int(data[DATA_FILE_SIZE])
+
     props = data[PROPS]
     if props == {}:
         raise Exception('props is empty')
