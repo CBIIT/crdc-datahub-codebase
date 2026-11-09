@@ -15,6 +15,7 @@ const {getFormatDateStr} = require("../utility/string-util.js")
 const {arrayOfObjectsToTSV} = require("../utility/io-util.js")
 const {zipFilesInDir} = require("../utility/io-util");
 const { isAllStudy } = require("../utility/study-utility");
+const { DOT_SAFE_SEPARATOR, format_dot_notation } = require("../utility/dot-notation");
 const PROP_GROUPS = {
     MODEL_DEFINED: "model_defined",
     NOT_DEFINED: "not_defined",
@@ -163,6 +164,7 @@ class ReleaseService {
     /**
      * Lists released data records for a study/node type with property filters and pagination.
      * Uses separate count, results, and property aggregations (DocumentDB does not support $facet).
+     * Parent columns are DOT-safe inside the aggregation and restored to dotted names in JS.
      * @param {object} params
      * @param {object} context
      * @returns {Promise<{total: number, properties: string[], nodes: object[]}>}
@@ -179,19 +181,25 @@ class ReleaseService {
         const {studyID, nodeType, first, offset, orderBy, sortDirection, properties, dataCommonsDisplayName} = params;
         const originDataCommons = getDataCommonsOrigin(dataCommonsDisplayName) || dataCommonsDisplayName;
         const listConditions = this._listNodesConditions(nodeType, originDataCommons, userScope, studyID);
-        // Don’t include custom sort in pagination — a second $sort would override DocumentDB-safe ordering.
-        const usesCustomSort = Boolean(
-            orderBy && (properties?.length > 0 || orderBy.includes("."))
+        // Empty names and "$..." are invalid $project / $sort keys on DocumentDB.
+        const safeProperties = (properties || []).filter((field) =>
+            typeof field === "string" && field.length > 0 && !field.startsWith("$")
         );
+        const usableOrderBy = typeof orderBy === "string" && orderBy.length > 0 && !orderBy.startsWith("$")
+            ? orderBy
+            : undefined;
+        const safeOrderBy = usableOrderBy ? this._dotToSafe(usableOrderBy) : usableOrderBy;
+        // The properties branch sorts before pagination. A second $sort would override it.
+        const usesCustomSort = Boolean(usableOrderBy && safeProperties.length > 0);
         const paginationPipe = new MongoPagination(
             first,
             offset,
-            usesCustomSort ? null : orderBy,
+            usesCustomSort ? null : safeOrderBy,
             sortDirection
         );
         //
         const [rootKeys, parentKeys] = [[], []];
-        (params?.properties || []).forEach(field => {
+        safeProperties.forEach(field => {
             if (field.includes('.')) {
                 parentKeys.push(field);
             } else {
@@ -226,7 +234,7 @@ class ReleaseService {
                             input: "$parents",
                             as: "p",
                             in: {
-                                k: { $concat: ["$$p.parentType", ".", "$$p.parentIDPropName"] },
+                                k: { $concat: ["$$p.parentType", DOT_SAFE_SEPARATOR, "$$p.parentIDPropName"] },
                                 v: "$$p.parentIDValue"
                             }
                         }
@@ -295,53 +303,24 @@ class ReleaseService {
                         $mergeObjects: ["$props", "$merged"]
                     }
                 }},
-            ...(properties?.length > 0
+            ...(safeProperties.length > 0
                 ? [
                     {
                         $project: {
-                            _tmp: {
-                                $arrayToObject: [this._buildKvPairsDotSafe(properties)]
-                            }
+                            _id: 0,
+                            ...Object.fromEntries(
+                                safeProperties.map((field) => [this._dotToSafe(field), 1])
+                            ),
                         },
                     },
-                    {
-                        $replaceRoot: {
-                            newRoot: "$_tmp"
-                        }
-                    },
-                    ...(orderBy ?
+                    ...(usableOrderBy ?
                     [{
                         $sort: {
-                            [this._dotToSafe(orderBy)]: getSortDirection(sortDirection),
+                            [this._dotToSafe(usableOrderBy)]: getSortDirection(sortDirection),
                         },
                     }] : []),
-                    {$project: {
-                            _tmp2: {
-                                $arrayToObject: [this._buildKvPairsRestore(properties)]
-                            }
-                        }
-                    },
-                    {$replaceRoot: {
-                            newRoot: "$_tmp2"
-                        }
-                    },
                 ]
                 : []),
-            ...(orderBy?.includes(".") && !(properties?.length > 0) ?
-                [{
-                    $addFields: {
-                        _sortKey: this._literalFieldValue(orderBy),
-                    },
-                },
-                    {
-                        $sort: {
-                            _sortKey: getSortDirection(sortDirection),
-                        },
-
-                    },
-                    {
-                        $unset: "_sortKey",
-                    }] : [] ) ,
         ];
 
         // DocumentDB does not support $facet; page and count in parallel.
@@ -369,6 +348,7 @@ class ReleaseService {
                             input: "$parents",
                             as: "p",
                             in: {
+                                // Value returned to the client, not an aggregation field name.
                                 $concat: ["$$p.parentType", ".", "$$p.parentIDPropName"]
                             }
                         }
@@ -399,7 +379,7 @@ class ReleaseService {
         return {
             total: totalCountResult[0]?.count || 0,
             properties: allProperties[0]?.allProperties || [],
-            nodes: nodes || []
+            nodes: (nodes || []).map((node) => format_dot_notation(node))
         }
     }
 
@@ -741,60 +721,14 @@ class ReleaseService {
         return userScope;
     }
 
-    // Convert a field name to a DOT-safe version (e.g., "a.b" → "a_DOT_b")
+    /**
+     * Converts "." in a field name to DOT_SAFE_SEPARATOR so DocumentDB will accept it.
+     * @param {string} field Caller or parent field name
+     * @returns {string}
+     */
     _dotToSafe(field) {
-        return field.replace(/\./g, "_DOT_");
+        return field.split(".").join(DOT_SAFE_SEPARATOR);
     }
-
-    /**
-     * Read a root field by literal name (may contain dots).
-     * DocumentDB does not support $getField; use objectToArray + filter instead.
-     * @param {string} field Literal field name
-     * @param {string|object} [input="$$ROOT"] Document expression
-     * @returns {object} Aggregation expression
-     */
-    _literalFieldValue(field, input = "$$ROOT") {
-        return {
-            $arrayElemAt: [
-                {
-                    $map: {
-                        input: {
-                            $filter: {
-                                input: { $objectToArray: input },
-                                as: "kv",
-                                cond: { $eq: ["$$kv.k", field] },
-                            },
-                        },
-                        as: "m",
-                        in: "$$m.v",
-                    },
-                },
-                0,
-            ],
-        };
-    }
-
-    /**
-     * Build key-value pairs for DOT-safe projection/sort keys.
-     * Dotted fields use _literalFieldValue (DocumentDB has no $getField); non-dotted use a direct path.
-     * @param {string[]} properties Field names (may contain dots)
-     * @returns {object[]}
-     */
-    _buildKvPairsDotSafe(properties) {
-        return properties.map(field => ({
-            k: this._dotToSafe(field),
-            v: field.includes(".") ? this._literalFieldValue(field) : `$${field}`,
-        }));
-    }
-
-    // Build key-value pairs to restore original field names from DOT-safe ones
-    _buildKvPairsRestore(properties) {
-        return properties.map(field => ({
-            k: field,
-            v: "$" + this._dotToSafe(field)
-        }));
-    }
-
 
 }
 
