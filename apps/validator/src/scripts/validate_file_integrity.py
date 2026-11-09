@@ -26,6 +26,21 @@ FILE_SIZE_PROP_NAMES = [
 ]
 NODE_ID = "nodeID"
 
+class IntermediateResultsRecorder:
+    def __init__(self, file_name: str):
+        self.csv_file = open(file_name, 'w')
+        headers = [GUID, RESULT]
+        self.csv_writer = csv.writer(self.csv_file, delimiter=',')
+        self.csv_writer.writerow(headers)
+
+    def __del__(self):
+        self.close()
+
+    def record_result(self, guid: str, status: str):
+        self.csv_writer.writerow([guid, status])
+
+    def close(self):
+        self.csv_file.close()
 
 def main():
     bucket = os.environ.get('RESULT_BUCKET', '')
@@ -34,6 +49,7 @@ def main():
     connection_str = os.environ.get('DB_CONNECTION_STRING', '')
     db_name = os.environ.get('DB_NAME', 'crdc-datahub')
 
+    recorder = None
     try:
         now = datetime.now()
         files_list = get_files_from_db(connection_str, db_name)
@@ -82,6 +98,7 @@ def validate_all_files_integrity(file_list: Iterator[dict], get_file_header, int
     for file in file_list:
         if not file:
             print('Skipping a file cannot be handled')
+            continue
         print(f'Validating file {file}')
         guid = file[GUID]
         if guid in intermediate_results:
@@ -114,8 +131,7 @@ def get_files_from_db(connection_str: str, db_name: str):
                 SIZE: size
             }
         except Exception as e:
-            print(f'Cannot extract data from {data}')
-            yield {}
+            print(f'File Skipped: cannot extract data from {data}')
 
 
 def get_file_size(data: Mapping) -> int:
@@ -274,21 +290,6 @@ def write_results_to_file(succeeded_files, succeeded_file_name,  failed_files, f
     return results
 
 
-class IntermediateResultsRecorder:
-    def __init__(self, file_name: str):
-        self.csv_file = open(file_name, 'w')
-        headers = [GUID, RESULT]
-        self.csv_writer = csv.writer(self.csv_file, delimiter=',')
-        self.csv_writer.writerow(headers)
-
-    def __del__(self):
-        self.close()
-
-    def record_result(self, guid: str, status: str):
-        self.csv_writer.writerow([guid, status])
-
-    def close(self):
-        self.csv_file.close()
 
 
 if __name__ == "__main__":
