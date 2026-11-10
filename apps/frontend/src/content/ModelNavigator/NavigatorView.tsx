@@ -46,7 +46,7 @@ const ModelNavigator: FC<ModelNavigatorProps> = ({ model, version = "latest" }) 
     return <SuspenseLoader />;
   }
 
-  if (!dataCommon || status === "ERROR" || buildStatus === "error") {
+  if (!dataCommon || buildStatus === "error") {
     throw new Error("Oops! Unable to show the requested data model or model version.");
   }
 

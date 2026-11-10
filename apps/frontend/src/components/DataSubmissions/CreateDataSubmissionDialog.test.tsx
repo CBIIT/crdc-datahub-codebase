@@ -1025,7 +1025,7 @@ describe("Basic Functionality", () => {
         authCtxState={authCtxStateFactory.build({
           user: userFactory.build({ role: "Submitter", permissions: basePermissions }),
         })}
-        dataModelsCtxState={dataModelsCtxStateFactory.build({ status: "ERROR", models: [] })}
+        dataModelsCtxState={dataModelsCtxStateFactory.build({ status: "LOADED", models: [] })}
       >
         <CreateDataSubmissionDialog onCreate={handleCreate} />
       </TestParent>

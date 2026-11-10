@@ -27,14 +27,13 @@ const hiddenModel = dataCommonFactory.build({
 });
 const store = createStore(() => ({}));
 
-const renderNavigator = (model: string, status: DataModelsStatus = "LOADED") =>
+const renderNavigator = (
+  model: string,
+  status: DataModelsStatus = "LOADED",
+  models: DataCommon[] = [visibleModel, hiddenModel]
+) =>
   render(
-    <DataModelsContext.Provider
-      value={dataModelsCtxStateFactory.build({
-        status,
-        models: [visibleModel, hiddenModel],
-      })}
-    >
+    <DataModelsContext.Provider value={dataModelsCtxStateFactory.build({ status, models })}>
       <ErrorBoundary>
         <NavigatorView model={model} version="1.0.0" />
       </ErrorBoundary>
@@ -76,10 +75,10 @@ describe("Basic Functionality", () => {
     }
   );
 
-  it("should show an error when the manifest cannot be loaded", () => {
+  it("should show an error when no Data Models are available", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const { getByTestId } = renderNavigator("GC", "ERROR");
+      const { getByTestId } = renderNavigator("GC", "LOADED", []);
 
       expect(getByTestId("error-boundary-alert")).toBeInTheDocument();
       expect(mockPopulate).not.toHaveBeenCalled();
