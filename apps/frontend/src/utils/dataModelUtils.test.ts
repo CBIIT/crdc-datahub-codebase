@@ -8,6 +8,7 @@ import { modelDefinitionNodePropertyFactory } from "@/factories/mdf/ModelDefinit
 import { RetrievePVsByPropertyNameResponse } from "@/graphql";
 
 import * as utils from "./dataModelUtils";
+import { Logger } from "./logger";
 
 vi.mock(import("../env"), async (importOriginal) => {
   const mod = await importOriginal();
@@ -18,6 +19,82 @@ vi.mock(import("../env"), async (importOriginal) => {
       VITE_DEV_TIER: undefined,
     },
   };
+});
+
+describe("buildDataModels cases", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should normalize model names while preserving assets and hidden models", () => {
+    const assets = manifestAssetsFactory.build({ "display-name": "  GC  ", isHidden: true });
+
+    expect(utils.buildDataModels({ CDS: assets })).toEqual([
+      { name: "CDS", displayName: "GC", isHidden: true, assets },
+    ]);
+  });
+
+  it("should return no models for an empty manifest", () => {
+    expect(utils.buildDataModels({})).toEqual([]);
+  });
+
+  it("should sort finite orders first and preserve manifest order for ties and unordered models", () => {
+    const manifest = {
+      NO_ORDER: {},
+      SECOND: { order: 1 },
+      STRING_ORDER: { order: "1" },
+      FIRST: { order: -1 },
+      SAME_ORDER: { order: 1 },
+      ZERO: { order: 0 },
+      INFINITE_ORDER: { order: Infinity },
+      NAN_ORDER: { order: NaN },
+      NULL_ORDER: { order: null },
+    };
+
+    expect(utils.buildDataModels(manifest).map(({ name }) => name)).toEqual([
+      "FIRST",
+      "ZERO",
+      "SECOND",
+      "SAME_ORDER",
+      "NO_ORDER",
+      "STRING_ORDER",
+      "INFINITE_ORDER",
+      "NAN_ORDER",
+      "NULL_ORDER",
+    ]);
+  });
+
+  it.each([undefined, null, "", "   ", 1])(
+    "should fall back to the model key for an invalid display name (%s)",
+    (displayName) => {
+      const assets = { ...manifestAssetsFactory.build(), "display-name": displayName };
+
+      expect(utils.buildDataModels({ CDS: assets })[0].displayName).toBe("CDS");
+    }
+  );
+
+  it.each<[unknown, boolean]>([
+    [true, true],
+    [false, false],
+    [undefined, false],
+    ["true", false],
+    [1, false],
+  ])("should map isHidden=%s to %s", (isHidden, expected) => {
+    expect(utils.buildDataModels({ CDS: { isHidden } })[0].isHidden).toBe(expected);
+  });
+
+  it("should log and skip invalid entries without discarding valid models", () => {
+    const logError = vi.spyOn(Logger, "error");
+    const manifest = { VALID: {}, NULL: null, ARRAY: [], STRING: "invalid", "": {} };
+
+    expect(utils.buildDataModels(manifest).map(({ name }) => name)).toEqual(["VALID"]);
+    expect(logError.mock.calls).toEqual(
+      ["NULL", "ARRAY", "STRING", ""].map((name) => [
+        "DataModelsProvider: Skipping invalid model manifest entry",
+        name,
+      ])
+    );
+  });
 });
 
 describe("buildAssetUrls cases", () => {
