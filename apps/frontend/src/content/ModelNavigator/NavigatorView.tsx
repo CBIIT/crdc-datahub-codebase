@@ -27,6 +27,7 @@ type ModelNavigatorProps = {
  * Encapsulates the Data Model Navigator component
  *
  * This component handles the following:
+ * - Waiting for the latest model manifest, so a stale cached manifest is never built or rejected
  * - Loading the Data Common assets
  * - Building the Redux store for the Data Model Navigator
  * - Rendering the Data Model Navigator
@@ -34,7 +35,7 @@ type ModelNavigatorProps = {
  * @returns The Model Navigator view
  */
 const ModelNavigator: FC<ModelNavigatorProps> = ({ model, version = "latest" }) => {
-  const { status, visibleModels } = useDataModels();
+  const { isRefreshing, visibleModels } = useDataModels();
   const [{ status: buildStatus, store }, populate] = useBuildReduxStore();
 
   const dataCommon = useMemo<DataCommon | undefined>(
@@ -42,7 +43,7 @@ const ModelNavigator: FC<ModelNavigatorProps> = ({ model, version = "latest" }) 
     [visibleModels, model]
   );
 
-  if (status === "LOADING" || buildStatus === "loading") {
+  if (isRefreshing || buildStatus === "loading") {
     return <SuspenseLoader />;
   }
 

@@ -15,6 +15,11 @@ export type DataModelsCtxState = {
    */
   status: DataModelsStatus;
   /**
+   * Whether the manifest is still being fetched from the model repository.
+   * While true, any Data Models provided are from the cache and may be outdated.
+   */
+  isRefreshing: boolean;
+  /**
    * All Data Models defined in the content manifest, including hidden models
    */
   models: DataCommon[];
@@ -123,6 +128,7 @@ export const DataModelsProvider: FC<ProviderProps> = ({ children }: ProviderProp
   const value = useMemo<DataModelsCtxState>(
     () => ({
       status: models || fetchSettled ? "LOADED" : "LOADING",
+      isRefreshing: !fetchSettled,
       models: models || [],
       visibleModels: models?.filter((model) => !model.isHidden) || [],
     }),

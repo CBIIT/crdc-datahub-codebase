@@ -6,6 +6,7 @@ import { Factory } from "../Factory";
  */
 export const baseDataModelsCtxState: DataModelsCtxState = {
   status: "LOADED",
+  isRefreshing: false,
   models: [],
   visibleModels: [],
 };

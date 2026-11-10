@@ -56,7 +56,12 @@ describe("useDataModels", () => {
 
     const { result } = renderDataModels();
 
-    expect(result.current).toEqual({ status: "LOADING", models: [], visibleModels: [] });
+    expect(result.current).toEqual({
+      status: "LOADING",
+      isRefreshing: true,
+      models: [],
+      visibleModels: [],
+    });
     expect(mockFetch).toHaveBeenCalledOnce();
     expect(mockFetch).toHaveBeenCalledWith(`${MODEL_FILE_REPO}prod/cache/content.json`, {
       signal: expect.any(AbortSignal),
@@ -64,6 +69,7 @@ describe("useDataModels", () => {
 
     await waitFor(() => expect(result.current.status).toBe("LOADED"));
     const model = { name: "CDS", displayName: "GC", isHidden: false, assets };
+    expect(result.current.isRefreshing).toBe(false);
     expect(result.current.models).toEqual([model]);
     expect(result.current.visibleModels).toEqual([model]);
     expect(JSON.parse(localStorage.getItem(MANIFEST_CACHE_KEY))).toEqual({
@@ -114,6 +120,7 @@ describe("useDataModels", () => {
 
     expect(result.current).toEqual({
       status: "LOADED",
+      isRefreshing: true,
       models: [{ name: "CACHED", displayName: "Cached", isHidden: false, assets: cachedAssets }],
       visibleModels: [
         { name: "CACHED", displayName: "Cached", isHidden: false, assets: cachedAssets },
@@ -125,6 +132,7 @@ describe("useDataModels", () => {
       resolveFetch(response(freshManifest));
     });
 
+    expect(result.current.isRefreshing).toBe(false);
     expect(result.current.models).toEqual([
       { name: "FRESH", displayName: "Fresh", isHidden: false, assets: freshAssets },
     ]);
@@ -187,7 +195,12 @@ describe("useDataModels", () => {
 
     const { result } = renderDataModels();
 
-    expect(result.current).toEqual({ status: "LOADING", models: [], visibleModels: [] });
+    expect(result.current).toEqual({
+      status: "LOADING",
+      isRefreshing: true,
+      models: [],
+      visibleModels: [],
+    });
     expect(mockFetch).toHaveBeenCalledOnce();
   });
 
@@ -210,6 +223,7 @@ describe("useDataModels", () => {
       )
     );
     expect(result.current.status).toBe("LOADED");
+    expect(result.current.isRefreshing).toBe(false);
     expect(result.current.models.map(({ name }) => name)).toEqual(names);
     expect(localStorage.getItem(MANIFEST_CACHE_KEY)).toBe(cached);
   });
