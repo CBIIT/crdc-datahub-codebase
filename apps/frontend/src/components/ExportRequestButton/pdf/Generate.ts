@@ -43,11 +43,11 @@ const HR_WIDTH = 0.8;
  * @param request The submission request to generate the header from.
  * @returns {number} The current Y position after writing the header including padding.
  */
-const writeHeader = (doc: JsPDF, request: Application): number => {
+export const writeHeader = (doc: JsPDF, request: Application): number => {
   const { applicant, questionnaireData, status, submittedDate } = request;
   const { study } = questionnaireData || {};
   const formattedSubmittedDate =
-    status !== "In Progress" ? FormatDate(submittedDate, "YYYY-MM-DD") : "N/A";
+    status !== "In Progress" ? FormatDate(submittedDate, "YYYY-MM-DD", "N/A") : "N/A";
 
   const RIGHT_EDGE = doc.internal.pageSize.width - BASE_MARGIN;
   let y = BASE_MARGIN;

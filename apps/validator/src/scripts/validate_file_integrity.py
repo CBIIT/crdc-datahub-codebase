@@ -1,4 +1,5 @@
 import os, csv
+from collections.abc import Iterator, Mapping
 from datetime import datetime
 
 import boto3
@@ -16,10 +17,30 @@ RESULT = 'Result'
 INTERMEDIATE_RESULT_FILE_NAME = 'intermediate_results.csv'
 RELEASE_COLLECTION = "release"
 DATA_FILE_LOCATION = "dataFileLocation"
+DATA_FILE_SIZE = "dataFileSize"
 PROPS = "props"
 FILE_SIZE = "file_size"
+FILE_SIZE_PROP_NAMES = [
+    FILE_SIZE,
+    'data_file_size'
+]
 NODE_ID = "nodeID"
 
+class IntermediateResultsRecorder:
+    def __init__(self, file_name: str):
+        self.csv_file = open(file_name, 'w')
+        headers = [GUID, RESULT]
+        self.csv_writer = csv.writer(self.csv_file, delimiter=',')
+        self.csv_writer.writerow(headers)
+
+    def __del__(self):
+        self.close()
+
+    def record_result(self, guid: str, status: str):
+        self.csv_writer.writerow([guid, status])
+
+    def close(self):
+        self.csv_file.close()
 
 def main():
     bucket = os.environ.get('RESULT_BUCKET', '')
@@ -30,56 +51,68 @@ def main():
 
     recorder = None
     try:
-
         now = datetime.now()
         files_list = get_files_from_db(connection_str, db_name)
-        print(f'Found {len(files_list)} files')
         intermediate_results = get_intermediate_result(bucket, intermediate_file_path)
         recorder = IntermediateResultsRecorder(INTERMEDIATE_RESULT_FILE_NAME)
-        succeeded_files, failed_files = validate_all_files_integrity(files_list, get_s3_header, intermediate_results, recorder.record_result)
+        succeeded_files, failed_files = validate_all_files_integrity(files_list, get_s3_header, intermediate_results, recorder)
+        num_succeeded_files = len(succeeded_files)
+        num_failed_files = len(failed_files)
+        total_files = num_succeeded_files + num_failed_files
+        print(f'Total files: {total_files}, succeeded {num_succeeded_files}, failed {num_failed_files}')
 
-        succeeded_file_name = get_succeeded_result_file_name(now, len(succeeded_files), len(files_list))
-        failed_file_name = get_failed_result_file_name(now, len(failed_files), len(files_list))
+        succeeded_file_name = get_succeeded_result_file_name(now, num_succeeded_files, total_files)
+        failed_file_name = get_failed_result_file_name(now, num_failed_files, total_files)
 
-        recorder = None
         result_files = write_results_to_file(succeeded_files, succeeded_file_name, failed_files, failed_file_name )
         print(f'Results written to {result_files}')
-        if os.path.isfile(failed_file_name):
-            key = os.path.join(prefix, failed_file_name)
-            upload_file_to_s3(bucket, key, failed_file_name)
-            print(f'Result file uploaded to {key}')
-        if os.path.isfile(succeeded_file_name):
-            key = os.path.join(prefix, succeeded_file_name)
-            upload_file_to_s3(bucket, key, succeeded_file_name)
-            print(f'Result file uploaded to {key}')
+        upload_result_files(bucket, prefix, result_files)
         delete_intermediate_file(bucket, intermediate_file_path)
         print(f'Temporary file cleaned up')
     except Exception as e:
         print(e)
     finally:
-        if recorder:
-            recorder.close()
-        if os.path.isfile(INTERMEDIATE_RESULT_FILE_NAME):
-            upload_file_to_s3(bucket, intermediate_file_path, INTERMEDIATE_RESULT_FILE_NAME)
-            print(f'Validation interrupted, temporary file uploaded to {intermediate_file_path}')
+        upload_intermediate_file(bucket, prefix, recorder)
 
-def validate_all_files_integrity(file_list: list, get_file_header, intermediate_results: dict = {}, result_recorder = None):
+
+def upload_intermediate_file(bucket: str, prefix: str, recorder: IntermediateResultsRecorder | None):
+    if recorder:
+        recorder.close()
+    upload_result_files(bucket, prefix, [INTERMEDIATE_RESULT_FILE_NAME])
+
+def upload_result_files(bucket: str, prefix: str, result_files: list[str]):
+    if not isinstance(result_files, list):
+        result_files = [result_files]
+
+    for file_path in result_files:
+        if os.path.isfile(file_path):
+            basename = str(os.path.basename(file_path))
+            key = os.path.join(prefix, basename)
+            upload_file_to_s3(bucket, key, file_path)
+            print(f'Result file uploaded to {key}')
+
+
+def validate_all_files_integrity(file_list: Iterator[dict], get_file_header, intermediate_results: dict, result_recorder: IntermediateResultsRecorder):
     succeeded_files = []
     failed_files = []
     for file in file_list:
+        if not file:
+            print('Skipping a file cannot be handled')
+            continue
         print(f'Validating file {file}')
         guid = file[GUID]
         if guid in intermediate_results:
             status = intermediate_results[guid]
         else:
             status = validate_file_integrity(file, get_file_header)
-        if callable(result_recorder):
-            result_recorder(guid, status)
+        if result_recorder:
+            result_recorder.record_result(guid, status)
         if status == 'Succeeded':
             succeeded_files.append(_compose_result(file, status))
         else:
             failed_files.append(_compose_result(file, status))
 
+    result_recorder.close()
     return succeeded_files, failed_files
 
 def get_files_from_db(connection_str: str, db_name: str):
@@ -87,18 +120,38 @@ def get_files_from_db(connection_str: str, db_name: str):
     db = client[db_name]
     data_collection = db[RELEASE_COLLECTION]
     query = {DATA_FILE_LOCATION: {"$exists": True, "$nin": [None, ""]}, "status": {"$ne": "Deleted"}}
-    files = []
     for data in data_collection.find(query):
-        location = data.get(DATA_FILE_LOCATION)
-        props = data.get(PROPS, {})
-        size = int(props.get(FILE_SIZE)) if props else 0
-        guid = data.get(NODE_ID)
-        files.append({
-            GUID: guid,
-            URI: location,
-            SIZE: size
-        })
-    return files
+        try:
+            location = data.get(DATA_FILE_LOCATION)
+            size = get_file_size(data)
+            guid = data.get(NODE_ID)
+            yield {
+                GUID: guid,
+                URI: location,
+                SIZE: size
+            }
+        except Exception as e:
+            print(f'File Skipped: cannot extract data from {data}')
+
+
+def get_file_size(data: Mapping) -> int:
+    if not isinstance(data, dict):
+        raise Exception('file record is not a dict')
+    if data == {}:
+        raise Exception('file record is empty')
+
+    if DATA_FILE_SIZE in data:
+        return int(data[DATA_FILE_SIZE])
+
+    props = data[PROPS]
+    if props == {}:
+        raise Exception('props is empty')
+
+    for prop_name in FILE_SIZE_PROP_NAMES:
+        if prop_name in props:
+            result = int(props[prop_name])
+            return result
+    raise Exception(f'File Size not found in {data}')
 
 def delete_intermediate_file(bucket: str, file_path: str):
     basename = os.path.basename(file_path)
@@ -106,7 +159,7 @@ def delete_intermediate_file(bucket: str, file_path: str):
     client = boto3.client('s3')
     client.delete_object(Bucket=bucket, Key=file_path)
 
-def get_intermediate_result(bucket: str, file_path: str):
+def get_intermediate_result(bucket: str, file_path: str) -> dict:
     basename = os.path.basename(file_path)
     download_file_from_s3(bucket, file_path, basename)
     result = {}
@@ -116,19 +169,19 @@ def get_intermediate_result(bucket: str, file_path: str):
             for row in csv_reader:
                 if GUID in row and RESULT in row:
                     result[row[GUID]] = row[RESULT]
+    result_keys = list(result.keys())
+    if len(result_keys) > 0:
+        print(f"Found {len(result_keys)} intermediate results")
     return result
 
 def download_file_from_s3(bucket: str, key: str, local_file_name: str):
     try:
         if not bucket or not key:
-            print('bucket or key not provided')
-            return
+            raise Exception('bucket or key not provided')
         s3_client = boto3.client('s3')
-        header = s3_client.head_object(Bucket=bucket, Key=key)
         s3_client.download_file(bucket, key, local_file_name)
     except ClientError as e:
         if e.response['Error']['Code'] in ('404', 'NoSuchKey'):
-            print("No intermediate file found in the bucket")
             return None
         else:
             print('Error happened when downloading intermediate file')
@@ -237,21 +290,6 @@ def write_results_to_file(succeeded_files, succeeded_file_name,  failed_files, f
     return results
 
 
-class IntermediateResultsRecorder:
-    def __init__(self, file_name: str):
-        self.csv_file = open(file_name, 'w')
-        headers = [GUID, RESULT]
-        self.csv_writer = csv.writer(self.csv_file, delimiter=',')
-        self.csv_writer.writerow(headers)
-
-    def __del__(self):
-        self.close()
-
-    def record_result(self, guid: str, status: str):
-        self.csv_writer.writerow([guid, status])
-
-    def close(self):
-        self.csv_file.close()
 
 
 if __name__ == "__main__":
