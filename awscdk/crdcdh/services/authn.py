@@ -1,6 +1,5 @@
 from aws_cdk import Duration
 from aws_cdk import TimeZone
-from aws_cdk import aws_cdk as cdk
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_ecr as ecr
