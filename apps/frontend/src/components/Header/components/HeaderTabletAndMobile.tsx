@@ -4,15 +4,16 @@ import { useSnackbar } from "notistack";
 import React, { HTMLProps, useEffect, useMemo, useState } from "react";
 import { NavLink, Link, useNavigate, useLocation } from "react-router-dom";
 
-import leftArrowIcon from "../../../assets/header/Left_Arrow.svg?url";
-import menuClearIcon from "../../../assets/header/Menu_Cancel_Icon.svg?url";
-import rightArrowIcon from "../../../assets/header/Right_Arrow.svg?url";
-import { hasPermission, Permissions } from "../../../config/AuthPermissions";
-import { ActionHandlers, ActionId, HeaderLinks } from "../../../config/HeaderConfig";
-import { Logger } from "../../../utils";
-import APITokenDialog from "../../APITokenDialog";
-import { useAuthContext } from "../../Contexts/AuthContext";
-import UploaderToolDialog from "../../UploaderToolDialog";
+import leftArrowIcon from "@/assets/header/Left_Arrow.svg?url";
+import menuClearIcon from "@/assets/header/Menu_Cancel_Icon.svg?url";
+import rightArrowIcon from "@/assets/header/Right_Arrow.svg?url";
+import APITokenDialog from "@/components/APITokenDialog";
+import { useAuthContext } from "@/components/Contexts/AuthContext";
+import UploaderToolDialog from "@/components/UploaderToolDialog";
+import { hasPermission, Permissions } from "@/config/AuthPermissions";
+import { ActionHandlers, ActionId } from "@/config/HeaderConfig";
+import useHeaderLinks from "@/hooks/useHeaderLinks";
+import { Logger } from "@/utils";
 
 import Logo from "./LogoMobile";
 
@@ -130,6 +131,7 @@ const MenuArea = styled("div")({
 
 const Header = () => {
   const { isLoggedIn, user, logout } = useAuthContext();
+  const headerLinks = useHeaderLinks();
   const navigate = useNavigate();
   const location = useLocation();
   const { enqueueSnackbar } = useSnackbar();
@@ -137,7 +139,7 @@ const Header = () => {
   const [navMobileDisplay, setNavMobileDisplay] = useState("none");
   const [openAPITokenDialog, setOpenAPITokenDialog] = useState<boolean>(false);
   const [uploaderToolOpen, setUploaderToolOpen] = useState<boolean>(false);
-  const [selectedList, setSelectedList] = useState<NavBarItem[] | NavBarSubItem[]>(HeaderLinks);
+  const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [restorePath, setRestorePath] = useState<string | null>(null);
 
   const displayName = user?.firstName || "N/A";
@@ -168,11 +170,19 @@ const Header = () => {
     actionHandlers[item]?.();
   };
 
-  const clickNavItem = (clickTitle: string) => {
-    const list: NavBarItem = HeaderLinks?.find(
-      (link) => link.name === clickTitle && "columns" in link
+  const selectedList = useMemo<NavBarItem[] | NavBarSubItem[]>(() => {
+    if (selectedTitle === null) {
+      return headerLinks;
+    }
+
+    const list: NavBarItem = headerLinks?.find(
+      (link) => link.name === selectedTitle && "columns" in link
     );
-    setSelectedList(flatMap(list?.columns));
+    return flatMap(list?.columns);
+  }, [headerLinks, selectedTitle]);
+
+  const clickNavItem = (clickTitle: string) => {
+    setSelectedTitle(clickTitle);
   };
 
   const checkPermissions = (permissions: AuthPermissions[]) => {
@@ -243,7 +253,7 @@ const Header = () => {
             >
               <img className="closeIconImg" src={menuClearIcon} alt="menuClearButton" />
             </div>
-            {selectedList !== HeaderLinks && (
+            {selectedTitle !== null && (
               <div
                 role="button"
                 id="navbar-back-to-main-menu-button"
@@ -251,10 +261,10 @@ const Header = () => {
                 className="backButton"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    setSelectedList(HeaderLinks);
+                    setSelectedTitle(null);
                   }
                 }}
-                onClick={() => setSelectedList(HeaderLinks)}
+                onClick={() => setSelectedTitle(null)}
               >
                 Main Menu
               </div>
@@ -334,7 +344,7 @@ const Header = () => {
                                 setNavMobileDisplay("none");
                                 if (navMobileItem.name === "Logout") {
                                   handleLogout();
-                                  setSelectedList(HeaderLinks);
+                                  setSelectedTitle(null);
                                 }
                               }
                             }}
@@ -342,7 +352,7 @@ const Header = () => {
                               setNavMobileDisplay("none");
                               if (navMobileItem.name === "Logout") {
                                 handleLogout();
-                                setSelectedList(HeaderLinks);
+                                setSelectedTitle(null);
                               }
                             }}
                           >
@@ -357,7 +367,7 @@ const Header = () => {
                   );
                 })}
               {/* eslint-disable-next-line no-nested-ternary */}
-              {selectedList === HeaderLinks ? (
+              {selectedTitle === null ? (
                 isLoggedIn ? (
                   <div
                     id="navbar-dropdown-name"

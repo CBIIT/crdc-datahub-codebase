@@ -1,4 +1,27 @@
 /**
+ * The URL of the Data Commons Model Repo
+ *
+ * Model Data:
+ * - `[tier]/cache/[model_name]/[model_version]/`
+ *
+ * Content Manifest:
+ * - `[tier]/cache/content.json`
+ */
+export const MODEL_FILE_REPO = "https://raw.githubusercontent.com/CBIIT/crdc-datahub-models/";
+
+/**
+ * The localStorage key used to cache the Content Manifest
+ */
+export const MANIFEST_CACHE_KEY = "modelManifest";
+
+/**
+ * The maximum age (in milliseconds) of a cached Content Manifest before it is expired.
+ *
+ * @note Currently set to 24 hours.
+ */
+export const MANIFEST_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+/**
  * Configuration for the facet filter (i.e. the entire DMN)
  */
 export const baseConfiguration = {

@@ -2,10 +2,11 @@ import { Button, styled } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
 import { Link } from "react-router-dom";
 
-import { hasPermission, Permissions } from "../../../config/AuthPermissions";
-import { ActionId, HeaderLinks } from "../../../config/HeaderConfig";
-import { Status, useAuthContext } from "../../Contexts/AuthContext";
-import SuspenseLoader from "../../SuspenseLoader";
+import { Status, useAuthContext } from "@/components/Contexts/AuthContext";
+import SuspenseLoader from "@/components/SuspenseLoader";
+import { hasPermission, Permissions } from "@/config/AuthPermissions";
+import { ActionId } from "@/config/HeaderConfig";
+import useHeaderLinks from "@/hooks/useHeaderLinks";
 
 const Dropdown = styled("div")({
   left: 0,
@@ -84,6 +85,7 @@ type Props = {
 
 const NavbarDesktopDropdown = ({ clickedTitle, onTitleClick, onItemClick }: Props) => {
   const { user, status: AuthStatus } = useAuthContext();
+  const headerLinks = useHeaderLinks();
 
   const checkPermissions = (permissions: AuthPermissions[]) => {
     if (!permissions?.length) {
@@ -108,7 +110,7 @@ const NavbarDesktopDropdown = ({ clickedTitle, onTitleClick, onItemClick }: Prop
     return <SuspenseLoader />;
   }
 
-  const dropdownLinks: NavBarItem | undefined = HeaderLinks.find(
+  const dropdownLinks: NavBarItem | undefined = headerLinks.find(
     (link) => link.name === clickedTitle
   );
 

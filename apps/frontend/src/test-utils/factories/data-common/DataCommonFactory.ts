@@ -8,6 +8,7 @@ import { manifestAssetsFactory } from "./ManifestAssetsFactory";
 export const baseDataCommon: DataCommon = {
   name: "",
   displayName: "",
+  isHidden: false,
   assets: manifestAssetsFactory.build(),
 };
 

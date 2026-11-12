@@ -1,4 +1,13 @@
 /**
+ * Checks whether a JSON value is a non-null, non-array object.
+ *
+ * @param value The value to check.
+ * @returns True if the value is a non-null, non-array object, false otherwise.
+ */
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/**
  * Safely parse a JSON string into an object. Optionally assert the type of the parsed object.
  *
  * @param unsafeJson The JSON string to parse.

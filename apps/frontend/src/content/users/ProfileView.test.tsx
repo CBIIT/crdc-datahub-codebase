@@ -4,10 +4,13 @@ import { FC, useMemo } from "react";
 import { MemoryRouterProps } from "react-router-dom";
 import { axe } from "vitest-axe";
 
+import { DataModelsContext } from "@/components/Contexts/DataModelsContext";
 import { SearchParamsProvider } from "@/components/Contexts/SearchParamsContext";
 import { approvedStudyFactory } from "@/factories/approved-study/ApprovedStudyFactory";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
+import { dataCommonFactory } from "@/factories/data-common/DataCommonFactory";
+import { dataModelsCtxStateFactory } from "@/factories/data-common/DataModelsCtxStateFactory";
 import { institutionFactory } from "@/factories/institution/InstitutionFactory";
 import {
   GET_TOOLTIPS,
@@ -25,8 +28,11 @@ import {
   RETRIEVE_PBAC_DEFAULTS,
   RetrievePBACDefaultsInput,
   RetrievePBACDefaultsResp,
+  USER_IS_PRIMARY_CONTACT,
+  UserIsPrimaryContactInput,
+  UserIsPrimaryContactResp,
 } from "@/graphql";
-import { TestRouter, act, render, waitFor } from "@/test-utils";
+import { TestRouter, act, render, waitFor, within } from "@/test-utils";
 
 import {
   Context as AuthContext,
@@ -123,6 +129,12 @@ const getTooltipsMock: MockedResponse<GetTooltipsResp, GetTooltipsInput> = {
   },
 };
 
+const mockDataModels: DataCommon[] = [
+  dataCommonFactory.build({ name: "CDS", displayName: "GC" }),
+  dataCommonFactory.build({ name: "ICDC", displayName: "ICDC" }),
+  dataCommonFactory.build({ name: "CCDI", displayName: "Hidden CCDI", isHidden: true }),
+];
+
 type ParentProps = {
   mocks?: MockedResponse[];
   user?: Partial<User>;
@@ -158,7 +170,11 @@ const TestParent: FC<ParentProps> = ({
     <MockedProvider mocks={mocks}>
       <TestRouter initialEntries={initialEntries}>
         <AuthContext.Provider value={authCtx}>
-          <SearchParamsProvider>{children}</SearchParamsProvider>
+          <DataModelsContext.Provider
+            value={dataModelsCtxStateFactory.build({ models: mockDataModels })}
+          >
+            <SearchParamsProvider>{children}</SearchParamsProvider>
+          </DataModelsContext.Provider>
         </AuthContext.Provider>
       </TestRouter>
     </MockedProvider>
@@ -337,5 +353,62 @@ describe("Implementation Requirements", () => {
     await waitFor(() => {
       expect(mockMatcher).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["Active"] }));
     });
+  });
+
+  it("should display the selected Data Commons by display name, excluding hidden Data Models", async () => {
+    const dcpUserMock: MockedResponse<GetUserResp, GetUserInput> = {
+      ...getUserMock,
+      result: {
+        data: {
+          getUser: userFactory.build({
+            role: "Data Commons Personnel",
+            dataCommons: ["CDS", "ICDC", "CCDI"],
+            studies: [],
+            institution: null,
+          }) as GetUserResp["getUser"],
+        },
+      },
+    };
+
+    const isPrimaryContactMock: MockedResponse<
+      UserIsPrimaryContactResp,
+      UserIsPrimaryContactInput
+    > = {
+      request: {
+        query: USER_IS_PRIMARY_CONTACT,
+      },
+      variableMatcher: () => true,
+      result: {
+        data: {
+          userIsPrimaryContact: false,
+        },
+      },
+      maxUsageCount: Infinity,
+    };
+
+    const { container } = render(
+      <TestParent
+        mocks={[
+          dcpUserMock,
+          isPrimaryContactMock,
+          listApprovedStudiesMock,
+          listInstitutionsMock,
+          retrievePBACDefaults,
+          getTooltipsMock,
+        ]}
+      >
+        <ProfileView _id="test-id" viewType="users" />
+      </TestParent>
+    );
+
+    const field = await waitFor(() => {
+      const label = container.querySelector("#userDataCommons");
+      expect(label).toBeInTheDocument();
+      return label.parentElement;
+    });
+    const select = await within(field).findByRole("button");
+
+    await waitFor(() => expect(select).toHaveTextContent("GC, ICDC"));
+    expect(select).not.toHaveTextContent("Hidden CCDI");
   });
 });

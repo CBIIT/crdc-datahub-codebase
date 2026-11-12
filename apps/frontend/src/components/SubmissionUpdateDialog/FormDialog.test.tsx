@@ -4,12 +4,16 @@ import { GraphQLError } from "graphql";
 import { FC, ReactNode, useMemo } from "react";
 import { axe } from "vitest-axe";
 
+import { DataModelsContext } from "@/components/Contexts/DataModelsContext";
 import {
   SubmissionCtxState,
   SubmissionCtxStatus,
   SubmissionContext,
 } from "@/components/Contexts/SubmissionContext";
 import { userFactory } from "@/factories/auth/UserFactory";
+import { dataCommonFactory } from "@/factories/data-common/DataCommonFactory";
+import { dataModelsCtxStateFactory } from "@/factories/data-common/DataModelsCtxStateFactory";
+import { manifestAssetsFactory } from "@/factories/data-common/ManifestAssetsFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
 import {
   ListPotentialCollaboratorsResp,
@@ -21,11 +25,10 @@ import { Logger } from "@/utils";
 
 import FormDialog from "./FormDialog";
 
-const mockListAvailableModelVersions = vi.fn();
-vi.mock("@/utils", async () => ({
-  ...(await vi.importActual("@/utils")),
-  listAvailableModelVersions: async (...args) => mockListAvailableModelVersions(...args),
-}));
+/**
+ * The model versions available for the submission's Data Model
+ */
+let mockVersions: string[] = [];
 
 vi.mock("@/utils/logger", () => ({
   Logger: {
@@ -61,8 +64,22 @@ const mockListCollaborators: MockedResponse<
 const MockParent: FC<{
   mocks?: MockedResponse[];
   submission?: Partial<Submission>;
+  models?: DataCommon[];
   children: ReactNode;
-}> = ({ mocks, submission, children }) => {
+}> = ({ mocks, submission, models, children }) => {
+  const dataModelsState = useMemo(
+    () =>
+      dataModelsCtxStateFactory.build({
+        models: models ?? [
+          dataCommonFactory.build({
+            name: submission?.dataCommons ?? "",
+            assets: manifestAssetsFactory.build({ versions: mockVersions }),
+          }),
+        ],
+      }),
+    [models, submission]
+  );
+
   const submissionContextState = useMemo<SubmissionCtxState>(
     () => ({
       data: {
@@ -80,23 +97,24 @@ const MockParent: FC<{
 
   return (
     <MockedProvider mocks={mocks}>
-      <SubmissionContext.Provider value={submissionContextState}>
-        {children}
-      </SubmissionContext.Provider>
+      <DataModelsContext.Provider value={dataModelsState}>
+        <SubmissionContext.Provider value={submissionContextState}>
+          {children}
+        </SubmissionContext.Provider>
+      </DataModelsContext.Provider>
     </MockedProvider>
   );
 };
 
 beforeEach(() => {
-  mockListAvailableModelVersions.mockReset();
+  mockVersions = [];
   mockCollaboratorsMatcher.mockClear();
-  sessionStorage.clear();
 });
 
 describe("Accessibility", () => {
   // NOTE: This is disabled due to nonstop act warnings
   it.skip("should have no violations", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const { container } = render(<FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />, {
       wrapper: ({ children }) => (
@@ -116,10 +134,6 @@ describe("Accessibility", () => {
     });
 
     await waitFor(() => {
-      expect(mockListAvailableModelVersions).toHaveBeenCalledTimes(1);
-    });
-
-    await waitFor(() => {
       expect(mockCollaboratorsMatcher).toHaveBeenCalledTimes(1);
     });
 
@@ -129,7 +143,7 @@ describe("Accessibility", () => {
 
 describe("Basic Functionality", () => {
   it("should close the dialog when the 'Cancel' button is clicked", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const mockOnClose = vi.fn();
 
@@ -161,7 +175,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should close the dialog when the 'X' icon is clicked", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const mockOnClose = vi.fn();
 
@@ -193,7 +207,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should close the dialog when the backdrop is clicked", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const mockOnClose = vi.fn();
 
@@ -224,13 +238,9 @@ describe("Basic Functionality", () => {
     });
   });
 
-  it("should fetch available model versions when the dialog opens", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
-
-    expect(mockListAvailableModelVersions).not.toHaveBeenCalled();
-
-    const { rerender } = render(
-      <FormDialog open={false} onSubmitForm={vi.fn()} onClose={vi.fn()} />,
+  it("should list all of the versions of the submission's model", async () => {
+    const { getByTestId, getByText, queryByText } = render(
+      <FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />,
       {
         wrapper: ({ children }) => (
           <MockParent
@@ -240,7 +250,19 @@ describe("Basic Functionality", () => {
               submitterName: "mock-name",
               submitterID: "mock-id",
               dataCommons: "MOCK-DC-TEST",
+              modelVersion: "1.0.0",
             }}
+            models={[
+              dataCommonFactory.build({
+                name: "OTHER-DC",
+                assets: manifestAssetsFactory.build({ versions: ["9.9.9"] }),
+              }),
+              dataCommonFactory.build({
+                name: "MOCK-DC-TEST",
+                isHidden: true,
+                assets: manifestAssetsFactory.build({ versions: ["1.0.0", "2.0.0"] }),
+              }),
+            ]}
           >
             {children}
           </MockParent>
@@ -248,20 +270,17 @@ describe("Basic Functionality", () => {
       }
     );
 
-    expect(mockListAvailableModelVersions).not.toHaveBeenCalled();
-
-    rerender(<FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />);
+    userEvent.click(within(getByTestId("update-submission-version-field")).getByRole("button"));
 
     await waitFor(() => {
-      expect(mockListAvailableModelVersions).toHaveBeenCalledTimes(1);
+      expect(getByText("v2.0.0")).toBeInTheDocument();
     });
-
-    expect(mockListAvailableModelVersions).toHaveBeenCalledWith("MOCK-DC-TEST");
+    expect(queryByText("v9.9.9")).not.toBeInTheDocument();
   });
 
   it("should call the onSubmitForm function with the selected options", async () => {
     const mockOnSubmitForm = vi.fn().mockResolvedValueOnce(undefined);
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const { getByTestId } = render(
       <FormDialog open onSubmitForm={mockOnSubmitForm} onClose={vi.fn()} />,
@@ -284,10 +303,6 @@ describe("Basic Functionality", () => {
     );
 
     await waitFor(() => {
-      expect(mockListAvailableModelVersions).toHaveBeenCalledTimes(1);
-    });
-
-    await waitFor(() => {
       expect(mockCollaboratorsMatcher).toHaveBeenCalledTimes(1);
     });
 
@@ -305,7 +320,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should gracefully handle API Errors (GraphQL)", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => []);
+    mockVersions = [];
 
     const mockCollabError: MockedResponse<
       ListPotentialCollaboratorsResp,
@@ -342,7 +357,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should gracefully handle API Errors (Network)", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => []);
+    mockVersions = [];
 
     const mockCollabError: MockedResponse<
       ListPotentialCollaboratorsResp,
@@ -379,7 +394,7 @@ describe("Basic Functionality", () => {
 
 describe("Implementation Requirements", () => {
   it("should pre-select the current model version", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["3.1.0", "1.0.0", "2.0.0"]);
+    mockVersions = ["3.1.0", "1.0.0", "2.0.0"];
 
     const { getByTestId } = render(<FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />, {
       wrapper: ({ children }) => (
@@ -398,15 +413,11 @@ describe("Implementation Requirements", () => {
       ),
     });
 
-    await waitFor(() => {
-      expect(mockListAvailableModelVersions).toHaveBeenCalledTimes(1);
-    });
-
     expect(getByTestId("update-submission-version-field")).toHaveTextContent("1.0.0");
   });
 
   it("should pre-select the current data submission owner", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "1.2.0"]);
+    mockVersions = ["1.0.0", "1.2.0"];
 
     const { getByTestId } = render(<FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />, {
       wrapper: ({ children }) => (
@@ -433,7 +444,7 @@ describe("Implementation Requirements", () => {
   });
 
   it("should populate with all available submitter options", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "1.2.0"]);
+    mockVersions = ["1.0.0", "1.2.0"];
 
     const { getByTestId, getAllByText, getByText } = render(
       <FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />,
@@ -474,12 +485,7 @@ describe("Implementation Requirements", () => {
   });
 
   it("should populate with all available model versions", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => [
-      "model-version-ABC",
-      "model-version-123",
-      "model-version-XXZ",
-      "1.2.0",
-    ]);
+    mockVersions = ["model-version-ABC", "model-version-123", "model-version-XXZ", "1.2.0"];
 
     const { getByTestId, getByText, getAllByText } = render(
       <FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />,
@@ -501,10 +507,6 @@ describe("Implementation Requirements", () => {
       }
     );
 
-    await waitFor(() => {
-      expect(mockListAvailableModelVersions).toHaveBeenCalledTimes(1);
-    });
-
     userEvent.click(within(getByTestId("update-submission-version-field")).getByRole("button"));
 
     expect(getAllByText(/vMODEL-VERSION-ABC/i)).toHaveLength(2); // Input field and dropdown
@@ -514,12 +516,7 @@ describe("Implementation Requirements", () => {
   });
 
   it("should prefix the model version with 'v' if not already present", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => [
-      "3.9.0-WO-VERSION",
-      "v3.5.9",
-      "6.1.1",
-      "v9.1.9",
-    ]);
+    mockVersions = ["3.9.0-WO-VERSION", "v3.5.9", "6.1.1", "v9.1.9"];
 
     const { getByTestId, getByText, getAllByText } = render(
       <FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />,
@@ -541,10 +538,6 @@ describe("Implementation Requirements", () => {
       }
     );
 
-    await waitFor(() => {
-      expect(mockListAvailableModelVersions).toHaveBeenCalledTimes(1);
-    });
-
     userEvent.click(within(getByTestId("update-submission-version-field")).getByRole("button"));
 
     expect(getAllByText("v6.1.1")).toHaveLength(2); // Input field and dropdown
@@ -554,7 +547,7 @@ describe("Implementation Requirements", () => {
   });
 
   it("should still populate with the current model version if no versions are available", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => []);
+    mockVersions = [];
 
     const { getByTestId } = render(<FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />, {
       wrapper: ({ children }) => (
@@ -573,17 +566,13 @@ describe("Implementation Requirements", () => {
       ),
     });
 
-    await waitFor(() => {
-      expect(mockListAvailableModelVersions).toHaveBeenCalledTimes(1);
-    });
-
     expect(getByTestId("update-submission-version-field")).toHaveTextContent(
       "vupdate-submission-1.2.3"
     );
   });
 
   it("should have the correct title, tooltips, and button text", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => []);
+    mockVersions = [];
 
     const { getByTestId, findByRole } = render(
       <FormDialog open onSubmitForm={vi.fn()} onClose={vi.fn()} />,
@@ -604,10 +593,6 @@ describe("Implementation Requirements", () => {
         ),
       }
     );
-
-    await waitFor(() => {
-      expect(mockListAvailableModelVersions).toHaveBeenCalledTimes(1);
-    });
 
     // Dialog content
     expect(getByTestId("update-submission-dialog-header")).toHaveTextContent(

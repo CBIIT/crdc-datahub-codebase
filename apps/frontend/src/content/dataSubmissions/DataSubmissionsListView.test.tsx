@@ -10,9 +10,11 @@ import {
   ContextState as AuthContextState,
   Status as AuthStatus,
 } from "@/components/Contexts/AuthContext";
+import { DataModelsContext } from "@/components/Contexts/DataModelsContext";
 import { SearchParamsProvider } from "@/components/Contexts/SearchParamsContext";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
+import { dataModelsCtxStateFactory } from "@/factories/data-common/DataModelsCtxStateFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
 import { LIST_SUBMISSIONS, ListSubmissionsInput, ListSubmissionsResp } from "@/graphql";
 import { TestRouter, act, render, waitFor } from "@/test-utils";
@@ -102,7 +104,9 @@ const TestParent: FC<ParentProps> = ({
       <TestRouter initialEntries={initialEntries}>
         <SnackbarProvider>
           <AuthContext.Provider value={authState}>
-            <SearchParamsProvider>{children}</SearchParamsProvider>
+            <DataModelsContext.Provider value={dataModelsCtxStateFactory.build()}>
+              <SearchParamsProvider>{children}</SearchParamsProvider>
+            </DataModelsContext.Provider>
           </AuthContext.Provider>
         </SnackbarProvider>
       </TestRouter>

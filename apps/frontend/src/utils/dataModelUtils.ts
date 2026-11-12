@@ -1,58 +1,41 @@
-import { chain, keys } from "lodash";
+import { chain, keys, sortBy } from "lodash";
 
-import { MODEL_FILE_REPO } from "@/config/DataCommons";
+import { MODEL_FILE_REPO } from "@/config/ModelNavigator";
 import env from "@/env";
 import { RetrievePVsByPropertyNameResponse } from "@/graphql";
 
+import { isRecord } from "./jsonUtils";
 import { Logger } from "./logger";
 
 /**
- * Fetch the tracked Data Model content manifest.
- *
- * @returns The parsed content manifest.
- * @throws An error if the manifest cannot be fetched.
+ * Normalizes manifest entries into Data Models, ordered by finite order values first.
+ * Entries without an order retain their manifest order.
  */
-export const fetchManifest = async (): Promise<DataModelManifest> => {
-  if (sessionStorage.getItem("manifest")) {
-    return JSON.parse(sessionStorage.getItem("manifest"));
-  }
-
-  const response = await fetch(
-    `${MODEL_FILE_REPO}${env.VITE_DEV_TIER || "prod"}/cache/content.json`
-  ).catch(() => null);
-  const parsed = await response?.json().catch(() => null);
-  if (response && parsed) {
-    sessionStorage.setItem("manifest", JSON.stringify(parsed));
-    return parsed;
-  }
-
-  throw new Error("Unable to fetch or parse manifest");
-};
-
-/**
- * List the available Data Model versions for a given Data Model
- *
- * @param model The Data Model (DataCommon) to list versions for (e.g. "CDS")
- * @returns An array of version strings or empty if none are found
- */
-export const listAvailableModelVersions = async (model: string): Promise<string[]> => {
-  try {
-    const manifest = await fetchManifest();
-    if (!manifest || !manifest[model]) {
-      throw new Error(`Unable to find manifest for ${model}`);
+export const buildDataModels = (manifest: Record<string, unknown>): DataCommon[] => {
+  const models: DataCommon[] = Object.entries(manifest).flatMap(([name, value]) => {
+    if (!name || !isRecord(value)) {
+      Logger.error("DataModelsProvider: Skipping invalid model manifest entry", name);
+      return [];
     }
 
-    const { versions } = manifest[model];
-    if (!Array.isArray(versions) || versions.length === 0) {
-      throw new Error(`No versions found for ${model}`);
-    }
+    const assets = value as ManifestAssets;
+    const displayName = value["display-name"];
 
-    return versions;
-  } catch (e) {
-    Logger.error("listDataModelVersions: An exception was thrown", e);
-  }
+    return [
+      {
+        name,
+        displayName:
+          typeof displayName === "string" && displayName.trim() ? displayName.trim() : name,
+        isHidden: value.isHidden === true,
+        assets,
+      },
+    ];
+  });
 
-  return [];
+  return sortBy(models, [
+    ({ assets }) => (Number.isFinite(assets.order) ? 0 : 1),
+    ({ assets }) => (Number.isFinite(assets.order) ? assets.order : 0),
+  ]);
 };
 
 /**

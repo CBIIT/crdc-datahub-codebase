@@ -1,4 +1,20 @@
-import { safeParse } from "./jsonUtils";
+import { isRecord, safeParse } from "./jsonUtils";
+
+describe("isRecord cases", () => {
+  it.each<[unknown, boolean]>([
+    [{}, true],
+    [{ key: "value" }, true],
+    [null, false],
+    [undefined, false],
+    [[], false],
+    ["string", false],
+    [1, false],
+    [true, false],
+    [() => {}, false],
+  ])("should identify whether %p is a record", (value, expected) => {
+    expect(isRecord(value)).toBe(expected);
+  });
+});
 
 describe("safeParse cases", () => {
   it("should parse valid JSON", () => {

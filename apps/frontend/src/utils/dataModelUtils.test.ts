@@ -1,6 +1,4 @@
-import { Mock } from "vitest";
-
-import { MODEL_FILE_REPO } from "@/config/DataCommons";
+import { MODEL_FILE_REPO } from "@/config/ModelNavigator";
 import { dataCommonFactory } from "@/factories/data-common/DataCommonFactory";
 import { manifestAssetsFactory } from "@/factories/data-common/ManifestAssetsFactory";
 import { modelNavigatorConfigFactory } from "@/factories/data-common/ModelNavigatorConfigFactory";
@@ -10,8 +8,7 @@ import { modelDefinitionNodePropertyFactory } from "@/factories/mdf/ModelDefinit
 import { RetrievePVsByPropertyNameResponse } from "@/graphql";
 
 import * as utils from "./dataModelUtils";
-
-global.fetch = vi.fn();
+import { Logger } from "./logger";
 
 vi.mock(import("../env"), async (importOriginal) => {
   const mod = await importOriginal();
@@ -24,175 +21,79 @@ vi.mock(import("../env"), async (importOriginal) => {
   };
 });
 
-describe("fetchManifest cases", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    sessionStorage.clear();
+describe("buildDataModels cases", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it("should return manifest from sessionStorage if it exists", async () => {
-    const fakeManifest: DataModelManifest = {
-      CDS: {
-        "model-files": ["cds-model.yaml", "cds-model-props.yaml"],
-        "readme-file": "cds-model-readme.md",
-        "loading-file": "cds-loading.zip",
-        "current-version": "1.0",
-        "release-notes": "release-notes.md",
-        "model-navigator-config": null,
-        versions: [],
-      },
-    };
-    sessionStorage.setItem("manifest", JSON.stringify(fakeManifest));
+  it("should normalize model names while preserving assets and hidden models", () => {
+    const assets = manifestAssetsFactory.build({ "display-name": "  GC  ", isHidden: true });
 
-    const manifest = await utils.fetchManifest();
-
-    expect(manifest).toEqual(fakeManifest);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(utils.buildDataModels({ CDS: assets })).toEqual([
+      { name: "CDS", displayName: "GC", isHidden: true, assets },
+    ]);
   });
 
-  it("should fetch manifest from server if it does not exist in sessionStorage", async () => {
-    const fakeManifest: DataModelManifest = {
-      CDS: {
-        "model-files": ["cds-model.yaml", "cds-model-props.yaml"],
-        "readme-file": "cds-model-readme.md",
-        "loading-file": "cds-loading.zip",
-        "current-version": "1.0",
-        "release-notes": "release-notes.md",
-        "model-navigator-config": null,
-        versions: [],
-      },
+  it("should return no models for an empty manifest", () => {
+    expect(utils.buildDataModels({})).toEqual([]);
+  });
+
+  it("should sort finite orders first and preserve manifest order for ties and unordered models", () => {
+    const manifest = {
+      NO_ORDER: {},
+      SECOND: { order: 1 },
+      STRING_ORDER: { order: "1" },
+      FIRST: { order: -1 },
+      SAME_ORDER: { order: 1 },
+      ZERO: { order: 0 },
+      INFINITE_ORDER: { order: Infinity },
+      NAN_ORDER: { order: NaN },
+      NULL_ORDER: { order: null },
     };
 
-    (fetch as Mock).mockImplementationOnce(() =>
-      Promise.resolve({ json: () => Promise.resolve(fakeManifest) })
+    expect(utils.buildDataModels(manifest).map(({ name }) => name)).toEqual([
+      "FIRST",
+      "ZERO",
+      "SECOND",
+      "SAME_ORDER",
+      "NO_ORDER",
+      "STRING_ORDER",
+      "INFINITE_ORDER",
+      "NAN_ORDER",
+      "NULL_ORDER",
+    ]);
+  });
+
+  it.each([undefined, null, "", "   ", 1])(
+    "should fall back to the model key for an invalid display name (%s)",
+    (displayName) => {
+      const assets = { ...manifestAssetsFactory.build(), "display-name": displayName };
+
+      expect(utils.buildDataModels({ CDS: assets })[0].displayName).toBe("CDS");
+    }
+  );
+
+  it.each<[unknown, boolean]>([
+    [true, true],
+    [false, false],
+    [undefined, false],
+    ["true", false],
+    [1, false],
+  ])("should map isHidden=%s to %s", (isHidden, expected) => {
+    expect(utils.buildDataModels({ CDS: { isHidden } })[0].isHidden).toBe(expected);
+  });
+
+  it("should log and skip invalid entries without discarding valid models", () => {
+    const logError = vi.spyOn(Logger, "error");
+    const manifest = { VALID: {}, NULL: null, ARRAY: [], STRING: "invalid", "": {} };
+
+    expect(utils.buildDataModels(manifest).map(({ name }) => name)).toEqual(["VALID"]);
+    expect(logError.mock.calls).toEqual(
+      ["NULL", "ARRAY", "STRING", ""].map((name) => [
+        "DataModelsProvider: Skipping invalid model manifest entry",
+        name,
+      ])
     );
-
-    const manifest = await utils.fetchManifest();
-
-    expect(manifest).toEqual(fakeManifest);
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("should cache manifest in sessionStorage after fetching", async () => {
-    const fakeManifest: DataModelManifest = {
-      CDS: {
-        "model-files": ["cds-model.yaml", "cds-model-props.yaml"],
-        "readme-file": "cds-model-readme.md",
-        "loading-file": "cds-loading.zip",
-        "current-version": "1.0",
-        "release-notes": "release-notes.md",
-        "model-navigator-config": null,
-        versions: [],
-      },
-    };
-
-    (fetch as Mock).mockImplementationOnce(() =>
-      Promise.resolve({ json: () => Promise.resolve(fakeManifest) })
-    );
-
-    expect(sessionStorage.getItem("manifest")).toBeNull();
-
-    await utils.fetchManifest();
-
-    const cachedManifest = JSON.parse(sessionStorage.getItem("manifest"));
-    expect(cachedManifest).toEqual(fakeManifest);
-  });
-
-  it("should throw an error if fetch fails", async () => {
-    (fetch as Mock).mockImplementationOnce(() => Promise.reject(new Error("fetch error")));
-
-    await expect(utils.fetchManifest()).rejects.toThrow("Unable to fetch or parse manifest");
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  // NOTE: We're asserting that JSON.parse does not throw an error here
-  it("should throw a controlled error if fetch returns invalid JSON", async () => {
-    (fetch as Mock).mockImplementationOnce(() =>
-      Promise.resolve({ json: () => Promise.reject(new Error("JSON error")) })
-    );
-
-    await expect(utils.fetchManifest()).rejects.toThrow("Unable to fetch or parse manifest");
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("should fall back to prod tier if VITE_DEV_TIER is not defined", async () => {
-    const fakeManifest = { key: "value" };
-
-    (fetch as Mock).mockImplementationOnce(() =>
-      Promise.resolve({ json: () => Promise.resolve(fakeManifest) })
-    );
-
-    await utils.fetchManifest();
-
-    expect(fetch).toHaveBeenCalledWith(`${MODEL_FILE_REPO}prod/cache/content.json`);
-  });
-});
-
-describe("listAvailableModelVersions", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    sessionStorage.clear();
-  });
-
-  it("should return available model versions", async () => {
-    const fakeManifest: DataModelManifest = {
-      CDS: manifestAssetsFactory.build({
-        versions: ["XXX", "1.0", "2.0", "3.0"],
-      }),
-    };
-    sessionStorage.setItem("manifest", JSON.stringify(fakeManifest));
-
-    const versions = await utils.listAvailableModelVersions("CDS");
-
-    expect(versions).toEqual(["XXX", "1.0", "2.0", "3.0"]);
-  });
-
-  it("should catch fetchManifest exception and return empty array", async () => {
-    (fetch as Mock).mockImplementationOnce(() => Promise.reject(new Error("fetch error")));
-
-    const versions = await utils.listAvailableModelVersions("CDS");
-
-    expect(versions).toEqual([]);
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("should return an empty array if the model is not found in the manifest", async () => {
-    const fakeManifest: DataModelManifest = {
-      CDS: manifestAssetsFactory.build({
-        versions: ["mock-version"],
-      }),
-    };
-    sessionStorage.setItem("manifest", JSON.stringify(fakeManifest));
-
-    const versions = await utils.listAvailableModelVersions("this-model-does-not-exist");
-
-    expect(versions).toEqual([]);
-  });
-
-  it("should return an empty array if no versions are found (empty)", async () => {
-    const fakeManifest: DataModelManifest = {
-      CDS: manifestAssetsFactory.build({
-        versions: [],
-      }),
-    };
-    sessionStorage.setItem("manifest", JSON.stringify(fakeManifest));
-
-    const versions = await utils.listAvailableModelVersions("CDS");
-
-    expect(versions).toEqual([]);
-  });
-
-  it("should return an empty array if no versions are found (non-array)", async () => {
-    const fakeManifest: DataModelManifest = {
-      CDS: manifestAssetsFactory.build({
-        versions: null,
-      }),
-    };
-    sessionStorage.setItem("manifest", JSON.stringify(fakeManifest));
-
-    const versions = await utils.listAvailableModelVersions("CDS");
-
-    expect(versions).toEqual([]);
   });
 });
 
