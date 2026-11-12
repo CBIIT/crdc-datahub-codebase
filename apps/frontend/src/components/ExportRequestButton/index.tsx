@@ -55,7 +55,7 @@ const ExportRequestButton = forwardRef<HTMLButtonElement, ExportRequestButtonPro
         const studyAbbr =
           data?.questionnaireData?.study?.abbreviation || data?.questionnaireData?.study?.name;
         const submittedDate =
-          data?.status === "In Progress"
+          data?.status === "In Progress" || !data?.submittedDate
             ? FormatDate(data?.updatedAt, "YYYY-MM-DD")
             : FormatDate(data?.submittedDate, "YYYY-MM-DD");
         const filename = `CRDCSubmissionPortal-Request-${studyAbbr}-${submittedDate}.pdf`;
