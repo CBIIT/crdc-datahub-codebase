@@ -1,5 +1,5 @@
 from aws_cdk import Duration
-
+from aws_cdk import TimeZone
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_ecr as ecr
@@ -332,25 +332,28 @@ class authnService:
     # scale on schedule
     env = config['main']['env']
     if env.lower() != 'prod':
+        tz = TimeZone.of(config['main']['scale_timezone'])
         scalable_target.scale_on_schedule(
-            f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend-start",
+            f"{config['main']['resource_prefix']}-{config['main']['tier']}-authn-start",
             schedule=appscaling.Schedule.cron(
-                minute="7",
-                hour="11",
+                minute=config['main']['scale_start_minute'],
+                hour=config['main']['scale_start_hour'],
                 week_day="MON-FRI"
             ),
+            time_zone=tz,
             min_capacity=1,
             max_capacity=1,
             #schedule_time_zone="America/New_York"
         )
 
         scalable_target.scale_on_schedule(
-            f"{config['main']['resource_prefix']}-{config['main']['tier']}-backend-stop",
+            f"{config['main']['resource_prefix']}-{config['main']['tier']}-authn-stop",
             schedule=appscaling.Schedule.cron(
-                minute="0",
-                hour="23",
+                minute=config['main']['scale_stop_minute'],
+                hour=config['main']['scale_stop_hour'],
                 week_day="MON-FRI"
             ),
+            time_zone=tz,
             min_capacity=0,
             max_capacity=0
         #    schedule_time_zone="America/New_York"
