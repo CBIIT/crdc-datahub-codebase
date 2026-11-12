@@ -380,4 +380,31 @@ describe("Implementation Requirements", () => {
       );
     });
   });
+
+  it("should use the updatedAt date if there is no submittedDate", async () => {
+    mockGenerate.mockResolvedValue("mock-data");
+
+    const mockFormObject: Partial<Application> = {
+      status: "Reopened",
+      updatedAt: "2024-09-30T09:10:00.000Z",
+      submittedDate: null,
+      questionnaireData: questionnaireDataFactory.build({
+        study: studyFactory.build({ abbreviation: "TEST" }),
+      }),
+    };
+
+    const { getByTestId } = render(<ExportRequestButton />, {
+      wrapper: (p) => <TestParent formData={mockFormObject} {...p} />,
+    });
+
+    userEvent.click(getByTestId("export-submission-request-button"));
+
+    await waitFor(() => {
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        "mock-data",
+        "CRDCSubmissionPortal-Request-TEST-2024-09-30.pdf",
+        "application/pdf"
+      );
+    });
+  });
 });
