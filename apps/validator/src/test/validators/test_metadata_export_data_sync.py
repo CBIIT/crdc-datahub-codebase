@@ -1565,3 +1565,85 @@ class TestMonitorIndependentDeletes:
         datasync.delete_task.assert_called_once()
         assert datasync.delete_location.call_count == 2
         assert any("source retained; manual cleanup needed" in str(call) for call in log.error.call_args_list)
+
+
+class TestRecordExportFailure:
+    """record_export_failure writes a Failed metadata dataSync for an export that did not reach the transfer step."""
+
+    def _run(self, export_metadata, error=RuntimeError("export failed")):
+        with patch("metadata_export.notify_data_sync_started") as notify, \
+                patch("metadata_export.get_uuid_str", return_value="sync-1"), \
+                patch("metadata_export.current_datetime", return_value=NOW), \
+                patch("metadata_export.get_date_time", return_value="2026-01-01T12:00:00"):
+            export_metadata.record_export_failure(error)
+        return notify
+
+    def test_writes_failed_metadata_record_with_export_step(self):
+        export_metadata, mongo_dao = _make_export_metadata()
+
+        notify = self._run(export_metadata)
+
+        mongo_dao.insert_data_sync.assert_called_once()
+        insert_args = mongo_dao.insert_data_sync.call_args.args
+        assert insert_args[0] == SUBMISSION_ID_VAL
+        assert insert_args[1] == DATA_SYNC_TYPE_METADATA
+        assert insert_args[2] == "root/path/metadata/release"
+        assert insert_args[3] == f"2026-01-01T12:00:00-{SUBMISSION_ID_VAL}"
+        assert insert_args[4] == DATA_SYNC_STATUS_IN_PROGRESS
+        assert insert_args[5] == "sync-1"
+        mongo_dao.add_active_submission_data_sync.assert_called_once_with(
+            SUBMISSION_ID_VAL, DATA_SYNC_TYPE_METADATA, "sync-1",
+        )
+        notify.assert_called_once()
+
+        set_fields = _finalize_set_fields(mongo_dao)
+        assert set_fields[STATUS] == DATA_SYNC_STATUS_FAILED
+        assert set_fields[DATA_SYNC_END_TIME] == NOW
+        assert set_fields[DATA_SYNC_ROLLUP_PENDING] is True
+        assert set_fields[DATA_SYNC_LAST_ERROR] == "export_metadata: export failed"
+        assert DATA_SYNC_CLEANUP_AFTER not in set_fields
+        assert DATA_SYNC_TASK_ARN not in set_fields
+        assert any(DATA_SYNC_LOG_TRANSFER_FAILED in str(c) for c in export_metadata.log.error.call_args_list)
+
+    def test_uses_same_paths_as_transfer_release_metadata(self):
+        export_metadata, mongo_dao = _make_export_metadata()
+        with patch("metadata_export.get_date_time", return_value="2026-01-01T12:00:00"), \
+                patch.object(export_metadata, "transfer_s3_obj") as transfer:
+            export_metadata.transfer_release_metadata()
+        transfer_args = transfer.call_args.args
+
+        self._run(export_metadata)
+        insert_args = mongo_dao.insert_data_sync.call_args.args
+
+        assert transfer_args[0] == "bucket"
+        assert transfer_args[1] == insert_args[2] == "root/path/metadata/release"
+        assert transfer_args[2] == "metadata-bucket"
+        assert transfer_args[3] == insert_args[3]
+        assert transfer_args[4] == [{"Key": "Tier", "Value": "dev"}, {"Key": "Type", "Value": "Metadata"}]
+        assert transfer.call_args.kwargs["sync_type"] == DATA_SYNC_TYPE_METADATA
+
+    def test_insert_error_does_not_raise(self):
+        export_metadata, mongo_dao = _make_export_metadata()
+        mongo_dao.insert_data_sync.return_value = DATA_SYNC_WRITE_ERROR
+
+        self._run(export_metadata)
+
+        mongo_dao.add_active_submission_data_sync.assert_not_called()
+        assert _finalize_set_fields(mongo_dao) is None
+        assert any(DATA_SYNC_LOG_TRACKING_FAILED in str(c) for c in export_metadata.log.error.call_args_list)
+
+    def test_helper_exception_is_swallowed_and_logged(self):
+        export_metadata, mongo_dao = _make_export_metadata()
+        mongo_dao.get_bucket_name.side_effect = RuntimeError("mongo down")
+
+        self._run(export_metadata)
+
+        mongo_dao.insert_data_sync.assert_not_called()
+        assert any("record export failure raised" in str(c) for c in export_metadata.log.error.call_args_list)
+
+    def test_error_without_message_uses_type_name(self):
+        export_metadata, mongo_dao = _make_export_metadata()
+
+        self._run(export_metadata, error=KeyError())
+
+        assert _finalize_set_fields(mongo_dao)[DATA_SYNC_LAST_ERROR] == "export_metadata: KeyError"

@@ -10,7 +10,7 @@ Reference for Mongoose ODM APIs and features that are incompatible with, or requ
 | Target engine | Amazon DocumentDB **8.0** (see `awscdk/crdcdh/app/documentdb.py`) |
 | ODM / driver  | **Mongoose 9.8.0** (nested MongoDB Node driver **7.5.x**)         |
 | Other drivers | Top-level `mongodb@5` remains for sessions (`connect-mongo`) and migration scripts — separate from Mongoose’s nested driver |
-| Last reviewed | 2026-09-28                                                        |
+| Last reviewed | 2026-11-09                                                        |
 
 
 
@@ -42,7 +42,8 @@ When reviewing diffs that touch Mongoose connection setup, schemas, queries, agg
 2. **Aggregation** (`Model.aggregate`, `Query.prototype.pipeline`, aggregation plugins)
   - [ ] Pipeline must **not** use `$facet`, `$graphLookup`, `$unionWith`, `$bucketAuto`, `$setWindowFields`, `$planCacheStats`, `$listSessions`, or `$listLocalSessions`.
      [ ] Prefer equality `$lookup` (`localField` / `foreignField`) over graph-style traversal. Flag `$lookup` with `let` + `pipeline` + `$expr` (`$$` parent vars) — DocumentDB does **not** support correlated subqueries. Extra join predicates belong in a later `$filter` / `$addFields`.
-     [ ] Flag `$getField` (unsupported). For literal field names that contain dots, use `$objectToArray` + `$filter` + `$arrayElemAt` instead.
+     [ ] `$getField` is listed as supported on DocumentDB 8.0 in the AWS matrix (reviewed 2026-11-09) and unsupported on elastic clusters. `$objectToArray` + `$filter` + `$arrayElemAt` remains valid for a field name known only at run time. Do not use either pattern to create a field name that contains `.`.
+     [ ] Flag any pipeline that can emit a field name containing '.' (or starting with '$'): $arrayToObject with computed k, $replaceRoot/$replaceWith of a computed object, $project/$addFields keys built from data or caller input. Use DOT-safe keys and restore in JS.
      [ ] Flag `$sortArray` outside `$project`. DocumentDB 8.0 allows `$sortArray` only in `$project` (Planner v3), not in `$set` / `$addFields`. See [AWS `$sortArray`](https://docs.aws.amazon.com/documentdb/latest/developerguide/sortArray.html) and the array-operators row in [Supported MongoDB APIs](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html).
 3. **Transactions / sessions**
   - [ ] `startSession`, `withTransaction`, `session.startTransaction` must respect DocumentDB limits (1-minute transaction timeout, no cursors in a transaction, no creating collections inside a transaction, 32 MB transaction log limit).
@@ -51,7 +52,7 @@ When reviewing diffs that touch Mongoose connection setup, schemas, queries, agg
   - [ ] `Model.watch()` / `collection.watch()` is supported on instance-based clusters with DocumentDB-specific limits — flag unbounded or Atlas-only assumptions.
 5. **Query operators**
   - [ ] Flag `$where` (unsupported).
-     [ ] Flag `$getField` (unsupported aggregation expression).
+     [ ] `$getField` is supported on DocumentDB 8.0 per the AWS matrix (reviewed 2026-11-09) and unsupported on elastic clusters. See the aggregation checklist.
      [ ] Flag Atlas Search / Atlas Vector Search plugins; DocumentDB does not support `$vectorSearch` as an independent operator (use DocumentDB vector search via `$search` if needed).
 6. **Indexes / schema**
   - [ ] Flag hashed indexes, wildcard indexes, and `2d` (non-sphere) geospatial indexes — unsupported.
@@ -113,7 +114,8 @@ These Mongoose APIs map to MongoDB operations that DocumentDB 8.0 does **not** s
 | `Model.aggregate([{ $unionWith: ... }])`                             | `$unionWith`       | **No**                    | Multiple queries merged in application code, or `$lookup` / denormalization                     |
 | `Model.aggregate([{ $bucketAuto: ... }])`                            | `$bucketAuto`      | **No**                    | Precompute buckets, or use `$bucket` (supported on 8.0) with fixed boundaries                   |
 | `Model.aggregate([{ $setWindowFields: ... }])`                       | `$setWindowFields` | **No**                    | Application-side windowing, or `$group` / `$sort` patterns                                      |
-| Aggregation expression `$getField`                                   | `$getField`        | **No**                    | For literal keys (including dotted names): `$objectToArray` + `$filter` + `$arrayElemAt`        |
+| Aggregation expression `$getField`                                   | `$getField`        | **Yes** on 8.0; **No** on elastic | AWS matrix (reviewed 2026-11-09) lists `$getField` as supported on 8.0. `$objectToArray` + `$filter` + `$arrayElemAt` still reads a name known only at run time. Do not emit dotted field names; see the next row. |
+| Aggregation output with '.' in field names ($arrayToObject, $replaceRoot/$mergeObjects, computed $project/$addFields keys) | Dotted field names | **No** | Error "Document can't have '.' in field names: <name>". Build DOT-safe keys (e.g. a_DOT_b) in the pipeline; restore dotted names in application code after the query. MongoDB 5.0+ allows this, so local MongoDB / mongodb-memory-server will NOT reproduce it. |
 | Query with `$where`                                                  | `$where`           | **No**                    | Express the predicate with `$expr`, `$regex`, or other supported operators                      |
 | Atlas Search plugins / `$searchMeta` (Atlas-only)                    | Atlas Search       | **No**                    | DocumentDB text index + `$text` (supported on 8.0), or external search                          |
 | Aggregate `$vectorSearch` as a top-level stage (MongoDB Atlas style) | `$vectorSearch`    | **Not as independent op** | DocumentDB vector search via `$search` (see AWS vector search docs)                             |
@@ -307,17 +309,15 @@ await UserModel.aggregate([
 { $group: { _id: "$_id", names: { $push: "$mappedDisplayName" } } }
 ```
 
-### Mongoose example — avoid `$getField` for literal dotted keys
+### Mongoose example — read a field name known only at run time
 
-DocumentDB does not support `$getField`. When a document has a root key that literally contains a dot (e.g. `"study.study_id"` after flattening), use `$objectToArray` + `$filter` + `$arrayElemAt`:
-
-For the full sort / project / pagination strategy (DOT-safe keys, skip double-`$sort` with `MongoPagination`), see [documentdb-literal-dotted-keys.md](./documentdb-literal-dotted-keys.md).
+The AWS matrix (reviewed 2026-11-09) lists `$getField` as supported on DocumentDB 8.0 and unsupported on elastic clusters. `$objectToArray` + `$filter` + `$arrayElemAt` is still a valid way to read a key whose name is known only at run time. It does not require the document to have a dotted root key.
 
 ```javascript
-// INCOMPATIBLE with DocumentDB
-{ $getField: { field: "study.study_id", input: "$$ROOT" } }
+// Direct read when $getField is available (DocumentDB 8.0 per the AWS matrix; not elastic)
+{ $getField: { field: "runtimeFieldName", input: "$$ROOT" } }
 
-// COMPATIBLE pattern
+// Also valid — name known only at run time, no $getField
 {
   $arrayElemAt: [
     {
@@ -326,7 +326,7 @@ For the full sort / project / pagination strategy (DOT-safe keys, skip double-`$
           $filter: {
             input: { $objectToArray: "$$ROOT" },
             as: "kv",
-            cond: { $eq: ["$$kv.k", "study.study_id"] },
+            cond: { $eq: ["$$kv.k", "runtimeFieldName"] },
           },
         },
         as: "m",
@@ -337,6 +337,25 @@ For the full sort / project / pagination strategy (DOT-safe keys, skip double-`$
   ],
 }
 ```
+
+### Mongoose example — avoid producing dotted field names
+
+DocumentDB rejects a document whose field names contain `.` when an aggregation produces it (`$arrayToObject`, `$replaceRoot` / `$mergeObjects`, computed `$project` / `$addFields` keys). The error is `Document can't have '.' in field names: <name>`. MongoDB 5.0+ allows those names, so local MongoDB and mongodb-memory-server will not reproduce the failure.
+
+Reference: `ReleaseService.listReleasedDataRecords`. Sort, project, and pagination strategy: [documentdb-literal-dotted-keys.md](./documentdb-literal-dotted-keys.md).
+
+```javascript
+// INCOMPATIBLE — $arrayToObject / $replaceRoot emit a field named "program.program_acronym"
+k: { $concat: ["$$p.parentType", ".", "$$p.parentIDPropName"] }
+// ... $arrayToObject → $replaceRoot { $mergeObjects: ["$props", "$merged"] }
+
+// COMPATIBLE — DOT-safe key in the pipeline; restore after the query
+k: { $concat: ["$$p.parentType", "_DOT_", "$$p.parentIDPropName"] }
+// $sort: { program_DOT_program_acronym: 1 }
+// JS: format_dot_notation(node)  // utility/dot-notation.js
+```
+
+`$sort: { "a.b": 1 }` means the nested path `a.b`, not a literal field named `a.b`. Sort on the DOT-safe key.
 
 ---
 
@@ -433,16 +452,22 @@ Update this file when:
 2. AWS publishes new supported operators or removes functional differences.
 3. The team introduces Mongoose (or a Mongoose-based library) into `apps/backend`.
 4. A code review finds a new incompatible pattern not listed here.
+5. A CloudWatch or other runtime error reveals a DocumentDB restriction that is not an operator in the AWS matrix (for example field-name rules).
+
+The [supported APIs matrix](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html) lists stages and operators. It does not list field-name restrictions. Also check [Functional differences](https://docs.aws.amazon.com/documentdb/latest/developerguide/functional-differences.html). As of 2026-11-09 that page's "Dollar($) and dot(.) in field names" section only covers querying `$`-prefixed fields with `$in`, `$nin`, and `$all` inside nested objects. It does not mention the storage error `Document can't have '.' in field names` (error code 163, "A field or name is not valid for storage"). Treat runtime errors as a source for new rows.
+
+Reviewed 2026-11-09 against those two AWS pages. This repo's cluster is `8.0.0` (`awscdk/crdcdh/app/documentdb.py`). On that date the 8.0 column listed `$getField` as Yes (elastic: No) and `$graphLookup` as Yes. `$facet`, `$bucketAuto`, and `$setWindowFields` were Yes only on 8.0.2+, so they stay incompatible for this cluster. The results pipeline in `ReleaseService.listReleasedDataRecords` uses only stages and operators marked Yes on 8.0 with no patch qualifier (`$match`, `$addFields`, `$unwind`, `$group`, `$project`, `$arrayToObject`, `$setUnion`, `$replaceRoot`, `$mergeObjects`, `$sort`, `$skip`, `$limit`, `$count`).
 
 Suggested maintenance steps:
 
 1. Diff this document against the current [AWS supported APIs](https://docs.aws.amazon.com/documentdb/latest/developerguide/mongo-apis.html) matrix for version **8.0**.
-2. Optionally run the [AWS compat tool](https://github.com/awslabs/amazon-documentdb-tools/tree/master/compat-tool) against `apps/backend`:
+2. Check [Functional differences](https://docs.aws.amazon.com/documentdb/latest/developerguide/functional-differences.html) as well. Field-name restrictions are not operators in the matrix.
+3. Optionally run the [AWS compat tool](https://github.com/awslabs/amazon-documentdb-tools/tree/master/compat-tool) against `apps/backend`:
   ```bash
    python3 compat.py --version 8.0 --directory apps/backend
   ```
-3. Update the **Last reviewed** date in Metadata.
-4. Keep the agent checklist in sync with any new high-risk rows.
+4. Update the **Last reviewed** date in Metadata.
+5. Keep the agent checklist in sync with any new high-risk rows.
 
 ---
 

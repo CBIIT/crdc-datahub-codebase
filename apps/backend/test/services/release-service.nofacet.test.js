@@ -21,6 +21,41 @@ jest.mock('../../utility/data-commons-remapper', () => ({
 const { Release } = require('../../services/release-service');
 const { MongoPagination } = require('../../crdc-datahub-database-drivers/domain/mongo-pagination');
 
+const ASSIGNING_STAGES = ['$project', '$addFields', '$set', '$sort', '$unset'];
+
+/**
+ * DocumentDB rejects "." in field names an aggregation produces.
+ * Assigned stage keys must be DOT-safe, and $concat must not use "." as a separator.
+ * @param {object[]} pipeline
+ */
+function assertNoDottedAggregationFieldNames(pipeline) {
+    for (const stage of pipeline) {
+        for (const [op, body] of Object.entries(stage)) {
+            if (!ASSIGNING_STAGES.includes(op) || body == null || typeof body !== 'object' || Array.isArray(body)) {
+                continue;
+            }
+            for (const key of Object.keys(body)) {
+                expect(key).not.toContain('.');
+            }
+        }
+    }
+
+    const visit = (node) => {
+        if (Array.isArray(node)) {
+            node.forEach(visit);
+            return;
+        }
+        if (node == null || typeof node !== 'object') {
+            return;
+        }
+        if (Array.isArray(node.$concat)) {
+            expect(node.$concat).not.toContain('.');
+        }
+        Object.values(node).forEach(visit);
+    };
+    visit(pipeline);
+}
+
 describe('ReleaseService DocumentDB $facet removals', () => {
     const context = { userInfo: { id: 'user-1', _id: 'user-1' } };
     let service;
@@ -190,6 +225,7 @@ describe('ReleaseService DocumentDB $facet removals', () => {
             expect(pagePipeline.some((stage) => stage.$facet)).toBe(false);
             expect(countPipeline.some((stage) => stage.$facet)).toBe(false);
             expect(countPipeline[countPipeline.length - 1]).toEqual({ $count: 'count' });
+            expect(MongoPagination).toHaveBeenCalledWith(10, 0, 'title', 'asc');
             expect(result).toEqual({
                 total: 1,
                 properties: ['title', 'study.study_id'],
@@ -249,13 +285,13 @@ describe('ReleaseService DocumentDB $facet removals', () => {
             expect(mockReleaseDAO.aggregate).not.toHaveBeenCalled();
         });
 
-        it('should not use $getField when sorting by a dotted orderBy', async () => {
+        it('should sort a dotted orderBy on the DOT-safe key when no properties are requested', async () => {
             mockReleaseDAO.aggregate
-                .mockResolvedValueOnce([{ 'study.study_id': 'S1' }])
+                .mockResolvedValueOnce([{ study_DOT_study_id: 'S1' }])
                 .mockResolvedValueOnce([{ count: 1 }])
                 .mockResolvedValueOnce([{ allProperties: ['study.study_id'] }]);
 
-            await service.listReleasedDataRecords(
+            const result = await service.listReleasedDataRecords(
                 {
                     studyID: 'study1',
                     nodeType: 'study',
@@ -269,32 +305,33 @@ describe('ReleaseService DocumentDB $facet removals', () => {
                 context
             );
 
-            expect(MongoPagination).toHaveBeenCalledWith(10, 0, null, 'asc');
+            expect(MongoPagination).toHaveBeenCalledWith(10, 0, 'study_DOT_study_id', 'asc');
 
             const pagePipeline = mockReleaseDAO.aggregate.mock.calls[0][0];
             const pipelineJson = JSON.stringify(pagePipeline);
             expect(pipelineJson).not.toContain('$getField');
-            expect(pipelineJson).toContain('$objectToArray');
-            expect(pipelineJson).toContain('$filter');
+            expect(pipelineJson).not.toContain('$objectToArray');
+            expect(pipelineJson).not.toContain('_sortKey');
+            assertNoDottedAggregationFieldNames(pagePipeline);
 
             const sortStages = pagePipeline.filter((stage) => stage.$sort);
-            expect(sortStages).toEqual([{ $sort: { _sortKey: 1 } }]);
-            expect(sortStages.some((stage) => Object.prototype.hasOwnProperty.call(stage.$sort, 'study.study_id'))).toBe(false);
+            expect(sortStages).toEqual([{ $sort: { study_DOT_study_id: 1 } }]);
+            expect(result.nodes).toEqual([{ 'study.study_id': 'S1' }]);
         });
 
-        it('should not use $getField when projecting dotted properties', async () => {
+        it('should project and sort dotted properties on DOT-safe keys', async () => {
             mockReleaseDAO.aggregate
-                .mockResolvedValueOnce([{ title: 'Record A', 'study.study_id': 'S1' }])
+                .mockResolvedValueOnce([{ title: 'Record A', study_DOT_study_id: 'S1' }])
                 .mockResolvedValueOnce([{ count: 1 }])
                 .mockResolvedValueOnce([{ allProperties: ['title', 'study.study_id'] }]);
 
-            await service.listReleasedDataRecords(
+            const result = await service.listReleasedDataRecords(
                 {
                     studyID: 'study1',
                     nodeType: 'study',
                     first: 10,
                     offset: 0,
-                    orderBy: 'title',
+                    orderBy: 'study.study_id',
                     sortDirection: 'asc',
                     properties: ['title', 'study.study_id'],
                     dataCommonsDisplayName: 'CDS',
@@ -307,13 +344,108 @@ describe('ReleaseService DocumentDB $facet removals', () => {
             const pagePipeline = mockReleaseDAO.aggregate.mock.calls[0][0];
             const pipelineJson = JSON.stringify(pagePipeline);
             expect(pipelineJson).not.toContain('$getField');
-            expect(pipelineJson).toContain('$objectToArray');
-            expect(pipelineJson).toContain('$filter');
-            expect(pipelineJson).toContain('"$title"');
+            expect(pipelineJson).not.toContain('$objectToArray');
+            assertNoDottedAggregationFieldNames(pagePipeline);
 
             const sortStages = pagePipeline.filter((stage) => stage.$sort);
-            expect(sortStages).toEqual([{ $sort: { title: 1 } }]);
-            expect(sortStages.some((stage) => Object.prototype.hasOwnProperty.call(stage.$sort, 'study.study_id'))).toBe(false);
+            expect(sortStages).toEqual([{ $sort: { study_DOT_study_id: 1 } }]);
+            const sortIndex = pagePipeline.findIndex((stage) => stage.$sort);
+            expect(pagePipeline.slice(sortIndex + 1).some((stage) => stage.$replaceRoot)).toBe(false);
+            expect(pagePipeline.filter((stage) => stage.$project?._id === 0)).toEqual([{
+                $project: {
+                    _id: 0,
+                    title: 1,
+                    study_DOT_study_id: 1,
+                },
+            }]);
+            expect(result.nodes).toEqual([{ title: 'Record A', 'study.study_id': 'S1' }]);
+        });
+
+        it('should build parent keys with _DOT_ and never assign a dotted field name', async () => {
+            mockReleaseDAO.aggregate.mockResolvedValue([]);
+
+            await service.listReleasedDataRecords(
+                {
+                    studyID: 'study1',
+                    nodeType: 'study',
+                    first: 20,
+                    offset: 0,
+                    orderBy: 'study_id',
+                    sortDirection: 'asc',
+                    properties: [],
+                    dataCommonsDisplayName: 'CDS',
+                },
+                context
+            );
+
+            const pagePipeline = mockReleaseDAO.aggregate.mock.calls[0][0];
+            const parentPairs = pagePipeline.find((stage) => stage.$addFields?.parentPairs);
+            expect(parentPairs.$addFields.parentPairs.$map.in.k.$concat).toEqual([
+                '$$p.parentType',
+                '_DOT_',
+                '$$p.parentIDPropName',
+            ]);
+            assertNoDottedAggregationFieldNames(pagePipeline);
+            expect(JSON.stringify(pagePipeline)).not.toContain('$getField');
+            expect(JSON.stringify(pagePipeline)).not.toContain('$facet');
+        });
+
+        it('should restore dotted names from DOT-safe aggregation keys', async () => {
+            mockReleaseDAO.aggregate
+                .mockResolvedValueOnce([{ study_id: 'S1', program_DOT_program_acronym: 'P' }])
+                .mockResolvedValueOnce([{ count: 1 }])
+                .mockResolvedValueOnce([{ allProperties: ['study_id', 'program.program_acronym'] }]);
+
+            const result = await service.listReleasedDataRecords(
+                {
+                    studyID: 'study1',
+                    nodeType: 'study',
+                    first: 10,
+                    offset: 0,
+                    orderBy: 'study_id',
+                    sortDirection: 'asc',
+                    properties: [],
+                    dataCommonsDisplayName: 'CDS',
+                },
+                context
+            );
+
+            expect(result).toEqual({
+                total: 1,
+                properties: ['study_id', 'program.program_acronym'],
+                nodes: [{ study_id: 'S1', 'program.program_acronym': 'P' }],
+            });
+        });
+
+        it('should drop properties and orderBy that are empty or start with $', async () => {
+            mockReleaseDAO.aggregate.mockResolvedValue([]);
+
+            await service.listReleasedDataRecords(
+                {
+                    studyID: 'study1',
+                    nodeType: 'study',
+                    first: 10,
+                    offset: 0,
+                    orderBy: '$where',
+                    sortDirection: 'asc',
+                    properties: ['title', '', '$gt', 'study.study_id'],
+                    dataCommonsDisplayName: 'CDS',
+                },
+                context
+            );
+
+            expect(MongoPagination).toHaveBeenCalledWith(10, 0, undefined, 'asc');
+
+            const pagePipeline = mockReleaseDAO.aggregate.mock.calls[0][0];
+            expect(pagePipeline.filter((stage) => stage.$sort)).toEqual([]);
+            expect(pagePipeline.filter((stage) => stage.$project?._id === 0)).toEqual([{
+                $project: {
+                    _id: 0,
+                    title: 1,
+                    study_DOT_study_id: 1,
+                },
+            }]);
+            assertNoDottedAggregationFieldNames(pagePipeline);
         });
     });
 });
