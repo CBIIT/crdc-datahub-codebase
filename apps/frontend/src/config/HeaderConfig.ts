@@ -3,12 +3,15 @@ import LogoSmall from "@/assets/header/Portal_Logo_Small.svg";
 import usaFlagSmall from "@/assets/header/us_flag_small.svg";
 import { getCRDCBaseUrl } from "@/utils";
 
-import { DataCommons } from "./DataCommons";
-
 const CRDC_BASE_URL = getCRDCBaseUrl();
 export const SubmissionRequestInstructionsLink = `${CRDC_BASE_URL}submission-request-instructions`;
 export const DataSubmissionInstructionsLink = `${CRDC_BASE_URL}data-submission-instructions`;
 export const DataExplorerInstructionsLink = `${CRDC_BASE_URL}data-explorer-instructions`;
+
+/**
+ * The ID of the Model Navigator navigation item.
+ */
+export const MODEL_NAVIGATOR_NAV_ID = "navbar-dropdown-model-navigator";
 
 // globalHeaderLogo image 468x100
 // globalHeaderImage: image 2200x100
@@ -89,16 +92,9 @@ export const HeaderLinks = [
   {
     name: "Model Navigator",
     link: "#",
-    id: "navbar-dropdown-model-navigator",
+    id: MODEL_NAVIGATOR_NAV_ID,
     className: "navMobileItem clickable",
-    columns: DataCommons.map((dc) => [
-      {
-        id: `model-navigator-${dc.name}`,
-        name: `${dc.displayName}${dc.displayName.indexOf("Model") === -1 ? " Model" : ""}`,
-        link: `/model-navigator/${dc.displayName}/latest`,
-        className: "navMobileSubItem",
-      },
-    ]),
+    columns: [] as NavBarSubItem[][],
   },
 
   {

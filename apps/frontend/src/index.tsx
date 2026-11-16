@@ -6,6 +6,7 @@ import App from "./App";
 import client from "./client";
 import { AnalyticsProvider } from "./components/Contexts/AnalyticsContext";
 import { AuthProvider } from "./components/Contexts/AuthContext";
+import { DataModelsProvider } from "./components/Contexts/DataModelsContext";
 import env from "./env";
 
 if (env.VITE_DEV_TIER === "dev" || env.VITE_DEV_TIER === "dev2") {
@@ -19,7 +20,9 @@ root.render(
     <ApolloProvider client={client}>
       <AuthProvider>
         <AnalyticsProvider GA_MEASUREMENT_ID={env.VITE_GA_TRACKING_ID}>
-          <App />
+          <DataModelsProvider>
+            <App />
+          </DataModelsProvider>
         </AnalyticsProvider>
       </AuthProvider>
     </ApolloProvider>

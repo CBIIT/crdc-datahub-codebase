@@ -1,10 +1,11 @@
 import { useQuery } from "@apollo/client";
 import { LoadingButton } from "@mui/lab";
 import { Box, DialogProps, MenuItem, styled, Typography } from "@mui/material";
-import React, { CSSProperties, FC, useEffect, useState } from "react";
+import React, { CSSProperties, FC, useEffect, useMemo } from "react";
 import { Controller, SubmitHandler, useForm } from "react-hook-form";
 
 import CloseIconSvg from "@/assets/icons/close_icon.svg?react";
+import { useDataModels } from "@/components/Contexts/DataModelsContext";
 import { useSubmissionContext } from "@/components/Contexts/SubmissionContext";
 import DefaultDialog from "@/components/StyledDialogComponents/StyledDialog";
 import DefaultDialogActions from "@/components/StyledDialogComponents/StyledDialogActions";
@@ -22,7 +23,7 @@ import {
   LIST_POTENTIAL_COLLABORATORS,
   UpdateSubmissionInfoInput,
 } from "@/graphql";
-import { listAvailableModelVersions, Logger } from "@/utils";
+import { Logger } from "@/utils";
 
 const StyledDialog = styled(DefaultDialog)({
   "& .MuiDialog-paper": {
@@ -101,6 +102,7 @@ type Props = {
  */
 const FormDialog: FC<Props> = ({ onSubmitForm, onClose, ...rest }) => {
   const { data } = useSubmissionContext();
+  const { models } = useDataModels();
   const { _id, dataCommons, modelVersion, submitterName, submitterID } = data?.getSubmission || {};
 
   const { handleSubmit, reset, control, formState } = useForm<InputForm>({
@@ -125,22 +127,15 @@ const FormDialog: FC<Props> = ({ onSubmitForm, onClose, ...rest }) => {
     },
   });
 
-  const [versions, setVersions] = useState<string[]>([]);
+  const versions = useMemo<string[]>(() => {
+    const model = models.find((m) => m.name === dataCommons);
+    return Array.isArray(model?.assets?.versions) ? model.assets.versions : [];
+  }, [models, dataCommons]);
 
   const onSubmit: SubmitHandler<InputForm> = async (form: InputForm) => {
     await onSubmitForm(form);
     onClose();
   };
-
-  useEffect(() => {
-    if (!rest?.open) {
-      return;
-    }
-
-    listAvailableModelVersions(dataCommons).then((versions) => {
-      setVersions(versions);
-    });
-  }, [dataCommons, rest?.open]);
 
   useEffect(() => {
     if (!submitterID || !modelVersion) {

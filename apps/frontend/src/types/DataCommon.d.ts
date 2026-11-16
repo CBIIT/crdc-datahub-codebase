@@ -13,15 +13,20 @@ type DataCommon = {
   name: string;
   /**
    * The display name for the Data Common. This must be used visually in the UI.
+   *
+   * @see {@link ManifestAssets["display-name"]} for the source of this value.
    */
   displayName: string;
   /**
-   * The relevant assets needed for Model Navigator.
+   * Indicates whether the Data Common is hidden from the UI.
    *
-   * This is only loaded when first needed, and is not part of the initial object
-   * stored in the configuration.
+   * @see {@link ManifestAssets.isHidden} for the source of this value.
    */
-  assets: ManifestAssets | null;
+  isHidden: boolean;
+  /**
+   * The full content manifest entry for the Data Common.
+   */
+  assets: ManifestAssets;
 };
 
 /**
@@ -44,6 +49,27 @@ type DataModelManifest = {
  * Imported dynamically from a CRDC Hub maintained repository.
  */
 type ManifestAssets = {
+  /**
+   * The human-readable name of the Data Model.
+   *
+   * @example "GC"
+   * @since 3.7.2
+   */
+  "display-name"?: string;
+  /**
+   * Whether the Data Model is hidden from the UI.
+   * If not present, the Data Model is visible.
+   *
+   * @since 3.7.2
+   */
+  isHidden?: boolean;
+  /**
+   * The numeric sort order of the Data Model (ascending).
+   * Data Models without an order are sorted last.
+   *
+   * @since 3.7.2
+   */
+  order?: number;
   /**
    * An array of strings with an arbitrary length containing the
    * Data Model file names.

@@ -6,6 +6,8 @@ import { FC } from "react";
 import { approvedStudyFactory } from "@/factories/approved-study/ApprovedStudyFactory";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
+import { dataCommonFactory } from "@/factories/data-common/DataCommonFactory";
+import { dataModelsCtxStateFactory } from "@/factories/data-common/DataModelsCtxStateFactory";
 
 import {
   CREATE_SUBMISSION,
@@ -17,6 +19,7 @@ import {
 } from "../../graphql";
 import { TestRouter, render, waitFor, within } from "../../test-utils";
 import { Context as AuthCtx, ContextState as AuthCtxState } from "../Contexts/AuthContext";
+import { DataModelsContext, DataModelsCtxState } from "../Contexts/DataModelsContext";
 
 import CreateDataSubmissionDialog from "./CreateDataSubmissionDialog";
 
@@ -122,21 +125,31 @@ const createSubmissionMocks: MockedResponse<CreateSubmissionResp>[] = [
   },
 ];
 
+const mockDataModels: DataCommon[] = [
+  dataCommonFactory.build({ name: "CDS", displayName: "GC" }),
+  dataCommonFactory.build({ name: "ICDC", displayName: "ICDC" }),
+  dataCommonFactory.build({ name: "CCDI", displayName: "Hidden CCDI", isHidden: true }),
+];
+
 type ParentProps = {
   mocks?: MockedResponse[];
   authCtxState?: AuthCtxState;
+  dataModelsCtxState?: DataModelsCtxState;
   children: React.ReactNode;
 };
 
 const TestParent: FC<ParentProps> = ({
   authCtxState = authCtxStateFactory.build(),
+  dataModelsCtxState = dataModelsCtxStateFactory.build({ models: mockDataModels }),
   mocks = [...createSubmissionMocks],
   children,
 }) => (
   <AuthCtx.Provider value={authCtxState}>
-    <MockedProvider mocks={mocks} addTypename={false}>
-      <TestRouter>{children}</TestRouter>
-    </MockedProvider>
+    <DataModelsContext.Provider value={dataModelsCtxState}>
+      <MockedProvider mocks={mocks} addTypename={false}>
+        <TestRouter>{children}</TestRouter>
+      </MockedProvider>
+    </DataModelsContext.Provider>
   </AuthCtx.Provider>
 );
 
@@ -984,6 +997,53 @@ describe("Basic Functionality", () => {
       expect(errorMessages).toHaveLength(2);
     });
   });
+
+  it("should disable the Data Commons input while the Data Models are loading", async () => {
+    const { getByRole, findByTestId } = render(
+      <TestParent
+        authCtxState={authCtxStateFactory.build({
+          user: userFactory.build({ role: "Submitter", permissions: basePermissions }),
+        })}
+        dataModelsCtxState={dataModelsCtxStateFactory.build({ status: "LOADING" })}
+      >
+        <CreateDataSubmissionDialog onCreate={handleCreate} />
+      </TestParent>
+    );
+
+    const openDialogButton = getByRole("button", { name: "Create a Data Submission" });
+    await waitFor(() => expect(openDialogButton).toBeEnabled());
+    userEvent.click(openDialogButton);
+
+    const dataCommonsInput = await findByTestId("create-data-submission-dialog-data-commons-input");
+
+    expect(within(dataCommonsInput).getByRole("button")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("should not list any options when no Data Models are available", async () => {
+    const { getByRole, findByTestId } = render(
+      <TestParent
+        authCtxState={authCtxStateFactory.build({
+          user: userFactory.build({ role: "Submitter", permissions: basePermissions }),
+        })}
+        dataModelsCtxState={dataModelsCtxStateFactory.build({ status: "LOADED", models: [] })}
+      >
+        <CreateDataSubmissionDialog onCreate={handleCreate} />
+      </TestParent>
+    );
+
+    const openDialogButton = getByRole("button", { name: "Create a Data Submission" });
+    await waitFor(() => expect(openDialogButton).toBeEnabled());
+    userEvent.click(openDialogButton);
+
+    const dataCommonsInput = await findByTestId("create-data-submission-dialog-data-commons-input");
+    const selectButton = within(dataCommonsInput).getByRole("button");
+    expect(selectButton).not.toHaveAttribute("aria-disabled");
+
+    userEvent.click(selectButton);
+    await waitFor(() => expect(selectButton).toHaveAttribute("aria-expanded", "true"));
+
+    expect(within(dataCommonsInput).queryAllByRole("option", { hidden: true })).toHaveLength(0);
+  });
 });
 
 describe("Implementation Requirements", () => {
@@ -1737,5 +1797,31 @@ describe("Implementation Requirements", () => {
     const nameWrapper = getByTestId("create-data-submission-dialog-submission-name-input");
     const nameInput = within(nameWrapper).getByRole("textbox");
     expect(nameInput).toHaveValue("");
+  });
+  it("should only list the visible Data Models by display name, in order", async () => {
+    const { getByRole, findByTestId } = render(
+      <TestParent
+        authCtxState={authCtxStateFactory.build({
+          user: userFactory.build({ role: "Submitter", permissions: basePermissions }),
+        })}
+      >
+        <CreateDataSubmissionDialog onCreate={vi.fn()} />
+      </TestParent>
+    );
+
+    const openDialogButton = getByRole("button", { name: "Create a Data Submission" });
+    await waitFor(() => expect(openDialogButton).toBeEnabled());
+    userEvent.click(openDialogButton);
+
+    const dataCommonsInput = await findByTestId("create-data-submission-dialog-data-commons-input");
+
+    const selectButton = within(dataCommonsInput).getByRole("button");
+    userEvent.click(selectButton);
+    await waitFor(() => expect(selectButton).toHaveAttribute("aria-expanded", "true"));
+
+    const options = within(dataCommonsInput).getAllByRole("option", { hidden: true });
+    expect(options.map((o) => o.textContent)).toEqual(["GC", "ICDC"]);
+    expect(options.map((o) => o.getAttribute("data-value"))).toEqual(["CDS", "ICDC"]);
+    expect(within(dataCommonsInput).queryByText("Hidden CCDI")).not.toBeInTheDocument();
   });
 });

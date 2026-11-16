@@ -2,7 +2,6 @@ import { MockedResponse } from "@apollo/client/testing";
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
-import { DataCommons } from "../../config/DataCommons";
 import {
   DOWNLOAD_DB_GAP_SHEET,
   DownloadDbGaPSheetInput,
@@ -46,13 +45,13 @@ const meta: Meta<CustomStoryProps> = {
   component: Button,
   args: {
     submissionId: "mock-submission-id",
-    dataCommons: DataCommons[0].name,
+    dataCommons: "CDS",
   },
   argTypes: {
     dataCommons: {
       description: "The data commons associated with the submission",
       control: "select",
-      options: DataCommons.map((dc) => dc.name),
+      options: ["CDS", "CCDI", "CTDC", "ICDC", "PSDC", "SDM"],
     },
   },
   beforeEach: () => {

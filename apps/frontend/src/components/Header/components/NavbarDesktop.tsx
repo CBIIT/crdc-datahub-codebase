@@ -4,12 +4,13 @@ import { useSnackbar } from "notistack";
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { NavLink, Link, useNavigate, useLocation } from "react-router-dom";
 
-import { hasPermission, Permissions } from "../../../config/AuthPermissions";
-import { ActionHandlers, ActionId, HeaderLinks } from "../../../config/HeaderConfig";
-import { Logger } from "../../../utils";
-import APITokenDialog from "../../APITokenDialog";
-import { useAuthContext } from "../../Contexts/AuthContext";
-import UploaderToolDialog from "../../UploaderToolDialog";
+import APITokenDialog from "@/components/APITokenDialog";
+import { useAuthContext } from "@/components/Contexts/AuthContext";
+import UploaderToolDialog from "@/components/UploaderToolDialog";
+import { hasPermission, Permissions } from "@/config/AuthPermissions";
+import { ActionHandlers, ActionId } from "@/config/HeaderConfig";
+import useHeaderLinks from "@/hooks/useHeaderLinks";
+import { Logger } from "@/utils";
 
 import NavbarDesktopDropdown from "./NavbarDesktopDropdown";
 
@@ -252,6 +253,7 @@ const useOutsideAlerter = (ref1: React.RefObject<HTMLDivElement>) => {
 
 const NavBar = () => {
   const { isLoggedIn, user, logout } = useAuthContext();
+  const headerLinks = useHeaderLinks();
   const navigate = useNavigate();
   const location = useLocation();
   const { enqueueSnackbar } = useSnackbar();
@@ -262,7 +264,7 @@ const NavBar = () => {
   const [restorePath, setRestorePath] = useState<string>(null);
   const dropdownSelection = useRef<HTMLDivElement>(null);
 
-  const clickableObject = HeaderLinks.filter(
+  const clickableObject = headerLinks.filter(
     (item) => item.className === "navMobileItem clickable"
   );
   const clickableTitle = clickableObject.map((item) => item.name) as string[];
@@ -321,7 +323,7 @@ const NavBar = () => {
     if (item.className === "navMobileItem") {
       return correctPath === item.link;
     }
-    const tab = HeaderLinks.find((link) => link.name === linkName);
+    const tab = headerLinks.find((link) => link.name === linkName);
     if (!tab) {
       return false;
     }
@@ -376,8 +378,8 @@ const NavBar = () => {
   }, [location]);
 
   const headerLinksWithoutUser = useMemo(
-    () => HeaderLinks.filter((headerLinks) => headerLinks.name !== "User"),
-    [HeaderLinks]
+    () => headerLinks.filter((headerLinks) => headerLinks.name !== "User"),
+    [headerLinks]
   );
 
   return (

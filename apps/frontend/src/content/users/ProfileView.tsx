@@ -25,6 +25,7 @@ import bannerSvg from "../../assets/banner/profile_banner.png";
 import profileIcon from "../../assets/icons/profile_icon.svg?url";
 import AccessRequest from "../../components/AccessRequest";
 import { useAuthContext, Status as AuthStatus } from "../../components/Contexts/AuthContext";
+import { useDataModels } from "../../components/Contexts/DataModelsContext";
 import { useSearchParamsContext } from "../../components/Contexts/SearchParamsContext";
 import DeleteDialog from "../../components/DeleteDialog";
 import PermissionPanel from "../../components/PermissionPanel";
@@ -37,7 +38,6 @@ import BaseOutlinedInput from "../../components/StyledFormComponents/StyledOutli
 import BaseSelect from "../../components/StyledFormComponents/StyledSelect";
 import SuspenseLoader from "../../components/SuspenseLoader";
 import { Roles } from "../../config/AuthRoles";
-import { DataCommons } from "../../config/DataCommons";
 import {
   EDIT_USER,
   EditUserInput,
@@ -210,6 +210,7 @@ const ProfileView: FC<Props> = ({ _id, viewType }: Props) => {
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const { user: currentUser, setData, logout, status: authStatus } = useAuthContext();
+  const { visibleModels } = useDataModels();
   const { lastSearchParams } = useSearchParamsContext();
   const methods = useForm<FormInput>();
 
@@ -712,7 +713,7 @@ const ProfileView: FC<Props> = ({ _id, viewType }: Props) => {
                           required
                           multiple
                         >
-                          {DataCommons.map((dc) => (
+                          {visibleModels.map((dc) => (
                             <MenuItem key={dc.name} value={dc.name}>
                               {dc.displayName}
                             </MenuItem>

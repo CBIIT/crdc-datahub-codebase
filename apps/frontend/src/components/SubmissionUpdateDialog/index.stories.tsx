@@ -5,6 +5,9 @@ import { fn, userEvent, within, screen } from "@storybook/test";
 import EditIconSvg from "@/assets/icons/pencil_icon.svg?react";
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
+import { dataCommonFactory } from "@/factories/data-common/DataCommonFactory";
+import { dataModelsCtxStateFactory } from "@/factories/data-common/DataModelsCtxStateFactory";
+import { manifestAssetsFactory } from "@/factories/data-common/ManifestAssetsFactory";
 import { submissionCtxStateFactory } from "@/factories/submission/SubmissionContextFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
 
@@ -18,6 +21,7 @@ import {
   UpdateSubmissionInfoResp,
 } from "../../graphql";
 import { Context as AuthContext } from "../Contexts/AuthContext";
+import { DataModelsContext } from "../Contexts/DataModelsContext";
 import { SubmissionContext, SubmissionCtxStatus } from "../Contexts/SubmissionContext";
 
 import Button from "./index";
@@ -97,19 +101,22 @@ const meta: Meta<CustomStoryProps> = {
         <Story />
       </SubmissionContext.Provider>
     ),
-    (Story) => {
-      sessionStorage.setItem(
-        "manifest",
-        JSON.stringify({
-          [mockDC]: {
-            "model-files": [],
-            versions: ["6.1.2", "5.0.4", "3.0.0", "1.9.2"],
-          },
-        })
-      );
-
-      return <Story />;
-    },
+    (Story) => (
+      <DataModelsContext.Provider
+        value={dataModelsCtxStateFactory.build({
+          models: [
+            dataCommonFactory.build({
+              name: mockDC,
+              assets: manifestAssetsFactory.build({
+                versions: ["6.1.2", "5.0.4", "3.0.0", "1.9.2"],
+              }),
+            }),
+          ],
+        })}
+      >
+        <Story />
+      </DataModelsContext.Provider>
+    ),
   ],
 } satisfies Meta<CustomStoryProps>;
 

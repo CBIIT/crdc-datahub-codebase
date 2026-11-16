@@ -7,6 +7,7 @@ import { SnackbarProvider } from "notistack";
 import { withThemeFromJSXProvider } from "@storybook/addon-themes";
 import theme from "../src/theme";
 import StyledNotistackAlerts from "../src/components/StyledNotistackAlerts";
+import { DataModelsProvider } from "../src/components/Contexts/DataModelsContext";
 
 const preview: Preview = {
   parameters: {
@@ -24,6 +25,11 @@ const preview: Preview = {
 };
 
 export const decorators: Decorator[] = [
+  (Story) => (
+    <DataModelsProvider>
+      <Story />
+    </DataModelsProvider>
+  ),
   withThemeFromJSXProvider({
     themes: {
       default: theme,

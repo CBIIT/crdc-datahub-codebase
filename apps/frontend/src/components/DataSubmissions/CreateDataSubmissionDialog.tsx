@@ -14,11 +14,13 @@ import {
 import { FC, useEffect, useMemo, useState } from "react";
 import { Controller, SubmitHandler, useForm } from "react-hook-form";
 
+import { Status as AuthStatus, useAuthContext } from "@/components/Contexts/AuthContext";
+import { useDataModels } from "@/components/Contexts/DataModelsContext";
+
 import CloseIconSvg from "../../assets/icons/close_icon.svg?react";
 import BellIcon from "../../assets/icons/filled_bell_icon.svg?react";
 import { hasPermission } from "../../config/AuthPermissions";
 import { RequiresStudiesAssigned } from "../../config/AuthRoles";
-import { DataCommons } from "../../config/DataCommons";
 import {
   CREATE_SUBMISSION,
   CreateSubmissionResp,
@@ -28,7 +30,6 @@ import {
   LIST_APPROVED_STUDIES,
 } from "../../graphql";
 import { Logger, formatFullStudyName, validateEmoji } from "../../utils";
-import { Status as AuthStatus, useAuthContext } from "../Contexts/AuthContext";
 import StyledAsterisk from "../StyledFormComponents/StyledAsterisk";
 import BaseStyledHelperText from "../StyledFormComponents/StyledHelperText";
 import StyledLabel from "../StyledFormComponents/StyledLabel";
@@ -213,6 +214,7 @@ type Props = {
 
 const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
   const { user, status: authStatus } = useAuthContext();
+  const { status: dataModelsStatus, visibleModels } = useDataModels();
   const {
     handleSubmit,
     register,
@@ -498,8 +500,9 @@ const CreateDataSubmissionDialog: FC<Props> = ({ onCreate }) => {
                     aria-describedby="submission-data-commons-helper-text"
                     inputProps={{ "aria-labelledby": "dataCommons", id: "dataCommons" }}
                     data-testid="create-data-submission-dialog-data-commons-input"
+                    disabled={dataModelsStatus === "LOADING"}
                   >
-                    {DataCommons.map((dc) => (
+                    {visibleModels.map((dc) => (
                       <MenuItem key={dc.name} value={dc.name}>
                         {dc.displayName}
                       </MenuItem>

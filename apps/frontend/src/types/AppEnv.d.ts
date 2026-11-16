@@ -67,13 +67,6 @@ type AppEnv = {
    */
   VITE_FE_VERSION: string;
   /**
-   * A CSV string of Data Commons to hide from the UI
-   *
-   * @note Can be a string of 0 or more Data Commons
-   * @since 3.1.0
-   */
-  VITE_HIDDEN_MODELS: string;
-  /**
    * Knowledge Base URL
    */
   VITE_CHATBOT_API_BASE_URL: string;

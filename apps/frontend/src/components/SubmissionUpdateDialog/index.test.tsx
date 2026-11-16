@@ -6,6 +6,9 @@ import { axe } from "vitest-axe";
 
 import { authCtxStateFactory } from "@/factories/auth/AuthCtxStateFactory";
 import { userFactory } from "@/factories/auth/UserFactory";
+import { dataCommonFactory } from "@/factories/data-common/DataCommonFactory";
+import { dataModelsCtxStateFactory } from "@/factories/data-common/DataModelsCtxStateFactory";
+import { manifestAssetsFactory } from "@/factories/data-common/ManifestAssetsFactory";
 import { submissionAttributesFactory } from "@/factories/submission/SubmissionAttributesFactory";
 import { submissionFactory } from "@/factories/submission/SubmissionFactory";
 
@@ -20,6 +23,7 @@ import {
 } from "../../graphql";
 import { render, waitFor, within } from "../../test-utils";
 import { Context as AuthContext, ContextState as AuthCtxState } from "../Contexts/AuthContext";
+import { DataModelsContext } from "../Contexts/DataModelsContext";
 import {
   SubmissionContext,
   SubmissionCtxState,
@@ -28,13 +32,12 @@ import {
 
 import SubmissionUpdate from "./index";
 
-const mockListAvailableModelVersions = vi.fn();
-vi.mock("../../utils", async () => ({
-  ...(await vi.importActual("../../utils")),
-  listAvailableModelVersions: async (...args) => mockListAvailableModelVersions(...args),
-}));
-
 const mockDC = "MOCK-DC";
+
+/**
+ * The model versions available for the mock Data Model
+ */
+let mockVersions: string[] = [];
 
 const MockParent: FC<{
   mocks?: MockedResponse[];
@@ -49,6 +52,19 @@ const MockParent: FC<{
         user: userFactory.build({ _id: "current-user", ...user }),
       }),
     [user]
+  );
+
+  const dataModelsState = useMemo(
+    () =>
+      dataModelsCtxStateFactory.build({
+        models: [
+          dataCommonFactory.build({
+            name: mockDC,
+            assets: manifestAssetsFactory.build({ versions: mockVersions }),
+          }),
+        ],
+      }),
+    []
   );
 
   const submissionContextState = useMemo<SubmissionCtxState>(
@@ -72,17 +88,18 @@ const MockParent: FC<{
   return (
     <MockedProvider mocks={mocks} addTypename={false}>
       <AuthContext.Provider value={authCtxState}>
-        <SubmissionContext.Provider value={submissionContextState}>
-          {children}
-        </SubmissionContext.Provider>
+        <DataModelsContext.Provider value={dataModelsState}>
+          <SubmissionContext.Provider value={submissionContextState}>
+            {children}
+          </SubmissionContext.Provider>
+        </DataModelsContext.Provider>
       </AuthContext.Provider>
     </MockedProvider>
   );
 };
 
 beforeEach(() => {
-  mockListAvailableModelVersions.mockReset();
-  sessionStorage.clear();
+  mockVersions = [];
 });
 
 describe("Accessibility", () => {
@@ -151,7 +168,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should show a snackbar when the change operation fails (GraphQL Error)", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const mock: MockedResponse<UpdateSubmissionInfoResp, UpdateSubmissionInfoInput> = {
       request: {
@@ -196,7 +213,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should show a snackbar when the change operation fails (Network Error)", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const mock: MockedResponse<UpdateSubmissionInfoResp, UpdateSubmissionInfoInput> = {
       request: {
@@ -239,7 +256,7 @@ describe("Basic Functionality", () => {
   });
 
   it("should show a snackbar when the change operation fails (API Error)", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const mock: MockedResponse<UpdateSubmissionInfoResp, UpdateSubmissionInfoInput> = {
       request: {
@@ -332,7 +349,7 @@ describe("Implementation Requirements", () => {
   });
 
   it("should update the local cache state when the model version is changed", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const mockUpdateQuery = vi.fn();
 
@@ -385,7 +402,7 @@ describe("Implementation Requirements", () => {
   });
 
   it("should reset validation results only if the model version is changed", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0", "2.0.0"]);
+    mockVersions = ["1.0.0", "2.0.0"];
 
     const prevState: GetSubmissionResp = {
       getSubmission: submissionFactory.build({
@@ -490,7 +507,7 @@ describe("Implementation Requirements", () => {
   });
 
   it("should change the submitter only if it changed", async () => {
-    mockListAvailableModelVersions.mockImplementationOnce(() => ["1.0.0"]);
+    mockVersions = ["1.0.0"];
 
     const prevState: GetSubmissionResp = {
       getSubmission: submissionFactory.build({
