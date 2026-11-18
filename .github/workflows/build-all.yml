@@ -34,8 +34,8 @@ jobs:
   # ──────────────────────────────────────────────
   prepare:
     name: Prepare Image Tag
-    #runs-on: ubuntu-latest
-    runs-on: ec2-al2023-s-nonprod
+    runs-on: ubuntu-latest
+    #runs-on: ec2-al2023-s-nonprod
     outputs:
       image_tag: ${{ steps.set_tag.outputs.image_tag }}
     steps:
@@ -82,8 +82,8 @@ jobs:
   # ──────────────────────────────────────────────
   build:
     name: Build, Scan and Push - ${{ matrix.name }}
-    #runs-on: ubuntu-latest
-    runs-on: ec2-al2023-s-nonprod 
+    runs-on: ubuntu-latest
+    #runs-on: ec2-al2023-s-nonprod 
     needs: prepare
     environment: ${{ inputs.environment }}
     env:
@@ -297,9 +297,10 @@ jobs:
   # ──────────────────────────────────────────────
   twistlock_scan:
     name: Twistlock Scan - ${{ matrix.name }}
-    runs-on:
-      group: cbiit-global-runners
-      labels: [nonprod-org-runner]
+    runs-on: ec2-al2023-s-nonprod 
+    #runs-on:
+      #group: cbiit-global-runners
+      #labels: [nonprod-org-runner]
     needs: [prepare, build]
     if: needs.build.result == 'success' && inputs.twistlock_scan == true
     environment: ${{ inputs.environment }}
