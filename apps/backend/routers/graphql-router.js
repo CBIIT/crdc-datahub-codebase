@@ -111,7 +111,7 @@ dbConnector.connect().then(async () => {
     const uploadingMonitor = UploadingMonitor.getInstance(batchService.batchDAO, configurationService);
 
     const tooltipService = new TooltipService();
-    const dataModelService = new DataModelService(fetchDataModelInfo, config.model_url);
+    const dataModelService = new DataModelService(fetchDataModelInfo, config.model_url, configurationService);
     const dataSyncService = new DataSyncService();
     const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
         programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,

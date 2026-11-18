@@ -5,6 +5,8 @@ const CLI_UPLOADER_VERSION = "CLI_UPLOADER_VERSION";
 const APPLICATION_FORM_VERSIONS = "APPLICATION_FORM_VERSIONS";
 const MAINTENANCE_MODE = "MAINTENANCE_MODE";
 const CHATBOT = "CHATBOT";
+const MODEL_CONTENT = "MODEL_CONTENT";
+const TIER = "TIER";
 const getOMBConfiguration = require("../dao/omb");
 const ERROR = require("../constants/error-constants");
 class ConfigurationService {
@@ -125,6 +127,55 @@ class ConfigurationService {
     async getCurrentCLIUploaderVersion() {
         const result = await this.configurationDAO.findByType(CLI_UPLOADER_VERSION);
         return (result) ? result?.current_version : null;
+    }
+
+    /**
+     * Returns the model content.json cache TTL in minutes from MODEL_CONTENT.
+     * Defaults to 1440 (24 hours) when ttl_minutes is missing.
+     * @returns {Promise<number>}
+     */
+    async getModelContentTTLMinutes() {
+        const result = await this.configurationDAO.findByType(MODEL_CONTENT);
+        return result?.keys?.ttl_minutes ?? 60 * 24;
+    }
+
+    /**
+     * Builds the model content.json URL from the tier, model content repo, and content path.
+     * Logs and returns null when any required configuration value is missing.
+     * @returns {Promise<string|null>}
+     */
+    async getModelContentURL() {
+        const tier = await this._getTier();
+        if (tier === null) {
+            console.error('Unable to read the tier from the configuration');
+            return null;
+        }
+        const repoURL = await this._getModelContentRepo();
+        if (repoURL === null) {
+            console.error('Unable to read the model content repo from the configuration');
+            return null;
+        }
+        const contentPath = await this._getContentPath();
+        if (contentPath === null) {
+            console.error('Unable to read the content path from the configuration');
+            return null;
+        }
+        return `${repoURL}/refs/heads/${tier}/${contentPath}`;
+    }
+
+    async _getTier() {
+        const result = await this.configurationDAO.findByType(TIER);
+        return result?.keys?.tier || null;
+    }
+
+    async _getModelContentRepo() {
+        const result = await this.configurationDAO.findByType(MODEL_CONTENT);
+        return result?.keys?.repo_url || null;
+    }
+
+    async _getContentPath() {
+        const result = await this.configurationDAO.findByType(MODEL_CONTENT);
+        return result?.keys?.content_path || null;
     }
 }
 

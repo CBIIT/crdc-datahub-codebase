@@ -7,9 +7,12 @@ const CURRENT_DEF_VERSION = 'current-version';
 const DEF_MODEL_FILES = 'model-files';
 
 class DataModelService {
-    constructor(dataModelInfo, modelUrl) {
+    constructor(dataModelInfo, modelUrl, configurationService) {
+        this.configurationService = configurationService;
         this.dataModelManifestInfo = dataModelInfo;
         this.modelDir = path.dirname(modelUrl);
+        this.hiddenDataModels = [];
+        this._refreshHiddenModels();
     }
 
     /**
@@ -87,6 +90,87 @@ class DataModelService {
 
         const fileContents = await Promise.all(dataModelHold);
         return new MDFReader(...fileContents);
+    }
+
+    async isModelHidden(modelName) {
+        await this._refreshHiddenModels();
+        return this.hiddenDataModels.includes(modelName);
+    }
+
+    async _refreshHiddenModels() {
+        const ttlMinutes = await this.configurationService.getModelContentTTLMinutes();
+        if (!this._isContentExpired(this.contentFetchDate, ttlMinutes)) {
+            return;
+        }
+        console.log('Refreshing hidden models');
+        const content = await this._fetchContent();
+        if (content === null) {
+            return;
+        }
+        this._updateHiddenModels(content);
+        this.contentFetchDate = new Date();
+        console.log('Hidden models refreshed');
+    }
+
+    async _fetchContent() {
+        const contentURL = await this.configurationService.getModelContentURL();
+        if (!contentURL) {
+            return null;
+        }
+        try {
+            const response = await fetch(contentURL);
+            if (!response?.ok) {
+                console.error(`Unable to fetch model content from ${contentURL}: ${response?.status}`);
+                return null;
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`Unable to fetch model content from ${contentURL}:`, error);
+            return null;
+        }
+    }
+
+    _updateHiddenModels(content) {
+        const hiddenDataModels = [];
+        for (const [modelName, model] of Object.entries(content ?? {})) {
+            if (model?.isHidden === true) {
+                hiddenDataModels.push(modelName);
+            }
+        }
+        this.hiddenDataModels = hiddenDataModels;
+    }
+
+    _isContentExpired(contentFetchDate, ttlMinutes) {
+        try {
+            if (!(contentFetchDate instanceof Date)) {
+                throw new TypeError('Invalid contentFetchDate');
+            }
+            const ageMs = Date.now() - contentFetchDate.getTime();
+            if (!Number.isFinite(ageMs)) {
+                throw new TypeError('Invalid contentFetchDate');
+            }
+            if (typeof ttlMinutes !== 'number' || !Number.isFinite(ttlMinutes)) {
+                throw new TypeError('Invalid ttlMinutes');
+            }
+            const ttlMs = ttlMinutes * 60 * 1000;
+            if (ageMs < ttlMs) {
+                return false;
+            }
+        } catch {
+            let fetchDateIsValid = false;
+            try {
+                fetchDateIsValid = contentFetchDate instanceof Date && Number.isFinite(contentFetchDate.getTime());
+            } catch {
+                fetchDateIsValid = false;
+            }
+            if (!fetchDateIsValid) {
+                console.warn('Invalid contentFetchDate; treating cached content as expired:', contentFetchDate);
+            }
+            if (typeof ttlMinutes !== 'number' || !Number.isFinite(ttlMinutes)) {
+                console.warn('Invalid ttlMinutes; treating cached content as expired:', ttlMinutes);
+            }
+        }
+        return true;
     }
 }
 
