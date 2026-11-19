@@ -1,6 +1,58 @@
 const DataModelService = require('../../services/data-model-service');
 const { ConfigurationService } = require('../../services/configurationService');
 
+const VALID_EXAMPLE = {
+    TTL_MINUTES: 60 * 12,
+    MODEL_CONTENT: {
+        model1: {
+            isHidden: true
+        },
+        model2: {
+            isHidden: false
+        },
+        model3: {
+            isHidden: true
+        }
+    },
+    HIDDEN_MODELS: ['model1', 'model3'],
+    CONTENT_URL: 'https://raw.githubusercontent.com/CBIIT/crdc-datahub-models/refs/heads/dev2/cache/content.json'
+};
+
+function createService() {
+    return new DataModelService('test-model', 'test-url', new ConfigurationService());
+}
+
+afterEach(() => {
+    jest.restoreAllMocks();
+});
+
+describe('DataModelService constructor', () => {
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    const testCases = [
+        {
+            name: 'should not refresh hidden models when constructed without a configuration service',
+            createConfigurationService: () => undefined,
+        },
+        {
+            name: 'should not refresh hidden models when the configuration service rejects',
+            createConfigurationService: () => ({
+                getModelContentTTLMinutes: jest.fn().mockRejectedValue(new Error('db error')),
+                getModelContentURL: jest.fn().mockRejectedValue(new Error('db error')),
+            }),
+        },
+    ];
+
+    it.each(testCases)('$name', ({ createConfigurationService }) => {
+        const refreshSpy = jest.spyOn(DataModelService.prototype, 'refreshHiddenModels');
+        const service = new DataModelService("test-model", "test-url", createConfigurationService());
+        expect(refreshSpy).not.toHaveBeenCalled();
+        expect(service.hiddenDataModels).toEqual([]);
+        expect(service.lastTTLMinutes).toBeUndefined();
+    });
+});
 
 describe('DataModelService.isModelHidden', () => {
     let service;
@@ -9,7 +61,7 @@ describe('DataModelService.isModelHidden', () => {
     beforeEach(() => {
         configurationService = new ConfigurationService();
         service = new DataModelService("test-model", "test-url", configurationService);
-        jest.spyOn(service, '_refreshHiddenModels').mockResolvedValue();
+        jest.spyOn(service, 'refreshHiddenModels').mockResolvedValue();
     });
 
     const testCases = [
@@ -34,202 +86,243 @@ describe('DataModelService.isModelHidden', () => {
     it.each(testCases)('$name', async ({ modelName, expectedResponse, setup }) => {
         await setup();
         expect(await service.isModelHidden(modelName)).toBe(expectedResponse);
-        expect(service._refreshHiddenModels).toHaveBeenCalled();
+        expect(service.refreshHiddenModels).toHaveBeenCalled();
     });
 
 });
 
-describe('DataModelService._refreshHiddenModels', () => {
+describe('DataModelService.refreshHiddenModels when the content is not expired', () => {
     let service;
-    let configurationService;
 
     beforeEach(() => {
-        configurationService = new ConfigurationService();
-        service = new DataModelService("test-model", "test-url", configurationService);
+        service = createService();
     });
 
-    const ttlMinutes = 60 * 24;
-    const content = {
-        model1: {
-            isHidden: true
-        },
-        model2: {
-            isHidden: false
-        },
-        model3: {
-            isHidden: true
-        }
-    };
-    const hiddenModels = ['model1', 'model3'];
+    it('should read the TTL and not fetch content', async () => {
+        const cachedDate = new Date(Date.now() - 1000);
+        service.contentFetchDate = cachedDate;
+        service.lastTTLMinutes = 60;
+        service.hiddenDataModels = ['cached-model'];
+        jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(VALID_EXAMPLE.TTL_MINUTES);
+        jest.spyOn(service, '_isContentExpired').mockReturnValue(false);
+        jest.spyOn(service, '_fetchContent');
+
+        await service.refreshHiddenModels();
+
+        expect(service.configurationService.getModelContentTTLMinutes).toHaveBeenCalledWith(60);
+        expect(service._isContentExpired).toHaveBeenCalledWith(cachedDate, VALID_EXAMPLE.TTL_MINUTES);
+        expect(service._fetchContent).not.toHaveBeenCalled();
+        expect(service.hiddenDataModels).toEqual(['cached-model']);
+        expect(service.lastTTLMinutes).toBe(VALID_EXAMPLE.TTL_MINUTES);
+    });
+});
+
+describe('DataModelService.refreshHiddenModels when the content is expired', () => {
+    let service;
+
+    beforeEach(() => {
+        service = createService();
+    });
+
+    it('should refresh the hidden models list', async () => {
+        const priorFetchDate = new Date(Date.now() - VALID_EXAMPLE.TTL_MINUTES * 60 * 1000 - 1);
+        service.contentFetchDate = priorFetchDate;
+        service.lastTTLMinutes = 60;
+        jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(VALID_EXAMPLE.TTL_MINUTES);
+        jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
+        jest.spyOn(service, '_fetchContent').mockResolvedValue(VALID_EXAMPLE.MODEL_CONTENT);
+        jest.spyOn(service, '_updateHiddenModels').mockImplementation(() => {
+            service.hiddenDataModels = VALID_EXAMPLE.HIDDEN_MODELS;
+        });
+
+        await service.refreshHiddenModels();
+
+        expect(service.configurationService.getModelContentTTLMinutes).toHaveBeenCalledWith(60);
+        expect(service._isContentExpired).toHaveBeenCalledWith(priorFetchDate, VALID_EXAMPLE.TTL_MINUTES);
+        expect(service._fetchContent).toHaveBeenCalled();
+        expect(service._updateHiddenModels).toHaveBeenCalledWith(VALID_EXAMPLE.MODEL_CONTENT);
+        expect(service.contentFetchDate).toBeInstanceOf(Date);
+        expect(service.contentFetchDate.getTime()).toBeGreaterThan(priorFetchDate.getTime());
+        expect(service.hiddenDataModels).toEqual(VALID_EXAMPLE.HIDDEN_MODELS);
+        expect(service.lastTTLMinutes).toBe(VALID_EXAMPLE.TTL_MINUTES);
+    });
+});
+
+describe('DataModelService.refreshHiddenModels when the content fetch returns null', () => {
+    let service;
+
+    beforeEach(() => {
+        service = createService();
+    });
+
+    it('should preserve the hidden models', async () => {
+        const priorFetchDate = new Date(Date.now() - VALID_EXAMPLE.TTL_MINUTES * 60 * 1000 - 1);
+        service.contentFetchDate = priorFetchDate;
+        service.lastTTLMinutes = 60;
+        service.hiddenDataModels = ['model1'];
+        jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(VALID_EXAMPLE.TTL_MINUTES);
+        jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
+        jest.spyOn(service, '_fetchContent').mockResolvedValue(null);
+        jest.spyOn(service, '_updateHiddenModels');
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        await service.refreshHiddenModels();
+
+        expect(service._fetchContent).toHaveBeenCalled();
+        expect(service._updateHiddenModels).not.toHaveBeenCalled();
+        expect(service.hiddenDataModels).toEqual(['model1']);
+        expect(service.contentFetchDate).toBe(priorFetchDate);
+        expect(console.warn).toHaveBeenCalledWith('Model content unavailable; keeping cached hidden models');
+    });
+});
+
+describe('DataModelService.refreshHiddenModels when the content fetch returns an empty object', () => {
+    let service;
+
+    beforeEach(() => {
+        service = createService();
+    });
+
+    it('should clear the hidden models', async () => {
+        service.contentFetchDate = new Date(Date.now() - VALID_EXAMPLE.TTL_MINUTES * 60 * 1000 - 1);
+        service.hiddenDataModels = ['model1'];
+        jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(VALID_EXAMPLE.TTL_MINUTES);
+        jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
+        jest.spyOn(service, '_fetchContent').mockResolvedValue({});
+
+        await service.refreshHiddenModels();
+
+        expect(service._fetchContent).toHaveBeenCalled();
+        expect(service.hiddenDataModels).toEqual([]);
+        expect(service.contentFetchDate).toBeInstanceOf(Date);
+    });
+});
+
+describe('DataModelService.refreshHiddenModels when the refresh throws', () => {
+    let service;
+
+    beforeEach(() => {
+        service = createService();
+    });
+
+    it('should preserve the cached values and resolve', async () => {
+        const priorFetchDate = new Date(Date.now() - VALID_EXAMPLE.TTL_MINUTES * 60 * 1000 - 1);
+        service.contentFetchDate = priorFetchDate;
+        service.lastTTLMinutes = 60;
+        service.hiddenDataModels = ['model1'];
+        jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockRejectedValue(new Error('db error'));
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await service.refreshHiddenModels();
+
+        expect(service.hiddenDataModels).toEqual(['model1']);
+        expect(service.contentFetchDate).toBe(priorFetchDate);
+        expect(service.lastTTLMinutes).toBe(60);
+        expect(console.error).toHaveBeenCalled();
+    });
+});
+
+describe('DataModelService.refreshHiddenModels when the content has never been fetched', () => {
+    let service;
+
+    beforeEach(() => {
+        service = createService();
+    });
+
+    it('should refresh and record the TTL', async () => {
+        jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(VALID_EXAMPLE.TTL_MINUTES);
+        jest.spyOn(service, '_fetchContent').mockResolvedValue(VALID_EXAMPLE.MODEL_CONTENT);
+
+        await service.refreshHiddenModels();
+
+        expect(service.configurationService.getModelContentTTLMinutes).toHaveBeenCalledWith(undefined);
+        expect(service.hiddenDataModels).toEqual(VALID_EXAMPLE.HIDDEN_MODELS);
+        expect(service.lastTTLMinutes).toBe(VALID_EXAMPLE.TTL_MINUTES);
+        expect(service.contentFetchDate).toBeInstanceOf(Date);
+    });
+});
+
+describe('DataModelService._fetchContent when the content URL is fetched successfully', () => {
+    let service;
+
+    beforeEach(() => {
+        service = createService();
+    });
+
+    it('should return the parsed content', async () => {
+        jest.spyOn(service.configurationService, 'getModelContentURL').mockResolvedValue(VALID_EXAMPLE.CONTENT_URL);
+        jest.spyOn(global, 'fetch').mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve(VALID_EXAMPLE.MODEL_CONTENT)
+        });
+
+        expect(await service._fetchContent()).toEqual(VALID_EXAMPLE.MODEL_CONTENT);
+        expect(service.configurationService.getModelContentURL).toHaveBeenCalled();
+        expect(fetch).toHaveBeenCalledWith(VALID_EXAMPLE.CONTENT_URL, { signal: expect.any(AbortSignal) });
+    });
+});
+
+describe('DataModelService._fetchContent when the content URL is missing', () => {
+    let service;
+
+    beforeEach(() => {
+        service = createService();
+    });
+
+    it('should return null', async () => {
+        jest.spyOn(service.configurationService, 'getModelContentURL').mockResolvedValue(null);
+
+        expect(await service._fetchContent()).toBeNull();
+        expect(service.configurationService.getModelContentURL).toHaveBeenCalled();
+    });
+});
+
+describe('DataModelService._fetchContent when the response cannot be read', () => {
+    let service;
+
+    beforeEach(() => {
+        service = createService();
+    });
 
     const testCases = [
         {
-            name: 'should not fetch when content is not expired',
-            setup: () => {
-                const cachedDate = new Date(Date.now() - 1000);
-                service.contentFetchDate = cachedDate;
-                service.hiddenDataModels = ['cached-model'];
-                jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(ttlMinutes);
-                jest.spyOn(service, '_isContentExpired').mockReturnValue(false);
-                jest.spyOn(service, '_fetchContent');
-                return {};
-            },
-            expectations: () => {
-                expect(service.configurationService.getModelContentTTLMinutes).toHaveBeenCalled();
-                expect(service._isContentExpired).toHaveBeenCalledWith(service.contentFetchDate, ttlMinutes);
-                expect(service._fetchContent).not.toHaveBeenCalled();
-                expect(service.hiddenDataModels).toEqual(['cached-model']);
+            name: 'should return null if the content is not found',
+            response: {
+                ok: false
             }
         },
         {
-            name: 'should refresh the hidden models list when content is expired',
-            setup: () => {
-                const priorFetchDate = new Date(Date.now() - ttlMinutes * 60 * 1000 - 1);
-                service.contentFetchDate = priorFetchDate;
-                jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(ttlMinutes);
-                jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
-                jest.spyOn(service, '_fetchContent').mockResolvedValue(content);
-                jest.spyOn(service, '_updateHiddenModels').mockImplementation(() => {
-                    service.hiddenDataModels = hiddenModels;
-                });
-                return { priorFetchDate };
-            },
-            expectations: (priorFetchDate) => {
-                expect(service.configurationService.getModelContentTTLMinutes).toHaveBeenCalled();
-                expect(service._isContentExpired).toHaveBeenCalledWith(priorFetchDate, ttlMinutes);
-                expect(service._fetchContent).toHaveBeenCalled();
-                expect(service._updateHiddenModels).toHaveBeenCalledWith(content);
-                expect(service.contentFetchDate).toBeInstanceOf(Date);
-                expect(service.contentFetchDate.getTime()).toBeGreaterThan(priorFetchDate.getTime());
-                expect(service.hiddenDataModels).toEqual(hiddenModels);
-            }
-        },
-        {
-            name: 'should preserve hidden models when fetch returns null',
-            setup: () => {
-                const priorFetchDate = new Date(Date.now() - ttlMinutes * 60 * 1000 - 1);
-                service.contentFetchDate = priorFetchDate;
-                service.hiddenDataModels = ['model1'];
-                jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(ttlMinutes);
-                jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
-                jest.spyOn(service, '_fetchContent').mockResolvedValue(null);
-                jest.spyOn(service, '_updateHiddenModels');
-                return { priorFetchDate };
-            },
-            expectations: (priorFetchDate) => {
-                expect(service._fetchContent).toHaveBeenCalled();
-                expect(service._updateHiddenModels).not.toHaveBeenCalled();
-                expect(service.hiddenDataModels).toEqual(['model1']);
-                expect(service.contentFetchDate).toBe(priorFetchDate);
-            }
-        },
-        {
-            name: 'should clear hidden models when fetch returns an empty object',
-            setup: () => {
-                service.contentFetchDate = new Date(Date.now() - ttlMinutes * 60 * 1000 - 1);
-                service.hiddenDataModels = ['model1'];
-                jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(ttlMinutes);
-                jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
-                jest.spyOn(service, '_fetchContent').mockResolvedValue({});
-                return {};
-            },
-            expectations: () => {
-                expect(service._fetchContent).toHaveBeenCalled();
-                expect(service.hiddenDataModels).toEqual([]);
-                expect(service.contentFetchDate).toBeInstanceOf(Date);
+            name: 'should return null if the content is not valid JSON',
+            response: {
+                ok: true,
+                json: () => Promise.reject(new SyntaxError('Unexpected token o in JSON at position 1'))
             }
         }
     ];
 
-    it.each(testCases)('$name', async ({ setup, expectations }) => {
-        const context = setup();
-        await service._refreshHiddenModels();
-        if (context.priorFetchDate) {
-            expectations(context.priorFetchDate);
-        } else {
-            expectations();
-        }
+    it.each(testCases)('$name', async ({ response }) => {
+        jest.spyOn(service.configurationService, 'getModelContentURL').mockResolvedValue(VALID_EXAMPLE.CONTENT_URL);
+        jest.spyOn(global, 'fetch').mockResolvedValue(response);
+
+        expect(await service._fetchContent()).toBeNull();
+        expect(fetch).toHaveBeenCalledWith(VALID_EXAMPLE.CONTENT_URL, { signal: expect.any(AbortSignal) });
     });
 });
 
-describe('DataModelService._fetchContent', () => {
+describe('DataModelService._fetchContent when the fetch times out', () => {
     let service;
-    let configurationService;
 
     beforeEach(() => {
-        configurationService = new ConfigurationService();
-        service = new DataModelService("test-model", "test-url", configurationService);
+        service = createService();
     });
 
-    const contentUrl = "https://raw.githubusercontent.com/CBIIT/crdc-datahub-models/refs/heads/dev2/cache/content.json";
+    it('should return null and log the timeout', async () => {
+        jest.spyOn(service.configurationService, 'getModelContentURL').mockResolvedValue(VALID_EXAMPLE.CONTENT_URL);
+        jest.spyOn(global, 'fetch').mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError'));
+        jest.spyOn(console, 'error').mockImplementation(() => {});
 
-    const testCases = [
-        {
-            name: 'should call the configuration service to get the content url',
-            setup: () => {
-                jest.spyOn(service.configurationService, 'getModelContentURL').mockResolvedValue(contentUrl);
-                jest.spyOn(global, 'fetch').mockResolvedValue({
-                    ok: true,
-                    json: () => Promise.resolve({
-                        model1: {
-                            isHidden: true
-                        }
-                    })
-                });
-            },
-            expectations: () => {
-                expect(service.configurationService.getModelContentURL).toHaveBeenCalled();
-                expect(fetch).toHaveBeenCalledWith(contentUrl);
-            },
-            expectedResponse: {
-                model1: {
-                    isHidden: true
-                }
-            },
-        },
-        {
-            name: 'should return null if the content url is not found',
-            setup: () => {
-                jest.spyOn(service.configurationService, 'getModelContentURL').mockResolvedValue(null);
-            },
-            expectations: () => {
-                expect(service.configurationService.getModelContentURL).toHaveBeenCalled();
-            },
-            expectedResponse: null,
-        },
-        {
-            name: 'should return null if the content is not found',
-            setup: () => {
-                jest.spyOn(service.configurationService, 'getModelContentURL').mockResolvedValue(contentUrl);
-                jest.spyOn(global, 'fetch').mockResolvedValue({
-                    ok: false,
-                });
-            },
-            expectations: () => {
-                expect(fetch).toHaveBeenCalledWith(contentUrl);
-            },
-            expectedResponse: null,
-        },
-        {
-            name: 'should return null if the content is not valid JSON',
-            setup: () => {
-                jest.spyOn(service.configurationService, 'getModelContentURL').mockResolvedValue(contentUrl);
-                jest.spyOn(global, 'fetch').mockResolvedValue({
-                    ok: true,
-                    json: () => Promise.reject(new SyntaxError('Unexpected token o in JSON at position 1')),
-                });
-            },
-            expectations: () => {
-                expect(fetch).toHaveBeenCalledWith(contentUrl);
-            },
-            expectedResponse: null,
-        }
-    ]
-
-    it.each(testCases)('$name', async ({ setup, expectations, expectedResponse }) => {
-        await setup();
-        expect(await service._fetchContent()).toEqual(expectedResponse);
-        expectations();
+        expect(await service._fetchContent()).toBeNull();
+        expect(console.error).toHaveBeenCalledWith(`Timed out after 3000ms fetching model content from ${VALID_EXAMPLE.CONTENT_URL}`);
     });
 });
 
@@ -244,18 +337,8 @@ describe('DataModelService._updateHiddenModels', () => {
     const testCases = [
         {
             name: 'should read isHidden to determine the hidden models',
-            content: {
-                model1: {
-                    isHidden: true
-                },
-                model2: {
-                    isHidden: false
-                },
-                model3: {
-                    isHidden: true
-                }
-            },
-            expectedHiddenModels: ['model1', 'model3']
+            content: VALID_EXAMPLE.MODEL_CONTENT,
+            expectedHiddenModels: VALID_EXAMPLE.HIDDEN_MODELS
         },
         {
             name: 'should consider all non-true isHidden to be false',
@@ -294,7 +377,7 @@ describe('DataModelService._isContentExpired', () => {
         service = new DataModelService("test-model", "test-url");
     });
 
-    const ttlMinutes = 60 * 24;
+    const ttlMinutes = VALID_EXAMPLE.TTL_MINUTES;
     const ttlMs = ttlMinutes * 60 * 1000;
     const testCases = [
         {

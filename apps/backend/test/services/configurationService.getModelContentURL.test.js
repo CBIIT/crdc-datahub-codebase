@@ -210,31 +210,143 @@ describe('ConfigurationService.getModelContentTTLMinutes', () => {
     beforeEach(() => {
         configurationService = new ConfigurationService();
         jest.spyOn(configurationService.configurationDAO, 'findByType').mockResolvedValue(null);
+        jest.spyOn(console, 'log').mockImplementation(() => {}).mockClear();
+        jest.spyOn(console, 'error').mockImplementation(() => {}).mockClear();
     });
-    
-    const testCases = [
-        {
-            name: 'should return the model content TTL minutes',
-            keys: {
-                ttl_minutes: 5
-            },
-            expected: 5
-        },
-        {
-            name: 'should default to 24 hours if ttl_minutes is not provided',
-            keys: {},
-            expected: 60 * 24
-        },
-        {
-            name: 'should default to 24 hours if the configuration entry is not found',
-            keys: null,
-            expected: 60 * 24
-        }
-    ];
 
-    it.each(testCases)('$name', async ({ keys, expected }) => {
-        configurationService.configurationDAO.findByType.mockResolvedValue({ keys });
-        expect(await configurationService.getModelContentTTLMinutes()).toBe(expected);
-        expect(configurationService.configurationDAO.findByType).toHaveBeenCalledWith('MODEL_CONTENT');
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    describe('when ttl_minutes is a positive integer', () => {
+        const testCases = [
+            {
+                name: 'should return the model content TTL minutes',
+                keys: {
+                    ttl_minutes: 5
+                },
+                expected: 5
+            },
+            {
+                name: 'should return the stored TTL when a last TTL was also passed',
+                keys: {
+                    ttl_minutes: 5
+                },
+                lastTTLMinutes: 30,
+                expected: 5
+            }
+        ];
+
+        it.each(testCases)('$name', async ({ keys, lastTTLMinutes, expected }) => {
+            configurationService.configurationDAO.findByType.mockResolvedValue({ keys });
+            expect(await configurationService.getModelContentTTLMinutes(lastTTLMinutes)).toBe(expected);
+            expect(configurationService.configurationDAO.findByType).toHaveBeenCalledWith('MODEL_CONTENT');
+            expect(console.error).not.toHaveBeenCalled();
+            expect(console.log).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('when ttl_minutes is missing or invalid', () => {
+        const testCases = [
+            {
+                name: 'should default to 24 hours if ttl_minutes is not provided',
+                keys: {}
+            },
+            {
+                name: 'should default to 24 hours if the configuration entry is not found',
+                keys: null
+            },
+            {
+                name: 'should default to 24 hours when ttl_minutes is a numeric string',
+                keys: {
+                    ttl_minutes: '60'
+                }
+            },
+            {
+                name: 'should default to 24 hours when ttl_minutes is not an integer',
+                keys: {
+                    ttl_minutes: 1.5
+                }
+            },
+            {
+                name: 'should default to 24 hours when ttl_minutes is 0',
+                keys: {
+                    ttl_minutes: 0
+                }
+            },
+            {
+                name: 'should default to 24 hours when ttl_minutes is negative',
+                keys: {
+                    ttl_minutes: -5
+                }
+            },
+            {
+                name: 'should default to 24 hours when ttl_minutes is NaN',
+                keys: {
+                    ttl_minutes: NaN
+                }
+            },
+            {
+                name: 'should default to 24 hours when ttl_minutes is Infinity',
+                keys: {
+                    ttl_minutes: Infinity
+                }
+            },
+            {
+                name: 'should default to 24 hours when ttl_minutes is null',
+                keys: {
+                    ttl_minutes: null
+                }
+            }
+        ];
+
+        it.each(testCases)('$name', async ({ keys }) => {
+            configurationService.configurationDAO.findByType.mockResolvedValue({ keys });
+            expect(await configurationService.getModelContentTTLMinutes()).toBe(60 * 24);
+            expect(configurationService.configurationDAO.findByType).toHaveBeenCalledWith('MODEL_CONTENT');
+            expect(console.error.mock.calls).toEqual([
+                ['Invalid MODEL_CONTENT ttl_minutes:', keys?.ttl_minutes],
+                ['Using default TTL minutes:', 60 * 24]
+            ]);
+        });
+    });
+
+    describe('when ttl_minutes is invalid and a last TTL was passed', () => {
+        it('should keep the last TTL', async () => {
+            configurationService.configurationDAO.findByType.mockResolvedValue({
+                keys: {
+                    ttl_minutes: '60'
+                }
+            });
+            expect(await configurationService.getModelContentTTLMinutes(30)).toBe(30);
+            expect(configurationService.configurationDAO.findByType).toHaveBeenCalledWith('MODEL_CONTENT');
+            expect(console.error.mock.calls).toEqual([
+                ['Invalid MODEL_CONTENT ttl_minutes:', '60'],
+                ['Using cached TTL minutes:', 30]
+            ]);
+        });
+    });
+
+    describe('when the configuration lookup rejects and there is no last TTL', () => {
+        it('should default to 24 hours', async () => {
+            configurationService.configurationDAO.findByType.mockRejectedValue(new Error('db error'));
+            expect(await configurationService.getModelContentTTLMinutes()).toBe(60 * 24);
+            expect(configurationService.configurationDAO.findByType).toHaveBeenCalledWith('MODEL_CONTENT');
+            expect(console.error.mock.calls).toEqual([
+                ['Unable to read MODEL_CONTENT ttl_minutes:', expect.any(Error)],
+                ['Invalid MODEL_CONTENT ttl_minutes:', undefined],
+                ['Using default TTL minutes:', 60 * 24]
+            ]);
+        });
+    });
+
+    describe('when the configuration lookup rejects and there is a last TTL', () => {
+        it('should keep the last TTL', async () => {
+            configurationService.configurationDAO.findByType.mockRejectedValue(new Error('db error'));
+            expect(await configurationService.getModelContentTTLMinutes(30)).toBe(30);
+            expect(configurationService.configurationDAO.findByType).toHaveBeenCalledWith('MODEL_CONTENT');
+            expect(console.error).toHaveBeenCalled();
+            expect(console.log).not.toHaveBeenCalled();
+        });
     });
 });

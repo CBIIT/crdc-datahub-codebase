@@ -5,14 +5,21 @@ const { MDFReader } = require('mdf-reader');
 
 const CURRENT_DEF_VERSION = 'current-version';
 const DEF_MODEL_FILES = 'model-files';
+const MODEL_CONTENT_FETCH_TIMEOUT_MS = 3000; // 3 seconds
 
 class DataModelService {
+    /**
+     * Performs no I/O. hiddenDataModels starts empty, and lastTTLMinutes is unset until the first TTL read.
+     * @param {function(): Promise<object>} dataModelInfo Fetches the data model manifest
+     * @param {string} modelUrl URL of the data model manifest
+     * @param {ConfigurationService} configurationService Source of MODEL_CONTENT settings
+     */
     constructor(dataModelInfo, modelUrl, configurationService) {
         this.configurationService = configurationService;
         this.dataModelManifestInfo = dataModelInfo;
         this.modelDir = path.dirname(modelUrl);
         this.hiddenDataModels = [];
-        this._refreshHiddenModels();
+        this.lastTTLMinutes = undefined;
     }
 
     /**
@@ -92,24 +99,41 @@ class DataModelService {
         return new MDFReader(...fileContents);
     }
 
+    /**
+     * Whether the given model is hidden.
+     * @param {string} modelName Data model (data commons) name
+     * @returns {Promise<boolean>}
+     */
     async isModelHidden(modelName) {
-        await this._refreshHiddenModels();
+        await this.refreshHiddenModels();
         return this.hiddenDataModels.includes(modelName);
     }
 
-    async _refreshHiddenModels() {
-        const ttlMinutes = await this.configurationService.getModelContentTTLMinutes();
-        if (!this._isContentExpired(this.contentFetchDate, ttlMinutes)) {
-            return;
+    /**
+     * Reads the TTL from MODEL_CONTENT on every call, then refreshes the hidden models when the content has expired.
+     * If the TTL read fails or is invalid, the last TTL read successfully is used (24 hours before any successful read).
+     * A failed content fetch keeps hiddenDataModels and contentFetchDate unchanged.
+     * @returns {Promise<void>}
+     */
+    async refreshHiddenModels() {
+        try {
+            const ttlMinutes = await this.configurationService.getModelContentTTLMinutes(this.lastTTLMinutes);
+            this.lastTTLMinutes = ttlMinutes;
+            if (this.contentFetchDate !== undefined && !this._isContentExpired(this.contentFetchDate, ttlMinutes)) {
+                return;
+            }
+            console.log('Refreshing hidden models');
+            const content = await this._fetchContent();
+            if (content === null) {
+                console.warn('Model content unavailable; keeping cached hidden models');
+                return;
+            }
+            this._updateHiddenModels(content);
+            this.contentFetchDate = new Date();
+            console.log('Hidden models refreshed');
+        } catch (error) {
+            console.error('Unable to refresh hidden models; keeping cached hidden models:', error);
         }
-        console.log('Refreshing hidden models');
-        const content = await this._fetchContent();
-        if (content === null) {
-            return;
-        }
-        this._updateHiddenModels(content);
-        this.contentFetchDate = new Date();
-        console.log('Hidden models refreshed');
     }
 
     async _fetchContent() {
@@ -118,14 +142,18 @@ class DataModelService {
             return null;
         }
         try {
-            const response = await fetch(contentURL);
+            const response = await fetch(contentURL, { signal: AbortSignal.timeout(MODEL_CONTENT_FETCH_TIMEOUT_MS) });
             if (!response?.ok) {
                 console.error(`Unable to fetch model content from ${contentURL}: ${response?.status}`);
                 return null;
             }
             return await response.json();
         } catch (error) {
-            console.error(`Unable to fetch model content from ${contentURL}:`, error);
+            if (error?.name === 'TimeoutError') {
+                console.error(`Timed out after ${MODEL_CONTENT_FETCH_TIMEOUT_MS}ms fetching model content from ${contentURL}`);
+            } else {
+                console.error(`Unable to fetch model content from ${contentURL}:`, error);
+            }
             return null;
         }
     }

@@ -7,6 +7,7 @@ const MAINTENANCE_MODE = "MAINTENANCE_MODE";
 const CHATBOT = "CHATBOT";
 const MODEL_CONTENT = "MODEL_CONTENT";
 const TIER = "TIER";
+const DEFAULT_MODEL_CONTENT_TTL_MINUTES = 60 * 24;
 const getOMBConfiguration = require("../dao/omb");
 const ERROR = require("../constants/error-constants");
 class ConfigurationService {
@@ -131,12 +132,19 @@ class ConfigurationService {
 
     /**
      * Returns the model content.json cache TTL in minutes from MODEL_CONTENT.
-     * Defaults to 1440 (24 hours) when ttl_minutes is missing.
+     * A missing, invalid, or unreadable value falls back to lastTTLMinutes when that
+     * value exists, and to 1440 (24 hours) only when there is no last TTL yet.
+     * @param {number} [lastTTLMinutes] TTL from the last successful read
      * @returns {Promise<number>}
      */
-    async getModelContentTTLMinutes() {
-        const result = await this.configurationDAO.findByType(MODEL_CONTENT);
-        return result?.keys?.ttl_minutes ?? 60 * 24;
+    async getModelContentTTLMinutes(lastTTLMinutes) {
+        try {
+            const result = await this.configurationDAO.findByType(MODEL_CONTENT);
+            return await this._validateTTLMinutes(result?.keys?.ttl_minutes, lastTTLMinutes);
+        } catch (error) {
+            console.error('Unable to read MODEL_CONTENT ttl_minutes:', error);
+            return await this._validateTTLMinutes(lastTTLMinutes);
+        }
     }
 
     /**
@@ -176,6 +184,27 @@ class ConfigurationService {
     async _getContentPath() {
         const result = await this.configurationDAO.findByType(MODEL_CONTENT);
         return result?.keys?.content_path || null;
+    }
+
+    /**
+     * Returns ttlMinutes when it is a positive integer.
+     * Otherwise returns lastTTLMinutes when that is a positive integer, or 1440 (24 hours).
+     * @param {*} ttlMinutes Candidate TTL
+     * @param {number} [lastTTLMinutes] TTL from the last successful read, used when ttlMinutes is invalid
+     * @returns {Promise<number>}
+     */
+    async _validateTTLMinutes(ttlMinutes, lastTTLMinutes) {
+        if (Number.isInteger(ttlMinutes) && ttlMinutes > 0) {
+            return ttlMinutes;
+        }
+        console.error('Invalid MODEL_CONTENT ttl_minutes:', ttlMinutes);
+        const fallbackTTLMinutes = lastTTLMinutes;
+        if (Number.isInteger(fallbackTTLMinutes) && fallbackTTLMinutes > 0) {
+            console.error('Using cached TTL minutes:', fallbackTTLMinutes);
+            return fallbackTTLMinutes;
+        }
+        console.error('Using default TTL minutes:', DEFAULT_MODEL_CONTENT_TTL_MINUTES);
+        return DEFAULT_MODEL_CONTENT_TTL_MINUTES;
     }
 }
 

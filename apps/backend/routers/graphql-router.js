@@ -279,6 +279,9 @@ dbConnector.connect().then(async () => {
         getSubmissionSummary: submissionService.getSubmissionSummary.bind(submissionService),
         retrievePVsByPropertyName: propertyPVService.retrievePVsByPropertyName.bind(propertyPVService),
     };
+    dataModelService.refreshHiddenModels()
+        .then(() => console.log(`Hidden models initialized: [${dataModelService.hiddenDataModels.join(', ')}]`))
+        .catch((error) => console.error('Failed to initialize hidden models:', error));
 }).catch((error) => {
     console.error('GraphQL router initialization failed:', error);
     process.exit(1);
