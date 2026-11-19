@@ -35,23 +35,33 @@ async function closeDatabaseConnection(client) {
     }
 }
 
+/**
+ * Inserts a configuration document when no document with this type exists.
+ * Does not modify an existing document.
+ * @param {import('mongodb').Db} db
+ * @param {string} fixedID _id used when inserting
+ * @param {string} type Configuration type discriminator
+ * @param {object} keys Configuration keys
+ * @returns {Promise<{success: boolean, created: boolean, skipped?: boolean}>}
+ */
 async function createNewConfiguration(db, fixedID, type, keys) {
     const configurationCollection = db.collection('configuration');
     const existingConfiguration = await configurationCollection.findOne({ type: type });
     if (existingConfiguration) {
         console.log(`Configuration with type ${type} already exists`);
-        return;
+        return { success: true, created: false, skipped: true };
     }
     const document = {
-        _id: 'a6bcc9e0-5d5a-4088-b7db-91cd9db3df9b',
+        _id: fixedID,
         type: type,
         keys: keys
     }
-    const result = await configurationCollection.insertOne(document);
-    return result;
+    await configurationCollection.insertOne(document);
+    return { success: true, created: true };
 }
 
 module.exports = {
+    createNewConfiguration,
     createDatabaseConnection,
     closeDatabaseConnection
 };
