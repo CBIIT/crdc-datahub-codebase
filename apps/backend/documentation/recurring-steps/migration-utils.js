@@ -35,6 +35,22 @@ async function closeDatabaseConnection(client) {
     }
 }
 
+async function createNewConfiguration(db, fixedID, type, keys) {
+    const configurationCollection = db.collection('configuration');
+    const existingConfiguration = await configurationCollection.findOne({ type: type });
+    if (existingConfiguration) {
+        console.log(`Configuration with type ${type} already exists`);
+        return;
+    }
+    const document = {
+        _id: 'a6bcc9e0-5d5a-4088-b7db-91cd9db3df9b',
+        type: type,
+        keys: keys
+    }
+    const result = await configurationCollection.insertOne(document);
+    return result;
+}
+
 module.exports = {
     createDatabaseConnection,
     closeDatabaseConnection
