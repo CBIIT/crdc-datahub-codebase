@@ -64,28 +64,91 @@ describe('DataModelService._refreshHiddenModels', () => {
 
     const testCases = [
         {
-            name: 'should refresh the hidden models list when content is expired',
+            name: 'should not fetch when content is not expired',
             setup: () => {
-                service.contentFetchDate = new Date(Date.now() - ttlMinutes * 60 * 1000 - 1);
+                const cachedDate = new Date(Date.now() - 1000);
+                service.contentFetchDate = cachedDate;
+                service.hiddenDataModels = ['cached-model'];
                 jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(ttlMinutes);
-                jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
-                jest.spyOn(service, '_fetchContent').mockResolvedValue(content);
-                jest.spyOn(service, '_updateHiddenModels').mockResolvedValue(hiddenModels);
+                jest.spyOn(service, '_isContentExpired').mockReturnValue(false);
+                jest.spyOn(service, '_fetchContent');
+                return {};
             },
             expectations: () => {
                 expect(service.configurationService.getModelContentTTLMinutes).toHaveBeenCalled();
-                expect(service.contentFetchDate).toBeInstanceOf(Date);
                 expect(service._isContentExpired).toHaveBeenCalledWith(service.contentFetchDate, ttlMinutes);
+                expect(service._fetchContent).not.toHaveBeenCalled();
+                expect(service.hiddenDataModels).toEqual(['cached-model']);
+            }
+        },
+        {
+            name: 'should refresh the hidden models list when content is expired',
+            setup: () => {
+                const priorFetchDate = new Date(Date.now() - ttlMinutes * 60 * 1000 - 1);
+                service.contentFetchDate = priorFetchDate;
+                jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(ttlMinutes);
+                jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
+                jest.spyOn(service, '_fetchContent').mockResolvedValue(content);
+                jest.spyOn(service, '_updateHiddenModels').mockImplementation(() => {
+                    service.hiddenDataModels = hiddenModels;
+                });
+                return { priorFetchDate };
+            },
+            expectations: (priorFetchDate) => {
+                expect(service.configurationService.getModelContentTTLMinutes).toHaveBeenCalled();
+                expect(service._isContentExpired).toHaveBeenCalledWith(priorFetchDate, ttlMinutes);
                 expect(service._fetchContent).toHaveBeenCalled();
                 expect(service._updateHiddenModels).toHaveBeenCalledWith(content);
+                expect(service.contentFetchDate).toBeInstanceOf(Date);
+                expect(service.contentFetchDate.getTime()).toBeGreaterThan(priorFetchDate.getTime());
+                expect(service.hiddenDataModels).toEqual(hiddenModels);
+            }
+        },
+        {
+            name: 'should preserve hidden models when fetch returns null',
+            setup: () => {
+                const priorFetchDate = new Date(Date.now() - ttlMinutes * 60 * 1000 - 1);
+                service.contentFetchDate = priorFetchDate;
+                service.hiddenDataModels = ['model1'];
+                jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(ttlMinutes);
+                jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
+                jest.spyOn(service, '_fetchContent').mockResolvedValue(null);
+                jest.spyOn(service, '_updateHiddenModels');
+                return { priorFetchDate };
+            },
+            expectations: (priorFetchDate) => {
+                expect(service._fetchContent).toHaveBeenCalled();
+                expect(service._updateHiddenModels).not.toHaveBeenCalled();
+                expect(service.hiddenDataModels).toEqual(['model1']);
+                expect(service.contentFetchDate).toBe(priorFetchDate);
+            }
+        },
+        {
+            name: 'should clear hidden models when fetch returns an empty object',
+            setup: () => {
+                service.contentFetchDate = new Date(Date.now() - ttlMinutes * 60 * 1000 - 1);
+                service.hiddenDataModels = ['model1'];
+                jest.spyOn(service.configurationService, 'getModelContentTTLMinutes').mockResolvedValue(ttlMinutes);
+                jest.spyOn(service, '_isContentExpired').mockReturnValue(true);
+                jest.spyOn(service, '_fetchContent').mockResolvedValue({});
+                return {};
+            },
+            expectations: () => {
+                expect(service._fetchContent).toHaveBeenCalled();
+                expect(service.hiddenDataModels).toEqual([]);
+                expect(service.contentFetchDate).toBeInstanceOf(Date);
             }
         }
-    ]
+    ];
 
-    it.each(testCases)('$name', async ({ setup, expectations, expectedResponse }) => {
-        await setup();
+    it.each(testCases)('$name', async ({ setup, expectations }) => {
+        const context = setup();
         await service._refreshHiddenModels();
-        expectations();
+        if (context.priorFetchDate) {
+            expectations(context.priorFetchDate);
+        } else {
+            expectations();
+        }
     });
 });
 

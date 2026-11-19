@@ -99,10 +99,16 @@ class DataModelService {
     async _refreshHiddenModels() {
         const ttlMinutes = await this.configurationService.getModelContentTTLMinutes();
         if (!this._isContentExpired(this.contentFetchDate, ttlMinutes)) {
-            this.hiddenDataModels;
+            return;
         }
+        console.log('Refreshing hidden models');
         const content = await this._fetchContent();
+        if (content === null) {
+            return;
+        }
         this._updateHiddenModels(content);
+        this.contentFetchDate = new Date();
+        console.log('Hidden models refreshed');
     }
 
     async _fetchContent() {
