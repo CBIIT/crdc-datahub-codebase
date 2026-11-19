@@ -5,6 +5,9 @@ const CLI_UPLOADER_VERSION = "CLI_UPLOADER_VERSION";
 const APPLICATION_FORM_VERSIONS = "APPLICATION_FORM_VERSIONS";
 const MAINTENANCE_MODE = "MAINTENANCE_MODE";
 const CHATBOT = "CHATBOT";
+const MODEL_CONTENT = "MODEL_CONTENT";
+const TIER = "TIER";
+const DEFAULT_MODEL_CONTENT_TTL_MINUTES = 60 * 24;
 const getOMBConfiguration = require("../dao/omb");
 const ERROR = require("../constants/error-constants");
 class ConfigurationService {
@@ -125,6 +128,83 @@ class ConfigurationService {
     async getCurrentCLIUploaderVersion() {
         const result = await this.configurationDAO.findByType(CLI_UPLOADER_VERSION);
         return (result) ? result?.current_version : null;
+    }
+
+    /**
+     * Returns the model content.json cache TTL in minutes from MODEL_CONTENT.
+     * A missing, invalid, or unreadable value falls back to lastTTLMinutes when that
+     * value exists, and to 1440 (24 hours) only when there is no last TTL yet.
+     * @param {number} [lastTTLMinutes] TTL from the last successful read
+     * @returns {Promise<number>}
+     */
+    async getModelContentTTLMinutes(lastTTLMinutes) {
+        try {
+            const result = await this.configurationDAO.findByType(MODEL_CONTENT);
+            return await this._validateTTLMinutes(result?.keys?.ttl_minutes, lastTTLMinutes);
+        } catch (error) {
+            console.error('Unable to read MODEL_CONTENT ttl_minutes:', error);
+            return await this._validateTTLMinutes(lastTTLMinutes);
+        }
+    }
+
+    /**
+     * Builds the model content.json URL from the tier, model content repo, and content path.
+     * Logs and returns null when any required configuration value is missing.
+     * @returns {Promise<string|null>}
+     */
+    async getModelContentURL() {
+        const tier = await this._getTier();
+        if (tier === null) {
+            console.error('Unable to read the tier from the configuration');
+            return null;
+        }
+        const repoURL = await this._getModelContentRepo();
+        if (repoURL === null) {
+            console.error('Unable to read the model content repo from the configuration');
+            return null;
+        }
+        const contentPath = await this._getContentPath();
+        if (contentPath === null) {
+            console.error('Unable to read the content path from the configuration');
+            return null;
+        }
+        return `${repoURL}/refs/heads/${tier}/${contentPath}`;
+    }
+
+    async _getTier() {
+        const result = await this.configurationDAO.findByType(TIER);
+        return result?.keys?.tier || null;
+    }
+
+    async _getModelContentRepo() {
+        const result = await this.configurationDAO.findByType(MODEL_CONTENT);
+        return result?.keys?.repo_url || null;
+    }
+
+    async _getContentPath() {
+        const result = await this.configurationDAO.findByType(MODEL_CONTENT);
+        return result?.keys?.content_path || null;
+    }
+
+    /**
+     * Returns ttlMinutes when it is a positive integer.
+     * Otherwise returns lastTTLMinutes when that is a positive integer, or 1440 (24 hours).
+     * @param {*} ttlMinutes Candidate TTL
+     * @param {number} [lastTTLMinutes] TTL from the last successful read, used when ttlMinutes is invalid
+     * @returns {Promise<number>}
+     */
+    async _validateTTLMinutes(ttlMinutes, lastTTLMinutes) {
+        if (Number.isInteger(ttlMinutes) && ttlMinutes > 0) {
+            return ttlMinutes;
+        }
+        console.error('Invalid MODEL_CONTENT ttl_minutes:', ttlMinutes);
+        const fallbackTTLMinutes = lastTTLMinutes;
+        if (Number.isInteger(fallbackTTLMinutes) && fallbackTTLMinutes > 0) {
+            console.error('Using cached TTL minutes:', fallbackTTLMinutes);
+            return fallbackTTLMinutes;
+        }
+        console.error('Using default TTL minutes:', DEFAULT_MODEL_CONTENT_TTL_MINUTES);
+        return DEFAULT_MODEL_CONTENT_TTL_MINUTES;
     }
 }
 

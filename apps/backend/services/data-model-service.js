@@ -5,11 +5,21 @@ const { MDFReader } = require('mdf-reader');
 
 const CURRENT_DEF_VERSION = 'current-version';
 const DEF_MODEL_FILES = 'model-files';
+const MODEL_CONTENT_FETCH_TIMEOUT_MS = 3000; // 3 seconds
 
 class DataModelService {
-    constructor(dataModelInfo, modelUrl) {
+    /**
+     * Performs no I/O. hiddenDataModels starts empty, and lastTTLMinutes is unset until the first TTL read.
+     * @param {function(): Promise<object>} dataModelInfo Fetches the data model manifest
+     * @param {string} modelUrl URL of the data model manifest
+     * @param {ConfigurationService} configurationService Source of MODEL_CONTENT settings
+     */
+    constructor(dataModelInfo, modelUrl, configurationService) {
+        this.configurationService = configurationService;
         this.dataModelManifestInfo = dataModelInfo;
         this.modelDir = path.dirname(modelUrl);
+        this.hiddenDataModels = [];
+        this.lastTTLMinutes = undefined;
     }
 
     /**
@@ -87,6 +97,108 @@ class DataModelService {
 
         const fileContents = await Promise.all(dataModelHold);
         return new MDFReader(...fileContents);
+    }
+
+    /**
+     * Whether the given model is hidden.
+     * @param {string} modelName Data model (data commons) name
+     * @returns {Promise<boolean>}
+     */
+    async isModelHidden(modelName) {
+        await this.refreshHiddenModels();
+        return this.hiddenDataModels.includes(modelName);
+    }
+
+    /**
+     * Reads the TTL from MODEL_CONTENT on every call, then refreshes the hidden models when the content has expired.
+     * If the TTL read fails or is invalid, the last TTL read successfully is used (24 hours before any successful read).
+     * A failed content fetch keeps hiddenDataModels and contentFetchDate unchanged.
+     * @returns {Promise<void>}
+     */
+    async refreshHiddenModels() {
+        try {
+            const ttlMinutes = await this.configurationService.getModelContentTTLMinutes(this.lastTTLMinutes);
+            this.lastTTLMinutes = ttlMinutes;
+            if (this.contentFetchDate !== undefined && !this._isContentExpired(this.contentFetchDate, ttlMinutes)) {
+                return;
+            }
+            console.log('Refreshing hidden models');
+            const content = await this._fetchContent();
+            if (content === null) {
+                console.warn('Model content unavailable; keeping cached hidden models');
+                return;
+            }
+            this._updateHiddenModels(content);
+            this.contentFetchDate = new Date();
+            console.log('Hidden models refreshed');
+        } catch (error) {
+            console.error('Unable to refresh hidden models; keeping cached hidden models:', error);
+        }
+    }
+
+    async _fetchContent() {
+        const contentURL = await this.configurationService.getModelContentURL();
+        if (!contentURL) {
+            return null;
+        }
+        try {
+            const response = await fetch(contentURL, { signal: AbortSignal.timeout(MODEL_CONTENT_FETCH_TIMEOUT_MS) });
+            if (!response?.ok) {
+                console.error(`Unable to fetch model content from ${contentURL}: ${response?.status}`);
+                return null;
+            }
+            return await response.json();
+        } catch (error) {
+            if (error?.name === 'TimeoutError') {
+                console.error(`Timed out after ${MODEL_CONTENT_FETCH_TIMEOUT_MS}ms fetching model content from ${contentURL}`);
+            } else {
+                console.error(`Unable to fetch model content from ${contentURL}:`, error);
+            }
+            return null;
+        }
+    }
+
+    _updateHiddenModels(content) {
+        const hiddenDataModels = [];
+        for (const [modelName, model] of Object.entries(content ?? {})) {
+            if (model?.isHidden === true) {
+                hiddenDataModels.push(modelName);
+            }
+        }
+        this.hiddenDataModels = hiddenDataModels;
+    }
+
+    _isContentExpired(contentFetchDate, ttlMinutes) {
+        try {
+            if (!(contentFetchDate instanceof Date)) {
+                throw new TypeError('Invalid contentFetchDate');
+            }
+            const ageMs = Date.now() - contentFetchDate.getTime();
+            if (!Number.isFinite(ageMs)) {
+                throw new TypeError('Invalid contentFetchDate');
+            }
+            if (typeof ttlMinutes !== 'number' || !Number.isFinite(ttlMinutes)) {
+                throw new TypeError('Invalid ttlMinutes');
+            }
+            const ttlMs = ttlMinutes * 60 * 1000;
+            if (ageMs < ttlMs) {
+                return false;
+            }
+        } catch {
+            let fetchDateIsValid = false;
+            try {
+                fetchDateIsValid = contentFetchDate instanceof Date && Number.isFinite(contentFetchDate.getTime());
+            } catch {
+                fetchDateIsValid = false;
+            }
+            if (!fetchDateIsValid) {
+                console.warn('Invalid contentFetchDate; treating cached content as expired:', contentFetchDate);
+            }
+            if (typeof ttlMinutes !== 'number' || !Number.isFinite(ttlMinutes)) {
+                console.warn('Invalid ttlMinutes; treating cached content as expired:', ttlMinutes);
+            }
+        }
+        return true;
     }
 }
 
