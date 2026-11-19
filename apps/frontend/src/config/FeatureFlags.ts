@@ -42,3 +42,10 @@ export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
 export type FeatureFlags = Readonly<Record<FeatureFlagKey, boolean>>;
 
 export const FEATURE_FLAG_KEYS = Object.keys(FEATURE_FLAGS) as FeatureFlagKey[];
+
+/**
+ * The value of every feature flag by default.
+ */
+export const DEFAULT_FEATURE_FLAGS: FeatureFlags = Object.freeze(
+  Object.fromEntries(FEATURE_FLAG_KEYS.map((key) => [key, FEATURE_FLAGS[key].defaultValue]))
+) as FeatureFlags;
