@@ -1,3 +1,5 @@
+import { StrictMode } from "react";
+
 import { act, render, waitFor } from "../../test-utils";
 import { Logger } from "../../utils";
 
@@ -18,13 +20,19 @@ vi.mock("../../hooks/usePageTitle", async () => ({
 }));
 
 describe("Basic Functionality", () => {
+  beforeEach(() => {
+    mockFetchReleaseNotes.mockResolvedValue("# Mock Markdown Data");
+  });
+
   afterEach(() => {
     vi.resetAllMocks();
     vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   it("should set the page title 'Release Notes'", async () => {
-    render(<Controller />);
+    const { findByText } = render(<Controller />);
+    await findByText("Mock Markdown Data");
 
     await waitFor(() => {
       expect(mockUsePageTitle).toHaveBeenCalledWith("Release Notes");
@@ -51,7 +59,8 @@ describe("Basic Functionality", () => {
   });
 
   it("should fetch release notes on mount", async () => {
-    render(<Controller />);
+    const { findByText } = render(<Controller />);
+    await findByText("Mock Markdown Data");
 
     await waitFor(() => {
       expect(mockFetchReleaseNotes).toHaveBeenCalledTimes(1);
@@ -106,7 +115,8 @@ describe("Basic Functionality", () => {
   });
 
   it("should not fetch release notes if they are already loaded (double render)", async () => {
-    const { rerender } = render(<Controller />);
+    const { rerender, findByText } = render(<Controller />);
+    await findByText("Mock Markdown Data");
 
     await waitFor(() => {
       expect(mockFetchReleaseNotes).toHaveBeenCalledTimes(1);
@@ -115,5 +125,71 @@ describe("Basic Functionality", () => {
     rerender(<Controller />);
 
     expect(mockFetchReleaseNotes).toHaveBeenCalledTimes(1); // One initial fetch only
+  });
+
+  it("should abort an in-flight request on unmount without logging cancellation", async () => {
+    mockFetchReleaseNotes.mockImplementation(
+      (signal: AbortSignal) =>
+        new Promise((_, reject) => {
+          signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError"))
+          );
+        })
+    );
+    const { unmount } = render(<Controller />);
+    const signal = mockFetchReleaseNotes.mock.calls[0][0];
+
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal.aborted).toBe(false);
+
+    await act(async () => unmount());
+
+    expect(signal.aborted).toBe(true);
+    expect(Logger.error).not.toHaveBeenCalled();
+  });
+
+  it("should ignore a response that arrives after unmount", async () => {
+    let rejectRequest: (reason: Error) => void;
+    mockFetchReleaseNotes.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectRequest = reject;
+        })
+    );
+    const { unmount } = render(<Controller />);
+    unmount();
+
+    await act(async () => rejectRequest(new Error("Late network error")));
+
+    expect(Logger.error).not.toHaveBeenCalled();
+  });
+
+  it("should load notes after StrictMode restarts the effect", async () => {
+    mockFetchReleaseNotes.mockImplementation((signal: AbortSignal) =>
+      signal?.aborted
+        ? Promise.reject(new DOMException("Aborted", "AbortError"))
+        : Promise.resolve("# Current notes")
+    );
+
+    const { findByText } = render(
+      <StrictMode>
+        <Controller />
+      </StrictMode>
+    );
+
+    expect(await findByText("Current notes")).toBeInTheDocument();
+    expect(Logger.error).not.toHaveBeenCalled();
+  });
+
+  it("should fetch updated notes after navigating away and back", async () => {
+    const { findByText: findInitialText, unmount } = render(<Controller />);
+    expect(await findInitialText("Mock Markdown Data")).toBeInTheDocument();
+    unmount();
+    mockFetchReleaseNotes.mockResolvedValue("# Updated notes");
+
+    const { findByText } = render(<Controller />);
+
+    expect(await findByText("Updated notes")).toBeInTheDocument();
+    expect(mockFetchReleaseNotes).toHaveBeenCalledTimes(2);
   });
 });

@@ -14,6 +14,7 @@ Last Updated: 06 June 2023
  - [Running the CRDC DataHub Backend API](#running-the-crdc-datahub-backend-api)
  - [List of API Endpoints](#list-of-api-endpoints)
  - [DocumentDB + Mongoose Compatibility Reference](documentation/documentdb-mongoose-compatibility.md)
+ - [Manual archive cleanup](documentation/archive-manual-cleanup.md)
 
 ## Introduction
 

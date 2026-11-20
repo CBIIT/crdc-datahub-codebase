@@ -8,7 +8,7 @@ RUN NODE_OPTIONS="--max-old-space-size=4096" npm ci
 
 RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
-FROM nginx:1.30.5-alpine3.24-slim AS fnl_base_image
+FROM nginx:1.30.6-alpine3.24-slim AS fnl_base_image
 
 RUN apk update && apk upgrade --no-cache
 

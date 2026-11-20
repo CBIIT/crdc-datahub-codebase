@@ -44,23 +44,21 @@ export const parseReleaseVersion = (): string => {
 };
 
 /**
- * A utility to build the Release Notes Markdown URL based on the current build tag.
+ * Builds the Release Notes Markdown URL for the current deployment tier.
  *
- * @note If the build tag is not set or is not in the expected format, it will default to the main branch instead of a tag.
  * @returns The URL to the Release Notes Markdown file.
+ * @note Logs an error and defaults to prod if the tier is missing or invalid.
  */
 export const buildReleaseNotesUrl = (): string => {
-  const { VITE_FE_VERSION } = env || {};
+  const { VITE_DEV_TIER } = env || {};
+  const tier = typeof VITE_DEV_TIER === "string" ? VITE_DEV_TIER.trim().toLowerCase() : "";
 
-  if (
-    VITE_FE_VERSION &&
-    typeof VITE_FE_VERSION === "string" &&
-    ReleaseRegex.test(VITE_FE_VERSION)
-  ) {
-    return `https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/tags/${VITE_FE_VERSION}/apps/frontend/CHANGELOG.md`;
+  if (!/^[a-z0-9]+$/.test(tier)) {
+    Logger.error("buildReleaseNotesUrl: VITE_DEV_TIER is missing or invalid", { VITE_DEV_TIER });
+    return "https://raw.githubusercontent.com/CBIIT/crdc-datahub-static-content/refs/heads/prod/content/release-notes.md";
   }
 
-  return "https://raw.githubusercontent.com/CBIIT/crdc-datahub-codebase/refs/heads/master/apps/frontend/CHANGELOG.md";
+  return `https://raw.githubusercontent.com/CBIIT/crdc-datahub-static-content/refs/heads/${tier}/content/release-notes.md`;
 };
 
 /**

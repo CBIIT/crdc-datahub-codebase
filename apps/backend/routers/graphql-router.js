@@ -47,6 +47,7 @@ const {Release} = require("../services/release-service");
 const DataModelService = require("../services/data-model-service");
 const PropertyPVDAO = require("../dao/propertyPV");
 const { PropertyPVService } = require("../services/property-pv-service");
+const {DataSyncService} = require("../services/dataSync.service");
 
 // Create schema with constraint directive
 const schema = constraintDirective()(
@@ -111,10 +112,12 @@ dbConnector.connect().then(async () => {
 
     const tooltipService = new TooltipService();
     const dataModelService = new DataModelService(fetchDataModelInfo, config.model_url);
+    const dataSyncService = new DataSyncService();
     const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
         programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
         s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
-        config.submission_bucket, configurationService, uploadingMonitor, config.dataCommonsBucketMap, authorizationService, dataModelService);
+        config.submission_bucket, configurationService, uploadingMonitor, config.dataCommonsBucketMap, authorizationService, dataModelService,
+        dataSyncService);
     const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, institutionService, configurationService, authorizationService);
 
     const dashboardService = new DashboardService(userService, awsService, configurationService, {sessionTimeout: config.dashboardSessionTimeout}, authorizationService);
@@ -175,6 +178,8 @@ dbConnector.connect().then(async () => {
         createBatch: submissionService.createBatch.bind(submissionService),
         updateBatch: submissionService.updateBatch.bind(submissionService),
         listBatches: submissionService.listBatches.bind(submissionService),
+        listDataSyncs: submissionService.listDataSyncs.bind(submissionService),
+        getLatestDataSync: submissionService.getLatestDataSync.bind(submissionService),
         createSubmission: submissionService.createSubmission.bind(submissionService),
         listSubmissions:  submissionService.listSubmissions.bind(submissionService),
         getSubmission:  submissionService.getSubmission.bind(submissionService),

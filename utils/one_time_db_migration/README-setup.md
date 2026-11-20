@@ -13,13 +13,14 @@ Copy `env.example` to `.env` and set values for your environment:
 | `CONNECTION_STRING` | MongoDB connection URI |
 | `DATABASE_NAME` | Database name |
 | `BACKUP_CONNECTION_STRING` | Source MongoDB URI (3705 backup/compare) |
-| `BACKUP_DATABASE_NAME` | Database name on source and DocumentDB (3705) |
+| `BACKUP_DATABASE_NAME` | Source MongoDB database name (3705) |
+| `RESTORE_DATABASE_NAME` | DocumentDB database name (3705); defaults to `BACKUP_DATABASE_NAME` |
 | `BACKUP_DIRECTORY` | Local path for `mongodump` output (3705) |
 | `RESTORE_CONNECTION_STRING` | DocumentDB URI, typically with TLS options (3705 restore/compare) |
 
 Scripts that connect via [utilities/mongo.js](utilities/mongo.js) require `CONNECTION_STRING` and `DATABASE_NAME`.
 
-The [3705 backup/restore scripts](README-mongodb-backup-restore-3705.md) use the `BACKUP_*` and `RESTORE_CONNECTION_STRING` variables instead.
+The [3705 backup/restore scripts](README-mongodb-backup-restore-3705.md) use the `BACKUP_*`, `RESTORE_DATABASE_NAME`, and `RESTORE_CONNECTION_STRING` variables instead.
 
 ## Install
 

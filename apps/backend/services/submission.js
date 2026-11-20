@@ -2,6 +2,8 @@ const { NEW, IN_PROGRESS, SUBMITTED, RELEASED, COMPLETED, ARCHIVED, CANCELED,
     REJECTED, WITHDRAWN, ACTIONS, VALIDATION, VALIDATION_STATUS, INTENTION, DATA_TYPE, DELETED, DATA_FILE,
     CONSTRAINTS, COLLABORATOR_PERMISSIONS, UPLOADING_HEARTBEAT_CONFIG_TYPE, SUBMISSION_TYPE
 } = require("../constants/submission-constants");
+const { DATA_SYNC_STATUS } = require("../constants/data-sync-constants");
+const { isArchiveEligible, requiredDataSyncTypes } = require("../utility/archive-eligibility");
 const fs = require('fs');
 const path = require('path');
 const {getCurrentTime, subtractDaysFromNow} = require("../crdc-datahub-database-drivers/utility/time-utility");
@@ -71,10 +73,37 @@ Set.prototype.toArray = function() {
 
 class Submission {
     _NOT_ASSIGNED = "Not yet assigned";
+    /**
+     * @param {object} logCollection Log collection
+     * @param {object} submissionCollection Submission collection
+     * @param {object} batchService Batch service
+     * @param {object} userService User service
+     * @param {object} programService Program service
+     * @param {object} notificationService Notification service
+     * @param {object} dataRecordService Data record service
+     * @param {Function} fetchDataModelInfo Loads data model info
+     * @param {object} awsService AWS service
+     * @param {string} metadataQueueName Metadata SQS queue name
+     * @param {object} s3Service S3 service
+     * @param {object} emailParams Email parameters
+     * @param {string[]} dataCommonsList Allowed data commons
+     * @param {string[]} hiddenDataCommonsList Hidden data commons
+     * @param {string} sqsLoaderQueue Loader SQS queue name
+     * @param {object} qcResultsService QC results service
+     * @param {object} uploaderCLIConfigs Uploader CLI configuration
+     * @param {string} submissionBucketName Submission S3 bucket name
+     * @param {object} configurationService Configuration service
+     * @param {object} uploadingMonitor Uploading heartbeat monitor
+     * @param {Map} dataCommonsBucketMap Data commons to bucket map
+     * @param {object} authorizationService Authorization service
+     * @param {object} dataModelService Data model service
+     * @param {DataSyncService} dataSyncService Read-only DataSync task records
+     */
     constructor(logCollection, submissionCollection, batchService, userService, programService, notificationService,
                 dataRecordService, fetchDataModelInfo, awsService, metadataQueueName, s3Service, emailParams, dataCommonsList,
                 hiddenDataCommonsList, sqsLoaderQueue, qcResultsService, uploaderCLIConfigs, 
-                submissionBucketName, configurationService, uploadingMonitor, dataCommonsBucketMap, authorizationService, dataModelService) {
+                submissionBucketName, configurationService, uploadingMonitor, dataCommonsBucketMap, authorizationService, dataModelService,
+                dataSyncService) {
         this.logCollection = logCollection;
         this.submissionCollection = submissionCollection;
         this.batchService = batchService;
@@ -107,6 +136,7 @@ class Submission {
         this.approvedStudyDAO = new ApprovedStudyDAO();
         this.validationDAO = new ValidationDAO();
         this.applicationDAO = new ApplicationDAO();
+        this.dataSyncService = dataSyncService;
     }
 
     /**
@@ -480,6 +510,58 @@ class Submission {
         return await this.batchService.listBatches(params);
     }
 
+    /**
+     * Rejects unless the session is initialized and the user can view the submission.
+     * @param {string} submissionID Submission ID
+     * @param {object} context GraphQL context with userInfo
+     * @throws {Error} When the session is not initialized, the submission does not exist, or the user cannot view it
+     */
+    async _verifyDataSyncAccess(submissionID, context) {
+        verifySession(context)
+            .verifyInitialized();
+
+        const aSubmission = await this._findByID(submissionID);
+        if (!aSubmission) {
+            throw new Error(ERROR.SUBMISSION_NOT_EXIST);
+        }
+
+        const viewScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.VIEW, aSubmission);
+        if (viewScope.isNoneScope() ||
+            !userHasValidScope(context?.userInfo?._id, viewScope, context?.userInfo?.studies, context?.userInfo?.dataCommons, aSubmission)) {
+            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+        }
+    }
+
+    /**
+     * GraphQL resolver for listDataSyncs. Lists a submission's DataSync tasks, newest startTime first.
+     * Requires the same access as viewing the submission.
+     * @param {object} params GraphQL arguments
+     * @param {string} params.submissionID Submission ID
+     * @param {string} [params.type] DataSync type (metadata or file); omitted returns every type
+     * @param {object} context GraphQL context with userInfo
+     * @returns {Promise<object[]>} DataSync records
+     * @throws {Error} When the session is not initialized, the submission does not exist, the user cannot view it, or the arguments are invalid
+     */
+    async listDataSyncs(params, context) {
+        await this._verifyDataSyncAccess(params?.submissionID, context);
+        return await this.dataSyncService.listBySubmissionID(params.submissionID, params?.type);
+    }
+
+    /**
+     * GraphQL resolver for getLatestDataSync. Returns the submission's newest DataSync task of one type.
+     * Requires the same access as viewing the submission.
+     * @param {object} params GraphQL arguments
+     * @param {string} params.submissionID Submission ID
+     * @param {string} params.type DataSync type (metadata or file)
+     * @param {object} context GraphQL context with userInfo
+     * @returns {Promise<object|null>} The latest record, or null when none match
+     * @throws {Error} When the session is not initialized, the submission does not exist, the user cannot view it, or the arguments are invalid
+     */
+    async getLatestDataSync(params, context) {
+        await this._verifyDataSyncAccess(params?.submissionID, context);
+        return await this.dataSyncService.findLatestBySubmissionIDAndType(params.submissionID, params?.type);
+    }
+
   async getSubmission(params, context){
         verifySession(context)
             .verifyInitialized();
@@ -729,13 +811,21 @@ class Submission {
         return submission;
     }
 
+    /**
+     * Archives a canceled submission's S3 data. Failures are logged and swallowed.
+     * @param {string} action Submission action
+     * @param {string} submissionID Submission ID
+     * @param {string} bucketName Source bucket
+     * @param {string} rootPath Source prefix
+     * @returns {Promise<void>}
+     */
     async _archiveCancelSubmission(action, submissionID, bucketName, rootPath) {
         if (action === ACTIONS.CANCEL) {
             try {
                 await this._archiveSubmission(submissionID, bucketName, rootPath);
                 console.debug(`Successfully archive canceled submissions: ${submissionID}.`);
             } catch (e) {
-                console.error(`Failed to delete files under archived canceled submission: ${submissionID} with error: ${e.message}.`);
+                console.error(`Failed to delete files under archived canceled submission: ${submissionID} with error: ${errorReason(e)}.`);
             }
         }
     }
@@ -1459,6 +1549,17 @@ class Submission {
             ?.map((f)=> f.Key.replace(`${rootPath}/${FILE}/`, ''));
     }
 
+    /**
+     * Deletes submission data files from S3 and clears matching file errors and warnings.
+     * When deleteAll is set and exclusiveIDs is empty, deletes the data-file prefix in one call.
+     * A false result from that prefix delete is logged; the returned count is unchanged.
+     * @param {Map<string, string>} existingFiles File name to S3 key for the files to delete
+     * @param {object} aSubmission Submission document
+     * @param {boolean} [deleteAll=false] Delete every data file, or every file except exclusiveIDs
+     * @param {string[]} [exclusiveIDs=[]] Submitted file IDs to keep when deleteAll is set
+     * @returns {Promise<string[]|{deleteAll: true, count: number, excludedCount?: number}>}
+     * @throws {Error} When listing or deleting files fails
+     */
     async _deleteDataFiles(existingFiles, aSubmission, deleteAll = false, exclusiveIDs = []) {
         // Set a flag when initiating the deletion of S3 files.
         await this.submissionDAO.update(aSubmission._id, this._prepareUpdateData({deletingData: true}));
@@ -1473,7 +1574,10 @@ class Submission {
                 const allDataFiles = await this.s3Service.listFileInDir(aSubmission?.bucketName, `${aSubmission.rootPath}/${FILE}/`);
                 deletedCount = allDataFiles?.filter((f) => f.Key !== `${aSubmission.rootPath}/${FILE}/`).length || 0;
                 // Use directory deletion for deleteAll without exclusives
-                await this.s3Service.deleteDirectory(aSubmission?.bucketName, `${aSubmission.rootPath}/${FILE}/`);
+                const directoryDeleted = await this.s3Service.deleteDirectory(aSubmission?.bucketName, `${aSubmission.rootPath}/${FILE}/`);
+                if (directoryDeleted === false) {
+                    console.warn(`Failed to delete some data files for submission ${aSubmission?._id}: deleteDirectory reported per-key errors.`);
+                }
             } else if (deleteAll && exclusiveIDs.length > 0) {
                 // Use existingFiles Map which already contains only files to delete (non-exclusive files)
                 // existingFiles Map structure: Map<fileName, s3KeyPath>
@@ -1567,50 +1671,254 @@ class Submission {
     }
 
     /**
-     * archiveCompletedSubmissions
-     * description: overnight job to set completed submission after retention with "archived = true", archive related data and delete s3 files
+     * True when the latest DataSync record for each required type is Succeeded.
+     * An unknown dataType fails closed with reason UnknownDataType.
+     * Does not read S3 or compare destination copies. Never throws.
+     * @param {object} submission Submission document
+     * @returns {Promise<{ok: boolean, reason?: string}>}
+     */
+    async _hasSucceededDataSyncRecords(submission) {
+        try {
+            const types = requiredDataSyncTypes(submission);
+            if (types.length === 0) {
+                return { ok: false, reason: "UnknownDataType" };
+            }
+            for (const type of types) {
+                const record = await this.dataSyncService.findLatestBySubmissionIDAndType(submission._id, type);
+                if (!record) {
+                    return { ok: false, reason: `NoDataSyncRecord for ${type}` };
+                }
+                if (record.status !== DATA_SYNC_STATUS.SUCCEEDED) {
+                    return { ok: false, reason: `${type} DataSyncNotSucceeded: ${record.status}` };
+                }
+            }
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, reason: errorReason(error) };
+        }
+    }
+
+    /**
+     * Logs completed, past-retention submissions that are missing a required DataSync
+     * record and have no manual archive approval, so an operator can verify the copy by hand.
+     * A failure here is logged and swallowed so archiving still runs.
+     * @returns {Promise<void>}
+     */
+    async _logSubmissionsNeedingManualVerification() {
+        try {
+            const candidates = await this.submissionDAO.getPastRetentionUnapprovedSubmissions(
+                this.emailParams.completedSubmissionDays
+            ) || [];
+            const recordedTypesBySubmissionID = await this.dataSyncService.findRecordedTypesBySubmissionIDs(
+                candidates.map((sub) => sub._id)
+            );
+            if (!(recordedTypesBySubmissionID instanceof Map)) {
+                console.error("Failed to log submissions needing manual archive verification: DataSync record lookup returned an invalid result");
+                return;
+            }
+            const needingVerification = [];
+            for (const sub of candidates) {
+                const reason = archiveManualVerifyReason(sub, recordedTypesBySubmissionID.get(sub._id));
+                if (reason) {
+                    needingVerification.push({ sub, reason });
+                }
+            }
+            for (const { sub, reason } of needingVerification) {
+                const updatedAt = sub.updatedAt instanceof Date ? sub.updatedAt.toISOString() : sub.updatedAt;
+                console.warn(`[ARCHIVE_MANUAL_VERIFY] submission=${sub._id} dataCommons=${sub.dataCommons} dataType=${sub.dataType} studyID=${sub.studyID} bucket=${sub.bucketName} rootPath=${sub.rootPath} updatedAt=${updatedAt} reason=${reason}`);
+            }
+            console.warn(`[ARCHIVE_MANUAL_VERIFY] total=${needingVerification.length}`);
+        } catch (error) {
+            console.error(`Failed to log submissions needing manual archive verification: ${errorReason(error)}`);
+        }
+    }
+
+    /**
+     * Overnight job that archives completed submissions past retention when the latest
+     * DataSync record for each required type succeeded. Does not read destination buckets.
+     * `manualArchiveApproval.approved` archives only when a required type has no DataSync
+     * record. Complete required records, or a failed record lookup, ignore the flag.
+     * Also logs past-retention submissions that are missing a required DataSync record.
+     * @returns {Promise<string>} Outcome summary
      */
     async archiveSubmissions(){
         try {
+            await this._logSubmissionsNeedingManualVerification();
             const archiveSubs = await this.submissionDAO.getToBeArchivedSubmissions(this.emailParams.completedSubmissionDays);
             if (!archiveSubs || archiveSubs.length === 0) {
                 console.debug("No completed submissions need to be archived.")
                 return "No completed submissions need to be archived";
             }
+
+            const approvedIDs = archiveSubs
+                .filter((sub) => sub.archived !== true && sub.manualArchiveApproval?.approved === true)
+                .map((sub) => sub._id);
+            let recordedTypesBySubmissionID = new Map();
+            let approvalRecordLookupFailed = false;
+            if (approvedIDs.length > 0) {
+                try {
+                    recordedTypesBySubmissionID = await this.dataSyncService.findRecordedTypesBySubmissionIDs(approvedIDs);
+                    if (!(recordedTypesBySubmissionID instanceof Map)) {
+                        approvalRecordLookupFailed = true;
+                        console.error("Failed to look up DataSync records for manual archive approvals: record lookup returned an invalid result");
+                    }
+                } catch (error) {
+                    approvalRecordLookupFailed = true;
+                    console.error(`Failed to look up DataSync records for manual archive approvals: ${errorReason(error)}`);
+                }
+            }
+
+            let studyIDsWithInProgressFileSync = new Set();
+            let inProgressFileLookupFailed = false;
+            try {
+                const inProgressFileSubmissionIDs = await this.dataSyncService.findSubmissionIDsWithInProgressFileRecords();
+                if (inProgressFileSubmissionIDs?.length > 0) {
+                    const rows = await this.submissionDAO.findMany(
+                        { _id: { $in: inProgressFileSubmissionIDs } },
+                        { projection: { studyID: 1 } }
+                    );
+                    studyIDsWithInProgressFileSync = new Set(
+                        (rows || []).map((row) => row.studyID).filter(Boolean)
+                    );
+                }
+            } catch (error) {
+                inProgressFileLookupFailed = true;
+                console.error(`Failed to look up in-progress file DataSync studies: ${errorReason(error)}`);
+            }
            
             let failedDeleteSubs = []
+            let retainedSubs = []
+            // Accepted 2026-11-04: a later Metadata and Data Files submission can overwrite a
+            // shared per-study destination object during retention, and this job cannot detect
+            // it. See documentation/archive-manual-cleanup.md.
             //archive related data and delete files in s3
             for (const sub of archiveSubs) {
                 try {
+                    if (sub.archived === true) {
+                        // The DAO query excludes these; guard anyway so a query regression can
+                        // never re-scan shared study prefixes for data that is already deleted.
+                        console.debug(`Skipping already-archived submission ${sub._id}.`);
+                        continue;
+                    }
+                    if (sub.manualArchiveApproval?.approved === true) {
+                        const note = sub.manualArchiveApproval.note ?? "";
+                        const studyFileSyncInProgress = sub.dataType === DATA_TYPE.METADATA_AND_DATA_FILES
+                            && (inProgressFileLookupFailed || studyIDsWithInProgressFileSync.has(sub.studyID));
+                        if (studyFileSyncInProgress) {
+                            console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=ignored reason=StudyFileDataSyncInProgress`);
+                            retainedSubs.push(sub._id);
+                            continue;
+                        }
+                        if (approvalRecordLookupFailed) {
+                            console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=ignored reason=DataSyncLookupFailed`);
+                        } else {
+                            const gapReason = archiveManualVerifyReason(
+                                sub,
+                                recordedTypesBySubmissionID.get(sub._id)
+                            );
+                            if (gapReason === null) {
+                                console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=ignored reason=DataSyncRecordsComplete`);
+                            } else if (gapReason === "UnknownDataType") {
+                                console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=ignored reason=UnknownDataType`);
+                            } else {
+                                await this._archiveSubmission(sub._id, sub.bucketName, sub.rootPath);
+                                console.warn(`[ARCHIVE_MANUAL] submission=${sub._id} note=${note} outcome=archived reason=${gapReason}`);
+                                console.debug(`Successfully archive completed submissions: ${sub._id}.`);
+                                continue;
+                            }
+                        }
+                    }
+                    if (sub.dataType === DATA_TYPE.METADATA_AND_DATA_FILES
+                        && (inProgressFileLookupFailed || studyIDsWithInProgressFileSync.has(sub.studyID))) {
+                        console.error(`Skipping archive for submission ${sub._id}: StudyFileDataSyncInProgress`);
+                        retainedSubs.push(sub._id);
+                        continue;
+                    }
+                    if (!isArchiveEligible(sub)) {
+                        console.error(`Skipping archive for submission ${sub._id}: DataSync status criteria not met.`);
+                        retainedSubs.push(sub._id);
+                        continue;
+                    }
+                    // Not redundant with the rollup check above. The validator skips the rollup write
+                    // when overlapping syncs are active, so this latest-record read (by startTime, any
+                    // status) is the only signal that catches a later re-sync that failed.
+                    const recordCheck = await this._hasSucceededDataSyncRecords(sub);
+                    if (!recordCheck.ok) {
+                        console.error(`Skipping archive for submission ${sub._id}: ${recordCheck.reason}`);
+                        retainedSubs.push(sub._id);
+                        continue;
+                    }
                     await this._archiveSubmission(sub._id, sub.bucketName, sub.rootPath);
                     console.debug(`Successfully archive completed submissions: ${sub._id}.`);
                 } catch (e) {
-                    console.error(`Failed to delete files under archived completed submission: ${sub._id} with error: ${e.message}.`);
+                    console.error(`Failed to archive completed submission: ${sub._id} with error: ${errorReason(e)}.`);
                     failedDeleteSubs.push(sub._id);
                 }
             }
-            return (failedDeleteSubs.length === 0 )? "successful!" : `Failed to delete files archived completed submission submissions: ${failedDeleteSubs.toString()}.  please contact admin.`;
+            const problems = [];
+            if (retainedSubs.length > 0) {
+                problems.push(`Archive criteria not met, data retained for submission(s): ${retainedSubs.toString()}.`);
+            }
+            if (failedDeleteSubs.length > 0) {
+                problems.push(`Failed to delete files archived completed submission submissions: ${failedDeleteSubs.toString()}.`);
+            }
+            return (problems.length === 0) ? "successful!" : `${problems.join(" ")}  please contact admin.`;
         }
         catch (e){
-            console.error("Failed to archive completed submission(s) with error:" + e.message);
+            console.error("Failed to archive completed submission(s) with error:" + errorReason(e));
             return "failed!";
         }
     }
 
+    /**
+     * Deletes submission S3 data, archives metadata, deletes batches, and sets archived.
+     * A throw after the S3 delete is self-healing on the next run: the gate still passes
+     * and deleteDirectory on an already-empty prefix returns true.
+     * @param {string} submissionID Submission ID
+     * @param {string} bucketName Source bucket
+     * @param {string} rootPath Source prefix
+     * @returns {Promise<void>}
+     * @throws {Error} When S3 deletion does not succeed, or a named post-delete step fails
+     */
     async _archiveSubmission(submissionID, bucketName, rootPath) {
         const result = await this.s3Service.deleteDirectory(bucketName, rootPath);
-        if (result === true) {
-            await this.dataRecordService.archiveMetadataByFilter({"submissionID": submissionID});
-            await this.batchDAO.deleteBatchesBySubmissionID(submissionID);
-            await this.submissionDAO.update(submissionID, this._prepareUpdateData({"archived": true}, new Date()));
-        } else {
+        if (result !== true) {
             console.error(`Failed to delete files in the s3 bucket. SubmissionID: ${submissionID}.`);
+            throw new Error(`Failed to delete S3 files for submission ${submissionID}`);
+        }
+        // Self-healing: the rollups and the dataSync record still pass on the next run,
+        // and deleteDirectory on an already-empty prefix returns true.
+        try {
+            await this.dataRecordService.archiveMetadataByFilter({"submissionID": submissionID});
+        } catch (error) {
+            throw new Error(
+                `archiveMetadataByFilter failed for submission ${submissionID}: ${errorReason(error)}`,
+                { cause: error }
+            );
+        }
+        try {
+            await this.batchDAO.deleteBatchesBySubmissionID(submissionID);
+        } catch (error) {
+            throw new Error(
+                `deleteBatchesBySubmissionID failed for submission ${submissionID}: ${errorReason(error)}`,
+                { cause: error }
+            );
+        }
+        try {
+            await this.submissionDAO.update(submissionID, this._prepareUpdateData({"archived": true}, new Date()));
+        } catch (error) {
+            throw new Error(
+                `update failed for submission ${submissionID}: ${errorReason(error)}`,
+                { cause: error }
+            );
         }
     }
 
-     /**
-     * deleteInactiveSubmissions
-     * description: overnight job to set inactive submission status to "Deleted", delete related data and files
+    /**
+     * Overnight job that sets inactive submissions to Deleted and removes their data and files.
+     * A non-true deleteDirectory result is logged and counted as a failure so the submission
+     * stays in place for a later run.
+     * @returns {Promise<string>} Outcome summary
      */
      async deleteInactiveSubmissions(){
         try {
@@ -1631,9 +1939,12 @@ class Submission {
                         await this.submissionDAO.update(sub._id, this._prepareUpdateData({"status" : DELETED}, new Date()));
                         deletedSubmissions.push(sub);
                         console.debug(`Successfully deleted inactive submissions: ${sub._id}.`);
+                    } else {
+                        console.error(`Failed to delete files under inactive submission: ${sub._id}: S3 delete did not succeed.`);
+                        failedDeleteSubs.push(sub._id);
                     }
                 } catch (e) {
-                    console.error(`Failed to delete files under inactive submission: ${sub._id} with error: ${e.message}.`);
+                    console.error(`Failed to delete files under inactive submission: ${sub._id} with error: ${errorReason(e)}.`);
                     failedDeleteSubs.push(sub._id);
                 }
             }
@@ -1644,7 +1955,7 @@ class Submission {
             return (failedDeleteSubs.length === 0 )? "successful!" : `Failed to delete files under submissions: ${failedDeleteSubs.toString()}.  please contact admin.`;
         }
         catch (e){
-            console.error("Failed to delete inactive submission(s) with error:" + e.message);
+            console.error("Failed to delete inactive submission(s) with error:" + errorReason(e));
             return "failed!";
         }
     }
@@ -3274,7 +3585,7 @@ const isUserScope = (userID, userRole, userStudies, userDataCommons, aSubmission
  * @param {string} userID - The ID of the user.
  * @param {Object} userScope - The scope object with methods to check scope type.
  * @param {Array<Object>} userStudies - Array of study objects assigned to the user.
- * @param {Array<string>} userDataCommons - Array of data commons IDs assigned to the user.
+ * @param {Array<string>|*} userDataCommons - Array of data commons IDs assigned to the user; non-arrays are treated as none
  * @param {Object} aSubmission - The submission object to check access for.
  * @returns {boolean} True if the user has valid access to the submission, false otherwise.
  */
@@ -3290,7 +3601,8 @@ const userHasValidScope = (userID, userScope, userStudies, userDataCommons, aSub
         const studies = Array.isArray(userStudies) && userStudies.length > 0 ? userStudies : [];
         return isAllStudy(studies) || Boolean(studies.find(study => study._id === aSubmission.studyID));
     } else if (userScope.isDCScope()) {
-        return userDataCommons.includes(aSubmission.dataCommons); // Access to assigned data commons.
+        const dataCommons = Array.isArray(userDataCommons) ? userDataCommons : [];
+        return dataCommons.includes(aSubmission.dataCommons); // Access to assigned data commons.
     }
     return false;
 }
@@ -3399,6 +3711,8 @@ class DataSubmission {
         this.createdAt = this.updatedAt = getCurrentTime();
         // no metadata to be validated
         this.metadataValidationStatus = this.fileValidationStatus = this.crossSubmissionStatus = null;
+        this.metadataDataSyncStatus = DATA_SYNC_STATUS.NOT_STARTED;
+        this.fileDataSyncStatus = DATA_SYNC_STATUS.NOT_STARTED;
         this.fileErrors = [];
         this.fileWarnings = [];
         this.intention = intention;
@@ -3552,6 +3866,39 @@ function pickUserSummary(user) {
         fullName: user?.fullName,
         email: user?.email,
     };
+}
+
+/**
+ * Readable reason from a thrown value. Prefers message, then code, then String(error).
+ * @param {*} error Thrown value
+ * @returns {string}
+ */
+function errorReason(error) {
+    return error?.message || error?.code
+        || (error != null ? String(error) : 'Unknown error');
+}
+
+/**
+ * Why a submission belongs on the manual archive worklist, or why an approval may honor it.
+ * Null means every required type has a DataSync record.
+ * @param {object} submission Submission document
+ * @param {Set<string>|undefined|null} recordedTypes Types present in dataSync for this submission
+ * @returns {string|null}
+ */
+function archiveManualVerifyReason(submission, recordedTypes) {
+    const required = requiredDataSyncTypes(submission);
+    if (required.length === 0) {
+        return "UnknownDataType";
+    }
+    const recorded = recordedTypes ?? new Set();
+    const missing = required.filter((type) => !recorded.has(type));
+    if (missing.length === 0) {
+        return null;
+    }
+    if (recorded.size === 0) {
+        return "NoDataSyncRecord";
+    }
+    return `MissingRecordForType:${missing.join(",")}`;
 }
 
 function logDaysDifference(inactiveDays, accessedAt, submissionID) {

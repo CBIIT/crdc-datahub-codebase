@@ -49,7 +49,22 @@ class S3Service:
                 return None
             else:
                 raise e
-            
+
+    def head_object(self, bucket_name, key):
+        """Return the full head_object response, or None when the key does not exist.
+
+        @param bucket_name S3 bucket name
+        @param key object key
+        @returns head_object response dict, or None on 404/NoSuchKey
+        """
+        try:
+            return self.s3_client.head_object(Bucket=bucket_name, Key=key)
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404' or e.response['Error']['Code'] == 'NoSuchKey':
+                return None
+            else:
+                raise e
+
     def move_file(self, source_bucket, source_key, dest_bucket, dest_key):
         try:
             copy_source = {'Bucket': source_bucket, 'Key': source_key}

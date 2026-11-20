@@ -1,5 +1,13 @@
 import * as utils from "./fetchUtils";
 
+vi.mock("../env", async () => {
+  const actual = await vi.importActual<typeof import("../env")>("../env");
+  return {
+    ...actual,
+    default: { ...actual.default, VITE_DEV_TIER: "dev2" },
+  };
+});
+
 describe("fetchReleaseNotes", () => {
   const mockReleaseNotes = "# Release Notes\n\n- Feature 1\n- Feature 2";
 
@@ -18,7 +26,8 @@ describe("fetchReleaseNotes", () => {
     expect(await utils.fetchReleaseNotes()).toBe(mockReleaseNotes);
   });
 
-  it("should cache successful responses in sessionStorage", async () => {
+  it("should revalidate the tier document and forward cancellation without caching in sessionStorage", async () => {
+    const controller = new AbortController();
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -27,20 +36,33 @@ describe("fetchReleaseNotes", () => {
 
     expect(sessionStorage.getItem("releaseNotes")).toBeNull();
 
-    await utils.fetchReleaseNotes();
+    await utils.fetchReleaseNotes(controller.signal);
 
-    expect(sessionStorage.getItem("releaseNotes")).toBe(mockReleaseNotes);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://raw.githubusercontent.com/CBIIT/crdc-datahub-static-content/refs/heads/dev2/content/release-notes.md",
+      { method: "GET", cache: "no-cache", signal: controller.signal }
+    );
+    expect(sessionStorage.getItem("releaseNotes")).toBeNull();
   });
 
-  it("should return cached release notes from sessionStorage", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch");
+  it("should ignore legacy session data and fetch updated notes on subsequent visits", async () => {
+    sessionStorage.setItem("releaseNotes", "# Stale notes");
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: vi.fn().mockResolvedValue(mockReleaseNotes),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: vi.fn().mockResolvedValue("# Updated notes"),
+      });
 
-    sessionStorage.setItem("releaseNotes", mockReleaseNotes);
-
-    const result = await utils.fetchReleaseNotes();
-
-    expect(result).toBe(mockReleaseNotes);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await utils.fetchReleaseNotes()).toBe(mockReleaseNotes);
+    expect(await utils.fetchReleaseNotes()).toBe("# Updated notes");
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   it("should forward fetch errors", async () => {
@@ -60,14 +82,21 @@ describe("fetchReleaseNotes", () => {
     );
   });
 
-  it("should handle an empty release notes document", async () => {
+  it.each(["", " \n\t "])("should reject a blank release notes document %j", async (document) => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      text: vi.fn().mockResolvedValue(""),
+      text: vi.fn().mockResolvedValue(document),
     });
 
     await expect(utils.fetchReleaseNotes()).rejects.toThrow("Release notes document is empty.");
+  });
+
+  it("should forward cancellation errors", async () => {
+    const error = new DOMException("The request was aborted.", "AbortError");
+    global.fetch = vi.fn().mockRejectedValue(error);
+
+    await expect(utils.fetchReleaseNotes(new AbortController().signal)).rejects.toBe(error);
   });
 
   it("should  handle an error thrown while retrieving the response text", async () => {

@@ -36,6 +36,7 @@ const {QcResultService} = require("./services/qc-result-service");
 const {UserService} = require("./services/user");
 const {ConfigurationService} = require("./services/configurationService");
 const {AuthorizationService} = require("./services/authorization-service");
+const {DataSyncService} = require("./services/dataSync.service");
 const {EMAIL_NOTIFICATIONS} = require("./crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_CONSTANTS = require("./crdc-datahub-database-drivers/constants/user-constants");
 const ROLES = USER_CONSTANTS.USER.ROLES;
@@ -132,10 +133,12 @@ app.use("/api/graphql", graphqlRouter);
         const dataRecordService = new DataRecordService(dataRecordArchiveCollection, config.file_queue, config.metadata_queue, awsService, s3Service, qcResultsService, config.export_queue, configurationService);
         qcResultsService.setDataRecordService(dataRecordService);
 
+        const dataSyncService = new DataSyncService();
         const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
             programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
-            s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, 
-            config.uploaderCLIConfigs, config.submission_bucket, configurationService);
+            s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService,
+            config.uploaderCLIConfigs, config.submission_bucket, configurationService, undefined,
+            config.dataCommonsBucketMap, authorizationService, undefined, dataSyncService);
 
         const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, null, configurationService, null);
         
