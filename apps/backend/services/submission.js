@@ -359,7 +359,12 @@ class Submission {
             console.warn("Failed permission verification for listSubmissions, returning empty list");
             return {submissions: [], total: 0};
         }
-        const dataCommonsList = Array.from(this.allowedDataCommons).filter(dc => !this.hiddenDataCommons.has(dc));
+        const dataCommonsList = [];
+        for (const dc of this.allowedDataCommons) {
+            if (!(await this.dataModelService.isModelHidden(dc))) {
+                dataCommonsList.push(dc);
+            }
+        }
         const res = await this.submissionDAO.listSubmissions(context?.userInfo, userScope, params, dataCommonsList);
         const transformedRes = getDataCommonsDisplayNamesForListSubmissions(res);
         // Add canViewSubmissionRequest field to submissions

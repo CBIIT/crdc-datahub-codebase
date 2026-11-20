@@ -2156,6 +2156,9 @@ describe('Submission Service - listSubmissions', () => {
 
         // Override the submissionDAO with our mock
         submissionService.submissionDAO = mockSubmissionDAO;
+        submissionService.dataModelService = {
+            isModelHidden: jest.fn(async (dc) => submissionService.hiddenDataCommons.has(dc))
+        };
 
         // Mock _getUserScope to return ALL scope
         submissionService._getUserScope = jest.fn().mockResolvedValue(
@@ -2202,6 +2205,9 @@ describe('Submission Service - listSubmissions', () => {
             'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
         );
         serviceNoHidden.submissionDAO = mockSubmissionDAO;
+        serviceNoHidden.dataModelService = {
+            isModelHidden: jest.fn(async (dc) => serviceNoHidden.hiddenDataCommons.has(dc))
+        };
         serviceNoHidden._getUserScope = jest.fn().mockResolvedValue(
             createMockUserScope(false, true, false, false, false)
         );
@@ -2225,6 +2231,9 @@ describe('Submission Service - listSubmissions', () => {
             'sqs', {}, {}, 'bucket', {}, {}, {}, {}, {}, {}
         );
         serviceAllHidden.submissionDAO = mockSubmissionDAO;
+        serviceAllHidden.dataModelService = {
+            isModelHidden: jest.fn(async (dc) => serviceAllHidden.hiddenDataCommons.has(dc))
+        };
         serviceAllHidden._getUserScope = jest.fn().mockResolvedValue(
             createMockUserScope(false, true, false, false, false)
         );
@@ -2267,5 +2276,102 @@ describe('Submission Service - listSubmissions', () => {
         const result = await submissionService.listSubmissions({}, mockContext);
         expect(result.submissions[0].adminSubmitComment).toBe('latest admin comment');
         expect(result.submissions[1].adminSubmitComment).toBeNull();
+    });
+});
+
+describe('SubmissionService.listSubmissions hidden data models', () => {
+
+    const DATA_COMMONS_REMAPPER = require('../../utility/data-commons-remapper');
+
+    const VALID_EXAMPLE = {
+        dataCommonsList: ['CDS', 'ICDC', 'HIDDEN', 'CTDC'],
+        hiddenDataCommonsList: ['HIDDEN'],
+        expectedDataCommonsList: ['CDS', 'ICDC', 'CTDC']
+    };
+
+    const testCases = [
+        {
+            name: 'should not return hidden data models in the data models list',
+            dataCommonsList: VALID_EXAMPLE.dataCommonsList,
+            hiddenDataCommonsList: VALID_EXAMPLE.hiddenDataCommonsList,
+            expectedDataCommonsList: VALID_EXAMPLE.expectedDataCommonsList,
+        },
+        {
+            name: 'should return all data models when none are hidden',
+            dataCommonsList: VALID_EXAMPLE.dataCommonsList,
+            hiddenDataCommonsList: [],
+            expectedDataCommonsList: VALID_EXAMPLE.dataCommonsList,
+        },
+        {
+            name: 'should return all data models when none are on the hidden list',
+            dataCommonsList: VALID_EXAMPLE.dataCommonsList,
+            hiddenDataCommonsList: ['FAKE'],
+            expectedDataCommonsList: VALID_EXAMPLE.dataCommonsList,
+        },
+        {
+            name: 'should return an empty list when all data models are hidden',
+            dataCommonsList: VALID_EXAMPLE.dataCommonsList,
+            hiddenDataCommonsList: VALID_EXAMPLE.dataCommonsList,
+            expectedDataCommonsList: [],
+        },
+        {
+            name: 'should return an empty list when the data commons list is empty',
+            dataCommonsList: [],
+            hiddenDataCommonsList: VALID_EXAMPLE.hiddenDataCommonsList,
+            expectedDataCommonsList: [],
+        },
+    ];
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        verifySession.mockReturnValue({
+            verifyInitialized: jest.fn()
+        });
+        jest.spyOn(DATA_COMMONS_REMAPPER, 'getDataCommonsDisplayNamesForListSubmissions').mockResolvedValue(null);
+    });
+
+    function mockSubmissionService(dataCommonsList, hiddenDataCommonsList, dataModelService, submissionDAO, userScope){ 
+        let submissionService = new Submission(
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            dataCommonsList,
+            hiddenDataCommonsList,
+            null, null, null, null, null, null, null, null, 
+            dataModelService, 
+            null
+        );
+        submissionService.submissionDAO = submissionDAO;
+        submissionService._getUserScope = jest.fn().mockResolvedValue(userScope);
+        submissionService._appendSubmissionRequestAndViewPermissions = jest.fn().mockResolvedValue(null);
+        return submissionService;
+    }
+
+    function mockDataModelService(hiddenDataCommonsList){
+        return {
+            isModelHidden: async (dataModel) => {
+                return hiddenDataCommonsList.includes(dataModel);
+            }
+        };
+    }
+
+    function mockSubmissionDAO(){
+        return {
+            listSubmissions: jest.fn().mockResolvedValue({ submissions: [] })
+        };
+    }
+
+    function mockUserScope(){
+        return {
+            isNoneScope: jest.fn().mockReturnValue(false)
+        };
+    }
+
+    it.each(testCases)('$name', async ({dataCommonsList, hiddenDataCommonsList, expectedDataCommonsList}) => {
+        const userScope = mockUserScope();
+        const submissionDAO = mockSubmissionDAO();
+        const dataModelService = mockDataModelService(hiddenDataCommonsList);
+        const submissionService = mockSubmissionService(dataCommonsList, hiddenDataCommonsList, dataModelService, submissionDAO, userScope);
+        await submissionService.listSubmissions(null, null);
+        const calledDataCommons = submissionService.submissionDAO.listSubmissions.mock.calls[0][3];
+        expect(calledDataCommons).toEqual(expectedDataCommonsList);
     });
 });
