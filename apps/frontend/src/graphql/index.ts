@@ -345,6 +345,6 @@ export type {
   Response as EditSubmissionNameResp,
 } from "./editSubmission";
 
-// ChatBot
-export { IS_CHATBOT_ENABLED } from "./isChatBotEnabled";
-export type { Response as IsChatBotEnabledResp } from "./isChatBotEnabled";
+// Feature Flags
+export { GET_FEATURE_FLAGS } from "./getFeatureFlags";
+export type { Response as GetFeatureFlagsResp } from "./getFeatureFlags";

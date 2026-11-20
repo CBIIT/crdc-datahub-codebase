@@ -1,9 +1,9 @@
 import { lazy } from "react";
-import { RouteObject } from "react-router-dom";
+import { Outlet, RouteObject } from "react-router-dom";
 
+import FeatureGate from "./components/FeatureGate";
 import withTracking from "./components/Hocs/withTracking";
 import LazyLoader from "./components/LazyLoader";
-import MaintenanceGate from "./components/MaintenanceGate";
 import RequireAuth from "./components/RequireAuth";
 import Layout from "./layouts";
 
@@ -23,6 +23,7 @@ const Organizations = LazyLoader(lazy(() => import("./content/organizations/Cont
 const Studies = LazyLoader(lazy(() => import("./content/studies/Controller")));
 const Institutions = LazyLoader(lazy(() => import("./content/Institutions/Controller")));
 const Status404 = LazyLoader(lazy(() => import("./content/status/Page404")));
+const MaintenancePage = LazyLoader(lazy(() => import("./content/status/MaintenancePage")));
 const OperationDashboard = LazyLoader(
   lazy(() => import("./content/OperationDashboard/Controller"))
 );
@@ -33,7 +34,11 @@ const routes: RouteObject[] = [
     element: <MainLayout />,
     children: [
       {
-        element: <MaintenanceGate />,
+        element: (
+          <FeatureGate flag="isMaintenanceMode" fallback={<Outlet />}>
+            <MaintenancePage />
+          </FeatureGate>
+        ),
         children: [
           {
             path: "/",
