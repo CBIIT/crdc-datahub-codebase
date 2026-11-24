@@ -4,6 +4,7 @@ const {ValidationHandler} = require("../../utility/validation-handler");
 const {ROLE} = require("../../constants/permission-scope-constants");
 const {replaceErrorString} = require("../../utility/string-util");
 const {Program} = require("../../services/program-service");
+const DataModelService = require("../../services/data-model-service");
 const {INTENTION, DATA_TYPE, IN_PROGRESS, SUBMITTED, RELEASED, REJECTED, WITHDRAWN,
     NEW,
     COLLABORATOR_PERMISSIONS,
@@ -855,6 +856,11 @@ describe("Submission.createSubmission", () => {
         submissionService.allowedDataCommons = new Set(["commonsA"]);
         submissionService.hiddenDataCommons = new Set();
 
+        // Use the real removeHiddenDataModels with a mocked refreshHiddenModels
+        submissionService.dataModelService = new DataModelService(null, "test-url", null);
+        submissionService.dataModelService.hiddenDataModels = [];
+        submissionService.dataModelService.refreshHiddenModels = jest.fn().mockResolvedValue();
+
         // Mock user context
         mockContext = {
             userInfo: {
@@ -1036,6 +1042,105 @@ describe("Submission.createSubmission", () => {
         await expect(submissionService.createSubmission(paramsUnknownPadded, mockContext))
             .rejects
             .toThrow(expectedMessage);
+    });
+
+    it.each([
+        { name: "is undefined", dataModelService: undefined },
+        { name: "is null", dataModelService: null },
+        { name: "is an empty object", dataModelService: {} },
+        { name: "has a non-function removeHiddenDataModels", dataModelService: { removeHiddenDataModels: "not-a-function" } },
+    ])("should log the cause and return an internal error when dataModelService $name", async ({ dataModelService }) => {
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+        submissionService.dataModelService = dataModelService;
+
+        try {
+            await expect(submissionService.createSubmission(mockParams, mockContext))
+                .rejects
+                .toThrow(new Error(ERROR.INTERNAL_ERROR));
+            expect(errorSpy).toHaveBeenCalledWith(
+                "createSubmission: dataModelService is not initialized; cannot check hidden data models"
+            );
+            expect(mockSubmissionDAO.create).not.toHaveBeenCalled();
+        } finally {
+            errorSpy.mockRestore();
+        }
+    });
+
+    const notAllowedMessage = (dataCommons, accepted) =>
+        replaceErrorString(
+            replaceErrorString(ERROR.INVALID_DATA_COMMONS_NOT_ALLOWED, `'${dataCommons}'`),
+            accepted,
+            /\$accepted\$/g
+        );
+
+    it.each([
+        {
+            name: "rejects a hidden (but allowed) data commons and lists only visible ones",
+            hidden: ["commonsA"],
+            dataCommons: "commonsA",
+            expectedMessage: notAllowedMessage("commonsA", "commonsB"),
+        },
+        {
+            name: "rejects a hidden data commons padded with whitespace",
+            hidden: ["commonsA"],
+            dataCommons: "  commonsA  ",
+            expectedMessage: notAllowedMessage("commonsA", "commonsB"),
+        },
+        {
+            name: "reports (none available) when every allowed data commons is hidden",
+            hidden: ["commonsA", "commonsB"],
+            dataCommons: "commonsA",
+            expectedMessage: notAllowedMessage("commonsA", "(none available)"),
+        },
+    ])("should $name", async ({ hidden, dataCommons, expectedMessage }) => {
+        submissionService.allowedDataCommons = new Set(["commonsA", "commonsB"]);
+        submissionService.dataModelService.hiddenDataModels = hidden;
+
+        await expect(
+            submissionService.createSubmission({ ...mockParams, dataCommons }, mockContext)
+        ).rejects.toThrow(new Error(expectedMessage));
+        expect(mockSubmissionDAO.create).not.toHaveBeenCalled();
+    });
+
+    it("should still create a submission for a visible data commons when another is hidden", async () => {
+        submissionService.allowedDataCommons = new Set(["commonsA", "commonsB"]);
+        submissionService.dataModelService.hiddenDataModels = ["commonsB"];
+
+        await submissionService.createSubmission(mockParams, mockContext);
+
+        expect(mockSubmissionDAO.create).toHaveBeenCalledWith(
+            expect.objectContaining({ dataCommons: "commonsA" })
+        );
+    });
+
+    it("should report the permission error before the hidden data commons error", async () => {
+        submissionService.dataModelService.hiddenDataModels = ["commonsA"];
+        submissionService._getUserScope.mockResolvedValueOnce({
+            isNoneScope: () => false,
+            isAllScope: () => false,
+            isOwnScope: () => true,
+            isStudyScope: () => false,
+            isDCScope: () => false
+        });
+        mockContext.userInfo.studies = [];
+
+        await expect(submissionService.createSubmission(mockParams, mockContext))
+            .rejects
+            .toThrow(new Error(ERROR.INVALID_STUDY_ACCESS));
+        expect(mockSubmissionDAO.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { name: "null", dataCommons: null, message: ERROR.CREATE_SUBMISSION_INVALID_PARAMS },
+        { name: "undefined", dataCommons: undefined, message: ERROR.CREATE_SUBMISSION_INVALID_PARAMS },
+        { name: "a number", dataCommons: 123, message: notAllowedMessage("123", "commonsA") },
+        { name: "an object", dataCommons: {}, message: notAllowedMessage("[object Object]", "commonsA") },
+        { name: "an array", dataCommons: ["commonsB"], message: notAllowedMessage("commonsB", "commonsA") },
+    ])("should reject dataCommons that is $name", async ({ dataCommons, message }) => {
+        await expect(
+            submissionService.createSubmission({ ...mockParams, dataCommons }, mockContext)
+        ).rejects.toThrow(new Error(message));
+        expect(mockSubmissionDAO.create).not.toHaveBeenCalled();
     });
 
     it("should allow submission creation for user with OWN scope and assigned study", async () => {

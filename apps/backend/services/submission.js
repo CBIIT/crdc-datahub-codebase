@@ -305,10 +305,16 @@ class Submission {
    * @param {string} params.dataType Metadata Only or Metadata and Data Files
    * @param {object} context GraphQL context with session userInfo
    * @returns {Promise<object>} Created submission document
-   * @throws {Error} On auth, validation, or insert failure
+   * @throws {Error} On auth, validation, or insert failure, or ERROR.INTERNAL_ERROR when dataModelService is not initialized
    */
   async createSubmission(params, context) {
     verifySession(context).verifyInitialized();
+    if (typeof this.dataModelService?.removeHiddenDataModels !== "function") {
+      console.error(
+        "createSubmission: dataModelService is not initialized; cannot check hidden data models"
+      );
+      throw new Error(ERROR.INTERNAL_ERROR);
+    }
     if (params?.dataCommons != null) {
       params.dataCommons = String(params.dataCommons).trim();
     }
@@ -344,13 +350,10 @@ class Submission {
     const dataType = [DATA_TYPE.METADATA_AND_DATA_FILES, DATA_TYPE.METADATA_ONLY].find(
       (i) => i.toLowerCase() === params?.dataType.toLowerCase()
     );
-    validateCreateSubmissionParams(
-      params,
-      this.allowedDataCommons,
-      this.hiddenDataCommons,
-      intention,
-      dataType
-    );
+    const visibleDataCommons = await this.dataModelService.removeHiddenDataModels([
+      ...this.allowedDataCommons,
+    ]);
+    validateCreateSubmissionParams(params, visibleDataCommons, intention, dataType);
     const [approvedStudies, modelVersion, program] = await Promise.all([
       this._findApprovedStudies([params.studyID]),
       (async () => {
@@ -4637,18 +4640,19 @@ function validateStudyAccess(userStudies, submissionStudy) {
 const getUserEmails = (users) =>
   users?.filter((aUser) => aUser?.email)?.map((aUser) => aUser.email);
 
-function validateCreateSubmissionParams(
-  params,
-  allowedDataCommons,
-  hiddenDataCommons,
-  intention,
-  dataType
-) {
+/**
+ * Validates the createSubmission parameters and normalizes params.dataCommons (trimmed string).
+ * @param {object} params createSubmission params; params.dataCommons is normalized in place
+ * @param {string[]} visibleDataCommons Allowed data commons that are not hidden
+ * @param {string} intention Normalized submission intention
+ * @param {string} dataType Normalized submission data type
+ * @throws {Error} When a parameter is missing or invalid, or dataCommons is not in the visible list
+ */
+function validateCreateSubmissionParams(params, visibleDataCommons, intention, dataType) {
   const dataCommons =
     params.dataCommons === undefined || params.dataCommons === null
       ? ""
       : String(params.dataCommons).trim();
-
   if (!params.name || params?.name?.trim().length === 0 || !params.studyID || !dataCommons) {
     throw new Error(ERROR.CREATE_SUBMISSION_INVALID_PARAMS);
   }
@@ -4657,18 +4661,8 @@ function validateCreateSubmissionParams(
       replaceErrorString(ERROR.CREATE_SUBMISSION_INVALID_NAME, `${CONSTRAINTS.NAME_MAX_LENGTH}`)
     );
   }
-  if (hiddenDataCommons.has(dataCommons) || !allowedDataCommons.has(dataCommons)) {
-    const visibleAllowed = [...allowedDataCommons]
-      .filter((dc) => !hiddenDataCommons.has(dc))
-      .sort();
-    const acceptedDisplay = visibleAllowed.length ? visibleAllowed.join(", ") : "(none available)";
-    throw new Error(
-      replaceErrorString(
-        replaceErrorString(ERROR.INVALID_DATA_COMMONS_NOT_ALLOWED, `'${dataCommons}'`),
-        acceptedDisplay,
-        /\$accepted\$/g
-      )
-    );
+  if (!visibleDataCommons.includes(dataCommons)) {
+    throw new Error(_generateInvalidDataCommonsMessage(dataCommons, visibleDataCommons));
   }
   if (!intention) {
     throw new Error(ERROR.CREATE_SUBMISSION_INVALID_INTENTION);
@@ -4680,6 +4674,18 @@ function validateCreateSubmissionParams(
     throw new Error(ERROR.CREATE_SUBMISSION_INVALID_DELETE_INTENTION);
   }
   params.dataCommons = dataCommons;
+}
+
+function _generateInvalidDataCommonsMessage(dataCommons, visibleDataCommons) {
+  return replaceErrorString(
+    replaceErrorString(ERROR.INVALID_DATA_COMMONS_NOT_ALLOWED, `'${dataCommons}'`),
+    _generateAcceptedDataCommonsString(visibleDataCommons),
+    /\$accepted\$/g
+  );
+}
+
+function _generateAcceptedDataCommonsString(visibleDataCommons) {
+  return visibleDataCommons.length ? [...visibleDataCommons].sort().join(", ") : "(none available)";
 }
 
 class ValidationRecord {
@@ -4747,9 +4753,14 @@ class DataSubmission {
     this.bucketName = submissionBucketName;
     this.rootPath = `${SUBMISSIONS}/${this._id}`;
     this.conciergeID = this._getConciergeID(approvedStudy, aProgram);
-    this.createdAt = this.updatedAt = getCurrentTime();
+    // capture single timestamp for createdAt and updatedAt
+    const currentTime = getCurrentTime();
+    this.createdAt = currentTime;
+    this.updatedAt = currentTime;
     // no metadata to be validated
-    this.metadataValidationStatus = this.fileValidationStatus = this.crossSubmissionStatus = null;
+    this.metadataValidationStatus = null;
+    this.fileValidationStatus = null;
+    this.crossSubmissionStatus = null;
     this.metadataDataSyncStatus = DATA_SYNC_STATUS.NOT_STARTED;
     this.fileDataSyncStatus = DATA_SYNC_STATUS.NOT_STARTED;
     this.fileErrors = [];
@@ -5009,6 +5020,7 @@ function logDaysDifference(inactiveDays, accessedAt, submissionID) {
 module.exports = {
   Submission,
   SubmissionAttributes,
+  validateCreateSubmissionParams,
 };
 
 // Potential future enhancement

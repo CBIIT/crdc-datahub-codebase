@@ -622,7 +622,7 @@ describe("DataModelService.removeHiddenDataModels - valid input cases", () => {
   );
 });
 
-describe("DataModelService.removeHiddenDataModels - invalid or empty input", () => {
+describe("DataModelService.removeHiddenDataModels - empty input", () => {
   let service;
 
   beforeEach(() => {
@@ -633,11 +633,36 @@ describe("DataModelService.removeHiddenDataModels - invalid or empty input", () 
 
   const testCases = [
     {
-      name: "should return an empty list if an empty models list is provided",
+      name: "should return an empty list without warning or refreshing if an empty models list is provided",
       dataCommonsList: [],
       hiddenDataModels: VALID_EXAMPLE.HIDDEN_MODELS,
       expectedDataCommonsList: [],
     },
+  ];
+
+  it.each(testCases)(
+    "$name",
+    async ({ dataCommonsList, hiddenDataModels, expectedDataCommonsList }) => {
+      service.hiddenDataModels = hiddenDataModels;
+      expect(await service.removeHiddenDataModels(dataCommonsList)).toEqual(
+        expectedDataCommonsList
+      );
+      expect(console.warn).not.toHaveBeenCalled();
+      expect(service.refreshHiddenModels).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe("DataModelService.removeHiddenDataModels - invalid input", () => {
+  let service;
+
+  beforeEach(() => {
+    service = new DataModelService("test-model", "test-url");
+    jest.spyOn(service, "refreshHiddenModels").mockResolvedValue();
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  const testCases = [
     {
       name: "should return an empty list if the data commons list is null",
       dataCommonsList: null,
