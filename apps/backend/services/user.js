@@ -1,1057 +1,1248 @@
-const {verifySession} = require("../verifier/user-info-verifier");
-const {USER} = require("../crdc-datahub-database-drivers/constants/user-constants");
-const {ValidationHandler} = require("../utility/validation-handler");
-const ERROR = require("../constants/error-constants");
-const {ERROR: SUBMODULE_ERROR} = require("../crdc-datahub-database-drivers/constants/error-constants");
-const {replaceErrorString} = require("../utility/string-util");
-const config = require("../config");
-const {getCurrentTime, subtractDaysFromNowTimestamp} = require("../crdc-datahub-database-drivers/utility/time-utility");
-const {UpdateProfileEvent, ReactivateUserEvent} = require("../crdc-datahub-database-drivers/domain/log-events");
 const jwt = require("jsonwebtoken");
-const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
-const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-constants");
-const ROLES = USER_CONSTANTS.USER.ROLES;
+
+const config = require("../config");
+const ERROR = require("../constants/error-constants");
+const { COMPLETED, CANCELED, DELETED } = require("../constants/submission-constants");
 const {
-    EMAIL_NOTIFICATIONS: EN
-} = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
-const {getDataCommonsDisplayNamesForUser} = require("../utility/data-commons-remapper");
-const {UserScope} = require("../domain/user-scope");
-const { isAllStudy, isApprovedStudyActive } = require("../utility/study-utility");
-const {COMPLETED, CANCELED, DELETED, COLLABORATOR_PERMISSIONS} = require("../constants/submission-constants");
-const SCOPES = require("../constants/permission-scope-constants");
-const UserDAO = require("../dao/user");
+  ERROR: SUBMODULE_ERROR,
+} = require("../crdc-datahub-database-drivers/constants/error-constants");
+const { USER } = require("../crdc-datahub-database-drivers/constants/user-constants");
+const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
+const {
+  UpdateProfileEvent,
+  ReactivateUserEvent,
+} = require("../crdc-datahub-database-drivers/domain/log-events");
+const {
+  getCurrentTime,
+  subtractDaysFromNowTimestamp,
+} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const ApprovedStudyDAO = require("../dao/approvedStudy");
 const SubmissionDAO = require("../dao/submission");
-const {formatName} = require("../utility/format-name");
+const UserDAO = require("../dao/user");
+const { UserScope } = require("../domain/user-scope");
+const { getDataCommonsDisplayNamesForUser } = require("../utility/data-commons-remapper");
+const { formatName } = require("../utility/format-name");
 const {
-    getSubmissionRequestCreatePermissionVariants,
-    isEligibleReopenOwner: isEligibleReopenOwnerUtil,
-    REOPEN_ASSIGNABLE_ROLES,
+  getSubmissionRequestCreatePermissionVariants,
+  REOPEN_ASSIGNABLE_ROLES,
 } = require("../utility/reopen-owner-utility");
+const { replaceErrorString } = require("../utility/string-util");
+const { isAllStudy, isApprovedStudyActive } = require("../utility/study-utility");
+const { ValidationHandler } = require("../utility/validation-handler");
+const { verifySession } = require("../verifier/user-info-verifier");
+
+const { ROLES } = USER;
+const { EMAIL_NOTIFICATIONS: EN } = USER_PERMISSION_CONSTANTS;
 
 const isLoggedInOrThrow = (context) => {
-    if (!context?.userInfo?.email || !context?.userInfo?.IDP) throw new Error(SUBMODULE_ERROR.NOT_LOGGED_IN);
-}
+  if (!context?.userInfo?.email || !context?.userInfo?.IDP)
+    throw new Error(SUBMODULE_ERROR.NOT_LOGGED_IN);
+};
 
 const isValidUserStatus = (userStatus) => {
-    const validUserStatus = [USER.STATUSES.ACTIVE];
-    if (userStatus && !validUserStatus.includes(userStatus)) throw new Error(SUBMODULE_ERROR.INVALID_USER_STATUS);
-}
-
-const createToken = (userID, token_secret, token_timeout)=> {
-    return jwt.sign(
-        // sub (Subject) is used to follow JWT naming conventions
-        // https://www.iana.org/go/rfc7519#section-4.1.2
-        { sub: userID },
-        token_secret,
-        { expiresIn: token_timeout });
-}
-
-
-const ALL_STUDY_FILTER = "All";
-class UserService {
-    _allEmailNotificationNamesSet = new Set([...Object.values(EN.SUBMISSION_REQUEST), ...Object.values(EN.DATA_SUBMISSION), ...Object.values(EN.USER_ACCOUNT)]);
-    _NIH = "nih";
-    _NOT_APPLICABLE = "NA";
-    constructor(logCollection, organizationCollection, notificationsService, applicationCollection, officialEmail, appUrl, approvedStudiesService, inactiveUserDays, configurationService, institutionService, authorizationService) {
-        this.logCollection = logCollection;
-        this.organizationCollection = organizationCollection;
-        this.notificationsService = notificationsService;
-        this.applicationCollection = applicationCollection;
-        this.officialEmail = officialEmail;
-        this.appUrl = appUrl;
-        this.approvedStudiesService = approvedStudiesService;
-        this.approvedStudiesCollection = approvedStudiesService.approvedStudiesCollection;
-        this.inactiveUserDays = inactiveUserDays;
-        this.configurationService = configurationService;
-        this.institutionService = institutionService;
-        this.authorizationService = authorizationService;
-        this.userDAO = new UserDAO();
-        this.approvedStudyDAO = new ApprovedStudyDAO();
-        this.submissionDAO = new SubmissionDAO();
-    }
-
-    async requestAccess(params, context) {
-        verifySession(context)
-            .verifyInitialized();
-
-        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.REQUEST_ACCESS);
-        if (userScope.isNoneScope()) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        const approvedStudies = params?.studies?.length > 0 ?
-            await this.approvedStudiesService.listApprovedStudies(params?.studies)
-            : []
-        if (approvedStudies.length === 0) {
-            return new Error(ERROR.INVALID_APPROVED_STUDIES_ACCESS_REQUEST);
-        }
-        if (approvedStudies.some((s) => !isApprovedStudyActive(s))) {
-            return new Error(ERROR.INVALID_APPROVED_STUDIES_ACCESS_INACTIVE);
-        }
-
-        if (params?.institutionName?.trim()?.length > 100) {
-            return new Error(ERROR.MAX_INSTITUTION_NAME_LIMIT);
-        }
-
-
-        const adminUsers = await this.getUsersByNotifications([EN.USER_ACCOUNT.USER_REQUEST_ACCESS],
-            [ROLES.ADMIN]);
-        const adminEmails = adminUsers
-            ?.filter((u)=> u?.email)
-            .map((u)=> u?.email);
-        const userInfo = context?.userInfo;
-
-        if (adminEmails.length === 0) {
-            console.error(ERROR.NO_ADMIN_USER);
-            return ValidationHandler.handle(ERROR.NO_ADMIN_USER);
-        }
-
-        const res = await this.notificationsService.requestUserAccessNotification(adminEmails, {
-                userName: `${userInfo.firstName} ${userInfo?.lastName || ''}`,
-                accountType: userInfo?.IDP,
-                email: userInfo?.email,
-                role: params?.role,
-                studies: approvedStudies?.map((study)=> study?.studyName),
-                additionalInfo: params?.additionalInfo?.trim(),
-                institutionName : params?.institutionName?.trim()
-        });
-
-        if (res?.accepted?.length > 0) {
-            return ValidationHandler.success()
-        }
-        return ValidationHandler.handle(replaceErrorString(ERROR.FAILED_TO_NOTIFY_ACCESS_REQUEST, `userID:${context?.userInfo?._id}`));
-    }
-
-    /**
-     * Retrieves active Federal Lead users.
-     * @returns {Promise<object[]>} An array of user documents
-     */
-    async getFedLeads() {
-        return await this.userDAO.findMany({
-            role: USER.ROLES.FEDERAL_LEAD,
-            userStatus: USER.STATUSES.ACTIVE
-        });
-    }
-
-
-    async grantToken(params, context){
-        isLoggedInOrThrow(context);
-        isValidUserStatus(context?.userInfo?.userStatus);
-        if (!context?.userInfo?._id) {
-            console.error("Cannot create a token because the User ID is missing from the context");
-            throw new Error(SUBMODULE_ERROR.INVALID_USERID);
-        }
-        if(context?.userInfo?.tokens){
-            context.userInfo.tokens = []
-        }
-        const accessToken = createToken(context.userInfo._id, config.token_secret, config.token_timeout);
-        await this.linkTokentoUser(context, accessToken);
-        return {
-            tokens: [accessToken],
-            message: "This token can only be viewed once and will be lost if it is not saved by the user"
-        }
-    }
-
-    async linkTokentoUser(context, accessToken){
-        const sessionCurrentTime = getCurrentTime();
-        const updateUser ={
-            _id: context.userInfo._id,
-            tokens: [accessToken],
-            updateAt: sessionCurrentTime
-        }
-        try {
-            await this.userDAO.update(updateUser._id, updateUser);
-        } catch (error) {
-            throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
-        }
-
-        context.userInfo = {
-            ...context.userInfo,
-            ...updateUser
-        }
-    }
-
-
-    /**
-     * Find a user by ID without enriching studies.
-     * @param {string} userID User ID
-     * @returns {Promise<object|null>}
-     */
-    async findByID(userID) {
-        return await this.userDAO.findById(userID);
-    }
-
-    /**
-     * Find users by IDs without enriching studies.
-     * @param {string[]} userIDs User IDs
-     * @returns {Promise<object[]>}
-     */
-    async findByIDs(userIDs) {
-        return await this.userDAO.findManyByIds(userIDs);
-    }
-
-    async getUserByID(userID) {
-        const result = await this.userDAO.findById(userID);
-        if (result) {
-            const studies = await this._findApprovedStudies(result.studies);
-            return {
-                ...result,
-                studies
-            };
-        } else {
-            return null;
-        }
-    }
-
-    /**
-     * Fetch multiple users by their IDs in a single database query
-     * @param {string[]} userIDs - Array of user IDs to fetch
-     * @returns {Promise<Array>} - Array of user objects with studies populated
-     */
-    async getUsersByIDs(userIDs) {
-        if (!userIDs || userIDs.length === 0) {
-            return [];
-        }
-
-        // Fetch all users in a single query
-        const users = await this.userDAO.findManyByIds(userIDs);
-        
-        // Fetch studies for all users in parallel
-        const usersWithStudies = await Promise.all(
-            users.map(async (user) => {
-                const studies = await this._findApprovedStudies(user.studies);
-                return {
-                    ...user,
-                    studies
-                };
-            })
-        );
-
-        return usersWithStudies;
-    }
-
-    async _findStudiesNames(studies) {
-        if (!studies) return [];
-        const studiesIDs = (studies[0] instanceof Object) ? studies.map((study) => study?._id) : studies;
-        if(isAllStudy(studies))
-            return ["All studies"];
-        const approvedStudies = await this.approvedStudiesCollection.aggregate([{
-            "$match": {
-                "_id": { "$in": studiesIDs }
-            }
-        }]);
-        return approvedStudies
-            .map((study) => study.studyName);
-    }
-
-
-    // Extracts the study IDs from the studies array
-    _extractStudyIds(studies) {
-        if (!studies || studies.length === 0) {
-            return [];
-        }
-        return studies.map((study) => {
-            if (study && study instanceof Object && (study?._id || study?.id)) {
-                return study._id || study.id;
-            }
-            return study;
-        }).filter(studyID => studyID !== null && studyID !== undefined);
-    }
-
-    // Returns the study array content for when the user has access to all studies
-    _getAllStudiesPlaceholder() {
-        return [{ _id: ALL_STUDY_FILTER, studyName: ALL_STUDY_FILTER }];
-    }
-
-    // Uses a single query to fetch the study data for all studies in the provided array
-    async _findApprovedStudies(studies) {
-        const studiesIDs = this._extractStudyIds(studies);
-        if (studiesIDs.length === 0) {
-            return [];
-        }
-        if (studiesIDs.includes(ALL_STUDY_FILTER)) {
-            return this._getAllStudiesPlaceholder();
-        }
-
-        return await this.approvedStudyDAO.findMany({
-            _id: studiesIDs
-        });
-    }
-
-    // Adds full study data to the user objects
-    async _enrichUsersWithApprovedStudies(users) {
-        if (!users?.length) {
-            return users || [];
-        }
-
-        const pendingLookups = [];
-        const uniqueIds = new Set();
-
-        // Populates the study data in the all or no studies cases
-        // Creates a list of users that require study lookups and maintains a set of unique study IDs that need to be fetched
-        for (const user of users) {
-            const studyIds = this._extractStudyIds(user?.studies);
-            if (studyIds.includes(ALL_STUDY_FILTER)) {
-                user.studies = this._getAllStudiesPlaceholder();
-                getDataCommonsDisplayNamesForUser(user);
-            } else if (studyIds.length === 0) {
-                user.studies = [];
-                getDataCommonsDisplayNamesForUser(user);
-            } else {
-                pendingLookups.push({ user, studyIds });
-                studyIds.forEach((id) => uniqueIds.add(id));
-            }
-        }
-
-        if (uniqueIds.size > 0) {
-            // Uses a single query to fetch the necessary study data
-            const approvedStudies = await this.approvedStudyDAO.findMany({
-                _id: [...uniqueIds],
-            });
-            const studyById = new Map(approvedStudies.map((study) => [study._id, study]));
-            // Populates the study data for the remaining users using the results from the single study query
-            for (const { user, studyIds } of pendingLookups) {
-                user.studies = studyIds.map((id) => studyById.get(id)).filter(Boolean);
-                getDataCommonsDisplayNamesForUser(user);
-            }
-        }
-
-        return users;
-    }
-
-    async getUser(params, context) {
-        verifySession(context)
-            .verifyInitialized();
-        if (!params?.userID) {
-            throw new Error(SUBMODULE_ERROR.INVALID_USERID);
-        }
-
-        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER);
-        if (userScope.isNoneScope()) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        const filters = {
-            _id: params.userID
-        };
-
-        const user = await this.userDAO.findFirst(filters);
-        if (user) {
-            const roleScope = userScope.getRoleScope();
-            if (user && !userScope.isAllScope() && roleScope && roleScope?.scopeValues?.length > 0) {
-                const roleSet = new Set(Object.values(ROLES));
-                const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
-                if (!filteredRoles?.includes(user?.role)) {
-                    throw new Error(ERROR.INVALID_ROLE_SCOPE_REQUEST);
-                }
-            }
-            const studies = await this._findApprovedStudies(user?.studies);
-            const institution = user?.role === ROLES.SUBMITTER && user?.institution?._id ? user.institution : null;
-            return getDataCommonsDisplayNamesForUser({
-                ...user,
-                studies,
-                institution
-            });
-        } else {
-            return null;
-        }
-    }
-
-    async listUsers(params, context) {
-        verifySession(context)
-            .verifyInitialized();
-        const manageUserScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER);
-        if (manageUserScope.isNoneScope()) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        const roleScope = manageUserScope.getRoleScope();
-        const roleSet = new Set(Object.values(ROLES));
-        const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
-        const match = {
-            ...(!manageUserScope.isAllScope() ?
-                { role: filteredRoles || [] } : {})
-        };
-
-        const result = await this.userDAO.findMany(match);
-        if (!result?.length) {
-            return [];
-        }
-        await this._enrichUsersWithApprovedStudies(result);
-        return result;
-    }
-
-    /**
-     * List the users eligible to own a reopened Submission Request.
-     * @param {Object} params Endpoint parameters
-     * @param {{ cookie: Object, userInfo: Object }} context API request context
-     * @returns {Promise<Object[]>} An array of UserInfo objects
-     */
-    async listReopenOwners(params, context) {
-        verifySession(context)
-            .verifyInitialized();
-        const reopenScope = await this._getUserScope(
-            context?.userInfo,
-            USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
-        );
-        if (!reopenScope.isAllScope()) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        const owners = await this.userDAO.findMany(this._buildReopenListUsersMatch());
-        return owners?.map((owner) => ({
-            userID: owner._id,
-            firstName: owner.firstName,
-            lastName: owner.lastName,
-        })) || [];
-    }
-
-    isEligibleReopenOwner(user) {
-        return isEligibleReopenOwnerUtil(user);
-    }
-
-    _buildReopenListUsersMatch() {
-        return {
-            role: REOPEN_ASSIGNABLE_ROLES,
-            userStatus: USER.STATUSES.ACTIVE,
-            permissions: getSubmissionRequestCreatePermissionVariants(),
-        };
-    }
-
-    /**
-     * List Active Data-Commons Personnel API Interface.
-     * @api
-     * @param {Object} params Endpoint parameters
-     * @param {{ cookie: Object, userInfo: Object }} context API request context
-     * @returns {Promise<User[]>} An array of Data-Commons Personnel Users
-     */
-    async listActiveDCPsAPI(params, context) {
-        verifySession(context)
-            .verifyInitialized();
-        const userStudyScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_STUDIES);
-        const userProgramsScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_PROGRAMS);
-
-        const isStudyNone = userStudyScope.isNoneScope();
-        const isProgramNone = userProgramsScope.isNoneScope();
-        if ((isStudyNone && isProgramNone) || (isStudyNone !== isProgramNone)) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-
-        const DCPUsers = await this.getDCPs(params.dataCommons || []);
-        return DCPUsers?.map((user) => ({
-            userID: user._id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            createdAt: user.createdAt,
-            updateAt: user.updateAt,
-        })) || [];
-    }
-
-    async getAdmin() {
-        let result = await this.userDAO.findMany({
-            role: USER.ROLES.ADMIN,
-            userStatus: USER.STATUSES.ACTIVE
-        });
-        return result || [];
-    }
-
-    async updateMyUser(params, context) {
-        isLoggedInOrThrow(context);
-        isValidUserStatus(context?.userInfo?.userStatus);
-        if (!context.userInfo._id) {
-            let error = "User ID is missing from the context user information";
-            console.error(error)
-            throw new Error(error)
-        }
-        let sessionCurrentTime = getCurrentTime();
-        let user = await this.userDAO.findById(context.userInfo._id);
-        if (!user) throw new Error("User is not found in the database")
-
-        const updateUser ={
-            _id: context.userInfo._id,
-            firstName: params.userInfo.firstName,
-            lastName: params.userInfo.lastName,
-            fullName: formatName(params.userInfo),
-            updateAt: sessionCurrentTime
-        }
-        try {
-            await this.userDAO.update(updateUser._id, updateUser);
-        } catch (error) {
-            console.error("An error occurred while updating the User object: ", error);
-            throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
-        }
-        // store user update log
-        const prevUser = {firstName: user.firstName, lastName: user.lastName};
-        const newProfile = {firstName: params.userInfo.firstName, lastName: params.userInfo.lastName};
-        const log = UpdateProfileEvent.create(user._id, user.email, user.IDP, prevUser, newProfile);
-        await this.logCollection.insert(log);
-        // Update all dependent objects only if the User's Name has changed
-        // NOTE: We're not waiting for these async updates to complete before returning the updated User
-        if (updateUser.firstName !== user.firstName || updateUser.lastName !== user.lastName) {
-            this.organizationCollection.updateMany(
-                { "conciergeID": updateUser._id },
-                { "conciergeName": `${updateUser.firstName} ${updateUser.lastName}` }
-            );
-        }
-        context.userInfo = {
-            ...context.userInfo,
-            ...updateUser,
-            updateAt: sessionCurrentTime
-        }
-        const userStudies = await this._findApprovedStudies(user?.studies);
-        const result = {
-            ...user,
-            firstName: params.userInfo.firstName,
-            lastName: params.userInfo.lastName,
-            updateAt: sessionCurrentTime,
-            studies: userStudies
-        }
-        return getDataCommonsDisplayNamesForUser(result);
-    }
-
-    async editUser(params, context) {
-        verifySession(context)
-            .verifyInitialized();
-        const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER);
-        if (userScope.isNoneScope()) {
-            throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-        }
-
-        if (!params.userID) {
-            throw new Error(SUBMODULE_ERROR.INVALID_USERID);
-        }
-
-        const userDoc = await this.userDAO.findById(params.userID);
-        if (!userDoc || userDoc?._id !== params.userID) {
-            throw new Error(SUBMODULE_ERROR.USER_NOT_FOUND);
-        }
-
-        const roleScope = userScope.getRoleScope();
-        const roleSet = new Set(Object.values(ROLES));
-        const filteredRoles = roleScope?.scopeValues.filter(role => roleSet.has(role));
-
-        if (roleScope?.scope && (
-            !filteredRoles?.includes(userDoc?.role) || // check current role
-            (params?.role && !filteredRoles?.includes(params?.role)) || // limit changing another role
-            roleScope?.scopeValues?.length === 0)) {
-            throw new Error(ERROR.INVALID_ROLE_SCOPE_REQUEST);
-        }
-
-        let updatedUser = {};
-        if (params.role && Object.values(USER.ROLES).includes(params.role)) {
-            updatedUser.role = params.role;
-        }
-
-        if(!params?.studies && USER.ROLES.SUBMITTER === params.role) {
-            throw new Error(SUBMODULE_ERROR.APPROVED_STUDIES_REQUIRED);
-        }
-        // note: Submitter is newly assigned now or institution info is only being updated.
-        const isSubmitter = USER.ROLES.SUBMITTER === params.role || (!params.role && USER.ROLES.SUBMITTER === userDoc.role);
-        const aInstitution = isSubmitter && params?.institutionID ?
-            await this.institutionService.getInstitutionByID(params?.institutionID) : null;
-        this._setInstitution(aInstitution, userDoc?.institution, isSubmitter, updatedUser, params?.institutionID);
-
-        const isValidUserStatus = Object.values(USER.STATUSES).includes(params.status);
-        if (params.status) {
-            if (isValidUserStatus) {
-                updatedUser.userStatus = params.status;
-            } else {
-                throw new Error(SUBMODULE_ERROR.INVALID_USER_STATUS);
-            }
-        }
-
-        updatedUser.dataCommons = DataCommon.get(userDoc?.dataCommons, params?.dataCommons);
-        await this._setUserPermissions(userDoc, params?.role, params?.permissions, params?.notifications, updatedUser, userDoc);
-        updatedUser  = await this.updateUserInfo(userDoc, updatedUser, params.userID, params.status, params.role, params?.studies);
-
-        return getDataCommonsDisplayNamesForUser(updatedUser);
-    }
-
-    _setInstitution(newInstitution, prevInstitution, isSubmitter, updatedUser, institutionID) {
-        if (isSubmitter && !newInstitution && institutionID) {
-            throw new Error(replaceErrorString(ERROR.INSTITUTION_ID_NOT_EXIST, institutionID));
-        }
-
-        const {_id, name, status} = prevInstitution || {};
-        const {_id: newId, name: newName, status: newStatus} = newInstitution || {};
-        if (_id !== newId ||  name !== newName || status !== newStatus) {
-            updatedUser.institution = newInstitution ? {_id: newId, name: newName, status: newStatus} : null;
-        }
-    }
-
-    /**
-     * Study IDs the user was previously assigned explicitly (excludes "All").
-     * Inactive studies may only remain on update if they appear here and in the new assignment.
-     * Users assigned "All" still reach every study including inactive via the All branch (no per-id check).
-     */
-    _previousExplicitApprovedStudyIds(prevUser) {
-        const studies = prevUser?.studies;
-        if (!studies?.length) {
-            return new Set();
-        }
-        const ids = [];
-        for (const entry of studies) {
-            const id = entry && typeof entry === "object" ? (entry._id || entry.id) : entry;
-            if (id && id !== "All") {
-                ids.push(id);
-            }
-        }
-        return new Set(ids);
-    }
-
-    async updateUserInfo(prevUser, updatedUser, userID, status, role, approvedStudyIDs) {
-        // add studies to user.
-        const validStudies = await this._findApprovedStudies(approvedStudyIDs);
-        if (approvedStudyIDs && approvedStudyIDs.length > 0) {
-            if(validStudies.length !== approvedStudyIDs.length && !approvedStudyIDs?.includes("All")) {
-                throw new Error(SUBMODULE_ERROR.INVALID_NOT_APPROVED_STUDIES);
-            }
-            // Explicit study lists: cannot newly assign inactive studies; may keep inactive only if
-            // already explicitly assigned. Assignment "All" skips this (All still includes inactive studies).
-            if (!approvedStudyIDs?.includes("All")) {
-                const previousExplicitIds = this._previousExplicitApprovedStudyIds(prevUser);
-                for (const study of validStudies) {
-                    if (isApprovedStudyActive(study)) {
-                        continue;
-                    }
-                    const studyId = study._id || study.id;
-                    if (!previousExplicitIds.has(studyId)) {
-                        throw new Error(ERROR.INACTIVE_APPROVED_STUDY_CANNOT_ASSIGN);
-                    }
-                }
-            }
-            // ** Must store Approved studies ID only **
-            if (approvedStudyIDs?.includes("All")) {
-                updatedUser.studies = [{_id: "All"}];
-            } else {
-                updatedUser.studies = approvedStudyIDs.map(str => ({ _id: str }));
-            }
-        }
-        else
-            updatedUser.studies = [];
-
-        let userAfterUpdate;
-        try {
-            userAfterUpdate = getDataCommonsDisplayNamesForUser(
-                await this.userDAO.update(userID, {...updatedUser, updateAt: getCurrentTime()})
-            );
-        } catch (error) {
-            throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
-        }
-
-        await Promise.all([
-            this._notifyDeactivatedUser(prevUser, status),
-            this._notifyUpdatedUser(prevUser, userAfterUpdate, role),
-            this._logAfterUserEdit(prevUser, userAfterUpdate),
-            this._removePrimaryContact(prevUser, userAfterUpdate)
-        ]);
-
-        if (userAfterUpdate.studies) {
-            userAfterUpdate.studies = validStudies; // return approved studies dynamically with all properties of studies
-        }
-        return { ...prevUser, ...userAfterUpdate};
-    }
-
-    async _getUserScope(userInfo, permission) {
-        const validScopes = await this.authorizationService.getPermissionScope(userInfo, permission);
-        const userScope = UserScope.create(validScopes);
-        // valid scopes; none, all, role/role:RoleScope
-        const isValidUserScope = userScope.isNoneScope() || userScope.isAllScope() || userScope.isRoleScope() || userScope.isOwnScope();
-        if (!isValidUserScope) {
-            throw new Error(replaceErrorString(ERROR.INVALID_USER_SCOPE));
-        }
-        return userScope;
-    }
-
-    async _notifyUpdatedUser(prevUser, newUser, newRole) {
-        if (newUser?.notifications?.includes(EN.USER_ACCOUNT.USER_ACCESS_CHANGED)) {
-            const baseRoleCondition = newRole && Object.values(USER.ROLES).includes(newRole);
-            const isRoleChange = baseRoleCondition && prevUser.role !== newUser.role;
-            const isDataCommonsChange = newUser?.dataCommons?.length > 0 && JSON.stringify(prevUser?.dataCommons) !== JSON.stringify(newUser?.dataCommons);
-            const isStudiesChange = newUser.studies?.length > 0 && JSON.stringify(prevUser.studies) !== JSON.stringify(newUser.studies);
-            // Submitter Only Receive the institution change
-            const isInstitutionChange = USER.ROLES.SUBMITTER === newUser.role
-                && newUser?.institution?.name && JSON.stringify(prevUser?.institution?.name) !== JSON.stringify(newUser?.institution?.name)
-            if (isRoleChange || isDataCommonsChange || isStudiesChange || isInstitutionChange) {
-                const userDataCommons = [USER.ROLES.DATA_COMMONS_PERSONNEL].includes(newUser.role) ? newUser.dataCommons : undefined;
-                const studyNames = await this._findStudiesNames(newUser.studies);
-                await this.notificationsService.userRoleChangeNotification(newUser.email,
-                    {
-                        accountType: newUser.IDP,
-                        email: newUser.email,
-                        role: newUser.role,
-                        dataCommons: userDataCommons,
-                        ...([USER.ROLES.SUBMITTER, USER.ROLES.FEDERAL_LEAD].includes(newUser.role) && { studies: studyNames }),
-                        ...((USER.ROLES.SUBMITTER === newUser.role) && { institution: newUser?.institution?.name || this._NOT_APPLICABLE }),
-                    },
-                    {url: this.appUrl, helpDesk: `${this.officialEmail}.`});
-            }
-        }
-    }
-
-    async _notifyDeactivatedUser(prevUser, newStatus) {
-        const isUserActivated = prevUser?.userStatus !== USER.STATUSES.INACTIVE;
-        const isStatusChange = newStatus && newStatus?.toLowerCase() === USER.STATUSES.INACTIVE.toLowerCase();
-        if (isUserActivated && isStatusChange) {
-            if (prevUser?.notifications?.includes(EN.USER_ACCOUNT.USER_INACTIVATED)) {
-                await this.notificationsService.deactivateUserNotification(prevUser.email,
-                    {firstName: prevUser.firstName},
-                    {officialEmail: `${this.officialEmail}.`});
-            }
-        }
-    }
-
-    async _logAfterUserEdit(prevUser, updatedUser) {
-        // create an array to store new events
-        let logEvents = [];
-        const prevProfile = {}, newProfile = {};
-        Object.keys(updatedUser).forEach(key => {
-            if (["_id", "updateAt"].includes(key)) {
-                return;
-            }
-            prevProfile[key] = prevUser?.[key];
-            newProfile[key] = updatedUser[key];
-        });
-        // create a profile update event and store it in the events array
-        const updateProfileEvent = UpdateProfileEvent.create(prevUser._id, prevUser.email, prevUser.IDP, prevProfile, newProfile);
-        logEvents.push(updateProfileEvent);
-        // if the user has been reactivated during the update
-        if (prevProfile?.userStatus === USER.STATUSES.INACTIVE && newProfile?.userStatus === USER.STATUSES.ACTIVE){
-            // create Reactivate User event and add it to the events array
-            const reactivateUserEvent = ReactivateUserEvent.create(prevUser._id, prevUser.email, prevUser.IDP);
-            logEvents.push(reactivateUserEvent);
-        }
-        // insert all of the events in the events array into the log collection
-        const res = await this.logCollection.insertMany(logEvents);
-        if (!res?.insertedCount || res?.insertedCount < 1) {
-            console.error(`Failed to insert UpdateProfileEvent &&  ReactivateUserEvent: userID: ${updatedUser._id}`)
-        }
-    }
-
-    async getAdminPBACUsers() {
-        const orgOwnerOrAdminRole = {
-            "userStatus": USER.STATUSES.ACTIVE,
-            "notifications": [EN.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
-            OR: [{"role": USER.ROLES.ADMIN}]
-        };
-        return await this.userDAO.findMany(orgOwnerOrAdminRole) || [];
-    }
-
-    /**
-     * Disable users matching specific user conditions.
-     *
-     * @param {Array} inactiveUsers - An array of user conditions for OR.
-     * @returns {Promise<Array>} - An array of user aggregation result.
-     */
-    // search by user's email and idp
-    async disableInactiveUsers(inactiveUsers) {
-        if (!inactiveUsers || inactiveUsers?.length === 0) return [];
-        const query = {OR: inactiveUsers, IDP: { not: this._NIH }};
-        const updated = await this.userDAO.updateMany(query, {userStatus: USER.STATUSES.INACTIVE, updateAt: getCurrentTime()});
-        if (updated?.count && updated?.count > 0) {
-            return await this.userDAO.findMany(query) || [];
-        }
-        return [];
-    }
-
-    /**
-     * get Data Commons Personnel
-     * @param {*} dataCommons
-     * @returns {Promise<Array>} user[]
-     */
-    async getDCPs(dataCommons) {
-        const dataCommonsArr = Array.isArray(dataCommons) ? dataCommons : [dataCommons];
-        const query= {
-            "userStatus": USER.STATUSES.ACTIVE,
-            "role": USER.ROLES.DATA_COMMONS_PERSONNEL,
-            ...(dataCommonsArr.includes("All") ? {} : { "dataCommons": dataCommonsArr })
-        };
-        return await this.userDAO.findMany(query);
-    }
-
-    isAdmin(role) {
-        return role && role === USER.ROLES.ADMIN;
-    }
-
-    /**
-     * Finds active non-NIH users whose latest qualifying log event is older than the inactivity window.
-     * The join between users and logs happens in JS: an equality $lookup from users into logs copies every
-     * log of an email onto the user document, which grows without bound and eventually exceeds DocumentDB's
-     * output buffer limit. Instead, logs are reduced with $group to one small document per (email, IDP).
-     * @param {string[]} qualifyingEvents Log event types that count as activity
-     * @returns {Promise<object[]>} Users ({_id, email, IDP, firstName}) with no qualifying log newer than the cutoff
-     */
-    async checkForInactiveUsers(qualifyingEvents) {
-        // users collection field names
-        const USER_FIELDS = {
-            ID: "_id",
-            FIRST_NAME: "firstName",
-            EMAIL: "email",
-            IDP: "IDP",
-            STATUS: "userStatus"
-        };
-        // logs collection field names
-        const LOGS_FIELDS = {
-            EMAIL: "userEmail",
-            IDP: "userIDP",
-            EVENT_TYPE: "eventType",
-            TIMESTAMP: "timestamp"
-        };
-
-        const activeUsers = await this.userDAO.aggregate([
-            {
-                $match: {
-                    [USER_FIELDS.STATUS]: USER.STATUSES.ACTIVE,
-                    // Disable auto-deactivated for NIH user
-                    [USER_FIELDS.IDP]: {$not: {$regex: this._NIH, $options: "i"}},
-                }
-            },
-            {
-                $project: {
-                    [USER_FIELDS.ID]: 1,
-                    [USER_FIELDS.EMAIL]: 1,
-                    [USER_FIELDS.IDP]: 1,
-                    [USER_FIELDS.FIRST_NAME]: 1,
-                }
-            }
-        ]);
-        if (!activeUsers?.length) return [];
-
-        // latest qualifying log timestamp per (email, IDP)
-        const latestLogs = await this.logCollection.aggregate([
-            {
-                $match: {
-                    [LOGS_FIELDS.EVENT_TYPE]: {$in: qualifyingEvents},
-                    [LOGS_FIELDS.EMAIL]: {$in: [...new Set(activeUsers.map((u) => u[USER_FIELDS.EMAIL]))]},
-                }
-            },
-            {
-                $group: {
-                    _id: {
-                        email: "$" + LOGS_FIELDS.EMAIL,
-                        idp: "$" + LOGS_FIELDS.IDP,
-                    },
-                    latest: {$max: "$" + LOGS_FIELDS.TIMESTAMP},
-                }
-            }
-        ]);
-
-        const keyOf = (email, idp) => JSON.stringify([email ?? null, idp ?? null]);
-        const latestByUser = new Map((latestLogs || []).map((l) => [keyOf(l._id?.email, l._id?.idp), l.latest]));
-        const cutoff = subtractDaysFromNowTimestamp(this.inactiveUserDays);
-        return activeUsers.filter((u) => {
-            const latest = latestByUser.get(keyOf(u[USER_FIELDS.EMAIL], u[USER_FIELDS.IDP]));
-            return latest == null || latest < cutoff;
-        });
-    }
-
-    _validateUserPermission(isUserRoleChange, userRole, inputPermissions, filteredValidPermissions, inputNotifications, accessControl) {
-        const filteredValidPermissionsSet = new Set(filteredValidPermissions);
-        const invalidPermissions = inputPermissions?.filter(p => !filteredValidPermissionsSet?.has(p));
-        if (invalidPermissions?.length > 0) {
-            throw new Error(replaceErrorString(ERROR.INVALID_PERMISSION_NAME, `${invalidPermissions.join(',')}`));
-        }
-        const invalidNotifications = inputNotifications?.filter(notification => !this._allEmailNotificationNamesSet.has(notification));
-
-        if (invalidNotifications?.length > 0) {
-            throw new Error(replaceErrorString(ERROR.INVALID_NOTIFICATION_NAME, `${invalidNotifications.join(',')}`));
-        }
-
-        return {
-            filteredPermissions: this._setFilteredPermissions(isUserRoleChange, userRole, inputPermissions, accessControl?.permissions?.permitted, accessControl?.permissions?.getInherited),
-            filteredNotifications: this._setFilteredNotifications(isUserRoleChange, userRole, inputNotifications, accessControl?.notifications?.permitted)
-        }
-    }
-    // note for inheritedCallback; Some permissions are automatically enforced if they are inherited from the PBAC settings.
-    _setFilteredPermissions(isUserRoleChange, userRole, permissions, defaultPermissions, inheritedCallback) {
-        const updatedPermissions = isUserRoleChange && permissions === undefined ? defaultPermissions : permissions;
-        return [...(updatedPermissions || []), ...inheritedCallback(updatedPermissions)];
-    }
-
-    _setFilteredNotifications(isUserRoleChange, userRole, notifications, defaultNotifications) {
-        const updatedNotifications = isUserRoleChange && notifications === undefined ? defaultNotifications : notifications;
-        return [...(updatedNotifications || [])];
-    }
-
-    async _setUserPermissions(currUser, newRole, permissions, notifications, updatedUser) {
-        const isUserRoleChange = (newRole && (currUser?.role !== newRole));
-        const userRole = isUserRoleChange ? newRole : currUser?.role;
-        const [accessControl, filteredValidPermissions] = await Promise.all([
-            this.configurationService.getAccessControl(userRole),
-            this.authorizationService.filterValidPermissions({role: userRole, ...currUser }, permissions)
-        ]);
-        const {filteredPermissions, filteredNotifications} =
-            this._validateUserPermission(isUserRoleChange, userRole, permissions, filteredValidPermissions,
-                notifications, accessControl);
-
-        if (isUserRoleChange || (!isUserRoleChange && permissions !== undefined)) {
-            if (!isIdenticalArrays(currUser?.permissions, filteredPermissions) && filteredPermissions) {
-                updatedUser.permissions = new Set(filteredPermissions || []).toArray();
-            }
-        }
-
-        if (isUserRoleChange || (!isUserRoleChange && notifications !== undefined)) {
-            if (!isIdenticalArrays(currUser?.notifications, filteredNotifications) && filteredNotifications) {
-                updatedUser.notifications = new Set(filteredNotifications).toArray();
-            }
-        }
-    } 
-    /**
-     * Active Submitters (excluding the submission owner) who can collaborate on a study.
-     * Populates each user's studies via approved-study lookup.
-     * @param {string} studyID Approved study ID
-     * @param {string} submitterID Submission owner user ID to exclude
-     * @returns {Promise<object[]>} Collaborator users with studies populated
-     */
-    async getCollaboratorsByStudyID(studyID, submitterID) {
-        const users = await this.userDAO.getCollaboratorsByStudyID(studyID, submitterID);
-        for (const user of users) {
-            user.studies = await this._findApprovedStudies(user.studies);
-        }
-        return users;
-    }
-
-    /**
-     * Fetches a list of users based on specified notifications and optional roles.
-     *
-     * @param {Array} notifications - An array of notification.
-     * @param {Array} [roles=[]] - An optional array of user roles.
-     * @returns {Promise<Array>} - An array of user documents.
-     */
-    async getUsersByNotifications(notifications, roles = []) {
-        return await this.userDAO.getUsersByNotifications(notifications, roles);
-    }
-
-    /**
-     * Fetches a list of users based on specified notifications, roles, and optional data commons.
-     *
-     * @param {Array} notifications - An array of notification types.
-     * @param {Array} roles - An array of user roles.
-     * @param {string} [dataCommons] - Optional data commons to filter by.
-     * @returns {Promise<Array>} - An array of user documents.
-     */
-    async findUsersByNotificationsAndRole(notifications, roles, dataCommons = null) {
-        try {
-            const whereConditions = {
-                userStatus: USER.STATUSES.ACTIVE,
-                notifications: notifications,
-                role: roles
-            };
-
-            // Add data commons filter if provided
-            if (dataCommons) {
-                whereConditions.dataCommons = dataCommons;
-            }
-
-            return await this.userDAO.findMany(whereConditions);
-        } catch (error) {
-            console.error('Error in findUsersByNotificationsAndRole:', error);
-            return [];
-        }
-    }
-
-    async updateUserInstitution(institutionID, institutionName, institutionStatus) {
-        try {
-            await this.userDAO.updateMany(
-                { "institution._id": institutionID, OR: [{"institution.name": { not: institutionName }}, {"institution.status": { not: institutionStatus }}]},
-                { "institution.name": institutionName, "institution.status": institutionStatus, updateAt: getCurrentTime() }
-            );
-        } catch (error) {
-            console.error(ERROR.FAILED_UPDATE_USER_INSTITUTION, error);
-        }
-    }
-
-    // user's role changed to anything other than Data Commons Personnel, they should be removed from any study/program's data concierge.
-    async _removePrimaryContact(prevUser, newUser) {
-        const isRoleChange = prevUser.role === ROLES.DATA_COMMONS_PERSONNEL && prevUser.role !== newUser.role;
-        if (isRoleChange) {
-            const [updatedSubmission, updateProgram, updatedStudies] = await Promise.all([
-                this.submissionDAO.updateMany(
-                    { conciergeID: (prevUser?._id || prevUser?.id), status: { notIn: [COMPLETED, CANCELED, DELETED] } },
-                    { conciergeID: "", updatedAt: getCurrentTime() }
-                ),
-                this.organizationCollection.updateMany(
-                    { conciergeID: prevUser?._id },
-                    { conciergeID: "", conciergeName: "", conciergeEmail: "", updateAt: getCurrentTime() }
-                ),
-                this.approvedStudiesCollection.updateMany(
-                    { primaryContactID: prevUser?._id },
-                    { primaryContactID: null, updatedAt: getCurrentTime() }
-                )
-            ]);
-            if (typeof updatedSubmission?.count !== 'number') {
-                console.error("Failed to remove the data concierge in submissions");
-            }
-
-            if (!updateProgram.acknowledged) {
-                console.error("Failed to remove the data concierge in programs");
-            }
-
-            if (!updatedStudies.acknowledged) {
-                console.error("Failed to remove the data concierge in studies");
-            }
-        }
-    }
-     /**
-     * API: isUserPrimaryContact
-     * @param {*} param 
-     * @param {*} context 
-     * @returns bool
-     */
-     async isUserPrimaryContact(param, context){
-        verifySession(context)
-            .verifyInitialized();
-         const userScope = await this._getUserScope(context?.userInfo, USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER);
-         if (userScope.isNoneScope()) {
-             throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
-         }
-
-        const {userID} = param;
-        const user = await this.getUserByID(userID);
-        if (!user) {
-            throw new Error(ERROR.USER_NOT_EXIST);
-        }
-        // return true if the user is primary contact of any study or program (aka. organization). Otherwise it should be false.
-        const [primaryContactInProgram, primaryContactInStudy] = await Promise.all([
-            this.organizationCollection.aggregate([{ "$match": {"conciergeID": user._id }}, {"$limit": 1}]),
-            this.approvedStudiesCollection.aggregate([{"$match": {"primaryContactID": user._id }}, {"$limit": 1}])
-        ]);
-        return (primaryContactInStudy.length > 0 || primaryContactInProgram.length > 0)
-    }
-}
-
-
-class DataCommon {
-    constructor(currentDataCommons, newDataCommons) {
-        this.currentDataCommons = currentDataCommons;
-        this.newDataCommons = newDataCommons;
-    }
-
-    /**
-     * Get the new data commons based on the user's role & data commons.
-     *
-     * @param {Array} currentDataCommons - The current data commons in the user collection.
-     * @param {Array} newDataCommons - The new data commons to update the user.
-     * @returns {Array} - return a data commons array.
-     */
-
-    static get(currentDataCommons, newDataCommons) {
-        const dataCommons = new DataCommon(currentDataCommons, newDataCommons);
-        return dataCommons._getDataCommons() || [];
-    }
-
-    _getDataCommons() {
-        return this.newDataCommons === undefined ? this.currentDataCommons : this.newDataCommons;
-    }
-}
+  const validUserStatus = [USER.STATUSES.ACTIVE];
+  if (userStatus && !validUserStatus.includes(userStatus))
+    throw new Error(SUBMODULE_ERROR.INVALID_USER_STATUS);
+};
+
+/**
+ * Signs a JWT for a user.
+ * @param {string} userID User ID stored as the token subject
+ * @param {string} tokenSecret Secret used to sign the token
+ * @param {string|number} tokenTimeout Token lifetime passed to jsonwebtoken as `expiresIn`
+ * @returns {string} Signed JWT
+ */
+const createToken = (userID, tokenSecret, tokenTimeout) =>
+  jwt.sign(
+    // sub (Subject) is used to follow JWT naming conventions
+    // https://www.iana.org/go/rfc7519#section-4.1.2
+    { sub: userID },
+    tokenSecret,
+    { expiresIn: tokenTimeout }
+  );
 
 function isIdenticalArrays(arr1, arr2) {
-    if (arr1?.length !== arr2?.length) return false;
-    return arr1.every(value => arr2?.includes(value));
+  if (arr1?.length !== arr2?.length) return false;
+  return arr1.every((value) => arr2?.includes(value));
+}
+
+const ALL_STUDY_FILTER = "All";
+
+/**
+ * Extracts study IDs from a user's studies array, accepting study objects or raw IDs.
+ * @param {Array<object|string>} studies User studies
+ * @returns {Array<string>} Study IDs with null and undefined removed
+ */
+function extractStudyIds(studies) {
+  if (!studies || studies.length === 0) {
+    return [];
+  }
+  return studies
+    .map((study) => {
+      if (study && study instanceof Object && (study?._id || study?.id)) {
+        return study._id || study.id;
+      }
+      return study;
+    })
+    .filter((studyID) => studyID !== null && studyID !== undefined);
+}
+
+/**
+ * Study array used when the user has access to all studies.
+ * @returns {Array<{_id: string, studyName: string}>}
+ */
+function getAllStudiesPlaceholder() {
+  return [{ _id: ALL_STUDY_FILTER, studyName: ALL_STUDY_FILTER }];
+}
+
+/**
+ * Study IDs the user was previously assigned explicitly (excludes "All").
+ * Inactive studies may only remain on update if they appear here and in the new assignment.
+ * Users assigned "All" still reach every study including inactive via the All branch (no per-id check).
+ * @param {object} prevUser Existing user document
+ * @returns {Set<string>}
+ */
+function previousExplicitApprovedStudyIds(prevUser) {
+  const studies = prevUser?.studies;
+  if (!studies?.length) {
+    return new Set();
+  }
+  const ids = studies
+    .map((entry) => (entry && typeof entry === "object" ? entry._id || entry.id : entry))
+    .filter((id) => id && id !== "All");
+  return new Set(ids);
+}
+
+/**
+ * Sets the institution on the update when it differs from the previous one.
+ * @param {object|null} newInstitution Institution resolved from the request
+ * @param {object|null} prevInstitution Institution currently on the user
+ * @param {boolean} isSubmitter Whether the user is a submitter
+ * @param {object} updatedUser Update payload, mutated when the institution changes
+ * @param {string} [institutionID] Requested institution ID
+ * @throws {Error} When a submitter requests an institution that does not exist
+ */
+function setInstitution(newInstitution, prevInstitution, isSubmitter, updatedUser, institutionID) {
+  if (isSubmitter && !newInstitution && institutionID) {
+    throw new Error(replaceErrorString(ERROR.INSTITUTION_ID_NOT_EXIST, institutionID));
+  }
+
+  const { _id, name, status } = prevInstitution || {};
+  const { _id: newId, name: newName, status: newStatus } = newInstitution || {};
+  if (_id !== newId || name !== newName || status !== newStatus) {
+    updatedUser.institution = newInstitution
+      ? { _id: newId, name: newName, status: newStatus }
+      : null;
+  }
+}
+
+/**
+ * Computes the permissions to store for a user.
+ * Some permissions are automatically enforced if they are inherited from the PBAC settings.
+ * @param {boolean} isUserRoleChange Whether the user's role is changing
+ * @param {string} userRole Role of the user
+ * @param {string[]|undefined} permissions Requested permissions
+ * @param {string[]|undefined} defaultPermissions Role-default permissions
+ * @param {Function} inheritedCallback Returns the permissions inherited from the PBAC settings
+ * @returns {string[]}
+ */
+function setFilteredPermissions(
+  isUserRoleChange,
+  userRole,
+  permissions,
+  defaultPermissions,
+  inheritedCallback
+) {
+  const updatedPermissions =
+    isUserRoleChange && permissions === undefined ? defaultPermissions : permissions;
+  return [...(updatedPermissions || []), ...inheritedCallback(updatedPermissions)];
+}
+
+/**
+ * Computes the notifications to store for a user.
+ * @param {boolean} isUserRoleChange Whether the user's role is changing
+ * @param {string} userRole Role of the user
+ * @param {string[]|undefined} notifications Requested notifications
+ * @param {string[]|undefined} defaultNotifications Role-default notifications
+ * @returns {string[]}
+ */
+function setFilteredNotifications(isUserRoleChange, userRole, notifications, defaultNotifications) {
+  const updatedNotifications =
+    isUserRoleChange && notifications === undefined ? defaultNotifications : notifications;
+  return [...(updatedNotifications || [])];
+}
+
+class UserService {
+  _allEmailNotificationNamesSet = new Set([
+    ...Object.values(EN.SUBMISSION_REQUEST),
+    ...Object.values(EN.DATA_SUBMISSION),
+    ...Object.values(EN.USER_ACCOUNT),
+  ]);
+
+  _NIH = "nih";
+
+  _NOT_APPLICABLE = "NA";
+
+  constructor(
+    logCollection,
+    organizationCollection,
+    notificationsService,
+    applicationCollection,
+    officialEmail,
+    appUrl,
+    approvedStudiesService,
+    inactiveUserDays,
+    configurationService,
+    institutionService,
+    authorizationService
+  ) {
+    this.logCollection = logCollection;
+    this.organizationCollection = organizationCollection;
+    this.notificationsService = notificationsService;
+    this.applicationCollection = applicationCollection;
+    this.officialEmail = officialEmail;
+    this.appUrl = appUrl;
+    this.approvedStudiesService = approvedStudiesService;
+    this.approvedStudiesCollection = approvedStudiesService.approvedStudiesCollection;
+    this.inactiveUserDays = inactiveUserDays;
+    this.configurationService = configurationService;
+    this.institutionService = institutionService;
+    this.authorizationService = authorizationService;
+    this.userDAO = new UserDAO();
+    this.approvedStudyDAO = new ApprovedStudyDAO();
+    this.submissionDAO = new SubmissionDAO();
+  }
+
+  async requestAccess(params, context) {
+    verifySession(context).verifyInitialized();
+
+    const userScope = await this._getUserScope(
+      context?.userInfo,
+      USER_PERMISSION_CONSTANTS.DATA_SUBMISSION.REQUEST_ACCESS
+    );
+    if (userScope.isNoneScope()) {
+      throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+    }
+
+    const approvedStudies =
+      params?.studies?.length > 0
+        ? await this.approvedStudiesService.listApprovedStudies(params?.studies)
+        : [];
+    if (approvedStudies.length === 0) {
+      return new Error(ERROR.INVALID_APPROVED_STUDIES_ACCESS_REQUEST);
+    }
+    if (approvedStudies.some((s) => !isApprovedStudyActive(s))) {
+      return new Error(ERROR.INVALID_APPROVED_STUDIES_ACCESS_INACTIVE);
+    }
+
+    if (params?.institutionName?.trim()?.length > 100) {
+      return new Error(ERROR.MAX_INSTITUTION_NAME_LIMIT);
+    }
+
+    const adminUsers = await this.getUsersByNotifications(
+      [EN.USER_ACCOUNT.USER_REQUEST_ACCESS],
+      [ROLES.ADMIN]
+    );
+    const adminEmails = adminUsers?.filter((u) => u?.email).map((u) => u?.email);
+    const userInfo = context?.userInfo;
+
+    if (adminEmails.length === 0) {
+      console.error(ERROR.NO_ADMIN_USER);
+      return ValidationHandler.handle(ERROR.NO_ADMIN_USER);
+    }
+
+    const res = await this.notificationsService.requestUserAccessNotification(adminEmails, {
+      userName: `${userInfo.firstName} ${userInfo?.lastName || ""}`,
+      accountType: userInfo?.IDP,
+      email: userInfo?.email,
+      role: params?.role,
+      studies: approvedStudies?.map((study) => study?.studyName),
+      additionalInfo: params?.additionalInfo?.trim(),
+      institutionName: params?.institutionName?.trim(),
+    });
+
+    if (res?.accepted?.length > 0) {
+      return ValidationHandler.success();
+    }
+    return ValidationHandler.handle(
+      replaceErrorString(ERROR.FAILED_TO_NOTIFY_ACCESS_REQUEST, `userID:${context?.userInfo?._id}`)
+    );
+  }
+
+  /**
+   * Retrieves active Federal Lead users.
+   * @returns {Promise<object[]>} An array of user documents
+   */
+  async getFedLeads() {
+    return this.userDAO.findMany({
+      role: USER.ROLES.FEDERAL_LEAD,
+      userStatus: USER.STATUSES.ACTIVE,
+    });
+  }
+
+  async grantToken(params, context) {
+    isLoggedInOrThrow(context);
+    isValidUserStatus(context?.userInfo?.userStatus);
+    if (!context?.userInfo?._id) {
+      console.error("Cannot create a token because the User ID is missing from the context");
+      throw new Error(SUBMODULE_ERROR.INVALID_USERID);
+    }
+    if (context?.userInfo?.tokens) {
+      context.userInfo.tokens = [];
+    }
+    const accessToken = createToken(
+      context.userInfo._id,
+      config.token_secret,
+      config.token_timeout
+    );
+    await this.linkTokentoUser(context, accessToken);
+    return {
+      tokens: [accessToken],
+      message: "This token can only be viewed once and will be lost if it is not saved by the user",
+    };
+  }
+
+  async linkTokentoUser(context, accessToken) {
+    const sessionCurrentTime = getCurrentTime();
+    const updateUser = {
+      _id: context.userInfo._id,
+      tokens: [accessToken],
+      updateAt: sessionCurrentTime,
+    };
+    try {
+      await this.userDAO.update(updateUser._id, updateUser);
+    } catch (error) {
+      throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
+    }
+
+    context.userInfo = {
+      ...context.userInfo,
+      ...updateUser,
+    };
+  }
+
+  /**
+   * Find a user by ID without enriching studies.
+   * @param {string} userID User ID
+   * @returns {Promise<object|null>}
+   */
+  async findByID(userID) {
+    return this.userDAO.findById(userID);
+  }
+
+  /**
+   * Find users by IDs without enriching studies.
+   * @param {string[]} userIDs User IDs
+   * @returns {Promise<object[]>}
+   */
+  async findByIDs(userIDs) {
+    return this.userDAO.findManyByIds(userIDs);
+  }
+
+  async getUserByID(userID) {
+    const result = await this.userDAO.findById(userID);
+    if (result) {
+      const studies = await this._findApprovedStudies(result.studies);
+      return {
+        ...result,
+        studies,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Fetch multiple users by their IDs in a single database query
+   * @param {string[]} userIDs - Array of user IDs to fetch
+   * @returns {Promise<Array>} - Array of user objects with studies populated
+   */
+  async getUsersByIDs(userIDs) {
+    if (!userIDs || userIDs.length === 0) {
+      return [];
+    }
+
+    // Fetch all users in a single query
+    const users = await this.userDAO.findManyByIds(userIDs);
+
+    // Fetch studies for all users in parallel
+    const usersWithStudies = await Promise.all(
+      users.map(async (user) => {
+        const studies = await this._findApprovedStudies(user.studies);
+        return {
+          ...user,
+          studies,
+        };
+      })
+    );
+
+    return usersWithStudies;
+  }
+
+  async _findStudiesNames(studies) {
+    if (!studies) return [];
+    const studiesIDs = studies[0] instanceof Object ? studies.map((study) => study?._id) : studies;
+    if (isAllStudy(studies)) return ["All studies"];
+    const approvedStudies = await this.approvedStudiesCollection.aggregate([
+      {
+        $match: {
+          _id: { $in: studiesIDs },
+        },
+      },
+    ]);
+    return approvedStudies.map((study) => study.studyName);
+  }
+
+  // Uses a single query to fetch the study data for all studies in the provided array
+  async _findApprovedStudies(studies) {
+    const studiesIDs = extractStudyIds(studies);
+    if (studiesIDs.length === 0) {
+      return [];
+    }
+    if (studiesIDs.includes(ALL_STUDY_FILTER)) {
+      return getAllStudiesPlaceholder();
+    }
+
+    return this.approvedStudyDAO.findMany({
+      _id: studiesIDs,
+    });
+  }
+
+  // Adds full study data to the user objects
+  async _enrichUsersWithApprovedStudies(users) {
+    if (!users?.length) {
+      return users || [];
+    }
+
+    const pendingLookups = [];
+    const uniqueIds = new Set();
+
+    // Populates the study data in the all or no studies cases
+    // Creates a list of users that require study lookups and maintains a set of unique study IDs that need to be fetched
+    users.forEach((user) => {
+      const studyIds = extractStudyIds(user?.studies);
+      if (studyIds.includes(ALL_STUDY_FILTER)) {
+        user.studies = getAllStudiesPlaceholder();
+        getDataCommonsDisplayNamesForUser(user);
+      } else if (studyIds.length === 0) {
+        user.studies = [];
+        getDataCommonsDisplayNamesForUser(user);
+      } else {
+        pendingLookups.push({ user, studyIds });
+        studyIds.forEach((id) => uniqueIds.add(id));
+      }
+    });
+
+    if (uniqueIds.size > 0) {
+      // Uses a single query to fetch the necessary study data
+      const approvedStudies = await this.approvedStudyDAO.findMany({
+        _id: [...uniqueIds],
+      });
+      const studyById = new Map(approvedStudies.map((study) => [study._id, study]));
+      // Populates the study data for the remaining users using the results from the single study query
+      pendingLookups.forEach(({ user, studyIds }) => {
+        user.studies = studyIds.map((id) => studyById.get(id)).filter(Boolean);
+        getDataCommonsDisplayNamesForUser(user);
+      });
+    }
+
+    return users;
+  }
+
+  async getUser(params, context) {
+    verifySession(context).verifyInitialized();
+    if (!params?.userID) {
+      throw new Error(SUBMODULE_ERROR.INVALID_USERID);
+    }
+
+    const userScope = await this._getUserScope(
+      context?.userInfo,
+      USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+    );
+    if (userScope.isNoneScope()) {
+      throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+    }
+
+    const filters = {
+      _id: params.userID,
+    };
+
+    const user = await this.userDAO.findFirst(filters);
+    if (user) {
+      const roleScope = userScope.getRoleScope();
+      if (user && !userScope.isAllScope() && roleScope && roleScope?.scopeValues?.length > 0) {
+        const roleSet = new Set(Object.values(ROLES));
+        const filteredRoles = roleScope?.scopeValues.filter((role) => roleSet.has(role));
+        if (!filteredRoles?.includes(user?.role)) {
+          throw new Error(ERROR.INVALID_ROLE_SCOPE_REQUEST);
+        }
+      }
+      const studies = await this._findApprovedStudies(user?.studies);
+      const institution =
+        user?.role === ROLES.SUBMITTER && user?.institution?._id ? user.institution : null;
+      return getDataCommonsDisplayNamesForUser({
+        ...user,
+        studies,
+        institution,
+      });
+    }
+    return null;
+  }
+
+  async listUsers(params, context) {
+    verifySession(context).verifyInitialized();
+    const manageUserScope = await this._getUserScope(
+      context?.userInfo,
+      USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+    );
+    if (manageUserScope.isNoneScope()) {
+      throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+    }
+
+    const roleScope = manageUserScope.getRoleScope();
+    const roleSet = new Set(Object.values(ROLES));
+    const filteredRoles = roleScope?.scopeValues.filter((role) => roleSet.has(role));
+    const match = {
+      ...(!manageUserScope.isAllScope() ? { role: filteredRoles || [] } : {}),
+    };
+
+    const result = await this.userDAO.findMany(match);
+    if (!result?.length) {
+      return [];
+    }
+    await this._enrichUsersWithApprovedStudies(result);
+    return result;
+  }
+
+  /**
+   * List the users eligible to own a reopened Submission Request.
+   * @param {Object} params Endpoint parameters
+   * @param {{ cookie: Object, userInfo: Object }} context API request context
+   * @returns {Promise<Object[]>} An array of UserInfo objects
+   */
+  async listReopenOwners(params, context) {
+    verifySession(context).verifyInitialized();
+    const reopenScope = await this._getUserScope(
+      context?.userInfo,
+      USER_PERMISSION_CONSTANTS.SUBMISSION_REQUEST.REOPEN
+    );
+    if (!reopenScope.isAllScope()) {
+      throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+    }
+
+    const owners = await this.userDAO.findMany(UserService._buildReopenListUsersMatch());
+    return (
+      owners?.map((owner) => ({
+        userID: owner._id,
+        firstName: owner.firstName,
+        lastName: owner.lastName,
+      })) || []
+    );
+  }
+
+  /**
+   * Mongo match for active users who can own a submission request reopen.
+   * @returns {object}
+   */
+  static _buildReopenListUsersMatch() {
+    return {
+      role: REOPEN_ASSIGNABLE_ROLES,
+      userStatus: USER.STATUSES.ACTIVE,
+      permissions: getSubmissionRequestCreatePermissionVariants(),
+    };
+  }
+
+  /**
+   * List Active Data-Commons Personnel API Interface.
+   * @api
+   * @param {Object} params Endpoint parameters
+   * @param {{ cookie: Object, userInfo: Object }} context API request context
+   * @returns {Promise<User[]>} An array of Data-Commons Personnel Users
+   */
+  async listActiveDCPsAPI(params, context) {
+    verifySession(context).verifyInitialized();
+    const userStudyScope = await this._getUserScope(
+      context?.userInfo,
+      USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_STUDIES
+    );
+    const userProgramsScope = await this._getUserScope(
+      context?.userInfo,
+      USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_PROGRAMS
+    );
+
+    const isStudyNone = userStudyScope.isNoneScope();
+    const isProgramNone = userProgramsScope.isNoneScope();
+    if ((isStudyNone && isProgramNone) || isStudyNone !== isProgramNone) {
+      throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+    }
+
+    const DCPUsers = await this.getDCPs(params.dataCommons || []);
+    return (
+      DCPUsers?.map((user) => ({
+        userID: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        createdAt: user.createdAt,
+        updateAt: user.updateAt,
+      })) || []
+    );
+  }
+
+  async getAdmin() {
+    const result = await this.userDAO.findMany({
+      role: USER.ROLES.ADMIN,
+      userStatus: USER.STATUSES.ACTIVE,
+    });
+    return result || [];
+  }
+
+  async updateMyUser(params, context) {
+    isLoggedInOrThrow(context);
+    isValidUserStatus(context?.userInfo?.userStatus);
+    if (!context.userInfo._id) {
+      const error = "User ID is missing from the context user information";
+      console.error(error);
+      throw new Error(error);
+    }
+    const sessionCurrentTime = getCurrentTime();
+    const user = await this.userDAO.findById(context.userInfo._id);
+    if (!user) throw new Error("User is not found in the database");
+
+    const updateUser = {
+      _id: context.userInfo._id,
+      firstName: params.userInfo.firstName,
+      lastName: params.userInfo.lastName,
+      fullName: formatName(params.userInfo),
+      updateAt: sessionCurrentTime,
+    };
+    try {
+      await this.userDAO.update(updateUser._id, updateUser);
+    } catch (error) {
+      console.error("An error occurred while updating the User object: ", error);
+      throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
+    }
+    // store user update log
+    const prevUser = { firstName: user.firstName, lastName: user.lastName };
+    const newProfile = { firstName: params.userInfo.firstName, lastName: params.userInfo.lastName };
+    const log = UpdateProfileEvent.create(user._id, user.email, user.IDP, prevUser, newProfile);
+    await this.logCollection.insert(log);
+    // Update all dependent objects only if the User's Name has changed
+    // NOTE: We're not waiting for these async updates to complete before returning the updated User
+    if (updateUser.firstName !== user.firstName || updateUser.lastName !== user.lastName) {
+      this.organizationCollection.updateMany(
+        { conciergeID: updateUser._id },
+        { conciergeName: `${updateUser.firstName} ${updateUser.lastName}` }
+      );
+    }
+    context.userInfo = {
+      ...context.userInfo,
+      ...updateUser,
+      updateAt: sessionCurrentTime,
+    };
+    const userStudies = await this._findApprovedStudies(user?.studies);
+    const result = {
+      ...user,
+      firstName: params.userInfo.firstName,
+      lastName: params.userInfo.lastName,
+      updateAt: sessionCurrentTime,
+      studies: userStudies,
+    };
+    return getDataCommonsDisplayNamesForUser(result);
+  }
+
+  async editUser(params, context) {
+    verifySession(context).verifyInitialized();
+    const userScope = await this._getUserScope(
+      context?.userInfo,
+      USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+    );
+    if (userScope.isNoneScope()) {
+      throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+    }
+
+    if (!params.userID) {
+      throw new Error(SUBMODULE_ERROR.INVALID_USERID);
+    }
+
+    const userDoc = await this.userDAO.findById(params.userID);
+    if (!userDoc || userDoc?._id !== params.userID) {
+      throw new Error(SUBMODULE_ERROR.USER_NOT_FOUND);
+    }
+
+    const roleScope = userScope.getRoleScope();
+    const roleSet = new Set(Object.values(ROLES));
+    const filteredRoles = roleScope?.scopeValues.filter((role) => roleSet.has(role));
+
+    if (
+      roleScope?.scope &&
+      (!filteredRoles?.includes(userDoc?.role) || // check current role
+        (params?.role && !filteredRoles?.includes(params?.role)) || // limit changing another role
+        roleScope?.scopeValues?.length === 0)
+    ) {
+      throw new Error(ERROR.INVALID_ROLE_SCOPE_REQUEST);
+    }
+
+    let updatedUser = {};
+    if (params.role && Object.values(USER.ROLES).includes(params.role)) {
+      updatedUser.role = params.role;
+    }
+
+    if (!params?.studies && USER.ROLES.SUBMITTER === params.role) {
+      throw new Error(SUBMODULE_ERROR.APPROVED_STUDIES_REQUIRED);
+    }
+    // note: Submitter is newly assigned now or institution info is only being updated.
+    const isSubmitter =
+      USER.ROLES.SUBMITTER === params.role ||
+      (!params.role && USER.ROLES.SUBMITTER === userDoc.role);
+    const aInstitution =
+      isSubmitter && params?.institutionID
+        ? await this.institutionService.getInstitutionByID(params?.institutionID)
+        : null;
+    setInstitution(
+      aInstitution,
+      userDoc?.institution,
+      isSubmitter,
+      updatedUser,
+      params?.institutionID
+    );
+
+    const isKnownStatus = Object.values(USER.STATUSES).includes(params.status);
+    if (params.status) {
+      if (isKnownStatus) {
+        updatedUser.userStatus = params.status;
+      } else {
+        throw new Error(SUBMODULE_ERROR.INVALID_USER_STATUS);
+      }
+    }
+
+    const dataCommons =
+      params?.dataCommons === undefined ? userDoc?.dataCommons : params.dataCommons;
+    updatedUser.dataCommons = dataCommons || [];
+    await this._setUserPermissions(
+      userDoc,
+      params?.role,
+      params?.permissions,
+      params?.notifications,
+      updatedUser,
+      userDoc
+    );
+    updatedUser = await this.updateUserInfo(
+      userDoc,
+      updatedUser,
+      params.userID,
+      params.status,
+      params.role,
+      params?.studies
+    );
+
+    return getDataCommonsDisplayNamesForUser(updatedUser);
+  }
+
+  async updateUserInfo(prevUser, updatedUser, userID, status, role, approvedStudyIDs) {
+    // add studies to user.
+    const validStudies = await this._findApprovedStudies(approvedStudyIDs);
+    if (approvedStudyIDs && approvedStudyIDs.length > 0) {
+      if (validStudies.length !== approvedStudyIDs.length && !approvedStudyIDs?.includes("All")) {
+        throw new Error(SUBMODULE_ERROR.INVALID_NOT_APPROVED_STUDIES);
+      }
+      // Explicit study lists: cannot newly assign inactive studies; may keep inactive only if
+      // already explicitly assigned. Assignment "All" skips this (All still includes inactive studies).
+      if (!approvedStudyIDs?.includes("All")) {
+        const previousExplicitIds = previousExplicitApprovedStudyIds(prevUser);
+        const hasUnassignableStudy = validStudies.some(
+          (study) =>
+            !isApprovedStudyActive(study) && !previousExplicitIds.has(study._id || study.id)
+        );
+        if (hasUnassignableStudy) {
+          throw new Error(ERROR.INACTIVE_APPROVED_STUDY_CANNOT_ASSIGN);
+        }
+      }
+      // ** Must store Approved studies ID only **
+      if (approvedStudyIDs?.includes("All")) {
+        updatedUser.studies = [{ _id: "All" }];
+      } else {
+        updatedUser.studies = approvedStudyIDs.map((str) => ({ _id: str }));
+      }
+    } else updatedUser.studies = [];
+
+    let userAfterUpdate;
+    try {
+      userAfterUpdate = getDataCommonsDisplayNamesForUser(
+        await this.userDAO.update(userID, { ...updatedUser, updateAt: getCurrentTime() })
+      );
+    } catch (error) {
+      throw new Error(SUBMODULE_ERROR.UPDATE_FAILED);
+    }
+
+    await Promise.all([
+      this._notifyDeactivatedUser(prevUser, status),
+      this._notifyUpdatedUser(prevUser, userAfterUpdate, role),
+      this._logAfterUserEdit(prevUser, userAfterUpdate),
+      this._removePrimaryContact(prevUser, userAfterUpdate),
+    ]);
+
+    if (userAfterUpdate.studies) {
+      userAfterUpdate.studies = validStudies; // return approved studies dynamically with all properties of studies
+    }
+    return { ...prevUser, ...userAfterUpdate };
+  }
+
+  async _getUserScope(userInfo, permission) {
+    const validScopes = await this.authorizationService.getPermissionScope(userInfo, permission);
+    const userScope = UserScope.create(validScopes);
+    // valid scopes; none, all, role/role:RoleScope
+    const isValidUserScope =
+      userScope.isNoneScope() ||
+      userScope.isAllScope() ||
+      userScope.isRoleScope() ||
+      userScope.isOwnScope();
+    if (!isValidUserScope) {
+      throw new Error(replaceErrorString(ERROR.INVALID_USER_SCOPE));
+    }
+    return userScope;
+  }
+
+  async _notifyUpdatedUser(prevUser, newUser, newRole) {
+    if (newUser?.notifications?.includes(EN.USER_ACCOUNT.USER_ACCESS_CHANGED)) {
+      const baseRoleCondition = newRole && Object.values(USER.ROLES).includes(newRole);
+      const isRoleChange = baseRoleCondition && prevUser.role !== newUser.role;
+      const isDataCommonsChange =
+        newUser?.dataCommons?.length > 0 &&
+        JSON.stringify(prevUser?.dataCommons) !== JSON.stringify(newUser?.dataCommons);
+      const isStudiesChange =
+        newUser.studies?.length > 0 &&
+        JSON.stringify(prevUser.studies) !== JSON.stringify(newUser.studies);
+      // Submitter Only Receive the institution change
+      const isInstitutionChange =
+        USER.ROLES.SUBMITTER === newUser.role &&
+        newUser?.institution?.name &&
+        JSON.stringify(prevUser?.institution?.name) !== JSON.stringify(newUser?.institution?.name);
+      if (isRoleChange || isDataCommonsChange || isStudiesChange || isInstitutionChange) {
+        const userDataCommons = [USER.ROLES.DATA_COMMONS_PERSONNEL].includes(newUser.role)
+          ? newUser.dataCommons
+          : undefined;
+        const studyNames = await this._findStudiesNames(newUser.studies);
+        await this.notificationsService.userRoleChangeNotification(
+          newUser.email,
+          {
+            accountType: newUser.IDP,
+            email: newUser.email,
+            role: newUser.role,
+            dataCommons: userDataCommons,
+            ...([USER.ROLES.SUBMITTER, USER.ROLES.FEDERAL_LEAD].includes(newUser.role) && {
+              studies: studyNames,
+            }),
+            ...(USER.ROLES.SUBMITTER === newUser.role && {
+              institution: newUser?.institution?.name || this._NOT_APPLICABLE,
+            }),
+          },
+          { url: this.appUrl, helpDesk: `${this.officialEmail}.` }
+        );
+      }
+    }
+  }
+
+  async _notifyDeactivatedUser(prevUser, newStatus) {
+    const isUserActivated = prevUser?.userStatus !== USER.STATUSES.INACTIVE;
+    const isStatusChange =
+      newStatus && newStatus?.toLowerCase() === USER.STATUSES.INACTIVE.toLowerCase();
+    if (isUserActivated && isStatusChange) {
+      if (prevUser?.notifications?.includes(EN.USER_ACCOUNT.USER_INACTIVATED)) {
+        await this.notificationsService.deactivateUserNotification(
+          prevUser.email,
+          { firstName: prevUser.firstName },
+          { officialEmail: `${this.officialEmail}.` }
+        );
+      }
+    }
+  }
+
+  async _logAfterUserEdit(prevUser, updatedUser) {
+    // create an array to store new events
+    const logEvents = [];
+    const prevProfile = {};
+    const newProfile = {};
+    Object.keys(updatedUser).forEach((key) => {
+      if (["_id", "updateAt"].includes(key)) {
+        return;
+      }
+      prevProfile[key] = prevUser?.[key];
+      newProfile[key] = updatedUser[key];
+    });
+    // create a profile update event and store it in the events array
+    const updateProfileEvent = UpdateProfileEvent.create(
+      prevUser._id,
+      prevUser.email,
+      prevUser.IDP,
+      prevProfile,
+      newProfile
+    );
+    logEvents.push(updateProfileEvent);
+    // if the user has been reactivated during the update
+    if (
+      prevProfile?.userStatus === USER.STATUSES.INACTIVE &&
+      newProfile?.userStatus === USER.STATUSES.ACTIVE
+    ) {
+      // create Reactivate User event and add it to the events array
+      const reactivateUserEvent = ReactivateUserEvent.create(
+        prevUser._id,
+        prevUser.email,
+        prevUser.IDP
+      );
+      logEvents.push(reactivateUserEvent);
+    }
+    // insert all of the events in the events array into the log collection
+    const res = await this.logCollection.insertMany(logEvents);
+    if (!res?.insertedCount || res?.insertedCount < 1) {
+      console.error(
+        `Failed to insert UpdateProfileEvent &&  ReactivateUserEvent: userID: ${updatedUser._id}`
+      );
+    }
+  }
+
+  async getAdminPBACUsers() {
+    const orgOwnerOrAdminRole = {
+      userStatus: USER.STATUSES.ACTIVE,
+      notifications: [EN.USER_ACCOUNT.USER_INACTIVATED_ADMIN],
+      OR: [{ role: USER.ROLES.ADMIN }],
+    };
+    return (await this.userDAO.findMany(orgOwnerOrAdminRole)) || [];
+  }
+
+  /**
+   * Disable users matching specific user conditions.
+   *
+   * @param {Array} inactiveUsers - An array of user conditions for OR.
+   * @returns {Promise<Array>} - An array of user aggregation result.
+   */
+  // search by user's email and idp
+  async disableInactiveUsers(inactiveUsers) {
+    if (!inactiveUsers || inactiveUsers?.length === 0) return [];
+    const query = { OR: inactiveUsers, IDP: { not: this._NIH } };
+    const updated = await this.userDAO.updateMany(query, {
+      userStatus: USER.STATUSES.INACTIVE,
+      updateAt: getCurrentTime(),
+    });
+    if (updated?.count && updated?.count > 0) {
+      return (await this.userDAO.findMany(query)) || [];
+    }
+    return [];
+  }
+
+  /**
+   * get Data Commons Personnel
+   * @param {*} dataCommons
+   * @returns {Promise<Array>} user[]
+   */
+  async getDCPs(dataCommons) {
+    const dataCommonsArr = Array.isArray(dataCommons) ? dataCommons : [dataCommons];
+    const query = {
+      userStatus: USER.STATUSES.ACTIVE,
+      role: USER.ROLES.DATA_COMMONS_PERSONNEL,
+      ...(dataCommonsArr.includes("All") ? {} : { dataCommons: dataCommonsArr }),
+    };
+    return this.userDAO.findMany(query);
+  }
+
+  /**
+   * Finds active non-NIH users whose latest qualifying log event is older than the inactivity window.
+   * The join between users and logs happens in JS: an equality $lookup from users into logs copies every
+   * log of an email onto the user document, which grows without bound and eventually exceeds DocumentDB's
+   * output buffer limit. Instead, logs are reduced with $group to one small document per (email, IDP).
+   * @param {string[]} qualifyingEvents Log event types that count as activity
+   * @returns {Promise<object[]>} Users ({_id, email, IDP, firstName}) with no qualifying log newer than the cutoff
+   */
+  async checkForInactiveUsers(qualifyingEvents) {
+    // users collection field names
+    const USER_FIELDS = {
+      ID: "_id",
+      FIRST_NAME: "firstName",
+      EMAIL: "email",
+      IDP: "IDP",
+      STATUS: "userStatus",
+    };
+    // logs collection field names
+    const LOGS_FIELDS = {
+      EMAIL: "userEmail",
+      IDP: "userIDP",
+      EVENT_TYPE: "eventType",
+      TIMESTAMP: "timestamp",
+    };
+
+    const activeUsers = await this.userDAO.aggregate([
+      {
+        $match: {
+          [USER_FIELDS.STATUS]: USER.STATUSES.ACTIVE,
+          // Disable auto-deactivated for NIH user
+          [USER_FIELDS.IDP]: { $not: { $regex: this._NIH, $options: "i" } },
+        },
+      },
+      {
+        $project: {
+          [USER_FIELDS.ID]: 1,
+          [USER_FIELDS.EMAIL]: 1,
+          [USER_FIELDS.IDP]: 1,
+          [USER_FIELDS.FIRST_NAME]: 1,
+        },
+      },
+    ]);
+    if (!activeUsers?.length) return [];
+
+    // latest qualifying log timestamp per (email, IDP)
+    const latestLogs = await this.logCollection.aggregate([
+      {
+        $match: {
+          [LOGS_FIELDS.EVENT_TYPE]: { $in: qualifyingEvents },
+          [LOGS_FIELDS.EMAIL]: { $in: [...new Set(activeUsers.map((u) => u[USER_FIELDS.EMAIL]))] },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            email: `$${LOGS_FIELDS.EMAIL}`,
+            idp: `$${LOGS_FIELDS.IDP}`,
+          },
+          latest: { $max: `$${LOGS_FIELDS.TIMESTAMP}` },
+        },
+      },
+    ]);
+
+    const keyOf = (email, idp) => JSON.stringify([email ?? null, idp ?? null]);
+    const latestByUser = new Map(
+      (latestLogs || []).map((l) => [keyOf(l._id?.email, l._id?.idp), l.latest])
+    );
+    const cutoff = subtractDaysFromNowTimestamp(this.inactiveUserDays);
+    return activeUsers.filter((u) => {
+      const latest = latestByUser.get(keyOf(u[USER_FIELDS.EMAIL], u[USER_FIELDS.IDP]));
+      return latest == null || latest < cutoff;
+    });
+  }
+
+  _validateUserPermission(
+    isUserRoleChange,
+    userRole,
+    inputPermissions,
+    filteredValidPermissions,
+    inputNotifications,
+    accessControl
+  ) {
+    const filteredValidPermissionsSet = new Set(filteredValidPermissions);
+    const invalidPermissions = inputPermissions?.filter(
+      (p) => !filteredValidPermissionsSet?.has(p)
+    );
+    if (invalidPermissions?.length > 0) {
+      throw new Error(
+        replaceErrorString(ERROR.INVALID_PERMISSION_NAME, `${invalidPermissions.join(",")}`)
+      );
+    }
+    const invalidNotifications = inputNotifications?.filter(
+      (notification) => !this._allEmailNotificationNamesSet.has(notification)
+    );
+
+    if (invalidNotifications?.length > 0) {
+      throw new Error(
+        replaceErrorString(ERROR.INVALID_NOTIFICATION_NAME, `${invalidNotifications.join(",")}`)
+      );
+    }
+
+    return {
+      filteredPermissions: setFilteredPermissions(
+        isUserRoleChange,
+        userRole,
+        inputPermissions,
+        accessControl?.permissions?.permitted,
+        accessControl?.permissions?.getInherited
+      ),
+      filteredNotifications: setFilteredNotifications(
+        isUserRoleChange,
+        userRole,
+        inputNotifications,
+        accessControl?.notifications?.permitted
+      ),
+    };
+  }
+
+  async _setUserPermissions(currUser, newRole, permissions, notifications, updatedUser) {
+    const isUserRoleChange = newRole && currUser?.role !== newRole;
+    const userRole = isUserRoleChange ? newRole : currUser?.role;
+    const [accessControl, filteredValidPermissions] = await Promise.all([
+      this.configurationService.getAccessControl(userRole),
+      this.authorizationService.filterValidPermissions(
+        { role: userRole, ...currUser },
+        permissions
+      ),
+    ]);
+    const { filteredPermissions, filteredNotifications } = this._validateUserPermission(
+      isUserRoleChange,
+      userRole,
+      permissions,
+      filteredValidPermissions,
+      notifications,
+      accessControl
+    );
+
+    if (isUserRoleChange || (!isUserRoleChange && permissions !== undefined)) {
+      if (!isIdenticalArrays(currUser?.permissions, filteredPermissions) && filteredPermissions) {
+        updatedUser.permissions = new Set(filteredPermissions || []).toArray();
+      }
+    }
+
+    if (isUserRoleChange || (!isUserRoleChange && notifications !== undefined)) {
+      if (
+        !isIdenticalArrays(currUser?.notifications, filteredNotifications) &&
+        filteredNotifications
+      ) {
+        updatedUser.notifications = new Set(filteredNotifications).toArray();
+      }
+    }
+  }
+
+  /**
+   * Active Submitters (excluding the submission owner) who can collaborate on a study.
+   * Populates each user's studies via approved-study lookup.
+   * @param {string} studyID Approved study ID
+   * @param {string} submitterID Submission owner user ID to exclude
+   * @returns {Promise<object[]>} Collaborator users with studies populated
+   */
+  async getCollaboratorsByStudyID(studyID, submitterID) {
+    const users = await this.userDAO.getCollaboratorsByStudyID(studyID, submitterID);
+    // Sequential on purpose: one approved-study lookup at a time keeps DocumentDB load flat.
+    // eslint-disable-next-line no-restricted-syntax
+    for (const user of users) {
+      // eslint-disable-next-line no-await-in-loop
+      user.studies = await this._findApprovedStudies(user.studies);
+    }
+    return users;
+  }
+
+  /**
+   * Fetches a list of users based on specified notifications and optional roles.
+   *
+   * @param {Array} notifications - An array of notification.
+   * @param {Array} [roles=[]] - An optional array of user roles.
+   * @returns {Promise<Array>} - An array of user documents.
+   */
+  async getUsersByNotifications(notifications, roles = []) {
+    return this.userDAO.getUsersByNotifications(notifications, roles);
+  }
+
+  /**
+   * Fetches a list of users based on specified notifications, roles, and optional data commons.
+   *
+   * @param {Array} notifications - An array of notification types.
+   * @param {Array} roles - An array of user roles.
+   * @param {string} [dataCommons] - Optional data commons to filter by.
+   * @returns {Promise<Array>} - An array of user documents.
+   */
+  async findUsersByNotificationsAndRole(notifications, roles, dataCommons = null) {
+    try {
+      const whereConditions = {
+        userStatus: USER.STATUSES.ACTIVE,
+        notifications,
+        role: roles,
+      };
+
+      // Add data commons filter if provided
+      if (dataCommons) {
+        whereConditions.dataCommons = dataCommons;
+      }
+
+      return await this.userDAO.findMany(whereConditions);
+    } catch (error) {
+      console.error("Error in findUsersByNotificationsAndRole:", error);
+      return [];
+    }
+  }
+
+  async updateUserInstitution(institutionID, institutionName, institutionStatus) {
+    try {
+      await this.userDAO.updateMany(
+        {
+          "institution._id": institutionID,
+          OR: [
+            { "institution.name": { not: institutionName } },
+            { "institution.status": { not: institutionStatus } },
+          ],
+        },
+        {
+          "institution.name": institutionName,
+          "institution.status": institutionStatus,
+          updateAt: getCurrentTime(),
+        }
+      );
+    } catch (error) {
+      console.error(ERROR.FAILED_UPDATE_USER_INSTITUTION, error);
+    }
+  }
+
+  // user's role changed to anything other than Data Commons Personnel, they should be removed from any study/program's data concierge.
+  async _removePrimaryContact(prevUser, newUser) {
+    const isRoleChange =
+      prevUser.role === ROLES.DATA_COMMONS_PERSONNEL && prevUser.role !== newUser.role;
+    if (isRoleChange) {
+      const [updatedSubmission, updateProgram, updatedStudies] = await Promise.all([
+        this.submissionDAO.updateMany(
+          {
+            conciergeID: prevUser?._id || prevUser?.id,
+            status: { notIn: [COMPLETED, CANCELED, DELETED] },
+          },
+          { conciergeID: "", updatedAt: getCurrentTime() }
+        ),
+        this.organizationCollection.updateMany(
+          { conciergeID: prevUser?._id },
+          { conciergeID: "", conciergeName: "", conciergeEmail: "", updateAt: getCurrentTime() }
+        ),
+        this.approvedStudiesCollection.updateMany(
+          { primaryContactID: prevUser?._id },
+          { primaryContactID: null, updatedAt: getCurrentTime() }
+        ),
+      ]);
+      if (typeof updatedSubmission?.count !== "number") {
+        console.error("Failed to remove the data concierge in submissions");
+      }
+
+      if (!updateProgram.acknowledged) {
+        console.error("Failed to remove the data concierge in programs");
+      }
+
+      if (!updatedStudies.acknowledged) {
+        console.error("Failed to remove the data concierge in studies");
+      }
+    }
+  }
+
+  /**
+   * API: isUserPrimaryContact
+   * @param {*} param
+   * @param {*} context
+   * @returns bool
+   */
+  async isUserPrimaryContact(param, context) {
+    verifySession(context).verifyInitialized();
+    const userScope = await this._getUserScope(
+      context?.userInfo,
+      USER_PERMISSION_CONSTANTS.ADMIN.MANAGE_USER
+    );
+    if (userScope.isNoneScope()) {
+      throw new Error(ERROR.VERIFY.INVALID_PERMISSION);
+    }
+
+    const { userID } = param;
+    const user = await this.getUserByID(userID);
+    if (!user) {
+      throw new Error(ERROR.USER_NOT_EXIST);
+    }
+    // return true if the user is primary contact of any study or program (aka. organization). Otherwise it should be false.
+    const [primaryContactInProgram, primaryContactInStudy] = await Promise.all([
+      this.organizationCollection.aggregate([{ $match: { conciergeID: user._id } }, { $limit: 1 }]),
+      this.approvedStudiesCollection.aggregate([
+        { $match: { primaryContactID: user._id } },
+        { $limit: 1 },
+      ]),
+    ]);
+    return primaryContactInStudy.length > 0 || primaryContactInProgram.length > 0;
+  }
 }
 
 module.exports = {
-    UserService
+  UserService,
 };
