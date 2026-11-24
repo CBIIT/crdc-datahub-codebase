@@ -28,6 +28,7 @@ const {
     QC_RESULTS_COLLECTION,
     DATA_RECORDS_COLLECTION,
     DATA_SYNC_COLLECTION,
+    LOG_COLLECTION,
 } = require('../../crdc-datahub-database-drivers/database-constants');
 
 const CREATE_INDEX_MAX_ATTEMPTS = 3;
@@ -175,6 +176,11 @@ const INDEXES = [
         collection: APPLICATION_COLLECTION,
         keys: { nextRevisionId: 1 },
         name: 'nextRevisionId_1',
+    },
+    {
+        collection: LOG_COLLECTION,
+        keys: { eventType: 1, userEmail: 1, userIDP: 1, timestamp: -1 },
+        name: 'eventType_1_userEmail_1_userIDP_1_timestamp_-1',
     },
 ];
 

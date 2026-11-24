@@ -7,7 +7,6 @@ const {replaceErrorString} = require("../utility/string-util");
 const config = require("../config");
 const {getCurrentTime, subtractDaysFromNowTimestamp} = require("../crdc-datahub-database-drivers/utility/time-utility");
 const {UpdateProfileEvent, ReactivateUserEvent} = require("../crdc-datahub-database-drivers/domain/log-events");
-const {LOG_COLLECTION} = require("../crdc-datahub-database-drivers/database-constants");
 const jwt = require("jsonwebtoken");
 const USER_PERMISSION_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-permission-constants");
 const USER_CONSTANTS = require("../crdc-datahub-database-drivers/constants/user-constants");
@@ -778,9 +777,11 @@ class UserService {
 
     /**
      * Finds active non-NIH users whose latest qualifying log event is older than the inactivity window.
-     * Latest log is chosen with $reduce (DocumentDB $sortArray is only valid in $project).
+     * The join between users and logs happens in JS: an equality $lookup from users into logs copies every
+     * log of an email onto the user document, which grows without bound and eventually exceeds DocumentDB's
+     * output buffer limit. Instead, logs are reduced with $group to one small document per (email, IDP).
      * @param {string[]} qualifyingEvents Log event types that count as activity
-     * @returns {Promise<object[]>}
+     * @returns {Promise<object[]>} Users ({_id, email, IDP, firstName}) with no qualifying log newer than the cutoff
      */
     async checkForInactiveUsers(qualifyingEvents) {
         // users collection field names
@@ -798,102 +799,52 @@ class UserService {
             EVENT_TYPE: "eventType",
             TIMESTAMP: "timestamp"
         };
-        // fields added by pipeline
-        const LOGS_ARRAY = "log_events_array";
-        const LATEST_LOG = "latest_log_event";
 
-        let pipeline = [];
-        // filter out users where status is not "Active"
-        pipeline.push({
-            $match: {
-                [USER_FIELDS.STATUS]: USER.STATUSES.ACTIVE,
-                // Disable auto-deactivated for NIH user
-                [USER_FIELDS.IDP]: {$not: {$regex: this._NIH, $options: "i"}},
-            }
-        });
-        // collect log events where the log event email matches the user's email and store the events in an array
-        // NOTE: we can only match on one field here so log events where the IDP does not match will be filtered out in
-        // the next stage
-        pipeline.push({
-            $lookup: {
-                from: LOG_COLLECTION,
-                localField: USER_FIELDS.EMAIL,
-                foreignField: LOGS_FIELDS.EMAIL,
-                as: LOGS_ARRAY
-            }
-        });
-        // filter out the log events where the IDP does not match the user's IDP and the log events where the event type
-        // is not included in the qualifying events array
-        pipeline.push({
-            $set: {
-                [LOGS_ARRAY]: {
-                    $filter: {
-                        input: "$" + LOGS_ARRAY,
-                        as: "log",
-                        cond: {
-                            $and: [
-                                {
-                                    $eq: ["$$log." + LOGS_FIELDS.IDP, "$" + USER_FIELDS.IDP],
-                                },
-                                {
-                                    $in: ["$$log." + LOGS_FIELDS.EVENT_TYPE, qualifyingEvents]
-                                },
-                            ],
-                        }
-                    }
+        const activeUsers = await this.userDAO.aggregate([
+            {
+                $match: {
+                    [USER_FIELDS.STATUS]: USER.STATUSES.ACTIVE,
+                    // Disable auto-deactivated for NIH user
+                    [USER_FIELDS.IDP]: {$not: {$regex: this._NIH, $options: "i"}},
+                }
+            },
+            {
+                $project: {
+                    [USER_FIELDS.ID]: 1,
+                    [USER_FIELDS.EMAIL]: 1,
+                    [USER_FIELDS.IDP]: 1,
+                    [USER_FIELDS.FIRST_NAME]: 1,
                 }
             }
-        });
-        // store the most recent log event in a new field
-        pipeline.push({
-            $set: {
-                [LATEST_LOG]: {
-                    $reduce: {
-                        input: "$" + LOGS_ARRAY,
-                        initialValue: null,
-                        in: {
-                            $cond: [
-                                {
-                                    $or: [
-                                        { $eq: ["$$value", null] },
-                                        { $gt: ["$$this." + LOGS_FIELDS.TIMESTAMP, "$$value." + LOGS_FIELDS.TIMESTAMP] }
-                                    ]
-                                },
-                                "$$this",
-                                "$$value"
-                            ]
-                        }
-                    }
+        ]);
+        if (!activeUsers?.length) return [];
+
+        // latest qualifying log timestamp per (email, IDP)
+        const latestLogs = await this.logCollection.aggregate([
+            {
+                $match: {
+                    [LOGS_FIELDS.EVENT_TYPE]: {$in: qualifyingEvents},
+                    [LOGS_FIELDS.EMAIL]: {$in: [...new Set(activeUsers.map((u) => u[USER_FIELDS.EMAIL]))]},
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        email: "$" + LOGS_FIELDS.EMAIL,
+                        idp: "$" + LOGS_FIELDS.IDP,
+                    },
+                    latest: {$max: "$" + LOGS_FIELDS.TIMESTAMP},
                 }
             }
+        ]);
+
+        const keyOf = (email, idp) => JSON.stringify([email ?? null, idp ?? null]);
+        const latestByUser = new Map((latestLogs || []).map((l) => [keyOf(l._id?.email, l._id?.idp), l.latest]));
+        const cutoff = subtractDaysFromNowTimestamp(this.inactiveUserDays);
+        return activeUsers.filter((u) => {
+            const latest = latestByUser.get(keyOf(u[USER_FIELDS.EMAIL], u[USER_FIELDS.IDP]));
+            return latest == null || latest < cutoff;
         });
-        // filter out users that have qualifying log event types recent enough to fall within the inactive user days period
-        pipeline.push({
-            $match: {
-                $or: [
-                    {
-                        [LATEST_LOG+"."+LOGS_FIELDS.TIMESTAMP]: {
-                            $exists: 0
-                        }
-                    },
-                    {
-                        [LATEST_LOG+"."+LOGS_FIELDS.TIMESTAMP]: {
-                            $lt: subtractDaysFromNowTimestamp(this.inactiveUserDays)
-                        }
-                    },
-                ]
-            }
-        });
-        // format the output
-        pipeline.push({
-            $project: {
-                [USER_FIELDS.ID]: 1,
-                [USER_FIELDS.EMAIL]: 1,
-                [USER_FIELDS.IDP]: 1,
-                [USER_FIELDS.FIRST_NAME]: 1,
-            }
-        });
-        return await this.userDAO.aggregate(pipeline);
     }
 
     _validateUserPermission(isUserRoleChange, userRole, inputPermissions, filteredValidPermissions, inputNotifications, accessControl) {

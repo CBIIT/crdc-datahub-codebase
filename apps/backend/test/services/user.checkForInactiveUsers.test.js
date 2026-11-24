@@ -1,6 +1,7 @@
 const { UserService } = require('../../services/user');
 const { USER } = require('../../crdc-datahub-database-drivers/constants/user-constants');
-const { LOG_COLLECTION } = require('../../crdc-datahub-database-drivers/database-constants');
+
+const CUTOFF = new Date('2023-11-01T00:00:00Z').getTime();
 
 // Mock the time-utility module before importing UserService
 jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
@@ -10,730 +11,193 @@ jest.mock('../../crdc-datahub-database-drivers/utility/time-utility', () => ({
 
 describe('UserService.checkForInactiveUsers', () => {
     let userService;
-    let mockUserDAO, mockLogCollection, mockOrganizationCollection, mockNotificationsService, mockApplicationCollection, mockApprovedStudiesService, mockConfigurationService, mockInstitutionService, mockAuthorizationService;
+    let mockUserDAO, mockLogCollection;
 
-    const mockInactiveUsers = [
-        {
-            _id: 'user-1',
-            email: 'user1@example.com',
-            IDP: 'google',
-            firstName: 'User',
-            lastName: 'One'
-        },
-        {
-            _id: 'user-2',
-            email: 'user2@example.com',
-            IDP: 'microsoft',
-            firstName: 'User',
-            lastName: 'Two'
-        }
-    ];
+    const user1 = { _id: 'user-1', email: 'user1@example.com', IDP: 'google', firstName: 'User' };
+    const user2 = { _id: 'user-2', email: 'user2@example.com', IDP: 'microsoft', firstName: 'User' };
+    const qualifyingEvents = ['Login', 'Reactivate_User'];
 
-    const mockActiveUserWithRecentLogs = {
-        _id: 'user-active-recent',
-        email: 'user.active.recent@example.com',
-        firstName: 'User',
-        lastName: 'Active Recent',
-        role: USER.ROLES.SUBMITTER,
-        userStatus: USER.STATUSES.ACTIVE,
-        IDP: 'google',
-        studies: [{ _id: 'study-1' }],
-        dataCommons: ['commons-1'],
-        createdAt: '2023-01-01T00:00:00Z',
-        updateAt: '2023-01-01T00:00:00Z'
-    };
+    const logGroup = (email, idp, latest) => ({ _id: { email, idp }, latest });
 
-    const mockNIHUser = {
-        _id: 'nih-user',
-        email: 'nih.user@nih.gov',
-        firstName: 'NIH',
-        lastName: 'User',
-        role: USER.ROLES.SUBMITTER,
-        userStatus: USER.STATUSES.ACTIVE,
-        IDP: 'nih',
-        studies: [{ _id: 'study-nih' }],
-        dataCommons: ['commons-nih'],
-        createdAt: '2023-01-03T00:00:00Z',
-        updateAt: '2023-01-03T00:00:00Z'
-    };
-
-    const mockInactiveUser = {
-        _id: 'user-inactive',
-        email: 'user.inactive@example.com',
-        firstName: 'User',
-        lastName: 'Inactive',
-        role: USER.ROLES.SUBMITTER,
-        userStatus: USER.STATUSES.INACTIVE,
-        IDP: 'google',
-        studies: [{ _id: 'study-inactive' }],
-        dataCommons: ['commons-inactive'],
-        createdAt: '2023-01-04T00:00:00Z',
-        updateAt: '2023-01-04T00:00:00Z'
+    const buildService = (inactiveUserDays) => {
+        const service = new UserService(
+            mockLogCollection,
+            {},
+            {},
+            {},
+            'test@example.com',
+            'http://test.com',
+            {},
+            inactiveUserDays,
+            {},
+            {},
+            {}
+        );
+        service.userDAO = mockUserDAO;
+        return service;
     };
 
     beforeEach(() => {
         mockUserDAO = {
-            findMany: jest.fn(),
-            updateMany: jest.fn(),
-            aggregate: jest.fn(),
-            getUsersByNotifications: jest.fn()
+            aggregate: jest.fn()
         };
-        mockLogCollection = {};
-        mockOrganizationCollection = {};
-        mockNotificationsService = {};
-        mockApplicationCollection = {};
-        mockApprovedStudiesService = {};
-        mockConfigurationService = {};
-        mockInstitutionService = {};
-        mockAuthorizationService = {};
-
-        userService = new UserService(
-            mockLogCollection,
-            mockOrganizationCollection,
-            mockNotificationsService,
-            mockApplicationCollection,
-            'test@example.com',
-            'http://test.com',
-            mockApprovedStudiesService,
-            30, // inactiveUserDays
-            mockConfigurationService,
-            mockInstitutionService,
-            mockAuthorizationService
-        );
-        userService.userDAO = mockUserDAO;
+        mockLogCollection = {
+            aggregate: jest.fn().mockResolvedValue([])
+        };
+        userService = buildService(30);
     });
 
     afterEach(() => {
         jest.clearAllMocks();
     });
 
-    describe('successful scenarios', () => {
-        it('should return inactive users when they exist', async () => {
-            // Arrange
-            const qualifyingEvents = ['login', 'logout', 'submission_created'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
+    describe('active users query', () => {
+        it('should match active non-NIH users and project only the required fields', async () => {
+            mockUserDAO.aggregate.mockResolvedValue([user1]);
 
-            // Act
-            const result = await userService.checkForInactiveUsers(qualifyingEvents);
+            await userService.checkForInactiveUsers(qualifyingEvents);
 
-            // Assert
-            expect(result).toEqual(mockInactiveUsers);
             expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
-            expect(mockUserDAO.aggregate).toHaveBeenCalledWith(expect.arrayContaining([
-                expect.objectContaining({
-                    $match: expect.objectContaining({
+            expect(mockUserDAO.aggregate).toHaveBeenCalledWith([
+                {
+                    $match: {
                         userStatus: USER.STATUSES.ACTIVE,
                         IDP: { $not: { $regex: 'nih', $options: 'i' } }
-                    })
-                }),
-                expect.objectContaining({
-                    $lookup: expect.objectContaining({
-                        from: LOG_COLLECTION,
-                        localField: 'email',
-                        foreignField: 'userEmail',
-                        as: 'log_events_array'
-                    })
-                })
-            ]));
+                    }
+                },
+                { $project: { _id: 1, email: 1, IDP: 1, firstName: 1 } }
+            ]);
         });
 
-        it('should return empty array when no inactive users exist', async () => {
-            // Arrange
-            const qualifyingEvents = ['login', 'logout'];
-            
-            mockUserDAO.aggregate.mockResolvedValue([]);
+        it.each([[[]], [null], [undefined]])(
+            'should return [] without querying logs when there are no active users (%p)',
+            async (activeUsers) => {
+                mockUserDAO.aggregate.mockResolvedValue(activeUsers);
 
-            // Act
+                const result = await userService.checkForInactiveUsers(qualifyingEvents);
+
+                expect(result).toEqual([]);
+                expect(mockLogCollection.aggregate).not.toHaveBeenCalled();
+            }
+        );
+    });
+
+    describe('logs query', () => {
+        it('should match qualifying events for the active users emails and group the latest timestamp per email and IDP', async () => {
+            mockUserDAO.aggregate.mockResolvedValue([user1, user2]);
+
+            await userService.checkForInactiveUsers(qualifyingEvents);
+
+            expect(mockLogCollection.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockLogCollection.aggregate).toHaveBeenCalledWith([
+                {
+                    $match: {
+                        eventType: { $in: qualifyingEvents },
+                        userEmail: { $in: [user1.email, user2.email] }
+                    }
+                },
+                {
+                    $group: {
+                        _id: { email: '$userEmail', idp: '$userIDP' },
+                        latest: { $max: '$timestamp' }
+                    }
+                }
+            ]);
+        });
+
+        it('should de-duplicate emails in the $in list', async () => {
+            mockUserDAO.aggregate.mockResolvedValue([user1, { ...user2, email: user1.email }]);
+
+            await userService.checkForInactiveUsers(qualifyingEvents);
+
+            const pipeline = mockLogCollection.aggregate.mock.calls[0][0];
+            expect(pipeline[0].$match.userEmail.$in).toEqual([user1.email]);
+        });
+
+    });
+
+    describe('inactivity detection', () => {
+        it('should return users with no qualifying logs', async () => {
+            mockUserDAO.aggregate.mockResolvedValue([user1, user2]);
+            mockLogCollection.aggregate.mockResolvedValue([]);
+
             const result = await userService.checkForInactiveUsers(qualifyingEvents);
 
-            // Assert
+            expect(result).toEqual([user1, user2]);
+        });
+
+        it('should handle a null result from the logs query as no qualifying logs', async () => {
+            mockUserDAO.aggregate.mockResolvedValue([user1]);
+            mockLogCollection.aggregate.mockResolvedValue(null);
+
+            const result = await userService.checkForInactiveUsers(qualifyingEvents);
+
+            expect(result).toEqual([user1]);
+        });
+
+        it.each([
+            ['older than the cutoff', CUTOFF - 1, true],
+            ['exactly at the cutoff', CUTOFF, false],
+            ['newer than the cutoff', CUTOFF + 1, false],
+        ])('should treat a latest log %s correctly (inactive: %p)', async (_label, latest, expectedInactive) => {
+            mockUserDAO.aggregate.mockResolvedValue([user1]);
+            mockLogCollection.aggregate.mockResolvedValue([logGroup(user1.email, user1.IDP, latest)]);
+
+            const result = await userService.checkForInactiveUsers(qualifyingEvents);
+
+            expect(result).toEqual(expectedInactive ? [user1] : []);
+        });
+
+        it('should still return a user whose only recent log is under a different IDP', async () => {
+            mockUserDAO.aggregate.mockResolvedValue([user1]);
+            mockLogCollection.aggregate.mockResolvedValue([
+                logGroup(user1.email, 'microsoft', CUTOFF + 1000),
+                logGroup(user1.email, user1.IDP, CUTOFF - 1000),
+            ]);
+
+            const result = await userService.checkForInactiveUsers(qualifyingEvents);
+
+            expect(result).toEqual([user1]);
+        });
+
+        it('should judge users with different emails on their own logs', async () => {
+            mockUserDAO.aggregate.mockResolvedValue([user1, user2]);
+            mockLogCollection.aggregate.mockResolvedValue([
+                logGroup(user1.email, user1.IDP, CUTOFF + 1000),
+                logGroup(user2.email, user2.IDP, CUTOFF - 1000),
+            ]);
+
+            const result = await userService.checkForInactiveUsers(qualifyingEvents);
+
+            expect(result).toEqual([user2]);
+        });
+
+        it('should match a user with a missing IDP to a log group with a null IDP', async () => {
+            const { IDP, ...userWithoutIDP } = user1;
+            mockUserDAO.aggregate.mockResolvedValue([userWithoutIDP]);
+            mockLogCollection.aggregate.mockResolvedValue([logGroup(user1.email, null, CUTOFF + 1000)]);
+
+            const result = await userService.checkForInactiveUsers(qualifyingEvents);
+
             expect(result).toEqual([]);
-            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
         });
 
-        it('should return single inactive user when only one exists', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            const singleInactiveUser = [mockInactiveUsers[0]];
-            
-            mockUserDAO.aggregate.mockResolvedValue(singleInactiveUser);
-
-            // Act
-            const result = await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            expect(result).toEqual(singleInactiveUser);
-            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
-        });
-    });
-
-    describe('pipeline structure validation', () => {
-        it('should build correct aggregation pipeline with all stages', async () => {
-            // Arrange
-            const qualifyingEvents = ['login', 'logout'];
+        it('should use the configured inactiveUserDays for the cutoff', async () => {
             const { subtractDaysFromNowTimestamp } = require('../../crdc-datahub-database-drivers/utility/time-utility');
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
+            mockUserDAO.aggregate.mockResolvedValue([user1]);
 
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
+            await buildService(60).checkForInactiveUsers(qualifyingEvents);
 
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            expect(pipeline).toHaveLength(6); // 6 stages in the pipeline
-            
-            // Stage 1: Initial $match
-            expect(pipeline[0]).toEqual({
-                $match: {
-                    userStatus: USER.STATUSES.ACTIVE,
-                    IDP: { $not: { $regex: 'nih', $options: 'i' } }
-                }
-            });
-
-            // Stage 2: $lookup
-            expect(pipeline[1]).toEqual({
-                $lookup: {
-                    from: LOG_COLLECTION,
-                    localField: 'email',
-                    foreignField: 'userEmail',
-                    as: 'log_events_array'
-                }
-            });
-
-            // Stage 3: $set with $filter
-            expect(pipeline[2]).toEqual({
-                $set: {
-                    log_events_array: {
-                        $filter: {
-                            input: '$log_events_array',
-                            as: 'log',
-                            cond: {
-                                $and: [
-                                    {
-                                        $eq: ['$$log.userIDP', '$IDP']
-                                    },
-                                    {
-                                        $in: ['$$log.eventType', qualifyingEvents]
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                }
-            });
-
-            // Stage 4: $set with $reduce to pick the latest log event
-            expect(pipeline[3]).toEqual({
-                $set: {
-                    latest_log_event: {
-                        $reduce: {
-                            input: '$log_events_array',
-                            initialValue: null,
-                            in: {
-                                $cond: [
-                                    {
-                                        $or: [
-                                            { $eq: ['$$value', null] },
-                                            { $gt: ['$$this.timestamp', '$$value.timestamp'] }
-                                        ]
-                                    },
-                                    '$$this',
-                                    '$$value'
-                                ]
-                            }
-                        }
-                    }
-                }
-            });
-
-            // Stage 5: Final $match
-            expect(pipeline[4]).toEqual({
-                $match: {
-                    $or: [
-                        {
-                            'latest_log_event.timestamp': {
-                                $exists: 0
-                            }
-                        },
-                        {
-                            'latest_log_event.timestamp': {
-                                $lt: subtractDaysFromNowTimestamp(30)
-                            }
-                        }
-                    ]
-                }
-            });
-
-            // Stage 6: $project
-            expect(pipeline[5]).toEqual({
-                $project: {
-                    _id: 1,
-                    email: 1,
-                    IDP: 1,
-                    firstName: 1
-                }
-            });
-        });
-
-        it('should use correct field names in pipeline', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            
-            // Check field names are correctly mapped
-            expect(pipeline[0].$match.userStatus).toBe(USER.STATUSES.ACTIVE);
-            expect(pipeline[1].$lookup.localField).toBe('email');
-            expect(pipeline[1].$lookup.foreignField).toBe('userEmail');
-            expect(pipeline[1].$lookup.as).toBe('log_events_array');
-        });
-
-        it('should use correct constants in pipeline', async () => {
-            // Arrange
-            const qualifyingEvents = ['login', 'logout'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            
-            expect(pipeline[0].$match.userStatus).toBe(USER.STATUSES.ACTIVE);
-            expect(pipeline[0].$match.IDP).toEqual({ $not: { $regex: 'nih', $options: 'i' } });
-            expect(pipeline[1].$lookup.from).toBe(LOG_COLLECTION);
-        });
-    });
-
-    describe('input handling', () => {
-        it('should handle single qualifying event', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const filterStage = pipeline[2].$set.log_events_array.$filter;
-            expect(filterStage.cond.$and[1].$in[1]).toEqual(qualifyingEvents);
-        });
-
-        it('should handle multiple qualifying events', async () => {
-            // Arrange
-            const qualifyingEvents = ['login', 'logout', 'submission_created', 'data_uploaded'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const filterStage = pipeline[2].$set.log_events_array.$filter;
-            expect(filterStage.cond.$and[1].$in[1]).toEqual(qualifyingEvents);
-        });
-
-        it('should handle empty qualifying events array', async () => {
-            // Arrange
-            const qualifyingEvents = [];
-            
-            mockUserDAO.aggregate.mockResolvedValue([]);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const filterStage = pipeline[2].$set.log_events_array.$filter;
-            expect(filterStage.cond.$and[1].$in[1]).toEqual(qualifyingEvents);
-        });
-    });
-
-    describe('filtering behavior', () => {
-        it('should exclude NIH users from the query', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            expect(pipeline[0].$match.IDP).toEqual({ $not: { $regex: 'nih', $options: 'i' } });
-        });
-
-        it('should only include active users', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            expect(pipeline[0].$match.userStatus).toBe(USER.STATUSES.ACTIVE);
-        });
-
-        it('should filter log events by IDP match', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const filterStage = pipeline[2].$set.log_events_array.$filter;
-            expect(filterStage.cond.$and[0].$eq).toEqual(['$$log.userIDP', '$IDP']);
-        });
-
-        it('should filter log events by qualifying events', async () => {
-            // Arrange
-            const qualifyingEvents = ['login', 'logout'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const filterStage = pipeline[2].$set.log_events_array.$filter;
-            expect(filterStage.cond.$and[1].$in).toEqual(['$$log.eventType', qualifyingEvents]);
-        });
-    });
-
-    describe('inactive user detection logic', () => {
-        it('should include users with no qualifying log events', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const finalMatchStage = pipeline[4].$match;
-            expect(finalMatchStage.$or[0]).toEqual({
-                'latest_log_event.timestamp': {
-                    $exists: 0
-                }
-            });
-        });
-
-        it('should include users with old qualifying log events', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            const { subtractDaysFromNowTimestamp } = require('../../crdc-datahub-database-drivers/utility/time-utility');
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const finalMatchStage = pipeline[4].$match;
-            expect(finalMatchStage.$or[1]).toEqual({
-                'latest_log_event.timestamp': {
-                    $lt: subtractDaysFromNowTimestamp(30)
-                }
-            });
-        });
-
-        it('should use correct inactive user days from constructor', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            const { subtractDaysFromNowTimestamp } = require('../../crdc-datahub-database-drivers/utility/time-utility');
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const finalMatchStage = pipeline[4].$match;
-            expect(finalMatchStage.$or[1]['latest_log_event.timestamp'].$lt).toBe(subtractDaysFromNowTimestamp(30));
-        });
-    });
-
-    describe('output projection', () => {
-        it('should project only required fields', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const projectStage = pipeline[5].$project;
-            expect(projectStage).toEqual({
-                _id: 1,
-                email: 1,
-                IDP: 1,
-                firstName: 1
-            });
-        });
-
-        it('should return users with correct structure', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            const result = await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            expect(result).toEqual(mockInactiveUsers);
-            expect(result[0]).toHaveProperty('_id');
-            expect(result[0]).toHaveProperty('email');
-            expect(result[0]).toHaveProperty('IDP');
-            expect(result[0]).toHaveProperty('firstName');
+            expect(subtractDaysFromNowTimestamp).toHaveBeenCalledWith(60);
         });
     });
 
     describe('error handling', () => {
-        it('should propagate database errors', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            const dbError = new Error('Database connection failed');
-            mockUserDAO.aggregate.mockRejectedValue(dbError);
+        it('should not query logs when the users query fails', async () => {
+            mockUserDAO.aggregate.mockRejectedValue(new Error('Database connection failed'));
 
-            // Act & Assert
             await expect(userService.checkForInactiveUsers(qualifyingEvents)).rejects.toThrow('Database connection failed');
-            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
-        });
-
-        it('should handle null result from database', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(null);
-
-            // Act
-            const result = await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            expect(result).toBeNull();
-            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
-        });
-
-        it('should handle undefined result from database', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(undefined);
-
-            // Act
-            const result = await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            expect(result).toBeUndefined();
-            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
+            expect(mockLogCollection.aggregate).not.toHaveBeenCalled();
         });
     });
-
-    describe('performance and behavior', () => {
-        it('should call aggregate only once per invocation', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(1);
-        });
-
-        it('should return the same result on multiple calls with same data', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            const result1 = await userService.checkForInactiveUsers(qualifyingEvents);
-            const result2 = await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            expect(result1).toEqual(result2);
-            expect(mockUserDAO.aggregate).toHaveBeenCalledTimes(2);
-        });
-    });
-
-    describe('edge cases', () => {
-        it('should handle users with no log events', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const finalMatchStage = pipeline[4].$match;
-            // Should include users with no qualifying log events
-            expect(finalMatchStage.$or[0]['latest_log_event.timestamp'].$exists).toBe(0);
-        });
-
-        it('should handle users with log events but none qualifying', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const finalMatchStage = pipeline[4].$match;
-            // Should include users with no qualifying log events
-            expect(finalMatchStage.$or[0]['latest_log_event.timestamp'].$exists).toBe(0);
-        });
-
-        it('should handle case-insensitive NIH user exclusion', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            expect(pipeline[0].$match.IDP).toEqual({ $not: { $regex: 'nih', $options: 'i' } });
-        });
-    });
-
-    describe('integration scenarios', () => {
-        it('should work with subtractDaysFromNowTimestamp function', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            const { subtractDaysFromNowTimestamp } = require('../../crdc-datahub-database-drivers/utility/time-utility');
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const finalMatchStage = pipeline[4].$match;
-            expect(finalMatchStage.$or[1]['latest_log_event.timestamp'].$lt).toBe(subtractDaysFromNowTimestamp(30));
-            expect(subtractDaysFromNowTimestamp).toHaveBeenCalledWith(30);
-        });
-
-        it('should handle different inactive user days configurations', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            const { subtractDaysFromNowTimestamp } = require('../../crdc-datahub-database-drivers/utility/time-utility');
-            
-            // Create service with different inactiveUserDays
-            const userServiceWithDifferentDays = new UserService(
-                mockLogCollection,
-                mockOrganizationCollection,
-                mockNotificationsService,
-                mockApplicationCollection,
-                'test@example.com',
-                'http://test.com',
-                mockApprovedStudiesService,
-                60, // Different inactiveUserDays
-                mockConfigurationService,
-                mockInstitutionService,
-                mockAuthorizationService
-            );
-            userServiceWithDifferentDays.userDAO = mockUserDAO;
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userServiceWithDifferentDays.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const finalMatchStage = pipeline[4].$match;
-            expect(finalMatchStage.$or[1]['latest_log_event.timestamp'].$lt).toBe(subtractDaysFromNowTimestamp(60));
-        });
-    });
-
-    describe('business logic validation', () => {
-        it('should identify users who have been inactive for the specified period', async () => {
-            // Arrange
-            const qualifyingEvents = ['login', 'logout', 'submission_created'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            const result = await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            expect(result).toEqual(mockInactiveUsers);
-            expect(result.every(user => 
-                user._id && 
-                user.email && 
-                user.IDP && 
-                user.firstName
-            )).toBe(true);
-        });
-
-        it('should exclude NIH users from inactivity checks', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const initialMatch = pipeline[0].$match;
-            expect(initialMatch.IDP).toEqual({ $not: { $regex: 'nih', $options: 'i' } });
-        });
-
-        it('should only consider active users for inactivity checks', async () => {
-            // Arrange
-            const qualifyingEvents = ['login'];
-            
-            mockUserDAO.aggregate.mockResolvedValue(mockInactiveUsers);
-
-            // Act
-            await userService.checkForInactiveUsers(qualifyingEvents);
-
-            // Assert
-            const pipeline = mockUserDAO.aggregate.mock.calls[0][0];
-            const initialMatch = pipeline[0].$match;
-            expect(initialMatch.userStatus).toBe(USER.STATUSES.ACTIVE);
-        });
-    });
-}); 
+});
