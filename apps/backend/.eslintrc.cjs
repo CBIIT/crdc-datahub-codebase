@@ -29,7 +29,7 @@ const config = {
     "no-param-reassign": "off",
     "object-curly-newline": "off",
     "no-underscore-dangle": "off",
-    "no-console": "warn",
+    "no-console": "off",
     "arrow-body-style": "warn",
     "eol-last": "warn",
     "no-unreachable": "warn",
