@@ -108,11 +108,14 @@ class DataModelService {
   /**
    * Filters out hidden data models from the given list of data commons.
    * @param {string[]} dataCommonsList - The list of data commons to filter.
-   * @returns {Promise<string[]>} The filtered list of data commons.
+   * @returns {Promise<string[]>} The filtered list of data commons. Empty (without refreshing) for an empty or invalid list.
    */
   async removeHiddenDataModels(dataCommonsList) {
-    if (!Array.isArray(dataCommonsList) || dataCommonsList.length === 0) {
+    if (!Array.isArray(dataCommonsList)) {
       console.warn("Hidden Model Filtering: Invalid data commons list; returning empty list");
+      return [];
+    }
+    if (dataCommonsList.length === 0) {
       return [];
     }
     await this.refreshHiddenModels();
