@@ -158,7 +158,7 @@ const runDeactivateInactiveUsers = async (
     .connect()
     .then(async () => {
       await connectMongoose(configuration.document_db_connection_string);
-      const config = await configuration.updateConfig(dbConnector);
+      const config = await configuration.updateConfig();
       initializeEmailContentFromConfig(config);
       // Prefetch is non-blocking: the API must start even if GitHub email content is missing.
       startEmailContentPrefetch();
