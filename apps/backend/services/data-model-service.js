@@ -45,7 +45,7 @@ class DataModelService {
    * If version is not provided, it defaults to the current version defined in the model manifest.
    * @param {string} dataCommon - The common identifier for the data model.
    * @param {string} [version] - The specific version of the data model. If not provided, the current version will be used.
-   * @returns
+   * @returns {Promise<import('mdf-reader').MDFReader|[]>} Parsed model, or `[]` when inputs or manifest are missing
    * @throws {Error} - Throws an error if the model content URL is not configured, or if the model definition cannot be found.
    */
   async getDataModelByDataCommonAndVersion(dataCommon, version) {
@@ -56,9 +56,9 @@ class DataModelService {
     if (!contents) {
       return [];
     }
-    this.modelDefinition = contents[dataCommon];
+    const modelDefinition = contents[dataCommon];
     if (!version) {
-      version = this.modelDefinition[CURRENT_DEF_VERSION];
+      version = modelDefinition[CURRENT_DEF_VERSION];
     }
 
     const contentURL = await this.configurationService.getModelContentURL();
@@ -66,7 +66,7 @@ class DataModelService {
       throw new Error("Unable to load the data model: the model content URL is not configured");
     }
     const dataModelDir = path.join(path.dirname(contentURL), dataCommon, version);
-    const dataModelFileNameArr = this.modelDefinition[DEF_MODEL_FILES];
+    const dataModelFileNameArr = modelDefinition[DEF_MODEL_FILES];
     const dataModelFilePathArr = dataModelFileNameArr.map((fileName) =>
       path.join(dataModelDir, fileName)
     );
