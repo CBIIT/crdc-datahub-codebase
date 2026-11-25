@@ -225,9 +225,17 @@ const config = {
   /**
    * Builds a config object overlaid with values from the configuration collection.
    * @returns {Promise<object>} Config merged with database-backed settings
+   * @throws {Error} When TIER or MODEL_CONTENT (repo_url, content_path) is missing
    */
   updateConfig: async () => {
     const configurationService = new ConfigurationService();
+    // Model manifest + model files are loaded from this URL; there is no default.
+    const modelContentURL = await configurationService.getModelContentURL();
+    if (!modelContentURL) {
+      throw new Error(
+        "Missing required configuration: TIER (keys.tier) and MODEL_CONTENT (keys.repo_url, keys.content_path) must be set"
+      );
+    }
     // SCHEDULED_JOBS
     const scheduledJobsConf = await configurationService.findByType(SCHEDULED_JOBS);
     const inactiveUserDaysConf = scheduledJobsConf?.[INACTIVE_USER_DAYS];

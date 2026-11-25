@@ -10,6 +10,7 @@ const TIER = "TIER";
 const DEFAULT_MODEL_CONTENT_TTL_MINUTES = 60 * 24;
 const getOMBConfiguration = require("../dao/omb");
 const ERROR = require("../constants/error-constants");
+const {sanitizeTierName} = require("../utility/string-util");
 class ConfigurationService {
     constructor() {
         this.configurationDAO = new ConfigurationDAO();
@@ -149,21 +150,21 @@ class ConfigurationService {
 
     /**
      * Builds the model content.json URL from the tier, model content repo, and content path.
+     * The tier is sanitized to a branch name (non-alphanumerics removed, lowercased).
      * Logs and returns null when any required configuration value is missing.
      * @returns {Promise<string|null>}
      */
     async getModelContentURL() {
-        const tier = await this._getTier();
+        const tier = sanitizeTierName(await this._getTier());
         if (tier === null) {
             console.error('Unable to read the tier from the configuration');
             return null;
         }
-        const repoURL = await this._getModelContentRepo();
+        const { repoURL, contentPath } = await this._getModelContentSettings();
         if (repoURL === null) {
             console.error('Unable to read the model content repo from the configuration');
             return null;
         }
-        const contentPath = await this._getContentPath();
         if (contentPath === null) {
             console.error('Unable to read the content path from the configuration');
             return null;
@@ -171,19 +172,25 @@ class ConfigurationService {
         return `${repoURL}/refs/heads/${tier}/${contentPath}`;
     }
 
+    /**
+     * Reads the raw TIER value from the configuration.
+     * @returns {Promise<string|null>} Raw tier value, or null when missing
+     */
     async _getTier() {
         const result = await this.configurationDAO.findByType(TIER);
         return result?.keys?.tier || null;
     }
 
-    async _getModelContentRepo() {
+    /**
+     * Reads the model content repo URL and content path with a single MODEL_CONTENT lookup.
+     * @returns {Promise<{repoURL: string|null, contentPath: string|null}>}
+     */
+    async _getModelContentSettings() {
         const result = await this.configurationDAO.findByType(MODEL_CONTENT);
-        return result?.keys?.repo_url || null;
-    }
-
-    async _getContentPath() {
-        const result = await this.configurationDAO.findByType(MODEL_CONTENT);
-        return result?.keys?.content_path || null;
+        return {
+            repoURL: result?.keys?.repo_url || null,
+            contentPath: result?.keys?.content_path || null
+        };
     }
 
     /**

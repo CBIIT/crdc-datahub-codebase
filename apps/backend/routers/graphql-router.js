@@ -166,8 +166,11 @@ dbConnector
     const awsService = new AWSService(configurationService);
 
     const utilityService = new UtilityService();
-    const fetchDataModelInfo = async () =>
-      utilityService.fetchJsonFromUrl(await configurationService.getModelContentURL());
+    // Optional contentURL avoids re-resolving the URL when the caller already has it
+    const fetchDataModelInfo = async (contentURL) =>
+      utilityService.fetchJsonFromUrl(
+        contentURL ?? (await configurationService.getModelContentURL())
+      );
     const batchService = new BatchService(
       s3Service,
       config.sqs_loader_queue,

@@ -1,4 +1,8 @@
-const { escapeRegexLiteral, sanitizeMongoDBInput } = require("../../utility/string-util");
+const {
+  escapeRegexLiteral,
+  sanitizeMongoDBInput,
+  sanitizeTierName,
+} = require("../../utility/string-util");
 
 describe("escapeRegexLiteral", () => {
   it("escapes regex metacharacters for literal substring match", () => {
@@ -24,5 +28,24 @@ describe("sanitizeMongoDBInput", () => {
   it("still trims and handles dot-only input", () => {
     expect(sanitizeMongoDBInput("  x  ")).toBe("x");
     expect(sanitizeMongoDBInput("...")).toBe("''");
+  });
+});
+
+describe("sanitizeTierName", () => {
+
+  const testCases = [
+    { tier: "dev", expected: "dev" },
+    { tier: "QA", expected: "qa" },
+    { tier: "dev-2", expected: "dev2" },
+    { tier: " Stage ", expected: "stage" },
+    { tier: "--", expected: null },
+    { tier: "", expected: null },
+    { tier: undefined, expected: null },
+    { tier: null, expected: null },
+    { tier: 123, expected: null },
+  ];
+  
+  it.each(testCases)("should return $expected for $tier", ({ tier, expected }) => {
+    expect(sanitizeTierName(tier)).toBe(expected);
   });
 });

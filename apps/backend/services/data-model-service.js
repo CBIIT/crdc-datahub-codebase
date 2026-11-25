@@ -10,7 +10,7 @@ const MODEL_CONTENT_FETCH_TIMEOUT_MS = 3000; // 3 seconds
 class DataModelService {
   /**
    * Performs no I/O. hiddenDataModels starts empty, and lastTTLMinutes is unset until the first TTL read.
-   * @param {function(): Promise<object>} dataModelInfo Fetches the data model manifest
+   * @param {function(string=): Promise<object>} dataModelInfo Fetches the data model manifest; takes an optional content URL, and resolves it from the configuration when omitted
    * @param {ConfigurationService} configurationService Source of the configured model content URL and the MODEL_CONTENT TTL
    */
   constructor(dataModelInfo, configurationService) {
@@ -45,6 +45,7 @@ class DataModelService {
    * If version is not provided, it defaults to the current version defined in the model manifest.
    * @param {string} dataCommon - The common identifier for the data model.
    * @param {string} [version] - The specific version of the data model. If not provided, the current version will be used.
+   * The content URL is resolved once and used for both the manifest fetch and the model file paths.
    * @returns {Promise<import('mdf-reader').MDFReader|[]>} Parsed model, or `[]` when inputs or manifest are missing
    * @throws {Error} - Throws an error if the model content URL is not configured, or if the model definition cannot be found.
    */
@@ -52,7 +53,11 @@ class DataModelService {
     if (!dataCommon) {
       return [];
     }
-    const contents = await this.dataModelManifestInfo();
+    const contentURL = await this.configurationService.getModelContentURL();
+    if (!contentURL) {
+      throw new Error("Unable to load the data model: the model content URL is not configured");
+    }
+    const contents = await this.dataModelManifestInfo(contentURL);
     if (!contents) {
       return [];
     }
@@ -61,10 +66,6 @@ class DataModelService {
       version = modelDefinition[CURRENT_DEF_VERSION];
     }
 
-    const contentURL = await this.configurationService.getModelContentURL();
-    if (!contentURL) {
-      throw new Error("Unable to load the data model: the model content URL is not configured");
-    }
     const dataModelDir = path.join(path.dirname(contentURL), dataCommon, version);
     const dataModelFileNameArr = modelDefinition[DEF_MODEL_FILES];
     const dataModelFilePathArr = dataModelFileNameArr.map((fileName) =>
