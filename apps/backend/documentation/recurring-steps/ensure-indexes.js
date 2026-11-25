@@ -15,23 +15,24 @@
  */
 
 const {
-    USER_COLLECTION,
-    APPLICATION_COLLECTION,
-    PENDING_PVS_COLLECTION,
-    BATCH_COLLECTION,
-    SUBMISSIONS_COLLECTION,
-    SESSION_COLLECTION,
-    RELEASE_DATA_RECORDS_COLLECTION,
-    APPROVED_STUDIES_COLLECTION,
-    VALIDATION_COLLECTION,
-    PROPERTY_PVS_COLLECTION,
-    QC_RESULTS_COLLECTION,
-    DATA_RECORDS_COLLECTION,
-    DATA_SYNC_COLLECTION,
-} = require('../../crdc-datahub-database-drivers/database-constants');
+  USER_COLLECTION,
+  APPLICATION_COLLECTION,
+  PENDING_PVS_COLLECTION,
+  BATCH_COLLECTION,
+  SUBMISSIONS_COLLECTION,
+  SESSION_COLLECTION,
+  RELEASE_DATA_RECORDS_COLLECTION,
+  APPROVED_STUDIES_COLLECTION,
+  VALIDATION_COLLECTION,
+  PROPERTY_PVS_COLLECTION,
+  QC_RESULTS_COLLECTION,
+  DATA_RECORDS_COLLECTION,
+  DATA_SYNC_COLLECTION,
+  LOG_COLLECTION,
+} = require("../../crdc-datahub-database-drivers/database-constants");
 
 const CREATE_INDEX_MAX_ATTEMPTS = 3;
-const CREATE_INDEX_RETRY_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 500;
+const CREATE_INDEX_RETRY_DELAY_MS = process.env.NODE_ENV === "test" ? 0 : 500;
 const ALLOCATE_INDEX_NAME_MAX_ATTEMPTS = 20;
 
 /**
@@ -39,143 +40,148 @@ const ALLOCATE_INDEX_NAME_MAX_ATTEMPTS = 20;
  * @type {{ collection: string, keys: object, name: string, expireAfterSeconds?: number }[]}
  */
 const INDEXES = [
-    {
-        collection: USER_COLLECTION,
-        keys: { 'institution._id': 1, role: 1 },
-        name: 'institution_id_role',
+  {
+    collection: USER_COLLECTION,
+    keys: { "institution._id": 1, role: 1 },
+    name: "institution_id_role",
+  },
+  {
+    collection: PENDING_PVS_COLLECTION,
+    keys: { submissionID: 1 },
+    name: "submissionID_1",
+  },
+  {
+    collection: BATCH_COLLECTION,
+    keys: { submissionID: 1, createdAt: -1 },
+    name: "submissionID_1_createdAt_-1",
+  },
+  {
+    collection: DATA_SYNC_COLLECTION,
+    keys: { submissionID: 1, type: 1, startTime: -1 },
+    name: "submissionID_1_type_1_startTime_-1",
+  },
+  {
+    collection: DATA_SYNC_COLLECTION,
+    keys: { submissionID: 1, startTime: -1 },
+    name: "submissionID_1_startTime_-1",
+  },
+  {
+    collection: DATA_SYNC_COLLECTION,
+    keys: { submissionID: 1, type: 1, status: 1 },
+    name: "submissionID_1_type_1_status_1",
+  },
+  {
+    collection: DATA_SYNC_COLLECTION,
+    keys: { status: 1 },
+    name: "status_1",
+  },
+  {
+    collection: DATA_SYNC_COLLECTION,
+    keys: { listPending: 1 },
+    name: "listPending_1",
+  },
+  {
+    collection: DATA_SYNC_COLLECTION,
+    keys: { rollupPending: 1 },
+    name: "rollupPending_1",
+  },
+  {
+    collection: DATA_SYNC_COLLECTION,
+    keys: { cleanupAfter: 1 },
+    name: "cleanupAfter_1",
+  },
+  {
+    collection: SUBMISSIONS_COLLECTION,
+    keys: { studyID: 1, dataCommons: 1, status: 1 },
+    name: "studyID_1_dataCommons_1_status_1",
+  },
+  {
+    collection: SESSION_COLLECTION,
+    keys: { expires: 1 },
+    name: "expires_1",
+    expireAfterSeconds: 0,
+  },
+  {
+    collection: RELEASE_DATA_RECORDS_COLLECTION,
+    keys: { dataCommons: 1, nodeType: 1, nodeID: 1 },
+    name: "dataCommons_nodeType_nodeID",
+  },
+  {
+    collection: RELEASE_DATA_RECORDS_COLLECTION,
+    keys: { CRDC_ID: 1 },
+    name: "CRDC_ID",
+  },
+  {
+    collection: RELEASE_DATA_RECORDS_COLLECTION,
+    keys: { dataCommons: 1, nodeType: 1, nodeID: 1, status: 1 },
+    name: "dataCommons_1_nodeType_1_nodeID_1_status_1",
+  },
+  {
+    collection: APPROVED_STUDIES_COLLECTION,
+    keys: { programID: 1 },
+    name: "programID_1",
+  },
+  {
+    collection: VALIDATION_COLLECTION,
+    keys: { submissionID: 1 },
+    name: "submissionID_1",
+  },
+  {
+    collection: PROPERTY_PVS_COLLECTION,
+    keys: { model: 1, version: 1, property: 1 },
+    name: "model_1_version_1_property_1",
+  },
+  {
+    collection: QC_RESULTS_COLLECTION,
+    keys: { submissionID: 1 },
+    name: "submissionID_1",
+  },
+  {
+    collection: DATA_RECORDS_COLLECTION,
+    keys: { submissionID: 1, nodeType: 1, nodeID: 1 },
+    name: "submissionID_nodeType_nodeID",
+  },
+  {
+    collection: DATA_RECORDS_COLLECTION,
+    keys: { dataCommons: 1, nodeType: 1, nodeID: 1 },
+    name: "dataCommons_nodeType_nodeID",
+  },
+  {
+    collection: DATA_RECORDS_COLLECTION,
+    keys: { submissionID: 1 },
+    name: "submissionID_index",
+  },
+  {
+    collection: DATA_RECORDS_COLLECTION,
+    keys: { studyID: 1, entityType: 1, nodeID: 1 },
+    name: "studyID_entityType_nodeID",
+  },
+  {
+    collection: DATA_RECORDS_COLLECTION,
+    keys: { submissionID: 1, status: 1, nodeType: 1, nodeID: 1 },
+    name: "submissionID_1_status_1_nodeType_1_nodeID_1",
+  },
+  {
+    collection: DATA_RECORDS_COLLECTION,
+    keys: {
+      submissionID: 1,
+      nodeType: 1,
+      "parents.parentType": 1,
+      "parents.parentIDPropName": 1,
+      "parents.parentIDValue": 1,
     },
-    {
-        collection: PENDING_PVS_COLLECTION,
-        keys: { submissionID: 1 },
-        name: 'submissionID_1',
-    },
-    {
-        collection: BATCH_COLLECTION,
-        keys: { submissionID: 1, createdAt: -1 },
-        name: 'submissionID_1_createdAt_-1',
-    },
-    {
-        collection: DATA_SYNC_COLLECTION,
-        keys: { submissionID: 1, type: 1, startTime: -1 },
-        name: 'submissionID_1_type_1_startTime_-1',
-    },
-    {
-        collection: DATA_SYNC_COLLECTION,
-        keys: { submissionID: 1, startTime: -1 },
-        name: 'submissionID_1_startTime_-1',
-    },
-    {
-        collection: DATA_SYNC_COLLECTION,
-        keys: { submissionID: 1, type: 1, status: 1 },
-        name: 'submissionID_1_type_1_status_1',
-    },
-    {
-        collection: DATA_SYNC_COLLECTION,
-        keys: { status: 1 },
-        name: 'status_1',
-    },
-    {
-        collection: DATA_SYNC_COLLECTION,
-        keys: { listPending: 1 },
-        name: 'listPending_1',
-    },
-    {
-        collection: DATA_SYNC_COLLECTION,
-        keys: { rollupPending: 1 },
-        name: 'rollupPending_1',
-    },
-    {
-        collection: DATA_SYNC_COLLECTION,
-        keys: { cleanupAfter: 1 },
-        name: 'cleanupAfter_1',
-    },
-    {
-        collection: SUBMISSIONS_COLLECTION,
-        keys: { studyID: 1, dataCommons: 1, status: 1 },
-        name: 'studyID_1_dataCommons_1_status_1',
-    },
-    {
-        collection: SESSION_COLLECTION,
-        keys: { expires: 1 },
-        name: 'expires_1',
-        expireAfterSeconds: 0,
-    },
-    {
-        collection: RELEASE_DATA_RECORDS_COLLECTION,
-        keys: { dataCommons: 1, nodeType: 1, nodeID: 1 },
-        name: 'dataCommons_nodeType_nodeID',
-    },
-    {
-        collection: RELEASE_DATA_RECORDS_COLLECTION,
-        keys: { CRDC_ID: 1 },
-        name: 'CRDC_ID',
-    },
-    {
-        collection: RELEASE_DATA_RECORDS_COLLECTION,
-        keys: { dataCommons: 1, nodeType: 1, nodeID: 1, status: 1 },
-        name: 'dataCommons_1_nodeType_1_nodeID_1_status_1',
-    },
-    {
-        collection: APPROVED_STUDIES_COLLECTION,
-        keys: { programID: 1 },
-        name: 'programID_1',
-    },
-    {
-        collection: VALIDATION_COLLECTION,
-        keys: { submissionID: 1 },
-        name: 'submissionID_1',
-    },
-    {
-        collection: PROPERTY_PVS_COLLECTION,
-        keys: { model: 1, version: 1, property: 1 },
-        name: 'model_1_version_1_property_1',
-    },
-    {
-        collection: QC_RESULTS_COLLECTION,
-        keys: { submissionID: 1 },
-        name: 'submissionID_1',
-    },
-    {
-        collection: DATA_RECORDS_COLLECTION,
-        keys: { submissionID: 1, nodeType: 1, nodeID: 1 },
-        name: 'submissionID_nodeType_nodeID',
-    },
-    {
-        collection: DATA_RECORDS_COLLECTION,
-        keys: { dataCommons: 1, nodeType: 1, nodeID: 1 },
-        name: 'dataCommons_nodeType_nodeID',
-    },
-    {
-        collection: DATA_RECORDS_COLLECTION,
-        keys: { submissionID: 1 },
-        name: 'submissionID_index',
-    },
-    {
-        collection: DATA_RECORDS_COLLECTION,
-        keys: { studyID: 1, entityType: 1, nodeID: 1 },
-        name: 'studyID_entityType_nodeID',
-    },
-    {
-        collection: DATA_RECORDS_COLLECTION,
-        keys: { submissionID: 1, status: 1, nodeType: 1, nodeID: 1 },
-        name: 'submissionID_1_status_1_nodeType_1_nodeID_1',
-    },
-    {
-        collection: DATA_RECORDS_COLLECTION,
-        keys: {
-            submissionID: 1,
-            nodeType: 1,
-            'parents.parentType': 1,
-            'parents.parentIDPropName': 1,
-            'parents.parentIDValue': 1,
-        },
-        name: 'submissionID_1_nodeType_1_parents.parentType_1_parents.parentIDPropName_1_parents.parentIDValue_1',
-    },
-    {
-        collection: APPLICATION_COLLECTION,
-        keys: { nextRevisionId: 1 },
-        name: 'nextRevisionId_1',
-    },
+    name: "submissionID_1_nodeType_1_parents.parentType_1_parents.parentIDPropName_1_parents.parentIDValue_1",
+  },
+  {
+    collection: APPLICATION_COLLECTION,
+    keys: { nextRevisionId: 1 },
+    name: "nextRevisionId_1",
+  },
+  {
+    collection: LOG_COLLECTION,
+    keys: { eventType: 1, userEmail: 1, userIDP: 1, timestamp: -1 },
+    name: "eventType_1_userEmail_1_userIDP_1_timestamp_-1",
+  },
 ];
 
 /**
@@ -184,7 +190,7 @@ const INDEXES = [
  * @returns {boolean}
  */
 function keysEqual(left, right) {
-    return JSON.stringify(left) === JSON.stringify(right);
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 /**
@@ -194,13 +200,13 @@ function keysEqual(left, right) {
  * @returns {boolean}
  */
 function indexPropertiesEqual(spec, existingIndex) {
-    if (!keysEqual(spec.keys, existingIndex.key)) {
-        return false;
-    }
-    if (spec.expireAfterSeconds !== undefined) {
-        return existingIndex.expireAfterSeconds === spec.expireAfterSeconds;
-    }
-    return true;
+  if (!keysEqual(spec.keys, existingIndex.key)) {
+    return false;
+  }
+  if (spec.expireAfterSeconds !== undefined) {
+    return existingIndex.expireAfterSeconds === spec.expireAfterSeconds;
+  }
+  return true;
 }
 
 /**
@@ -210,16 +216,16 @@ function indexPropertiesEqual(spec, existingIndex) {
  * @returns {string}
  */
 function resolveCreateIndexName(spec, indexes) {
-    if (!indexes.some((idx) => idx.name === spec.name)) {
-        return spec.name;
+  if (!indexes.some((idx) => idx.name === spec.name)) {
+    return spec.name;
+  }
+  for (let attempt = 0; attempt < ALLOCATE_INDEX_NAME_MAX_ATTEMPTS; attempt += 1) {
+    const candidate = `${spec.name}_${Math.floor(Math.random() * 1e9)}`;
+    if (!indexes.some((idx) => idx.name === candidate)) {
+      return candidate;
     }
-    for (let attempt = 0; attempt < ALLOCATE_INDEX_NAME_MAX_ATTEMPTS; attempt += 1) {
-        const candidate = `${spec.name}_${Math.floor(Math.random() * 1e9)}`;
-        if (!indexes.some((idx) => idx.name === candidate)) {
-            return candidate;
-        }
-    }
-    throw new Error(`could not allocate index name for planned name ${spec.name}`);
+  }
+  throw new Error(`could not allocate index name for planned name ${spec.name}`);
 }
 
 /**
@@ -227,8 +233,8 @@ function resolveCreateIndexName(spec, indexes) {
  * @returns {boolean}
  */
 function isIndexBuildInProgress(message) {
-    const text = (message || '').toLowerCase();
-    return text.includes('already in progress') || text.includes('index build');
+  const text = (message || "").toLowerCase();
+  return text.includes("already in progress") || text.includes("index build");
 }
 
 /**
@@ -236,8 +242,8 @@ function isIndexBuildInProgress(message) {
  * @returns {boolean}
  */
 function isIndexAlreadyExists(message) {
-    const text = (message || '').toLowerCase();
-    return text.includes('already exists') || text.includes('equivalent index');
+  const text = (message || "").toLowerCase();
+  return text.includes("already exists") || text.includes("equivalent index");
 }
 
 /**
@@ -246,7 +252,7 @@ function isIndexAlreadyExists(message) {
  * @returns {string}
  */
 function specError(spec, detail) {
-    return `${spec.collection}.${spec.name}: ${detail}`;
+  return `${spec.collection}.${spec.name}: ${detail}`;
 }
 
 /**
@@ -262,156 +268,162 @@ function specError(spec, detail) {
  * @returns {Promise<{success: boolean, created: number, skipped: number, error?: string}>}
  */
 async function ensureIndexes(db) {
-    console.log('🔄 Ensuring DocumentDB indexes...');
-    let created = 0;
-    let skipped = 0;
-    const errors = [];
+  console.log("🔄 Ensuring DocumentDB indexes...");
+  let created = 0;
+  let skipped = 0;
+  const errors = [];
 
-    try {
-        const existingCollections = await db.listCollections({}, { nameOnly: true }).toArray();
-        const existingNames = new Set(existingCollections.map((entry) => entry.name));
-        const missingLogged = new Set();
-        const collectionState = new Map();
+  try {
+    const existingCollections = await db.listCollections({}, { nameOnly: true }).toArray();
+    const existingNames = new Set(existingCollections.map((entry) => entry.name));
+    const missingLogged = new Set();
+    const collectionState = new Map();
 
-        for (const spec of INDEXES) {
-            try {
-                if (!existingNames.has(spec.collection)) {
-                    const message = `Collection does not exist: ${spec.collection}`;
-                    if (!missingLogged.has(spec.collection)) {
-                        console.error(`❌ ${message}`);
-                        missingLogged.add(spec.collection);
-                        errors.push(message);
-                    }
-                    continue;
-                }
+    /* eslint-disable no-restricted-syntax, no-await-in-loop, no-continue -- createIndex calls must run sequentially; retries carry per-spec state */
+    for (const spec of INDEXES) {
+      try {
+        if (!existingNames.has(spec.collection)) {
+          const message = `Collection does not exist: ${spec.collection}`;
+          if (!missingLogged.has(spec.collection)) {
+            console.error(`❌ ${message}`);
+            missingLogged.add(spec.collection);
+            errors.push(message);
+          }
+          continue;
+        }
 
-                let resolved = false;
-                let pendingCreateIndexName;
-                let suffixedNameWarned = false;
-                for (let attempt = 1; attempt <= CREATE_INDEX_MAX_ATTEMPTS && !resolved; attempt += 1) {
-                    let state = collectionState.get(spec.collection);
-                    if (!state) {
-                        const collection = db.collection(spec.collection);
-                        state = { collection, indexes: [...await collection.indexes()] };
-                        collectionState.set(spec.collection, state);
-                    }
+        let resolved = false;
+        let pendingCreateIndexName;
+        let suffixedNameWarned = false;
+        for (let attempt = 1; attempt <= CREATE_INDEX_MAX_ATTEMPTS && !resolved; attempt += 1) {
+          let state = collectionState.get(spec.collection);
+          if (!state) {
+            const collection = db.collection(spec.collection);
+            state = { collection, indexes: [...(await collection.indexes())] };
+            collectionState.set(spec.collection, state);
+          }
 
-                    const byName = state.indexes.find((idx) => idx.name === spec.name);
-                    const byProperties = state.indexes.find((idx) => indexPropertiesEqual(spec, idx));
+          const byName = state.indexes.find((idx) => idx.name === spec.name);
+          const byProperties = state.indexes.find((idx) => indexPropertiesEqual(spec, idx));
 
-                    if (byProperties && byProperties.name === spec.name) {
-                        console.log(`   ⏭️  ${spec.collection}.${spec.name} already exists`);
-                        skipped += 1;
-                        resolved = true;
-                        continue;
-                    }
+          if (byProperties && byProperties.name === spec.name) {
+            console.log(`   ⏭️  ${spec.collection}.${spec.name} already exists`);
+            skipped += 1;
+            resolved = true;
+            continue;
+          }
 
-                    if (byProperties) {
-                        console.warn(
-                            `   ⚠️  ${spec.collection}: catalog index ${spec.name} matches existing index `
-                            + `${byProperties.name} (same properties); skipping`
-                        );
-                        skipped += 1;
-                        resolved = true;
-                        continue;
-                    }
+          if (byProperties) {
+            console.warn(
+              `   ⚠️  ${spec.collection}: catalog index ${spec.name} matches existing index ` +
+                `${byProperties.name} (same properties); skipping`
+            );
+            skipped += 1;
+            resolved = true;
+            continue;
+          }
 
-                    if (
-                        byName
-                        && keysEqual(byName.key, spec.keys)
-                        && spec.expireAfterSeconds !== undefined
-                        && byName.expireAfterSeconds !== spec.expireAfterSeconds
-                    ) {
-                        const detail = `exists with different expireAfterSeconds `
-                            + `(catalog ${spec.expireAfterSeconds}, existing ${byName.expireAfterSeconds}); skipping`;
-                        console.warn(`   ⚠️  ${spec.collection}.${spec.name} ${detail}`);
-                        errors.push(specError(spec, detail));
-                        skipped += 1;
-                        resolved = true;
-                        continue;
-                    }
+          if (
+            byName &&
+            keysEqual(byName.key, spec.keys) &&
+            spec.expireAfterSeconds !== undefined &&
+            byName.expireAfterSeconds !== spec.expireAfterSeconds
+          ) {
+            const detail =
+              `exists with different expireAfterSeconds ` +
+              `(catalog ${spec.expireAfterSeconds}, existing ${byName.expireAfterSeconds}); skipping`;
+            console.warn(`   ⚠️  ${spec.collection}.${spec.name} ${detail}`);
+            errors.push(specError(spec, detail));
+            skipped += 1;
+            resolved = true;
+            continue;
+          }
 
-                    try {
-                        if (pendingCreateIndexName === undefined) {
-                            pendingCreateIndexName = resolveCreateIndexName(spec, state.indexes);
-                            if (pendingCreateIndexName !== spec.name && !suffixedNameWarned) {
-                                console.warn(
-                                    `   ⚠️  ${spec.collection}: planned index name ${spec.name} is already used; `
-                                    + `creating as ${pendingCreateIndexName}`
-                                );
-                                suffixedNameWarned = true;
-                            }
-                        }
-                    } catch (nameError) {
-                        console.error(`❌ Error ensuring ${spec.collection}.${spec.name}:`, nameError.message);
-                        errors.push(specError(spec, nameError.message));
-                        resolved = true;
-                        continue;
-                    }
-
-                    const createIndexName = pendingCreateIndexName;
-
-                    const createIndexOptions = { name: createIndexName, background: true };
-                    if (spec.expireAfterSeconds !== undefined) {
-                        createIndexOptions.expireAfterSeconds = spec.expireAfterSeconds;
-                    }
-                    try {
-                        await state.collection.createIndex(spec.keys, createIndexOptions);
-                        const recorded = { name: createIndexName, key: spec.keys };
-                        if (spec.expireAfterSeconds !== undefined) {
-                            recorded.expireAfterSeconds = spec.expireAfterSeconds;
-                        }
-                        state.indexes.push(recorded);
-                        created += 1;
-                        const createdLabel = createIndexName === spec.name
-                            ? spec.name
-                            : `${createIndexName} (planned ${spec.name})`;
-                        console.log(`   ✅ Created ${spec.collection}.${createdLabel}`);
-                        resolved = true;
-                    } catch (createError) {
-                        const canRetryBuild = isIndexBuildInProgress(createError.message)
-                            && attempt < CREATE_INDEX_MAX_ATTEMPTS;
-                        if (canRetryBuild) {
-                            collectionState.delete(spec.collection);
-                            await new Promise((resolve) => {
-                                setTimeout(resolve, CREATE_INDEX_RETRY_DELAY_MS);
-                            });
-                            continue;
-                        }
-                        if (isIndexAlreadyExists(createError.message)
-                            && attempt < CREATE_INDEX_MAX_ATTEMPTS) {
-                            state.indexes = [...await state.collection.indexes()];
-                            pendingCreateIndexName = undefined;
-                            suffixedNameWarned = false;
-                            continue;
-                        }
-                        console.error(`❌ Error ensuring ${spec.collection}.${spec.name}:`, createError.message);
-                        errors.push(specError(spec, createError.message));
-                        resolved = true;
-                    }
-                }
-            } catch (error) {
-                console.error(`❌ Error ensuring ${spec.collection}.${spec.name}:`, error.message);
-                errors.push(specError(spec, error.message));
+          try {
+            if (pendingCreateIndexName === undefined) {
+              pendingCreateIndexName = resolveCreateIndexName(spec, state.indexes);
+              if (pendingCreateIndexName !== spec.name && !suffixedNameWarned) {
+                console.warn(
+                  `   ⚠️  ${spec.collection}: planned index name ${spec.name} is already used; ` +
+                    `creating as ${pendingCreateIndexName}`
+                );
+                suffixedNameWarned = true;
+              }
             }
-        }
+          } catch (nameError) {
+            console.error(`❌ Error ensuring ${spec.collection}.${spec.name}:`, nameError.message);
+            errors.push(specError(spec, nameError.message));
+            resolved = true;
+            continue;
+          }
 
-        if (errors.length > 0) {
-            const error = errors.join('; ');
-            console.error('❌ Error ensuring indexes:', error);
-            return { success: false, created, skipped, error };
-        }
+          const createIndexName = pendingCreateIndexName;
 
-        console.log(`✅ Index ensure completed: ${created} created, ${skipped} skipped`);
-        return { success: true, created, skipped };
-    } catch (error) {
-        console.error('❌ Error ensuring indexes:', error.message);
-        return { success: false, created, skipped, error: error.message };
+          const createIndexOptions = { name: createIndexName, background: true };
+          if (spec.expireAfterSeconds !== undefined) {
+            createIndexOptions.expireAfterSeconds = spec.expireAfterSeconds;
+          }
+          try {
+            await state.collection.createIndex(spec.keys, createIndexOptions);
+            const recorded = { name: createIndexName, key: spec.keys };
+            if (spec.expireAfterSeconds !== undefined) {
+              recorded.expireAfterSeconds = spec.expireAfterSeconds;
+            }
+            state.indexes.push(recorded);
+            created += 1;
+            const createdLabel =
+              createIndexName === spec.name
+                ? spec.name
+                : `${createIndexName} (planned ${spec.name})`;
+            console.log(`   ✅ Created ${spec.collection}.${createdLabel}`);
+            resolved = true;
+          } catch (createError) {
+            const canRetryBuild =
+              isIndexBuildInProgress(createError.message) && attempt < CREATE_INDEX_MAX_ATTEMPTS;
+            if (canRetryBuild) {
+              collectionState.delete(spec.collection);
+              await new Promise((resolve) => {
+                setTimeout(resolve, CREATE_INDEX_RETRY_DELAY_MS);
+              });
+              continue;
+            }
+            if (isIndexAlreadyExists(createError.message) && attempt < CREATE_INDEX_MAX_ATTEMPTS) {
+              state.indexes = [...(await state.collection.indexes())];
+              pendingCreateIndexName = undefined;
+              suffixedNameWarned = false;
+              continue;
+            }
+            console.error(
+              `❌ Error ensuring ${spec.collection}.${spec.name}:`,
+              createError.message
+            );
+            errors.push(specError(spec, createError.message));
+            resolved = true;
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Error ensuring ${spec.collection}.${spec.name}:`, error.message);
+        errors.push(specError(spec, error.message));
+      }
     }
+    /* eslint-enable no-restricted-syntax, no-await-in-loop, no-continue */
+
+    if (errors.length > 0) {
+      const error = errors.join("; ");
+      console.error("❌ Error ensuring indexes:", error);
+      return { success: false, created, skipped, error };
+    }
+
+    console.log(`✅ Index ensure completed: ${created} created, ${skipped} skipped`);
+    return { success: true, created, skipped };
+  } catch (error) {
+    console.error("❌ Error ensuring indexes:", error.message);
+    return { success: false, created, skipped, error: error.message };
+  }
 }
 
 module.exports = {
-    INDEXES,
-    ensureIndexes,
-    resolveCreateIndexName,
+  INDEXES,
+  ensureIndexes,
+  resolveCreateIndexName,
 };
