@@ -8,7 +8,7 @@ describe('DataModelService.getDefinedPropsByDataCommonAndType', () => {
 
     beforeEach(() => {
         mockManifestInfo = jest.fn();
-        service = new DataModelService(mockManifestInfo, '/models');
+        service = new DataModelService(mockManifestInfo);
         // Mock getDataModelByDataCommonAndVersion for isolation
         service.getDataModelByDataCommonAndVersion = jest.fn();
     });

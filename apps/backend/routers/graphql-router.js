@@ -91,7 +91,7 @@ dbConnector.connect().then(async () => {
 
     const utilityService = new UtilityService();
     const fetchDataModelInfo = async () => {
-        return utilityService.fetchJsonFromUrl(config.model_url)
+        return utilityService.fetchJsonFromUrl(await configurationService.getModelContentURL())
     };
     const batchService = new BatchService(s3Service, config.sqs_loader_queue, awsService, config.prod_url, fetchDataModelInfo);
 
@@ -111,7 +111,7 @@ dbConnector.connect().then(async () => {
     const uploadingMonitor = UploadingMonitor.getInstance(batchService.batchDAO, configurationService);
 
     const tooltipService = new TooltipService();
-    const dataModelService = new DataModelService(fetchDataModelInfo, config.model_url, configurationService);
+    const dataModelService = new DataModelService(fetchDataModelInfo, configurationService);
     const dataSyncService = new DataSyncService();
     const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
         programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,

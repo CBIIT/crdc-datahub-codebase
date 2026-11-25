@@ -30,7 +30,6 @@ const LOADER_QUEUE = "LOADER_QUEUE";
 const METADATA_QUEUE = "METADATA_QUEUE";
 const FILE_QUEUE = "FILE_QUEUE";
 const EXPORTER_QUEUE = "EXPORTER_QUEUE";
-const MODEL_URL = "MODEL_URL";
 const SUBMISSION_GUIDE_URL = "SUBMISSION_GUIDE_URL";
 const DATA_COMMONS_LIST = "DATA_COMMONS_LIST";
 const COMPLETED_RETENTION_DAYS = "COMPLETED_RETENTION_DAYS";
@@ -171,7 +170,6 @@ let config = {
         const submissionDocUrlConf = listURLsConf?.[SUBMISSION_DOC_URL];
         const submissionSystemPortalConf = listURLsConf?.[SUBMISSION_SYSTEM_PORTAL];
         const prodUrlConf = listURLsConf?.[PROD_URL];
-        const modelURLConf = listURLsConf?.[MODEL_URL];
         const submissionGuideURLConf = listURLsConf?.[SUBMISSION_GUIDE_URL];
         // TIMEOUT
         const timeoutConf = await configurationService.findByType(TIMEOUT);
@@ -221,7 +219,6 @@ let config = {
             metadata_queue: metadataQueueConf?.keys?.sqs || process.env.METADATA_QUEUE,
             file_queue: fileQueueConf?.keys?.sqs || process.env.FILE_QUEUE,
             export_queue: exporterQueueConf?.keys?.sqs || process.env.EXPORTER_QUEUE,
-            model_url: modelURLConf || getModelUrl(tierConf?.keys?.tier),
             email_content_branch: getEmailContentBranch(tierConf?.keys?.tier),
             email_content_base_url: getEmailContentBaseUrl(tierConf?.keys?.tier),
             email_content_cache_dir: process.env.EMAIL_CONTENT_CACHE_DIR || 'cache/email-content',
@@ -272,20 +269,6 @@ function readUploaderCLIConfigTemplate(){
     }
     return configString;
 }
-function getModelUrl(dbTier) {
-    // if MODEL_URL exists, it overrides
-    if (process.env.MODEL_URL) {
-        return process.env.MODEL_URL;
-    }
-    const tier = dbTier?.replace(/[^a-zA-Z\d]/g, '')?.trim();
-    // By default url
-    const modelUrl = ['https://raw.githubusercontent.com/CBIIT/crdc-datahub-models/', tier || 'master', '/cache/content.json']
-    if (tier?.length > 0) {
-        modelUrl[1] = tier.toLowerCase();
-    }
-    return modelUrl.join("");
-}
-
 /**
  * Sanitized GitHub branch from configuration TIER.
  * @param {string} [dbTier]

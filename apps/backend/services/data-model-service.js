@@ -12,13 +12,11 @@ class DataModelService {
   /**
    * Performs no I/O. hiddenDataModels starts empty, and lastTTLMinutes is unset until the first TTL read.
    * @param {function(): Promise<object>} dataModelInfo Fetches the data model manifest
-   * @param {string} modelUrl URL of the data model manifest
-   * @param {ConfigurationService} configurationService Source of MODEL_CONTENT settings
+   * @param {ConfigurationService} configurationService Source of the configured model content URL and the MODEL_CONTENT TTL
    */
-  constructor(dataModelInfo, modelUrl, configurationService) {
+  constructor(dataModelInfo, configurationService) {
     this.configurationService = configurationService;
     this.dataModelManifestInfo = dataModelInfo;
-    this.modelDir = path.dirname(modelUrl);
     this.hiddenDataModels = [];
     this.lastTTLMinutes = undefined;
   }
@@ -49,7 +47,7 @@ class DataModelService {
    * @param {string} dataCommon - The common identifier for the data model.
    * @param {string} [version] - The specific version of the data model. If not provided, the current version will be used.
    * @returns
-   * @throws {Error} - Throws an error if the data common is not provided or if the model definition cannot be found.
+   * @throws {Error} - Throws an error if the model content URL is not configured, or if the model definition cannot be found.
    */
   async getDataModelByDataCommonAndVersion(dataCommon, version) {
     if (!dataCommon) {
@@ -64,7 +62,11 @@ class DataModelService {
       version = this.modelDefinition[CURRENT_DEF_VERSION];
     }
 
-    const dataModelDir = path.join(this.modelDir, dataCommon, version);
+    const contentURL = await this.configurationService.getModelContentURL();
+    if (!contentURL) {
+      throw new Error("Unable to load the data model: the model content URL is not configured");
+    }
+    const dataModelDir = path.join(path.dirname(contentURL), dataCommon, version);
     const dataModelFileNameArr = this.modelDefinition[DEF_MODEL_FILES];
     const dataModelFilePathArr = dataModelFileNameArr.map((fileName) =>
       path.join(dataModelDir, fileName)

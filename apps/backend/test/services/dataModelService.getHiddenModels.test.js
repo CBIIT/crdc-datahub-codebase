@@ -22,7 +22,7 @@ const VALID_EXAMPLE = {
 };
 
 function createService() {
-  return new DataModelService("test-model", "test-url", new ConfigurationService());
+  return new DataModelService("test-model", new ConfigurationService());
 }
 
 afterEach(() => {
@@ -50,7 +50,7 @@ describe("DataModelService constructor", () => {
 
   it.each(testCases)("$name", ({ createConfigurationService }) => {
     const refreshSpy = jest.spyOn(DataModelService.prototype, "refreshHiddenModels");
-    const service = new DataModelService("test-model", "test-url", createConfigurationService());
+    const service = new DataModelService("test-model", createConfigurationService());
     expect(refreshSpy).not.toHaveBeenCalled();
     expect(service.hiddenDataModels).toEqual([]);
     expect(service.lastTTLMinutes).toBeUndefined();
@@ -68,7 +68,7 @@ describe("DataModelService.isModelHidden - valid input cases", () => {
 
   beforeEach(() => {
     configurationService = new ConfigurationService();
-    service = new DataModelService("test-model", "test-url", configurationService);
+    service = new DataModelService("test-model", configurationService);
     jest.spyOn(service, "refreshHiddenModels").mockResolvedValue();
   });
 
@@ -111,7 +111,7 @@ describe("DataModelService.isModelHidden - invalid input cases", () => {
 
   beforeEach(() => {
     configurationService = new ConfigurationService();
-    service = new DataModelService("test-model", "test-url", configurationService);
+    service = new DataModelService("test-model", configurationService);
     jest.spyOn(service, "refreshHiddenModels").mockResolvedValue();
     jest.spyOn(console, "warn").mockImplementation(() => {});
     jest.spyOn(console, "error").mockImplementation(() => {});
@@ -480,7 +480,7 @@ describe("DataModelService._updateHiddenModels", () => {
   let service;
 
   beforeEach(() => {
-    service = new DataModelService("test-model", "test-url");
+    service = new DataModelService("test-model");
   });
 
   const testCases = [
@@ -523,7 +523,7 @@ describe("DataModelService._isContentExpired", () => {
   let service;
 
   beforeEach(() => {
-    service = new DataModelService("test-model", "test-url");
+    service = new DataModelService("test-model");
   });
 
   const ttlMinutes = VALID_EXAMPLE.TTL_MINUTES;
@@ -580,7 +580,7 @@ describe("DataModelService.removeHiddenDataModels - valid input cases", () => {
   let service;
 
   beforeEach(() => {
-    service = new DataModelService("test-model", "test-url");
+    service = new DataModelService("test-model");
     jest.spyOn(service, "refreshHiddenModels").mockResolvedValue();
   });
 
@@ -626,7 +626,7 @@ describe("DataModelService.removeHiddenDataModels - empty input", () => {
   let service;
 
   beforeEach(() => {
-    service = new DataModelService("test-model", "test-url");
+    service = new DataModelService("test-model");
     jest.spyOn(service, "refreshHiddenModels").mockResolvedValue();
     jest.spyOn(console, "warn").mockImplementation(() => {});
   });
@@ -657,7 +657,7 @@ describe("DataModelService.removeHiddenDataModels - invalid input", () => {
   let service;
 
   beforeEach(() => {
-    service = new DataModelService("test-model", "test-url");
+    service = new DataModelService("test-model");
     jest.spyOn(service, "refreshHiddenModels").mockResolvedValue();
     jest.spyOn(console, "warn").mockImplementation(() => {});
   });
@@ -700,7 +700,7 @@ describe("DataModelService.removeHiddenDataModels - invalid hidden data models l
   let service;
 
   beforeEach(() => {
-    service = new DataModelService("test-model", "test-url");
+    service = new DataModelService("test-model");
     jest.spyOn(service, "refreshHiddenModels").mockResolvedValue();
     jest.spyOn(console, "error").mockImplementation(() => {});
   });

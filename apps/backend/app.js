@@ -122,7 +122,7 @@ app.use("/api/graphql", graphqlRouter);
         
         const utilityService = new UtilityService();
         const fetchDataModelInfo = async () => {
-            return utilityService.fetchJsonFromUrl(config.model_url)
+            return utilityService.fetchJsonFromUrl(await configurationService.getModelContentURL())
         };
         
         const batchService = new BatchService(s3Service, config.sqs_loader_queue, awsService, config.prod_url, fetchDataModelInfo);

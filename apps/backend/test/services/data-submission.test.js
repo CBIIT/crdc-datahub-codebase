@@ -854,7 +854,7 @@ describe("Submission.createSubmission", () => {
         submissionService.allowedDataCommons = new Set(["commonsA"]);
 
         // Use the real removeHiddenDataModels with a mocked refreshHiddenModels
-        submissionService.dataModelService = new DataModelService(null, "test-url", null);
+        submissionService.dataModelService = new DataModelService(null);
         submissionService.dataModelService.hiddenDataModels = [];
         submissionService.dataModelService.refreshHiddenModels = jest.fn().mockResolvedValue();
 

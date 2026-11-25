@@ -2129,7 +2129,7 @@ describe("Submission Service - listSubmissions", () => {
 
   function createDataModelService(hiddenDataModels) {
     const dataModelService = jest.requireActual("../../services/data-model-service");
-    const service = new dataModelService(null, "test-url", null);
+    const service = new dataModelService(null, null);
     service.hiddenDataModels = hiddenDataModels;
     service.refreshHiddenModels = jest.fn().mockResolvedValue();
     return service;
@@ -2443,7 +2443,7 @@ describe("SubmissionService.listSubmissions hidden data models", () => {
    */
   function mockDataModelService(hiddenDataCommonsList) {
     const dataModelService = jest.requireActual("../../services/data-model-service");
-    const service = new dataModelService(null, "test-url", null);
+    const service = new dataModelService(null, null);
     service.hiddenDataModels = hiddenDataCommonsList;
     service.refreshHiddenModels = jest.fn().mockResolvedValue(null);
     return service;
