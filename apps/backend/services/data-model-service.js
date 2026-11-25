@@ -1,4 +1,3 @@
-const fs = require("fs");
 const https = require("https");
 const path = require("path");
 
@@ -72,13 +71,14 @@ class DataModelService {
       path.join(dataModelDir, fileName)
     );
 
-    const dataModelHold = [];
     // read data model files in github by http and MDFReader
-    for (let index = 0; index < dataModelFilePathArr.length; index++) {
-      const filePath = dataModelFilePathArr[index];
-      if (filePath.startsWith("http")) {
+    if (!dataModelFilePathArr.every((filePath) => filePath.startsWith("http"))) {
+      return [];
+    }
+    const dataModelHold = dataModelFilePathArr.map(
+      (filePath) =>
         // read data model files in github by http
-        const fileContent = new Promise((resolve, reject) => {
+        new Promise((resolve, reject) => {
           https
             .get(filePath, (response) => {
               let data = "";
@@ -92,12 +92,8 @@ class DataModelService {
             .on("error", (error) => {
               reject(error);
             });
-        });
-        dataModelHold.push(fileContent);
-      } else {
-        return [];
-      }
-    }
+        })
+    );
 
     if (dataModelHold.length === 0) {
       throw new Error(`Failed to find data model definition for ${dataCommon} version ${version}`);
@@ -206,16 +202,18 @@ class DataModelService {
     }
   }
 
+  /**
+   * Replaces hiddenDataModels with the names of models flagged `isHidden: true` in the content.
+   * @param {object} [content] Model content keyed by data model (data commons) name
+   */
   _updateHiddenModels(content) {
-    const hiddenDataModels = [];
-    for (const [modelName, model] of Object.entries(content ?? {})) {
-      if (model?.isHidden === true) {
-        hiddenDataModels.push(modelName);
-      }
-    }
-    this.hiddenDataModels = hiddenDataModels;
+    this.hiddenDataModels = Object.entries(content ?? {})
+      .filter(([, model]) => model?.isHidden === true)
+      .map(([modelName]) => modelName);
   }
 
+  // Kept as an instance method so it can be spied on; it does not need instance state.
+  // eslint-disable-next-line class-methods-use-this
   _isContentExpired(contentFetchDate, ttlMinutes) {
     try {
       if (!(contentFetchDate instanceof Date)) {
