@@ -1,19 +1,18 @@
-const { Submission } = require("../../services/submission");
 const ERROR = require("../../constants/error-constants");
 const {
   NEW,
   IN_PROGRESS,
   SUBMITTED,
   RELEASED,
-  COMPLETED,
-  ARCHIVED,
   REJECTED,
   WITHDRAWN,
-  CANCELED,
-  DELETED,
   VALIDATION,
 } = require("../../constants/submission-constants");
 const USER_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-constants");
+const { Submission } = require("../../services/submission");
+const { getDataCommonsDisplayNamesForSubmission } = require("../../utility/data-commons-remapper");
+const { ValidationHandler } = require("../../utility/validation-handler");
+const { verifySession } = require("../../verifier/user-info-verifier");
 
 const { ROLES } = USER_CONSTANTS.USER;
 
@@ -45,23 +44,6 @@ jest.mock("../../verifier/user-info-verifier");
 jest.mock("../../verifier/submission-verifier");
 jest.mock("../../domain/history-event");
 jest.mock("../../domain/user-scope");
-
-const ProgramDAO = require("../../dao/program");
-const SubmissionDAO = require("../../dao/submission");
-const AuthorizationService = require("../../services/authorization-service");
-const AWSService = require("../../services/aws-request");
-const BatchService = require("../../services/batch-service");
-const ConfigurationService = require("../../services/configurationService");
-const DataModelService = require("../../services/data-model-service");
-const DataRecordService = require("../../services/data-record-service");
-const NotifyUser = require("../../services/notify-user");
-const QcResultService = require("../../services/qc-result-service");
-const S3Service = require("../../services/s3-service");
-const UserService = require("../../services/user");
-const UserInitializationService = require("../../services/user-initialization-service");
-const { getDataCommonsDisplayNamesForSubmission } = require("../../utility/data-commons-remapper");
-const { ValidationHandler } = require("../../utility/validation-handler");
-const { verifySession } = require("../../verifier/user-info-verifier");
 
 // Helper function to create complete mock UserScope
 const createMockUserScope = (
@@ -104,7 +86,6 @@ describe("Submission Service - getSubmission", () => {
   let mockUserService;
   let mockDataRecordService;
   let mockBatchService;
-  let mockUserInitializationService;
   let mockNotifyUser;
   let mockS3Service;
   let mockAWSService;
@@ -188,10 +169,6 @@ describe("Submission Service - getSubmission", () => {
       findByID: jest.fn(),
       createBatch: jest.fn(),
       updateBatch: jest.fn(),
-    };
-
-    mockUserInitializationService = {
-      getMyUser: jest.fn(),
     };
 
     mockNotifyUser = {
@@ -437,7 +414,7 @@ describe("Submission Service - getSubmission", () => {
       submissionService._getEveryReminderQuery.mockReturnValue({ reminderFlag: true });
 
       // Execute
-      const result = await submissionService.getSubmission(mockParams, mockContext);
+      await submissionService.getSubmission(mockParams, mockContext);
 
       // Verify
       expect(mockSubmissionDAO.update).not.toHaveBeenCalledWith(
@@ -558,7 +535,7 @@ describe("Submission Service - getSubmission", () => {
       submissionService._getEveryReminderQuery.mockReturnValue({ reminderFlag: true });
 
       // Execute
-      const result = await submissionService.getSubmission(mockParams, mockContext);
+      await submissionService.getSubmission(mockParams, mockContext);
 
       // Verify
       expect(mockDataRecordService.countNodesBySubmissionID).not.toHaveBeenCalled();
@@ -752,7 +729,7 @@ describe("Submission Service - getSubmission", () => {
       });
 
       // Execute
-      const result = await submissionService.getSubmission(mockParams, nonSubmitterContext);
+      await submissionService.getSubmission(mockParams, nonSubmitterContext);
 
       // Verify
       expect(mockSubmissionDAO.update).not.toHaveBeenCalledWith(
@@ -963,7 +940,6 @@ describe("Submission Service - getSubmission", () => {
 
   describe("deleteDataRecords", () => {
     let mockQcResultsService;
-    const USER_PERMISSION_CONSTANTS = require("../../crdc-datahub-database-drivers/constants/user-permission-constants");
 
     beforeEach(() => {
       jest.clearAllMocks();
@@ -2128,8 +2104,8 @@ describe("Submission Service - listSubmissions", () => {
   let mockContext;
 
   function createDataModelService(hiddenDataModels) {
-    const dataModelService = jest.requireActual("../../services/data-model-service");
-    const service = new dataModelService(null, null);
+    const ActualDataModelService = jest.requireActual("../../services/data-model-service");
+    const service = new ActualDataModelService(null, null);
     service.hiddenDataModels = hiddenDataModels;
     service.refreshHiddenModels = jest.fn().mockResolvedValue();
     return service;
@@ -2442,8 +2418,8 @@ describe("SubmissionService.listSubmissions hidden data models", () => {
    * @returns {DataModelService}
    */
   function mockDataModelService(hiddenDataCommonsList) {
-    const dataModelService = jest.requireActual("../../services/data-model-service");
-    const service = new dataModelService(null, null);
+    const ActualDataModelService = jest.requireActual("../../services/data-model-service");
+    const service = new ActualDataModelService(null, null);
     service.hiddenDataModels = hiddenDataCommonsList;
     service.refreshHiddenModels = jest.fn().mockResolvedValue(null);
     return service;

@@ -93,7 +93,7 @@ describe("DataModelService.isModelHidden - valid input cases", () => {
     },
   ];
 
-  it.each(testCases)("$name", async ({ modelName, hiddenModels, expectedResponse, setup }) => {
+  it.each(testCases)("$name", async ({ modelName, hiddenModels, expectedResponse }) => {
     service.hiddenDataModels = hiddenModels;
     expect(await service.isModelHidden(modelName)).toBe(expectedResponse);
     expect(service.refreshHiddenModels).toHaveBeenCalled();
@@ -607,12 +607,7 @@ describe("DataModelService.removeHiddenDataModels - valid input cases", () => {
 
   it.each(testCases)(
     "$name",
-    async ({
-      dataCommonsList,
-      hiddenDataModels,
-      expectedDataCommonsList,
-      expectations = () => {},
-    }) => {
+    async ({ dataCommonsList, hiddenDataModels, expectedDataCommonsList }) => {
       service.hiddenDataModels = hiddenDataModels;
       expect(await service.removeHiddenDataModels(dataCommonsList)).toEqual(
         expectedDataCommonsList

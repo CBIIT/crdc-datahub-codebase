@@ -1,65 +1,66 @@
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { arrayOfObjectsToTSV } = require('../../utility/io-util');
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 
-describe('arrayOfObjectsToTSV', () => {
-    const filename = path.join(os.tmpdir(), `io-util-arrayOfObjectsToTSV-${process.pid}.tsv`);
+const { arrayOfObjectsToTSV } = require("../../utility/io-util");
 
-    afterEach(() => {
-        if (fs.existsSync(filename)) {
-            fs.unlinkSync(filename);
-        }
-    });
+describe("arrayOfObjectsToTSV", () => {
+  const filename = path.join(os.tmpdir(), `io-util-arrayOfObjectsToTSV-${process.pid}.tsv`);
 
-    it('writes correct TSV for a simple array of objects', () => {
-        const data = [
-            { a: 1, b: 'x' },
-            { a: 2, b: 'y' }
-        ];
-        arrayOfObjectsToTSV(data, filename);
+  afterEach(() => {
+    if (fs.existsSync(filename)) {
+      fs.unlinkSync(filename);
+    }
+  });
 
-        const expectedTSV = 'a\tb\n1\tx\n2\ty';
-        expect(fs.readFileSync(filename, 'utf8')).toBe(expectedTSV);
-    });
+  it("writes correct TSV for a simple array of objects", () => {
+    const data = [
+      { a: 1, b: "x" },
+      { a: 2, b: "y" },
+    ];
+    arrayOfObjectsToTSV(data, filename);
 
-    it('handles null and undefined values', () => {
-        const data = [
-            { a: 1, b: null },
-            { a: undefined, b: 'y' }
-        ];
-        arrayOfObjectsToTSV(data, filename);
+    const expectedTSV = "a\tb\n1\tx\n2\ty";
+    expect(fs.readFileSync(filename, "utf8")).toBe(expectedTSV);
+  });
 
-        const expectedTSV = 'a\tb\n1\t\n\ty';
-        expect(fs.readFileSync(filename, 'utf8')).toBe(expectedTSV);
-    });
+  it("handles null and undefined values", () => {
+    const data = [
+      { a: 1, b: null },
+      { a: undefined, b: "y" },
+    ];
+    arrayOfObjectsToTSV(data, filename);
 
-    it('logs error and does not write file for empty array', () => {
-        const originalConsoleError = console.error;
-        console.error = jest.fn();
-        arrayOfObjectsToTSV([], filename);
-        expect(console.error).toHaveBeenCalledWith('Input must be a non-empty array');
-        expect(fs.existsSync(filename)).toBe(false);
-        console.error = originalConsoleError;
-    });
+    const expectedTSV = "a\tb\n1\t\n\ty";
+    expect(fs.readFileSync(filename, "utf8")).toBe(expectedTSV);
+  });
 
-    it('logs error and does not write file for non-array input', () => {
-        const originalConsoleError = console.error;
-        console.error = jest.fn();
-        arrayOfObjectsToTSV(null, filename);
-        expect(console.error).toHaveBeenCalledWith('Input must be a non-empty array');
-        expect(fs.existsSync(filename)).toBe(false);
-        console.error = originalConsoleError;
-    });
+  it("logs error and does not write file for empty array", () => {
+    const originalConsoleError = console.error;
+    console.error = jest.fn();
+    arrayOfObjectsToTSV([], filename);
+    expect(console.error).toHaveBeenCalledWith("Input must be a non-empty array");
+    expect(fs.existsSync(filename)).toBe(false);
+    console.error = originalConsoleError;
+  });
 
-    it('writes correct TSV for objects with extra keys (only first object keys used as headers)', () => {
-        const data = [
-            { a: 1, b: 2 },
-            { a: 3, b: 4, c: 5 }
-        ];
-        arrayOfObjectsToTSV(data, filename);
+  it("logs error and does not write file for non-array input", () => {
+    const originalConsoleError = console.error;
+    console.error = jest.fn();
+    arrayOfObjectsToTSV(null, filename);
+    expect(console.error).toHaveBeenCalledWith("Input must be a non-empty array");
+    expect(fs.existsSync(filename)).toBe(false);
+    console.error = originalConsoleError;
+  });
 
-        const expectedTSV = 'a\tb\n1\t2\n3\t4';
-        expect(fs.readFileSync(filename, 'utf8')).toBe(expectedTSV);
-    });
+  it("writes correct TSV for objects with extra keys (only first object keys used as headers)", () => {
+    const data = [
+      { a: 1, b: 2 },
+      { a: 3, b: 4, c: 5 },
+    ];
+    arrayOfObjectsToTSV(data, filename);
+
+    const expectedTSV = "a\tb\n1\t2\n3\t4";
+    expect(fs.readFileSync(filename, "utf8")).toBe(expectedTSV);
+  });
 });

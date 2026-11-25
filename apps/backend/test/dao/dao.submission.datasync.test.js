@@ -1,69 +1,63 @@
-const SubmissionDAO = require('../../dao/submission');
-const SubmissionModel = require('../../mongoose/models/submission');
-const MongooseGenericDAO = require('../../dao/mongoose-generic');
-const { COMPLETED, DATA_TYPE } = require('../../constants/submission-constants');
-const { DATA_SYNC_STATUS } = require('../../constants/data-sync-constants');
+const { DATA_SYNC_STATUS } = require("../../constants/data-sync-constants");
+const { COMPLETED, DATA_TYPE } = require("../../constants/submission-constants");
+const MongooseGenericDAO = require("../../dao/mongoose-generic");
+const SubmissionDAO = require("../../dao/submission");
+const SubmissionModel = require("../../mongoose/models/submission");
 
 let dao;
 
-describe('SubmissionDAO data sync', () => {
+describe("SubmissionDAO data sync", () => {
+  beforeEach(() => {
+    dao = new SubmissionDAO();
+    jest.clearAllMocks();
+  });
 
-    beforeEach(() => {
-        dao = new SubmissionDAO();
-        jest.clearAllMocks();
+  describe("verify initialization", () => {
+    it("should extend MongooseGenericDAO and use the Submission model", () => {
+      expect(dao).toBeInstanceOf(MongooseGenericDAO);
+      expect(dao.model).toBe(SubmissionModel);
+      expect(dao.model.modelName).toBe("Submission");
     });
 
-    describe('verify initialization', () => {
+    it("should have expected methods defined", () => {
+      expect(dao.getToBeArchivedSubmissions).toBeDefined();
+      expect(dao.updateDataSyncStatus).toBeUndefined();
+      expect(dao._assertDataSyncRollupStatus).toBeUndefined();
+    });
+  });
 
-        it('should extend MongooseGenericDAO and use the Submission model', () => {
-            expect(dao).toBeInstanceOf(MongooseGenericDAO);
-            expect(dao.model).toBe(SubmissionModel);
-            expect(dao.model.modelName).toBe('Submission');
-        });
+  describe("getToBeArchivedSubmissions", () => {
+    it("requires succeeded metadata sync, and a succeeded file sync for Metadata and Data Files", async () => {
+      const findManySpy = jest.spyOn(dao, "findMany").mockResolvedValue([]);
 
-        it('should have expected methods defined', () => {
-            expect(dao.getToBeArchivedSubmissions).toBeDefined();
-            expect(dao.updateDataSyncStatus).toBeUndefined();
-            expect(dao._assertDataSyncRollupStatus).toBeUndefined();
-        });
-
+      const submissions = await dao.getToBeArchivedSubmissions(30);
+      expect(submissions).toEqual([]);
+      expect(findManySpy).toHaveBeenCalledWith({
+        status: COMPLETED,
+        archived: { $ne: true },
+        updatedAt: { $lte: expect.any(Date) },
+        $or: [
+          {
+            dataType: DATA_TYPE.METADATA_ONLY,
+            metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+          },
+          {
+            dataType: DATA_TYPE.METADATA_AND_DATA_FILES,
+            metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+            fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
+          },
+          {
+            "manualArchiveApproval.approved": true,
+          },
+        ],
+      });
     });
 
-    describe('getToBeArchivedSubmissions', () => {
+    it("returns an empty array when findMany rejects", async () => {
+      jest.spyOn(dao, "findMany").mockRejectedValue(new Error("db down"));
+      jest.spyOn(console, "error").mockImplementation(() => {});
 
-        it('requires succeeded metadata sync, and a succeeded file sync for Metadata and Data Files', async () => {
-            const findManySpy = jest.spyOn(dao, 'findMany').mockResolvedValue([]);
-
-            const submissions = await dao.getToBeArchivedSubmissions(30);
-            expect(submissions).toEqual([]);
-            expect(findManySpy).toHaveBeenCalledWith({
-                status: COMPLETED,
-                archived: { $ne: true },
-                updatedAt: { $lte: expect.any(Date) },
-                $or: [
-                    {
-                        dataType: DATA_TYPE.METADATA_ONLY,
-                        metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
-                    },
-                    {
-                        dataType: DATA_TYPE.METADATA_AND_DATA_FILES,
-                        metadataDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
-                        fileDataSyncStatus: DATA_SYNC_STATUS.SUCCEEDED,
-                    },
-                    {
-                        'manualArchiveApproval.approved': true,
-                    },
-                ],
-            });
-        });
-
-        it('returns an empty array when findMany rejects', async () => {
-            jest.spyOn(dao, 'findMany').mockRejectedValue(new Error('db down'));
-            jest.spyOn(console, 'error').mockImplementation(() => {});
-
-            await expect(dao.getToBeArchivedSubmissions(30)).resolves.toEqual([]);
-        });
-
+      await expect(dao.getToBeArchivedSubmissions(30)).resolves.toEqual([]);
     });
-
+  });
 });
