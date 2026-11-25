@@ -1,34 +1,34 @@
-const {Submission} = require("../../services/submission");
-const {DataRecordService} = require("../../services/data-record-service");
 const config = require("../../config");
-const {EmailService} = require("../../services/email");
-const {NotifyUser} = require("../../services/notify-user");
-const {User} = require("../../crdc-datahub-database-drivers/services/user");
-const {S3Service} = require("../../services/s3-service");
-const {Program} = require("../../services/program-service");
+const { User } = require("../../crdc-datahub-database-drivers/services/user");
+const { DataRecordService } = require("../../services/data-record-service");
+const { EmailService } = require("../../services/email");
+const { NotifyUser } = require("../../services/notify-user");
+const { Program } = require("../../services/program-service");
+const { S3Service } = require("../../services/s3-service");
+const { Submission } = require("../../services/submission");
 
 jest.mock("../../crdc-datahub-database-drivers/services/user");
 jest.mock("../../services/notify-user");
 
 const createMockCollection = () => ({
-    create: jest.fn(),
-    createMany: jest.fn(),
-    findUnique: jest.fn(),
-    findMany: jest.fn(),
-    findFirst: jest.fn(),
-    update: jest.fn(),
-    updateMany: jest.fn(),
-    deleteMany: jest.fn(),
-    delete: jest.fn(),
-    count: jest.fn(),
-    aggregate: jest.fn(),
-    insert: jest.fn(),
-    name: 'MockCollection'
+  create: jest.fn(),
+  createMany: jest.fn(),
+  findUnique: jest.fn(),
+  findMany: jest.fn(),
+  findFirst: jest.fn(),
+  update: jest.fn(),
+  updateMany: jest.fn(),
+  deleteMany: jest.fn(),
+  delete: jest.fn(),
+  count: jest.fn(),
+  aggregate: jest.fn(),
+  insert: jest.fn(),
+  name: "MockCollection",
 });
 
 // Mock database service
 const dbService = {
-    updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 })
+  updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
 };
 
 const userCollection = createMockCollection();
@@ -41,20 +41,29 @@ const userService = new User(userCollection);
 const dataRecordService = new DataRecordService({}, config.file_queue, config.metadata_queue, null);
 const s3Service = new S3Service();
 const programService = new Program({});
-const subInterface = new Submission(logCollection, submissionCollection, null, userService, programService, notificationsService, dataRecordService, "dev2", null, null, null, s3Service)
+const subInterface = new Submission(
+  logCollection,
+  submissionCollection,
+  null,
+  userService,
+  programService,
+  notificationsService,
+  dataRecordService,
+  "dev2",
+  null,
+  null,
+  null,
+  s3Service
+);
 
-describe('Submission service test', () => {
+describe("Submission service test", () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
-    afterEach(() => {
-        jest.clearAllMocks();
-    });
-
-    test("deleteInactiveApplications no accessed submissions", async () => {
-        submissionCollection.aggregate.mockImplementation(() => {
-            return [];
-        });
-        await subInterface.deleteInactiveSubmissions();
-        expect(dbService.updateMany).toHaveBeenCalledTimes(0);
-
-    });
+  test("deleteInactiveApplications no accessed submissions", async () => {
+    submissionCollection.aggregate.mockImplementation(() => []);
+    await subInterface.deleteInactiveSubmissions();
+    expect(dbService.updateMany).toHaveBeenCalledTimes(0);
+  });
 });

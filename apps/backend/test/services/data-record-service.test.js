@@ -1,11 +1,14 @@
-const { DataRecordService, deriveFileValidationStatus } = require('../../services/data-record-service');
-const { VALIDATION_STATUS, VALIDATION, DATA_FILE } = require('../../constants/submission-constants');
-const ERRORS = require('../../constants/error-constants');
-const { BATCH } = require('../../crdc-datahub-database-drivers/constants/batch-constants');
+const ERRORS = require("../../constants/error-constants");
+const { VALIDATION_STATUS, VALIDATION } = require("../../constants/submission-constants");
 const DataRecordDAO = require("../../dao/dataRecords");
+const DataRecordModel = require("../../mongoose/models/data-record");
+const {
+  DataRecordService,
+  deriveFileValidationStatus,
+} = require("../../services/data-record-service");
 
-jest.mock('../../mongoose/models/data-record', () => ({
-  modelName: 'DataRecord',
+jest.mock("../../mongoose/models/data-record", () => ({
+  modelName: "DataRecord",
   findById: jest.fn(),
   findOne: jest.fn(),
   find: jest.fn(),
@@ -17,8 +20,8 @@ jest.mock('../../mongoose/models/data-record', () => ({
   deleteMany: jest.fn(),
 }));
 
-jest.mock('../../mongoose/models/release', () => ({
-  modelName: 'Release',
+jest.mock("../../mongoose/models/release", () => ({
+  modelName: "Release",
   findById: jest.fn(),
   findOne: jest.fn(),
   find: jest.fn(),
@@ -28,56 +31,40 @@ jest.mock('../../mongoose/models/release', () => ({
   aggregate: jest.fn(),
 }));
 
-const DataRecordModel = require('../../mongoose/models/data-record');
-
-const FILE = 'file';
-
 // Mock ValidationHandler
-const ValidationHandler = {
-  success: jest.fn(() => ({ success: true })),
-  handle: jest.fn((errors) => ({ success: false, errors }))
-};
 
 // Mock Message class
-const Message = {
-  createMetadataMessage: jest.fn(),
-  createFileSubmissionMessage: jest.fn(),
-  createFileNodeMessage: jest.fn()
-};
 
 // Mock Stat class
-const Stat = {
-  createStat: jest.fn()
-};
 
 // Mock the utility functions
-jest.mock('../../utility/validation-handler', () => ({
+jest.mock("../../utility/validation-handler", () => ({
   ValidationHandler: {
     success: jest.fn(() => ({ success: true })),
     handle: jest.fn((errors) => ({
       success: false,
       errors,
-      message: Array.isArray(errors) ? errors.join(', ') : errors
-    }))
-  }
+      message: Array.isArray(errors) ? errors.join(", ") : errors,
+    })),
+  },
 }));
 
-jest.mock('../../services/data-record-service', () => {
-  const originalModule = jest.requireActual('../../services/data-record-service');
+jest.mock("../../services/data-record-service", () => {
+  const originalModule = jest.requireActual("../../services/data-record-service");
   return {
     ...originalModule,
     Message: {
       createMetadataMessage: jest.fn(),
       createFileSubmissionMessage: jest.fn(),
-      createFileNodeMessage: jest.fn()
+      createFileNodeMessage: jest.fn(),
     },
     Stat: {
-      createStat: jest.fn()
-    }
+      createStat: jest.fn(),
+    },
   };
 });
 
-describe('DataRecordService', () => {
+describe("DataRecordService", () => {
   let dataRecordService;
   let mockDataRecordArchiveCollection;
   let mockAwsService;
@@ -90,31 +77,31 @@ describe('DataRecordService', () => {
     jest.clearAllMocks();
 
     mockDataRecordArchiveCollection = {
-      insertMany: jest.fn()
+      insertMany: jest.fn(),
     };
 
     // Mock services
     mockAwsService = {
-      sendSQSMessage: jest.fn()
+      sendSQSMessage: jest.fn(),
     };
 
     mockS3Service = {
-      listFileInDir: jest.fn()
+      listFileInDir: jest.fn(),
     };
 
     mockQcResultsService = {
-      findBySubmissionErrorCodes: jest.fn()
+      findBySubmissionErrorCodes: jest.fn(),
     };
 
     // Create service instance
     dataRecordService = new DataRecordService(
       mockDataRecordArchiveCollection,
-      'file-queue',
-      'metadata-queue',
+      "file-queue",
+      "metadata-queue",
       mockAwsService,
       mockS3Service,
       mockQcResultsService,
-      'export-queue',
+      "export-queue",
       null
     );
 
@@ -123,95 +110,109 @@ describe('DataRecordService', () => {
     // Mock static methods - these are now handled by the jest.mock calls above
   });
 
-  describe('Constructor', () => {
-    test('should initialize with all dependencies', () => {
+  describe("Constructor", () => {
+    test("should initialize with all dependencies", () => {
       expect(dataRecordService.dataRecordDAO).toBeInstanceOf(DataRecordDAO);
       expect(dataRecordService.dataRecordArchiveCollection).toBe(mockDataRecordArchiveCollection);
       expect(dataRecordService.releaseDAO).toBeDefined();
       expect(dataRecordService.awsService).toBe(mockAwsService);
       expect(dataRecordService.s3Service).toBe(mockS3Service);
       expect(dataRecordService.qcResultsService).toBe(mockQcResultsService);
-      expect(dataRecordService.fileQueueName).toBe('file-queue');
-      expect(dataRecordService.metadataQueueName).toBe('metadata-queue');
-      expect(dataRecordService.exportQueue).toBe('export-queue');
+      expect(dataRecordService.fileQueueName).toBe("file-queue");
+      expect(dataRecordService.metadataQueueName).toBe("metadata-queue");
+      expect(dataRecordService.exportQueue).toBe("export-queue");
     });
   });
 
-  describe('_dataFilesStats', () => {
-    test('should correctly categorize files', () => {
-      const s3SubmissionFiles = ['file1.txt', 'file2.txt', 'file3.txt'];
+  describe("_dataFilesStats", () => {
+    test("should correctly categorize files", () => {
+      const s3SubmissionFiles = ["file1.txt", "file2.txt", "file3.txt"];
       const fileRecords = [
-        { s3FileInfo: { fileName: 'file1.txt', status: 'New' } },
-        { s3FileInfo: { fileName: 'file2.txt', status: 'Error' } }
+        { s3FileInfo: { fileName: "file1.txt", status: "New" } },
+        { s3FileInfo: { fileName: "file2.txt", status: "Error" } },
       ];
 
-      const [orphanedFiles, dataFiles, missingErrorFileSet] = dataRecordService._dataFilesStats(s3SubmissionFiles, fileRecords);
+      const [orphanedFiles, dataFiles, missingErrorFileSet] = dataRecordService._dataFilesStats(
+        s3SubmissionFiles,
+        fileRecords
+      );
 
-      expect(orphanedFiles).toEqual(['file3.txt']);
+      expect(orphanedFiles).toEqual(["file3.txt"]);
       expect(dataFiles).toHaveLength(2);
       expect(missingErrorFileSet).toEqual(new Set());
     });
 
-    test('should handle empty inputs', () => {
-      const [orphanedFiles, dataFiles, missingErrorFileSet] = dataRecordService._dataFilesStats([], []);
+    test("should handle empty inputs", () => {
+      const [orphanedFiles, dataFiles, missingErrorFileSet] = dataRecordService._dataFilesStats(
+        [],
+        []
+      );
 
       expect(orphanedFiles).toEqual([]);
       expect(dataFiles).toEqual([]);
       expect(missingErrorFileSet).toEqual(new Set());
     });
 
-    test('should handle null inputs', () => {
-      const [orphanedFiles, dataFiles, missingErrorFileSet] = dataRecordService._dataFilesStats(null, null);
+    test("should handle null inputs", () => {
+      const [orphanedFiles, dataFiles, missingErrorFileSet] = dataRecordService._dataFilesStats(
+        null,
+        null
+      );
       expect(orphanedFiles).toEqual([]);
       expect(dataFiles).toEqual([]);
       expect(missingErrorFileSet).toEqual(new Set());
     });
 
-    test('should handle undefined inputs', () => {
-      const [orphanedFiles, dataFiles, missingErrorFileSet] = dataRecordService._dataFilesStats(undefined, undefined);
+    test("should handle undefined inputs", () => {
+      const [orphanedFiles, dataFiles, missingErrorFileSet] = dataRecordService._dataFilesStats(
+        undefined,
+        undefined
+      );
       expect(orphanedFiles).toEqual([]);
       expect(dataFiles).toEqual([]);
       expect(missingErrorFileSet).toEqual(new Set());
     });
   });
 
-  describe('submissionStats', () => {
-    test('loads file records via projected aggregate of s3FileInfo fields', async () => {
+  describe("submissionStats", () => {
+    test("loads file records via projected aggregate of s3FileInfo fields", async () => {
       const validNodeStatus = [
         VALIDATION_STATUS.NEW,
         VALIDATION_STATUS.PASSED,
         VALIDATION_STATUS.WARNING,
         VALIDATION_STATUS.ERROR,
       ];
-      const aggregate = jest.fn().mockResolvedValue([
-        { s3FileInfo: { fileName: 'file1.txt', status: VALIDATION_STATUS.NEW } },
-      ]);
+      const aggregate = jest
+        .fn()
+        .mockResolvedValue([
+          { s3FileInfo: { fileName: "file1.txt", status: VALIDATION_STATUS.NEW } },
+        ]);
       dataRecordService.dataRecordDAO = {
-        getStats: jest.fn().mockResolvedValue([{ submissionID: 'sub-1', stats: [] }]),
+        getStats: jest.fn().mockResolvedValue([{ submissionID: "sub-1", stats: [] }]),
         aggregate,
       };
       mockS3Service.listFileInDir.mockResolvedValue([]);
       mockQcResultsService.findBySubmissionErrorCodes.mockResolvedValue([]);
 
       await dataRecordService.submissionStats({
-        _id: 'sub-1',
-        bucketName: 'bucket',
-        rootPath: 'root',
+        _id: "sub-1",
+        bucketName: "bucket",
+        rootPath: "root",
       });
 
       expect(aggregate).toHaveBeenCalledWith([
         {
           $match: {
-            submissionID: 'sub-1',
-            's3FileInfo.status': { $in: validNodeStatus },
+            submissionID: "sub-1",
+            "s3FileInfo.status": { $in: validNodeStatus },
           },
         },
         {
           $project: {
             _id: 0,
             s3FileInfo: {
-              status: '$s3FileInfo.status',
-              fileName: '$s3FileInfo.fileName',
+              status: "$s3FileInfo.status",
+              fileName: "$s3FileInfo.fileName",
             },
           },
         },
@@ -219,13 +220,9 @@ describe('DataRecordService', () => {
     });
   });
 
-  describe('_saveDataFileStats', () => {
-    test('should not add stats when total is 0', () => {
+  describe("_saveDataFileStats", () => {
+    test("should not add stats when total is 0", () => {
       // This test does not rely on static method mocks
-      const mockStat = {
-        countNodeType: jest.fn(),
-        total: 0
-      };
       // Stat.createStat is not called, so we don't need to mock it
       const submissionStats = { stats: [] };
       dataRecordService._saveDataFileStats(submissionStats, [], [], [], []);
@@ -233,11 +230,11 @@ describe('DataRecordService', () => {
     });
   });
 
-  describe('_replaceNaN', () => {
-    test('should replace NaN values with replacement', () => {
+  describe("_replaceNaN", () => {
+    test("should replace NaN values with replacement", () => {
       const results = [
         { value: 1, nanValue: NaN },
-        { value: 2, nanValue: 3 }
+        { value: 2, nanValue: 3 },
       ];
 
       const replaced = dataRecordDAO._replaceNaN(results, null);
@@ -246,389 +243,410 @@ describe('DataRecordService', () => {
       expect(replaced[1].nanValue).toBe(3);
     });
 
-    test('should handle empty array', () => {
+    test("should handle empty array", () => {
       const results = [];
       const replaced = dataRecordDAO._replaceNaN(results, 0);
       expect(replaced).toEqual([]);
     });
 
-    test('should handle null input', () => {
+    test("should handle null input", () => {
       const replaced = dataRecordDAO._replaceNaN(null, 0);
       expect(replaced).toBeNull();
     });
 
-    test('should handle undefined input', () => {
+    test("should handle undefined input", () => {
       const replaced = dataRecordDAO._replaceNaN(undefined, 0);
       expect(replaced).toBeUndefined();
     });
   });
 
-  describe('_convertParents', () => {
-    test('should convert parents array to grouped format', () => {
+  describe("_convertParents", () => {
+    test("should convert parents array to grouped format", () => {
       const parents = [
-        { parentType: 'participant', parentIDValue: 'p1' },
-        { parentType: 'participant', parentIDValue: 'p2' },
-        { parentType: 'sample', parentIDValue: 's1' }
+        { parentType: "participant", parentIDValue: "p1" },
+        { parentType: "participant", parentIDValue: "p2" },
+        { parentType: "sample", parentIDValue: "s1" },
       ];
 
       const result = dataRecordService._convertParents(parents);
 
       expect(result).toEqual([
-        { nodeType: 'participant', total: 2 },
-        { nodeType: 'sample', total: 1 }
+        { nodeType: "participant", total: 2 },
+        { nodeType: "sample", total: 1 },
       ]);
     });
 
-    test('should handle empty parents array', () => {
+    test("should handle empty parents array", () => {
       const result = dataRecordService._convertParents([]);
       expect(result).toEqual([]);
     });
 
-    test('should handle null parents', () => {
+    test("should handle null parents", () => {
       const result = dataRecordService._convertParents(null);
       expect(result).toEqual([]);
     });
 
-    test('should handle undefined parents', () => {
+    test("should handle undefined parents", () => {
       const result = dataRecordService._convertParents(undefined);
       expect(result).toEqual([]);
     });
   });
 
-  describe('countNodesBySubmissionID', () => {
-    test('should return correct count of nodes for a submission', async () => {
+  describe("countNodesBySubmissionID", () => {
+    test("should return correct count of nodes for a submission", async () => {
       dataRecordService.dataRecordDAO = {
-        count: jest.fn().mockResolvedValue(5)
+        count: jest.fn().mockResolvedValue(5),
       };
 
-      const result = await dataRecordService.countNodesBySubmissionID('submission-123');
+      const result = await dataRecordService.countNodesBySubmissionID("submission-123");
 
       expect(result).toBe(5);
-      expect(dataRecordService.dataRecordDAO.count).toHaveBeenCalledWith(
-        { submissionID: 'submission-123' }
-      );
+      expect(dataRecordService.dataRecordDAO.count).toHaveBeenCalledWith({
+        submissionID: "submission-123",
+      });
     });
 
-    test('should return 0 when no nodes found', async () => {
+    test("should return 0 when no nodes found", async () => {
       dataRecordService.dataRecordDAO = {
-        count: jest.fn().mockResolvedValue(0)
+        count: jest.fn().mockResolvedValue(0),
       };
 
-      const result = await dataRecordService.countNodesBySubmissionID('submission-123');
+      const result = await dataRecordService.countNodesBySubmissionID("submission-123");
 
       expect(result).toBe(0);
-      expect(dataRecordService.dataRecordDAO.count).toHaveBeenCalledWith(
-        { submissionID: 'submission-123' }
-      );
+      expect(dataRecordService.dataRecordDAO.count).toHaveBeenCalledWith({
+        submissionID: "submission-123",
+      });
     });
   });
 
-  describe('listSubmissionNodeTypes', () => {
-    test('should return distinct node types', async () => {
+  describe("listSubmissionNodeTypes", () => {
+    test("should return distinct node types", async () => {
       dataRecordService.dataRecordDAO = {
-        distinct: jest.fn().mockResolvedValue(['participant', 'sample', 'file'])
+        distinct: jest.fn().mockResolvedValue(["participant", "sample", "file"]),
       };
 
-      const result = await dataRecordService.listSubmissionNodeTypes('submission-123');
+      const result = await dataRecordService.listSubmissionNodeTypes("submission-123");
 
-      expect(result).toEqual(['participant', 'sample', 'file']);
-      expect(dataRecordService.dataRecordDAO.distinct).toHaveBeenCalledWith(
-        'nodeType',
-        { submissionID: 'submission-123' }
-      );
+      expect(result).toEqual(["participant", "sample", "file"]);
+      expect(dataRecordService.dataRecordDAO.distinct).toHaveBeenCalledWith("nodeType", {
+        submissionID: "submission-123",
+      });
     });
 
-    test('should return empty array for null submissionID', async () => {
+    test("should return empty array for null submissionID", async () => {
       const result = await dataRecordService.listSubmissionNodeTypes(null);
       expect(result).toEqual([]);
     });
   });
 
-  describe('submissionDataFiles', () => {
-    test('should return file data for given S3 file names', async () => {
+  describe("submissionDataFiles", () => {
+    test("should return file data for given S3 file names", async () => {
       const mockFiles = [
-        { s3FileInfo: { fileName: 'file1.txt', status: 'New' } },
-        { s3FileInfo: { fileName: 'file2.txt', status: 'Passed' } }
+        { s3FileInfo: { fileName: "file1.txt", status: "New" } },
+        { s3FileInfo: { fileName: "file2.txt", status: "Passed" } },
       ];
       DataRecordModel.aggregate.mockResolvedValue(mockFiles);
 
-      const result = await dataRecordService.submissionDataFiles('submission-123', ['file1.txt', 'file2.txt']);
+      const result = await dataRecordService.submissionDataFiles("submission-123", [
+        "file1.txt",
+        "file2.txt",
+      ]);
 
       expect(result).toEqual(mockFiles);
       expect(DataRecordModel.aggregate).toHaveBeenCalledWith([
         {
           $match: {
-            submissionID: 'submission-123',
+            submissionID: "submission-123",
             s3FileInfo: { $exists: true, $ne: null },
-            's3FileInfo.fileName': { $in: ['file1.txt', 'file2.txt'] }
-          }
+            "s3FileInfo.fileName": { $in: ["file1.txt", "file2.txt"] },
+          },
         },
         {
           $project: {
             _id: 0,
-            nodeID: '$s3FileInfo.fileName',
-            status: '$s3FileInfo.status'
-          }
-        }
+            nodeID: "$s3FileInfo.fileName",
+            status: "$s3FileInfo.status",
+          },
+        },
       ]);
     });
   });
 
-  describe('deleteMetadataByFilter', () => {
-    test('should delete metadata by filter', async () => {
+  describe("deleteMetadataByFilter", () => {
+    test("should delete metadata by filter", async () => {
       DataRecordModel.deleteMany.mockResolvedValue({ deletedCount: 5 });
 
-      const result = await dataRecordService.deleteMetadataByFilter({ submissionID: 'submission-123' });
+      const result = await dataRecordService.deleteMetadataByFilter({
+        submissionID: "submission-123",
+      });
 
       expect(result).toEqual({ deletedCount: 5 });
-      expect(DataRecordModel.deleteMany).toHaveBeenCalledWith({ submissionID: 'submission-123' });
+      expect(DataRecordModel.deleteMany).toHaveBeenCalledWith({ submissionID: "submission-123" });
     });
   });
 
-  describe('archiveMetadataByFilter', () => {
-    test('should archive metadata by filter', async () => {
-      const mockData = [{ _id: '1', data: 'test' }];
+  describe("archiveMetadataByFilter", () => {
+    test("should archive metadata by filter", async () => {
+      const mockData = [{ _id: "1", data: "test" }];
       DataRecordModel.aggregate.mockResolvedValue(mockData);
       mockDataRecordArchiveCollection.insertMany.mockResolvedValue({ insertedCount: 1 });
       DataRecordModel.deleteMany.mockResolvedValue({ deletedCount: 1 });
 
-      const result = await dataRecordService.archiveMetadataByFilter({ submissionID: 'submission-123' });
+      const result = await dataRecordService.archiveMetadataByFilter({
+        submissionID: "submission-123",
+      });
 
       expect(result).toHaveLength(2);
-      expect(DataRecordModel.aggregate).toHaveBeenCalledWith([{ $match: { submissionID: 'submission-123' } }]);
-      expect(mockDataRecordArchiveCollection.insertMany).toHaveBeenCalledWith([
-        { _id: '1', data: 'test' }
+      expect(DataRecordModel.aggregate).toHaveBeenCalledWith([
+        { $match: { submissionID: "submission-123" } },
       ]);
-      expect(DataRecordModel.deleteMany).toHaveBeenCalledWith({ submissionID: 'submission-123' });
-      expect(mockDataRecordArchiveCollection.insertMany.mock.invocationCallOrder[0])
-        .toBeLessThan(DataRecordModel.deleteMany.mock.invocationCallOrder[0]);
+      expect(mockDataRecordArchiveCollection.insertMany).toHaveBeenCalledWith([
+        { _id: "1", data: "test" },
+      ]);
+      expect(DataRecordModel.deleteMany).toHaveBeenCalledWith({ submissionID: "submission-123" });
+      expect(mockDataRecordArchiveCollection.insertMany.mock.invocationCallOrder[0]).toBeLessThan(
+        DataRecordModel.deleteMany.mock.invocationCallOrder[0]
+      );
     });
 
-    test('should return null when no data found', async () => {
+    test("should return null when no data found", async () => {
       DataRecordModel.aggregate.mockResolvedValue([]);
 
-      const result = await dataRecordService.archiveMetadataByFilter({ submissionID: 'submission-123' });
+      const result = await dataRecordService.archiveMetadataByFilter({
+        submissionID: "submission-123",
+      });
 
       expect(result).toBeNull();
     });
 
-    test('should not delete source records when archive insert fails', async () => {
-      DataRecordModel.aggregate.mockResolvedValue([{ _id: '1', data: 'test' }]);
-      mockDataRecordArchiveCollection.insertMany.mockRejectedValue(new Error('insert failed'));
+    test("should not delete source records when archive insert fails", async () => {
+      DataRecordModel.aggregate.mockResolvedValue([{ _id: "1", data: "test" }]);
+      mockDataRecordArchiveCollection.insertMany.mockRejectedValue(new Error("insert failed"));
 
       await expect(
-        dataRecordService.archiveMetadataByFilter({ submissionID: 'submission-123' })
-      ).rejects.toThrow('insert failed');
+        dataRecordService.archiveMetadataByFilter({ submissionID: "submission-123" })
+      ).rejects.toThrow("insert failed");
 
       expect(DataRecordModel.deleteMany).not.toHaveBeenCalled();
     });
   });
 
-  describe('resetDataRecords', () => {
-    test('should delegate submissionID and status to the data record DAO', async () => {
+  describe("resetDataRecords", () => {
+    test("should delegate submissionID and status to the data record DAO", async () => {
       const updateResult = { acknowledged: true, matchedCount: 10, modifiedCount: 10 };
-      dataRecordService.dataRecordDAO.resetDataRecords = jest.fn()
-        .mockResolvedValue(updateResult);
+      dataRecordService.dataRecordDAO.resetDataRecords = jest.fn().mockResolvedValue(updateResult);
 
-      const result = await dataRecordService.resetDataRecords('submission-123', 'New');
+      const result = await dataRecordService.resetDataRecords("submission-123", "New");
 
       expect(result).toEqual(updateResult);
       expect(dataRecordService.dataRecordDAO.resetDataRecords).toHaveBeenCalledWith(
-        'submission-123',
-        'New'
+        "submission-123",
+        "New"
       );
     });
   });
 
-  describe('resetS3FileLinkedMetadataStatusToNew', () => {
-    test('should delegate selected file names to the data record DAO', async () => {
+  describe("resetS3FileLinkedMetadataStatusToNew", () => {
+    test("should delegate selected file names to the data record DAO", async () => {
       const updateResult = { acknowledged: true, modifiedCount: 2, matchedCount: 2 };
-      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest.fn()
+      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest
+        .fn()
         .mockResolvedValue(updateResult);
 
-      const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', ['a.txt', 'b.txt']);
+      const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew("sub-1", [
+        "a.txt",
+        "b.txt",
+      ]);
 
       expect(result).toEqual(updateResult);
-      expect(dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith(
-        'sub-1',
-        ['a.txt', 'b.txt']
-      );
+      expect(
+        dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew
+      ).toHaveBeenCalledWith("sub-1", ["a.txt", "b.txt"]);
     });
 
-    test('should delegate null to target all linked file metadata', async () => {
-      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest.fn()
+    test("should delegate null to target all linked file metadata", async () => {
+      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest
+        .fn()
         .mockResolvedValue({ acknowledged: true, modifiedCount: 5, matchedCount: 5 });
 
-      await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', null);
+      await dataRecordService.resetS3FileLinkedMetadataStatusToNew("sub-1", null);
 
-      expect(dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith(
-        'sub-1',
-        null
-      );
+      expect(
+        dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew
+      ).toHaveBeenCalledWith("sub-1", null);
     });
 
-    test('should preserve the DAO no-op result for an empty fileNames array', async () => {
+    test("should preserve the DAO no-op result for an empty fileNames array", async () => {
       const noOpResult = { acknowledged: true, modifiedCount: 0, matchedCount: 0 };
-      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest.fn()
+      dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew = jest
+        .fn()
         .mockResolvedValue(noOpResult);
 
-      const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew('sub-1', []);
+      const result = await dataRecordService.resetS3FileLinkedMetadataStatusToNew("sub-1", []);
 
       expect(result).toEqual(noOpResult);
-      expect(dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew).toHaveBeenCalledWith(
-        'sub-1',
-        []
-      );
+      expect(
+        dataRecordService.dataRecordDAO.resetS3FileLinkedMetadataStatusToNew
+      ).toHaveBeenCalledWith("sub-1", []);
     });
   });
 
-  describe('_getSubmissionStatQuery', () => {
-    test('should return correct aggregation pipeline', () => {
-      const validNodeStatus = ['New', 'Passed', 'Warning', 'Error'];
-      const result = dataRecordService._getSubmissionStatQuery('submission-123', validNodeStatus);
+  describe("_getSubmissionStatQuery", () => {
+    test("should return correct aggregation pipeline", () => {
+      const validNodeStatus = ["New", "Passed", "Warning", "Error"];
+      const result = dataRecordService._getSubmissionStatQuery("submission-123", validNodeStatus);
 
       expect(result).toBeInstanceOf(Array);
       expect(result[0]).toEqual({
         $match: {
-          submissionID: 'submission-123',
-          status: { $in: validNodeStatus }
-        }
+          submissionID: "submission-123",
+          status: { $in: validNodeStatus },
+        },
       });
     });
   });
 
-
-
-  describe('_getNode', () => {
+  describe("_getNode", () => {
     beforeEach(() => {
       // Ensure dataRecordService.dataRecordDAO is set and mockable
       dataRecordService.dataRecordDAO = {
-        findFirst: jest.fn()
+        findFirst: jest.fn(),
       };
     });
 
-    test('should throw error when node not found', async () => {
+    test("should throw error when node not found", async () => {
       dataRecordService.dataRecordDAO.findFirst.mockResolvedValue(null);
 
       await expect(
-        dataRecordService._getNode('submission-123', 'participant', 'p1')
+        dataRecordService._getNode("submission-123", "participant", "p1")
       ).rejects.toThrow(ERRORS.INVALID_NODE_NOT_FOUND);
 
       expect(dataRecordService.dataRecordDAO.findFirst).toHaveBeenCalledWith({
-        nodeID: 'p1',
-        nodeType: 'participant',
-        submissionID: 'submission-123'
+        nodeID: "p1",
+        nodeType: "participant",
+        submissionID: "submission-123",
       });
     });
   });
 
-  describe('_getNodeChildren', () => {
+  describe("_getNodeChildren", () => {
     beforeEach(() => {
       // Mock the dataRecordDAO.findMany method used in _getNodeChildren
       dataRecordService.dataRecordDAO = {
-        findMany: jest.fn()
+        findMany: jest.fn(),
       };
     });
 
-    test('should return children grouped by type', async () => {
-      const mockChildren = [
-        { nodeType: 'sample' },
-        { nodeType: 'sample' },
-        { nodeType: 'file' }
-      ];
+    test("should return children grouped by type", async () => {
+      const mockChildren = [{ nodeType: "sample" }, { nodeType: "sample" }, { nodeType: "file" }];
       dataRecordService.dataRecordDAO.findMany.mockResolvedValue(mockChildren);
 
-      const result = await dataRecordService._getNodeChildren('submission-123', 'participant', 'p1');
+      const result = await dataRecordService._getNodeChildren(
+        "submission-123",
+        "participant",
+        "p1"
+      );
 
       expect(dataRecordService.dataRecordDAO.findMany).toHaveBeenCalledWith({
         parents: {
           $elemMatch: {
-            parentIDValue: 'p1',
-            parentType: 'participant'
-          }
+            parentIDValue: "p1",
+            parentType: "participant",
+          },
         },
-        submissionID: 'submission-123'
+        submissionID: "submission-123",
       });
 
       expect(result).toEqual([
-        { nodeType: 'sample', total: 2 },
-        { nodeType: 'file', total: 1 }
+        { nodeType: "sample", total: 2 },
+        { nodeType: "file", total: 1 },
       ]);
     });
 
-    test('should return empty array when no children found', async () => {
+    test("should return empty array when no children found", async () => {
       dataRecordService.dataRecordDAO.findMany.mockResolvedValue([]);
 
-      const result = await dataRecordService._getNodeChildren('submission-123', 'participant', 'p1');
+      const result = await dataRecordService._getNodeChildren(
+        "submission-123",
+        "participant",
+        "p1"
+      );
 
       expect(dataRecordService.dataRecordDAO.findMany).toHaveBeenCalledWith({
         parents: {
           $elemMatch: {
-            parentIDValue: 'p1',
-            parentType: 'participant'
-          }
+            parentIDValue: "p1",
+            parentType: "participant",
+          },
         },
-        submissionID: 'submission-123'
+        submissionID: "submission-123",
       });
 
       expect(result).toEqual([]);
     });
   });
 
-  describe('_getAgeAtDiagnosisByParticipant', () => {
-    test('should return age at diagnosis when found', async () => {
+  describe("_getAgeAtDiagnosisByParticipant", () => {
+    test("should return age at diagnosis when found", async () => {
       const mockDiagnosis = [{ props: { age_at_diagnosis: 45 } }];
       DataRecordModel.aggregate.mockResolvedValue(mockDiagnosis);
 
-      const result = await dataRecordService._getAgeAtDiagnosisByParticipant('p1', 'submission-123');
+      const result = await dataRecordService._getAgeAtDiagnosisByParticipant(
+        "p1",
+        "submission-123"
+      );
 
       expect(result).toBe(45);
     });
 
-    test('should return null when no diagnosis found', async () => {
+    test("should return null when no diagnosis found", async () => {
       DataRecordModel.aggregate.mockResolvedValue([]);
 
-      const result = await dataRecordService._getAgeAtDiagnosisByParticipant('p1', 'submission-123');
+      const result = await dataRecordService._getAgeAtDiagnosisByParticipant(
+        "p1",
+        "submission-123"
+      );
 
       expect(result).toBeNull();
     });
   });
 
-  describe('_getGenomicInfoByFile', () => {
-    test('should return genomic info when found', async () => {
+  describe("_getGenomicInfoByFile", () => {
+    test("should return genomic info when found", async () => {
       const mockGenomicInfo = [
-        { _id: 'g1', props: { library_id: 'lib1' } },
-        { _id: 'g2', props: { library_id: 'lib2' } }
+        { _id: "g1", props: { library_id: "lib1" } },
+        { _id: "g2", props: { library_id: "lib2" } },
       ];
       DataRecordModel.aggregate.mockResolvedValue(mockGenomicInfo);
 
-      const result = await dataRecordService._getGenomicInfoByFile('file1', 'submission-123');
+      const result = await dataRecordService._getGenomicInfoByFile("file1", "submission-123");
 
       expect(result).toEqual([
-        { _id: 'g1', id: 'g1', props: { library_id: 'lib1' } },
-        { _id: 'g2', id: 'g2', props: { library_id: 'lib2' } }
+        { _id: "g1", id: "g1", props: { library_id: "lib1" } },
+        { _id: "g2", id: "g2", props: { library_id: "lib2" } },
       ]);
     });
 
-    test('should return empty array when no genomic info found', async () => {
+    test("should return empty array when no genomic info found", async () => {
       DataRecordModel.aggregate.mockResolvedValue([]);
 
-      const result = await dataRecordService._getGenomicInfoByFile('file1', 'submission-123');
+      const result = await dataRecordService._getGenomicInfoByFile("file1", "submission-123");
 
       expect(result).toEqual([]);
     });
 
-    describe('retrieveDSSummary', () => {
+    describe("retrieveDSSummary", () => {
       beforeEach(() => {
         dataRecordService.dataRecordDAO = {
-          distinct: jest.fn()
+          distinct: jest.fn(),
         };
         dataRecordService._getNodeCounts = jest.fn();
       });
 
-      test('should return summary for each node type', async () => {
-        const aSubmission = { _id: 'sub1' };
-        const nodeTypes = ['participant', 'sample', 'file'];
+      test("should return summary for each node type", async () => {
+        const aSubmission = { _id: "sub1" };
+        const nodeTypes = ["participant", "sample", "file"];
         dataRecordService.dataRecordDAO.distinct.mockResolvedValue(nodeTypes);
 
         dataRecordService._getNodeCounts
@@ -638,39 +656,43 @@ describe('DataRecordService', () => {
 
         const result = await dataRecordService.retrieveDSSummary(aSubmission);
 
-        expect(dataRecordService.dataRecordDAO.distinct).toHaveBeenCalledWith('nodeType', { submissionID: 'sub1' });
+        expect(dataRecordService.dataRecordDAO.distinct).toHaveBeenCalledWith("nodeType", {
+          submissionID: "sub1",
+        });
         expect(dataRecordService._getNodeCounts).toHaveBeenCalledTimes(3);
         expect(result).toEqual([
-          { nodeType: 'participant', new: 2, updated: 1, deleted: 0 },
-          { nodeType: 'sample', new: 0, updated: 3, deleted: 1 },
-          { nodeType: 'file', new: 5, updated: 0, deleted: 2 }
+          { nodeType: "participant", new: 2, updated: 1, deleted: 0 },
+          { nodeType: "sample", new: 0, updated: 3, deleted: 1 },
+          { nodeType: "file", new: 5, updated: 0, deleted: 2 },
         ]);
       });
 
-      test('should return empty array if no node types found', async () => {
-        const aSubmission = { _id: 'sub2' };
+      test("should return empty array if no node types found", async () => {
+        const aSubmission = { _id: "sub2" };
         dataRecordService.dataRecordDAO.distinct.mockResolvedValue([]);
 
         const result = await dataRecordService.retrieveDSSummary(aSubmission);
 
         expect(result).toEqual([]);
-        expect(dataRecordService.dataRecordDAO.distinct).toHaveBeenCalledWith('nodeType', { submissionID: 'sub2' });
+        expect(dataRecordService.dataRecordDAO.distinct).toHaveBeenCalledWith("nodeType", {
+          submissionID: "sub2",
+        });
         expect(dataRecordService._getNodeCounts).not.toHaveBeenCalled();
       });
     });
   });
 
-  describe('getSubmissionNodes', () => {
+  describe("getSubmissionNodes", () => {
     beforeEach(() => {
       // Reset aggregate mock before each test
       DataRecordModel.aggregate.mockReset();
     });
 
-    test('should call aggregate twice - once for count and once for results', async () => {
+    test("should call aggregate twice - once for count and once for results", async () => {
       const mockCountResult = [{ total: 10 }];
       const mockResults = [
-        { nodeID: 'node1', nodeType: 'participant', status: 'New' },
-        { nodeID: 'node2', nodeType: 'participant', status: 'Passed' }
+        { nodeID: "node1", nodeType: "participant", status: "New" },
+        { nodeID: "node2", nodeType: "participant", status: "Passed" },
       ];
 
       // Mock aggregate to return different results for count and results queries
@@ -679,12 +701,12 @@ describe('DataRecordService', () => {
         .mockResolvedValueOnce(mockResults); // Second call for results
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'participant',
+        "submission-123",
+        "participant",
         10,
         0,
-        'nodeID',
-        'ASC'
+        "nodeID",
+        "ASC"
       );
 
       // Verify aggregate was called twice
@@ -693,15 +715,15 @@ describe('DataRecordService', () => {
       // Verify the result structure
       expect(result).toEqual({
         total: 10,
-        results: mockResults
+        results: mockResults,
       });
     });
 
-    test('should combine count and results correctly', async () => {
+    test("should combine count and results correctly", async () => {
       const mockCountResult = [{ total: 5 }];
       const mockResults = [
-        { nodeID: 'node1', nodeType: 'sample' },
-        { nodeID: 'node2', nodeType: 'sample' }
+        { nodeID: "node1", nodeType: "sample" },
+        { nodeID: "node2", nodeType: "sample" },
       ];
 
       DataRecordModel.aggregate
@@ -709,12 +731,12 @@ describe('DataRecordService', () => {
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'sample',
+        "submission-123",
+        "sample",
         10,
         0,
-        'nodeID',
-        'ASC'
+        "nodeID",
+        "ASC"
       );
 
       expect(result.total).toBe(5);
@@ -722,11 +744,11 @@ describe('DataRecordService', () => {
       expect(result.results).toHaveLength(2);
     });
 
-    test('should handle pagination with first and offset', async () => {
+    test("should handle pagination with first and offset", async () => {
       const mockCountResult = [{ total: 100 }];
       const mockResults = [
-        { nodeID: 'node11', nodeType: 'file' },
-        { nodeID: 'node12', nodeType: 'file' }
+        { nodeID: "node11", nodeType: "file" },
+        { nodeID: "node12", nodeType: "file" },
       ];
 
       DataRecordModel.aggregate
@@ -734,12 +756,12 @@ describe('DataRecordService', () => {
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'file',
+        "submission-123",
+        "file",
         2, // first
         10, // offset
-        'nodeID',
-        'ASC'
+        "nodeID",
+        "ASC"
       );
 
       expect(result.total).toBe(100);
@@ -747,18 +769,18 @@ describe('DataRecordService', () => {
 
       // Verify the results pipeline includes skip and limit
       const resultsCall = DataRecordModel.aggregate.mock.calls[1][0];
-      const hasSkip = resultsCall.some(stage => stage.$skip === 10);
-      const hasLimit = resultsCall.some(stage => stage.$limit === 2);
+      const hasSkip = resultsCall.some((stage) => stage.$skip === 10);
+      const hasLimit = resultsCall.some((stage) => stage.$limit === 2);
 
       expect(hasSkip).toBe(true);
       expect(hasLimit).toBe(true);
     });
 
-    test('should handle first === -1 to return all records without pagination', async () => {
+    test("should handle first === -1 to return all records without pagination", async () => {
       const mockCountResult = [{ total: 50 }];
       const mockResults = Array.from({ length: 50 }, (_, i) => ({
         nodeID: `node${i}`,
-        nodeType: 'participant'
+        nodeType: "participant",
       }));
 
       DataRecordModel.aggregate
@@ -766,12 +788,12 @@ describe('DataRecordService', () => {
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'participant',
+        "submission-123",
+        "participant",
         -1, // first === -1 means return all
         0,
-        'nodeID',
-        'ASC'
+        "nodeID",
+        "ASC"
       );
 
       expect(result.total).toBe(50);
@@ -779,14 +801,14 @@ describe('DataRecordService', () => {
 
       // Verify the results pipeline does NOT include skip and limit when first === -1
       const resultsCall = DataRecordModel.aggregate.mock.calls[1][0];
-      const hasSkip = resultsCall.some(stage => stage.$skip !== undefined);
-      const hasLimit = resultsCall.some(stage => stage.$limit !== undefined);
+      const hasSkip = resultsCall.some((stage) => stage.$skip !== undefined);
+      const hasLimit = resultsCall.some((stage) => stage.$limit !== undefined);
 
       expect(hasSkip).toBe(false);
       expect(hasLimit).toBe(false);
     });
 
-    test('should handle empty results', async () => {
+    test("should handle empty results", async () => {
       const mockCountResult = [{ total: 0 }];
       const mockResults = [];
 
@@ -795,35 +817,33 @@ describe('DataRecordService', () => {
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'participant',
+        "submission-123",
+        "participant",
         10,
         0,
-        'nodeID',
-        'ASC'
+        "nodeID",
+        "ASC"
       );
 
       expect(result.total).toBe(0);
       expect(result.results).toEqual([]);
     });
 
-    test('should handle null/undefined count result', async () => {
+    test("should handle null/undefined count result", async () => {
       const mockCountResult = []; // Empty array means no count result
-      const mockResults = [
-        { nodeID: 'node1', nodeType: 'sample' }
-      ];
+      const mockResults = [{ nodeID: "node1", nodeType: "sample" }];
 
       DataRecordModel.aggregate
         .mockResolvedValueOnce(mockCountResult)
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'sample',
+        "submission-123",
+        "sample",
         10,
         0,
-        'nodeID',
-        'ASC'
+        "nodeID",
+        "ASC"
       );
 
       // Should default to 0 when count result is empty
@@ -831,7 +851,7 @@ describe('DataRecordService', () => {
       expect(result.results).toEqual(mockResults);
     });
 
-    test('should handle empty results array', async () => {
+    test("should handle empty results array", async () => {
       const mockCountResult = [{ total: 5 }];
       const mockResults = [];
 
@@ -840,28 +860,26 @@ describe('DataRecordService', () => {
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'file',
+        "submission-123",
+        "file",
         10,
         0,
-        'nodeID',
-        'ASC'
+        "nodeID",
+        "ASC"
       );
 
       expect(result.total).toBe(5);
       expect(result.results).toEqual([]);
     });
 
-    test('should use custom query when provided', async () => {
+    test("should use custom query when provided", async () => {
       const mockCountResult = [{ total: 3 }];
-      const mockResults = [
-        { nodeID: 'node1', nodeType: 'participant', status: 'Error' }
-      ];
+      const mockResults = [{ nodeID: "node1", nodeType: "participant", status: "Error" }];
 
       const customQuery = {
-        submissionID: 'submission-123',
-        nodeType: 'participant',
-        status: 'Error'
+        submissionID: "submission-123",
+        nodeType: "participant",
+        status: "Error",
       };
 
       DataRecordModel.aggregate
@@ -869,12 +887,12 @@ describe('DataRecordService', () => {
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'participant',
+        "submission-123",
+        "participant",
         10,
         0,
-        'nodeID',
-        'ASC',
+        "nodeID",
+        "ASC",
         customQuery
       );
 
@@ -885,18 +903,18 @@ describe('DataRecordService', () => {
       const countCall = DataRecordModel.aggregate.mock.calls[0][0];
       const resultsCall = DataRecordModel.aggregate.mock.calls[1][0];
 
-      const countMatch = countCall.find(stage => stage.$match);
-      const resultsMatch = resultsCall.find(stage => stage.$match);
+      const countMatch = countCall.find((stage) => stage.$match);
+      const resultsMatch = resultsCall.find((stage) => stage.$match);
 
       expect(countMatch.$match).toEqual(customQuery);
       expect(resultsMatch.$match).toEqual(customQuery);
     });
 
-    test('should apply sorting correctly', async () => {
+    test("should apply sorting correctly", async () => {
       const mockCountResult = [{ total: 5 }];
       const mockResults = [
-        { nodeID: 'node1', updatedAt: new Date('2023-01-01') },
-        { nodeID: 'node2', updatedAt: new Date('2023-01-02') }
+        { nodeID: "node1", updatedAt: new Date("2023-01-01") },
+        { nodeID: "node2", updatedAt: new Date("2023-01-02") },
       ];
 
       DataRecordModel.aggregate
@@ -904,12 +922,12 @@ describe('DataRecordService', () => {
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'participant',
+        "submission-123",
+        "participant",
         10,
         0,
-        'updatedAt',
-        'DESC'
+        "updatedAt",
+        "DESC"
       );
 
       expect(result.total).toBe(5);
@@ -917,30 +935,28 @@ describe('DataRecordService', () => {
 
       // Verify sort is applied in results pipeline
       const resultsCall = DataRecordModel.aggregate.mock.calls[1][0];
-      const sortStage = resultsCall.find(stage => stage.$sort);
+      const sortStage = resultsCall.find((stage) => stage.$sort);
 
       expect(sortStage).toBeDefined();
       expect(sortStage.$sort.updatedAt).toBe(-1); // DESC
       expect(sortStage.$sort.nodeID).toBe(1); // Secondary sort
     });
 
-    test('should handle nested field sorting (props.field)', async () => {
+    test("should handle nested field sorting (props.field)", async () => {
       const mockCountResult = [{ total: 3 }];
-      const mockResults = [
-        { nodeID: 'node1', props: { age: 30 } }
-      ];
+      const mockResults = [{ nodeID: "node1", props: { age: 30 } }];
 
       DataRecordModel.aggregate
         .mockResolvedValueOnce(mockCountResult)
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'participant',
+        "submission-123",
+        "participant",
         10,
         0,
-        'age',
-        'ASC'
+        "age",
+        "ASC"
       );
 
       expect(result.total).toBe(3);
@@ -948,28 +964,26 @@ describe('DataRecordService', () => {
 
       // Verify sort uses props.age
       const resultsCall = DataRecordModel.aggregate.mock.calls[1][0];
-      const sortStage = resultsCall.find(stage => stage.$sort);
+      const sortStage = resultsCall.find((stage) => stage.$sort);
 
-      expect(sortStage.$sort['props.age']).toBe(1); // ASC
+      expect(sortStage.$sort["props.age"]).toBe(1); // ASC
     });
 
-    test('should handle rawData field sorting', async () => {
+    test("should handle rawData field sorting", async () => {
       const mockCountResult = [{ total: 2 }];
-      const mockResults = [
-        { nodeID: 'node1', rawData: { 'custom.field': 'value1' } }
-      ];
+      const mockResults = [{ nodeID: "node1", rawData: { "custom.field": "value1" } }];
 
       DataRecordModel.aggregate
         .mockResolvedValueOnce(mockCountResult)
         .mockResolvedValueOnce(mockResults);
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'participant',
+        "submission-123",
+        "participant",
         10,
         0,
-        'custom.field',
-        'ASC'
+        "custom.field",
+        "ASC"
       );
 
       expect(result.total).toBe(2);
@@ -977,244 +991,241 @@ describe('DataRecordService', () => {
 
       // Verify sort uses rawData.custom|field (dot replaced with pipe)
       const resultsCall = DataRecordModel.aggregate.mock.calls[1][0];
-      const sortStage = resultsCall.find(stage => stage.$sort);
+      const sortStage = resultsCall.find((stage) => stage.$sort);
 
-      expect(sortStage.$sort['rawData.custom|field']).toBe(1);
+      expect(sortStage.$sort["rawData.custom|field"]).toBe(1);
     });
 
-    test('should execute count and results queries in parallel', async () => {
+    test("should execute count and results queries in parallel", async () => {
       const mockCountResult = [{ total: 10 }];
-      const mockResults = [{ nodeID: 'node1' }];
+      const mockResults = [{ nodeID: "node1" }];
 
       // Track call order to verify parallel execution structurally
       const callOrder = [];
 
       DataRecordModel.aggregate
         .mockImplementationOnce(async () => {
-          callOrder.push('count-start');
-          await new Promise(resolve => setImmediate(resolve));
-          callOrder.push('count-end');
+          callOrder.push("count-start");
+          await new Promise((resolve) => setImmediate(resolve));
+          callOrder.push("count-end");
           return mockCountResult;
         })
         .mockImplementationOnce(async () => {
-          callOrder.push('results-start');
-          await new Promise(resolve => setImmediate(resolve));
-          callOrder.push('results-end');
+          callOrder.push("results-start");
+          await new Promise((resolve) => setImmediate(resolve));
+          callOrder.push("results-end");
           return mockResults;
         });
 
       const result = await dataRecordDAO.getSubmissionNodes(
-        'submission-123',
-        'participant',
+        "submission-123",
+        "participant",
         10,
         0,
-        'nodeID',
-        'ASC'
+        "nodeID",
+        "ASC"
       );
 
       // Verify parallel execution: both queries started before either ended
-      expect(callOrder.indexOf('count-start')).toBeLessThan(callOrder.indexOf('count-end'));
-      expect(callOrder.indexOf('count-start')).toBeLessThan(callOrder.indexOf('results-end'));
-      expect(callOrder.indexOf('results-start')).toBeLessThan(callOrder.indexOf('count-end'));
-      expect(callOrder.indexOf('results-start')).toBeLessThan(callOrder.indexOf('results-end'));
+      expect(callOrder.indexOf("count-start")).toBeLessThan(callOrder.indexOf("count-end"));
+      expect(callOrder.indexOf("count-start")).toBeLessThan(callOrder.indexOf("results-end"));
+      expect(callOrder.indexOf("results-start")).toBeLessThan(callOrder.indexOf("count-end"));
+      expect(callOrder.indexOf("results-start")).toBeLessThan(callOrder.indexOf("results-end"));
       expect(result.total).toBe(10);
       expect(result.results).toEqual(mockResults);
     });
   });
 
-  describe('getReleasedAndNewNodesByList', () => {
+  describe("getReleasedAndNewNodesByList", () => {
     beforeEach(() => {
       dataRecordService.dataRecordDAO = {
-        findMany: jest.fn()
+        findMany: jest.fn(),
       };
       dataRecordService.releaseDAO = {
-        findMany: jest.fn()
+        findMany: jest.fn(),
       };
     });
 
-    test('should merge parent relationship values into incoming and existing props', async () => {
+    test("should merge parent relationship values into incoming and existing props", async () => {
       dataRecordService.dataRecordDAO.findMany.mockResolvedValue([
         {
-          nodeID: 'diag-1',
-          props: { diagnosis_id: 'D1', site: 'New Site' },
+          nodeID: "diag-1",
+          props: { diagnosis_id: "D1", site: "New Site" },
           parents: [
-            { parentType: 'participant', parentIDPropName: 'participant_id', parentIDValue: 'P1' },
-            { parentType: 'participant', parentIDPropName: 'participant_id', parentIDValue: 'P2' },
-            { parentType: 'sample', parentIDPropName: 'sample_id', parentIDValue: 'S1' }
-          ]
-        }
+            { parentType: "participant", parentIDPropName: "participant_id", parentIDValue: "P1" },
+            { parentType: "participant", parentIDPropName: "participant_id", parentIDValue: "P2" },
+            { parentType: "sample", parentIDPropName: "sample_id", parentIDValue: "S1" },
+          ],
+        },
       ]);
 
       dataRecordService.releaseDAO.findMany.mockResolvedValue([
         {
-          nodeID: 'diag-1',
-          props: { diagnosis_id: 'D1', site: 'Old Site' },
+          nodeID: "diag-1",
+          props: { diagnosis_id: "D1", site: "Old Site" },
           parents: [
-            { parentType: 'participant', parentIDPropName: 'participant_id', parentIDValue: 'P0' }
-          ]
-        }
+            { parentType: "participant", parentIDPropName: "participant_id", parentIDValue: "P0" },
+          ],
+        },
       ]);
 
       const result = await dataRecordService.getReleasedAndNewNodesByList(
-        'sub-1',
-        'CCDI',
-        'Released',
-        [{ submittedID: 'diag-1', nodeType: 'diagnosis' }]
+        "sub-1",
+        "CCDI",
+        "Released",
+        [{ submittedID: "diag-1", nodeType: "diagnosis" }]
       );
 
       expect(result).toEqual({
         skipped: 0,
         comparisons: [
           {
-            submittedID: 'diag-1',
-            nodeType: 'diagnosis',
+            submittedID: "diag-1",
+            nodeType: "diagnosis",
             existing: {
-              diagnosis_id: 'D1',
-              site: 'Old Site',
-              'participant.participant_id': 'P0'
+              diagnosis_id: "D1",
+              site: "Old Site",
+              "participant.participant_id": "P0",
             },
             incoming: {
-              diagnosis_id: 'D1',
-              site: 'New Site',
-              'participant.participant_id': 'P1 | P2',
-              'sample.sample_id': 'S1'
-            }
-          }
-        ]
+              diagnosis_id: "D1",
+              site: "New Site",
+              "participant.participant_id": "P1 | P2",
+              "sample.sample_id": "S1",
+            },
+          },
+        ],
       });
     });
 
-    test('should skip missing incoming or existing pairs and continue with valid comparisons', async () => {
+    test("should skip missing incoming or existing pairs and continue with valid comparisons", async () => {
       dataRecordService.dataRecordDAO.findMany.mockResolvedValue([
-        { nodeID: 'diag-1', props: { diagnosis_id: 'D1' }, parents: [] }
+        { nodeID: "diag-1", props: { diagnosis_id: "D1" }, parents: [] },
       ]);
 
       dataRecordService.releaseDAO.findMany.mockResolvedValue([
-        { nodeID: 'diag-1', props: { diagnosis_id: 'D1' }, parents: [] },
-        { nodeID: 'diag-2', props: { diagnosis_id: 'D2' }, parents: [] }
+        { nodeID: "diag-1", props: { diagnosis_id: "D1" }, parents: [] },
+        { nodeID: "diag-2", props: { diagnosis_id: "D2" }, parents: [] },
       ]);
 
       const result = await dataRecordService.getReleasedAndNewNodesByList(
-        'sub-1',
-        'CCDI',
-        'Released',
+        "sub-1",
+        "CCDI",
+        "Released",
         [
-          { submittedID: 'diag-1', nodeType: 'diagnosis' },
-          { submittedID: 'diag-2', nodeType: 'diagnosis' }
+          { submittedID: "diag-1", nodeType: "diagnosis" },
+          { submittedID: "diag-2", nodeType: "diagnosis" },
         ]
       );
 
       expect(result.skipped).toBe(1);
       expect(result.comparisons).toEqual([
         {
-          submittedID: 'diag-1',
-          nodeType: 'diagnosis',
-          existing: { diagnosis_id: 'D1' },
-          incoming: { diagnosis_id: 'D1' }
-        }
+          submittedID: "diag-1",
+          nodeType: "diagnosis",
+          existing: { diagnosis_id: "D1" },
+          incoming: { diagnosis_id: "D1" },
+        },
       ]);
       expect(dataRecordService.dataRecordDAO.findMany).toHaveBeenCalledWith({
-        submissionID: 'sub-1',
-        nodeType: 'diagnosis',
-        nodeID: { $in: ['diag-1', 'diag-2'] }
+        submissionID: "sub-1",
+        nodeType: "diagnosis",
+        nodeID: { $in: ["diag-1", "diag-2"] },
       });
       expect(dataRecordService.releaseDAO.findMany).toHaveBeenCalledWith({
-        dataCommons: 'CCDI',
-        nodeType: 'diagnosis',
-        nodeID: { $in: ['diag-1', 'diag-2'] },
-        status: 'Released'
+        dataCommons: "CCDI",
+        nodeType: "diagnosis",
+        nodeID: { $in: ["diag-1", "diag-2"] },
+        status: "Released",
       });
     });
   });
 
-  describe('getDistinctParentRelationshipKeys', () => {
+  describe("getDistinctParentRelationshipKeys", () => {
     beforeEach(() => {
       DataRecordModel.aggregate.mockReset();
     });
 
-    test('returns distinct parentType.parentIDPropName strings for the match', async () => {
+    test("returns distinct parentType.parentIDPropName strings for the match", async () => {
       DataRecordModel.aggregate.mockResolvedValue([
-        { keys: ['sample.sample_id', 'participant.study_participant_id'] }
+        { keys: ["sample.sample_id", "participant.study_participant_id"] },
       ]);
-      const q = { submissionID: 's1', nodeType: 'study_diagnosis' };
+      const q = { submissionID: "s1", nodeType: "study_diagnosis" };
       const keys = await dataRecordDAO.getDistinctParentRelationshipKeys(q);
-      expect(keys).toEqual(['sample.sample_id', 'participant.study_participant_id']);
+      expect(keys).toEqual(["sample.sample_id", "participant.study_participant_id"]);
       expect(DataRecordModel.aggregate).toHaveBeenCalledTimes(1);
       const pipeline = DataRecordModel.aggregate.mock.calls[0][0];
       expect(pipeline[0].$match).toEqual(q);
     });
 
-    test('returns empty array when aggregation has no rows', async () => {
+    test("returns empty array when aggregation has no rows", async () => {
       DataRecordModel.aggregate.mockResolvedValue([]);
       const keys = await dataRecordDAO.getDistinctParentRelationshipKeys({
-        submissionID: 's1',
-        nodeType: 'x'
+        submissionID: "s1",
+        nodeType: "x",
       });
       expect(keys).toEqual([]);
     });
 
-    test('returns empty array for invalid query without calling aggregate', async () => {
+    test("returns empty array for invalid query without calling aggregate", async () => {
       expect(await dataRecordDAO.getDistinctParentRelationshipKeys(null)).toEqual([]);
       expect(DataRecordModel.aggregate).not.toHaveBeenCalled();
     });
 
-    test('returns empty array when query is an array (not a plain $match object)', async () => {
+    test("returns empty array when query is an array (not a plain $match object)", async () => {
       expect(await dataRecordDAO.getDistinctParentRelationshipKeys([])).toEqual([]);
       expect(DataRecordModel.aggregate).not.toHaveBeenCalled();
     });
   });
 
-  describe('getDistinctPropsTopLevelKeys', () => {
+  describe("getDistinctPropsTopLevelKeys", () => {
     beforeEach(() => {
       DataRecordModel.aggregate.mockReset();
     });
 
-    test('returns distinct top-level props key strings for the match', async () => {
-      DataRecordModel.aggregate.mockResolvedValue([
-        { keys: ['study_diagnosis_id', 'site_id'] }
-      ]);
-      const q = { submissionID: 's1', nodeType: 'study_diagnosis' };
+    test("returns distinct top-level props key strings for the match", async () => {
+      DataRecordModel.aggregate.mockResolvedValue([{ keys: ["study_diagnosis_id", "site_id"] }]);
+      const q = { submissionID: "s1", nodeType: "study_diagnosis" };
       const keys = await dataRecordDAO.getDistinctPropsTopLevelKeys(q);
-      expect(keys).toEqual(['study_diagnosis_id', 'site_id']);
+      expect(keys).toEqual(["study_diagnosis_id", "site_id"]);
       expect(DataRecordModel.aggregate).toHaveBeenCalledTimes(1);
       const pipeline = DataRecordModel.aggregate.mock.calls[0][0];
       expect(pipeline[0].$match).toEqual(q);
     });
 
-    test('returns empty array when aggregation has no rows', async () => {
+    test("returns empty array when aggregation has no rows", async () => {
       DataRecordModel.aggregate.mockResolvedValue([]);
       const keys = await dataRecordDAO.getDistinctPropsTopLevelKeys({
-        submissionID: 's1',
-        nodeType: 'x'
+        submissionID: "s1",
+        nodeType: "x",
       });
       expect(keys).toEqual([]);
     });
 
-    test('returns empty array for invalid query without calling aggregate', async () => {
+    test("returns empty array for invalid query without calling aggregate", async () => {
       expect(await dataRecordDAO.getDistinctPropsTopLevelKeys(null)).toEqual([]);
       expect(DataRecordModel.aggregate).not.toHaveBeenCalled();
     });
 
-    test('returns empty array when query is an array', async () => {
+    test("returns empty array when query is an array", async () => {
       expect(await dataRecordDAO.getDistinctPropsTopLevelKeys([{ $match: {} }])).toEqual([]);
       expect(DataRecordModel.aggregate).not.toHaveBeenCalled();
     });
   });
 
-  describe('initializeDataValidation', () => {
-    test('sets totalFileMessages to file count plus orphan detection message', async () => {
-      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([
-        { _id: 'file-1' },
-        { _id: 'file-2' },
-      ]);
-      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue([]);
+  describe("initializeDataValidation", () => {
+    test("sets totalFileMessages to file count plus orphan detection message", async () => {
+      jest
+        .spyOn(dataRecordService, "_getFileNodes")
+        .mockResolvedValue([{ _id: "file-1" }, { _id: "file-2" }]);
+      jest.spyOn(dataRecordService, "_sendBatchSQSMessage").mockResolvedValue([]);
       mockAwsService.sendSQSMessage.mockResolvedValue();
 
       const result = await dataRecordService.initializeDataValidation(
-        'sub-1',
+        "sub-1",
         [VALIDATION.TYPES.FILE],
         VALIDATION.SCOPE.ALL,
-        'validation-1'
+        "validation-1"
       );
 
       expect(result.success).toBe(true);
@@ -1223,15 +1234,15 @@ describe('DataRecordService', () => {
       expect(dataRecordService._sendBatchSQSMessage).toHaveBeenCalled();
     });
 
-    test('sets totalFileMessages to 1 when there are no file nodes', async () => {
-      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([]);
+    test("sets totalFileMessages to 1 when there are no file nodes", async () => {
+      jest.spyOn(dataRecordService, "_getFileNodes").mockResolvedValue([]);
       mockAwsService.sendSQSMessage.mockResolvedValue();
 
       const result = await dataRecordService.initializeDataValidation(
-        'sub-1',
+        "sub-1",
         [VALIDATION.TYPES.DATA_FILE],
         VALIDATION.SCOPE.NEW,
-        'validation-1'
+        "validation-1"
       );
 
       expect(result.success).toBe(true);
@@ -1239,16 +1250,16 @@ describe('DataRecordService', () => {
       expect(result.failedFileCount).toBe(0);
     });
 
-    test('counts per-file and submission-level enqueue failures in failedFileCount', async () => {
-      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([{ _id: 'file-1' }]);
-      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue(['file send failed']);
-      mockAwsService.sendSQSMessage.mockRejectedValue(new Error('sqs error'));
+    test("counts per-file and submission-level enqueue failures in failedFileCount", async () => {
+      jest.spyOn(dataRecordService, "_getFileNodes").mockResolvedValue([{ _id: "file-1" }]);
+      jest.spyOn(dataRecordService, "_sendBatchSQSMessage").mockResolvedValue(["file send failed"]);
+      mockAwsService.sendSQSMessage.mockRejectedValue(new Error("sqs error"));
 
       const result = await dataRecordService.initializeDataValidation(
-        'sub-1',
+        "sub-1",
         [VALIDATION.TYPES.FILE],
         VALIDATION.SCOPE.ALL,
-        'validation-1'
+        "validation-1"
       );
 
       expect(result.success).toBe(false);
@@ -1256,41 +1267,42 @@ describe('DataRecordService', () => {
       expect(result.failedFileCount).toBe(2);
     });
 
-    test('persists totalFileMessages before enqueueing file messages', async () => {
-      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([
-        { _id: 'file-1' },
-        { _id: 'file-2' },
-      ]);
-      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue([]);
+    test("persists totalFileMessages before enqueueing file messages", async () => {
+      jest
+        .spyOn(dataRecordService, "_getFileNodes")
+        .mockResolvedValue([{ _id: "file-1" }, { _id: "file-2" }]);
+      jest.spyOn(dataRecordService, "_sendBatchSQSMessage").mockResolvedValue([]);
       mockAwsService.sendSQSMessage.mockResolvedValue();
       const mockValidationDAO = { update: jest.fn().mockResolvedValue({}) };
 
       const result = await dataRecordService.initializeDataValidation(
-        'sub-1',
+        "sub-1",
         [VALIDATION.TYPES.FILE],
         VALIDATION.SCOPE.ALL,
-        'validation-1',
+        "validation-1",
         mockValidationDAO
       );
 
       expect(result.success).toBe(true);
-      expect(mockValidationDAO.update).toHaveBeenCalledWith('validation-1', { totalFileMessages: 3 });
+      expect(mockValidationDAO.update).toHaveBeenCalledWith("validation-1", {
+        totalFileMessages: 3,
+      });
       expect(mockValidationDAO.update.mock.invocationCallOrder[0]).toBeLessThan(
         dataRecordService._sendBatchSQSMessage.mock.invocationCallOrder[0]
       );
     });
 
     // A failed totalFileMessages write is a file validation error and must not enqueue any file messages.
-    test('does not enqueue file messages when persisting totalFileMessages fails', async () => {
-      jest.spyOn(dataRecordService, '_getFileNodes').mockResolvedValue([{ _id: 'file-1' }]);
-      jest.spyOn(dataRecordService, '_sendBatchSQSMessage').mockResolvedValue([]);
-      const mockValidationDAO = { update: jest.fn().mockRejectedValue(new Error('db down')) };
+    test("does not enqueue file messages when persisting totalFileMessages fails", async () => {
+      jest.spyOn(dataRecordService, "_getFileNodes").mockResolvedValue([{ _id: "file-1" }]);
+      jest.spyOn(dataRecordService, "_sendBatchSQSMessage").mockResolvedValue([]);
+      const mockValidationDAO = { update: jest.fn().mockRejectedValue(new Error("db down")) };
 
       const result = await dataRecordService.initializeDataValidation(
-        'sub-1',
+        "sub-1",
         [VALIDATION.TYPES.FILE],
         VALIDATION.SCOPE.ALL,
-        'validation-1',
+        "validation-1",
         mockValidationDAO
       );
 
@@ -1302,37 +1314,37 @@ describe('DataRecordService', () => {
       expect(mockAwsService.sendSQSMessage).not.toHaveBeenCalled();
     });
 
-    test('persists totalBatches before enqueueing metadata batch messages', async () => {
-      jest.spyOn(dataRecordService, '_getCount').mockResolvedValue(2);
-      jest.spyOn(dataRecordService, '_getDataRecordIds').mockResolvedValue(['r1', 'r2']);
+    test("persists totalBatches before enqueueing metadata batch messages", async () => {
+      jest.spyOn(dataRecordService, "_getCount").mockResolvedValue(2);
+      jest.spyOn(dataRecordService, "_getDataRecordIds").mockResolvedValue(["r1", "r2"]);
       mockAwsService.sendSQSMessage.mockResolvedValue();
       const mockValidationDAO = { update: jest.fn().mockResolvedValue({}) };
 
       await dataRecordService.initializeDataValidation(
-        'sub-1',
+        "sub-1",
         [VALIDATION.TYPES.METADATA],
         VALIDATION.SCOPE.ALL,
-        'validation-1',
+        "validation-1",
         mockValidationDAO
       );
 
-      expect(mockValidationDAO.update).toHaveBeenCalledWith('validation-1', { totalBatches: 1 });
+      expect(mockValidationDAO.update).toHaveBeenCalledWith("validation-1", { totalBatches: 1 });
       expect(mockValidationDAO.update.mock.invocationCallOrder[0]).toBeLessThan(
         mockAwsService.sendSQSMessage.mock.invocationCallOrder[0]
       );
     });
 
     // A failed totalBatches write counts every batch as failed and must not enqueue metadata messages.
-    test('does not enqueue metadata batches when persisting totalBatches fails', async () => {
-      jest.spyOn(dataRecordService, '_getCount').mockResolvedValue(2);
-      jest.spyOn(dataRecordService, '_getDataRecordIds').mockResolvedValue(['r1', 'r2']);
-      const mockValidationDAO = { update: jest.fn().mockRejectedValue(new Error('db down')) };
+    test("does not enqueue metadata batches when persisting totalBatches fails", async () => {
+      jest.spyOn(dataRecordService, "_getCount").mockResolvedValue(2);
+      jest.spyOn(dataRecordService, "_getDataRecordIds").mockResolvedValue(["r1", "r2"]);
+      const mockValidationDAO = { update: jest.fn().mockRejectedValue(new Error("db down")) };
 
       const result = await dataRecordService.initializeDataValidation(
-        'sub-1',
+        "sub-1",
         [VALIDATION.TYPES.METADATA],
         VALIDATION.SCOPE.ALL,
-        'validation-1',
+        "validation-1",
         mockValidationDAO
       );
 
@@ -1340,50 +1352,66 @@ describe('DataRecordService', () => {
       expect(result.failedCount).toBe(result.totalBatches);
       expect(result.metadataTotalsPersisted).toBe(false);
       expect(result.message).toContain(ERRORS.FAILED_VALIDATE_METADATA);
-      expect(result.message).toContain('Failed to persist totalBatches');
+      expect(result.message).toContain("Failed to persist totalBatches");
       expect(mockAwsService.sendSQSMessage).not.toHaveBeenCalled();
     });
   });
 
-  describe('deriveFileValidationStatus', () => {
-    it('returns Error when submission fileErrors remain', () => {
-      expect(deriveFileValidationStatus([{ submittedID: 'extra.txt', severity: VALIDATION_STATUS.ERROR }], ['Passed'])).toBe(VALIDATION_STATUS.ERROR);
+  describe("deriveFileValidationStatus", () => {
+    it("returns Error when submission fileErrors remain", () => {
+      expect(
+        deriveFileValidationStatus(
+          [{ submittedID: "extra.txt", severity: VALIDATION_STATUS.ERROR }],
+          ["Passed"]
+        )
+      ).toBe(VALIDATION_STATUS.ERROR);
     });
 
-    it('prioritizes New over Error and Warning on s3FileInfo statuses', () => {
-      expect(deriveFileValidationStatus([], [VALIDATION_STATUS.PASSED, VALIDATION_STATUS.NEW])).toBe(VALIDATION_STATUS.NEW);
-      expect(deriveFileValidationStatus([], [VALIDATION_STATUS.ERROR, VALIDATION_STATUS.WARNING])).toBe(VALIDATION_STATUS.ERROR);
-      expect(deriveFileValidationStatus([], [VALIDATION_STATUS.PASSED, VALIDATION_STATUS.WARNING])).toBe(VALIDATION_STATUS.WARNING);
-      expect(deriveFileValidationStatus([], [VALIDATION_STATUS.PASSED])).toBe(VALIDATION_STATUS.PASSED);
+    it("prioritizes New over Error and Warning on s3FileInfo statuses", () => {
+      expect(
+        deriveFileValidationStatus([], [VALIDATION_STATUS.PASSED, VALIDATION_STATUS.NEW])
+      ).toBe(VALIDATION_STATUS.NEW);
+      expect(
+        deriveFileValidationStatus([], [VALIDATION_STATUS.ERROR, VALIDATION_STATUS.WARNING])
+      ).toBe(VALIDATION_STATUS.ERROR);
+      expect(
+        deriveFileValidationStatus([], [VALIDATION_STATUS.PASSED, VALIDATION_STATUS.WARNING])
+      ).toBe(VALIDATION_STATUS.WARNING);
+      expect(deriveFileValidationStatus([], [VALIDATION_STATUS.PASSED])).toBe(
+        VALIDATION_STATUS.PASSED
+      );
       expect(deriveFileValidationStatus([], [])).toBe(VALIDATION_STATUS.PASSED);
     });
   });
 
-  describe('recalculateFileValidationStatus', () => {
+  describe("recalculateFileValidationStatus", () => {
     let dataRecordService;
     let mockDataRecordDAO;
 
     beforeEach(() => {
       mockDataRecordDAO = {
-        findS3FileInfoStatuses: jest.fn()
+        findS3FileInfoStatuses: jest.fn(),
       };
       dataRecordService = new DataRecordService(
         mockDataRecordArchiveCollection,
-        'file-queue',
-        'metadata-queue',
+        "file-queue",
+        "metadata-queue",
         mockAwsService,
         mockS3Service,
         mockQcResultsService,
-        'export-queue',
+        "export-queue",
         null
       );
       dataRecordService.dataRecordDAO = mockDataRecordDAO;
     });
 
-    it('loads s3FileInfo statuses and derives submission file validation status', async () => {
-      mockDataRecordDAO.findS3FileInfoStatuses.mockResolvedValue([VALIDATION_STATUS.PASSED, VALIDATION_STATUS.PASSED]);
-      const status = await dataRecordService.recalculateFileValidationStatus('sub-1', []);
-      expect(mockDataRecordDAO.findS3FileInfoStatuses).toHaveBeenCalledWith('sub-1');
+    it("loads s3FileInfo statuses and derives submission file validation status", async () => {
+      mockDataRecordDAO.findS3FileInfoStatuses.mockResolvedValue([
+        VALIDATION_STATUS.PASSED,
+        VALIDATION_STATUS.PASSED,
+      ]);
+      const status = await dataRecordService.recalculateFileValidationStatus("sub-1", []);
+      expect(mockDataRecordDAO.findS3FileInfoStatuses).toHaveBeenCalledWith("sub-1");
       expect(status).toBe(VALIDATION_STATUS.PASSED);
     });
   });

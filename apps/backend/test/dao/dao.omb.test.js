@@ -1,38 +1,38 @@
-jest.mock('../../dao/configuration');
+jest.mock("../../dao/configuration");
 
-const getOMBConfiguration = require('../../dao/omb');
-const ConfigurationDAO = require('../../dao/configuration');
+const ConfigurationDAO = require("../../dao/configuration");
+const getOMBConfiguration = require("../../dao/omb");
 
-describe('getOMBConfiguration', () => {
-    let findByType;
+describe("getOMBConfiguration", () => {
+  let findByType;
 
-    beforeEach(() => {
-        findByType = jest.fn();
-        ConfigurationDAO.mockImplementation(() => ({
-            findByType,
-        }));
-    });
+  beforeEach(() => {
+    findByType = jest.fn();
+    ConfigurationDAO.mockImplementation(() => ({
+      findByType,
+    }));
+  });
 
-    afterEach(() => {
-        jest.clearAllMocks();
-    });
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
-    it('should return OMB configuration when found', async () => {
-        const mockConfig = { id: 'omb123', _id: 'omb123', type: 'OMB_INFO', OMBNumber: '123' };
-        findByType.mockResolvedValue(mockConfig);
+  it("should return OMB configuration when found", async () => {
+    const mockConfig = { id: "omb123", _id: "omb123", type: "OMB_INFO", OMBNumber: "123" };
+    findByType.mockResolvedValue(mockConfig);
 
-        const result = await getOMBConfiguration();
+    const result = await getOMBConfiguration();
 
-        expect(findByType).toHaveBeenCalledWith('OMB_INFO');
-        expect(result).toEqual(mockConfig);
-    });
+    expect(findByType).toHaveBeenCalledWith("OMB_INFO");
+    expect(result).toEqual(mockConfig);
+  });
 
-    it('should return null when OMB configuration not found', async () => {
-        findByType.mockResolvedValue(null);
+  it("should return null when OMB configuration not found", async () => {
+    findByType.mockResolvedValue(null);
 
-        const result = await getOMBConfiguration();
+    const result = await getOMBConfiguration();
 
-        expect(findByType).toHaveBeenCalledWith('OMB_INFO');
-        expect(result).toBeNull();
-    });
+    expect(findByType).toHaveBeenCalledWith("OMB_INFO");
+    expect(result).toBeNull();
+  });
 });

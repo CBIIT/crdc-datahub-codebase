@@ -1,19 +1,22 @@
-require('dotenv').config();
+require("dotenv").config();
+
 if (process.env.DOCDB_DB_NAME) {
-    process.env.DATABASE_NAME = process.env.DOCDB_DB_NAME;
+  process.env.DATABASE_NAME = process.env.DOCDB_DB_NAME;
 }
-const fs = require('fs');
-const path = require('path');
-const {readFile2Text} = require("./utility/io-util")
-const {ConfigurationService} = require("./services/configurationService");
-const {DATABASE_NAME, CONFIGURATION_COLLECTION} = require("./crdc-datahub-database-drivers/database-constants");
+const fs = require("fs");
+const path = require("path");
+
+const { DATABASE_NAME } = require("./crdc-datahub-database-drivers/database-constants");
+const { ConfigurationService } = require("./services/configurationService");
+const { readFile2Text } = require("./utility/io-util");
+
 const EMAIL_SMTP_HOST = "EMAIL_SMTP_HOST";
 const EMAIL_SMTP_PORT = "EMAIL_SMTP_PORT";
 const EMAIL_USER = "EMAIL_USER";
 const EMAIL_PASSWORD = "EMAIL_PASSWORD";
 const EMAIL_URL = "EMAIL_URL";
 const OFFICIAL_EMAIL = "OFFICIAL_EMAIL";
-const INACTIVE_APPLICATION_DAYS= "INACTIVE_APPLICATION_DAYS";
+const INACTIVE_APPLICATION_DAYS = "INACTIVE_APPLICATION_DAYS";
 const INACTIVE_NEW_APPLICATION_DAYS = "INACTIVE_NEW_APPLICATION_DAYS";
 const REMIND_APPLICATION_DAYS = "REMIND_APPLICATION_DAYS";
 const SUBMISSION_SYSTEM_PORTAL = "SUBMISSION_SYSTEM_PORTAL";
@@ -30,10 +33,8 @@ const LOADER_QUEUE = "LOADER_QUEUE";
 const METADATA_QUEUE = "METADATA_QUEUE";
 const FILE_QUEUE = "FILE_QUEUE";
 const EXPORTER_QUEUE = "EXPORTER_QUEUE";
-const MODEL_URL = "MODEL_URL";
 const SUBMISSION_GUIDE_URL = "SUBMISSION_GUIDE_URL";
 const DATA_COMMONS_LIST = "DATA_COMMONS_LIST";
-const HIDDEN_MODELS = "HIDDEN_MODELS";
 const COMPLETED_RETENTION_DAYS = "COMPLETED_RETENTION_DAYS";
 const INACTIVE_SUBMISSION_DAYS_DELETE = "INACTIVE_SUBMISSION_DAYS_DELETE";
 const DASHBOARD_SESSION_TIMEOUT = "DASHBOARD_SESSION_TIMEOUT";
@@ -63,37 +64,40 @@ const TIMEOUT = "TIMEOUT";
  * @returns {string}
  */
 function buildConnectionString(user, password, host, port, database, caFile) {
-    const params = new URLSearchParams({
-        authSource: 'admin',
-        retryWrites: 'false',
-    });
-    if (caFile) {
-        params.set('tls', 'true');
-        params.set('tlsCAFile', caFile);
-        params.set('authMechanism', 'SCRAM-SHA-1');
-    }
-    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}?${params.toString()}`;
+  const params = new URLSearchParams({
+    authSource: "admin",
+    retryWrites: "false",
+  });
+  if (caFile) {
+    params.set("tls", "true");
+    params.set("tlsCAFile", caFile);
+    params.set("authMechanism", "SCRAM-SHA-1");
+  }
+  return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}?${params.toString()}`;
 }
 
-const DEFAULT_DOCUMENT_DB_CA_FILE = path.join(__dirname, 'resources/aws-documentdb-certificate/global-bundle.pem');
+const DEFAULT_DOCUMENT_DB_CA_FILE = path.join(
+  __dirname,
+  "resources/aws-documentdb-certificate/global-bundle.pem"
+);
 const rawDocumentDbTls = process.env.DOCDB_TLS;
-const trimmedDocumentDbTls = rawDocumentDbTls == null ? '' : String(rawDocumentDbTls).trim();
+const trimmedDocumentDbTls = rawDocumentDbTls == null ? "" : String(rawDocumentDbTls).trim();
 let documentDbTlsEnabled;
 if (!trimmedDocumentDbTls) {
-    documentDbTlsEnabled = true;
+  documentDbTlsEnabled = true;
 } else {
-    const normalizedTls = trimmedDocumentDbTls.toLowerCase();
-    if (normalizedTls === 'true') {
-        documentDbTlsEnabled = true;
-    } else if (normalizedTls === 'false') {
-        documentDbTlsEnabled = false;
-    } else {
-        throw new Error(`DOCDB_TLS must be true or false, received: ${rawDocumentDbTls}`);
-    }
+  const normalizedTls = trimmedDocumentDbTls.toLowerCase();
+  if (normalizedTls === "true") {
+    documentDbTlsEnabled = true;
+  } else if (normalizedTls === "false") {
+    documentDbTlsEnabled = false;
+  } else {
+    throw new Error(`DOCDB_TLS must be true or false, received: ${rawDocumentDbTls}`);
+  }
 }
 const documentDbCaFile = documentDbTlsEnabled
-    ? (process.env.DOCDB_CA_FILE || DEFAULT_DOCUMENT_DB_CA_FILE)
-    : null;
+  ? process.env.DOCDB_CA_FILE || DEFAULT_DOCUMENT_DB_CA_FILE
+  : null;
 
 /**
  * Builds the shared DocumentDB connection URI from DOCDB_* environment
@@ -106,206 +110,61 @@ const documentDbCaFile = documentDbTlsEnabled
  * @throws {Error} When TLS is enabled and the CA file does not exist
  */
 function buildDocumentDbConnectionString() {
-    if (documentDbTlsEnabled && !fs.existsSync(documentDbCaFile)) {
-        throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
-    }
-    return buildConnectionString(
-        process.env.DOCDB_USERNAME,
-        process.env.DOCDB_PASSWORD,
-        process.env.DOCDB_ENDPOINT,
-        process.env.DOCDB_PORT || '27017',
-        DATABASE_NAME,
-        documentDbCaFile,
-    );
-}
-
-let config = {
-    //info variables
-    version: process.env.VERSION || 'Version not set',
-    date: process.env.DATE || new Date(),
-    // DocumentDB (shared by native drivers and Mongoose)
-    document_db_user: process.env.DOCDB_USERNAME,
-    document_db_password: process.env.DOCDB_PASSWORD,
-    document_db_host: process.env.DOCDB_ENDPOINT,
-    document_db_port: process.env.DOCDB_PORT || '27017',
-    document_db_tls: documentDbTlsEnabled,
-    document_db_ca_file: documentDbCaFile,
-
-    //session
-    session_secret: process.env.SESSION_SECRET,
-    session_timeout: parseInt(process.env.SESSION_TIMEOUT_SECONDS) * 1000 || 30 * 60 * 1000,
-    token_secret: process.env.SESSION_SECRET,
-    token_timeout: parseInt(process.env.TOKEN_TIMEOUT) * 1000 || 30 * 24 * 60 * 60 * 1000,
-    // uploading heart beating check interval
-    uploading_check_interval: 5 * 60 * 1000,
-    //aws sts assume role
-    role_arn: process.env.ROLE_ARN,
-    updateConfig: async (dbConnector)=> {
-        const configurationService = new ConfigurationService();
-        // SCHEDULED_JOBS
-        const scheduledJobsConf = await configurationService.findByType(SCHEDULED_JOBS);
-        const inactiveUserDaysConf = scheduledJobsConf?.[INACTIVE_USER_DAYS];
-        const inactiveApplicationDaysConf = scheduledJobsConf?.[INACTIVE_APPLICATION_DAYS];
-        const inactiveNewApplicationDaysConf = scheduledJobsConf?.[INACTIVE_NEW_APPLICATION_DAYS];
-        const remindApplicationDaysConf = scheduledJobsConf?.[REMIND_APPLICATION_DAYS];
-        const inactiveSubmissionDaysConf = scheduledJobsConf?.[INACTIVE_SUBMISSION_DAYS_DELETE];
-        const completedSubmissionDaysConf = scheduledJobsConf?.[COMPLETED_RETENTION_DAYS];
-        const inactiveSubmissionNotifyDaysConf = scheduledJobsConf?.[INACTIVE_SUBMISSION_NOTIFY_DAYS];
-        const inactiveApplicationNotifyDaysConf = scheduledJobsConf?.[INACTIVE_APPLICATION_NOTIFY_DAYS];
-
-        const scheduledJobTime = scheduledJobsConf?.[SCHEDULED_JOBS];
-        // EMAIL_SMTP
-        const emailSmtpConf = await configurationService.findByType(EMAIL_SMTP);
-        const emailSmtpHostConf = emailSmtpConf?.[EMAIL_SMTP_HOST];
-        const emailSmtpPortConf = emailSmtpConf?.[EMAIL_SMTP_PORT];
-        const emailSmtpUserConf = emailSmtpConf?.[EMAIL_USER];
-        const emailSmtpPasswordConf = emailSmtpConf?.[EMAIL_PASSWORD];
-        // LIST_OF_EMAIL_ADDRESS
-        const listEmailsConf = await configurationService.findByType(LIST_OF_EMAIL_ADDRESS);
-        const officialEmailConf = listEmailsConf?.[OFFICIAL_EMAIL];
-        const techSupportEmailConf = listEmailsConf?.[TECH_SUPPORT_EMAIL];
-        const submissionHelpdeskConf = listEmailsConf?.[SUBMISSION_HELPDESK];
-        const submissionRequestEmailConf = listEmailsConf?.[SUBMISSION_REQUEST_EMAIL];
-        // LIST_OF_URLS
-        const listURLsConf = await configurationService.findByType(LIST_OF_URLS);
-        const emailURLConf = listURLsConf?.[EMAIL_URL];
-        const submissionDocUrlConf = listURLsConf?.[SUBMISSION_DOC_URL];
-        const submissionSystemPortalConf = listURLsConf?.[SUBMISSION_SYSTEM_PORTAL];
-        const prodUrlConf = listURLsConf?.[PROD_URL];
-        const modelURLConf = listURLsConf?.[MODEL_URL];
-        const submissionGuideURLConf = listURLsConf?.[SUBMISSION_GUIDE_URL];
-        // TIMEOUT
-        const timeoutConf = await configurationService.findByType(TIMEOUT);
-        const roleTimeoutConf = timeoutConf?.[ROLE_TIMEOUT];
-        const preSignExpirationConf = timeoutConf?.[PRESIGN_EXPIRATION];
-        const dashboardSessionTimeoutConf =  timeoutConf?.[DASHBOARD_SESSION_TIMEOUT];
-        // TIER
-        const tierConf = await configurationService.findByType(TIER);
-        // AWS_SQS_QUEUE
-        const loaderQueueConf = await configurationService.findByType(LOADER_QUEUE);
-        const fileQueueConf = await configurationService.findByType(FILE_QUEUE);
-        const metadataQueueConf = await configurationService.findByType(METADATA_QUEUE);
-        const exporterQueueConf = await configurationService.findByType(EXPORTER_QUEUE);
-        // SUBMISSION
-        const dataCommonsListConf = await configurationService.findByType(DATA_COMMONS_LIST);
-        const hiddenModelsConf = await configurationService.findByType(HIDDEN_MODELS);
-        const listS3Buckets = await configurationService.findByType(LIST_OF_S3_BUCKETS);
-        const submissionBucketConf = listS3Buckets?.[SUBMISSION_BUCKET];
-        const metadataBuckets = await configurationService.findManyByType(METADATA_BUCKET);
-        const dataCommonsBucketMap = new Map(
-            metadataBuckets?.filter(item => item?.dataCommons && item.bucketName)
-                ?.map(item => [item.dataCommons, item.bucketName])
-        );
-        return {
-            ...config,
-            inactive_user_days : inactiveUserDaysConf || (process.env.INACTIVE_USER_DAYS || 60),
-            remind_application_days: remindApplicationDaysConf || (process.env.REMIND_APPLICATION_DAYS || 165),
-            inactive_application_days : inactiveApplicationDaysConf || (process.env.INACTIVE_APPLICATION_DAYS || 60),
-            inactive_new_application_days : inactiveNewApplicationDaysConf || (process.env.INACTIVE_NEW_APPLICATION_DAYS || 30),
-            // Email settings
-            email_transport: getTransportConfig(emailSmtpHostConf, emailSmtpPortConf, emailSmtpUserConf, emailSmtpPasswordConf),
-            emails_enabled: process.env.EMAILS_ENABLED ? process.env.EMAILS_ENABLED.toLowerCase() === 'true' : true,
-            emails_url: emailURLConf || (process.env.EMAIL_URL ? process.env.EMAIL_URL : 'http://localhost:4010'),
-            official_email: officialEmailConf || (process.env.OFFICIAL_EMAIL || 'CRDCHelpDesk@nih.gov'),
-            // temp url for email
-            submission_doc_url: submissionDocUrlConf || (process.env.SUBMISSION_DOC_URL || ""),
-            submission_helpdesk: submissionHelpdeskConf || "CRDCSubmissions@nih.gov",
-            techSupportEmail: techSupportEmailConf || (process.env.TECH_SUPPORT_EMAIL || "NCICRDCTechSupport@mail.nih.gov"),
-            submission_system_portal: submissionSystemPortalConf || "https://datacommons.cancer.gov/",
-            prod_url: prodUrlConf || (process.env.PROD_URL || "https://hub.datacommons.cancer.gov/"),
-            submission_bucket: submissionBucketConf,
-            dataCommonsBucketMap: dataCommonsBucketMap,
-            role_timeout: roleTimeoutConf || (parseInt(process.env.ROLE_TIMEOUT) || 12*3600),
-            presign_expiration: preSignExpirationConf || (parseInt(process.env.PRESIGN_EXPIRATION) || 3600),
-            tier: getTier(tierConf?.keys?.tier),
-            // aws SQS names
-            sqs_loader_queue: loaderQueueConf?.keys?.sqs || (process.env.LOADER_QUEUE || "crdcdh-queue"),
-            metadata_queue: metadataQueueConf?.keys?.sqs || process.env.METADATA_QUEUE,
-            file_queue: fileQueueConf?.keys?.sqs || process.env.FILE_QUEUE,
-            export_queue: exporterQueueConf?.keys?.sqs || process.env.EXPORTER_QUEUE,
-            model_url: modelURLConf || getModelUrl(tierConf?.keys?.tier),
-            email_content_branch: getEmailContentBranch(tierConf?.keys?.tier),
-            email_content_base_url: getEmailContentBaseUrl(tierConf?.keys?.tier),
-            email_content_cache_dir: process.env.EMAIL_CONTENT_CACHE_DIR || 'cache/email-content',
-            email_content_refresh_seconds: getEmailContentRefreshSeconds(),
-            //uploader configuration file template
-            uploaderCLIConfigs: readUploaderCLIConfigTemplate(),
-            dataCommonsList: dataCommonsListConf?.key || (process.env.DATA_COMMONS_LIST ? JSON.parse(process.env.DATA_COMMONS_LIST) : ["CDS", "ICDC", "CTDC", "CCDI", "PSDC", "Test MDF", "Hidden Model"]),
-            hiddenModels: hiddenModelsConf?.key || (process.env.HIDDEN_MODELS ? parseHiddenModels(process.env.HIDDEN_MODELS) : []),
-            inactive_submission_days: inactiveSubmissionDaysConf || (process.env.INACTIVE_SUBMISSION_DAYS_DELETE || 120),
-            completed_submission_days: completedSubmissionDaysConf || (process.env.COMPLETED_RETENTION_DAYS || 30),
-            dashboardSessionTimeout: dashboardSessionTimeoutConf || (process.env.DASHBOARD_SESSION_TIMEOUT || 3600), // 60 minutes by default
-            inactiveSubmissionNotifyDays: inactiveSubmissionNotifyDaysConf || [7, 30, 60],
-            inactiveApplicationNotifyDays: inactiveApplicationNotifyDaysConf || [15, 30], // 15, 30 days by default
-            conditionalSubmissionContact: submissionRequestEmailConf || "NCICRDC@mail.nih.gov",
-            submissionGuideUrl: submissionGuideURLConf || "https://datacommons.cancer.gov/data-submission-instructions",
-            scheduledJobTime: scheduledJobTime || "1 0 1 * * *"
-        };
-    }
-}
-Object.defineProperty(config, 'document_db_connection_string', {
-    enumerable: true,
-    get() {
-        return buildDocumentDbConnectionString();
-    },
-});
-function parseHiddenModels(hiddenModels) {
-    return hiddenModels.split(',')
-        .filter(item => item?.trim().length > 0)
-        .map(item => item?.trim());
+  if (documentDbTlsEnabled && !fs.existsSync(documentDbCaFile)) {
+    throw new Error(`DocumentDB TLS is enabled but CA file was not found: ${documentDbCaFile}`);
+  }
+  return buildConnectionString(
+    process.env.DOCDB_USERNAME,
+    process.env.DOCDB_PASSWORD,
+    process.env.DOCDB_ENDPOINT,
+    process.env.DOCDB_PORT || "27017",
+    DATABASE_NAME,
+    documentDbCaFile
+  );
 }
 
 function getTransportConfig(host, port, emailUser, emailPassword) {
-    return {
-        host: host || process.env.EMAIL_SMTP_HOST,
-        port: port || process.env.EMAIL_SMTP_PORT,
-        secure: false,
-        // Optional AWS Email Identity
-        ...(emailUser || process.env.EMAIL_USER && {
-                secure: false, // true for 465, false for other ports
-                auth: {
-                    user: emailUser || process.env.EMAIL_USER, // generated ethereal user
-                    pass: emailPassword || process.env.EMAIL_PASSWORD, // generated ethereal password
-                }
-            }
-        )
-    };
+  return {
+    host: host || process.env.EMAIL_SMTP_HOST,
+    port: port || process.env.EMAIL_SMTP_PORT,
+    secure: false,
+    // Optional AWS Email Identity
+    ...(emailUser ||
+      (process.env.EMAIL_USER && {
+        secure: false, // true for 465, false for other ports
+        auth: {
+          user: emailUser || process.env.EMAIL_USER, // generated ethereal user
+          pass: emailPassword || process.env.EMAIL_PASSWORD, // generated ethereal password
+        },
+      })),
+  };
 }
 
-function readUploaderCLIConfigTemplate(){
-    const uploaderConfigTemplate = 'resources/yaml/data_file_upload_config.yaml';
-    configString = readFile2Text(uploaderConfigTemplate);
-    if (!configString){
-        throw "Can't find uploader CLI config template at " + uploaderConfigTemplate + "!";
-    }
-    return configString;
+/**
+ * Reads the uploader CLI config template from disk.
+ * @returns {string} Template file contents
+ * @throws {Error} When the template cannot be found or is empty
+ */
+function readUploaderCLIConfigTemplate() {
+  const uploaderConfigTemplate = "resources/yaml/data_file_upload_config.yaml";
+  const configString = readFile2Text(uploaderConfigTemplate);
+  if (!configString) {
+    throw new Error(`Can't find uploader CLI config template at ${uploaderConfigTemplate}!`);
+  }
+  return configString;
 }
-function getModelUrl(dbTier) {
-    // if MODEL_URL exists, it overrides
-    if (process.env.MODEL_URL) {
-        return process.env.MODEL_URL;
-    }
-    const tier = dbTier?.replace(/[^a-zA-Z\d]/g, '')?.trim();
-    // By default url
-    const modelUrl = ['https://raw.githubusercontent.com/CBIIT/crdc-datahub-models/', tier || 'master', '/cache/content.json']
-    if (tier?.length > 0) {
-        modelUrl[1] = tier.toLowerCase();
-    }
-    return modelUrl.join("");
-}
-
 /**
  * Sanitized GitHub branch from configuration TIER.
  * @param {string} [dbTier]
  * @returns {string}
  */
 function getEmailContentBranch(dbTier) {
-    const tier = dbTier?.replace(/[^a-zA-Z\d]/g, '')?.trim();
-    if (tier?.length > 0) {
-        return tier.toLowerCase();
-    }
-    console.error('No tier configuration variable found, defaulting to prod email content branch');
-    return 'prod';
+  const tier = dbTier?.replace(/[^a-zA-Z\d]/g, "")?.trim();
+  if (tier?.length > 0) {
+    return tier.toLowerCase();
+  }
+  console.error("No tier configuration variable found, defaulting to prod email content branch");
+  return "prod";
 }
 
 /**
@@ -314,7 +173,7 @@ function getEmailContentBranch(dbTier) {
  * @returns {string}
  */
 function getEmailContentBaseUrl(dbTier) {
-    return `https://raw.githubusercontent.com/CBIIT/crdc-submission-portal-email-content/${getEmailContentBranch(dbTier)}`;
+  return `https://raw.githubusercontent.com/CBIIT/crdc-submission-portal-email-content/${getEmailContentBranch(dbTier)}`;
 }
 
 /**
@@ -322,22 +181,186 @@ function getEmailContentBaseUrl(dbTier) {
  * @returns {number}
  */
 function getEmailContentRefreshSeconds() {
-    const parsed = Number.parseInt(process.env.EMAIL_CONTENT_REFRESH_SECONDS);
-    if (Number.isFinite(parsed) && parsed >= 0) {
-        return parsed;
-    }
-    return 300;
+  const parsed = Number.parseInt(process.env.EMAIL_CONTENT_REFRESH_SECONDS, 10);
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
+  return 300;
 }
 
 function extractTierName(dbTier) {
-    const tier = dbTier || process.env.TIER;
-    return tier?.replace(/prod(uction)?/gi, '')?.replace(/[^a-zA-Z\d]/g, '')?.trim();
+  const tier = dbTier || process.env.TIER;
+  return tier
+    ?.replace(/prod(uction)?/gi, "")
+    ?.replace(/[^a-zA-Z\d]/g, "")
+    ?.trim();
 }
 
 function getTier(dbTier) {
-    const tier = extractTierName(dbTier);
-    return tier?.length > 0 ? `[${tier.toUpperCase()}]` : '';
+  const tier = extractTierName(dbTier);
+  return tier?.length > 0 ? `[${tier.toUpperCase()}]` : "";
 }
+
+const config = {
+  // info variables
+  version: process.env.VERSION || "Version not set",
+  date: process.env.DATE || new Date(),
+  // DocumentDB (shared by native drivers and Mongoose)
+  document_db_user: process.env.DOCDB_USERNAME,
+  document_db_password: process.env.DOCDB_PASSWORD,
+  document_db_host: process.env.DOCDB_ENDPOINT,
+  document_db_port: process.env.DOCDB_PORT || "27017",
+  document_db_tls: documentDbTlsEnabled,
+  document_db_ca_file: documentDbCaFile,
+
+  // session
+  session_secret: process.env.SESSION_SECRET,
+  session_timeout: parseInt(process.env.SESSION_TIMEOUT_SECONDS, 10) * 1000 || 30 * 60 * 1000,
+  token_secret: process.env.SESSION_SECRET,
+  token_timeout: parseInt(process.env.TOKEN_TIMEOUT, 10) * 1000 || 30 * 24 * 60 * 60 * 1000,
+  // uploading heart beating check interval
+  uploading_check_interval: 5 * 60 * 1000,
+  // aws sts assume role
+  role_arn: process.env.ROLE_ARN,
+  /**
+   * Builds a config object overlaid with values from the configuration collection.
+   * @returns {Promise<object>} Config merged with database-backed settings
+   * @throws {Error} When TIER or MODEL_CONTENT (repo_url, content_path) is missing
+   */
+  updateConfig: async () => {
+    const configurationService = new ConfigurationService();
+    // Model manifest + model files are loaded from this URL; there is no default.
+    const modelContentURL = await configurationService.getModelContentURL();
+    if (!modelContentURL) {
+      throw new Error(
+        "Missing required configuration: TIER (keys.tier) and MODEL_CONTENT (keys.repo_url, keys.content_path) must be set"
+      );
+    }
+    // SCHEDULED_JOBS
+    const scheduledJobsConf = await configurationService.findByType(SCHEDULED_JOBS);
+    const inactiveUserDaysConf = scheduledJobsConf?.[INACTIVE_USER_DAYS];
+    const inactiveApplicationDaysConf = scheduledJobsConf?.[INACTIVE_APPLICATION_DAYS];
+    const inactiveNewApplicationDaysConf = scheduledJobsConf?.[INACTIVE_NEW_APPLICATION_DAYS];
+    const remindApplicationDaysConf = scheduledJobsConf?.[REMIND_APPLICATION_DAYS];
+    const inactiveSubmissionDaysConf = scheduledJobsConf?.[INACTIVE_SUBMISSION_DAYS_DELETE];
+    const completedSubmissionDaysConf = scheduledJobsConf?.[COMPLETED_RETENTION_DAYS];
+    const inactiveSubmissionNotifyDaysConf = scheduledJobsConf?.[INACTIVE_SUBMISSION_NOTIFY_DAYS];
+    const inactiveApplicationNotifyDaysConf = scheduledJobsConf?.[INACTIVE_APPLICATION_NOTIFY_DAYS];
+
+    const scheduledJobTime = scheduledJobsConf?.[SCHEDULED_JOBS];
+    // EMAIL_SMTP
+    const emailSmtpConf = await configurationService.findByType(EMAIL_SMTP);
+    const emailSmtpHostConf = emailSmtpConf?.[EMAIL_SMTP_HOST];
+    const emailSmtpPortConf = emailSmtpConf?.[EMAIL_SMTP_PORT];
+    const emailSmtpUserConf = emailSmtpConf?.[EMAIL_USER];
+    const emailSmtpPasswordConf = emailSmtpConf?.[EMAIL_PASSWORD];
+    // LIST_OF_EMAIL_ADDRESS
+    const listEmailsConf = await configurationService.findByType(LIST_OF_EMAIL_ADDRESS);
+    const officialEmailConf = listEmailsConf?.[OFFICIAL_EMAIL];
+    const techSupportEmailConf = listEmailsConf?.[TECH_SUPPORT_EMAIL];
+    const submissionHelpdeskConf = listEmailsConf?.[SUBMISSION_HELPDESK];
+    const submissionRequestEmailConf = listEmailsConf?.[SUBMISSION_REQUEST_EMAIL];
+    // LIST_OF_URLS
+    const listURLsConf = await configurationService.findByType(LIST_OF_URLS);
+    const emailURLConf = listURLsConf?.[EMAIL_URL];
+    const submissionDocUrlConf = listURLsConf?.[SUBMISSION_DOC_URL];
+    const submissionSystemPortalConf = listURLsConf?.[SUBMISSION_SYSTEM_PORTAL];
+    const prodUrlConf = listURLsConf?.[PROD_URL];
+    const submissionGuideURLConf = listURLsConf?.[SUBMISSION_GUIDE_URL];
+    // TIMEOUT
+    const timeoutConf = await configurationService.findByType(TIMEOUT);
+    const roleTimeoutConf = timeoutConf?.[ROLE_TIMEOUT];
+    const preSignExpirationConf = timeoutConf?.[PRESIGN_EXPIRATION];
+    const dashboardSessionTimeoutConf = timeoutConf?.[DASHBOARD_SESSION_TIMEOUT];
+    // TIER
+    const tierConf = await configurationService.findByType(TIER);
+    // AWS_SQS_QUEUE
+    const loaderQueueConf = await configurationService.findByType(LOADER_QUEUE);
+    const fileQueueConf = await configurationService.findByType(FILE_QUEUE);
+    const metadataQueueConf = await configurationService.findByType(METADATA_QUEUE);
+    const exporterQueueConf = await configurationService.findByType(EXPORTER_QUEUE);
+    // SUBMISSION
+    const dataCommonsListConf = await configurationService.findByType(DATA_COMMONS_LIST);
+    const listS3Buckets = await configurationService.findByType(LIST_OF_S3_BUCKETS);
+    const submissionBucketConf = listS3Buckets?.[SUBMISSION_BUCKET];
+    const metadataBuckets = await configurationService.findManyByType(METADATA_BUCKET);
+    const dataCommonsBucketMap = new Map(
+      metadataBuckets
+        ?.filter((item) => item?.dataCommons && item.bucketName)
+        ?.map((item) => [item.dataCommons, item.bucketName])
+    );
+    return {
+      ...config,
+      inactive_user_days: inactiveUserDaysConf || process.env.INACTIVE_USER_DAYS || 60,
+      remind_application_days:
+        remindApplicationDaysConf || process.env.REMIND_APPLICATION_DAYS || 165,
+      inactive_application_days:
+        inactiveApplicationDaysConf || process.env.INACTIVE_APPLICATION_DAYS || 60,
+      inactive_new_application_days:
+        inactiveNewApplicationDaysConf || process.env.INACTIVE_NEW_APPLICATION_DAYS || 30,
+      // Email settings
+      email_transport: getTransportConfig(
+        emailSmtpHostConf,
+        emailSmtpPortConf,
+        emailSmtpUserConf,
+        emailSmtpPasswordConf
+      ),
+      emails_enabled: process.env.EMAILS_ENABLED
+        ? process.env.EMAILS_ENABLED.toLowerCase() === "true"
+        : true,
+      emails_url:
+        emailURLConf || (process.env.EMAIL_URL ? process.env.EMAIL_URL : "http://localhost:4010"),
+      official_email: officialEmailConf || process.env.OFFICIAL_EMAIL || "CRDCHelpDesk@nih.gov",
+      // temp url for email
+      submission_doc_url: submissionDocUrlConf || process.env.SUBMISSION_DOC_URL || "",
+      submission_helpdesk: submissionHelpdeskConf || "CRDCSubmissions@nih.gov",
+      techSupportEmail:
+        techSupportEmailConf || process.env.TECH_SUPPORT_EMAIL || "NCICRDCTechSupport@mail.nih.gov",
+      submission_system_portal: submissionSystemPortalConf || "https://datacommons.cancer.gov/",
+      prod_url: prodUrlConf || process.env.PROD_URL || "https://hub.datacommons.cancer.gov/",
+      submission_bucket: submissionBucketConf,
+      dataCommonsBucketMap,
+      role_timeout: roleTimeoutConf || parseInt(process.env.ROLE_TIMEOUT, 10) || 12 * 3600,
+      presign_expiration:
+        preSignExpirationConf || parseInt(process.env.PRESIGN_EXPIRATION, 10) || 3600,
+      tier: getTier(tierConf?.keys?.tier),
+      // aws SQS names
+      sqs_loader_queue: loaderQueueConf?.keys?.sqs || process.env.LOADER_QUEUE || "crdcdh-queue",
+      metadata_queue: metadataQueueConf?.keys?.sqs || process.env.METADATA_QUEUE,
+      file_queue: fileQueueConf?.keys?.sqs || process.env.FILE_QUEUE,
+      export_queue: exporterQueueConf?.keys?.sqs || process.env.EXPORTER_QUEUE,
+      email_content_branch: getEmailContentBranch(tierConf?.keys?.tier),
+      email_content_base_url: getEmailContentBaseUrl(tierConf?.keys?.tier),
+      email_content_cache_dir: process.env.EMAIL_CONTENT_CACHE_DIR || "cache/email-content",
+      email_content_refresh_seconds: getEmailContentRefreshSeconds(),
+      // uploader configuration file template
+      uploaderCLIConfigs: readUploaderCLIConfigTemplate(),
+      dataCommonsList:
+        dataCommonsListConf?.key ||
+        (process.env.DATA_COMMONS_LIST
+          ? JSON.parse(process.env.DATA_COMMONS_LIST)
+          : ["CDS", "ICDC", "CTDC", "CCDI", "PSDC", "Test MDF", "Hidden Model"]),
+      inactive_submission_days:
+        inactiveSubmissionDaysConf || process.env.INACTIVE_SUBMISSION_DAYS_DELETE || 120,
+      completed_submission_days:
+        completedSubmissionDaysConf || process.env.COMPLETED_RETENTION_DAYS || 30,
+      dashboardSessionTimeout:
+        dashboardSessionTimeoutConf || process.env.DASHBOARD_SESSION_TIMEOUT || 3600, // 60 minutes by default
+      inactiveSubmissionNotifyDays: inactiveSubmissionNotifyDaysConf || [7, 30, 60],
+      inactiveApplicationNotifyDays: inactiveApplicationNotifyDaysConf || [15, 30], // 15, 30 days by default
+      conditionalSubmissionContact: submissionRequestEmailConf || "NCICRDC@mail.nih.gov",
+      submissionGuideUrl:
+        submissionGuideURLConf || "https://datacommons.cancer.gov/data-submission-instructions",
+      scheduledJobTime: scheduledJobTime || "1 0 1 * * *",
+    };
+  },
+};
+Object.defineProperty(config, "document_db_connection_string", {
+  enumerable: true,
+  get() {
+    return buildDocumentDbConnectionString();
+  },
+});
 
 config.getEmailContentBranch = getEmailContentBranch;
 config.getEmailContentBaseUrl = getEmailContentBaseUrl;

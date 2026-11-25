@@ -170,7 +170,20 @@ const getFormatDateStr = (date, format="YYYYMMDD") => {
     }
 }
 
+/**
+ * Converts a TIER value to a GitHub branch name: strips non-alphanumerics and lowercases.
+ * Same rules as the removed config.getModelUrl.
+ * @param {*} tier Raw TIER value
+ * @returns {string|null} Branch name, or null when nothing is left after sanitizing
+ */
+const sanitizeTierName = (tier) => {
+    if (typeof tier !== "string") return null;
+    const sanitized = tier.replace(/[^a-zA-Z\d]/g, "").toLowerCase();
+    return sanitized.length > 0 ? sanitized : null;
+};
+
 module.exports = {
+    sanitizeTierName,
     isCaseInsensitiveEqual,
     isElementInArray,
     isElementInArrayCaseInsensitive,

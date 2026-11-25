@@ -1,4 +1,3 @@
-const fs = require("fs");
 const https = require("https");
 const path = require("path");
 
@@ -11,14 +10,12 @@ const MODEL_CONTENT_FETCH_TIMEOUT_MS = 3000; // 3 seconds
 class DataModelService {
   /**
    * Performs no I/O. hiddenDataModels starts empty, and lastTTLMinutes is unset until the first TTL read.
-   * @param {function(): Promise<object>} dataModelInfo Fetches the data model manifest
-   * @param {string} modelUrl URL of the data model manifest
-   * @param {ConfigurationService} configurationService Source of MODEL_CONTENT settings
+   * @param {function(string=): Promise<object>} dataModelInfo Fetches the data model manifest; takes an optional content URL, and resolves it from the configuration when omitted
+   * @param {ConfigurationService} configurationService Source of the configured model content URL and the MODEL_CONTENT TTL
    */
-  constructor(dataModelInfo, modelUrl, configurationService) {
+  constructor(dataModelInfo, configurationService) {
     this.configurationService = configurationService;
     this.dataModelManifestInfo = dataModelInfo;
-    this.modelDir = path.dirname(modelUrl);
     this.hiddenDataModels = [];
     this.lastTTLMinutes = undefined;
   }
@@ -48,35 +45,41 @@ class DataModelService {
    * If version is not provided, it defaults to the current version defined in the model manifest.
    * @param {string} dataCommon - The common identifier for the data model.
    * @param {string} [version] - The specific version of the data model. If not provided, the current version will be used.
-   * @returns
-   * @throws {Error} - Throws an error if the data common is not provided or if the model definition cannot be found.
+   * The content URL is resolved once and used for both the manifest fetch and the model file paths.
+   * @returns {Promise<import('mdf-reader').MDFReader|[]>} Parsed model, or `[]` when inputs or manifest are missing
+   * @throws {Error} - Throws an error if the model content URL is not configured, or if the model definition cannot be found.
    */
   async getDataModelByDataCommonAndVersion(dataCommon, version) {
     if (!dataCommon) {
       return [];
     }
-    const contents = await this.dataModelManifestInfo();
+    const contentURL = await this.configurationService.getModelContentURL();
+    if (!contentURL) {
+      throw new Error("Unable to load the data model: the model content URL is not configured");
+    }
+    const contents = await this.dataModelManifestInfo(contentURL);
     if (!contents) {
       return [];
     }
-    this.modelDefinition = contents[dataCommon];
+    const modelDefinition = contents[dataCommon];
     if (!version) {
-      version = this.modelDefinition[CURRENT_DEF_VERSION];
+      version = modelDefinition[CURRENT_DEF_VERSION];
     }
 
-    const dataModelDir = path.join(this.modelDir, dataCommon, version);
-    const dataModelFileNameArr = this.modelDefinition[DEF_MODEL_FILES];
+    const dataModelDir = path.join(path.dirname(contentURL), dataCommon, version);
+    const dataModelFileNameArr = modelDefinition[DEF_MODEL_FILES];
     const dataModelFilePathArr = dataModelFileNameArr.map((fileName) =>
       path.join(dataModelDir, fileName)
     );
 
-    const dataModelHold = [];
     // read data model files in github by http and MDFReader
-    for (let index = 0; index < dataModelFilePathArr.length; index++) {
-      const filePath = dataModelFilePathArr[index];
-      if (filePath.startsWith("http")) {
+    if (!dataModelFilePathArr.every((filePath) => filePath.startsWith("http"))) {
+      return [];
+    }
+    const dataModelHold = dataModelFilePathArr.map(
+      (filePath) =>
         // read data model files in github by http
-        const fileContent = new Promise((resolve, reject) => {
+        new Promise((resolve, reject) => {
           https
             .get(filePath, (response) => {
               let data = "";
@@ -90,12 +93,8 @@ class DataModelService {
             .on("error", (error) => {
               reject(error);
             });
-        });
-        dataModelHold.push(fileContent);
-      } else {
-        return [];
-      }
-    }
+        })
+    );
 
     if (dataModelHold.length === 0) {
       throw new Error(`Failed to find data model definition for ${dataCommon} version ${version}`);
@@ -204,16 +203,18 @@ class DataModelService {
     }
   }
 
+  /**
+   * Replaces hiddenDataModels with the names of models flagged `isHidden: true` in the content.
+   * @param {object} [content] Model content keyed by data model (data commons) name
+   */
   _updateHiddenModels(content) {
-    const hiddenDataModels = [];
-    for (const [modelName, model] of Object.entries(content ?? {})) {
-      if (model?.isHidden === true) {
-        hiddenDataModels.push(modelName);
-      }
-    }
-    this.hiddenDataModels = hiddenDataModels;
+    this.hiddenDataModels = Object.entries(content ?? {})
+      .filter(([, model]) => model?.isHidden === true)
+      .map(([modelName]) => modelName);
   }
 
+  // Kept as an instance method so it can be spied on; it does not need instance state.
+  // eslint-disable-next-line class-methods-use-this
   _isContentExpired(contentFetchDate, ttlMinutes) {
     try {
       if (!(contentFetchDate instanceof Date)) {
