@@ -33,7 +33,6 @@ describe('Submission._notifyConfigurationChange', () => {
             null, // s3Service
             { url: 'https://test.com' }, // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             null, // sqsLoaderQueue
             null, // qcResultsService
             null, // uploaderCLIConfigs

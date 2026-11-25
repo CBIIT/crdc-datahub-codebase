@@ -136,7 +136,7 @@ app.use("/api/graphql", graphqlRouter);
         const dataSyncService = new DataSyncService();
         const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
             programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
-            s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService,
+            s3Service, emailParams, config.dataCommonsList, config.sqs_loader_queue, qcResultsService,
             config.uploaderCLIConfigs, config.submission_bucket, configurationService, undefined,
             config.dataCommonsBucketMap, authorizationService, undefined, dataSyncService);
 

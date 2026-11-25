@@ -31,7 +31,7 @@ describe('Submission.downloadDCFManifest', () => {
 
     submissionService = new Submission(
       {}, {}, {}, {}, { organizationCollection: {} }, {}, {}, jest.fn(),
-      {}, 'meta-queue', mockS3Service, {}, [], [], {}, 'loader-queue',
+      {}, 'meta-queue', mockS3Service, {}, [], {}, 'loader-queue',
       {}, {}, 'test-bucket', {}, {}, new Map(), {}, {}, {}
     );
 

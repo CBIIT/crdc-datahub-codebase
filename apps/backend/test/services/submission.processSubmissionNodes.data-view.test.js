@@ -59,7 +59,6 @@ function buildSubmissionService() {
     {},
     {},
     [],
-    [],
     'test-loader',
     {},
     {},

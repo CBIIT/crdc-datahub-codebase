@@ -115,7 +115,7 @@ dbConnector.connect().then(async () => {
     const dataSyncService = new DataSyncService();
     const submissionService = new Submission(logCollection, submissionCollection, batchService, userService,
         programService, notificationsService, dataRecordService, fetchDataModelInfo, awsService, config.export_queue,
-        s3Service, emailParams, config.dataCommonsList, config.hiddenModels, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
+        s3Service, emailParams, config.dataCommonsList, config.sqs_loader_queue, qcResultsService, config.uploaderCLIConfigs,
         config.submission_bucket, configurationService, uploadingMonitor, config.dataCommonsBucketMap, authorizationService, dataModelService,
         dataSyncService);
     const dataInterface = new Application(logCollection, applicationCollection, approvedStudiesService, userService, dbService, notificationsService, emailParams, programService, institutionService, configurationService, authorizationService);

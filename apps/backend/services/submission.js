@@ -138,7 +138,6 @@ class Submission {
    * @param {object} s3Service S3 service
    * @param {object} emailParams Email parameters
    * @param {string[]} dataCommonsList Allowed data commons
-   * @param {string[]} hiddenDataCommonsList Hidden data commons
    * @param {string} sqsLoaderQueue Loader SQS queue name
    * @param {object} qcResultsService QC results service
    * @param {object} uploaderCLIConfigs Uploader CLI configuration
@@ -164,7 +163,6 @@ class Submission {
     s3Service,
     emailParams,
     dataCommonsList,
-    hiddenDataCommonsList,
     sqsLoaderQueue,
     qcResultsService,
     uploaderCLIConfigs,
@@ -190,7 +188,6 @@ class Submission {
     this.s3Service = s3Service;
     this.emailParams = emailParams;
     this.allowedDataCommons = new Set(dataCommonsList);
-    this.hiddenDataCommons = new Set(hiddenDataCommonsList);
     this.sqsLoaderQueue = sqsLoaderQueue;
     this.qcResultsService = qcResultsService;
     this.uploaderCLIConfigs = uploaderCLIConfigs;

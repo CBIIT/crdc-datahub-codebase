@@ -48,7 +48,7 @@ describe('Submission.getPendingPVs', () => {
             mockSubmissionCollection, // submissionCollection
             null, null, programService, null, // batchService, userService, programService, notificationService
             null, null, null, null, // dataRecordService, fetchDataModelInfo, awsService, metadataQueueName
-            null, null, [], [],    // s3Service, emailParams, dataCommonsList, hiddenDataCommonsList
+            null, null, [],        // s3Service, emailParams, dataCommonsList
             null, null, null,      // sqsLoaderQueue, qcResultsService, uploaderCLIConfigs
             'bucket', null, null, {}, null, // submissionBucketName, configurationService, uploadingMonitor, dataCommonsBucketMap, authorizationService
             {
@@ -372,7 +372,6 @@ describe('Submission.getSubmission', () => {
             mockS3Service, // s3Service
             { remindSubmissionDay: 30 }, // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -837,7 +836,6 @@ describe("Submission.createSubmission", () => {
             {}, // s3Service
             {}, // emailParams
             ["commonsA"], // dataCommonsList
-            [], // hiddenDataCommonsList
             {}, // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -852,9 +850,8 @@ describe("Submission.createSubmission", () => {
         // Override the submissionDAO with our mock
         submissionService.submissionDAO = mockSubmissionDAO;
 
-        // Set up allowed/hidden data commons for validation
+        // Set up allowed data commons for validation
         submissionService.allowedDataCommons = new Set(["commonsA"]);
-        submissionService.hiddenDataCommons = new Set();
 
         // Use the real removeHiddenDataModels with a mocked refreshHiddenModels
         submissionService.dataModelService = new DataModelService(null, "test-url", null);
@@ -1547,7 +1544,6 @@ describe('Submission._remindPrimaryContactEmail', () => {
             {}, // s3Service
             {}, // emailParams
             ["commonsA"], // dataCommonsList
-            [], // hiddenDataCommonsList
             {}, // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -1676,7 +1672,6 @@ describe('Submission._sendEmailsDeletedSubmissions', () => {
             {}, // s3Service
             {}, // emailParams
             ["commonsA"], // dataCommonsList
-            [], // hiddenDataCommonsList
             {}, // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs
@@ -1821,7 +1816,6 @@ describe('Submission.editSubmissionCollaborators', () => {
             jest.fn(), // s3Service
             jest.fn(), // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2242,7 +2236,6 @@ describe('Submission.submissionAction', () => {
             jest.fn(), // s3Service
             jest.fn(), // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2517,7 +2510,6 @@ describe('Submission.validateSubmission', () => {
             jest.fn(), // s3Service
             jest.fn(), // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -2898,7 +2890,6 @@ describe('Submission.updateSubmissionInfo', () => {
             jest.fn(), // s3Service
             jest.fn(), // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -3168,7 +3159,6 @@ describe('Submission.editSubmission', () => {
             jest.fn(), // s3Service
             jest.fn(), // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             jest.fn(), // uploaderCLIConfigs
@@ -3316,7 +3306,6 @@ describe('Submission._recordSubmissionValidation and _updateValidationStatus', (
             jest.fn(),
             jest.fn(),
             jest.fn(),
-            [],
             [],
             jest.fn(),
             jest.fn(),

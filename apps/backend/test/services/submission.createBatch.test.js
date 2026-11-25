@@ -81,7 +81,6 @@ describe('Submission Service - createBatch with Status Change to In Progress', (
             null, // s3Service
             null, // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             null, // sqsLoaderQueue
             null, // qcResultsService
             null, // uploaderCLIConfigs

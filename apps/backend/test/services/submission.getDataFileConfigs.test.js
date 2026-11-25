@@ -90,7 +90,6 @@ describe('Submission.getDataFileConfigs', () => {
             null, // s3Service
             null, // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             null, // sqsLoaderQueue
             null, // qcResultsService
             null, // uploaderCLIConfigs

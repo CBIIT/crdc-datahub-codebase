@@ -126,7 +126,6 @@ function makeService() {
         {},                     // s3Service
         {},                     // emailParams
         [DATA_COMMONS],         // dataCommonsList
-        [],                     // hiddenDataCommonsList
         'sqs-loader-queue',
         {},                     // qcResultsService
         {},                     // uploaderCLIConfigs

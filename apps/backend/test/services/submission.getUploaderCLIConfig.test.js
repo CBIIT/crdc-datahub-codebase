@@ -55,7 +55,6 @@ describe('Submission.getUploaderCLIConfigs', () => {
             jest.fn(), // s3Service
             jest.fn(), // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             jest.fn(), // sqsLoaderQueue
             jest.fn(), // qcResultsService
             mockUploaderCLIConfigs, // uploaderCLIConfigs

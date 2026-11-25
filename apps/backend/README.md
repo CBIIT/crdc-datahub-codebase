@@ -52,6 +52,9 @@ Environment variables can either be set in the runtime environment or specified 
  - **SUBMISSION_DOC_URL**: Set the url for submission documentation
  - **DASHBOARD_SESSION_TIMEOUT**: Set the timeout for AWS QuickSight dashboard by default 30 minutes
  - **DATA_COMMONS_LIST**: JSON array of available data commons (e.g., ["CDS", "ICDC", "CTDC", "CCDI", "PSDC", "Test MDF", "Hidden Model"])
+
+**Hidden data models**: whether a data model is hidden is determined by the `isHidden` flag of that model in the model manifest (`content.json` in the `crdc-datahub-models` repo). The URL is built from the `MODEL_CONTENT` configuration document (`repo_url` and `content_path`) and the `TIER` configuration. Hidden models are excluded from `listSubmissions` filters and rejected by `createSubmission`. The manifest is cached for the `ttl_minutes` set in the `MODEL_CONTENT` configuration document (default 24 hours). The legacy `HIDDEN_MODELS` configuration document and environment variable are no longer read by the backend.
+
 ### Creating a .env File
 
 1. Locate the [**env.template**](./env.template) file and create a copy

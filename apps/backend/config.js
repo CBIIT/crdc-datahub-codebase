@@ -33,7 +33,6 @@ const EXPORTER_QUEUE = "EXPORTER_QUEUE";
 const MODEL_URL = "MODEL_URL";
 const SUBMISSION_GUIDE_URL = "SUBMISSION_GUIDE_URL";
 const DATA_COMMONS_LIST = "DATA_COMMONS_LIST";
-const HIDDEN_MODELS = "HIDDEN_MODELS";
 const COMPLETED_RETENTION_DAYS = "COMPLETED_RETENTION_DAYS";
 const INACTIVE_SUBMISSION_DAYS_DELETE = "INACTIVE_SUBMISSION_DAYS_DELETE";
 const DASHBOARD_SESSION_TIMEOUT = "DASHBOARD_SESSION_TIMEOUT";
@@ -188,7 +187,6 @@ let config = {
         const exporterQueueConf = await configurationService.findByType(EXPORTER_QUEUE);
         // SUBMISSION
         const dataCommonsListConf = await configurationService.findByType(DATA_COMMONS_LIST);
-        const hiddenModelsConf = await configurationService.findByType(HIDDEN_MODELS);
         const listS3Buckets = await configurationService.findByType(LIST_OF_S3_BUCKETS);
         const submissionBucketConf = listS3Buckets?.[SUBMISSION_BUCKET];
         const metadataBuckets = await configurationService.findManyByType(METADATA_BUCKET);
@@ -231,7 +229,6 @@ let config = {
             //uploader configuration file template
             uploaderCLIConfigs: readUploaderCLIConfigTemplate(),
             dataCommonsList: dataCommonsListConf?.key || (process.env.DATA_COMMONS_LIST ? JSON.parse(process.env.DATA_COMMONS_LIST) : ["CDS", "ICDC", "CTDC", "CCDI", "PSDC", "Test MDF", "Hidden Model"]),
-            hiddenModels: hiddenModelsConf?.key || (process.env.HIDDEN_MODELS ? parseHiddenModels(process.env.HIDDEN_MODELS) : []),
             inactive_submission_days: inactiveSubmissionDaysConf || (process.env.INACTIVE_SUBMISSION_DAYS_DELETE || 120),
             completed_submission_days: completedSubmissionDaysConf || (process.env.COMPLETED_RETENTION_DAYS || 30),
             dashboardSessionTimeout: dashboardSessionTimeoutConf || (process.env.DASHBOARD_SESSION_TIMEOUT || 3600), // 60 minutes by default
@@ -249,11 +246,6 @@ Object.defineProperty(config, 'document_db_connection_string', {
         return buildDocumentDbConnectionString();
     },
 });
-function parseHiddenModels(hiddenModels) {
-    return hiddenModels.split(',')
-        .filter(item => item?.trim().length > 0)
-        .map(item => item?.trim());
-}
 
 function getTransportConfig(host, port, emailUser, emailPassword) {
     return {

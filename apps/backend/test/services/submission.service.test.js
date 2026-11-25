@@ -238,7 +238,6 @@ describe("Submission Service - getSubmission", () => {
       mockS3Service,
       {}, // emailParams
       ["test-commons"], // dataCommonsList
-      ["hidden-commons"], // hiddenDataCommonsList
       "sqs-loader-queue",
       {}, // qcResultsService
       {}, // uploaderCLIConfigs
@@ -2156,7 +2155,7 @@ describe("Submission Service - listSubmissions", () => {
       verifyInitialized: jest.fn().mockReturnValue(true),
     });
 
-    // Create submission service with dataCommonsList and hiddenDataCommonsList
+    // Create submission service with dataCommonsList; hidden models come from the DataModelService
     const dataCommonsList = ["CDS", "ICDC", "CTDC", "Hidden Model"];
     const hiddenDataCommonsList = ["Hidden Model"];
 
@@ -2174,7 +2173,6 @@ describe("Submission Service - listSubmissions", () => {
       {}, // s3Service
       {}, // emailParams
       dataCommonsList,
-      hiddenDataCommonsList,
       "sqs-loader-queue", // sqsLoaderQueue
       {}, // qcResultsService
       {}, // uploaderCLIConfigs
@@ -2244,7 +2242,6 @@ describe("Submission Service - listSubmissions", () => {
       {},
       {},
       dataCommonsListNoHidden,
-      emptyHiddenList,
       "sqs",
       {},
       {},
@@ -2290,7 +2287,6 @@ describe("Submission Service - listSubmissions", () => {
       {},
       {},
       allDataCommons,
-      allHidden,
       "sqs",
       {},
       {},
@@ -2406,13 +2402,7 @@ describe("SubmissionService.listSubmissions hidden data models", () => {
       .mockResolvedValue(null);
   });
 
-  function mockSubmissionService(
-    dataCommonsList,
-    hiddenDataCommonsList,
-    dataModelService,
-    submissionDAO,
-    userScope
-  ) {
+  function mockSubmissionService(dataCommonsList, dataModelService, submissionDAO, userScope) {
     const submissionService = new Submission(
       null,
       null,
@@ -2427,7 +2417,6 @@ describe("SubmissionService.listSubmissions hidden data models", () => {
       null,
       null,
       dataCommonsList,
-      hiddenDataCommonsList,
       null,
       null,
       null,
@@ -2480,7 +2469,6 @@ describe("SubmissionService.listSubmissions hidden data models", () => {
       const dataModelService = mockDataModelService(hiddenDataCommonsList);
       const submissionService = mockSubmissionService(
         dataCommonsList,
-        hiddenDataCommonsList,
         dataModelService,
         submissionDAO,
         userScope

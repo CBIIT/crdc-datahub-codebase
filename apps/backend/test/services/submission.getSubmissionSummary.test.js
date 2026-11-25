@@ -28,7 +28,6 @@ describe('Submission.getSubmissionSummary', () => {
             {}, // s3Service
             {}, // emailParams
             [], // dataCommonsList
-            [], // hiddenDataCommonsList
             'test-loader-queue', // sqsLoaderQueue
             {}, // qcResultsService
             {}, // uploaderCLIConfigs

@@ -56,7 +56,6 @@ describe('Submission.updateBatch — stale file QC cleanup', () => {
             {},
             {},
             [],
-            [],
             'sqs-loader-queue',
             mockQcResultsService,
             {},

@@ -31,7 +31,7 @@ describe('Submission DataSync resolvers', () => {
     beforeEach(() => {
         dataSyncService = new DataSyncService();
         submissionService = new Submission(
-            {}, {}, {}, {}, {}, {}, {}, jest.fn(), {}, 'queue', {}, {}, [], [], 'loader-queue',
+            {}, {}, {}, {}, {}, {}, {}, jest.fn(), {}, 'queue', {}, {}, [], 'loader-queue',
             {}, {}, 'bucket', {}, {}, new Map(), {}, {},
             dataSyncService
         );
